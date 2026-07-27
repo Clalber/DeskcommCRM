@@ -35,6 +35,7 @@ O motivo é o acúmulo: quanto mais tarde o teste, mais causas possíveis para u
 | Task 0 (baseline de regressão) | ✅ gravada em `evidence/canais/baseline/` |
 | Task 0.1 (consertar os defeitos do baseline) | ✅ evidência versionada · guarda verde · e2e re-rodada em série e classificada |
 | Task 1 (cortesia ≠ anti-ban) | ✅ `banRisk` em `decidePacing` · 4 testes novos · `gates.csv` idêntico à baseline |
+| Task 2 (descritor de capabilities) | ✅ `lib/channels/{types,capabilities}.ts` · 4 casos de invariante, os 4 sabotados e vermelhos · nenhum consumidor ainda |
 
 A Task 0 gravou a foto do "antes" e produziu 2 instrumentos reutilizáveis
 (`tests/journeys/`, `scripts/provoke-agent-turn.ts`). A **Task 1** é a primeira linha de
@@ -282,6 +283,51 @@ a doutrina de QA Visual do repo já diz que mock não estressa o egress real.
 | 2026-07-27 | **Task 0** | baseline gravada (`evidence/canais/baseline/`); 2 instrumentos novos (`tests/journeys/`, `scripts/provoke-agent-turn.ts`) | unit **1035✓/1✗ exit 1**; e2e **29✓/15✗/14 não rodaram exit 1**; `gates.csv` **9 linhas** de 1 turno REAL (`claude-sonnet-4-5`, `messages_sent:1`); 7 screenshots pela tela; typecheck/lint **exit 0** | (a) o plano derruba `evidencia-citada.test.ts` citando os 7 PNGs por nome puro — vermelho da BRANCH, não da `main`; (b) `.superpowers/evidence/` é gitignorado → o `git add` do Step 7 do plano não versiona nada; (c) e2e não é verde de referência: timeouts sob 5 workers + `schema cache` do PostgREST, **não re-rodei em série** |
 | 2026-07-27 | **Task 0.1** | evidência movida de `.superpowers/evidence/canais/` (gitignorada) para `evidence/canais/`, versionada, com `README.md` do que cada artefato prova; plano/HANDOFF/`CANAIS_EVIDENCE_DIR` citam CAMINHO, não nome puro; Step 3 do plano ganhou `set -o pipefail` e passou a mandar a e2e em série | `npx vitest run tests/unit/evidencia-citada.test.ts` → **28✓/0✗ exit 0** (eram 26 com 1✗; +2 documentos entraram na cobertura); suíte unitária inteira **1038✓/0✗ exit 0** (era 1035✓/1✗); typecheck **exit 0**, lint **exit 0**; e2e em série **41✓/4✗/13 não rodaram exit 1** em 3.6min vs **29✓/15✗/14 exit 1** em 5.2min com 5 workers → **3 defeitos prováveis, 12 flakes de concorrência, 1 sem veredito** (ver "Série × paralelo") | (a) a 3001 estava tomada por um `next-server` de OUTRA sessão (6d23h) e a suíte inteira abortou — `reuseExistingServer:false` é proposital, resolvi com `E2E_PORT=3007` sem matar processo alheio; (b) `invite-lifecycle.spec.ts:268` (`already_member`) rodou pela 1ª vez e falhou — 1 execução não classifica; (c) `${PIPESTATUS[0]}` — a receita que eu mesmo escrevi no plano — grava `exit=` VAZIO no zsh (é variável do bash); trocado por `set -o pipefail` + `$?`, que vale nos dois shells; (d) NÃO consertei nenhum e2e vermelho (fora do escopo) nem provei nada pela tela: a Task 0.1 não toca UI |
 | 2026-07-27 | **Task 1** | `PacingInput` ganhou `banRisk?: boolean` e `decidePacing` curto-circuita SÓ o bloco anti-ban (`if (!banRisk) return { allow: true, waitMs: 0 }` **depois** da checagem de janela); +14 linhas, 1 arquivo de produção, **zero call site tocado**; novo `tests/unit/pacing-cortesia-vs-antiban.test.ts` (4 casos) | **vermelho primeiro, no caso certo:** `AssertionError: expected false to be true` em `pacing-cortesia-vs-antiban.test.ts:41` (`sem risco de ban, o cap de warm-up DESARMA`) — os outros 3 verdes já de cara, como o plano previa. Depois: 4✓ no arquivo; suíte inteira **1042✓/0✗ · 137 arquivos · exit 0** (era 1038✓/136 arq.); typecheck **exit 0**; lint **exit 0** (156 warnings, 0 erros — igual à baseline). Pela tela: jornada de 7 paradas re-vivida contra build novo na 3007, **3✓/0✗ em 33,3s**, screenshots em `evidence/canais/task1/`; turno REAL de IA provocado (`provoke-agent-turn.ts` → trace `8a5534fb` às 16:18:12Z, 8 gates); `diff evidence/canais/baseline/gates.csv evidence/canais/task1/gates.csv` → **vazio, exit 0** | (a) o `diff` do plano compararia acúmulo, não gates — `before_send_traces` é cumulativo (ver seção acima); (b) `pnpm run worker` **não roda neste worktree**: o script pede `--env-file=.env` e só existe `.env.local` → `node: .env: not found`, exit 9. Rodei `pnpm exec tsx --env-file=.env.local workers/agent-worker/main.ts`; (c) a 8787 (healthz do worker) estava tomada pelo worker de OUTRA sessão — que aponta para o Supabase REMOTO, não para o meu local, então não houve disputa de job. Resolvi com `HEALTH_PORT=8797`, sem matar processo alheio; (d) 3000 e 3001 ocupadas por `next-server` alheios → app servida em 3007; (e) o guarda `tests/unit/evidencia-citada.test.ts` é **bidirecional** e me pegou duas vezes: primeiro por citar PNG ainda não rastreado (`git add` antes de rodar a suíte), depois por versionar 7 PNGs que nenhum documento citava. Ambos os vermelhos foram medidos e consertados citando os 7 por caminho em `evidence/canais/README.md` |
+| 2026-07-27 | **Task 2** | `lib/channels/types.ts` (17 linhas: `ChannelProvider` + as 7 capabilities documentadas) e `lib/channels/capabilities.ts` (a matriz WAHA/Meta + `capabilitiesOf` fail-closed); novo `tests/unit/channel-capability-matrix.test.ts` (4 casos). **Zero consumidores** — nenhum arquivo importa isto ainda, por desenho: a ligação é das Tasks 4 e 5 | **vermelho real, citado literal:** `Error: Failed to resolve import "@/lib/channels/capabilities" from "tests/unit/channel-capability-matrix.test.ts". Does the file exist?` (vitest 4/vite 8 diz assim, não "Cannot find module"). Depois: 4✓ no arquivo; suíte inteira **1046✓/0✗ · 138 arquivos · exit 0** (era 1042✓/137 arq. na Task 1 — +4/+1, nenhuma regressão); typecheck **exit 0**; lint **exit 0** (156 warnings, 0 erros, nenhum nos arquivos novos). Os 4 casos foram sabotados um a um e cada um vermelheceu no caso certo (tabela acima) | (a) o teste NÃO podia morar em `tests/invariants/` — pasta excluída do `test:unit` e ausente do CI (seção acima); (b) o comando do plano `pnpm run test:unit -- channel-capability-matrix` é **falso verde**: o `--` do pnpm faz o vitest ignorar o filtro e rodar a suíte inteira com exit 0 — quem quiser filtrar usa `pnpm exec vitest run <filtro>`; (c) minha premissa de que `noUncheckedIndexedAccess` obrigaria a mexer no teste estava **errada**: `Record<'waha'\|'meta_cloud', X>` tem chaves literais, não index signature, então `CHANNEL_CAPABILITIES[p]` já é não-nulo e o código do plano typechecka sem alteração. Medi antes de "consertar" |
+
+### `tests/invariants/` NÃO roda no CI — a matriz de capabilities mudou de pasta (medido na Task 2)
+
+O plano mandava criar `tests/invariants/channel-capability-matrix.test.ts`, e a doutrina cita
+essa pasta na tabela de Enforcement. Medido no repo:
+
+- `vitest.config.ts` lista `tests/invariants/**` em `exclude` → `pnpm test:unit` **não** a vê.
+- Essa pasta só roda por `pnpm test:db` (`scripts/test-db.sh`), que sobe um Postgres efêmero
+  em Docker e aplica o baseline inteiro antes de chamar `vitest --config vitest.db.config.ts`.
+- `.github/workflows/ci.yml` roda **typecheck + lint + `pnpm test:unit`**, e só. `test:db`
+  não aparece em nenhum workflow.
+
+Ou seja: um teste de constante TypeScript ali dentro exigiria Docker+Postgres para rodar e
+**nunca reprovaria o CI** — o contrário do que o invariante 2 da doutrina promete ("capability
+sem linha para algum provider reprova o CI"). O arquivo foi para `tests/unit/`, onde o CI o
+alcança; as asserções são idênticas às do plano. **A Task 6 é diferente:** aquela é invariante
+de banco de verdade (CHECK constraint, índice único) e pertence a `tests/invariants/` mesmo —
+mas quem a escrever precisa saber que ela não roda no CI de PR hoje.
+
+Medição do desvio, nesta ordem:
+
+1. Arquivo em `tests/invariants/`, comando do plano `pnpm run test:unit -- channel-capability-matrix`
+   → **137 arquivos / 1042 testes, exit 0**. Falso verde duplo: o `--` do pnpm faz o vitest
+   ignorar o filtro (rodou a suíte inteira), e a pasta estava excluída de qualquer jeito.
+2. Filtro de fato aplicado (`pnpm exec vitest run channel-capability-matrix`), arquivo ainda
+   em `tests/invariants/` → `No test files found, exiting with code 1`, com o `exclude` impresso.
+3. Arquivo movido para `tests/unit/`, mesmo comando → o vermelho que o plano queria.
+
+### Sabotagem controlada — os 4 casos da matriz discriminam (Task 2)
+
+Os 4 casos passam de primeira contra a implementação correta, então nenhum deles prova nada
+sozinho. Cada um foi sabotado na fonte, medido, e a fonte restaurada (SHA-256 do arquivo
+conferido antes e depois: `89bd3322…`, idêntico):
+
+| Sabotagem em `lib/channels/capabilities.ts` | Vermelho observado |
+|---|---|
+| apagar `banRisk` de `meta_cloud` | `× todo provider declara TODA capability` (+ o caso 4 junto: `undefined && …` não é `false`) |
+| acrescentar `readReceipts: true` ao WAHA | `× nenhuma capability é declarada sem estar na lista (código morto)` |
+| remover o `if (!caps) throw` | `× resolução é fail-closed — provider desconhecido lança` |
+| `meta_cloud.banRisk = true` | `× as duas famílias de restrição são mutuamente exclusivas por provider` |
+
+O 4º caso é o mais importante e o mais fácil de "consertar" errado: se um canal futuro
+declarar `banRisk` **e** `requiresTemplates`, ele vermelhece — e isso é o alarme funcionando,
+não o teste quebrado. O comentário no arquivo diz isso para quem chegar depois.
 
 ### Sabotagem controlada — a prova de que o 1º caso do teste guarda alguma coisa (Task 1)
 
