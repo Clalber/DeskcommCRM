@@ -630,6 +630,15 @@ Commit próprio.
 
 `storage_sign_failed` **continua literal no handler** — é falha de Storage nossa, não do canal, e a URL assinada é montada antes de qualquer coisa tocar o adapter.
 
+> **Alerta da Task 4a que NÃO procede — não "conserte" isto.** A 4a observou que
+> `WahaClient.sendMedia` inclui o corpo da resposta na mensagem de erro (`waha_500: boom`)
+> e `sendMessage` não (`waha_500`), e concluiu que a 4d teria de escolher uma das duas.
+> **Não tem.** Conferido em `lib/channels/adapters/waha.ts`: o `send` do adapter **preserva
+> o branch** — chama `client.sendMedia` ou `client.sendMessage` exatamente como o handler
+> faz hoje. O erro sobe do mesmo método, com a mesma mensagem. A assimetria atravessa o
+> seam intacta, que é o desejado nas Fases 0–2. Uniformizar seria a mudança de
+> comportamento que este plano proíbe.
+
 ```bash
 pnpm exec vitest run messages-handler-desfechos   # 6 passed
 pnpm run test:unit && pnpm run typecheck && pnpm run lint
