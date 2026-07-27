@@ -135,7 +135,7 @@ ver, tela para mudar, e caminho visível de falha.**
 | Camada | Mecanismo | Efeito |
 |---|---|---|
 | Lint | `scripts/lint-channels.ts` | nome de provider fora de `lib/channels/` reprova |
-| Invariante | matriz capability × provider em `tests/invariants/` | capability sem cobertura reprova |
+| Invariante | matriz capability × provider em `tests/unit/` | capability sem cobertura reprova |
 | Invariante | suíte de canal congelada rodando com o provider legado | regressão silenciosa reprova |
 | Trace | `before_send_traces` com `skipped` explícito | não-aplicação é auditável, não invisível |
 | Gate de sessão | item no Living System Checklist (`sistema-vivo.md`) | nenhuma task de canal fecha sem responder |

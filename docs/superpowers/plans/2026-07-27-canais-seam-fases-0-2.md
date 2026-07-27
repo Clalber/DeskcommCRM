@@ -16,7 +16,10 @@
 - Toda mudança de schema sai como migration versionada em `supabase/migrations/` **+** apêndice idempotente em `supabase/baseline.sql` **+** linha em `supabase/migrations/MANIFEST.md` (doutrina de migrations, `CLAUDE.md`).
 - Commits atômicos por task. Nenhuma task começa com a anterior não provada.
 - Toda task alimenta `HANDOFF-canais-oficial.md` na raiz — o que mudou, o que provei, o que quebrou.
-- `npm run typecheck` e `npm run lint` zerados ao fim de cada task. **Nunca validar com `| tail`** (o exit code vira o do `tail` — falso verde).
+- `pnpm typecheck` e `pnpm lint` zerados ao fim de cada task. **Nunca validar com `| tail`** (o exit code vira o do `tail` — falso verde). Use `set -o pipefail` + `$?`; **nunca `${PIPESTATUS[0]}`**, que no zsh expande para string vazia.
+- **Filtrar teste com `pnpm run test:unit -- <nome>` é FALSO VERDE.** Medido: `pnpm run test:unit -- arquivo-que-nao-existe-xyz` → `1046 passed, exit 0`. O `--` do pnpm faz o vitest ignorar o filtro e rodar a suíte inteira — ou seja, o step "rode e veja falhar" do TDD reportaria PASS com o arquivo inexistente. Use sempre **`pnpm exec vitest run <filtro>`**.
+
+> ⚠️ **`tests/invariants/` NÃO roda no CI.** Medido: `vitest.config.ts` exclui a pasta de `test:unit`; ela só roda por `pnpm test:db`, e **nenhum** workflow em `.github/workflows/` invoca `test:db`. O `ci.yml` roda apenas `typecheck`, `lint` e `test:unit`. São **56 arquivos** fora do gate de PR — incluindo `rls-isolation.test.ts`, que o `CLAUDE.md` declara "gate obrigatório antes de merge". Consequência para este plano: **teste que precisa reprovar o CI vai em `tests/unit/`.** A Task 6 continua em `tests/invariants/` porque é invariante de banco de verdade (precisa de Postgres), mas quem a escrever precisa saber que ela não gateia PR hoje. Corrigir esse buraco é trabalho de outra frente — está registrado, não resolvido aqui.
 
 ---
 
@@ -31,7 +34,7 @@
 | `lib/agent-engine/pacing/engine.ts` | **Modificar.** `decidePacing` passa a receber `banRisk` e desarmar só o que é anti-ban. |
 | `app/api/v1/messages/_handler.ts` | **Modificar.** Passa a resolver o adapter em vez de `getWahaClient()` direto. |
 | `scripts/lint-channels.ts` | **Criar.** Reprova nome de provider fora de `lib/channels/`. |
-| `tests/invariants/channel-capability-matrix.test.ts` | **Criar.** Matriz exaustiva capability × provider. |
+| `tests/unit/channel-capability-matrix.test.ts` | **Criar.** Matriz exaustiva capability × provider. **Em `tests/unit/`, não `tests/invariants/`** — ver aviso abaixo. |
 | `tests/unit/pacing-cortesia-vs-antiban.test.ts` | **Criar.** O invariante 3 da doutrina. |
 
 ---
@@ -207,7 +210,7 @@ describe('cortesia não é anti-ban', () => {
 - [ ] **Step 2: Rodar e confirmar que falha**
 
 ```bash
-npm run test:unit -- pacing-cortesia-vs-antiban
+pnpm exec vitest run pacing-cortesia-vs-antiban
 ```
 
 Expected: **FAIL, e especificamente no 2º caso** (`o cap de warm-up DESARMA`) — hoje o cap veta mesmo sem risco de ban. Os casos 1, 3 e 4 devem passar já de cara, porque descrevem o comportamento atual.
@@ -231,7 +234,7 @@ Ordem importa: a checagem de janela **não pode** ficar dentro do `if`.
 - [ ] **Step 4: Rodar e confirmar que passa**
 
 ```bash
-npm run test:unit -- pacing-cortesia-vs-antiban   # 3 passed
+pnpm exec vitest run pacing-cortesia-vs-antiban   # 3 passed
 npm run test:unit                                  # suíte inteira, sem regressão
 npm run typecheck && npm run lint
 ```
@@ -308,7 +311,7 @@ describe('matriz capability × provider é exaustiva', () => {
 - [ ] **Step 2: Rodar e confirmar que falha**
 
 ```bash
-npm run test:unit -- channel-capability-matrix
+pnpm exec vitest run channel-capability-matrix
 ```
 
 Expected: FAIL com "Cannot find module '@/lib/channels/capabilities'".
@@ -374,7 +377,7 @@ export function capabilitiesOf(provider: ChannelProvider): ChannelCapabilities {
 - [ ] **Step 4: Rodar e confirmar que passa**
 
 ```bash
-npm run test:unit -- channel-capability-matrix   # 4 passed
+pnpm exec vitest run channel-capability-matrix   # 4 passed
 npm run typecheck && npm run lint
 ```
 
@@ -436,7 +439,7 @@ describe('adapter WAHA', () => {
 - [ ] **Step 2: Rodar e confirmar que falha**
 
 ```bash
-npm run test:unit -- channel-adapter-waha
+pnpm exec vitest run channel-adapter-waha
 ```
 
 Expected: FAIL com "Cannot find module '@/lib/channels'".
@@ -487,7 +490,7 @@ export type { ChannelAdapter, ChannelProvider } from './types';
 - [ ] **Step 4: Rodar e confirmar que passa**
 
 ```bash
-npm run test:unit -- channel-adapter-waha    # 3 passed
+pnpm exec vitest run channel-adapter-waha    # 3 passed
 npm run test:unit && npm run typecheck && npm run lint
 ```
 
@@ -515,7 +518,7 @@ git commit -m "feat(canais): ChannelAdapter com WAHA como primeira implementaç�
 - [ ] **Step 1: Confirmar a cobertura ANTES de tocar**
 
 ```bash
-npm run test:unit -- automation-send-whatsapp
+pnpm exec vitest run automation-send-whatsapp
 ```
 
 Expected: PASS. Se já estiver vermelho, conserte antes — senão você não sabe o que quebrou.
@@ -610,7 +613,7 @@ describe('gate de pacing respeita a capability do canal', () => {
 - [ ] **Step 2: Rodar e confirmar que falha**
 
 ```bash
-npm run test:unit -- gate-pacing-capability
+pnpm exec vitest run gate-pacing-capability
 ```
 
 Expected: FAIL — `skipped` ainda não existe no tipo do veredito.
@@ -629,7 +632,7 @@ Propagar `skipped` até a escrita em `before_send_traces` — um gate que não s
 - [ ] **Step 4: Rodar e confirmar que passa**
 
 ```bash
-npm run test:unit -- gate-pacing-capability   # 2 passed
+pnpm exec vitest run gate-pacing-capability   # 2 passed
 npm run test:unit && npm run typecheck && npm run lint
 ```
 
