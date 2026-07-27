@@ -513,7 +513,42 @@ git commit -m "feat(canais): ChannelAdapter com WAHA como primeira implementaç�
 
 **Interfaces:**
 - Consumes: `getAdapter` (Task 3), `capabilitiesOf` (Task 2).
-- Produces: nada novo. **Esta task é invisível de fora — esse é o ponto.**
+- Produces: `ChannelAdapter` ganha `isConfigured(): boolean` e `codes: { notConfigured: string; sendFailed: string }` (ver "Correção de contrato" abaixo). Fora isso, nada novo. **Esta task é invisível de fora — esse é o ponto.**
+
+### Correção de contrato (achada na Task 3, obrigatória antes de codar)
+
+`send()` devolvendo `{ externalId: null }` **colapsa dois desfechos que o handler trata de forma diferente**:
+
+| Situação | Comportamento atual (`_handler.ts`) |
+|---|---|
+| `getWahaClient()` devolve `null` | mensagem fica **`queued`** + `metadata.queued_reason = 'waha_not_configured'`. **Nada é enviado.** |
+| Enviou, mas `parseWahaMessageId` não achou id | `status: 'sent'`, `external_id: null`, `ack: 0` |
+
+Com o contrato original, a primeira viraria `sent` sem ter saído. Isso é perda de mensagem, não refactor.
+
+**A correção:** o adapter expõe o estado *antes* do envio, espelhando o `if (!waha)` de hoje um-para-um — e **carrega seus próprios códigos de erro**:
+
+```ts
+// lib/channels/types.ts — acrescentar a ChannelAdapter
+isConfigured(): boolean;
+/**
+ * Códigos que o handler grava em metadata/status. Vivem NO ADAPTER porque
+ * carregam nome de provider ('waha_not_configured'), e o lint da Task 7
+ * proíbe esse nome fora de lib/channels/. O handler escreve o que o adapter
+ * disser — comportamento byte-idêntico, zero vazamento.
+ */
+readonly codes: { notConfigured: string; sendFailed: string };
+```
+
+```ts
+// lib/channels/adapters/waha.ts
+isConfigured: () => getWahaClient() !== null,
+codes: { notConfigured: 'waha_not_configured', sendFailed: 'waha_error' },
+```
+
+Repare que isto **não é um estado novo**: é o mesmo pre-check que o handler já faz, movido para trás do seam. E resolve de antemão o conflito que a Task 7 teria com os literais `waha_not_configured` / `waha_error` em `_handler.ts`.
+
+Escreva o teste do `isConfigured` (com `vi.stubEnv` nos dois estados) **antes** de tocar no handler.
 
 > Esta é a task de maior risco do plano: é o caminho de produção de todo envio. O critério não é "os testes passam", é "o `gates.csv` e as telas batem com a baseline".
 
@@ -536,7 +571,17 @@ const to = adapter.resolveRecipient({ ... });
 const { externalId } = await adapter.send({ sessionRef, to, kind: input.type, body, media });
 ```
 
-Preservar **literalmente** os códigos de erro atuais (`waha_not_configured`, `waha_error`, `storage_sign_failed`) — renomeá-los é mudança de comportamento e fica para a Fase 3.
+Preservar **literalmente** os códigos gravados no banco. Os dois que carregam nome de provider vêm de `adapter.codes` (ver "Correção de contrato"); `storage_sign_failed` continua literal no handler, porque é falha de Storage nossa, não do canal.
+
+E o pre-check de configuração passa a ser:
+
+```ts
+const adapter = getAdapter(provider);
+if (!adapter.isConfigured()) {
+  // MESMO caminho de hoje: fica queued, nada é enviado
+  metadata: { ...(message.metadata ?? {}), queued_reason: adapter.codes.notConfigured }
+}
+```
 
 - [ ] **Step 3: Rodar a suíte inteira**
 
