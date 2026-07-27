@@ -11,13 +11,13 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { ApiError } from "@/lib/api/types";
 import type { Actor, HandlerCtx } from "@/lib/api/handlers/types";
 import { audit } from "@/lib/audit";
+import { getAdapter } from "@/lib/channels";
 import type { ListMessagesQuery, SendMessageInput } from "@/lib/schemas";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { Message } from "@/lib/types/messaging";
 import { getWahaClient } from "@/lib/waha/client";
 import { isMediaPathOwnedBy, wahaSendPlanFor } from "@/lib/waha/media-send";
 import { parseWahaMessageId } from "@/lib/waha/message-id";
-import { resolveWahaChatId } from "@/lib/waha/send";
 
 type SB = SupabaseClient;
 
@@ -217,7 +217,11 @@ export async function sendMessageHandler(
   let message = created as unknown as Message;
 
   const waha = getWahaClient();
-  const chatId = resolveWahaChatId({
+  // Provider fixo enquanto `channel_sessions.provider` não existe como coluna
+  // (Task 6 do plano do seam). O `select` acima só traz `waha_session_name` e
+  // `status`; ler um campo inexistente seria inventar contrato.
+  const adapter = getAdapter("waha");
+  const chatId = adapter.resolveRecipient({
     isGroup: c.is_group,
     groupChatId: c.group_chat_id,
     phoneNumber: c.contacts?.phone_number,
