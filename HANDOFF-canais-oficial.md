@@ -34,10 +34,34 @@ O motivo é o acúmulo: quanto mais tarde o teste, mais causas possíveis para u
 | Worktree limpo a partir da `main` | ✅ |
 | Task 0 (baseline de regressão) | ✅ gravada em `evidence/canais/baseline/` |
 | Task 0.1 (consertar os defeitos do baseline) | ✅ evidência versionada · guarda verde · e2e re-rodada em série e classificada |
-| Task 1 (cortesia ≠ anti-ban) | ⬜ não iniciada |
+| Task 1 (cortesia ≠ anti-ban) | ✅ `banRisk` em `decidePacing` · 4 testes novos · `gates.csv` idêntico à baseline |
 
-**Nenhuma linha de código de produção foi escrita.** A Task 0 gravou a foto do "antes"
-e produziu 2 instrumentos reutilizáveis (`tests/journeys/`, `scripts/provoke-agent-turn.ts`).
+A Task 0 gravou a foto do "antes" e produziu 2 instrumentos reutilizáveis
+(`tests/journeys/`, `scripts/provoke-agent-turn.ts`). A **Task 1** é a primeira linha de
+código de produção: 14 linhas somadas em `lib/agent-engine/pacing/engine.ts`, nenhum
+chamador tocado.
+
+### `gates.csv` é CUMULATIVO — a query do plano precisa de escopo (medido na Task 1)
+
+`before_send_traces` acumula: a query do Step 5 da Task 0 não filtra nada, então cada turno
+novo **acrescenta** 8 linhas ao dump. Com 2 turnos no banco o `diff` contra a baseline
+acusaria 8 linhas "novas" — acúmulo lido como regressão. A Task 1 restringiu a amostra ao
+turno da vez:
+
+```sql
+where t.created_at = (select max(created_at) from before_send_traces)
+```
+
+Mesmo escopo da baseline (que foi gravada com exatamente 1 trace no banco), então a
+comparação é gate-a-gate de UM turno contra UM turno. **Tasks 4, 5 e 7 devem usar o mesmo
+filtro** — senão o `diff` reprova por motivo errado.
+
+**Limite deste instrumento (declarado, não escondido):** o `gates.csv` prova que a
+**sequência da cadeia** não mudou. Ele **não** prova o invariante 3 — na jornada o gate de
+pacing passa de qualquer jeito, então ele sairia `pacing,pass` mesmo se a janela horária
+tivesse sido desarmada junto. Quem prova o invariante é
+`tests/unit/pacing-cortesia-vs-antiban.test.ts`, e a prova de que ELE prova é a sabotagem
+registrada abaixo.
 
 ### O que a baseline cobre (medido, não afirmado)
 
@@ -257,3 +281,25 @@ a doutrina de QA Visual do repo já diz que mock não estressa o egress real.
 | 2026-07-27 | — | doutrina + plano + worktree | plano auto-revisado; 3 erros meus corrigidos antes de virar código | — |
 | 2026-07-27 | **Task 0** | baseline gravada (`evidence/canais/baseline/`); 2 instrumentos novos (`tests/journeys/`, `scripts/provoke-agent-turn.ts`) | unit **1035✓/1✗ exit 1**; e2e **29✓/15✗/14 não rodaram exit 1**; `gates.csv` **9 linhas** de 1 turno REAL (`claude-sonnet-4-5`, `messages_sent:1`); 7 screenshots pela tela; typecheck/lint **exit 0** | (a) o plano derruba `evidencia-citada.test.ts` citando os 7 PNGs por nome puro — vermelho da BRANCH, não da `main`; (b) `.superpowers/evidence/` é gitignorado → o `git add` do Step 7 do plano não versiona nada; (c) e2e não é verde de referência: timeouts sob 5 workers + `schema cache` do PostgREST, **não re-rodei em série** |
 | 2026-07-27 | **Task 0.1** | evidência movida de `.superpowers/evidence/canais/` (gitignorada) para `evidence/canais/`, versionada, com `README.md` do que cada artefato prova; plano/HANDOFF/`CANAIS_EVIDENCE_DIR` citam CAMINHO, não nome puro; Step 3 do plano ganhou `set -o pipefail` e passou a mandar a e2e em série | `npx vitest run tests/unit/evidencia-citada.test.ts` → **28✓/0✗ exit 0** (eram 26 com 1✗; +2 documentos entraram na cobertura); suíte unitária inteira **1038✓/0✗ exit 0** (era 1035✓/1✗); typecheck **exit 0**, lint **exit 0**; e2e em série **41✓/4✗/13 não rodaram exit 1** em 3.6min vs **29✓/15✗/14 exit 1** em 5.2min com 5 workers → **3 defeitos prováveis, 12 flakes de concorrência, 1 sem veredito** (ver "Série × paralelo") | (a) a 3001 estava tomada por um `next-server` de OUTRA sessão (6d23h) e a suíte inteira abortou — `reuseExistingServer:false` é proposital, resolvi com `E2E_PORT=3007` sem matar processo alheio; (b) `invite-lifecycle.spec.ts:268` (`already_member`) rodou pela 1ª vez e falhou — 1 execução não classifica; (c) `${PIPESTATUS[0]}` — a receita que eu mesmo escrevi no plano — grava `exit=` VAZIO no zsh (é variável do bash); trocado por `set -o pipefail` + `$?`, que vale nos dois shells; (d) NÃO consertei nenhum e2e vermelho (fora do escopo) nem provei nada pela tela: a Task 0.1 não toca UI |
+| 2026-07-27 | **Task 1** | `PacingInput` ganhou `banRisk?: boolean` e `decidePacing` curto-circuita SÓ o bloco anti-ban (`if (!banRisk) return { allow: true, waitMs: 0 }` **depois** da checagem de janela); +14 linhas, 1 arquivo de produção, **zero call site tocado**; novo `tests/unit/pacing-cortesia-vs-antiban.test.ts` (4 casos) | **vermelho primeiro, no caso certo:** `AssertionError: expected false to be true` em `pacing-cortesia-vs-antiban.test.ts:41` (`sem risco de ban, o cap de warm-up DESARMA`) — os outros 3 verdes já de cara, como o plano previa. Depois: 4✓ no arquivo; suíte inteira **1042✓/0✗ · 137 arquivos · exit 0** (era 1038✓/136 arq.); typecheck **exit 0**; lint **exit 0** (156 warnings, 0 erros — igual à baseline). Pela tela: jornada de 7 paradas re-vivida contra build novo na 3007, **3✓/0✗ em 33,3s**, screenshots em `evidence/canais/task1/`; turno REAL de IA provocado (`provoke-agent-turn.ts` → trace `8a5534fb` às 16:18:12Z, 8 gates); `diff evidence/canais/baseline/gates.csv evidence/canais/task1/gates.csv` → **vazio, exit 0** | (a) o `diff` do plano compararia acúmulo, não gates — `before_send_traces` é cumulativo (ver seção acima); (b) `pnpm run worker` **não roda neste worktree**: o script pede `--env-file=.env` e só existe `.env.local` → `node: .env: not found`, exit 9. Rodei `pnpm exec tsx --env-file=.env.local workers/agent-worker/main.ts`; (c) a 8787 (healthz do worker) estava tomada pelo worker de OUTRA sessão — que aponta para o Supabase REMOTO, não para o meu local, então não houve disputa de job. Resolvi com `HEALTH_PORT=8797`, sem matar processo alheio; (d) 3000 e 3001 ocupadas por `next-server` alheios → app servida em 3007; (e) o guarda `tests/unit/evidencia-citada.test.ts` é **bidirecional** e me pegou duas vezes: primeiro por citar PNG ainda não rastreado (`git add` antes de rodar a suíte), depois por versionar 7 PNGs que nenhum documento citava. Ambos os vermelhos foram medidos e consertados citando os 7 por caminho em `evidence/canais/README.md` |
+
+### Sabotagem controlada — a prova de que o 1º caso do teste guarda alguma coisa (Task 1)
+
+O caso `sem risco de ban, o horário comercial CONTINUA armado` passa **antes e depois** da
+implementação — pré-mudança porque `banRisk` era ignorado. Teste que nunca fica vermelho não
+prova. Movi o `if (!banRisk)` para **antes** do `if (!insideWindow(...))` (exatamente o
+defeito que a doutrina proíbe) e medi:
+
+```
+× sem risco de ban, o horário comercial CONTINUA armado   19ms
+AssertionError: expected true to be false
+Tests  1 failed | 3 passed (4)                            exit 1
+```
+
+Restaurado em seguida (`grep` confirma: janela na linha 62, guarda na 78) e 4✓ de novo.
+O caso **discrimina** a ordem das duas checagens — não é decoração.
+
+**O que NÃO provei:** nenhum canal com `banRisk: false` existe ainda (Task 5 é quem passa
+`caps.banRisk`), então o desarme só está provado em unidade, nunca pela tela. E os 4 e2e
+vermelhos herdados da Task 0.1 continuam vermelhos — não os toquei, e a suíte
+`tests/e2e/` não foi re-rodada nesta task (a jornada de `tests/journeys/` foi).

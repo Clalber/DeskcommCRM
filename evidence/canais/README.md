@@ -91,3 +91,36 @@ echo "exit=$?" >> evidence/canais/baseline/e2e.txt
 `E2E_PORT` é obrigatório se a 3001 estiver ocupada por outro worktree: o config usa
 `reuseExistingServer: false` de propósito (reusar servidor alheio testa o build errado) e
 aborta a suíte inteira em vez de rodar contra o processo de outra sessão.
+
+---
+
+## `task1/` — a jornada re-vivida depois do `banRisk` (Task 1)
+
+Mesmas 7 paradas, mesmo instrumento, build novo servido na 3007. Existe para uma pergunta
+só: **a cadeia mudou?** Resposta medida — `diff evidence/canais/baseline/gates.csv
+evidence/canais/task1/gates.csv` sai **vazio** (exit 0).
+
+| Arquivo | O que prova, agora com `banRisk` no motor |
+|---|---|
+| `evidence/canais/task1/01-login.png` | login + MFA continuam entrando na conta real |
+| `evidence/canais/task1/02-qr.png` | conectar WhatsApp segue renderizando o QR do WAHA |
+| `evidence/canais/task1/03-inbox.png` | inbox carrega as conversas do tenant |
+| `evidence/canais/task1/04-texto-enviado.png` | texto enviado pelo inbox — o caminho de envio não regrediu |
+| `evidence/canais/task1/05-audio-enviado.png` | áudio enviado pelo inbox — multimodal intacto |
+| `evidence/canais/task1/06-followup.png` | follow-up agendado pela tela |
+| `evidence/canais/task1/07-radar.png` | Radar de Risco carregado (**byte-a-byte igual** ao da baseline) |
+
+Os screenshots **não** são byte-a-byte iguais aos da baseline e não deveriam ser: a jornada
+roda sobre o mesmo banco e acrescenta dados (a conversa tem o texto e o áudio da execução
+anterior, e o botão "Lembrar" virou "Lembrete ativo" porque o follow-up da baseline
+continua vivo). Só `evidence/canais/task1/07-radar.png` saiu idêntico em bytes. O que se
+compara aqui é layout e estado da interface, não hash.
+
+**A query do `gates.csv` ganhou escopo** — `before_send_traces` é cumulativo, e a versão
+sem filtro somaria os turnos de todas as tasks num diff só:
+
+```bash
+psql "$DATABASE_URL" -c "\copy (select e->>'gate' as gate, e->>'verdict' as verdict, coalesce(e->>'code','') as code from before_send_traces t, jsonb_array_elements(t.trace) e where t.created_at = (select max(created_at) from before_send_traces) order by t.created_at, (e->>'gate')) to 'evidence/canais/<task>/gates.csv' csv header"
+```
+
+Um turno contra um turno — que é o escopo em que a baseline foi gravada.
