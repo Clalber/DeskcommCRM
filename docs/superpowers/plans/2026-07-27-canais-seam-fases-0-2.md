@@ -19,7 +19,24 @@
 - `pnpm typecheck` e `pnpm lint` zerados ao fim de cada task. **Nunca validar com `| tail`** (o exit code vira o do `tail` — falso verde). Use `set -o pipefail` + `$?`; **nunca `${PIPESTATUS[0]}`**, que no zsh expande para string vazia.
 - **Filtrar teste com `pnpm run test:unit -- <nome>` é FALSO VERDE.** Medido: `pnpm run test:unit -- arquivo-que-nao-existe-xyz` → `1046 passed, exit 0`. O `--` do pnpm faz o vitest ignorar o filtro e rodar a suíte inteira — ou seja, o step "rode e veja falhar" do TDD reportaria PASS com o arquivo inexistente. Use sempre **`pnpm exec vitest run <filtro>`**.
 
-> ⚠️ **`tests/invariants/` NÃO roda no CI.** Medido: `vitest.config.ts` exclui a pasta de `test:unit`; ela só roda por `pnpm test:db`, e **nenhum** workflow em `.github/workflows/` invoca `test:db`. O `ci.yml` roda apenas `typecheck`, `lint` e `test:unit`. São **56 arquivos** fora do gate de PR — incluindo `rls-isolation.test.ts`, que o `CLAUDE.md` declara "gate obrigatório antes de merge". Consequência para este plano: **teste que precisa reprovar o CI vai em `tests/unit/`.** A Task 6 continua em `tests/invariants/` porque é invariante de banco de verdade (precisa de Postgres), mas quem a escrever precisa saber que ela não gateia PR hoje. Corrigir esse buraco é trabalho de outra frente — está registrado, não resolvido aqui.
+> ✅ **`tests/invariants/` VOLTOU a gatear o CI — corrigido na `main` durante a execução deste plano.**
+>
+> Histórico, porque a mudança de premissa importa: em `0ea9f4b` (base desta branch) o
+> `ci.yml` rodava só `typecheck` + `lint` + `test:unit`, e **nenhum** workflow invocava
+> `test:db` — 56 arquivos de invariante, incluindo `rls-isolation.test.ts`, ficavam fora
+> do gate de PR. Isso foi medido e reportado. Outra frente consertou em `ce93ab0`
+> ("CI prova o isolamento RLS") + `696f083` ("projeto exige Node 22 — a suíte de
+> invariantes nunca rodou no 20"), já integrados aqui via merge.
+>
+> Estado atual: o CI tem **dois jobs obrigatórios** — `verify` (typecheck/lint/test:unit)
+> e `invariants` (`pnpm test:db`, que sobe Postgres, aplica o `baseline.sql` em install e
+> update, e roda os invariantes).
+>
+> Consequência para este plano: a **Task 6 pode e deve ficar em `tests/invariants/`** — é
+> invariante de banco de verdade e agora gateia PR. As Tasks 1–5, que testam constante e
+> função pura, seguem em `tests/unit/` porque não precisam de Postgres e rodam em segundos.
+> **Ao fechar a Task 6, rode `pnpm test:db` localmente** — é o único caminho que exercita
+> o `baseline.sql` que o self-hoster aplica de verdade.
 
 ---
 
