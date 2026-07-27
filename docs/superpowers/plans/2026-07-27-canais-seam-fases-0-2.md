@@ -552,59 +552,106 @@ Escreva o teste do `isConfigured` (com `vi.stubEnv` nos dois estados) **antes** 
 
 > Esta é a task de maior risco do plano: é o caminho de produção de todo envio. O critério não é "os testes passam", é "o `gates.csv` e as telas batem com a baseline".
 
-- [ ] **Step 1: Confirmar a cobertura ANTES de tocar**
+> ⚠️ **Esta task foi decomposta em 5 sub-tasks (4a–4e), uma substituição por vez.**
+>
+> Motivo, medido: o **único** teste que exercita `sendMessageHandler` é
+> `tests/invariants/automation-send-whatsapp.test.ts`, que (a) está numa pasta excluída
+> do CI e (b) importa `sql`/`seedGov` de `./gov-helpers`, ou seja **exige Postgres real**.
+> O caminho de envio central do produto não tem hoje nenhuma rede que gateie um PR.
+>
+> Refatorar caminho crítico sem rede é apostar. A rede vem **primeiro** (4a), e só então
+> cada chamada é trocada isoladamente — para que, se algo quebrar, o culpado seja
+> um `git diff` de 5 linhas e não de 50.
+
+### Os 6 desfechos do handler (enumerados do código, `_handler.ts:219-318`)
+
+A **ordem** entre eles é parte do comportamento: sem WAHA configurado e sem telefone, o
+resultado é `waha_not_configured`, **não** `missing_phone_number`.
+
+| # | Condição | Resultado no banco |
+|---|---|---|
+| 1 | `getWahaClient()` → null | `status` continua `queued`; `metadata.queued_reason = 'waha_not_configured'` |
+| 2 | sem `chatId` resolvível | `status: 'failed'`, `error_code: 'missing_phone_number'` |
+| 3 | sessão ausente ou `status !== 'WORKING'` | `queued`; `metadata.queued_reason = 'channel_session_not_working'` |
+| 4 | tem `media_storage_path` → `sendMedia` | `status: 'sent'`, `external_id`, `ack: 0` |
+| 5 | sem mídia → `sendMessage` | `status: 'sent'`, `external_id`, `ack: 0` |
+| 6 | envio lança | `status: 'failed'`, `error_code: 'waha_error'` \| `'storage_sign_failed'` |
+
+---
+
+- [ ] **Task 4a — a rede de segurança (nenhuma linha de produção muda)**
+
+Criar `tests/unit/messages-handler-desfechos.test.ts` com **um caso por desfecho acima**, escritos contra o código **atual**, com um fake de `SupabaseClient` próprio e enxuto.
+
+Não reuse o fake de `automation-send-whatsapp.test.ts`: ele arrasta `gov-helpers` e Postgres real. Duplicar scaffolding de teste é o preço certo por um teste que roda no CI em 2 segundos.
+
+Asserte o **estado final da linha** (`status`, `error_code`, `metadata.queued_reason`, `external_id`, `ack`) — não a sequência de chamadas internas. Teste que asserta chamadas trava o refactor que ele deveria proteger.
 
 ```bash
-pnpm exec vitest run automation-send-whatsapp
+pnpm exec vitest run messages-handler-desfechos
 ```
 
-Expected: PASS. Se já estiver vermelho, conserte antes — senão você não sabe o que quebrou.
+Expected: **6 passed** contra o código atual, sem tocar em `_handler.ts`.
+Depois, **sabote cada desfecho** (troque um `error_code`, inverta a ordem dos `if`) e confirme que o caso certo vermelhece. Rede que não pega nada não é rede.
 
-- [ ] **Step 2: Trocar as 4 chamadas diretas pelo adapter**
+Commit: `test(canais): fixa os 6 desfechos do handler de envio antes do refactor`
 
-Em `_handler.ts`, substituir `getWahaClient()` + `resolveWahaChatId` + `wahaSendPlanFor` + `parseWahaMessageId` por:
+- [ ] **Task 4b — trocar SÓ `resolveWahaChatId`**
 
-```ts
-const provider = c.channel_sessions?.provider ?? 'waha';   // coluna chega na Task 6
-const adapter = getAdapter(provider);
-const to = adapter.resolveRecipient({ ... });
-const { externalId } = await adapter.send({ sessionRef, to, kind: input.type, body, media });
-```
-
-Preservar **literalmente** os códigos gravados no banco. Os dois que carregam nome de provider vêm de `adapter.codes` (ver "Correção de contrato"); `storage_sign_failed` continua literal no handler, porque é falha de Storage nossa, não do canal.
-
-E o pre-check de configuração passa a ser:
-
-```ts
-const adapter = getAdapter(provider);
-if (!adapter.isConfigured()) {
-  // MESMO caminho de hoje: fica queued, nada é enviado
-  metadata: { ...(message.metadata ?? {}), queued_reason: adapter.codes.notConfigured }
-}
-```
-
-- [ ] **Step 3: Rodar a suíte inteira**
+Uma substituição: `resolveWahaChatId({...})` → `adapter.resolveRecipient({...})`.
+Nada mais. `getWahaClient()`, `sendMedia`, `sendMessage`, `parseWahaMessageId` ficam intocados.
 
 ```bash
-npm run test:unit && npm run typecheck && npm run lint
+pnpm exec vitest run messages-handler-desfechos   # 6 passed
+pnpm run test:unit && pnpm run typecheck && pnpm run lint
 ```
 
-- [ ] **Step 4: Viver a jornada de novo e DIFAR contra a baseline**
+Commit próprio.
 
-Repetir Task 0 passos 4–5. Depois:
+- [ ] **Task 4c — trocar SÓ o pre-check de configuração**
+
+`const waha = getWahaClient(); if (!waha)` → `if (!adapter.isConfigured())`, e o literal
+`"waha_not_configured"` → `adapter.codes.notConfigured`.
+
+**Atenção ao desfecho 4/5:** o corpo do `else` ainda usa a variável `waha`. Mantenha o
+`getWahaClient()` vivo por enquanto (é a Task 4d que o remove) ou o TypeScript acusa —
+e resista a "aproveitar e já trocar", que é como micro-passo vira macro-passo.
 
 ```bash
+pnpm exec vitest run messages-handler-desfechos   # 6 passed
+pnpm run test:unit && pnpm run typecheck && pnpm run lint
+```
+
+Commit próprio.
+
+- [ ] **Task 4d — trocar o envio propriamente dito**
+
+`waha.sendMedia(...)` / `waha.sendMessage(...)` + `parseWahaMessageId(...)` → `adapter.send({...})`, e `"waha_error"` → `adapter.codes.sendFailed`. Aqui `getWahaClient()` sai do handler.
+
+`storage_sign_failed` **continua literal no handler** — é falha de Storage nossa, não do canal, e a URL assinada é montada antes de qualquer coisa tocar o adapter.
+
+```bash
+pnpm exec vitest run messages-handler-desfechos   # 6 passed
+pnpm run test:unit && pnpm run typecheck && pnpm run lint
+```
+
+Commit próprio.
+
+- [ ] **Task 4e — a prova no mundo real**
+
+Só agora a jornada. Antes disto, nada saiu de `vitest`.
+
+```bash
+CANAIS_EVIDENCE_DIR=evidence/canais/task4 pnpm exec playwright test --config tests/journeys/playwright.config.ts
+# regravar gates.csv com o filtro do turno da vez (ver README de evidence/canais)
 diff evidence/canais/baseline/gates.csv evidence/canais/task4/gates.csv
 ```
 
-Expected: **sem diferença**. Qualquer linha diferente = regressão; pare e investigue a causa raiz antes de commitar.
+Expected: **`diff` vazio** e a jornada verde. Qualquer linha diferente = regressão: pare, ache a causa raiz e **não commite por cima**.
 
-- [ ] **Step 5: HANDOFF + commit**
+Confira também, no banco, que uma mensagem enviada pela tela chegou com `status='sent'` e `external_id` não-nulo — o `gates.csv` não cobre o caminho manual do inbox.
 
-```bash
-git add app/api/v1/messages/_handler.ts evidence/canais/task4/ HANDOFF-canais-oficial.md
-git commit -m "refactor(canais): handler de envio fala com ChannelAdapter, não com WAHA"
-```
+Commit final: `refactor(canais): handler de envio fala com ChannelAdapter, não com WAHA`
 
 ---
 
