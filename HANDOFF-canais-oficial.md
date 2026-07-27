@@ -38,6 +38,10 @@ O motivo é o acúmulo: quanto mais tarde o teste, mais causas possíveis para u
 | Task 2 (descritor de capabilities) | ✅ `lib/channels/{types,capabilities}.ts` · 4 casos de invariante, os 4 sabotados e vermelhos · nenhum consumidor ainda |
 | Task 3 (`ChannelAdapter` + WAHA) | ✅ `lib/channels/{index.ts,adapters/waha.ts}` · 6 casos, os 6 sabotados e vermelhos · adapter delega 100% ao `lib/waha/*` · nenhum consumidor ainda |
 | Task 4a (rede antes do refactor) | ✅ `tests/unit/messages-handler-desfechos.test.ts` · 8 casos · 8 sabotagens no `_handler.ts`, todas vermelhas no caso certo · **zero linha de produção alterada** (SHA-256 idêntico) |
+| Task 4b (`resolveWahaChatId` → `adapter.resolveRecipient`) | ✅ `650a795` · +6/−2 linhas · 8✓ · suíte 1060✓ exit 0 |
+| Task 4c (pre-check de configuração → `adapter.isConfigured()`) | ✅ `f0acb82` · adapter ganhou `isConfigured()` + `codes` (3 casos novos, vermelhos antes) · 8✓ · suíte 1063✓ exit 0 |
+| Task 4d (envio → `adapter.send`) | ✅ `c5221cb` · `getWahaClient` fora do handler · 8✓ · suíte 1063✓ exit 0 · sabotagem do ramo de mídia vermelha no caso certo |
+| Task 4e (jornada + `gates.csv`) | ⛔ **não executada** — conduzida separadamente. Nada do refactor foi provado pela tela ainda |
 
 A Task 0 gravou a foto do "antes" e produziu 2 instrumentos reutilizáveis
 (`tests/journeys/`, `scripts/provoke-agent-turn.ts`). A **Task 1** é a primeira linha de
@@ -289,8 +293,69 @@ a doutrina de QA Visual do repo já diz que mock não estressa o egress real.
 
 | 2026-07-27 | **Task 3** | `lib/channels/adapters/waha.ts` (35 linhas: `resolveRecipient` → `resolveWahaChatId`, `send` → `getWahaClient`+`wahaSendPlanFor`+`parseWahaMessageId`, **zero regra de negócio**), `lib/channels/index.ts` (`getAdapter` fail-closed, `meta_cloud: null` até a Fase 3b) e `lib/channels/types.ts` +4 tipos de transporte (`RecipientInput`, `OutboundKind`, `OutboundEnvelope`, `ChannelAdapter`; `OutboundMedia` **reusado** de `lib/waha/media-send.ts` via `import type`). `InboundEvent` **não** entrou — sem consumidor até a Fase 3b. **Zero consumidores**: nada importa `lib/channels/` ainda, a ligação é da Task 4 | **vermelho real, citado literal:** `Error: Failed to resolve import "@/lib/channels" from "tests/unit/channel-adapter-waha.test.ts". Does the file exist?` — a mensagem do vitest 4/vite 8, **não** "Cannot find module" como o plano previa (mesmo desvio da Task 2). Depois: 6✓ em `tests/unit/channel-adapter-waha.test.ts` (3 do plano + 3 meus sobre `send`); suíte inteira **1052✓/0✗ · 139 arquivos · exit 0** (era 1046✓/138 na Task 2 — +6/+1, nenhuma regressão); typecheck **exit 0**; lint **exit 0** (156 warnings, 0 erros, nenhum nos arquivos novos — igual à baseline). Os 6 casos foram sabotados um a um e cada um vermelheceu **sozinho e no caso certo** (tabela abaixo); SHA-256 dos dois arquivos idêntico antes/depois | (a) o plano não pedia teste nenhum para `send` — o método tem um branch (mídia × texto) e um guard (canal não configurado) e é exatamente o código que a Task 4 põe no caminho de produção de todo envio; acrescentei 3 casos usando o padrão do repo (`vi.stubEnv` + `vi.stubGlobal('fetch')`, como `tests/unit/media-waha-source.test.ts`), que provam endpoint e payload que chegariam ao WAHA; (b) **discordância com o plano registrada:** `send` devolvendo `{externalId:null}` para canal-não-configurado é indistinguível de "enviou e o id não veio" — e o handler de hoje trata os dois casos de forma DIFERENTE (`queued_reason:'waha_not_configured'` vs `status:'sent'`). Mantive o contrato do plano (mudá-lo aqui seria mudança de comportamento sem consumidor para provar), mas **a Task 4 não consegue preservar o comportamento atual só com este retorno** — ver seção abaixo; (c) nada foi provado pela tela e o `gates.csv` não foi regravado: nenhuma linha de produção mudou de comportamento porque nenhum arquivo importa `lib/channels/` |
 | 2026-07-27 | **Task 4a** | `tests/unit/messages-handler-desfechos.test.ts` (8 casos: os 6 desfechos da tabela do plano + `storage_sign_failed` + a ordem entre os desfechos 1 e 2), com fake próprio de `SupabaseClient` (~35 linhas) e `vi.stubEnv`/`vi.stubGlobal('fetch')` no padrão de `tests/unit/media-waha-source.test.ts`. **Nenhuma linha de produção alterada** — a task inteira é só o arquivo de teste | 8✓ em `pnpm exec vitest run messages-handler-desfechos` (exit 0); suíte inteira **1060✓/0✗ · 140 arquivos · exit 0** (era 1052✓/139 na Task 3 — +8/+1, nenhuma regressão); typecheck **exit 0**; lint **exit 0** (156 warnings, 0 erros — igual à baseline, nenhum no arquivo novo). As 8 sabotagens no `_handler.ts` vermelheceram no caso certo (tabela abaixo), e o arquivo voltou com **SHA-256 `d40f555c…` idêntico** e `git diff` vazio. A tabela "Os 6 desfechos" do plano foi conferida linha a linha contra `_handler.ts:219-318`: **está correta**, nada a corrigir | (a) `audit` e `createAdminClient` precisaram de `vi.mock`: o primeiro escreve em `api_audit_log` por um client real, o segundo valida env no import — nenhum dos dois pertence aos desfechos; (b) os desfechos **4 e 5 gravam a mesma linha final** — só o endpoint WAHA os separa, então esses casos assertam a URL do `fetch` (efeito externo, não chamada interna); sem isso, trocar `sendMedia` por `sendMessage` passaria verde; (c) a sabotagem do ramo de texto derrubou **2** casos, não 1: `sendMedia` inclui o corpo da resposta na mensagem de erro (`waha_500: boom`) e `sendMessage` não (`waha_500`) — assimetria real do `WahaClient`, registrada porque a Task 4d unifica os dois caminhos em `adapter.send` e vai ter que escolher uma das duas mensagens |
+| 2026-07-27 | **Task 4b** | UMA substituição em `app/api/v1/messages/_handler.ts`: `resolveWahaChatId({...})` → `adapter.resolveRecipient({...})`, com `const adapter = getAdapter("waha")` (literal fixo + comentário: `channel_sessions.provider` só existe a partir da Task 6, e o `select` do handler nem traz o campo). Import de `resolveWahaChatId` trocado por `getAdapter`. **+6/−2 linhas, 1 arquivo.** `getWahaClient`/`sendMedia`/`sendMessage`/`parseWahaMessageId` intocados | rede dos 8: `pnpm exec vitest run messages-handler-desfechos` → **8✓ exit 0**; suíte inteira **1060✓/0✗ · 140 arquivos · exit 0** (igual à Task 4a — nenhum teste novo, nenhuma regressão); typecheck **exit 0**; lint **exit 0** (156 warnings, 0 erros, nenhum no handler). Commit `650a795` | nada. A armadilha que a 4a anotou (o `chatId` é calculado ANTES do pre-check) não incomodou: `getAdapter` só consulta a tabela de providers, não precisa do canal configurado |
+| 2026-07-27 | **Task 4c** | Duas coisas, uma dependente da outra. (i) Contrato: `ChannelAdapter` ganhou `isConfigured(): boolean` e `readonly codes { notConfigured, sendFailed }`; `wahaAdapter` implementa com `getWahaClient() !== null` e os literais `waha_not_configured`/`waha_error`; 3 casos novos em `tests/unit/channel-adapter-waha.test.ts` (`vi.stubEnv` nos dois estados + os códigos). (ii) Handler: `if (!waha)` → `if (!adapter.isConfigured())` e `"waha_not_configured"` → `adapter.codes.notConfigured`. `getWahaClient()` mantido vivo (é a 4d que o remove) | **vermelho primeiro nos 3 casos novos** — o mais legível: `AssertionError: expected undefined to deeply equal { …(2) }` em `channel-adapter-waha.test.ts:75` (`codes carrega os literais que o handler grava`). Depois: 9✓ no arquivo do adapter; rede dos 8 → **8✓ exit 0**; suíte inteira **1063✓/0✗ · 140 arquivos · exit 0** (era 1060 — +3, os novos); typecheck **exit 0**; lint **exit 0** (156 warnings, 0 erros). Commit `f0acb82` | **o plano subestimou a armadilha:** "mantenha o `getWahaClient()` vivo" não faz o `tsc` passar — medi `TS18047: 'waha' is possibly 'null'` nas linhas 279 e 290, porque trocar o `if` tira o narrowing. Resolvido com `waha!` + comentário, apagado na 4d (ver seção "Duas armadilhas de compilação") |
+| 2026-07-27 | **Task 4d** | `waha!.sendMedia(...)`/`waha!.sendMessage(...)` + `parseWahaMessageId(...)` → **um** `adapter.send({ sessionRef, to, kind, media\|body })` por ramo; `"waha_error"` → `adapter.codes.sendFailed`; `getWahaClient`, `wahaSendPlanFor` e `parseWahaMessageId` saíram dos imports do handler (sobrou `isMediaPathOwnedBy`). `storage_sign_failed` **continua literal**, como o plano manda. Em `lib/channels/types.ts`, `OutboundKind` passou a derivar de `SendMessageInput["type"]` — sem isso não compila (ver armadilha 2). **+33/−28 linhas, 2 arquivos** | rede dos 8 → **8✓ exit 0**; suíte inteira **1063✓/0✗ · 140 arquivos · exit 0**; typecheck **exit 0**; lint **exit 0** (156 warnings, 0 erros). **Sabotagem pós-refactor:** renomeando a chave `media` do envelope, `× 4. com media_storage_path…` vermelheceu sozinho (1 falhou / 7 passaram) e o arquivo voltou com SHA-256 `9a8b73fc…` idêntico. O caso 6 (`error_message === 'waha_500'`, sem corpo) passou intacto → **a assimetria de erro atravessa o seam**, confirmando que o alerta da 4a não procedia. Commit `c5221cb` | (a) `OutboundKind` da Task 3 era mais estreito que o chamador real (5 valores à mão × 8 no schema) — corrigido derivando, sem mudança de comportamento; (b) sobrou `"waha_unknown"` na linha 306 (fallback de `error_message` quando o throw não é `Error`): fora do escopo da 4d, que só troca `error_code`; é dívida da Task 7, registrada na tabela acima; (c) **nada foi provado pela tela** — a jornada e o `gates.csv` são a Task 4e, conduzida separadamente |
 
-### Sabotagem controlada — os 8 casos da rede do handler discriminam (Task 4a)
+### Duas armadilhas de compilação das Tasks 4c/4d (medidas, não previstas pelo plano)
+
+**1. "Manter o `getWahaClient()` vivo" NÃO basta na 4c.** O plano diz que o corpo do `else`
+ainda usa a variável `waha` e manda mantê-la. Mantive — e o `tsc` reprovou assim mesmo:
+
+```
+app/api/v1/messages/_handler.ts(279,25): error TS18047: 'waha' is possibly 'null'.
+app/api/v1/messages/_handler.ts(290,25): error TS18047: 'waha' is possibly 'null'.
+```
+
+A causa é o seam, não a variável: trocar `if (!waha)` por `if (!adapter.isConfigured())`
+tira o **narrowing** — o TS não sabe que `isConfigured()` é exatamente
+`getWahaClient() !== null`. Resolvi com `waha!` nos dois sites + comentário nomeando a
+equivalência, tudo apagado na 4d (é a solução mais curta que morre junto com o passo).
+Alternativas descartadas: `waha?.send…` (silenciosamente gravaria `sent` com
+`external_id: null` num caso impossível) e um `if (!waha) throw` (código morto).
+
+**2. `OutboundKind` era mais estreito que o chamador real (4d).** A Task 3 escreveu à mão
+`"text" | "image" | "video" | "audio" | "file"`, mas o handler passa `input.type`, que vem de
+`messageTypeSchema` e tem **8** valores — `document`, `sticker`, `location` e `contact`
+também chegam (e `file` não é nenhum deles). Trocar por `adapter.send({ kind: input.type })`
+não compilava. Passou a derivar: `export type OutboundKind = SendMessageInput["type"]`.
+Sem mudança de comportamento — `wahaSendPlanFor(kind: string)` já recebia o mesmo valor e
+manda `document`/`sticker` para `sendFile` pelo `default` do `switch`, igual a antes.
+`OutboundKind` não tinha nenhum outro consumidor (medido: 3 ocorrências, todas em
+`lib/channels/`).
+
+### Alerta da 4a sobre a assimetria de erro: **confirmado que não procede** (medido na 4d)
+
+O caso 6 da rede asserta `error_message === 'waha_500'` (caminho de texto, sem corpo da
+resposta) e passou **sem alteração** depois que `sendMessage` virou `adapter.send`. Ou seja: a
+assimetria entre `sendMedia` (`waha_500: boom`) e `sendMessage` (`waha_500`) atravessou o seam
+intacta, porque o `send` do adapter preserva o branch. Nada a escolher, nada a uniformizar —
+o plano estava certo ao retirar o alerta.
+
+### O que ainda vaza nome de provider em `_handler.ts` (escopo da Task 7, não desta)
+
+Depois da 4d sobraram 4 ocorrências, nenhuma delas alcançável por `adapter.codes`:
+
+| Linha | Ocorrência | Por que ficou |
+|---|---|---|
+| 18 | `import { isMediaPathOwnedBy } from "@/lib/waha/media-send"` | validação de path do NOSSO Storage, não do canal — mudar de casa é da Task 7 |
+| 133, 153, 280, 292 | `waha_session_name` | nome da coluna; sai na Task 6, que introduz `provider` |
+| 220 | `getAdapter("waha")` | literal deliberado (ver acima) |
+| 306 | fallback `"waha_unknown"` de `error_message` | **não estava no escopo da 4d** (o plano só manda trocar `waha_error`, que é `error_code`). Deixado como está para não mudar comportamento fora do passo |
+
+### Sabotagem controlada — a rede continua discriminando DEPOIS do refactor (Task 4d)
+
+Rede que só passa não prova que ainda protege. Sabotei o ramo de mídia do handler já
+refatorado (renomeei a chave `media` do envelope, fazendo a mídia sair como texto):
+
+```
+× 4. com media_storage_path: sent + external_id + ack 0, pelo endpoint de mídia
+Tests  1 failed | 7 passed (8)                                          exit 1
+```
+
+Restaurado em seguida: SHA-256 `9a8b73fc…` idêntico antes e depois, 8✓ de novo.
+
+### Sabotagem controlada — os 8 casos da rede do handler discriminam (Task 4a, antes do refactor)
 
 Os 8 passam de primeira contra o código atual (é uma rede de caracterização, não TDD), então
 nenhum prova nada sozinho. Cada desfecho foi sabotado em `app/api/v1/messages/_handler.ts`,
