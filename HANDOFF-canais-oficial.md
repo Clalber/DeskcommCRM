@@ -37,6 +37,7 @@ O motivo é o acúmulo: quanto mais tarde o teste, mais causas possíveis para u
 | Task 1 (cortesia ≠ anti-ban) | ✅ `banRisk` em `decidePacing` · 4 testes novos · `gates.csv` idêntico à baseline |
 | Task 2 (descritor de capabilities) | ✅ `lib/channels/{types,capabilities}.ts` · 4 casos de invariante, os 4 sabotados e vermelhos · nenhum consumidor ainda |
 | Task 3 (`ChannelAdapter` + WAHA) | ✅ `lib/channels/{index.ts,adapters/waha.ts}` · 6 casos, os 6 sabotados e vermelhos · adapter delega 100% ao `lib/waha/*` · nenhum consumidor ainda |
+| Task 4a (rede antes do refactor) | ✅ `tests/unit/messages-handler-desfechos.test.ts` · 8 casos · 8 sabotagens no `_handler.ts`, todas vermelhas no caso certo · **zero linha de produção alterada** (SHA-256 idêntico) |
 
 A Task 0 gravou a foto do "antes" e produziu 2 instrumentos reutilizáveis
 (`tests/journeys/`, `scripts/provoke-agent-turn.ts`). A **Task 1** é a primeira linha de
@@ -287,6 +288,46 @@ a doutrina de QA Visual do repo já diz que mock não estressa o egress real.
 | 2026-07-27 | **Task 2** | `lib/channels/types.ts` (17 linhas: `ChannelProvider` + as 7 capabilities documentadas) e `lib/channels/capabilities.ts` (a matriz WAHA/Meta + `capabilitiesOf` fail-closed); novo `tests/unit/channel-capability-matrix.test.ts` (4 casos). **Zero consumidores** — nenhum arquivo importa isto ainda, por desenho: a ligação é das Tasks 4 e 5 | **vermelho real, citado literal:** `Error: Failed to resolve import "@/lib/channels/capabilities" from "tests/unit/channel-capability-matrix.test.ts". Does the file exist?` (vitest 4/vite 8 diz assim, não "Cannot find module"). Depois: 4✓ no arquivo; suíte inteira **1046✓/0✗ · 138 arquivos · exit 0** (era 1042✓/137 arq. na Task 1 — +4/+1, nenhuma regressão); typecheck **exit 0**; lint **exit 0** (156 warnings, 0 erros, nenhum nos arquivos novos). Os 4 casos foram sabotados um a um e cada um vermelheceu no caso certo (tabela acima) | (a) o teste NÃO podia morar em `tests/invariants/` — pasta excluída do `test:unit` e ausente do CI (seção acima); (b) o comando do plano `pnpm run test:unit -- channel-capability-matrix` é **falso verde**: o `--` do pnpm faz o vitest ignorar o filtro e rodar a suíte inteira com exit 0 — quem quiser filtrar usa `pnpm exec vitest run <filtro>`; (c) minha premissa de que `noUncheckedIndexedAccess` obrigaria a mexer no teste estava **errada**: `Record<'waha'\|'meta_cloud', X>` tem chaves literais, não index signature, então `CHANNEL_CAPABILITIES[p]` já é não-nulo e o código do plano typechecka sem alteração. Medi antes de "consertar" |
 
 | 2026-07-27 | **Task 3** | `lib/channels/adapters/waha.ts` (35 linhas: `resolveRecipient` → `resolveWahaChatId`, `send` → `getWahaClient`+`wahaSendPlanFor`+`parseWahaMessageId`, **zero regra de negócio**), `lib/channels/index.ts` (`getAdapter` fail-closed, `meta_cloud: null` até a Fase 3b) e `lib/channels/types.ts` +4 tipos de transporte (`RecipientInput`, `OutboundKind`, `OutboundEnvelope`, `ChannelAdapter`; `OutboundMedia` **reusado** de `lib/waha/media-send.ts` via `import type`). `InboundEvent` **não** entrou — sem consumidor até a Fase 3b. **Zero consumidores**: nada importa `lib/channels/` ainda, a ligação é da Task 4 | **vermelho real, citado literal:** `Error: Failed to resolve import "@/lib/channels" from "tests/unit/channel-adapter-waha.test.ts". Does the file exist?` — a mensagem do vitest 4/vite 8, **não** "Cannot find module" como o plano previa (mesmo desvio da Task 2). Depois: 6✓ em `tests/unit/channel-adapter-waha.test.ts` (3 do plano + 3 meus sobre `send`); suíte inteira **1052✓/0✗ · 139 arquivos · exit 0** (era 1046✓/138 na Task 2 — +6/+1, nenhuma regressão); typecheck **exit 0**; lint **exit 0** (156 warnings, 0 erros, nenhum nos arquivos novos — igual à baseline). Os 6 casos foram sabotados um a um e cada um vermelheceu **sozinho e no caso certo** (tabela abaixo); SHA-256 dos dois arquivos idêntico antes/depois | (a) o plano não pedia teste nenhum para `send` — o método tem um branch (mídia × texto) e um guard (canal não configurado) e é exatamente o código que a Task 4 põe no caminho de produção de todo envio; acrescentei 3 casos usando o padrão do repo (`vi.stubEnv` + `vi.stubGlobal('fetch')`, como `tests/unit/media-waha-source.test.ts`), que provam endpoint e payload que chegariam ao WAHA; (b) **discordância com o plano registrada:** `send` devolvendo `{externalId:null}` para canal-não-configurado é indistinguível de "enviou e o id não veio" — e o handler de hoje trata os dois casos de forma DIFERENTE (`queued_reason:'waha_not_configured'` vs `status:'sent'`). Mantive o contrato do plano (mudá-lo aqui seria mudança de comportamento sem consumidor para provar), mas **a Task 4 não consegue preservar o comportamento atual só com este retorno** — ver seção abaixo; (c) nada foi provado pela tela e o `gates.csv` não foi regravado: nenhuma linha de produção mudou de comportamento porque nenhum arquivo importa `lib/channels/` |
+| 2026-07-27 | **Task 4a** | `tests/unit/messages-handler-desfechos.test.ts` (8 casos: os 6 desfechos da tabela do plano + `storage_sign_failed` + a ordem entre os desfechos 1 e 2), com fake próprio de `SupabaseClient` (~35 linhas) e `vi.stubEnv`/`vi.stubGlobal('fetch')` no padrão de `tests/unit/media-waha-source.test.ts`. **Nenhuma linha de produção alterada** — a task inteira é só o arquivo de teste | 8✓ em `pnpm exec vitest run messages-handler-desfechos` (exit 0); suíte inteira **1060✓/0✗ · 140 arquivos · exit 0** (era 1052✓/139 na Task 3 — +8/+1, nenhuma regressão); typecheck **exit 0**; lint **exit 0** (156 warnings, 0 erros — igual à baseline, nenhum no arquivo novo). As 8 sabotagens no `_handler.ts` vermelheceram no caso certo (tabela abaixo), e o arquivo voltou com **SHA-256 `d40f555c…` idêntico** e `git diff` vazio. A tabela "Os 6 desfechos" do plano foi conferida linha a linha contra `_handler.ts:219-318`: **está correta**, nada a corrigir | (a) `audit` e `createAdminClient` precisaram de `vi.mock`: o primeiro escreve em `api_audit_log` por um client real, o segundo valida env no import — nenhum dos dois pertence aos desfechos; (b) os desfechos **4 e 5 gravam a mesma linha final** — só o endpoint WAHA os separa, então esses casos assertam a URL do `fetch` (efeito externo, não chamada interna); sem isso, trocar `sendMedia` por `sendMessage` passaria verde; (c) a sabotagem do ramo de texto derrubou **2** casos, não 1: `sendMedia` inclui o corpo da resposta na mensagem de erro (`waha_500: boom`) e `sendMessage` não (`waha_500`) — assimetria real do `WahaClient`, registrada porque a Task 4d unifica os dois caminhos em `adapter.send` e vai ter que escolher uma das duas mensagens |
+
+### Sabotagem controlada — os 8 casos da rede do handler discriminam (Task 4a)
+
+Os 8 passam de primeira contra o código atual (é uma rede de caracterização, não TDD), então
+nenhum prova nada sozinho. Cada desfecho foi sabotado em `app/api/v1/messages/_handler.ts`,
+medido, e o arquivo restaurado — **SHA-256 `d40f555c…` idêntico antes e depois**, `git diff`
+do arquivo vazio:
+
+| Sabotagem | Vermelho observado |
+|---|---|
+| `queued_reason` vira `waha_offline` | `× 1. WAHA não configurado…` **e** `× ordem: sem WAHA E sem telefone…` — `expected 'waha_offline' to be 'waha_not_configured'` |
+| `error_code` vira `no_phone` | `× 2. sem destinatário resolvível…` (1 falhou / 7 passaram) |
+| `queued_reason` de sessão vira `session_paused` | `× 3. sessão fora de WORKING…` (1 / 7) |
+| ramo de mídia chama `sendMessage` | `× 4. com media_storage_path…` — `expected '…/api/sendText' to be '…/api/sendImage'` (1 / 7) |
+| ramo de texto chama `sendMedia` | `× 5. texto puro…` — `expected '…/api/sendFile' to be '…/api/sendText'` **e** `× 6.` de carona (`sendMedia` inclui o corpo no erro: `'waha_500: boom'` vs `'waha_500'`) |
+| `waha_error` vira `waha_falhou` | `× 6. envio lança…` (1 / 7) |
+| `code` fixo em `waha_error` (perde o `startsWith`) | `× 6b. assinatura do Storage falha…` (1 / 7) |
+| `!chatId` checado ANTES de `!waha` | `× ordem: sem WAHA E sem telefone…` — `expected 'failed' to be 'queued'` (1 / 7), e **só** ele |
+
+As duas últimas linhas são as que importam para as Tasks 4b–4d: a de ordem é a única que
+separa "instalação sem WAHA deixa a mensagem em fila" de "marca como falha", e a do
+`startsWith` guarda o `storage_sign_failed` que a Task 4d promete manter literal no handler.
+
+**O que a rede NÃO cobre (declarado):** os 3 desfechos ANTERIORES à bifurcação de envio
+(`404 not_found`, `403 forbidden` de contato bloqueado, `422 invalid_media_path`) — a tabela do
+plano é explicitamente das linhas 219-318 e eles ficam acima; nenhum deles muda nas Tasks
+4b–4d. E os desfechos 4 e 5 gravam a **mesma linha final**: o único observável que os separa é
+o endpoint WAHA que recebeu o POST, então esses dois casos assertam a URL do `fetch`. Não é
+"sequência de chamadas internas" (que travaria o refactor) — é o efeito externo, o mesmo que
+`tests/unit/channel-adapter-waha.test.ts` já fixa do outro lado do seam.
+
+### Armadilha medida para a Task 4b: `resolveWahaChatId` roda ANTES do pre-check
+
+`_handler.ts:220` calcula o `chatId` **antes** do `if (!waha)` — ou seja, a resolução de
+destinatário acontece mesmo com o canal desligado. Quem trocar por `adapter.resolveRecipient`
+precisa que `getAdapter('waha')` seja obtenível sem canal configurado (é: `getAdapter` só
+consulta a tabela de providers). Mover a chamada para dentro do `else` seria "aproveitar e
+limpar" — e o caso `ordem:` vermelheceria só se o comportamento mudasse junto, não pela mudança
+de posição. Fica anotado porque a rede **não** guarda essa posição.
 
 ### Task 4 precisa distinguir "não configurado" de "sem id" — o contrato de `send` não basta
 
