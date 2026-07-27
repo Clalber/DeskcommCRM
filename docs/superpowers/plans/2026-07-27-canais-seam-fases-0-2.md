@@ -40,11 +40,11 @@
 
 **Files:**
 - Create: `HANDOFF-canais-oficial.md`
-- Create: `.superpowers/evidence/canais/baseline/` (screenshots + traces)
+- Create: `evidence/canais/baseline/` (screenshots + traces)
 
 **Interfaces:**
 - Consumes: nada (é o primeiro).
-- Produces: `.superpowers/evidence/canais/baseline/` — a referência contra a qual **toda** task posterior se compara.
+- Produces: `evidence/canais/baseline/` — a referência contra a qual **toda** task posterior se compara.
 
 > **Por que primeiro:** as Fases 0–2 não criam nenhum botão. Provar "não regrediu" exige a foto do antes. Sem ela, "está igual" é afirmação, não medição.
 
@@ -72,10 +72,25 @@ npm run build && npm run start &
 
 - [ ] **Step 3: Rodar a suíte inteira e gravar o resultado**
 
+Sem `set -o pipefail`, `$?` depois de um pipe é o exit do `tee` — a receita original
+registrava `exit=0` com a suíte vermelha, e o falso verde da baseline contaminaria as 7
+tasks seguintes. **Não use `${PIPESTATUS[0]}` aqui:** essa variável é do bash, e no zsh
+(shell padrão do Mac do time) ela expande para **string vazia** — medido, gravou `exit=`
+no `unit.txt`. Com `pipefail`, `$?` é o exit da suíte nos dois shells.
+
+E a e2e roda **em série**: com 5 workers sobre fixtures compartilhadas o log não distingue
+flake de defeito (medido na Task 0.1: 15 vermelhos em paralelo, 4 em série).
+
 ```bash
-npm run test:unit 2>&1 | tee .superpowers/evidence/canais/baseline/unit.txt
-echo "exit=$?" >> .superpowers/evidence/canais/baseline/unit.txt
-npm run test:e2e 2>&1 | tee .superpowers/evidence/canais/baseline/e2e.txt
+set -o pipefail
+
+pnpm run test:unit 2>&1 | tee evidence/canais/baseline/unit.txt
+echo "exit=$?" >> evidence/canais/baseline/unit.txt
+
+# E2E_PORT: o config usa reuseExistingServer:false de propósito; se a 3001 estiver
+# ocupada por outro worktree a suíte aborta inteira em vez de testar o build errado.
+E2E_PORT=3007 pnpm exec playwright test --workers=1 2>&1 | tee evidence/canais/baseline/e2e.txt
+echo "exit=$?" >> evidence/canais/baseline/e2e.txt
 ```
 
 Expected: ambos verdes. **Se algo já está vermelho na `main`, PARE** — conserte ou registre no HANDOFF antes de seguir; senão você não sabe se quebrou depois.
@@ -84,21 +99,21 @@ Expected: ambos verdes. **Se algo já está vermelho na `main`, PARE** — conse
 
 Playwright dirigindo o frontend com a conta real de `.e2e-creds.json`. Screenshot em cada parada:
 
-1. login → `01-login.png`
-2. conectar WhatsApp (QR aparece) → `02-qr.png`
-3. inbox com conversa → `03-inbox.png`
-4. enviar texto pelo inbox → `04-texto-enviado.png`
-5. enviar áudio → `05-audio-enviado.png`
-6. agendar follow-up → `06-followup.png`
-7. Radar de Risco carregado → `07-radar.png`
+1. login → `evidence/canais/baseline/01-login.png`
+2. conectar WhatsApp (QR aparece) → `evidence/canais/baseline/02-qr.png`
+3. inbox com conversa → `evidence/canais/baseline/03-inbox.png`
+4. enviar texto pelo inbox → `evidence/canais/baseline/04-texto-enviado.png`
+5. enviar áudio → `evidence/canais/baseline/05-audio-enviado.png`
+6. agendar follow-up → `evidence/canais/baseline/06-followup.png`
+7. Radar de Risco carregado → `evidence/canais/baseline/07-radar.png`
 
 - [ ] **Step 5: Gravar o trace da cadeia before_send**
 
 `before_send_traces.trace` é um **array jsonb** de `{gate, verdict, code?, detail?}` — não colunas. E a tabela exige `job_id` de `job_queue`: **só grava em turno de agente de IA**, nunca em envio manual pelo inbox. Portanto a jornada do Step 4 **precisa incluir um turno do agente respondendo** (mandar um inbound e deixar a IA responder), senão este CSV sai vazio e não prova nada.
 
 ```bash
-psql "$DATABASE_URL" -c "\copy (select e->>'gate' as gate, e->>'verdict' as verdict, coalesce(e->>'code','') as code from before_send_traces t, jsonb_array_elements(t.trace) e order by t.created_at, (e->>'gate')) to '.superpowers/evidence/canais/baseline/gates.csv' csv header"
-wc -l .superpowers/evidence/canais/baseline/gates.csv
+psql "$DATABASE_URL" -c "\copy (select e->>'gate' as gate, e->>'verdict' as verdict, coalesce(e->>'code','') as code from before_send_traces t, jsonb_array_elements(t.trace) e order by t.created_at, (e->>'gate')) to 'evidence/canais/baseline/gates.csv' csv header"
+wc -l evidence/canais/baseline/gates.csv
 ```
 
 Expected: **mais que 1 linha** (o header). Se vier só o header, o agente não rodou — volte ao Step 4 e provoque um turno de IA antes de seguir. Um baseline vazio passa em qualquer `diff` e não prova nada.
@@ -112,7 +127,7 @@ Este CSV é a prova mais dura do plano: **a sequência de gates avaliados não p
 - [ ] **Step 7: Commit**
 
 ```bash
-git add HANDOFF-canais-oficial.md .superpowers/evidence/canais/baseline/
+git add HANDOFF-canais-oficial.md evidence/canais/baseline/
 git commit -m "test(canais): baseline de regressão da jornada WAHA antes do seam"
 ```
 
@@ -527,7 +542,7 @@ npm run test:unit && npm run typecheck && npm run lint
 Repetir Task 0 passos 4–5. Depois:
 
 ```bash
-diff .superpowers/evidence/canais/baseline/gates.csv .superpowers/evidence/canais/task4/gates.csv
+diff evidence/canais/baseline/gates.csv evidence/canais/task4/gates.csv
 ```
 
 Expected: **sem diferença**. Qualquer linha diferente = regressão; pare e investigue a causa raiz antes de commitar.
@@ -535,7 +550,7 @@ Expected: **sem diferença**. Qualquer linha diferente = regressão; pare e inve
 - [ ] **Step 5: HANDOFF + commit**
 
 ```bash
-git add app/api/v1/messages/_handler.ts .superpowers/evidence/canais/task4/ HANDOFF-canais-oficial.md
+git add app/api/v1/messages/_handler.ts evidence/canais/task4/ HANDOFF-canais-oficial.md
 git commit -m "refactor(canais): handler de envio fala com ChannelAdapter, não com WAHA"
 ```
 
@@ -806,7 +821,7 @@ Repetir Task 0 passos 3–5 inteiros. Critério de aceite da Fase 0–2:
 - [ ] **Step 6: HANDOFF de fechamento + commit**
 
 ```bash
-git add scripts/lint-channels.ts package.json .superpowers/evidence/canais/fase2/ HANDOFF-canais-oficial.md
+git add scripts/lint-channels.ts package.json evidence/canais/fase2/ HANDOFF-canais-oficial.md
 git commit -m "feat(canais): lint reprova nome de provider fora de lib/channels"
 ```
 

@@ -9,7 +9,7 @@
  * própria jornada não estabelece.
  *
  * Rodar:
- *   CANAIS_EVIDENCE_DIR=.superpowers/evidence/canais/baseline \
+ *   CANAIS_EVIDENCE_DIR=evidence/canais/baseline \
  *   pnpm exec playwright test --config tests/journeys/playwright.config.ts
  *
  * Pré-requisitos (o app NÃO é subido por este config):
@@ -27,7 +27,7 @@ import { generateTotp, msUntilNextTotpWindow } from "../e2e/utils/totp";
 const CREDS_PATH = path.join(process.cwd(), ".e2e-creds.json");
 const EVIDENCE = path.join(
   process.cwd(),
-  process.env.CANAIS_EVIDENCE_DIR ?? ".superpowers/evidence/canais/baseline",
+  process.env.CANAIS_EVIDENCE_DIR ?? "evidence/canais/baseline",
 );
 fs.mkdirSync(EVIDENCE, { recursive: true });
 
