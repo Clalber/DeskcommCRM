@@ -15,9 +15,7 @@ import { getAdapter } from "@/lib/channels";
 import type { ListMessagesQuery, SendMessageInput } from "@/lib/schemas";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { Message } from "@/lib/types/messaging";
-import { getWahaClient } from "@/lib/waha/client";
-import { isMediaPathOwnedBy, wahaSendPlanFor } from "@/lib/waha/media-send";
-import { parseWahaMessageId } from "@/lib/waha/message-id";
+import { isMediaPathOwnedBy } from "@/lib/waha/media-send";
 
 type SB = SupabaseClient;
 
@@ -216,12 +214,6 @@ export async function sendMessageHandler(
   }
   let message = created as unknown as Message;
 
-  // Transitório: o pre-check de configuração já é do adapter, mas o envio ainda
-  // fala com o cliente cru — a Task 4d troca as duas chamadas por `adapter.send`
-  // e apaga esta linha. O `!` é seguro porque `isConfigured()` é exatamente
-  // `getWahaClient() !== null`, ambos lendo o env na hora; o TS só não enxerga
-  // através do seam.
-  const waha = getWahaClient();
   // Provider fixo enquanto `channel_sessions.provider` não existe como coluna
   // (Task 6 do plano do seam). O `select` acima só traz `waha_session_name` e
   // `status`; ler um campo inexistente seria inventar contrato.
@@ -270,9 +262,12 @@ export async function sendMessageHandler(
     if (updated) message = updated as unknown as Message;
   } else {
     try {
-      let wahaRes: unknown;
+      // O que separa mídia de texto é a presença de `media` no envelope — o
+      // adapter preserva o mesmo branch (e a mesma mensagem de erro de cada
+      // método) do outro lado do seam.
+      let externalId: string | null;
       if (input.media_storage_path) {
-        // Storage-first: signed URL curta só pro WAHA baixar (nunca base64).
+        // Storage-first: signed URL curta só pro canal baixar (nunca base64).
         const admin = createAdminClient();
         const { data: signed, error: signErr } = await admin.storage
           .from("whatsapp-media")
@@ -281,27 +276,25 @@ export async function sendMessageHandler(
           throw new Error(`storage_sign_failed: ${signErr?.message ?? "no_url"}`);
         }
         const filename = input.media_storage_path.split("/").pop() ?? undefined;
-        wahaRes = await waha!.sendMedia(
-          c.channel_sessions.waha_session_name,
-          chatId,
-          wahaSendPlanFor(input.type, {
+        ({ externalId } = await adapter.send({
+          sessionRef: c.channel_sessions.waha_session_name,
+          to: chatId,
+          kind: input.type,
+          media: {
             url: signed.signedUrl,
             mime: input.media_mime ?? "application/octet-stream",
             filename,
             caption: input.body ?? null,
-          }),
-        );
+          },
+        }));
       } else {
-        wahaRes = await waha!.sendMessage(
-          c.channel_sessions.waha_session_name,
-          chatId,
-          input.body ?? "",
-        );
+        ({ externalId } = await adapter.send({
+          sessionRef: c.channel_sessions.waha_session_name,
+          to: chatId,
+          kind: input.type,
+          body: input.body ?? "",
+        }));
       }
-      // Fase 4A-3: o shape do id varia por engine (string | {_serialized} |
-      // NOWEB {id:{id}} | {key:{id}}) — parser compartilhado cobre todos; sem
-      // external_id o ack do webhook duplica a linha em vez de atualizar.
-      const externalId = parseWahaMessageId(wahaRes);
       const { data: updated } = await supabase
         .from("messages")
         .update({ status: "sent", external_id: externalId, ack: 0 })
@@ -311,7 +304,11 @@ export async function sendMessageHandler(
       if (updated) message = updated as unknown as Message;
     } catch (err) {
       const msg = err instanceof Error ? err.message : "waha_unknown";
-      const code = msg.startsWith("storage_sign_failed") ? "storage_sign_failed" : "waha_error";
+      // `storage_sign_failed` fica literal: é falha do NOSSO Storage, não do
+      // canal — a URL assinada é montada antes de qualquer coisa tocar o adapter.
+      const code = msg.startsWith("storage_sign_failed")
+        ? "storage_sign_failed"
+        : adapter.codes.sendFailed;
       const { data: updated } = await supabase
         .from("messages")
         .update({

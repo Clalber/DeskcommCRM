@@ -3,6 +3,7 @@
 // TIPO atravessa (`import type` some na compilação) — o seam não carrega código
 // do provider. Quando a Fase 3 absorver `lib/waha/`, este é o único ponteiro a
 // mudar de casa.
+import type { SendMessageInput } from "@/lib/schemas";
 import type { OutboundMedia } from "@/lib/waha/media-send";
 
 export type { OutboundMedia };
@@ -25,7 +26,14 @@ export interface ChannelCapabilities {
   costPerMessage: boolean;
 }
 
-export type OutboundKind = "text" | "image" | "video" | "audio" | "file";
+/**
+ * O vocabulário de tipo de mensagem de saída tem UMA fonte: o schema de entrada
+ * da API. A Task 3 escreveu aqui uma lista à mão de 5 valores, mas o handler
+ * passa `input.type`, que tem 8 (`document`, `sticker`, `location`, `contact`
+ * também chegam) — a lista curta não compilava contra o chamador real. Derivar
+ * evita a divergência silenciosa na próxima vez que o schema crescer.
+ */
+export type OutboundKind = SendMessageInput["type"];
 
 /** O que o CRM sabe sobre o destinatário. Quem traduz para o endereço do canal é o adapter. */
 export interface RecipientInput {
