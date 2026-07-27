@@ -153,53 +153,53 @@ import { describe, expect, it } from 'vitest';
 import { decidePacing } from '@/lib/agent-engine/pacing/engine';
 import { PACING_DEFAULTS } from '@/lib/agent-engine/pacing/defaults';
 
-// 03:00 America/Sao_Paulo = fora da janela 7h–22h. Terça-feira.
-const MADRUGADA = new Date('2026-07-28T06:00:00Z');
+// Assinatura REAL (conferida em lib/agent-engine/pacing/engine.ts:23):
+//   PacingInput = { now, knobs, state: PacingState, crmDailyLimit, rng? }
+//   PacingState = { lastSentAt, sentToday, numberActivatedAt }   ← ANINHADO
+//   PacingDecision = { allow: true, waitMs } | { allow: false, code, nextAllowedAt, reason }
+// Repare: o campo é `allow`, não `allowed`. `code` só existe no ramo de veto.
+
+const MADRUGADA = new Date('2026-07-28T06:00:00Z');       // 03h BRT — fora da janela 7h–22h
+const COMERCIAL = new Date('2026-07-28T13:00:00Z');       // 10h BRT — terça, dentro da janela
+
+function input(over: { now: Date; banRisk?: boolean; sentToday?: number }) {
+  return {
+    now: over.now,
+    knobs: PACING_DEFAULTS,
+    banRisk: over.banRisk,
+    state: {
+      lastSentAt: null,
+      sentToday: over.sentToday ?? 0,
+      numberActivatedAt: null,   // idade 0 = degrau mais conservador (cap 20)
+    },
+    crmDailyLimit: null,
+    rng: () => 0,
+  };
+}
 
 describe('cortesia não é anti-ban', () => {
   it('sem risco de ban, o horário comercial CONTINUA armado', () => {
-    const d = decidePacing({
-      now: MADRUGADA,
-      knobs: PACING_DEFAULTS,
-      banRisk: false,
-      sentToday: 0,
-      lastSentAt: null,
-      numberActivatedAt: null,
-      crmDailyLimit: null,
-      rng: () => 0,
-    });
-    expect(d.allowed).toBe(false);
+    const d = decidePacing(input({ now: MADRUGADA, banRisk: false }));
+    expect(d.allow).toBe(false);
+    if (d.allow) throw new Error('inalcançável');   // estreita o tipo p/ ler .code
     expect(d.code).toBe('outside_window');
   });
 
   it('sem risco de ban, o cap de warm-up DESARMA', () => {
-    const dentroDaJanela = new Date('2026-07-28T13:00:00Z'); // 10h BRT
-    const d = decidePacing({
-      now: dentroDaJanela,
-      knobs: PACING_DEFAULTS,
-      banRisk: false,
-      sentToday: 999,          // estouraria qualquer degrau de warm-up
-      lastSentAt: null,
-      numberActivatedAt: null, // idade 0 = degrau mais conservador (cap 20)
-      crmDailyLimit: null,
-      rng: () => 0,
-    });
-    expect(d.allowed).toBe(true);
+    const d = decidePacing(input({ now: COMERCIAL, banRisk: false, sentToday: 999 }));
+    expect(d.allow).toBe(true);
   });
 
   it('COM risco de ban, o cap de warm-up continua vetando (comportamento atual)', () => {
-    const dentroDaJanela = new Date('2026-07-28T13:00:00Z');
-    const d = decidePacing({
-      now: dentroDaJanela,
-      knobs: PACING_DEFAULTS,
-      banRisk: true,
-      sentToday: 999,
-      lastSentAt: null,
-      numberActivatedAt: null,
-      crmDailyLimit: null,
-      rng: () => 0,
-    });
-    expect(d.allowed).toBe(false);
+    const d = decidePacing(input({ now: COMERCIAL, banRisk: true, sentToday: 999 }));
+    expect(d.allow).toBe(false);
+    if (d.allow) throw new Error('inalcançável');
+    expect(d.code).toBe('warmup_cap');
+  });
+
+  it('omitir banRisk preserva o comportamento atual (default = true)', () => {
+    const d = decidePacing(input({ now: COMERCIAL, sentToday: 999 }));
+    expect(d.allow).toBe(false);   // nenhum chamador existente muda de resultado
   });
 });
 ```
@@ -210,7 +210,9 @@ describe('cortesia não é anti-ban', () => {
 npm run test:unit -- pacing-cortesia-vs-antiban
 ```
 
-Expected: FAIL. O 2º caso reprova (hoje o cap veta mesmo sem risco de ban) — é exatamente o defeito que o teste existe para pegar. Se ele passar de primeira, **o teste está errado**: confira se `banRisk` está mesmo sendo lido.
+Expected: **FAIL, e especificamente no 2º caso** (`o cap de warm-up DESARMA`) — hoje o cap veta mesmo sem risco de ban. Os casos 1, 3 e 4 devem passar já de cara, porque descrevem o comportamento atual.
+
+Se o 2º caso **passar** de primeira, o teste não está provando nada: `banRisk` está sendo ignorado silenciosamente (campo extra num objeto não gera erro em runtime). Verifique que `PacingInput` realmente ganhou o campo antes de seguir — um teste que nunca ficou vermelho não é prova.
 
 - [ ] **Step 3: Implementar o mínimo**
 
