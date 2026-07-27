@@ -58,6 +58,18 @@ export interface ChannelAdapter {
   provider: ChannelProvider;
   /** null = não há endereço possível para este contato neste canal. */
   resolveRecipient(input: RecipientInput): string | null;
+  /**
+   * O canal tem credencial para enviar? Perguntado ANTES de `send` porque
+   * `{externalId: null}` colapsa "não tentei" com "tentei e a resposta não
+   * trouxe id" — desfechos que o chamador grava de forma diferente.
+   */
+  isConfigured(): boolean;
   /** externalId null = canal não configurado (noop) ou resposta sem id reconhecível. */
   send(envelope: OutboundEnvelope): Promise<{ externalId: string | null }>;
+  /**
+   * Códigos que o chamador grava em `metadata`/`error_code`. Vivem NO ADAPTER
+   * porque carregam nome de provider, e o lint da Task 7 proíbe esse nome fora
+   * de `lib/channels/`. Quem chama escreve o que o adapter disser.
+   */
+  readonly codes: { notConfigured: string; sendFailed: string };
 }

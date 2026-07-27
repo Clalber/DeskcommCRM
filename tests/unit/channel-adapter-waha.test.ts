@@ -52,6 +52,32 @@ describe('adapter WAHA', () => {
     expect(() => getAdapter('telegram')).toThrow(/unknown_channel_provider/);
   });
 
+  // `isConfigured` existe porque `send` devolvendo `{externalId:null}` colapsa
+  // dois desfechos que o handler trata diferente: "não tentei" (fica `queued`)
+  // e "tentei e a resposta não tinha id" (vira `sent`). Sem este pre-check, a
+  // primeira viraria `sent` sem ter saído — perda de mensagem, não refactor.
+  it('isConfigured é false sem env do canal', () => {
+    vi.stubEnv('WAHA_API_BASE_URL', '');
+    vi.stubEnv('WAHA_API_KEY', '');
+    expect(getAdapter('waha').isConfigured()).toBe(false);
+  });
+
+  it('isConfigured é true com env do canal', () => {
+    vi.stubEnv('WAHA_API_BASE_URL', WAHA_BASE);
+    vi.stubEnv('WAHA_API_KEY', 'hash123');
+    expect(getAdapter('waha').isConfigured()).toBe(true);
+  });
+
+  // Os códigos vivem no adapter porque carregam nome de provider, e o lint da
+  // Task 7 proíbe esse nome fora de `lib/channels/`. Os valores são os literais
+  // que o handler grava hoje — mudá-los é mudança de comportamento.
+  it('codes carrega os literais que o handler grava', () => {
+    expect(getAdapter('waha').codes).toEqual({
+      notConfigured: 'waha_not_configured',
+      sendFailed: 'waha_error',
+    });
+  });
+
   it('canal não configurado é NOOP, não erro — e nada sai pela rede', async () => {
     vi.stubEnv('WAHA_API_BASE_URL', '');
     vi.stubEnv('WAHA_API_KEY', '');

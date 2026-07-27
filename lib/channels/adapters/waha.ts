@@ -18,6 +18,15 @@ export const wahaAdapter: ChannelAdapter = {
     return resolveWahaChatId(input);
   },
 
+  // Mesmo pre-check que o handler já fazia com `getWahaClient() !== null`,
+  // movido para trás do seam. `getWahaClient` lê o env a cada chamada (não
+  // memoiza), então o estado aqui é sempre o corrente.
+  isConfigured(): boolean {
+    return getWahaClient() !== null;
+  },
+
+  codes: { notConfigured: "waha_not_configured", sendFailed: "waha_error" },
+
   async send(envelope: OutboundEnvelope): Promise<{ externalId: string | null }> {
     const client = getWahaClient();
     // Sem env de WAHA o comportamento atual é NOOP, não erro: a UI mostra o

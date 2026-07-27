@@ -216,6 +216,11 @@ export async function sendMessageHandler(
   }
   let message = created as unknown as Message;
 
+  // Transitório: o pre-check de configuração já é do adapter, mas o envio ainda
+  // fala com o cliente cru — a Task 4d troca as duas chamadas por `adapter.send`
+  // e apaga esta linha. O `!` é seguro porque `isConfigured()` é exatamente
+  // `getWahaClient() !== null`, ambos lendo o env na hora; o TS só não enxerga
+  // através do seam.
   const waha = getWahaClient();
   // Provider fixo enquanto `channel_sessions.provider` não existe como coluna
   // (Task 6 do plano do seam). O `select` acima só traz `waha_session_name` e
@@ -228,11 +233,11 @@ export async function sendMessageHandler(
     waIdentity: c.contacts?.wa_identity,
   });
 
-  if (!waha) {
+  if (!adapter.isConfigured()) {
     const { data: updated } = await supabase
       .from("messages")
       .update({
-        metadata: { ...(message.metadata ?? {}), queued_reason: "waha_not_configured" },
+        metadata: { ...(message.metadata ?? {}), queued_reason: adapter.codes.notConfigured },
       })
       .eq("id", message.id)
       .select(MSG_COLS)
@@ -276,7 +281,7 @@ export async function sendMessageHandler(
           throw new Error(`storage_sign_failed: ${signErr?.message ?? "no_url"}`);
         }
         const filename = input.media_storage_path.split("/").pop() ?? undefined;
-        wahaRes = await waha.sendMedia(
+        wahaRes = await waha!.sendMedia(
           c.channel_sessions.waha_session_name,
           chatId,
           wahaSendPlanFor(input.type, {
@@ -287,7 +292,7 @@ export async function sendMessageHandler(
           }),
         );
       } else {
-        wahaRes = await waha.sendMessage(
+        wahaRes = await waha!.sendMessage(
           c.channel_sessions.waha_session_name,
           chatId,
           input.body ?? "",
