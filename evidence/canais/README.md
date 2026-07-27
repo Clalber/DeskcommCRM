@@ -124,3 +124,62 @@ psql "$DATABASE_URL" -c "\copy (select e->>'gate' as gate, e->>'verdict' as verd
 ```
 
 Um turno contra um turno — que é o escopo em que a baseline foi gravada.
+
+---
+
+## `task4/` — a jornada com o handler falando com o `ChannelAdapter` (Task 4e)
+
+As Tasks 4b/4c/4d trocaram as chamadas diretas ao WAHA em `app/api/v1/messages/_handler.ts`
+por `adapter.*`. Até aqui nada disso tinha saído do `vitest`. Esta pasta é a prova pela
+tela, servida por um build **feito depois** dos três commits do refactor (`BUILD_ID`
+`4W3v83yHSysyCUIj3YQLD`, gerado 15:20; o último commit do refactor é de 15:12 — o
+processo que estava na 3007 servia um build de 13:16, anterior a tudo, e foi derrubado).
+
+| Arquivo | O que prova, agora com o handler atrás do seam |
+|---|---|
+| `evidence/canais/task4/01-login.png` | login + MFA entram na conta real |
+| `evidence/canais/task4/02-qr.png` | Conexões segue mostrando o estado real da sessão WAHA |
+| `evidence/canais/task4/03-inbox.png` | inbox carrega as conversas do tenant |
+| `evidence/canais/task4/04-texto-enviado.png` | texto enviado pelo inbox — mesmo desfecho da baseline (`Falhou`, contato do seed sem telefone) |
+| `evidence/canais/task4/05-audio-enviado.png` | áudio enviado pelo inbox — o ramo de mídia do `adapter.send` |
+| `evidence/canais/task4/06-followup.png` | follow-up agendado pela tela |
+| `evidence/canais/task4/07-radar.png` | Radar de Risco carregado |
+| `evidence/canais/task4/08-envio-real.png` | **o que faltava:** envio manual pelo inbox que atravessa `adapter.send` inteiro e chega ao WAHA — bolha com ✓, não `Falhou` |
+| `evidence/canais/task4/gates.csv` | a cadeia `before_send` de um turno REAL de IA, **idêntica** à da baseline (`diff` vazio, exit 0) |
+
+### Por que o `08` existe — o `gates.csv` não cobre o que a 4d refatorou
+
+O `gates.csv` prova a cadeia do turno de IA. O caminho **manual** do inbox (o que a Task 4d
+mexeu) nunca chegou a `adapter.send` neste banco: o contato do seed do radar não tem
+telefone, então `resolveRecipient` devolve `null` e a mensagem morre em
+`missing_phone_number` — foi assim na baseline, na task1 e na task4. Nenhuma mensagem
+jamais saiu com `status='sent'` aqui.
+
+Para exercitar o ramo de verdade, a Task 4e apontou **temporariamente** a sessão do seed
+para a sessão WAHA que está `WORKING` e deu ao contato o número da própria conta do WAHA
+(envio para si mesmo — real, sem terceiro no meio), enviou **pela tela**, mediu, e
+**reverteu os dois campos** aos valores originais. Medido em `messages`:
+
+```
+status = sent · external_id = 3EB0644366757BD8B9CA71 · error_code = null
+```
+
+`external_id` não-nulo é o ID que o WhatsApp devolveu: a mensagem saiu de verdade, pelo
+`adapter.send`, com o `parseWahaMessageId` do outro lado do seam.
+
+### O Postgres local segfaultou no meio (e isso não é regressão do refactor)
+
+A primeira e a segunda execuções da jornada saíram sujas — toast `No active organization` e
+`/app/radar` redirecionando para `/app`. Ambos os sintomas são o mesmo defeito:
+`loadAuthUser` (`lib/auth/server.ts`) **descarta o erro** do `select` em
+`user_organizations`, então uma falha de query vira "usuário sem organização".
+
+A falha de query foi medida na fonte: `docker logs supabase_db_deskcomm-crm` mostra
+`server process ... was terminated by signal 11: Segmentation fault` às 18:22:51 e
+18:28:41 UTC — exatamente as duas janelas —, o PostgREST respondendo `503 PGRST002` e o
+GoTrue `FATAL: the database system is in recovery mode`. O mesmo container já tinha
+segfaultado 2× às 15:28/15:29, **antes** da execução da baseline. É defeito do stack local
+(pgvector/pg17 + walsender do Realtime), pré-existente, e o diff de produção das Tasks
+4b/4c/4d toca 3 arquivos — `app/api/v1/messages/_handler.ts`, `lib/channels/types.ts` e
+`lib/channels/adapters/waha.ts` — nenhum deles no caminho de auth ou do radar. A terceira
+execução, com o banco de pé, passou 3/3 e é a que está gravada aqui.
