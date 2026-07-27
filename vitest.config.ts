@@ -9,7 +9,18 @@ export default defineConfig({
     setupFiles: ["./tests/setup/vitest.setup.ts"],
     globals: true,
     coverage: { provider: "v8", reporter: ["text", "html"] },
-    exclude: ["**/node_modules/**", ".next", "dist", ".claude/**", "tests/e2e/**", "tests/invariants/**"],
+    // tests/journeys/** roda no Playwright (jornada de baseline dos canais), igual
+    // a tests/e2e/**: sem excluir, o include default do vitest o pegaria e o
+    // import de @playwright/test derrubaria a suíte unitária.
+    exclude: [
+      "**/node_modules/**",
+      ".next",
+      "dist",
+      ".claude/**",
+      "tests/e2e/**",
+      "tests/invariants/**",
+      "tests/journeys/**",
+    ],
   },
   resolve: { alias: { "@": path.resolve(__dirname, ".") } },
 });
