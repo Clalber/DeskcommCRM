@@ -401,8 +401,10 @@ git commit -m "feat(canais): descritor de capabilities por provider, fail-closed
 **Interfaces:**
 - Consumes: `ChannelProvider` (Task 2); `getWahaClient`, `wahaSendPlanFor`, `resolveWahaChatId`, `parseWahaMessageId` de `lib/waha/*`.
 - Produces:
-  - `OutboundEnvelope = { sessionRef: string; to: string; kind: 'text'|'image'|'video'|'audio'|'file'; body?: string; media?: OutboundMedia }`
+  - `OutboundEnvelope = { sessionRef: string; to: string; kind: 'text'|'image'|'video'|'audio'|'file'; body?: string; media?: OutboundMedia }` — `OutboundMedia` é reusado de `lib/waha/media-send.ts`, não redefinido.
+  - `RecipientInput = { isGroup: boolean; groupChatId: string | null; phoneNumber: string | null | undefined; waIdentity: string | null | undefined }` — espelha `ResolveWahaChatIdInput` (`lib/waha/send.ts:20`) para que o adapter possa repassar sem adaptar. Defina-o em `types.ts`; **não** o importe de `lib/waha/` (o seam não pode depender do provider).
   - `ChannelAdapter = { provider; send(env): Promise<{ externalId: string | null }>; resolveRecipient(input): string | null }`
+  - **`InboundEvent` NÃO entra nesta task.** Ele só ganha consumidor na Fase 3b (parse de webhook da Meta); criá-lo agora é tipo especulativo. A tabela "Estrutura de arquivos" o menciona como destino final de `types.ts`, não como escopo da Task 3.
   - `getAdapter(provider: ChannelProvider): ChannelAdapter` — lança em provider desconhecido.
 
 > O adapter é **burro de propósito**. Se você sentir vontade de escrever um `if` sobre janela de 24h ou cap diário aqui dentro, o desenho vazou — essa regra pertence à cadeia `before_send`.
