@@ -94,9 +94,14 @@ Playwright dirigindo o frontend com a conta real de `.e2e-creds.json`. Screensho
 
 - [ ] **Step 5: Gravar o trace da cadeia before_send**
 
+`before_send_traces.trace` é um **array jsonb** de `{gate, verdict, code?, detail?}` — não colunas. E a tabela exige `job_id` de `job_queue`: **só grava em turno de agente de IA**, nunca em envio manual pelo inbox. Portanto a jornada do Step 4 **precisa incluir um turno do agente respondendo** (mandar um inbound e deixar a IA responder), senão este CSV sai vazio e não prova nada.
+
 ```bash
-psql "$DATABASE_URL" -c "\copy (select gate, verdict, code from before_send_traces order by created_at) to '.superpowers/evidence/canais/baseline/gates.csv' csv header"
+psql "$DATABASE_URL" -c "\copy (select e->>'gate' as gate, e->>'verdict' as verdict, coalesce(e->>'code','') as code from before_send_traces t, jsonb_array_elements(t.trace) e order by t.created_at, (e->>'gate')) to '.superpowers/evidence/canais/baseline/gates.csv' csv header"
+wc -l .superpowers/evidence/canais/baseline/gates.csv
 ```
+
+Expected: **mais que 1 linha** (o header). Se vier só o header, o agente não rodou — volte ao Step 4 e provoque um turno de IA antes de seguir. Um baseline vazio passa em qualquer `diff` e não prova nada.
 
 Este CSV é a prova mais dura do plano: **a sequência de gates avaliados não pode mudar** nas Fases 0–2.
 
