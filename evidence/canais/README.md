@@ -304,3 +304,13 @@ O **áudio** do envio real falhou com `waha_error` / `waha_500: ECONNREFUSED 127
 o container não alcança a URL assinada do Storage do host. É limitação do ambiente local (o
 mesmo ramo de mídia já estava provado em unidade e na jornada), não regressão — e o erro
 prova que o ramo de mídia chegou até o canal com a sessão certa, senão teria falhado antes.
+
+## `fase3a/` — contrato de templates da Meta
+
+| Artefato | O que prova |
+|---|---|
+| `evidence/canais/fase3a/prova-erros-meta.md` | os 3 experimentos que separam 132000 (contagem) de 132012 (formato), medidos contra a Graph API real |
+| `evidence/canais/fase3a/envio-real-buildcomponents.txt` | o `components[]` que `buildComponents` monta é **aceito** pela Meta (`wamid`, `accepted`), e o mesmo payload com 1 parâmetro removido à mão volta **132000** |
+
+Re-gerar o segundo: `pnpm exec tsx --env-file=.env.local scripts/spike-send-template.ts`.
+São **dois** envios reais no celular de uma pessoa — não rode em laço.
