@@ -689,7 +689,17 @@ Commit final: `refactor(canais): handler de envio fala com ChannelAdapter, não 
 
 **Interfaces:**
 - Consumes: `capabilitiesOf` (Task 2), `banRisk` em `decidePacing` (Task 1).
-- Produces: veredito de gate ganha `skipped: 'not_applicable'` como terceiro estado, ao lado de `pass` e veto.
+- Produces: veredito de gate ganha `skipped: 'not_applicable'` como terceiro estado, ao lado de `pass` e veto; `GateContext` ganha `provider: ChannelProvider`.
+
+### Três premissas do plano original que estavam ERRADAS (conferidas no código)
+
+1. **`pacingGate` não é exportado.** `before-send.ts:304` é `const pacingGate: Gate = {`, sem `export` — diferente de `lgpdGate`, `promiseGate` e os outros, que são exportados. Você precisa **exportá-lo** para testá-lo direto (é o que os irmãos já fazem, então não é exceção de estilo), ou testar através de `BEFORE_SEND_GATES`. Prefira exportar: teste de gate isolado é o padrão do repo (`tests/invariants/case-guardrail.test.ts`).
+
+2. **`GateContext` não tem `provider`.** Confira o shape real em `before-send.ts:62-...`: tem `now`, `body`, `optedOut`, `pacing`, `spinning`, `promise`, `semanticPromise`, `disclosure`. Você precisa **acrescentar** `provider: ChannelProvider`.
+
+3. **O construtor de produção do ctx fica no mesmo arquivo, por volta de `before-send.ts:507`** (`spinning: { knobs: spinningKnobs, window }`). É lá que `provider` precisa ser preenchido — e, como a coluna `channel_sessions.provider` só chega na **Task 6**, fixe `'waha'` com comentário, exatamente como a Task 4b fez em `_handler.ts:220`. A Task 6 troca o literal pelo valor do banco.
+
+**Consequência importante:** em produção o provider continua `'waha'`, logo `banRisk` continua `true` e **nada muda de comportamento** — o `gates.csv` tem que sair idêntico à baseline de novo. O ramo `banRisk: false` é exercitado só pelos testes desta task, injetando `provider: 'meta_cloud'` no ctx. Isso é esperado e é o desenho: o canal que o desarma de verdade nasce na Fase 3b.
 
 - [ ] **Step 1: Escrever o teste que falha**
 
