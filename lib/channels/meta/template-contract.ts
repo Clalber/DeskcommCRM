@@ -18,6 +18,23 @@
  * seus próprios header/body/buttons com índices próprios. Uma lista plana não
  * expressa isso — e contrato que não expressa gera formulário incompleto, que é
  * exatamente o defeito original com outra roupa.
+ *
+ * ─── Os dois erros que esta derivação existe para tornar inalcançáveis ───
+ * Medidos contra a Graph API real (WABA de teste, 2026-07-28), não deduzidos:
+ *
+ *   132000  "Number of parameters does not match the expected number of params"
+ *           detalhe: `body: number of localizable_params (2) does not match (3)`
+ *           → CONTAGEM. É o erro que sangra no TomikCRM.
+ *
+ *   132012  "Parameter format does not match format in the created template"
+ *           detalhe: `header: Format mismatch, expected IMAGE, received UNKNOWN`
+ *           → FORMATO. Dispara quando o template tem header de mídia e o envio
+ *             não manda o parâmetro de header.
+ *
+ * O ponto que justifica o desenho inteiro: **contar `{{n}}` só previne o 132000.**
+ * É cego ao 132012, porque um header `format: IMAGE` não tem placeholder nenhum
+ * para contar — ele é slot pelo FORMATO. Derivar de texto E de formato previne
+ * os dois; contar placeholder previne metade e dá a sensação de estar coberto.
  */
 
 export type ButtonSubType = "url" | "copy_code" | "quick_reply";
