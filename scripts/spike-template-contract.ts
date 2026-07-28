@@ -14,9 +14,9 @@ const fixture = JSON.parse(
 
 for (const t of fixture.data) {
   const contract = deriveTemplateContract(t as Parameters<typeof deriveTemplateContract>[0]);
-  console.log(`\n━━ ${contract.name} (${contract.language}) — ${contract.slots.length} slot(s)`);
+  console.info(`\n━━ ${contract.name} (${contract.language}) — ${contract.slots.length} slot(s)`);
   if (contract.slots.length === 0) {
-    console.log("   (sem parâmetros — envio não precisa de components[])");
+    console.info("   (sem parâmetros — envio não precisa de components[])");
     continue;
   }
   for (const s of contract.slots) {
@@ -24,7 +24,7 @@ for (const t of fixture.data) {
       s.contextBefore || s.contextAfter
         ? `${s.contextBefore}[ ${s.key} ]${s.contextAfter}`
         : `[ ${s.key} ]`;
-    console.log(`   ${describeAddress(s.address).padEnd(26)} ${s.expects.padEnd(12)} ${campo}`);
+    console.info(`   ${describeAddress(s.address).padEnd(26)} ${s.expects.padEnd(12)} ${campo}`);
   }
 }
-console.log();
+console.info();

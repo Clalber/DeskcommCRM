@@ -733,3 +733,25 @@ impede o vazamento voltar, ligado ao gate que de fato roda.
 5. **O ramo `meta_cloud` não tem prova de tela** — não há adapter até a Fase 3b. Quem prova
    que ele falha fechado é o invariante de banco e os unitários.
 6. **O ramo `banRisk: false` nunca rodou em produção**, pelo mesmo motivo.
+
+---
+
+## Correção de registro — a deriva de warnings que eu não vi (2026-07-28)
+
+Este handoff afirmou **"156 warnings, idêntico à baseline"** em seis tasks seguidas. Era
+verdade nas primeiras e **deixou de ser** quando commitei `scripts/spike-template-contract.ts`
+(`93a3a91`): quatro `console.log` — que é o **anti-pattern nº 14 do `CLAUDE.md`**. A contagem
+real passou a 160 e eu continuei copiando 156 em vez de medir.
+
+Quem pegou foi o subagente das Tasks 1–2 da Fase 3a, ao notar que o número do handoff não
+batia com o que ele media. A observação dele foi mais estreita que o problema ("nenhum
+warning nos MEUS arquivos" — verdade, os dele estavam limpos); medindo o épico inteiro, os
+quatro eram do meu spike.
+
+Consertado com `console.info` (permitido pela regra, e o script é uma CLI cuja saída É o
+entregável). Medido depois, sem pipe: **`pnpm run lint` → exit 0, 156 problems (0 errors,
+156 warnings)**.
+
+**Lição:** rodapé de estado repetido é a afirmação menos auditada de um relatório. Número
+copiado da task anterior não é número medido — e a diferença só aparece quando alguém mede
+o que ninguém disputa.
