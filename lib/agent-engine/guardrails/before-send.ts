@@ -57,6 +57,10 @@ import type { DisclosureMode } from './disclosure/template';
 import { escalateLgpdVeto, isLegalBasisValid } from './lgpd/legal-basis';
 import type { LgpdInput } from './lgpd/legal-basis';
 import { detectHumanPromise } from './human-promise';
+// Módulo PURO de propósito (`capabilities`, não `index`): o seam não arrasta o
+// adapter — e com ele o cliente HTTP do canal — para dentro do worker.
+import { capabilitiesOf } from '@/lib/channels/capabilities';
+import type { ChannelProvider } from '@/lib/channels/capabilities';
 
 /** O que os gates enxergam — carregado UMA vez sob o lock, por tentativa de envio. */
 export interface GateContext {
@@ -69,6 +73,12 @@ export interface GateContext {
    * OR o sinal lido no `get_lead_context` deste turno.
    */
   optedOut: boolean;
+  /**
+   * Canal desta tentativa. Nenhum gate pergunta QUEM é o provider (invariante 1
+   * de `docs/doctrine/restricao-de-canal.md`) — só o entrega a `capabilitiesOf`
+   * para perguntar o que o canal permite.
+   */
+  provider: ChannelProvider;
   pacing: {
     knobs: PacingKnobs;
     state: PacingState;
@@ -138,7 +148,11 @@ export type GateVerdict =
   // `amendBody` (só o disclosureGate F4-05 o usa hoje): o gate PASSA mas pede que o corpo a
   // enviar seja reescrito (disclosure prependado). O runner aplica ao ctx.body (gates
   // seguintes veem o corpo emendado) E ao corpo que vai ao `send` — sem novo status de veredito.
-  | { pass: true; waitMs?: number; amendBody?: string }
+  //
+  // `skipped: 'not_applicable'` (invariante 4 de `docs/doctrine/restricao-de-canal.md`): a
+  // restrição não existe NESTE canal. Passa, mas o trace registra que não se aplicava — um
+  // `pass` silencioso apagaria a diferença entre "não regrediu" e "provo que não regrediu".
+  | { pass: true; waitMs?: number; amendBody?: string; skipped?: 'not_applicable' }
   | { pass: false; code: string; reason: string; nextAllowedAt?: Date; detail?: Record<string, string | number> };
 
 export interface Gate {
@@ -300,20 +314,35 @@ export const disclosureGate: Gate = {
   },
 };
 
-/** Gate 2 — anti-ban: janela/warm-up/cap vetam; throttle vira `waitMs` (espera, não veto). */
-const pacingGate: Gate = {
+/**
+ * Gate 2 — anti-ban: janela/warm-up/cap vetam; throttle vira `waitMs` (espera, não veto).
+ *
+ * A capability `banRisk` do canal decide se a parte ANTI-BAN arma. Ela entra em
+ * `decidePacing` em vez de curto-circuitar o gate porque a janela horária/domingo/fuso
+ * que vive no mesmo motor é CORTESIA e vale em todo canal (invariante 3 da doutrina):
+ * um `return` antes da decisão desarmaria o horário comercial junto e faria a IA acordar
+ * cliente às 3h. Quando o anti-ban não se aplica, o veredito carrega
+ * `skipped: 'not_applicable'` — o trace registra a inaplicabilidade (invariante 4); se a
+ * cortesia vetar, o veredito é veto normal e o skipped nem existe.
+ */
+export const pacingGate: Gate = {
   name: 'pacing',
   evaluate: (ctx) => {
+    const { banRisk } = capabilitiesOf(ctx.provider);
     const decision = decidePacing({
       now: ctx.now,
       knobs: ctx.pacing.knobs,
       state: ctx.pacing.state,
       crmDailyLimit: ctx.pacing.crmDailyLimit,
+      banRisk,
       rng: ctx.pacing.rng,
     });
-    return decision.allow
+    if (!decision.allow) {
+      return { pass: false, code: decision.code, reason: decision.reason, nextAllowedAt: decision.nextAllowedAt };
+    }
+    return banRisk
       ? { pass: true, waitMs: decision.waitMs }
-      : { pass: false, code: decision.code, reason: decision.reason, nextAllowedAt: decision.nextAllowedAt };
+      : { pass: true, waitMs: decision.waitMs, skipped: 'not_applicable' };
   },
 };
 
@@ -503,6 +532,10 @@ export async function runBeforeSend(args: RunBeforeSendArgs): Promise<BeforeSend
       now: args.now,
       body: args.body,
       optedOut,
+      // Provider fixo enquanto `channel_sessions.provider` não existe como coluna
+      // (Task 6 do plano do seam troca o literal pelo valor do banco). Hoje todo
+      // envio é WAHA: banRisk continua true e nada muda de comportamento.
+      provider: 'waha',
       pacing: { knobs: pacingCfg.knobs, state: pacingState, crmDailyLimit: args.crmDailyLimit, rng: args.rng },
       spinning: { knobs: spinningKnobs, window },
       promise: { table: promise?.table ?? null, ...(promise?.versionId !== undefined ? { versionId: promise.versionId } : {}) },
@@ -529,7 +562,14 @@ export async function runBeforeSend(args: RunBeforeSendArgs): Promise<BeforeSend
       }
       const verdict = gate.evaluate(ctx);
       if (verdict.pass) {
-        trace.push({ gate: gate.name, verdict: 'pass' });
+        // Gate que não se aplicava ao canal entra no trace como 'skipped' COM código
+        // (invariante 4): o 'skipped' sem código acima é o outro caso — gate não avaliado
+        // porque um anterior vetou. Passar como 'pass' apagaria a distinção na auditoria.
+        trace.push(
+          verdict.skipped !== undefined
+            ? { gate: gate.name, verdict: 'skipped', code: verdict.skipped }
+            : { gate: gate.name, verdict: 'pass' },
+        );
         if (verdict.waitMs !== undefined && verdict.waitMs > throttleWaitMs) throttleWaitMs = verdict.waitMs;
         // Emenda de corpo (F4-05 inject): o corpo a enviar passa a ser o emendado; gates
         // seguintes na cadeia o veem (ex.: spinning avalia o texto que de fato vai ao lead).

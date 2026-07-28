@@ -167,7 +167,7 @@ status = sent · external_id = 3EB0644366757BD8B9CA71 · error_code = null
 `external_id` não-nulo é o ID que o WhatsApp devolveu: a mensagem saiu de verdade, pelo
 `adapter.send`, com o `parseWahaMessageId` do outro lado do seam.
 
-### O Postgres local segfaultou no meio (e isso não é regressão do refactor)
+### O Postgres local segfaultou no meio (e isso não é regressão do refactor) — task4
 
 A primeira e a segunda execuções da jornada saíram sujas — toast `No active organization` e
 `/app/radar` redirecionando para `/app`. Ambos os sintomas são o mesmo defeito:
@@ -183,3 +183,34 @@ segfaultado 2× às 15:28/15:29, **antes** da execução da baseline. É defeito
 4b/4c/4d toca 3 arquivos — `app/api/v1/messages/_handler.ts`, `lib/channels/types.ts` e
 `lib/channels/adapters/waha.ts` — nenhum deles no caminho de auth ou do radar. A terceira
 execução, com o banco de pé, passou 3/3 e é a que está gravada aqui.
+
+---
+
+## `task5/` — a jornada com o pacing consultando a capability do canal (Task 5)
+
+A Task 5 ligou a capability (Task 2) no motor de pacing (Task 1): o gate pergunta
+`capabilitiesOf(ctx.provider).banRisk` e, quando o canal não tem risco de ban, o veredito
+carrega `skipped: 'not_applicable'` até o `before_send_traces`. **Em produção nada disso
+acontece ainda** — o ctx fixa `provider: 'waha'` (a coluna nasce na Task 6), `banRisk`
+continua `true` e o gate avalia como sempre. Esta pasta é a prova disso: o CSV tem que
+sair idêntico à baseline, e sai.
+
+| Arquivo | O que prova |
+|---|---|
+| `evidence/canais/task5/01-login.png` | login + MFA na conta real, com o build de HEAD |
+| `evidence/canais/task5/02-qr.png` | Conexões mostrando o estado real da sessão WAHA |
+| `evidence/canais/task5/03-inbox.png` | inbox carrega as 3 conversas do tenant |
+| `evidence/canais/task5/04-texto-enviado.png` | texto enviado pelo inbox |
+| `evidence/canais/task5/05-audio-enviado.png` | áudio enviado pelo inbox |
+| `evidence/canais/task5/06-followup.png` | follow-up agendado pela tela |
+| `evidence/canais/task5/07-radar.png` | Radar de Risco carregado |
+| `evidence/canais/task5/gates.csv` | a cadeia de um turno REAL de IA, **idêntica** à baseline (`diff` vazio, exit 0) — `pacing,pass`, sem `skipped`, porque o canal é WAHA |
+
+Build servido: `BUILD_ID etodPjlZdqc6OfLt3T50q` (feito **depois** do merge da `main`, que o
+build anterior — `4W3v83yHSysyCUIj3YQLD` — não continha). Worker reiniciado antes do turno:
+o gate alterado roda no worker (`inbound-turn`/`followup-turn`), não no Next, e o processo
+que estava de pé carregava `before-send.ts` do disco anterior à mudança.
+
+**O que este CSV NÃO prova (declarado):** o ramo `banRisk: false`. Nenhuma sessão é
+`meta_cloud` — não há como ser, o provider é literal. Quem prova esse ramo, incluindo a
+chegada do `skipped` na linha do banco, é `tests/unit/gate-pacing-capability.test.ts`.

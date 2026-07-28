@@ -42,6 +42,7 @@ O motivo é o acúmulo: quanto mais tarde o teste, mais causas possíveis para u
 | Task 4c (pre-check de configuração → `adapter.isConfigured()`) | ✅ `f0acb82` · adapter ganhou `isConfigured()` + `codes` (3 casos novos, vermelhos antes) · 8✓ · suíte 1063✓ exit 0 |
 | Task 4d (envio → `adapter.send`) | ✅ `c5221cb` · `getWahaClient` fora do handler · 8✓ · suíte 1063✓ exit 0 · sabotagem do ramo de mídia vermelha no caso certo |
 | Task 4e (jornada + `gates.csv`) | ✅ build refeito do HEAD (`BUILD_ID 4W3v83yHSysyCUIj3YQLD`, 15:20 > commits 15:04–15:12) · jornada **3✓/0✗** · `diff` do `gates.csv` contra a baseline **vazio** · envio manual pela tela chegou ao WAHA (`status='sent'`, `external_id='3EB0644366757BD8B9CA71'`) · evidência em `evidence/canais/task4/` |
+| Task 5 (capability desarma o pacing) | ✅ `pacingGate` exportado · `GateContext.provider` · `skipped:'not_applicable'` no veredito **e** na linha de `before_send_traces` · 5 casos novos, 4 sabotagens vermelhas no caso certo · jornada 3✓ e `gates.csv` **idêntico** à baseline · **discordância do plano registrada**: o curto-circuito que o plano pedia quebraria o invariante 3 |
 
 A Task 0 gravou a foto do "antes" e produziu 2 instrumentos reutilizáveis
 (`tests/journeys/`, `scripts/provoke-agent-turn.ts`). A **Task 1** é a primeira linha de
@@ -297,6 +298,62 @@ a doutrina de QA Visual do repo já diz que mock não estressa o egress real.
 | 2026-07-27 | **Task 4c** | Duas coisas, uma dependente da outra. (i) Contrato: `ChannelAdapter` ganhou `isConfigured(): boolean` e `readonly codes { notConfigured, sendFailed }`; `wahaAdapter` implementa com `getWahaClient() !== null` e os literais `waha_not_configured`/`waha_error`; 3 casos novos em `tests/unit/channel-adapter-waha.test.ts` (`vi.stubEnv` nos dois estados + os códigos). (ii) Handler: `if (!waha)` → `if (!adapter.isConfigured())` e `"waha_not_configured"` → `adapter.codes.notConfigured`. `getWahaClient()` mantido vivo (é a 4d que o remove) | **vermelho primeiro nos 3 casos novos** — o mais legível: `AssertionError: expected undefined to deeply equal { …(2) }` em `channel-adapter-waha.test.ts:75` (`codes carrega os literais que o handler grava`). Depois: 9✓ no arquivo do adapter; rede dos 8 → **8✓ exit 0**; suíte inteira **1063✓/0✗ · 140 arquivos · exit 0** (era 1060 — +3, os novos); typecheck **exit 0**; lint **exit 0** (156 warnings, 0 erros). Commit `f0acb82` | **o plano subestimou a armadilha:** "mantenha o `getWahaClient()` vivo" não faz o `tsc` passar — medi `TS18047: 'waha' is possibly 'null'` nas linhas 279 e 290, porque trocar o `if` tira o narrowing. Resolvido com `waha!` + comentário, apagado na 4d (ver seção "Duas armadilhas de compilação") |
 | 2026-07-27 | **Task 4d** | `waha!.sendMedia(...)`/`waha!.sendMessage(...)` + `parseWahaMessageId(...)` → **um** `adapter.send({ sessionRef, to, kind, media\|body })` por ramo; `"waha_error"` → `adapter.codes.sendFailed`; `getWahaClient`, `wahaSendPlanFor` e `parseWahaMessageId` saíram dos imports do handler (sobrou `isMediaPathOwnedBy`). `storage_sign_failed` **continua literal**, como o plano manda. Em `lib/channels/types.ts`, `OutboundKind` passou a derivar de `SendMessageInput["type"]` — sem isso não compila (ver armadilha 2). **+33/−28 linhas, 2 arquivos** | rede dos 8 → **8✓ exit 0**; suíte inteira **1063✓/0✗ · 140 arquivos · exit 0**; typecheck **exit 0**; lint **exit 0** (156 warnings, 0 erros). **Sabotagem pós-refactor:** renomeando a chave `media` do envelope, `× 4. com media_storage_path…` vermelheceu sozinho (1 falhou / 7 passaram) e o arquivo voltou com SHA-256 `9a8b73fc…` idêntico. O caso 6 (`error_message === 'waha_500'`, sem corpo) passou intacto → **a assimetria de erro atravessa o seam**, confirmando que o alerta da 4a não procedia. Commit `c5221cb` | (a) `OutboundKind` da Task 3 era mais estreito que o chamador real (5 valores à mão × 8 no schema) — corrigido derivando, sem mudança de comportamento; (b) sobrou `"waha_unknown"` na linha 306 (fallback de `error_message` quando o throw não é `Error`): fora do escopo da 4d, que só troca `error_code`; é dívida da Task 7, registrada na tabela acima; (c) **nada foi provado pela tela** — a jornada e o `gates.csv` são a Task 4e, conduzida separadamente |
 | 2026-07-27 | **Task 4e** | **Zero linha de produção.** Rebuild do HEAD `0074066` + restart do que servia código velho; jornada de 7 paradas re-vivida; `gates.csv` regravado com o filtro do turno da vez; prova extra do caminho manual (`evidence/canais/task4/08-envio-real.png`); `evidence/canais/README.md` ganhou a seção `task4/` | **O build era velho e isso foi medido antes de qualquer teste:** a 3007 servia `BUILD_ID K9dkpcdBMT642C2RDbP2_` de **13:16**, anterior aos commits `650a795`/`f0acb82`/`c5221cb` (15:04–15:12) — e o worker da 8797 tinha subido 13:17, também antes. Derrubei os dois (nossos), `pnpm build` **exit 0** → `BUILD_ID 4W3v83yHSysyCUIj3YQLD` às 15:20, e provei o conteúdo, não só o carimbo: **todo** chunk de `.next/server` que contém o handler (`media_storage_path fora da conversa`) contém também `resolveRecipient` (3/3). Jornada **3✓/0✗ em 37,5s**; turno REAL de IA provocado (trace `1a595cbe` às 18:24:05Z, 8 gates); `diff evidence/canais/baseline/gates.csv evidence/canais/task4/gates.csv` → **vazio, exit 0** (idem contra a `task1`). **A prova que o `gates.csv` não dá:** envio manual pelo inbox, pela tela, atravessando `adapter.send` inteiro → `messages.status='sent'`, `external_id='3EB0644366757BD8B9CA71'`, `error_code` nulo | (a) **o caminho manual nunca tinha chegado ao `adapter.send` neste banco** — na baseline, na task1 e na task4 as 3 mensagens do inbox morrem em `missing_phone_number` (contato do seed sem telefone) e a do turno de IA em `channel_session_not_working`: o `diff` vazio prova a cadeia de gates, não o envio. Para exercitar o ramo, apontei **temporariamente** a sessão do seed para a sessão WAHA `WORKING` e dei ao contato o número da própria conta do WAHA (envio para si mesmo), enviei pela tela, medi, e **reverti os dois campos** aos valores originais; (b) **o Postgres local segfaultou 2× no meio** (`signal 11` às 18:22:51 e 18:28:41 UTC, PostgREST `503 PGRST002`, GoTrue em `recovery mode`) e sujou as duas primeiras execuções da jornada — sintomas `No active organization` e `/app/radar` redirecionando para `/app`. Mesmo container já tinha segfaultado 2× às 15:28/15:29, **antes** da baseline: é defeito do stack local, e o diff de produção das 4b/4c/4d toca 3 arquivos, nenhum no caminho de auth/radar. Terceira execução, com o banco de pé, 3✓; (c) **defeito real que o crash expôs, e que NÃO é desta branch:** `loadAuthUser` (`lib/auth/server.ts:46-50`) descarta o erro do `select` em `user_organizations` — falha de query vira "usuário sem organização" e o app responde 403 `no_active_org`/redireciona, sem dizer que o banco caiu. Não consertei (fora do escopo); (d) `evidence/canais/task4/03-inbox.png` pegou a timeline ainda carregando: a jornada não espera a primeira bolha, só o campo "Mensagem" |
+| 2026-07-27 | **Task 5** | `pacingGate` passou a ser **exportado** (era o único gate privado da cadeia); `GateContext` ganhou `provider: ChannelProvider`; `GateVerdict` do ramo `pass` ganhou `skipped?: 'not_applicable'`; o gate pergunta `capabilitiesOf(ctx.provider).banRisk` e **passa a flag a `decidePacing`** (não curto-circuita — ver discordância abaixo); o runner traduz o terceiro estado em `{verdict:'skipped', code:'not_applicable'}` no trace, que é o que entra no `INSERT` de `before_send_traces`; o ctx de produção fixa `provider: 'waha'` com comentário (a Task 6 troca pelo valor do banco). Novo `tests/unit/gate-pacing-capability.test.ts` (5 casos); `tests/invariants/case-guardrail.test.ts` ganhou o campo novo no `baseCtx`. **+46/−6 linhas de produção, 1 arquivo** | **vermelho primeiro, no caso certo:** `TypeError: Cannot read properties of undefined (reading 'evaluate')` — 5✗ porque `pacingGate` não era exportado. Depois: **5✓ exit 0** no arquivo; suíte inteira **1077✓/1✗ · 142 arquivos · exit 1** — o único vermelho é `tests/unit/evidencia-citada.test.ts > docs/growth/lp-prompts-imagens.md`, que veio da `main` no merge `eba0554` e é da frente de growth (a régua da branch era 1072✓/1✗; +5 são os meus). typecheck **exit 0**; lint **exit 0** (156 warnings, 0 erros — igual à baseline, nenhum nos meus arquivos). **4 sabotagens, cada uma vermelha só onde devia:** (1) veredito sem `skipped` → 3✗; (2) `banRisk` invertido → 4✗; (3) runner empurrando `'pass'` em vez de `'skipped'` → **1✗, só o caso de propagação** (é o defeito que os testes de gate não pegariam); (4) a implementação literal do plano (`if (!caps.banRisk) return` antes de `decidePacing`) → **1✗, só o caso do invariante 3**. Restaurado com `git diff` do arquivo limpo. Pela tela: build novo (`BUILD_ID etodPjlZdqc6OfLt3T50q`, pós-merge da `main`) + **worker reiniciado** (o gate roda lá, não no Next), jornada **3✓/0✗ em 35,5s** (`evidence/canais/task5/`), turno REAL de IA (trace `2cfc2fde` às 00:39:24Z, 8 gates, processado pelo MEU worker — o log tem as 8 linhas e o `turno do agente concluído`), `diff evidence/canais/baseline/gates.csv evidence/canais/task5/gates.csv` → **vazio, exit 0** | (a) o build da 3007 estava morto **e** velho: o merge `eba0554` trouxe da `main` mudanças em `app/(public)/login/*`, `lib/branding.ts` e `lib/env.ts` que o `BUILD_ID 4W3v83yHSysyCUIj3YQLD` (15:20) não continha — jornada contra ele mediria código que não é o HEAD; (b) `next start` avisa que não funciona com `output: standalone` e serve assim mesmo (mesma receita das tasks anteriores, mantida para não trocar a régua); (c) o `gates.csv` **não** prova o ramo `banRisk:false` e não tem como provar — o provider é literal até a Task 6; quem prova é o teste unitário, e a sabotagem (3) é a prova de que ele prova |
+
+### O freeze de `tests/invariants/**` barrou a Task 5 (e por que a exceção foi usada)
+
+`loop/hooks/freeze-invariants.sh` bloqueia qualquer `M`/`D`/`R` em `tests/invariants/`. A
+Task 5 precisou de **uma linha** em `tests/invariants/case-guardrail.test.ts`: o `baseCtx`
+local monta um `GateContext` completo, e o campo novo `provider` é obrigatório — sem ele o
+`tsc` reprova (`TS2322 ... Type 'undefined' is not assignable to type 'ChannelProvider'`).
+
+**Não é o caso de exceção que o hook prevê** (o flip de `test.fails`), e por isso fica
+registrado aqui em vez de passar batido: a alternativa seria tornar `provider` opcional com
+default `'waha'` dentro do gate — o que enfraqueceria o contrato por motivo de processo e
+deixaria um caller futuro (a Task 6) esquecer o campo em silêncio. Nenhuma asserção do
+invariante mudou: o diff é `+ provider: "waha",` no fixture, e os 6 casos do arquivo
+continuam idênticos e verdes. Commitado com `DESKCOMM_GOV_INVARIANTS_EDIT=1` citado no
+commit message.
+
+### Discordância com o plano (Task 5): `skipped` não pode ser curto-circuito
+
+O Step 3 do plano manda:
+
+```ts
+const caps = capabilitiesOf(ctx.provider);
+if (!caps.banRisk) return { pass: true, skipped: 'not_applicable' };
+```
+
+**Isso apagaria o invariante 3 no exato ponto em que ele passa a valer.** O gate `pacing` é o
+ÚNICO chamador de `decidePacing` em produção; a janela horária/domingo/fuso — cortesia, que
+vale em todo canal — mora dentro desse motor, antes do bloco anti-ban (`engine.ts:62-78`, obra
+da Task 1). Um `return` antes da chamada não desarma só throttle/warm-up/cap: leva a janela
+junto, e a IA passa a poder falar às 3h da manhã no canal oficial. O `banRisk` da Task 1 nunca
+chegaria ao motor que sabe usá-lo.
+
+O que foi implementado: a flag **entra** em `decidePacing`, e o `skipped` é marcado no
+veredito quando a decisão permite e o canal não tem risco de ban. Se a cortesia vetar, o
+veredito é veto normal — `skipped` nem existe.
+
+**Prova de que a diferença é real, não estilística:** o caso
+`invariante 3: sem risco de ban, a CORTESIA (janela) continua vetando` foi rodado contra a
+implementação literal do plano e ficou **vermelho sozinho** (1✗/4✓), com
+`expected true to be false` — o gate deixava passar às 03h BRT.
+
+### O terceiro estado no trace: `skipped` com código vs. `skipped` sem código
+
+`GateTraceEntry.verdict` já tinha `'skipped'` antes desta task — é o que o runner grava nos
+gates **não avaliados** depois de um veto (curto-circuito da cadeia). O estado novo reusa o
+mesmo verdict e se distingue pelo **código**:
+
+| Linha no trace | Significa |
+|---|---|
+| `{gate:'pacing', verdict:'skipped'}` | não foi avaliado: um gate anterior vetou |
+| `{gate:'pacing', verdict:'skipped', code:'not_applicable'}` | foi avaliado, e a restrição não existe neste canal |
+
+Nada foi acrescentado ao tipo do trace nem à versão da cadeia (`BEFORE_SEND_CHAIN_VERSION`
+segue 4): a ordem e a composição de `BEFORE_SEND_GATES` não mudaram — o gate continua na
+cadeia, que é metade do invariante 4.
 
 ### Duas armadilhas de compilação das Tasks 4c/4d (medidas, não previstas pelo plano)
 
