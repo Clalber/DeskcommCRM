@@ -68,11 +68,15 @@ docker compose version >/dev/null 2>&1 || die "'docker compose' (v2) não encont
 docker info >/dev/null 2>&1 || die "O daemon do Docker não está rodando (ou seu usuário não tem permissão)."
 c_grn "✓ docker, git, openssl, curl ok"
 
-# RAM: a imagem é pré-buildada (não builda no VPS), então 2GB rodam. Avisa se <1.5GB.
+# RAM: a imagem é pré-buildada, então a stack SOBE com 2GB. Mas o runbook de produção
+# declara 4GB como mínimo de operação: 7 contêineres, e o WAHA usa ~150MB por sessão
+# sobre ~300MB de overhead do Node. Avisar só abaixo de 1.5GB deixava o operador
+# instalar em 2GB achando que estava dentro do recomendado.
 if [ -r /proc/meminfo ]; then
   mem_kb=$(awk '/MemTotal/{print $2}' /proc/meminfo)
-  if [ "$mem_kb" -lt 1500000 ]; then
-    c_ylw "⚠ RAM total ~$((mem_kb/1024))MB. Recomendado >=2GB. Adicione swap se ficar apertado."
+  if [ "$mem_kb" -lt 4000000 ]; then
+    c_ylw "⚠ RAM total ~$((mem_kb/1024))MB. Recomendado 4GB para operar (2GB sobe, mas no limite)."
+    c_ylw "  Com menos de 4GB, adicione swap — ver docs/runbooks/waha-hostgator.md."
   fi
 fi
 
