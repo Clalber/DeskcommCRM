@@ -5,7 +5,7 @@
  * como erro instrutivo (o modelo a vê no turno seguinte); só se TODOS passarem a
  * mensagem alcança o `ChannelAdapter` (e, por baixo, o sink idempotente F2-06).
  *
- * Ordem FINAL v4 (DECLARATIVA + VERSIONADA — `BEFORE_SEND_GATES`/`BEFORE_SEND_CHAIN_VERSION`,
+ * Ordem FINAL v5 (DECLARATIVA + VERSIONADA — `BEFORE_SEND_GATES`/`BEFORE_SEND_CHAIN_VERSION`,
  * F4-08/F4-09): (1) stop/opt-out — irrevogável; (2) lgpd — anonimização/base legal de
  * prospecção (F4-09); (3) anti-ban (janela/throttle/warm-up/caps — F2-11); (4) spinning
  * (F2-12); (5) promise determinística (F4-01); (6) promise semântica (F4-02); (6.5) case
@@ -66,6 +66,7 @@ import { detectHumanPromise } from './human-promise';
 // Módulo PURO de propósito (`capabilities`, não `index`): o seam não arrasta o
 // adapter — e com ele o cliente HTTP do canal — para dentro do worker.
 import { capabilitiesOf, DEFAULT_CHANNEL_PROVIDER } from '@/lib/channels/capabilities';
+import { isWindowOpen } from './messaging-window';
 import type { ChannelProvider } from '@/lib/channels/capabilities';
 
 /** O que os gates enxergam — carregado UMA vez sob o lock, por tentativa de envio. */
@@ -85,6 +86,22 @@ export interface GateContext {
    * para perguntar o que o canal permite.
    */
   provider: ChannelProvider;
+  /**
+   * Insumo da janela de 24h. Guardamos o CARIMBO, não o veredito: a janela é
+   * derivada (ver `messaging-window.ts`), e passar um booleano já decidido faria o
+   * gate confiar numa conta feita em outro lugar, em outro instante.
+   *
+   * **OPCIONAL de propósito, diferente de `provider`** — e a razão não é conveniência.
+   * Ausente vale `lastInboundAt: null`, que a janela lê como FECHADA: um chamador que
+   * esqueça o campo produz VETOS visíveis, não envios errados silenciosos. `provider`
+   * não tinha default seguro (qualquer escolha mente sobre metade dos canais), então
+   * lá a obrigatoriedade se paga; aqui o default é a direção segura, e mantê-lo
+   * opcional evita tocar num invariante congelado só para satisfazer o compilador.
+   */
+  messagingWindow?: {
+    /** `conversations.last_inbound_at`. `null` = contato nunca escreveu. */
+    lastInboundAt: Date | null;
+  };
   pacing: {
     knobs: PacingKnobs;
     state: PacingState;
@@ -353,6 +370,41 @@ export const pacingGate: Gate = {
 };
 
 /** Gate 3 — spinning: template idêntico em massa na janela do número → veto ("varie"). */
+/**
+ * Gate 3.5 — janela de atendimento. **Irmão do anti-ban, com física invertida.**
+ *
+ * O anti-ban é auto-restrição: posso falar quando quiser, mas o canal me bane se eu
+ * abusar. Este é hetero-restrição: não me banem, mas a plataforma me PROÍBE e me
+ * COBRA. Nenhum é subconjunto do outro, e por isso convivem lado a lado em vez de
+ * um generalizar o outro (doutrina `restricao-de-canal.md`).
+ *
+ * Posição: logo após `pacing`, depois dos vetos irrevogáveis (`stop`, `lgpd`) e antes
+ * de `spinning`, que só faz sentido se o envio for acontecer.
+ *
+ * A `reason` diz a SAÍDA, não só o problema. Veto que apenas nega faz o modelo tentar
+ * de novo igual — e a cadeia devolve a razão a ele como erro instrutivo.
+ */
+export const messagingWindowGate: Gate = {
+  name: 'messaging_window',
+  evaluate: (ctx) => {
+    const caps = capabilitiesOf(ctx.provider);
+    // Canal que fala livre a qualquer hora não tem janela. `skipped`, nunca `pass`
+    // silencioso: a diferença entre "não regrediu" e "consigo PROVAR que não
+    // regrediu" é esta linha no trace (invariante 4 da doutrina).
+    if (caps.freeformOutsideWindow) return { pass: true, skipped: 'not_applicable' };
+
+    if (isWindowOpen(ctx.now, ctx.messagingWindow?.lastInboundAt ?? null)) return { pass: true };
+
+    return {
+      pass: false,
+      code: 'messaging_window_closed',
+      reason:
+        'a janela de 24 horas com este contato fechou; o canal vai recusar texto livre. ' +
+        'Use um template aprovado (ferramenta send_template) ou encerre o turno sem enviar.',
+    };
+  },
+};
+
 const spinningGate: Gate = {
   name: 'spinning',
   evaluate: (ctx) => {
@@ -378,9 +430,12 @@ const spinningGate: Gate = {
  * cadeia definitiva com os gates F4 (F4-08); v3 = insere o gate LGPD (F4-09) na posição 2,
  * junto do stop entre os vetos de conformidade irrevogáveis, antes do anti-ban; v4 = insere
  * `casePromiseGate` (spec 15 §10.2, Wave 4) logo após `semanticPromiseGate` — a garantia dura
- * do guardrail anti-alucinação de casos humanos.
+ * do guardrail anti-alucinação de casos humanos; v5 = insere `messagingWindowGate`
+ * logo após `pacing` — o irmão de hetero-restrição do anti-ban (Fase 4 do seam de
+ * canais). Em canal sem janela ele registra `skipped`, então nenhum envio muda de
+ * destino: a v5 muda o TRACE, não o comportamento.
  */
-export const BEFORE_SEND_CHAIN_VERSION = 4;
+export const BEFORE_SEND_CHAIN_VERSION = 5;
 
 /**
  * Ordem FINAL da cadeia (F4-08/F4-09; edge-contract §before_send / blueprint órgão 5) — DADO
@@ -400,6 +455,7 @@ export const BEFORE_SEND_GATES: readonly Gate[] = [
   stopGate,
   lgpdGate,
   pacingGate,
+  messagingWindowGate,
   spinningGate,
   promiseGate,
   semanticPromiseGate,
@@ -540,11 +596,19 @@ export async function runBeforeSend(args: RunBeforeSendArgs): Promise<BeforeSend
         ? (await countPriorAcceptedSends(client, args.tenantId, args.leadId)) === 0
         : false;
 
+    const lastInboundAt = await readLastInboundAt(
+      client,
+      args.tenantId,
+      args.leadId,
+      args.channelSessionId,
+    );
+
     const ctx: GateContext = {
       now: args.now,
       body: args.body,
       optedOut,
       provider,
+      messagingWindow: { lastInboundAt },
       pacing: { knobs: pacingCfg.knobs, state: pacingState, crmDailyLimit: args.crmDailyLimit, rng: args.rng },
       spinning: { knobs: spinningKnobs, window },
       promise: { table: promise?.table ?? null, ...(promise?.versionId !== undefined ? { versionId: promise.versionId } : {}) },
@@ -702,6 +766,33 @@ async function readStopFlags(db: Queryable, organizationId: string, contactId: s
     [organizationId, contactId],
   );
   return rows[0]?.stopped === true;
+}
+
+/**
+ * `conversations.last_inbound_at` da conversa deste turno — o INSUMO da janela de 24h.
+ *
+ * Lê o carimbo, não o veredito: a janela é derivada (`messaging-window.ts`). Se a
+ * conversa não existe (ou nunca teve inbound), devolve `null`, que o gate lê como
+ * janela FECHADA — a direção segura.
+ *
+ * `channel_session_id` entra na chave porque o mesmo contato pode ter conversas em
+ * números diferentes, e a janela é por conversa, não por pessoa: responder no número
+ * A não abre licença para escrever pelo número B.
+ */
+async function readLastInboundAt(
+  db: Queryable,
+  organizationId: string,
+  contactId: string,
+  channelSessionId: string,
+): Promise<Date | null> {
+  const { rows } = await db.query<{ last_inbound_at: Date | null }>(
+    `select last_inbound_at from conversations
+      where organization_id = $1 and contact_id = $2 and channel_session_id = $3
+      order by last_inbound_at desc nulls last
+      limit 1`,
+    [organizationId, contactId, channelSessionId],
+  );
+  return rows[0]?.last_inbound_at ?? null;
 }
 
 /** Trace estruturado: uma linha por gate avaliado (ids não são PII; corpo nunca é logado). */

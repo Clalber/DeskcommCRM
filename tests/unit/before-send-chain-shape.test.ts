@@ -27,6 +27,7 @@ const ORDEM_ESPERADA = [
   "stop",
   "lgpd",
   "pacing",
+  "messaging_window",
   "spinning",
   "promise",
   "semantic_promise",
@@ -45,6 +46,14 @@ describe("forma da cadeia before_send", () => {
     expect(BEFORE_SEND_GATES[0]!.name).toBe("stop");
   });
 
+  it("os dois gates de 'posso falar agora?' ficam lado a lado", () => {
+    // pacing (auto-restrição: o canal me BANE) e messaging_window
+    // (hetero-restrição: a plataforma me PROÍBE) são irmãos com física
+    // invertida. Separá-los na cadeia esconderia o parentesco de quem lê.
+    const nomes = BEFORE_SEND_GATES.map((g) => g.name);
+    expect(nomes.indexOf("messaging_window")).toBe(nomes.indexOf("pacing") + 1);
+  });
+
   it("lgpd vem antes de qualquer gate que gaste recurso", () => {
     const nomes = BEFORE_SEND_GATES.map((g) => g.name);
     expect(nomes.indexOf("lgpd")).toBeLessThan(nomes.indexOf("pacing"));
@@ -54,8 +63,8 @@ describe("forma da cadeia before_send", () => {
     // O par (tamanho, versão) é o que amarra os dois. Acrescentar um gate sem
     // bumpar deixa o trace de auditoria mentindo sobre qual cadeia rodou — e o
     // trace é justamente a prova que as Fases 0–2 usam para dizer "não regrediu".
-    expect(BEFORE_SEND_GATES).toHaveLength(8);
-    expect(BEFORE_SEND_CHAIN_VERSION).toBe(4);
+    expect(BEFORE_SEND_GATES).toHaveLength(9);
+    expect(BEFORE_SEND_CHAIN_VERSION).toBe(5);
   });
 
   it("nenhum gate repetido — nome duplicado quebraria a leitura do trace", () => {
