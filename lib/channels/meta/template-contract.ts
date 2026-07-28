@@ -54,9 +54,19 @@ export interface ParamSlot {
   contextAfter: string;
 }
 
+/**
+ * `POSITIONAL` = `{{1}}`; `NAMED` = `{{customer_name}}`. Vem da própria Meta
+ * (campo `parameter_format` do template) e **muda o payload de envio**:
+ * posicional manda `{type:'text', text:'…'}`; nomeado exige
+ * `{type:'text', parameter_name:'customer_name', text:'…'}`. Deduzir isto do
+ * formato da chave seria adivinhação — a Meta declara, então a gente lê.
+ */
+export type ParameterFormat = "POSITIONAL" | "NAMED";
+
 export interface TemplateContract {
   name: string;
   language: string;
+  parameterFormat: ParameterFormat;
   slots: ParamSlot[];
 }
 
@@ -170,6 +180,7 @@ function slotsFromLeafComponents(
 export function deriveTemplateContract(t: {
   name: string;
   language: string;
+  parameter_format?: string;
   components?: MetaComponent[];
 }): TemplateContract {
   const components = t.components ?? [];
@@ -189,7 +200,15 @@ export function deriveTemplateContract(t: {
     });
   }
 
-  return { name: t.name, language: t.language, slots };
+  return {
+    name: t.name,
+    language: t.language,
+    // Default POSITIONAL: é o que a Meta assume quando o campo não vem, e é o
+    // formato de todo template legado. Nunca inferir da CHAVE ('1' vs 'nome') —
+    // um template NAMED com chave numérica existe e seria classificado errado.
+    parameterFormat: t.parameter_format === "NAMED" ? "NAMED" : "POSITIONAL",
+    slots,
+  };
 }
 
 /** Rótulo humano de um endereço — usado na tela e nas mensagens de erro. */
