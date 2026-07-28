@@ -139,4 +139,64 @@ describe('o skipped do gate chega em before_send_traces', () => {
       { gate: 'pacing', verdict: 'skipped', code: 'not_applicable' },
     ]);
   });
+
+  /**
+   * Task 6 fechou a última suposição: o ctx de produção lê
+   * `channel_sessions.provider` (migration 0087) em vez de fixar 'waha'.
+   *
+   * O teste acima injeta um gate que TROCA o provider — ele mede o runner, não a
+   * origem do valor. Este mede a origem: a cadeia é o `pacingGate` REAL, sem
+   * injeção, e o único motivo de o veredito sair `skipped` é o banco ter
+   * respondido `meta_cloud`. Com o literal de volta no lugar da consulta, sai
+   * `pass` e isto fica vermelho.
+   */
+  async function rodaComProviderNoBanco(provider: string) {
+    // O cap ESTOURADO é o que torna a origem do provider observável: em 'waha' o
+    // anti-ban veta; em 'meta_cloud' ele desarma e o envio passa. Dentro da janela
+    // comercial, para que a cortesia (que vale nos dois canais) não decida o
+    // desfecho e mascare a diferença.
+    const client = {
+      query: vi.fn(async (sql: string) => {
+        const q = String(sql);
+        if (q.includes('from channel_sessions')) return { rows: [{ provider }] };
+        if (q.includes('from pacing_ledger')) return { rows: [{ last_sent_at: null, sent_today: '999' }] };
+        return { rows: [] };
+      }),
+      release: vi.fn(),
+    };
+    const persisted = vi.fn().mockResolvedValue({ rows: [{ id: 'trace-1' }] });
+    const pool = { connect: vi.fn().mockResolvedValue(client), query: persisted } as unknown as pg.Pool;
+    const log: Logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+
+    return runBeforeSend({
+      pool,
+      log,
+      tenantId: '00000000-0000-4000-8000-000000000001',
+      leadId: '00000000-0000-4000-8000-000000000002',
+      jobId: '00000000-0000-4000-8000-000000000003',
+      channelSessionId: '00000000-0000-4000-8000-000000000004',
+      body: 'oi',
+      optedOutThisTurn: false,
+      crmDailyLimit: null,
+      now: COMERCIAL,
+      rng: () => 0,
+      sleep: async () => {},
+      gates: [pacingGate],
+      send: async () => ({ kind: 'sent', idempotencyKey: 'k', messageId: 'm' }),
+    });
+  }
+
+  it('o provider do ctx sai de channel_sessions, não de literal', async () => {
+    // Sem injeção de gate: a cadeia é o `pacingGate` REAL, e a ÚNICA variável
+    // entre as duas rodadas é a linha que o banco devolve. Com o literal de volta
+    // no lugar da consulta, as duas rodadas dariam o mesmo desfecho e o par abaixo
+    // ficaria vermelho.
+    const meta = await rodaComProviderNoBanco('meta_cloud');
+    expect(meta.status).toBe('sent');
+    expect(meta.trace).toEqual([{ gate: 'pacing', verdict: 'skipped', code: 'not_applicable' }]);
+
+    const waha = await rodaComProviderNoBanco('waha');
+    expect(waha.status).toBe('vetoed');
+    expect(waha.trace[0]?.verdict).toBe('veto');
+  });
 });

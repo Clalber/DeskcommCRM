@@ -7939,3 +7939,52 @@ update public.crm_stages
 -- escolha de índice em consultas de crm_leads (medido no G4-04). Custa
 -- milissegundos numa tabela vazia.
 analyze public.crm_leads;
+
+-- ---- channel provider (migration 0087) ----
+-- O canal deixa de ser suposto. Até aqui o sistema INTEIRO supunha WAHA (o
+-- handler de envio chamava `getAdapter("waha")` com literal; o ctx de produção
+-- do `before_send` fixava `provider: 'waha'`), e supor o canal é o que impede o
+-- seam de existir.
+--
+-- Tagged union, não flag: `provider` sozinho aceitaria uma sessão `meta_cloud`
+-- sem `meta_phone_number_id` e uma `waha` sem `waha_session_name` — as duas
+-- irresolvíveis na hora do envio, descobertas em runtime com a mensagem do
+-- cliente já aceita. O CHECK move a descoberta para o INSERT.
+--
+-- `waha_session_name` perde o NOT NULL porque ele É o identificador de um dos
+-- ramos da união; obrigatório, `meta_cloud` seria inexprimível. A UNIQUE dele
+-- continua valendo (NULLs são distintos no Postgres).
+--
+-- NÃO cria índice único de (organization_id, phone_number): a trava já existe
+-- desde o snapshot — `channel_sessions_phone_per_org_unique ... DEFERRABLE
+-- INITIALLY DEFERRED` — e já responde a "um número vive em UM provider", porque
+-- não olha o provider. Duplicá-la custaria checagem em toda escrita e colocaria
+-- uma trava NÃO-deferível ao lado de uma deferível, quebrando no meio qualquer
+-- transação que hoje troca números entre sessões.
+--
+-- Auto-curativo para o `update.sh` de clone: o default preenche as linhas
+-- existentes no mesmo ALTER e `waha_session_name` era NOT NULL antes desta
+-- mudança — então TODA linha pré-existente já satisfaz o ramo 'waha' quando o
+-- CHECK nasce. Não há dado a deduplicar antes da constraint.
+alter table public.channel_sessions
+  add column if not exists provider text not null default 'waha',
+  add column if not exists meta_phone_number_id text,
+  add column if not exists meta_waba_id text,
+  add column if not exists meta_token_encrypted bytea;
+
+alter table public.channel_sessions alter column waha_session_name drop not null;
+
+do $$ begin
+  alter table public.channel_sessions add constraint channel_sessions_provider_check
+    check (provider = any (array['waha'::text, 'meta_cloud'::text]));
+exception when duplicate_object then null; end $$;
+
+do $$ begin
+  alter table public.channel_sessions add constraint channel_sessions_provider_ref_check check (
+    (provider = 'waha'       and waha_session_name    is not null) or
+    (provider = 'meta_cloud' and meta_phone_number_id is not null)
+  );
+exception when duplicate_object then null; end $$;
+
+comment on column public.channel_sessions.provider is
+  'Canal desta sessão. Vocabulário espelhado em lib/channels/types.ts → ChannelProvider (cobrado por tests/invariants/vocabulario-banco-x-typescript.test.ts).';

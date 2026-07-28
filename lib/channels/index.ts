@@ -20,7 +20,7 @@ export function getAdapter(provider: ChannelProvider): ChannelAdapter {
   return adapter;
 }
 
-export { capabilitiesOf, CHANNEL_CAPABILITIES } from "./capabilities";
+export { capabilitiesOf, CHANNEL_CAPABILITIES, DEFAULT_CHANNEL_PROVIDER } from "./capabilities";
 export type {
   ChannelAdapter,
   ChannelCapabilities,

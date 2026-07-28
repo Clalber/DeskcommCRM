@@ -214,3 +214,53 @@ que estava de pé carregava `before-send.ts` do disco anterior à mudança.
 **O que este CSV NÃO prova (declarado):** o ramo `banRisk: false`. Nenhuma sessão é
 `meta_cloud` — não há como ser, o provider é literal. Quem prova esse ramo, incluindo a
 chegada do `skipped` na linha do banco, é `tests/unit/gate-pacing-capability.test.ts`.
+
+---
+
+## `task6/` — a jornada com o `provider` vindo do BANCO (Task 6)
+
+A Task 6 tirou os dois últimos literais `'waha'` do caminho de produção: o handler de
+envio resolve o adapter por `channel_sessions.provider` (`app/api/v1/messages/_handler.ts`)
+e o ctx do `before_send` lê a mesma coluna (`lib/agent-engine/guardrails/before-send.ts`).
+Como toda sessão existente nasce `provider='waha'` pelo `default` da migration 0087, **nada
+pode mudar** — e é isso que esta pasta mede.
+
+| Arquivo | O que prova |
+|---|---|
+| `evidence/canais/task6/01-login.png` | login + MFA na conta real, com o build de HEAD |
+| `evidence/canais/task6/02-qr.png` | Conexões mostrando o estado real da sessão WAHA |
+| `evidence/canais/task6/03-inbox.png` | inbox carrega as conversas do tenant |
+| `evidence/canais/task6/04-texto-enviado.png` | texto enviado pelo inbox — agora com o adapter resolvido pela coluna |
+| `evidence/canais/task6/05-audio-enviado.png` | áudio enviado pelo inbox — ramo de mídia do `adapter.send` |
+| `evidence/canais/task6/06-followup.png` | follow-up agendado pela tela |
+| `evidence/canais/task6/07-radar.png` | Radar de Risco carregado |
+| `evidence/canais/task6/gates.csv` | a cadeia de um turno REAL de IA, **idêntica** à baseline (`diff` vazio, exit 0) |
+
+Build servido: `BUILD_ID 2M1TD9Dp7TONA5qDJ-_Ps`, feito depois da migration e das duas
+trocas de literal. Worker reiniciado no `HEALTH_PORT=8797` antes do turno — `before-send.ts`
+roda no worker, e o processo de pé carregava o arquivo anterior à mudança.
+
+### Três medições intermediárias descartadas, e por quê (declarado, não escondido)
+
+O primeiro turno saiu `stop,veto,contato_bloqueado`; o segundo foi **pulado** ("lead em
+handoff humano"); o terceiro saiu `pacing,veto,outside_window`. Nenhum dos três é
+comparável com a baseline, e nenhum tem a ver com o diff desta task:
+
+1. **`force_human`** — o `provoke-agent-turn.ts` manda **o mesmo texto** toda vez, e este
+   era o 7º envio idêntico: o agente concluiu, com razão, que o padrão inviabiliza
+   atendimento por bot e aplicou handoff humano *dentro do próprio turno* (worker log
+   01:08:03), três segundos antes de a cadeia rodar. Deriva de dado causada por medir
+   repetidas vezes com o mesmo estímulo — não por código.
+2. **`bot_silenced_until`** — resquício do handoff acima, que faz `isLeadInHandoff`
+   abortar o turno **antes** do `before_send` (nem trace nasce).
+3. **`outside_window`** — eram 22h10 BRT, e a janela de cortesia padrão termina às 22h. É
+   diferença de RELÓGIO, não de código: a baseline foi gravada de dia.
+
+Comparar a baseline com qualquer um deles seria teste confundido — duas variáveis mudando
+(o diff **e** o estado/hora) com uma resposta só. As três variáveis foram controladas antes
+da medição válida: `force_human` e `bot_silenced_until` voltaram a `false`/`null` (o valor
+que tinham quando a baseline foi gravada), e uma linha **temporária** em `channel_knobs`
+(`window_end_hour = 23`, `number_activated_at = now() - 60 dias`, para não cair no cap de
+warm-up) reproduziu a condição "dentro da janela". **A linha foi apagada em seguida** —
+`channel_knobs` voltou a zero linhas, que é como estava. O que ficou no banco é o estado
+anterior às medições.

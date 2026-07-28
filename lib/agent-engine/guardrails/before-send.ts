@@ -59,7 +59,7 @@ import type { LgpdInput } from './lgpd/legal-basis';
 import { detectHumanPromise } from './human-promise';
 // Módulo PURO de propósito (`capabilities`, não `index`): o seam não arrasta o
 // adapter — e com ele o cliente HTTP do canal — para dentro do worker.
-import { capabilitiesOf } from '@/lib/channels/capabilities';
+import { capabilitiesOf, DEFAULT_CHANNEL_PROVIDER } from '@/lib/channels/capabilities';
 import type { ChannelProvider } from '@/lib/channels/capabilities';
 
 /** O que os gates enxergam — carregado UMA vez sob o lock, por tentativa de envio. */
@@ -504,6 +504,7 @@ export async function runBeforeSend(args: RunBeforeSendArgs): Promise<BeforeSend
 
     // Estado confiável carregado SOB o lock (os contadores de cap/janela de copies
     // são racy — precisam ver o que o worker anterior já efetivou).
+    const provider = await loadChannelProvider(client, args.tenantId, args.channelSessionId);
     const optedOut = args.optedOutThisTurn || (await readStopFlags(client, args.tenantId, args.leadId));
     const pacingCfg = await loadChannelKnobs(client, args.tenantId, args.channelSessionId, args.log);
     const pacingState = await loadPacingState(client, args.tenantId, args.channelSessionId, {
@@ -532,10 +533,7 @@ export async function runBeforeSend(args: RunBeforeSendArgs): Promise<BeforeSend
       now: args.now,
       body: args.body,
       optedOut,
-      // Provider fixo enquanto `channel_sessions.provider` não existe como coluna
-      // (Task 6 do plano do seam troca o literal pelo valor do banco). Hoje todo
-      // envio é WAHA: banRisk continua true e nada muda de comportamento.
-      provider: 'waha',
+      provider,
       pacing: { knobs: pacingCfg.knobs, state: pacingState, crmDailyLimit: args.crmDailyLimit, rng: args.rng },
       spinning: { knobs: spinningKnobs, window },
       promise: { table: promise?.table ?? null, ...(promise?.versionId !== undefined ? { versionId: promise.versionId } : {}) },
@@ -665,6 +663,27 @@ export async function runBeforeSend(args: RunBeforeSendArgs): Promise<BeforeSend
  * STOP direto da fonte (pós-fusão, mesmo banco): `contacts.is_blocked` OR
  * `contacts.force_human`, lidos sob o lock — não existe mais cache no harness.
  */
+/**
+ * O canal desta sessão, do banco (migration 0087) — nunca suposto.
+ *
+ * Sessão ilegível cai no default conservador em vez de estourar: o valor é o
+ * mesmo do `default` da coluna, então o comportamento é idêntico ao do literal
+ * que esta função substitui. Errar para o lado de `meta_cloud` desarmaria o
+ * anti-ban (`banRisk`) num número que pode ser banido — o erro caro é esse.
+ */
+async function loadChannelProvider(
+  db: Queryable,
+  organizationId: string,
+  channelSessionId: string,
+): Promise<ChannelProvider> {
+  const { rows } = await db.query<{ provider: string }>(
+    'select provider from channel_sessions where organization_id = $1 and id = $2',
+    [organizationId, channelSessionId],
+  );
+  const provider = rows[0]?.provider;
+  return provider === undefined ? DEFAULT_CHANNEL_PROVIDER : (provider as ChannelProvider);
+}
+
 async function readStopFlags(db: Queryable, organizationId: string, contactId: string): Promise<boolean> {
   const { rows } = await db.query<{ stopped: boolean }>(
     'select (is_blocked or force_human) as stopped from contacts where organization_id = $1 and id = $2',

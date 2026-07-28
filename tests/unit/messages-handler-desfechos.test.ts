@@ -47,6 +47,7 @@ interface ConversationShape {
   waIdentity?: string | null;
   isBlocked?: boolean;
   sessionStatus?: string | null;
+  provider?: string;
 }
 
 function conversationRow(shape: ConversationShape = {}): Row {
@@ -65,7 +66,13 @@ function conversationRow(shape: ConversationShape = {}): Row {
     channel_sessions:
       shape.sessionStatus === null
         ? null
-        : { waha_session_name: 'default', status: shape.sessionStatus ?? 'WORKING' },
+        : {
+            // `provider` sai do banco desde a migration 0087 — o handler não
+            // supõe mais o canal, então a linha falsa também não pode supor.
+            provider: shape.provider ?? 'waha',
+            waha_session_name: 'default',
+            status: shape.sessionStatus ?? 'WORKING',
+          },
   };
 }
 
@@ -230,6 +237,22 @@ describe('sendMessageHandler — os 6 desfechos do envio', () => {
     expect(msg.error_code).toBe('waha_error');
     expect(msg.error_message).toBe('waha_500');
     expect(msg.external_id).toBeNull();
+  });
+
+  // Task 6: o canal sai do banco (`channel_sessions.provider`, migration 0087) e
+  // não de um literal. Esta é a sabotagem que reprova o retorno do `getAdapter("waha")`
+  // fixo: com o literal de volta, a sessão meta_cloud enviaria pelo WAHA e o teste
+  // ficaria vermelho por não ter lançado. Fail-closed é o desfecho certo enquanto o
+  // adapter da Meta não existe (Fase 3b) — enviar pelo canal errado é pior que não enviar.
+  it('7. o canal vem da sessão: provider sem adapter falha fechado, não cai no WAHA', async () => {
+    wahaConfigured(true);
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      sendMessageHandler(makeSupabase(conversationRow({ provider: 'meta_cloud' })), ctx, textInput()),
+    ).rejects.toThrow(/unknown_channel_provider: meta_cloud/);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it('6b. assinatura do Storage falha: failed/storage_sign_failed, não waha_error', async () => {

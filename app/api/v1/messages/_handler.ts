@@ -11,7 +11,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { ApiError } from "@/lib/api/types";
 import type { Actor, HandlerCtx } from "@/lib/api/handlers/types";
 import { audit } from "@/lib/audit";
-import { getAdapter } from "@/lib/channels";
+import { DEFAULT_CHANNEL_PROVIDER, getAdapter, type ChannelProvider } from "@/lib/channels";
 import type { ListMessagesQuery, SendMessageInput } from "@/lib/schemas";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { Message } from "@/lib/types/messaging";
@@ -130,7 +130,7 @@ export async function sendMessageHandler(
   const { data: conv, error: convErr } = await supabase
     .from("conversations")
     .select(
-      "id, organization_id, contact_id, channel_session_id, is_group, group_chat_id, contacts:contact_id(phone_number, wa_identity, is_blocked), channel_sessions:channel_session_id(waha_session_name, status)",
+      "id, organization_id, contact_id, channel_session_id, is_group, group_chat_id, contacts:contact_id(phone_number, wa_identity, is_blocked), channel_sessions:channel_session_id(provider, waha_session_name, status)",
     )
     .eq("id", input.conversation_id)
     .maybeSingle();
@@ -150,7 +150,7 @@ export async function sendMessageHandler(
     is_group: boolean;
     group_chat_id: string | null;
     contacts: { phone_number: string | null; wa_identity: string | null; is_blocked: boolean } | null;
-    channel_sessions: { waha_session_name: string; status: string } | null;
+    channel_sessions: { provider: ChannelProvider; waha_session_name: string; status: string } | null;
   };
   const c = conv as unknown as Joined;
 
@@ -214,10 +214,11 @@ export async function sendMessageHandler(
   }
   let message = created as unknown as Message;
 
-  // Provider fixo enquanto `channel_sessions.provider` não existe como coluna
-  // (Task 6 do plano do seam). O `select` acima só traz `waha_session_name` e
-  // `status`; ler um campo inexistente seria inventar contrato.
-  const adapter = getAdapter("waha");
+  // O canal vem da SESSÃO (migration 0087), não de um literal. O fallback só
+  // alcança o caso em que o embed não trouxe a sessão — impossível hoje
+  // (`conversations.channel_session_id` é NOT NULL com FK ON DELETE RESTRICT),
+  // e ainda assim mantido para não trocar o desfecho desse ramo defensivo.
+  const adapter = getAdapter(c.channel_sessions?.provider ?? DEFAULT_CHANNEL_PROVIDER);
   const chatId = adapter.resolveRecipient({
     isGroup: c.is_group,
     groupChatId: c.group_chat_id,
