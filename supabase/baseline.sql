@@ -7988,3 +7988,63 @@ exception when duplicate_object then null; end $$;
 
 comment on column public.channel_sessions.provider is
   'Canal desta sessão. Vocabulário espelhado em lib/channels/types.ts → ChannelProvider (cobrado por tests/invariants/vocabulario-banco-x-typescript.test.ts).';
+
+-- ---- meta templates (migration 0088) ----
+-- Espelho idempotente da migration 0088. Racional completo no arquivo da
+-- migration; aqui fica o que o install.sh/update.sh precisa executar.
+
+create table if not exists public.meta_templates (
+  id uuid primary key default gen_random_uuid(),
+  organization_id uuid not null references public.organizations(id) on delete cascade,
+  waba_id text not null,
+  name text not null,
+  language text not null,
+  status text not null,                 -- APPROVED | PENDING | REJECTED | PAUSED | DISABLED
+  category text,
+  rejected_reason text,
+  quality_score text,
+  -- Payload de `components` como a Meta o devolveu. É a ENTRADA de
+  -- deriveTemplateContract; guardar o derivado seria a segunda fonte da verdade
+  -- que esta fase inteira existe para eliminar.
+  components jsonb not null,
+  -- sha256 do contrato DERIVADO (não do jsonb cru): muda quando parâmetro muda,
+  -- não muda quando alguém corrige uma vírgula no texto.
+  contract_hash text not null,
+  parameter_format text not null default 'POSITIONAL',
+  synced_at timestamptz not null default now(),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+do $$ begin
+  alter table public.meta_templates
+    add constraint meta_templates_parameter_format_check
+    check (parameter_format in ('POSITIONAL', 'NAMED'));
+exception when duplicate_object then null; end $$;
+
+-- COMMENTs ficam no banco: aparecem em `\d+` e no Supabase Studio, onde quem
+-- inspeciona a tabela não tem este arquivo à mão.
+comment on table public.meta_templates is
+  'Espelho local dos templates hospedados na Meta (migration 0088). Derivado, nunca autoritativo: o schema vive na Meta. contract_hash sai de lib/channels/meta/contract-hash.ts e é a âncora da trava por obsolescência.';
+comment on column public.meta_templates.status is
+  'Vocabulário ABERTO da Meta — deliberadamente SEM CHECK (ela cria estado novo sem avisar; CHECK quebraria o update.sh do clone). Espelhado em lib/channels/meta/template-sync.ts.';
+comment on column public.meta_templates.contract_hash is
+  'SHA-256 do contrato DERIVADO (slots + parameter_format), não do JSON cru. Config de disparo guarda este hash; divergência = config obsoleta.';
+comment on column public.meta_templates.parameter_format is
+  'Valor NORMALIZADO por deriveTemplateContract, não o cru da Meta — por isso TEM CHECK, ao contrário de status.';
+
+create unique index if not exists meta_templates_org_waba_name_lang_uniq
+  on public.meta_templates (organization_id, waba_id, name, language);
+
+-- `name` no fim serve a listagem ordenada da tela sem sort extra (índice dele,
+-- superset do meu — combinado em vez de escolhido).
+create index if not exists meta_templates_org_status_idx
+  on public.meta_templates (organization_id, status, name);
+
+alter table public.meta_templates enable row level security;
+
+drop policy if exists tenant_isolation_meta_templates_all on public.meta_templates;
+create policy tenant_isolation_meta_templates_all on public.meta_templates
+  for all
+  using (organization_id in (select public.fn_user_org_ids()))
+  with check (organization_id in (select public.fn_user_org_ids()));
