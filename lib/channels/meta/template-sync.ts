@@ -16,6 +16,7 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 
 import { hashContract } from "./contract-hash";
+import { normalizeRejectedReason as rejectedReason } from "./webhook";
 
 /**
  * O vocabulário que a Meta usa hoje. **A coluna `status` do banco NÃO tem CHECK e
@@ -109,14 +110,7 @@ function qualityScore(v: unknown): string | null {
   return null;
 }
 
-/**
- * A Meta manda `rejected_reason: "NONE"` em template APROVADO (medido). Guardar o
- * literal faria a tela anunciar um motivo de recusa que não existe.
- */
-function rejectedReason(v: unknown): string | null {
-  const s = str(v);
-  return s === null || s.toUpperCase() === "NONE" ? null : s;
-}
+// `rejectedReason` mora em ./webhook.ts — dois escritores, uma regra.
 
 /**
  * Payload da Graph API → linhas do espelho.

@@ -45,6 +45,13 @@ export const CHANNEL_CAPABILITIES: Record<ChannelProvider, ChannelCapabilities> 
  */
 export const DEFAULT_CHANNEL_PROVIDER: ChannelProvider = "waha";
 
+/**
+ * Constantes nomeadas dos providers. Existem para que nenhum arquivo fora deste
+ * módulo precise escrever a string — é o que o `scripts/lint-channels.ts` cobra.
+ */
+export const CHANNEL_PROVIDER_WAHA: ChannelProvider = "waha";
+export const CHANNEL_PROVIDER_META: ChannelProvider = "meta_cloud";
+
 export function capabilitiesOf(provider: ChannelProvider): ChannelCapabilities {
   const caps = CHANNEL_CAPABILITIES[provider];
   // Fail-closed: provider fora da matriz não herda o default do WAHA. O tipo
