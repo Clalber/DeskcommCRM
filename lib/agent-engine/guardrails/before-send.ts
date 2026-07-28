@@ -12,7 +12,13 @@
  * promise — anti-alucinação de casos humanos (spec 15 §10.2, Wave 4); (7) disclosure
  * (F4-05). A ordem é código-constante DE PROPÓSITO, não config de
  * runtime: "stop primeiro" é invariante de segurança (regra dura nº 2) e mudar a ordem sem
- * bumpar a versão quebra o CI — deixá-la mutável em disco seria um footgun. Cada gate
+ * bumpar a versão quebra o CI — deixá-la mutável em disco seria um footgun.
+ *
+ * ⚠️ Nota de 2026-07-28: a frase acima descrevia um guarda que **não existia**. Medido —
+ * `BEFORE_SEND_CHAIN_VERSION` e `BEFORE_SEND_GATES` só apareciam neste arquivo, e nenhum
+ * teste os referenciava. Agora existe: `tests/unit/before-send-chain-shape.test.ts`, que
+ * trava ordem, tamanho, versão e unicidade. Ao mudar a cadeia de propósito, ele vermelha
+ * PRIMEIRO — é o sinal de que a mudança foi vista, e não presumida. Cada gate
  * AVALIADO por tentativa vira registro estruturado de auditoria (gate + veredito + código)
  * pelo logger de obs/ E linha durável em `before_send_traces` (exportável por run — o
  * comando `pnpm audit:run`, acceptance 3).
@@ -361,9 +367,14 @@ const spinningGate: Gate = {
 
 /**
  * VERSÃO da ordem da cadeia (F4-08, acceptance 2). Toda mudança na ordem/composição de
- * `BEFORE_SEND_GATES` EXIGE bumpar esta versão — o snapshot pinado por versão em
- * before-send.test.ts quebra o CI se a ordem mudar sem o bump (a ordem é contrato, não
- * detalhe de implementação). v1 = [stop, pacing, spinning] (F2-13); v2 = ordem final da
+ * `BEFORE_SEND_GATES` EXIGE bumpar esta versão, porque a ordem é contrato e não detalhe
+ * de implementação. Quem cobra isso é `tests/unit/before-send-chain-shape.test.ts`.
+ *
+ * ⚠️ Este comentário citava `before-send.test.ts` como o guarda. **Esse arquivo nunca
+ * existiu** (medido 2026-07-28: `find . -name before-send.test.ts` → nada). Era a segunda
+ * frase deste mesmo módulo a prometer um mecanismo ausente. Se você chegou aqui procurando
+ * a trava, ela é a citada acima — e ela é real: sabotada em três eixos (ordem, tamanho +
+ * versão, unicidade), cada um vermelho no caso certo. v1 = [stop, pacing, spinning] (F2-13); v2 = ordem final da
  * cadeia definitiva com os gates F4 (F4-08); v3 = insere o gate LGPD (F4-09) na posição 2,
  * junto do stop entre os vetos de conformidade irrevogáveis, antes do anti-ban; v4 = insere
  * `casePromiseGate` (spec 15 §10.2, Wave 4) logo após `semanticPromiseGate` — a garantia dura
