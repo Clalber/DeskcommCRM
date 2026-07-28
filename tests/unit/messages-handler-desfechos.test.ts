@@ -225,6 +225,14 @@ describe('sendMessageHandler — os 6 desfechos do envio', () => {
     expect(msg.ack).toBe(0);
     expect(msg.error_code).toBeNull();
     expect(String(fetchMock.mock.calls[0]?.[0])).toBe(`${WAHA_BASE}/api/sendText`);
+    // Task 7: a sessão que chega ao fio sai de `resolveSessionRef` (que escolhe a
+    // COLUNA conforme o provider), não mais de um acesso direto à coluna do
+    // provider legado. Sem esta linha, um resolvedor que devolva a coluna errada
+    // manda `session: undefined` e a rede inteira continua verde — medido.
+    const body = JSON.parse(String((fetchMock.mock.calls[0]?.[1] as RequestInit).body)) as {
+      session: string;
+    };
+    expect(body.session).toBe('default');
   });
 
   it('6. envio lança: failed/waha_error com a mensagem do erro', async () => {
@@ -237,6 +245,25 @@ describe('sendMessageHandler — os 6 desfechos do envio', () => {
     expect(msg.error_code).toBe('waha_error');
     expect(msg.error_message).toBe('waha_500');
     expect(msg.external_id).toBeNull();
+  });
+
+  // Task 7: o fallback de `error_message` quando o throw NÃO é um `Error`. O
+  // valor vai para o banco, então trocá-lo é mudança de comportamento — ele saiu
+  // do literal no handler para `adapter.codes`, com o mesmo texto.
+  it('6c. throw que não é Error: error_message vem de adapter.codes.unknownError', async () => {
+    wahaConfigured(true);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw 'nao-sou-um-Error';
+      }),
+    );
+
+    const msg = await sendMessageHandler(makeSupabase(conversationRow()), ctx, textInput());
+
+    expect(msg.status).toBe('failed');
+    expect(msg.error_code).toBe('waha_error');
+    expect(msg.error_message).toBe('waha_unknown');
   });
 
   // Task 6: o canal sai do banco (`channel_sessions.provider`, migration 0087) e

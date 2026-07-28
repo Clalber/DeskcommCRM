@@ -79,5 +79,5 @@ export interface ChannelAdapter {
    * porque carregam nome de provider, e o lint da Task 7 proíbe esse nome fora
    * de `lib/channels/`. Quem chama escreve o que o adapter disser.
    */
-  readonly codes: { notConfigured: string; sendFailed: string };
+  readonly codes: { notConfigured: string; sendFailed: string; unknownError: string };
 }

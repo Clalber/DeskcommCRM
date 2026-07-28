@@ -75,6 +75,9 @@ describe('adapter WAHA', () => {
     expect(getAdapter('waha').codes).toEqual({
       notConfigured: 'waha_not_configured',
       sendFailed: 'waha_error',
+      // Task 7: era literal no handler; o VALOR não muda (é gravado em
+      // `messages.error_message`), só a casa.
+      unknownError: 'waha_unknown',
     });
   });
 

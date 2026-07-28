@@ -264,3 +264,43 @@ que tinham quando a baseline foi gravada), e uma linha **temporária** em `chann
 warm-up) reproduziu a condição "dentro da janela". **A linha foi apagada em seguida** —
 `channel_knobs` voltou a zero linhas, que é como estava. O que ficou no banco é o estado
 anterior às medições.
+
+---
+
+## `fase2/` — a prova de FECHAMENTO das Fases 0–2 (Task 7)
+
+Mesma jornada, mesmo instrumento, contra o `BUILD_ID TQnQ6CYeKMo7ioGwH2uBC` (28/07 08:46),
+feito **depois** das trocas desta task. Worker reiniciado no `HEALTH_PORT=8797` antes do
+turno: `before-send.ts` e `lib/ai/runtime/agent.ts` rodam lá.
+
+| Arquivo | O que prova |
+|---|---|
+| `evidence/canais/fase2/01-login.png` | login + MFA na conta real, com o build de HEAD |
+| `evidence/canais/fase2/02-qr.png` | Conexões mostrando o estado real da sessão |
+| `evidence/canais/fase2/03-inbox.png` | inbox carrega as conversas do tenant |
+| `evidence/canais/fase2/04-texto-enviado.png` | texto enviado pelo inbox |
+| `evidence/canais/fase2/05-audio-enviado.png` | áudio enviado pelo inbox — ramo de mídia |
+| `evidence/canais/fase2/06-followup.png` | follow-up agendado pela tela |
+| `evidence/canais/fase2/07-radar.png` | Radar de Risco carregado |
+| `evidence/canais/fase2/08-envio-real.png` | envio manual que **chegou ao canal** (`status='sent'`, `external_id='3EB0C84FF2954F12B3D118'`) — a prova de que `resolveSessionRef` entrega o identificador certo ao fio, e não só compila |
+| `evidence/canais/fase2/gates.csv` | a cadeia de um turno REAL de IA, **idêntica** à baseline (`diff` vazio, exit 0) |
+| `evidence/canais/fase2/unit.txt` | suíte unitária: 1080✓/1✗ (o ✗ é herdado da `main`) |
+| `evidence/canais/fase2/typecheck.txt` | `tsc --noEmit` exit 0 |
+| `evidence/canais/fase2/lint.txt` | eslint exit 0 — 156 warnings, 0 erros (igual à baseline) |
+| `evidence/canais/fase2/lint-channels.txt` | o lint novo verde: 53 arquivos de dívida conhecida, nenhum novo |
+| `evidence/canais/fase2/test-db.txt` | `pnpm test:db` exit 0 — install ✓, update ✓, 373✓/1 skipped |
+
+### Estado temporário do envio real — aplicado e revertido (declarado)
+
+O ramo de envio não é alcançável com o seed: os contatos do seed não têm telefone, e a
+sessão está `STOPPED`. Para exercitá-lo, a sessão do radar foi apontada **temporariamente**
+para a sessão real que está `WORKING` no container, e o contato recebeu o número da própria
+conta do canal (envio para si mesmo). Medido, e os dois campos **revertidos** aos valores
+originais (`e2e-radar-session` / `STOPPED` / telefone nulo), conferidos depois da reversão.
+
+### O que essa medição NÃO provou
+
+O **áudio** do envio real falhou com `waha_error` / `waha_500: ECONNREFUSED 127.0.0.1:54321`:
+o container não alcança a URL assinada do Storage do host. É limitação do ambiente local (o
+mesmo ramo de mídia já estava provado em unidade e na jornada), não regressão — e o erro
+prova que o ramo de mídia chegou até o canal com a sessão certa, senão teria falhado antes.

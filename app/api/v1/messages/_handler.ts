@@ -11,11 +11,17 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { ApiError } from "@/lib/api/types";
 import type { Actor, HandlerCtx } from "@/lib/api/handlers/types";
 import { audit } from "@/lib/audit";
-import { DEFAULT_CHANNEL_PROVIDER, getAdapter, type ChannelProvider } from "@/lib/channels";
+import {
+  CHANNEL_SESSION_REF_COLUMNS,
+  DEFAULT_CHANNEL_PROVIDER,
+  getAdapter,
+  resolveSessionRef,
+  type ChannelSessionRef,
+} from "@/lib/channels";
+import { isMediaPathOwnedBy } from "@/lib/messaging/media/upload-validation";
 import type { ListMessagesQuery, SendMessageInput } from "@/lib/schemas";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { Message } from "@/lib/types/messaging";
-import { isMediaPathOwnedBy } from "@/lib/waha/media-send";
 
 type SB = SupabaseClient;
 
@@ -130,7 +136,7 @@ export async function sendMessageHandler(
   const { data: conv, error: convErr } = await supabase
     .from("conversations")
     .select(
-      "id, organization_id, contact_id, channel_session_id, is_group, group_chat_id, contacts:contact_id(phone_number, wa_identity, is_blocked), channel_sessions:channel_session_id(provider, waha_session_name, status)",
+      `id, organization_id, contact_id, channel_session_id, is_group, group_chat_id, contacts:contact_id(phone_number, wa_identity, is_blocked), channel_sessions:channel_session_id(${CHANNEL_SESSION_REF_COLUMNS}, status)`,
     )
     .eq("id", input.conversation_id)
     .maybeSingle();
@@ -150,7 +156,7 @@ export async function sendMessageHandler(
     is_group: boolean;
     group_chat_id: string | null;
     contacts: { phone_number: string | null; wa_identity: string | null; is_blocked: boolean } | null;
-    channel_sessions: { provider: ChannelProvider; waha_session_name: string; status: string } | null;
+    channel_sessions: (ChannelSessionRef & { status: string }) | null;
   };
   const c = conv as unknown as Joined;
 
@@ -278,7 +284,7 @@ export async function sendMessageHandler(
         }
         const filename = input.media_storage_path.split("/").pop() ?? undefined;
         ({ externalId } = await adapter.send({
-          sessionRef: c.channel_sessions.waha_session_name,
+          sessionRef: resolveSessionRef(c.channel_sessions),
           to: chatId,
           kind: input.type,
           media: {
@@ -290,7 +296,7 @@ export async function sendMessageHandler(
         }));
       } else {
         ({ externalId } = await adapter.send({
-          sessionRef: c.channel_sessions.waha_session_name,
+          sessionRef: resolveSessionRef(c.channel_sessions),
           to: chatId,
           kind: input.type,
           body: input.body ?? "",
@@ -304,7 +310,7 @@ export async function sendMessageHandler(
         .maybeSingle();
       if (updated) message = updated as unknown as Message;
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "waha_unknown";
+      const msg = err instanceof Error ? err.message : adapter.codes.unknownError;
       // `storage_sign_failed` fica literal: é falha do NOSSO Storage, não do
       // canal — a URL assinada é montada antes de qualquer coisa tocar o adapter.
       const code = msg.startsWith("storage_sign_failed")

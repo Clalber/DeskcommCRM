@@ -25,7 +25,14 @@ export const wahaAdapter: ChannelAdapter = {
     return getWahaClient() !== null;
   },
 
-  codes: { notConfigured: "waha_not_configured", sendFailed: "waha_error" },
+  // `unknownError` é gravado em `messages.error_message` quando o throw não é
+  // um `Error` — valor observável no banco, por isso ele ATRAVESSA o seam com o
+  // literal intacto em vez de virar uma string neutra.
+  codes: {
+    notConfigured: "waha_not_configured",
+    sendFailed: "waha_error",
+    unknownError: "waha_unknown",
+  },
 
   async send(envelope: OutboundEnvelope): Promise<{ externalId: string | null }> {
     const client = getWahaClient();

@@ -43,7 +43,9 @@ O motivo é o acúmulo: quanto mais tarde o teste, mais causas possíveis para u
 | Task 4d (envio → `adapter.send`) | ✅ `c5221cb` · `getWahaClient` fora do handler · 8✓ · suíte 1063✓ exit 0 · sabotagem do ramo de mídia vermelha no caso certo |
 | Task 4e (jornada + `gates.csv`) | ✅ build refeito do HEAD (`BUILD_ID 4W3v83yHSysyCUIj3YQLD`, 15:20 > commits 15:04–15:12) · jornada **3✓/0✗** · `diff` do `gates.csv` contra a baseline **vazio** · envio manual pela tela chegou ao WAHA (`status='sent'`, `external_id='3EB0644366757BD8B9CA71'`) · evidência em `evidence/canais/task4/` |
 | Task 5 (capability desarma o pacing) | ✅ `pacingGate` exportado · `GateContext.provider` · `skipped:'not_applicable'` no veredito **e** na linha de `before_send_traces` · 5 casos novos, 4 sabotagens vermelhas no caso certo · jornada 3✓ e `gates.csv` **idêntico** à baseline · **discordância do plano registrada**: o curto-circuito que o plano pedia quebraria o invariante 3 |
+| **Fases 0–2 — FECHADAS** | ✅ 2026-07-28 · zero mudança de comportamento provada: `diff` do `gates.csv` contra a baseline **vazio** em todas as tasks que tocaram produção (1, 4e, 5, 6, 7) · lint de canal ligado ao `gov:verify` **e ao CI** |
 | Task 6 (`provider` no schema) | ✅ migration `0087` + apêndice idempotente no `baseline.sql` + linha no MANIFEST · `pnpm test:db` **verde** (install ✓, update ✓, 373✓) · os dois literais `'waha'` saíram do caminho de produção · jornada 3✓ e `diff` do `gates.csv` contra a baseline **vazio** · **discordância do plano registrada**: o índice único de `(organization_id, phone_number)` já existe desde o snapshot e criá-lo de novo REGRIDE (trava não-deferível ao lado de uma deferível) |
+| Task 7 (lint anti-vazamento) | ✅ `scripts/lint-channels.ts` com **catraca** (dívida itemizada + razão escrita) · ligado ao `gov:verify` **e a um step próprio do CI** · 3 infratores limpos no caminho do seam (`_handler.ts`, `lib/ai/runtime/agent.ts`, `before-send.ts`) via `resolveSessionRef` novo · **discordância do plano registrada**: eram **56** infratores, não 4, e limpar todos seria mudança de comportamento |
 
 A Task 0 gravou a foto do "antes" e produziu 2 instrumentos reutilizáveis
 (`tests/journeys/`, `scripts/provoke-agent-turn.ts`). A **Task 1** é a primeira linha de
@@ -301,6 +303,148 @@ a doutrina de QA Visual do repo já diz que mock não estressa o egress real.
 | 2026-07-27 | **Task 4e** | **Zero linha de produção.** Rebuild do HEAD `0074066` + restart do que servia código velho; jornada de 7 paradas re-vivida; `gates.csv` regravado com o filtro do turno da vez; prova extra do caminho manual (`evidence/canais/task4/08-envio-real.png`); `evidence/canais/README.md` ganhou a seção `task4/` | **O build era velho e isso foi medido antes de qualquer teste:** a 3007 servia `BUILD_ID K9dkpcdBMT642C2RDbP2_` de **13:16**, anterior aos commits `650a795`/`f0acb82`/`c5221cb` (15:04–15:12) — e o worker da 8797 tinha subido 13:17, também antes. Derrubei os dois (nossos), `pnpm build` **exit 0** → `BUILD_ID 4W3v83yHSysyCUIj3YQLD` às 15:20, e provei o conteúdo, não só o carimbo: **todo** chunk de `.next/server` que contém o handler (`media_storage_path fora da conversa`) contém também `resolveRecipient` (3/3). Jornada **3✓/0✗ em 37,5s**; turno REAL de IA provocado (trace `1a595cbe` às 18:24:05Z, 8 gates); `diff evidence/canais/baseline/gates.csv evidence/canais/task4/gates.csv` → **vazio, exit 0** (idem contra a `task1`). **A prova que o `gates.csv` não dá:** envio manual pelo inbox, pela tela, atravessando `adapter.send` inteiro → `messages.status='sent'`, `external_id='3EB0644366757BD8B9CA71'`, `error_code` nulo | (a) **o caminho manual nunca tinha chegado ao `adapter.send` neste banco** — na baseline, na task1 e na task4 as 3 mensagens do inbox morrem em `missing_phone_number` (contato do seed sem telefone) e a do turno de IA em `channel_session_not_working`: o `diff` vazio prova a cadeia de gates, não o envio. Para exercitar o ramo, apontei **temporariamente** a sessão do seed para a sessão WAHA `WORKING` e dei ao contato o número da própria conta do WAHA (envio para si mesmo), enviei pela tela, medi, e **reverti os dois campos** aos valores originais; (b) **o Postgres local segfaultou 2× no meio** (`signal 11` às 18:22:51 e 18:28:41 UTC, PostgREST `503 PGRST002`, GoTrue em `recovery mode`) e sujou as duas primeiras execuções da jornada — sintomas `No active organization` e `/app/radar` redirecionando para `/app`. Mesmo container já tinha segfaultado 2× às 15:28/15:29, **antes** da baseline: é defeito do stack local, e o diff de produção das 4b/4c/4d toca 3 arquivos, nenhum no caminho de auth/radar. Terceira execução, com o banco de pé, 3✓; (c) **defeito real que o crash expôs, e que NÃO é desta branch:** `loadAuthUser` (`lib/auth/server.ts:46-50`) descarta o erro do `select` em `user_organizations` — falha de query vira "usuário sem organização" e o app responde 403 `no_active_org`/redireciona, sem dizer que o banco caiu. Não consertei (fora do escopo); (d) `evidence/canais/task4/03-inbox.png` pegou a timeline ainda carregando: a jornada não espera a primeira bolha, só o campo "Mensagem" |
 | 2026-07-27 | **Task 5** | `pacingGate` passou a ser **exportado** (era o único gate privado da cadeia); `GateContext` ganhou `provider: ChannelProvider`; `GateVerdict` do ramo `pass` ganhou `skipped?: 'not_applicable'`; o gate pergunta `capabilitiesOf(ctx.provider).banRisk` e **passa a flag a `decidePacing`** (não curto-circuita — ver discordância abaixo); o runner traduz o terceiro estado em `{verdict:'skipped', code:'not_applicable'}` no trace, que é o que entra no `INSERT` de `before_send_traces`; o ctx de produção fixa `provider: 'waha'` com comentário (a Task 6 troca pelo valor do banco). Novo `tests/unit/gate-pacing-capability.test.ts` (5 casos); `tests/invariants/case-guardrail.test.ts` ganhou o campo novo no `baseCtx`. **+46/−6 linhas de produção, 1 arquivo** | **vermelho primeiro, no caso certo:** `TypeError: Cannot read properties of undefined (reading 'evaluate')` — 5✗ porque `pacingGate` não era exportado. Depois: **5✓ exit 0** no arquivo; suíte inteira **1077✓/1✗ · 142 arquivos · exit 1** — o único vermelho é `tests/unit/evidencia-citada.test.ts > docs/growth/lp-prompts-imagens.md`, que veio da `main` no merge `eba0554` e é da frente de growth (a régua da branch era 1072✓/1✗; +5 são os meus). typecheck **exit 0**; lint **exit 0** (156 warnings, 0 erros — igual à baseline, nenhum nos meus arquivos). **4 sabotagens, cada uma vermelha só onde devia:** (1) veredito sem `skipped` → 3✗; (2) `banRisk` invertido → 4✗; (3) runner empurrando `'pass'` em vez de `'skipped'` → **1✗, só o caso de propagação** (é o defeito que os testes de gate não pegariam); (4) a implementação literal do plano (`if (!caps.banRisk) return` antes de `decidePacing`) → **1✗, só o caso do invariante 3**. Restaurado com `git diff` do arquivo limpo. Pela tela: build novo (`BUILD_ID etodPjlZdqc6OfLt3T50q`, pós-merge da `main`) + **worker reiniciado** (o gate roda lá, não no Next), jornada **3✓/0✗ em 35,5s** (`evidence/canais/task5/`), turno REAL de IA (trace `2cfc2fde` às 00:39:24Z, 8 gates, processado pelo MEU worker — o log tem as 8 linhas e o `turno do agente concluído`), `diff evidence/canais/baseline/gates.csv evidence/canais/task5/gates.csv` → **vazio, exit 0** | (a) o build da 3007 estava morto **e** velho: o merge `eba0554` trouxe da `main` mudanças em `app/(public)/login/*`, `lib/branding.ts` e `lib/env.ts` que o `BUILD_ID 4W3v83yHSysyCUIj3YQLD` (15:20) não continha — jornada contra ele mediria código que não é o HEAD; (b) `next start` avisa que não funciona com `output: standalone` e serve assim mesmo (mesma receita das tasks anteriores, mantida para não trocar a régua); (c) o `gates.csv` **não** prova o ramo `banRisk:false` e não tem como provar — o provider é literal até a Task 6; quem prova é o teste unitário, e a sabotagem (3) é a prova de que ele prova |
 | 2026-07-27 | **Task 6** | migration `20260727120000_0087_channel_provider.sql`: `channel_sessions` ganha `provider text not null default 'waha'` + `meta_phone_number_id`/`meta_waba_id`/`meta_token_encrypted`, `waha_session_name` perde o NOT NULL, e dois CHECKs (`_provider_check` = vocabulário; `_provider_ref_check` = tagged union). Mesmo SQL espelhado no apêndice de `supabase/baseline.sql` (`-- ---- channel provider (migration 0087) ----`) + linha no `MANIFEST.md`. Os **dois últimos literais** saíram do caminho de produção: `_handler.ts` resolve `getAdapter(c.channel_sessions?.provider ?? DEFAULT_CHANNEL_PROVIDER)` (o `select` passou a trazer a coluna) e `before-send.ts` ganhou `loadChannelProvider()` lendo a linha sob o mesmo advisory lock. `DEFAULT_CHANNEL_PROVIDER` nasceu em `lib/channels/capabilities.ts` porque o nome do provider **não pode** morar fora de `lib/channels/` (invariante 1, cobrado pelo lint da Task 7). `lib/database.types.ts` atualizado só no bloco `channel_sessions`. Testes: `tests/invariants/channel-provider-schema.test.ts` (8 casos, incluindo o par de vocabulário CHECK ↔ `ChannelProvider` — ver ressalva (f)) + 2 casos de unidade (o handler falha fechado num provider sem adapter; o ctx do `before_send` lê o banco). | **Banco, antes → depois:** `select count(*) from channel_sessions` = **4 → 4** (total inalterado), `select provider, count(*) group by 1` = **`waha|4`**; duplicatas de `(org, phone)` medidas **antes**: nenhuma. Migration aplicada com `ON_ERROR_STOP=1` **exit 0**; re-aplicada sem a flag **exit 0** (só NOTICEs de `already exists`). **`pnpm test:db` exit 0** — `install ok` ✓, `update ok` ✓, **373✓/1 skipped, 57 arquivos**. Sabotagem: derrubando os 2 CHECKs, os 3 casos de comportamento vermelheceram no caso certo (e o `ALTER` de volta falhou com `is violated by some row` — o mesmo erro que um clone com dado sujo veria, prova de que o teste mede o banco e não a si mesmo). Suíte unitária **1079✓/1✗ exit 1** (régua herdada 1077✓/1✗ — os +2 são meus; o ✗ é o `lp-prompts-imagens.md` da `main`). typecheck **exit 0**, lint **exit 0** (156 warnings, 0 erros). Pela tela: build `2M1TD9Dp7TONA5qDJ-_Ps` feito **depois** da migration e das trocas, worker reiniciado (`HEALTH_PORT=8797`), jornada **3✓/0✗ em 35,3s** (`evidence/canais/task6/`), turno REAL de IA e `diff evidence/canais/baseline/gates.csv evidence/canais/task6/gates.csv` → **vazio, exit 0** | (a) **discordância com o plano, medida:** o Step 2 mandava criar `channel_sessions_org_phone_uniq`; a trava **já existe** desde o snapshot (`channel_sessions_phone_per_org_unique UNIQUE (organization_id, phone_number) DEFERRABLE INITIALLY DEFERRED`) e já responde ao invariante pedido, porque não olha o provider. Criá-la de novo duplicaria a checagem em toda escrita e colocaria uma trava **não-deferível** ao lado de uma deferível — quebrando no meio qualquer transação que hoje troca números entre sessões (que é o motivo de alguém tê-la feito DEFERRABLE). Não criei; o invariante cobra a trava pelo nome REAL; (b) **`lib/database.types.ts` está desatualizado muito além desta task** — a regeneração completa (`supabase gen types --local`) sai com **662 linhas de diff**: faltam `crm_lead_scores`, `crm_lead_risk_states`, `crm_lead_reactivations` (migrations 0075/0078/0082), o bloco `__InternalSupabase` some e os `inet` viram `unknown | null` (versão diferente do gerador). Apliquei **só o bloco `channel_sessions`**, e conferi que ele é **byte-a-byte idêntico** ao que o gerador produz (`diff` do bloco = vazio) — arrastar a deriva alheia para um commit de `provider` esconderia as duas coisas. **Fica como dívida declarada, não consertada aqui**; (c) **3 medições intermediárias descartadas** e por quê, em `evidence/canais/README.md`: `force_human` (o agente aplicou handoff humano dentro do próprio turno, porque o `provoke` manda o mesmo texto e era o 7º idêntico), `bot_silenced_until` (resquício do anterior, aborta o turno antes do `before_send`) e `outside_window` (eram 22h10 BRT). As três são estado/relógio, não código — comparar com a baseline sem controlá-las seria teste confundido. Controlei e **revertí tudo**: `channel_knobs` voltou a **0 linhas**, `force_human`=`f`, `bot_silenced_until`=`null`; (d) **não provei o ramo `meta_cloud` pela tela** — não há adapter (Fase 3b) e nenhuma sessão real usa; quem prova é o invariante de banco e os 2 unitários; (e) **a migration não é `0085`, é `0087`** — o `NNNN` seguinte medido *nesta branch* era 0085, mas o hook `pre-commit` de governança reprovou: ele varre **todas as branches locais**, e `0085` (`20260726000000_0085_intent_router.sql`, branch `feat/operacao-visivel`) e `0086` (`20260727000000_0086_knowledge_searches.sql`) já existem fora daqui. Régua certa para o próximo: `for b in $(git branch --format='%(refname:short)'); do git ls-tree -r --name-only "$b" -- supabase/migrations/; done | grep -oE '_0[0-9]{3}_' | sort -u | tail -1`. Renumerado em migration + baseline + MANIFEST + comentários, e `pnpm test:db` re-rodado verde depois da renumeração; (f) **`tests/invariants/**` é CONGELADO pela governança** — o `pre-commit` bloqueia MODIFICAR invariante existente, e a exceção documentada (flip de `test.fails`) não é este caso. O cabeçalho de `vocabulario-banco-x-typescript.test.ts` manda acrescentar um par por coluna nova com CHECK; as duas regras colidem. **Não usei `DESKCOMM_GOV_INVARIANTS_EDIT=1`** — driblar o guarda sem o dono não é ato meu. Revertí o arquivo congelado e escrevi a MESMA asserção no arquivo NOVO (adição, que o hook permite), sabotada e vermelha no caso certo (terceiro membro no union → `×`). A cobertura existe; o que falta é o LUGAR, e o pedido está em `loop/inbox.items.md` como **INBOX-004** com opções A/B; (g) a suíte `tests/e2e/` **não** foi re-rodada nesta task (a de `tests/journeys/` foi), e os 4 vermelhos herdados da Task 0.1 seguem sem toque |
+| 2026-07-28 | **Task 7** | `scripts/lint-channels.ts` (regex e walk do plano, node-agnóstico) + **catraca**: 53 arquivos de dívida itemizados em 4 categorias, cada uma com razão escrita; falha em infrator NOVO **e** em entrada obsoleta, para a lista só poder encolher. `lint:channels` no `package.json`, dentro do `gov:verify` **e** como step próprio de `.github/workflows/ci.yml` (o `gov:verify` não é invocado por workflow nenhum — mecanismo fora do gate não protege). Produção: nasceu `lib/channels/session-ref.ts` (`resolveSessionRef` + `CHANNEL_SESSION_REF_COLUMNS`, a tagged union da migration 0087), `ChannelAdapter.codes` ganhou `unknownError`, `isMediaPathOwnedBy` saiu do módulo do provider para `lib/messaging/media/upload-validation.ts`, e `app/api/v1/messages/_handler.ts` + `lib/ai/runtime/agent.ts` + `lib/agent-engine/guardrails/before-send.ts` ficaram **limpos** de nome de provider. | **A lista de infratores está na seção abaixo — 56, não 4.** Suíte unitária **1080✓/1✗ · 142 arquivos · exit 1** (régua herdada 1079✓/1✗; o +1 é meu caso 6c; o ✗ é `lp-prompts-imagens.md`, que veio da `main`). typecheck **exit 0**; lint **exit 0** — **156 warnings, 0 erros, idêntico à baseline** (o `console.log` do script virou `console.info`, que a regra permite). `pnpm test:db` **exit 0** (install ✓, update ✓, **373✓/1 skipped, 57 arquivos**). **3 sabotagens do lint, todas vermelhas no caso certo:** arquivo novo com `meta_cloud` → exit 1; tirar da dívida um arquivo que ainda vaza → exit 1; deixar na dívida um arquivo já limpo → exit 1 (a catraca não afrouxa). **2 sabotagens de produção:** `unknownError` virando outro literal → só `6c` vermelho; `resolveSessionRef` devolvendo a coluna do outro provider → **nada vermelheceu**, e foi por isso que o caso 5 ganhou a asserção da sessão que chega ao fio; com ela, a mesma sabotagem fica vermelha sozinha. Pela tela: build `TQnQ6CYeKMo7ioGwH2uBC` (08:46, depois de todas as trocas — e provado pelo CONTEÚDO: os 3 chunks de `.next/server` que contêm o handler contêm também `meta_phone_number_id`, que só existe no `select` novo), worker reiniciado, jornada **3✓/0✗ em 39,8s**, turno REAL de IA (job `5aea73b0`, 8 gates `pass`), `diff evidence/canais/baseline/gates.csv evidence/canais/fase2/gates.csv` → **vazio, exit 0**. **A prova que o `gates.csv` não dá:** envio manual pela tela chegou ao canal — `status='sent'`, `external_id='3EB0C84FF2954F12B3D118'` — exercitando `resolveSessionRef` no caminho de produção | (a) **o Postgres local segfaultou de novo no meio** (`signal 11` às 11:47:54 UTC, seguido de `recovery mode`) e derrubou a **primeira** execução da jornada, exatamente naquele minuto; a segunda, com o banco de pé e o MESMO build, passou 3✓ — flake de ambiente medido, não regressão (mesmo defeito que a Task 4e já registrou); (b) `tests/journeys/playwright.config.ts` tem default `E2E_PORT=3002`, não 3007 — a primeira tentativa morreu em `ERR_CONNECTION_REFUSED`; (c) `CANAIS_EVIDENCE_DIR` é resolvido com `path.join(process.cwd(), …)`, então caminho ABSOLUTO não funciona (vira `<repo>/tmp/…`); (d) o **áudio** do envio real falhou (`waha_500: ECONNREFUSED 127.0.0.1:54321`) — o container não alcança a URL assinada do Storage do host; é limite do ambiente, e o erro prova que o ramo de mídia chegou ao canal com a sessão certa; (e) o estado temporário do envio real (sessão apontada para a que está `WORKING` + telefone do contato) foi **revertido e conferido**; (f) `psql -c` com 2 statements é UMA transação: o `update` da sessão foi desfeito pelo erro do segundo (`wa_identity` é coluna GERADA) — refeito em chamadas separadas; (g) **nenhum e2e de `tests/e2e/` foi re-rodado** nesta task, e os 4 vermelhos herdados da Task 0.1 seguem sem toque |
+
+### Discordância com o plano (Task 7): eram **56** infratores, não 4 — e limpar todos é proibido
+
+O Step 2 do plano previa 4 arquivos (`lib/ai/runtime/agent.ts`, `app/api/v1/channel-sessions/*`,
+`app/onboarding/connect-whatsapp/page.tsx`, `lib/agent-engine/edge/crm/session-reconciler.ts`).
+A primeira execução do lint apontou **56**. A lista completa está abaixo, medida, não estimada.
+
+O Step 3 ("limpar cada infrator") foi escrito contra a estimativa de 4. Contra 56 ele **colide
+com a Global Constraint nº 1 do próprio plano** ("Zero mudança de comportamento nas Fases 0–2.
+Toda saída observável é idêntica antes e depois"), porque limpar a lista inteira exigiria:
+
+- reescrever **cópia de tela** que o usuário lê (o passo de conectar o número, o banner de
+  serviço fora do ar, os cards de saúde do admin) — saída observável;
+- renomear **campo de resposta de API pública**: `checks.waha` em `/api/v1/health`,
+  `waha_ban` no feed de alertas, `waha_sessions_count` no overview de tenant — contrato;
+- mover a família de rotas `/api/v1/webhooks/waha/*`, que é o endereço configurado no
+  container do cliente — quebraria a ingestão de quem já instalou.
+
+Nada disso é Task 7: é **Fase 3**, quando `lib/waha/` for absorvido por `lib/channels/` e a
+Fase 3a entregar o seletor de canal (que é quando o usuário passa a ter mais de um canal para
+distinguir, e a cópia neutra passa a *significar* algo em vez de só esconder uma palavra).
+
+**O que foi entregue no lugar:** o lint é uma **catraca**, não uma anistia. Ele carrega a
+dívida itemizada em 4 categorias, cada uma com a razão escrita no próprio arquivo, e reprova:
+
+1. arquivo **novo** com nome de provider (o invariante vale daqui pra frente — que é o pedido);
+2. arquivo tirado da lista que **ainda** vaza;
+3. arquivo que **ficou limpo** e continua na lista — para a lista só poder encolher.
+
+As três foram sabotadas e ficaram vermelhas (exit 1). A terceira é o mecanismo anti-morte da
+própria lista: sem ela, a dívida envelheceria em silêncio e o número perderia o significado.
+
+#### A lista completa da 1ª execução (56 arquivos, 2026-07-28)
+
+**Limpos nesta task (3) — os que estão no caminho que as Fases 0–2 abriram:**
+
+| Arquivo | O que era | O que virou |
+|---|---|---|
+| `app/api/v1/messages/_handler.ts` | `import { isMediaPathOwnedBy } from` o módulo do provider; `waha_session_name` no `select`, no tipo e nos 2 `sessionRef`; `"waha_unknown"` literal | `isMediaPathOwnedBy` mudou de casa; `CHANNEL_SESSION_REF_COLUMNS` + `ChannelSessionRef` + `resolveSessionRef`; `adapter.codes.unknownError` |
+| `lib/ai/runtime/agent.ts` | `resolveWahaChatId` importado direto; `waha_session_name` no `select` e no tipo; 3 comentários | `getAdapter(...).resolveRecipient` + `resolveSessionRef`; comentários falam de canal |
+| `lib/agent-engine/guardrails/before-send.ts` | comentário nomeando `meta_cloud` | descreve a família ("canal sem risco de ban") |
+
+**Categoria 1 — superfície de TRANSPORTE do provider legado (13).** Mesma natureza de
+`lib/waha/`, que o próprio plano já lista como exceção: não são features perguntando
+identidade, são o canal. Saem junto com `lib/waha/` na Fase 3.
+
+`app/api/v1/channel-sessions/[id]/qr/route.ts` · `app/api/v1/channel-sessions/[id]/reconnect/route.ts` ·
+`app/api/v1/channel-sessions/[id]/route.ts` · `app/api/v1/channel-sessions/route.ts` ·
+`app/api/v1/health/route.ts` · `app/api/v1/messages/[id]/media/route.ts` ·
+`app/api/v1/onboarding/whatsapp/qr/route.ts` · `app/api/v1/onboarding/whatsapp/session/route.ts` ·
+`app/api/v1/webhooks/waha/[token]/route.ts` · `app/api/v1/webhooks/waha/route.ts` ·
+`app/onboarding/connect-whatsapp/page.tsx` · `lib/agent-engine/edge/crm/session-reconciler.ts` ·
+`workers/media-persist-worker.ts`
+
+**Categoria 2 — texto VISÍVEL ou nome de campo de API pública (9).** Trocar é mudança de
+comportamento, proibida nas Fases 0–2.
+
+`app/api/v1/admin/dashboard/kpis/route.ts` · `app/api/v1/admin/tenants/[id]/health/route.ts` ·
+`app/design/sections/SectionPatterns.tsx` · `app/onboarding/connect-whatsapp/_client.tsx` ·
+`components/admin/dashboard/AlertItem.tsx` · `components/admin/dashboard/KPICards.tsx` ·
+`components/admin/tenants/HealthGrid.tsx` · `components/admin/tenants/TenantOverview.tsx` ·
+`components/connections/ConnectionsClient.tsx`
+
+**Categoria 3 — o `ChannelAdapter` PRÉ-seam do agent-engine (2).** `WahaChannelAdapter`
+(F2-25) é uma abstração paralela à de `lib/channels/`. Unificar as duas é decisão de
+arquitetura com superfície própria, não passo de um lint.
+
+`lib/agent-engine/agent/followup-turn.ts` · `lib/agent-engine/agent/inbound-turn.ts`
+
+**Categoria 4 — menção em COMENTÁRIO / prosa técnica (29).** Não há acoplamento nenhum: só
+prosa. O regex é o da doutrina (que fala em "string") e não distingue prosa de código.
+
+`app/api/v1/ai/agents/[id]/versions/[vid]/test/route.ts` · `app/api/v1/conversations/[id]/media/route.ts` ·
+`app/api/v1/webhook-sources/route.ts` · `app/api/v1/webhooks/in/[token]/route.ts` ·
+`app/app/ai/agents/[id]/_components/TestPanel.tsx` · `components/inbox/media/media-utils.ts` ·
+`lib/agent-engine/channel-adapter.ts` · `lib/agent-engine/cron/scheduler.ts` ·
+`lib/agent-engine/edge/channel/waha-adapter.ts` · `lib/agent-engine/edge/crm/mcp-client.ts` ·
+`lib/agent-engine/edge/crm/send-message.ts` · `lib/agent-engine/edge/crm/session-watchdog.ts` ·
+`lib/agent-engine/edge/egress.ts` · `lib/agent-engine/env.ts` · `lib/agent-engine/health/circuit.ts` ·
+`lib/agent-engine/obs/metrics.ts` · `lib/ai/dispatcher/triggers.ts` · `lib/ai/runtime/finalize.ts` ·
+`lib/automation/start-conversation.ts` · `lib/env.ts` · `lib/followup/reactivity.ts` ·
+`lib/messaging/media/types.ts` · `lib/messaging/media/waha-source.ts` · `lib/schemas/channels.ts` ·
+`lib/supabase/admin.ts` · `lib/types/messaging.ts` · `lib/webhooks/secrets.ts` ·
+`workers/agent-worker/main.ts` · `workers/ai-response-worker.ts`
+
+> **Medido ao vivo, e é a razão de a categoria 4 existir:** ao mover `isMediaPathOwnedBy` eu
+> escrevi um comentário explicando **de onde** ela tinha saído — e o comentário virou um
+> infrator novo. O lint saiu de 56 para 56 quando eu esperava 55, e o `diff` das duas listas
+> mostrou o arquivo que eu acabara de limpar entrando pela porta da prosa. Reescrever prosa
+> correta ("o container converte o áudio no servidor") para escapar de um regex **piora** o
+> código. Por isso a decisão é registrar, não reescrever — e está escrita no lint.
+
+### O desenho que o `waha_session_name` forçou (Task 7)
+
+O lint apontava `c.channel_sessions.waha_session_name` no handler, e a saída fácil seria uma
+exceção na allowlist. Não é o certo: **com dois providers o `sessionRef` vem de
+`waha_session_name` ou de `meta_phone_number_id`, e escolher qual é exatamente a decisão que
+pertence a `lib/channels/`** — deixá-la na feature é escrever o `if (provider === ...)` que o
+invariante 1 proíbe, só que disfarçado de acesso a propriedade.
+
+Nasceu `lib/channels/session-ref.ts`, com o tipo sendo a **tagged union que a migration 0087
+já enforça** (`channel_sessions_provider_ref_check`):
+
+```ts
+export type ChannelSessionRef =
+  | { provider: "waha"; waha_session_name: string }
+  | { provider: "meta_cloud"; meta_phone_number_id: string };
+```
+
+Consequências medidas: o retorno é `string` e **não** `string | null` — a garantia é do CHECK,
+não de otimismo — e por isso nenhum cast novo entrou, nenhum ramo novo nasceu e nenhum desfecho
+mudou. `CHANNEL_SESSION_REF_COLUMNS` mora ao lado, porque a string do `select` do PostgREST
+também nomeia coluna de provider. **Dois consumidores desde já** (o handler de envio e o
+dry-run de `lib/ai/runtime/agent.ts`), e é o que a Fase 3b precisa de qualquer jeito.
+
+`"waha_unknown"` seguiu o caminho da Task 4c: é gravado em `messages.error_message`, então o
+VALOR não pode mudar — virou `adapter.codes.unknownError`, com o literal intacto no adapter.
+
+### O buraco que a sabotagem achou: `resolveSessionRef` não tinha teste que discriminasse
+
+Sabotei o resolvedor para devolver a coluna do outro provider (o defeito mais provável nesse
+código) e a rede dos 8 desfechos do handler ficou **10✓ / 0✗**. Ela assertava o *endpoint* do
+`fetch`, nunca o corpo — um resolvedor errado manda `session: undefined` ao canal e nada
+vermelhece. O caso 5 ganhou a asserção do que chega ao fio:
+
+```
+× 5. texto puro: sent + external_id + ack 0, pelo endpoint de texto
+Tests  1 failed | 9 passed (10)                                       exit 1
+```
+
+Com ela, a mesma sabotagem fica vermelha sozinha. **A lição não é sobre este resolvedor:** a
+rede da Task 4a foi desenhada para fixar *desfechos gravados no banco*, e o identificador da
+sessão nunca foi um deles — teste que só olha para onde a chamada foi não vê o que ela levou.
+
+### Onde o lint roda de verdade (e por que `gov:verify` não bastava)
+
+O plano manda "incluir em `gov:verify`". Medido: **nenhum workflow invoca `gov:verify`** —
+`.github/workflows/ci.yml` chama `pnpm typecheck`, `pnpm lint` e `pnpm test:unit` em steps
+separados. Um lint só dentro do `gov:verify` não gatearia PR nenhum, que é a mesma armadilha
+que a Task 2 mediu com `tests/invariants/`. Entrou nos dois lugares: no `gov:verify` (como o
+plano pede) **e** como step próprio do job `verify`.
 
 ### O freeze de `tests/invariants/**` barrou a Task 5 (e por que a exceção foi usada)
 
@@ -554,3 +698,34 @@ O caso **discrimina** a ordem das duas checagens — não é decoração.
 `caps.banRisk`), então o desarme só está provado em unidade, nunca pela tela. E os 4 e2e
 vermelhos herdados da Task 0.1 continuam vermelhos — não os toquei, e a suíte
 `tests/e2e/` não foi re-rodada nesta task (a jornada de `tests/journeys/` foi).
+
+---
+
+## Fechamento das Fases 0–2 (2026-07-28)
+
+**O critério de aceite era um só — "toda saída observável é idêntica antes e depois" — e ele
+foi medido, não afirmado:** em cada task que tocou produção (1, 4e, 5, 6, 7) o `diff` do
+`gates.csv` contra a baseline saiu **vazio, exit 0**, sempre contra um build refeito do HEAD e
+com um turno REAL de IA no banco. A cadeia observada é a mesma da baseline:
+`stop → lgpd → pacing → spinning → promise → semantic_promise → case_promise → disclosure`.
+
+O que existe agora e não existia: `lib/channels/` com capabilities declarativas, adapter,
+resolvedor de sessão e resolução fail-closed; `channel_sessions.provider` no schema (migration
+0087, no `baseline.sql` e no MANIFEST); a cortesia separada do anti-ban dentro de
+`decidePacing`; `skipped:'not_applicable'` visível no `before_send_traces`; e o lint que
+impede o vazamento voltar, ligado ao gate que de fato roda.
+
+**O que continua em aberto, declarado:**
+
+1. **53 arquivos ainda nomeiam o provider** (lista completa acima). É trabalho da Fase 3, e a
+   catraca garante que o número só pode cair.
+2. **`lib/database.types.ts` está desatualizado muito além destas fases** — a regeneração
+   completa sai com ~662 linhas de diff (dívida declarada na Task 6, não consertada aqui).
+3. **INBOX-004** segue aberto: o freeze de `tests/invariants/**` e o cabeçalho de
+   `vocabulario-banco-x-typescript.test.ts` se contradizem, e a asserção da Task 6 vive num
+   arquivo novo em vez do lugar canônico.
+4. **4 e2e vermelhos herdados** da Task 0.1 (3 defeitos prováveis + 1 sem veredito) nunca
+   foram tocados por nenhuma task deste plano, e `tests/e2e/` não foi re-rodada desde então.
+5. **O ramo `meta_cloud` não tem prova de tela** — não há adapter até a Fase 3b. Quem prova
+   que ele falha fechado é o invariante de banco e os unitários.
+6. **O ramo `banRisk: false` nunca rodou em produção**, pelo mesmo motivo.

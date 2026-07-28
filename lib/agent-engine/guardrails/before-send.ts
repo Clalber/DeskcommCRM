@@ -668,8 +668,9 @@ export async function runBeforeSend(args: RunBeforeSendArgs): Promise<BeforeSend
  *
  * Sessão ilegível cai no default conservador em vez de estourar: o valor é o
  * mesmo do `default` da coluna, então o comportamento é idêntico ao do literal
- * que esta função substitui. Errar para o lado de `meta_cloud` desarmaria o
- * anti-ban (`banRisk`) num número que pode ser banido — o erro caro é esse.
+ * que esta função substitui. Errar para o lado de um canal SEM risco de ban
+ * desarmaria o anti-ban (`banRisk`) num número que pode ser banido — o erro
+ * caro é esse, e é por isso que o default é o canal conservador.
  */
 async function loadChannelProvider(
   db: Queryable,

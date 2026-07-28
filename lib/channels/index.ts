@@ -21,6 +21,8 @@ export function getAdapter(provider: ChannelProvider): ChannelAdapter {
 }
 
 export { capabilitiesOf, CHANNEL_CAPABILITIES, DEFAULT_CHANNEL_PROVIDER } from "./capabilities";
+export { CHANNEL_SESSION_REF_COLUMNS, resolveSessionRef } from "./session-ref";
+export type { ChannelSessionRef } from "./session-ref";
 export type {
   ChannelAdapter,
   ChannelCapabilities,
