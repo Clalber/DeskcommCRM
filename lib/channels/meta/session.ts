@@ -49,3 +49,29 @@ export async function metaSessionByWebhookToken(
     wabaId: data.meta_waba_id ?? null,
   };
 }
+
+/**
+ * A sessão oficial da organização (se houver). Usada pela tela de templates para
+ * saber QUAL WABA espelhar — e para dizer ao operador o que fazer quando não há
+ * nenhuma, em vez de mostrar uma tabela vazia sem explicação.
+ */
+export async function metaSessionForOrg(
+  organizationId: string,
+): Promise<MetaWebhookSession | null> {
+  const admin = createAdminClient();
+  const { data } = await admin
+    .from("channel_sessions")
+    .select("id, organization_id, meta_waba_id")
+    .eq("organization_id", organizationId)
+    .eq("provider", CHANNEL_PROVIDER_META)
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  if (!data) return null;
+  return {
+    id: data.id,
+    organizationId: data.organization_id,
+    wabaId: data.meta_waba_id ?? null,
+  };
+}
