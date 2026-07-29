@@ -78,6 +78,31 @@ ok "aceita OpenAI vazia (é opcional)"           pass   v_openai    ""
 ok "rejeita senha curta"                        reject v_password  "1234567"        "muito curta"
 ok "aceita senha de 8+"                         pass   v_password  "12345678"
 
+echo "leitura do .env (load_env)"
+. ./_common.sh
+set +e
+TMP="$(mktemp -d)"
+cat > "$TMP/.env" <<'EOF'
+# comentário deve ser ignorado
+APP_NAME='Loja do João'
+SENHA_COM_HASH='a#b'
+SENHA_COM_CIFRAO='p$ass'
+COM_ASPAS_DUPLAS="valor com espaço"
+SEM_ASPAS=simples
+LEGADO_SEM_ASPAS=Loja Antiga
+linha sem igual
+EOF
+( load_env "$TMP/.env"
+  eq() { if [ "$2" = "$3" ]; then printf '  ✓ %s\n' "$1"; else printf '  ✗ %s  esperava [%s] obteve [%s]\n' "$1" "$3" "$2"; exit 1; fi; }
+  eq "nome com espaço"            "$APP_NAME"            "Loja do João"
+  eq "senha com # não trunca"     "$SENHA_COM_HASH"      'a#b'
+  eq "senha com \$ não expande"    "$SENHA_COM_CIFRAO"    'p$ass'
+  eq "aspas duplas"               "$COM_ASPAS_DUPLAS"    "valor com espaço"
+  eq "sem aspas"                  "$SEM_ASPAS"           "simples"
+  eq "legado sem aspas c/ espaço" "$LEGADO_SEM_ASPAS"    "Loja Antiga"
+) || fail=1
+rm -rf "$TMP"
+
 echo
 if [ "$fail" = 0 ]; then echo "todos os validadores passaram"; else echo "FALHOU"; fi
 exit "$fail"
