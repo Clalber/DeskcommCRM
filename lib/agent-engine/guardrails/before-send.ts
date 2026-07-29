@@ -504,6 +504,11 @@ export interface RunBeforeSendArgs {
   tenantId: string;
   leadId: string;
   /**
+   * Esta tentativa é um template aprovado? Chega até `ctx.messagingWindow.isTemplate`,
+   * e SÓ o gate de janela o consulta — todos os demais continuam valendo.
+   */
+  isTemplate?: boolean;
+  /**
    * RUN a que a tentativa pertence (job_queue.id) — chave de export da auditoria
    * (`before_send_traces`, acceptance 3 F4-08). Ausente = trace NÃO persistido em DB (só
    * emitido ao logger); usado por testes que exercitam a cadeia sem um job real.
@@ -622,7 +627,7 @@ export async function runBeforeSend(args: RunBeforeSendArgs): Promise<BeforeSend
       body: args.body,
       optedOut,
       provider,
-      messagingWindow: { lastInboundAt },
+      messagingWindow: { lastInboundAt, ...(args.isTemplate === true ? { isTemplate: true } : {}) },
       pacing: { knobs: pacingCfg.knobs, state: pacingState, crmDailyLimit: args.crmDailyLimit, rng: args.rng },
       spinning: { knobs: spinningKnobs, window },
       promise: { table: promise?.table ?? null, ...(promise?.versionId !== undefined ? { versionId: promise.versionId } : {}) },

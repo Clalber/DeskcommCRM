@@ -42,7 +42,9 @@ export interface SendTemplateInput {
  */
 export type SendTemplateResult =
   | { sent: true; externalId: string | null }
-  | { sent: false; reason: BindingState }
+  // `ok` NUNCA é motivo de falha — excluí-lo torna o switch do tradutor exaustivo
+  // por construção, em vez de exigir um `default` que engoliria caso novo em silêncio.
+  | { sent: false; reason: Exclude<BindingState, "ok"> }
   | { sent: false; reason: "missing_values"; missing: string[] }
   | { sent: false; reason: "api_error"; code: number | null; message: string };
 
