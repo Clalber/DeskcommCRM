@@ -766,7 +766,12 @@ export async function runBeforeSend(args: RunBeforeSendArgs): Promise<BeforeSend
  * desarmaria o anti-ban (`banRisk`) num número que pode ser banido — o erro
  * caro é esse, e é por isso que o default é o canal conservador.
  */
-async function loadChannelProvider(
+/**
+ * Provider da sessão. Exportado porque o TURNO também precisa: é o que decide se a
+ * ferramenta de template entra no run (canal sem janela não tem o que fazer com ela,
+ * e tool inútil no prompt degrada a escolha do modelo).
+ */
+export async function loadChannelProvider(
   db: Queryable,
   organizationId: string,
   channelSessionId: string,
