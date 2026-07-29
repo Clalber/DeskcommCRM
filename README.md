@@ -28,6 +28,22 @@
 >
 > **[👉 Get the HostGator VPS with the partnership discount](https://www.hostgator.com.br/52708-141-3-52.html)** —
 > São Paulo datacenter, ideal for WhatsApp running 24/7. *(partner link — subscribing through it supports the project and costs you less)*
+>
+> Already have the VPS? SSH into it and run:
+>
+> ```bash
+> git clone https://github.com/melgarafael/DeskcommCRM.git
+> cd DeskcommCRM
+> bash hostgator-setup-kit/install.sh
+> ```
+>
+> The installer asks for what only you have (domain, Supabase keys, AI key, admin password),
+> validates each one before moving on, generates every other secret, applies the database
+> schema and brings the whole stack up with HTTPS. Details in
+> [`hostgator-setup-kit/README.md`](hostgator-setup-kit/README.md).
+>
+> ⚠️ The **Quickstart** below is the *development* path (running the app on your machine).
+> If you bought a VPS to run the CRM, use the command above, not the Quickstart.
 
 ## ✨ What is it
 
