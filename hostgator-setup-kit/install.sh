@@ -126,7 +126,12 @@ v_sb_key() {
       -H "apikey: $key" -H "Authorization: Bearer $key" \
       "$url/auth/v1/admin/users?page=1&per_page=1" 2>/dev/null || echo 000)"
   else
-    code="$(curl -s -o /dev/null -w '%{http_code}' -m 20 -H "apikey: $key" "$url/rest/v1/" 2>/dev/null || echo 000)"
+    # /auth/v1/settings é a rota que a anon PODE abrir. Não use /rest/v1/: ele
+    # responde 401 "Only the service_role API key can be used for this endpoint"
+    # até para a anon correta — validador que reprova o dado certo é pior que
+    # nenhum. Provado nesta VPS: settings dá 200 para as chaves do projeto e 401
+    # para lixo e para JWT de outro projeto.
+    code="$(curl -s -o /dev/null -w '%{http_code}' -m 20 -H "apikey: $key" "$url/auth/v1/settings" 2>/dev/null || echo 000)"
   fi
   case "$code" in
     2*) return 0;;
