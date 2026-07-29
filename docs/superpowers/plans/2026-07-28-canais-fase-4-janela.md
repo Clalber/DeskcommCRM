@@ -308,7 +308,36 @@ Com o destinatário `5531998966398` já registrado e o template `deskcomm_prova_
 
 ---
 
-## Task 5: A ferramenta do agente
+## ⚠️ Task 5 BLOQUEADA pela Fase 3b — descoberto ao tentar implementá-la
+
+A tool `send_template` não pode ser concluída **corretamente** antes do adapter Meta
+(`lib/channels/index.ts:10` → `meta_cloud: null // Fase 3b`).
+
+**Por quê.** O `send` que a tool injetaria em `runBeforeSend` precisa passar por
+`channel.send({tenantId, leadId, jobId, seq, conversationId, body})`, que faz duas
+coisas indispensáveis:
+
+1. **Registra a mensagem em `messages`** — sem isso o template sai e não aparece na
+   conversa. Ilha, e violação dos invariantes 3 e 6 do sistema vivo.
+2. **Avança o ledger `(job_id, seq)`** — que é o que impede reenvio depois de um
+   crash. Sem ele, um re-run **reenvia o template**. E template **custa dinheiro**:
+   diferente de texto livre, cada entrega é cobrada.
+
+Chamar `sendTemplate` direto, contornando o `channel.send`, compraria a tool ao preço
+de mensagem invisível e cobrança duplicada em retry. Não é o tipo de atalho que se
+paga.
+
+**Ordem correta:** Fase 3b (adapter Meta, com `send` que sabe despachar template) →
+então a Task 5 vira ligação de poucas linhas.
+
+**O que JÁ está pronto e não se perde:** toda a lógica que decide algo está fora do
+`inbound-turn.ts` e testada — `sendTemplate` (8 casos + envio real provado),
+`explainSendResult` (6 casos), `renderTemplateBody` (6 casos) e o gate reconhecendo
+`isTemplate` (10 casos). Falta só o fio, e ele depende do adapter.
+
+---
+
+## Task 5 (após a Fase 3b): A ferramenta do agente
 
 **Files:**
 - Create: `lib/ai/runtime/tools/send-template.ts`
