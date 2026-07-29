@@ -20,6 +20,7 @@ import {
 } from "@/lib/channels";
 import { isMediaPathOwnedBy } from "@/lib/messaging/media/upload-validation";
 import type { ListMessagesQuery, SendMessageInput } from "@/lib/schemas";
+import { sendTemplateForSession } from "@/lib/channels/meta/send-template-for-session";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { Message } from "@/lib/types/messaging";
 
@@ -273,7 +274,19 @@ export async function sendMessageHandler(
       // adapter preserva o mesmo branch (e a mesma mensagem de erro de cada
       // método) do outro lado do seam.
       let externalId: string | null;
-      if (input.media_storage_path) {
+      if (input.type === "template") {
+        // Template é caminho próprio: não passa pelo `adapter.send` (que fala em
+        // texto/mídia) porque o payload da plataforma é outro — e porque o envio
+        // exige checar o contrato ANTES de sair (bind vigente, valores completos),
+        // coisa que só faz sentido para template.
+        externalId = await sendTemplateForSession(supabase, {
+          organizationId: ctx.organization_id,
+          to: chatId,
+          name: input.template_name ?? "",
+          language: input.template_language ?? "",
+          values: input.template_values ?? {},
+        });
+      } else if (input.media_storage_path) {
         // Storage-first: signed URL curta só pro canal baixar (nunca base64).
         const admin = createAdminClient();
         const { data: signed, error: signErr } = await admin.storage
@@ -304,7 +317,16 @@ export async function sendMessageHandler(
       }
       const { data: updated } = await supabase
         .from("messages")
-        .update({ status: "sent", external_id: externalId, ack: 0 })
+        .update({
+          status: "sent",
+          external_id: externalId,
+          ack: 0,
+          // Colunas só do template — é o que responde custo e conformidade de
+          // janela depois, sem varrer jsonb.
+          ...(input.type === "template"
+            ? { template_name: input.template_name, template_language: input.template_language }
+            : {}),
+        })
         .eq("id", message.id)
         .select(MSG_COLS)
         .maybeSingle();

@@ -8485,3 +8485,34 @@ create policy tenant_isolation_meta_templates_all on public.meta_templates
   for all
   using (organization_id in (select public.fn_user_org_ids()))
   with check (organization_id in (select public.fn_user_org_ids()));
+
+-- ---- message type: template (migration 0091) ----
+-- Espelho idempotente. Racional completo no arquivo da migration: `template` NAO
+-- podia ser gravado como 'text' porque o tipo e a unica coluna que carrega custo
+-- (template e cobrado por entrega), conformidade de janela, e o que o contato viu.
+-- Backfill: nenhum por construcao — o conjunto antigo e subconjunto do novo.
+
+do $$ begin
+  alter table public.messages drop constraint if exists messages_type_check;
+  alter table public.messages add constraint messages_type_check
+    check (type = any (array[
+      'text', 'image', 'video', 'audio', 'document', 'sticker',
+      'location', 'contact', 'reaction', 'system',
+      -- novo: envio de template aprovado (canal oficial, fora da janela de 24h)
+      'template'
+    ]));
+end $$;
+
+-- Nome do template disparado. Fica em coluna, não só em `metadata`, porque é o que
+-- responde "quanto gastei com o template X?" sem varrer jsonb — e porque `metadata`
+-- é vocabulário aberto por desenho, o que tornaria a consulta uma aposta.
+alter table public.messages
+  add column if not exists template_name text,
+  add column if not exists template_language text;
+
+comment on column public.messages.template_name is
+  'Nome do template da Meta quando type = template. Null nos demais tipos. Em coluna (não em metadata) porque é a chave de custo e de auditoria de janela.';
+
+create index if not exists messages_template_idx
+  on public.messages (organization_id, template_name)
+  where template_name is not null;

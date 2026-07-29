@@ -83,7 +83,7 @@ function conversationRow(shape: ConversationShape = {}): Row {
  *   rpc('emit_event')
  * O update é merge raso — igual ao que o Postgres faz com um SET de colunas.
  */
-function makeSupabase(conversation: Row) {
+function makeSupabase(conversation: Row, templateRow: Row | null = null) {
   const state: { message: Row | null } = { message: null };
 
   const client = {
@@ -92,6 +92,19 @@ function makeSupabase(conversation: Row) {
         return {
           select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: conversation, error: null }) }) }),
           update: () => ({ eq: async () => ({ error: null }) }),
+        };
+      }
+      if (table === 'meta_templates') {
+        // O espelho local do template. `templateRow` é injetado por caso; null
+        // simula template que não existe (ou WABA errada).
+        return {
+          select: () => ({
+            eq: () => ({
+              eq: () => ({
+                eq: () => ({ maybeSingle: async () => ({ data: templateRow, error: null }) }),
+              }),
+            }),
+          }),
         };
       }
       if (table === 'messages') {
@@ -348,5 +361,69 @@ describe('sendMessageHandler — os 6 desfechos do envio', () => {
     expect(msg.status).toBe('queued');
     expect((msg.metadata as Record<string, unknown>).queued_reason).toBe('waha_not_configured');
     expect(msg.error_code).toBeNull();
+  });
+
+  it('8. type=template envia pelo caminho do template e grava nome e idioma', async () => {
+    // O ramo NOVO. Grava `template_name`/`template_language` porque o tipo sozinho
+    // não responde "qual template custou o quê" — e template é cobrado por entrega.
+    wahaConfigured(true);
+    vi.stubEnv('META_PHONE_NUMBER_ID', '1103328999528818');
+    vi.stubEnv('META_SYSTEM_USER_TOKEN', 'tok');
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ messages: [{ id: 'wamid.TPL' }] }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const msg = await sendMessageHandler(
+      makeSupabase(conversationRow({ provider: 'meta_cloud' }), {
+        name: 'pedido_confirmado',
+        language: 'pt_BR',
+        status: 'APPROVED',
+        contract_hash: 'h',
+        components: [{ type: 'BODY', text: 'Ola {{1}}' }],
+      }),
+      ctx,
+      {
+        conversation_id: 'conv-1',
+        type: 'template',
+        template_name: 'pedido_confirmado',
+        template_language: 'pt_BR',
+        template_values: { '1': 'Rafael' },
+      } as Parameters<typeof sendMessageHandler>[2],
+    );
+
+    const linha = msg as unknown as { status: string; external_id: string; template_name: string };
+    expect(linha.status).toBe('sent');
+    expect(linha.external_id).toBe('wamid.TPL');
+    expect(linha.template_name).toBe('pedido_confirmado');
+    expect(String(fetchMock.mock.calls[0]![0])).toContain('graph.facebook.com');
+  });
+
+  it('8b. template ausente do espelho FALHA, não envia às cegas', async () => {
+    // Sem esta guarda, um nome errado viraria 132000 na Meta — cobrado e tarde.
+    wahaConfigured(true);
+    vi.stubEnv('META_PHONE_NUMBER_ID', '1103328999528818');
+    vi.stubEnv('META_SYSTEM_USER_TOKEN', 'tok');
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    const msg = await sendMessageHandler(
+      makeSupabase(conversationRow({ provider: 'meta_cloud' }), null),
+      ctx,
+      {
+        conversation_id: 'conv-1',
+        type: 'template',
+        template_name: 'nao_existe',
+        template_language: 'pt_BR',
+        template_values: {},
+      } as Parameters<typeof sendMessageHandler>[2],
+    );
+
+    const linha = msg as unknown as { status: string; error_message: string };
+    expect(linha.status).toBe('failed');
+    expect(linha.error_message).toMatch(/template_missing/);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });
