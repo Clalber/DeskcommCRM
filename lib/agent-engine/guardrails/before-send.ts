@@ -101,6 +101,16 @@ export interface GateContext {
   messagingWindow?: {
     /** `conversations.last_inbound_at`. `null` = contato nunca escreveu. */
     lastInboundAt: Date | null;
+    /**
+     * Esta tentativa é um TEMPLATE aprovado? Fora da janela, template é
+     * exatamente o que a plataforma permite — então o gate passa.
+     *
+     * Só ESTE gate muda; `stop`, `lgpd`, `pacing` e os demais continuam valendo.
+     * Sem esta flag haveria só duas saídas, ambas erradas: o `send_template`
+     * seria vetado pelo gate que ele existe para resolver, ou pularia a cadeia
+     * inteira — e aí template viraria bypass de opt-out, LGPD e horário.
+     */
+    isTemplate?: boolean;
   };
   pacing: {
     knobs: PacingKnobs;
@@ -392,6 +402,10 @@ export const messagingWindowGate: Gate = {
     // silencioso: a diferença entre "não regrediu" e "consigo PROVAR que não
     // regrediu" é esta linha no trace (invariante 4 da doutrina).
     if (caps.freeformOutsideWindow) return { pass: true, skipped: 'not_applicable' };
+
+    // Template é a saída legítima fora da janela — é o que a `reason` do veto
+    // manda usar. Vetá-lo aqui fecharia a única porta que este gate abre.
+    if (ctx.messagingWindow?.isTemplate === true) return { pass: true };
 
     if (isWindowOpen(ctx.now, ctx.messagingWindow?.lastInboundAt ?? null)) return { pass: true };
 

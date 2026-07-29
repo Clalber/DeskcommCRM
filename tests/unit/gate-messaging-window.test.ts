@@ -95,3 +95,37 @@ describe("gate messaging_window", () => {
     expect(v.pass).toBe(false);
   });
 });
+
+describe("gate messaging_window — template é a saída, não um bypass", () => {
+  it("template PASSA mesmo com a janela fechada — é o caminho legítimo", () => {
+    const v = messagingWindowGate.evaluate(
+      baseCtx({
+        provider: "meta_cloud",
+        messagingWindow: { lastInboundAt: horasAtras(99), isTemplate: true },
+      }),
+    );
+    expect(v.pass).toBe(true);
+  });
+
+  it("texto livre na MESMA situação continua vetado", () => {
+    // O par prova que o passe é da flag, não do relaxamento do gate.
+    const v = messagingWindowGate.evaluate(
+      baseCtx({
+        provider: "meta_cloud",
+        messagingWindow: { lastInboundAt: horasAtras(99), isTemplate: false },
+      }),
+    );
+    expect(v.pass).toBe(false);
+  });
+
+  it("template NÃO desliga os outros gates — só este muda", () => {
+    // A flag vive em `messagingWindow`, não num campo global de contexto: um
+    // `ctx.isTemplate` de topo convidaria outros gates a consultá-lo, e aí
+    // template viraria bypass de opt-out e LGPD.
+    const ctx = baseCtx({
+      provider: "meta_cloud",
+      messagingWindow: { lastInboundAt: null, isTemplate: true },
+    });
+    expect(Object.keys(ctx)).not.toContain("isTemplate");
+  });
+});
