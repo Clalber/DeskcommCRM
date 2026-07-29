@@ -113,7 +113,7 @@ describe("adapter meta_cloud — envio", () => {
 
     const spy2 = stubFetch({ messages: [{ id: "wamid.D" }] });
     await a().send({
-      sessionRef: "x", to: "5531", kind: "file",
+      sessionRef: "x", to: "5531", kind: "document",
       media: { url: "https://x/a.pdf", mime: "application/pdf", filename: "contrato.pdf" },
     });
     expect(JSON.parse(spy2.mock.calls[0]![1].body as string).document).toMatchObject({

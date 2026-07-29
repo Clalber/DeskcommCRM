@@ -268,18 +268,50 @@ describe('sendMessageHandler — os 6 desfechos do envio', () => {
 
   // Task 6: o canal sai do banco (`channel_sessions.provider`, migration 0087) e
   // não de um literal. Esta é a sabotagem que reprova o retorno do `getAdapter("waha")`
-  // fixo: com o literal de volta, a sessão meta_cloud enviaria pelo WAHA e o teste
-  // ficaria vermelho por não ter lançado. Fail-closed é o desfecho certo enquanto o
-  // adapter da Meta não existe (Fase 3b) — enviar pelo canal errado é pior que não enviar.
-  it('7. o canal vem da sessão: provider sem adapter falha fechado, não cai no WAHA', async () => {
+  // fixo: com o literal de volta, a sessão enviaria pelo canal errado e o teste ficaria
+  // vermelho por não ter lançado.
+  //
+  // ⚠️ Este caso usava `meta_cloud` como "provider sem adapter". Na Fase 3b o adapter
+  // da Meta nasceu, e ele deixou de servir — a rede pegou a mudança, que é o trabalho
+  // dela. Trocado por um provider que NÃO existe: o que se testa aqui é o fail-closed,
+  // não qual canal está pronto. Amarrar o caso a um canal específico o faria expirar de
+  // novo na próxima fase.
+  it('7. o canal vem da sessão: provider desconhecido falha fechado, não cai em nenhum canal', async () => {
     wahaConfigured(true);
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
 
     await expect(
-      sendMessageHandler(makeSupabase(conversationRow({ provider: 'meta_cloud' })), ctx, textInput()),
-    ).rejects.toThrow(/unknown_channel_provider: meta_cloud/);
+      sendMessageHandler(
+        makeSupabase(conversationRow({ provider: 'canal_inexistente' })),
+        ctx,
+        textInput(),
+      ),
+    ).rejects.toThrow(/unknown_channel_provider: canal_inexistente/);
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('7b. sessão meta_cloud agora RESOLVE adapter — a Fase 3b o criou', async () => {
+    // O par com o caso 7 é o que dá sentido aos dois: um prova que provider
+    // desconhecido não vaza para canal nenhum; este prova que o canal oficial
+    // deixou de ser desconhecido.
+    wahaConfigured(true);
+    vi.stubEnv('META_PHONE_NUMBER_ID', '1103328999528818');
+    vi.stubEnv('META_SYSTEM_USER_TOKEN', 'tok');
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ messages: [{ id: 'wamid.META' }] }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const msg = await sendMessageHandler(
+      makeSupabase(conversationRow({ provider: 'meta_cloud' })),
+      ctx,
+      textInput(),
+    );
+    expect((msg as { status: string }).status).toBe('sent');
+    expect(String(fetchMock.mock.calls[0]![0])).toContain('graph.facebook.com');
   });
 
   it('6b. assinatura do Storage falha: failed/storage_sign_failed, não waha_error', async () => {
