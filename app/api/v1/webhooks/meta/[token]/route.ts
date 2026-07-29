@@ -21,6 +21,7 @@ import { NextResponse, type NextRequest } from "next/server";
 
 import { fail } from "@/lib/api/wrappers";
 import { parseMetaWebhook, verificationChallenge, verifyMetaSignature } from "@/lib/channels/meta/webhook";
+import { ingestMetaInbound } from "@/lib/channels/meta/ingest";
 import { metaSessionByWebhookToken } from "@/lib/channels/meta/session";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -77,6 +78,14 @@ export async function POST(req: NextRequest, ctx: RouteCtx): Promise<NextRespons
     // O evento chega carimbado com a WABA; se não for a desta sessão, ignoramos.
     // Confiar no `entry.id` para escolher a org seria aceitar o corpo como fonte.
     if (session.wabaId && e.wabaId && e.wabaId !== session.wabaId) continue;
+
+    if (e.kind === "inbound_message") {
+      // A metade que faltava: mensagem do contato vira linha no inbox, move lead,
+      // acorda o agente — e carimba `last_inbound_at`, que é o que ABRE a janela
+      // de 24h que o gate da Fase 4 calcula.
+      await ingestMetaInbound(admin, e);
+      continue;
+    }
 
     if (e.kind === "template_status") {
       await admin

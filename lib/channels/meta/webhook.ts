@@ -55,6 +55,39 @@ export interface TemplateStatusEvent {
   reason: string | null;
 }
 
+/**
+ * Mensagem ENVIADA PELO CONTATO. A metade que faltava do canal: sem ela o oficial
+ * é um megafone — o cliente responde e nada chega, nenhum lead se move, o agente não
+ * acorda, e a janela de 24h (que deriva de `last_inbound_at`) nunca abre.
+ */
+export interface InboundMessageEvent {
+  kind: "inbound_message";
+  wabaId: string;
+  /** Qual número NOSSO recebeu — é o que amarra a mensagem à sessão certa. */
+  phoneNumberId: string;
+  /** `wamid` — a chave de idempotência. A Meta re-entrega o que não recebe 2xx. */
+  externalId: string;
+  /**
+   * `wa_id` do contato. **Pode vir sem o nono dígito** em celular brasileiro
+   * (medido: 553198966398 para quem recebemos como 5531998966398) — quem resolve o
+   * contato TEM de usar `phoneLookupVariants`, senão duplica a pessoa.
+   */
+  from: string;
+  profileName: string | null;
+  sentAt: Date;
+  /** `text` | `audio` | `image` | `video` | `document` | `sticker` | … */
+  type: string;
+  text: string | null;
+  media: {
+    id: string;
+    /** A Meta manda URL pronta, com `ext=` de expiração — baixe na hora, não guarde. */
+    url: string | null;
+    mime: string | null;
+    /** Nota de voz de verdade (não anexo de áudio). */
+    voice: boolean;
+  } | null;
+}
+
 /** Status de entrega de uma mensagem que ENVIAMOS (sent/delivered/read/failed). */
 export interface MessageStatusEvent {
   kind: "message_status";
@@ -66,7 +99,7 @@ export interface MessageStatusEvent {
   errorTitle: string | null;
 }
 
-export type MetaWebhookEvent = TemplateStatusEvent | MessageStatusEvent;
+export type MetaWebhookEvent = TemplateStatusEvent | MessageStatusEvent | InboundMessageEvent;
 
 interface MetaChange {
   field?: string;
@@ -125,6 +158,46 @@ export function parseMetaWebhook(envelope: MetaWebhookEnvelope): MetaWebhookEven
           event: str(v.event) ?? "UNKNOWN",
           reason: normalizeRejectedReason(v.reason),
         });
+        continue;
+      }
+
+      // Mensagens RECEBIDAS. Vem no mesmo `field: "messages"` das entregas — o que
+      // separa é `messages[]` (do contato) vs `statuses[]` (das nossas). Tratar os
+      // dois no mesmo `if` faria um mascarar o outro quando ambos vêm juntos.
+      if (change.field === "messages" && Array.isArray(v.messages)) {
+        const meta = (v.metadata ?? {}) as Record<string, unknown>;
+        const contatos = Array.isArray(v.contacts) ? (v.contacts as Record<string, unknown>[]) : [];
+        for (const raw of v.messages as Record<string, unknown>[]) {
+          const id = str(raw.id);
+          const from = str(raw.from);
+          if (!id || !from) continue; // payload capenga não vira linha meia-boca
+
+          const perfil = contatos.find((c) => str(c.wa_id) === from);
+          const tipo = str(raw.type) ?? "unknown";
+          const corpoMidia = raw[tipo] as Record<string, unknown> | undefined;
+
+          out.push({
+            kind: "inbound_message",
+            wabaId,
+            phoneNumberId: str(meta.phone_number_id) ?? "",
+            externalId: id,
+            from,
+            profileName: str((perfil?.profile as Record<string, unknown> | undefined)?.name),
+            // A Meta manda epoch em SEGUNDOS, string. Passar direto ao Date daria 1970.
+            sentAt: new Date(Number(str(raw.timestamp) ?? "0") * 1000),
+            type: tipo,
+            text: tipo === "text" ? str((raw.text as Record<string, unknown>)?.body) : null,
+            media:
+              corpoMidia && str(corpoMidia.id)
+                ? {
+                    id: str(corpoMidia.id)!,
+                    url: str(corpoMidia.url),
+                    mime: str(corpoMidia.mime_type),
+                    voice: corpoMidia.voice === true,
+                  }
+                : null,
+          });
+        }
         continue;
       }
 
