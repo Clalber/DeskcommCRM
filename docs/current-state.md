@@ -118,7 +118,13 @@ funil** (só de etapas). O primeiro é bug de primeira impressão em mobile.
 
 Estes são achados de código/config verificados nesta auditoria, não relatos.
 
-### 4.1 Os E2E não rodam no CI 🔴
+### 4.1 Os E2E quase não rodam no CI 🟠 — parcialmente resolvido em 2026-07-30
+
+> **Atualização (2026-07-30):** `e2e.yml` passou a rodar **3 das 19 specs** (`smoke`, `auth`,
+> `error-pages`) contra Supabase local com o `baseline.sql` aplicado. Não-obrigatório ainda.
+> A primeira execução real já pagou o job: achou a página `/500`, que `public-paths.ts`
+> declarava pública e **nunca havia sido criada**. As 16 restantes seguem sem gate — o texto
+> abaixo continua valendo para elas.
 
 O gate de isolamento RLS **roda** — `ci.yml` tem o job `invariants` chamando `pnpm test:db`,
 que sobe `pgvector/pgvector:pg17`, aplica `baseline.sql` em modo install e update, e roda os
