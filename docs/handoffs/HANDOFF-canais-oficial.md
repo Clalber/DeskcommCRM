@@ -755,3 +755,125 @@ entregável). Medido depois, sem pipe: **`pnpm run lint` → exit 0, 156 problem
 **Lição:** rodapé de estado repetido é a afirmação menos auditada de um relatório. Número
 copiado da task anterior não é número medido — e a diferença só aparece quando alguém mede
 o que ninguém disputa.
+
+---
+
+## Fase 5 fechada — e a "pendência do kit" não existia (2026-07-30)
+
+### O que ficou provado
+
+`pnpm run test:journeys` (config `tests/journeys/playwright.config.ts`, app em `next start`
+na 3007, banco local estilo VPS): **10/10 verde em 52,8s**. Inclui as três da tela de conexão:
+
+| # | Jornada | Evidência |
+|---|---|---|
+| 1 | o admin chega ao canal oficial pelo hub de configurações | `evidence/canais/fase5/00-hub-antes-da-assercao.png`, `evidence/canais/fase5/01-tela-conexao.png` |
+| 2 | credencial errada é RECUSADA com o motivo da Meta, e nada é gravado | `evidence/canais/fase5/02-credencial-recusada.png` |
+| 3 | credencial real conecta e a tela mostra o que colar na Meta | `evidence/canais/fase5/03-conectado.png` |
+
+A nº 3 estava declarada **bloqueada**. Não estava.
+
+Prova além da tela — a tela mostra que o token existe, não que serve. No Postgres:
+
+```
+provider   | meta_phone_number_id | tem_token | prefixo_decifrado | tam
+meta_cloud | 1103328999528818     | t         | EAASbhCM          | 203
+```
+
+`fn_decrypt_oauth` devolve o token real. Cifra e decifra fecham o ciclo.
+
+### Correção de registro: eu reportei um buraco que não existe
+
+Este handoff (e o meu relatório ao Rafael) afirmou que **`install.sh` não provisiona a chave
+de cifra**, e classificou isso como o item de maior impacto — "afeta produção de todo
+self-hoster". **É falso.** `hostgator-setup-kit/install.sh:629` e `update.sh:124` chamam
+`ensure_encryption_key`, que gera a chave e a semeia em `private.app_secrets`.
+
+Como errei: procurei por `ALTER DATABASE ... SET app.nuvemshop_oauth_key`, que é o que a
+`docs/specs/06-spec-nuvemshop-lgpd.md:491` descreve. A implementação divergiu da spec **de
+propósito** — e o próprio `baseline.sql:5252` explica: *"Supabase cloud NÃO permite ALTER
+DATABASE/ROLE SET de GUC custom (42501)"*. Por isso `private.fn_oauth_key()` lê
+`GUC ?? private.app_secrets`, e o kit semeia a tabela.
+
+O buraco era **só do meu ambiente local**, que aplicou `baseline.sql` sem o passo do kit.
+Semeada a chave à mão, tudo funcionou de primeira.
+
+**Lição:** grep de padrão prova a ausência do **padrão**, nunca a do **mecanismo**. Eu medi
+contra a spec e chamei de defeito o que era uma divergência deliberada, documentada duas
+linhas acima do código que eu não li. Antes de reportar "o kit não faz X", chame o kit.
+
+### `lib/auth/server.ts` — auth falha alto, não baixo
+
+`loadAuthUser` descartava o erro das queries de `platform_admins` e `user_organizations`.
+Query falhando devolvia `null`; `null` virava `[]`; `[]` significa **"usuário sem
+organização"**. Uma instabilidade de banco chegava ao operador como decisão de autorização:
+os cards de admin somem, as rotas dão 403, e nada aponta para infraestrutura.
+
+Foi exatamente o que aconteceu nesta sessão: com o PostgREST em `name resolution failed`
+após um restart do Docker, todos os cards de admin sumiram do hub — e custou **seis
+diagnósticos errados** (build velho, processo velho, cache estático, filtro de papel) antes
+de alguém olhar a causa.
+
+Agora as duas queries checam `error` e estouram com `auth_permissions_unavailable`, cuja
+mensagem diz explicitamente que **a sessão não foi rebaixada por decisão de autorização**.
+Lista vazia **sem** erro continua sendo estado legítimo (convite pendente, acesso revogado)
+e não vira exceção.
+
+Travado por `tests/unit/auth-falha-alto.test.ts` (5 casos). **Sabotagem:** removido o bloco
+de erro, 3 dos 5 ficam vermelhos — os dois caminhos felizes seguem verdes, que é o
+contra-peso certo.
+
+O caso de `platform_admins` é o mais perigoso dos dois: ali `data: null` é o que a RLS
+devolve **legitimamente** para quem não é admin. Sem checar o erro, falha e "não é admin"
+são indistinguíveis — e a falha rebaixa um super-admin em silêncio.
+
+### As jornadas eram três cópias do mesmo login, com o conserto em uma
+
+Ao rodar as jornadas **juntas** pela primeira vez, duas falharam. A causa não era nenhuma
+delas: `loginAdmin` estava copiado em `canais-baseline`, `templates-screen` e
+`canal-oficial`, e os dois defeitos do laço de MFA que eu havia consertado tinham entrado
+em **uma** cópia. Copiar um helper não duplica código: duplica o defeito e divide o conserto.
+
+Extraído para `tests/journeys/_login.ts` — uma cópia, com os dois consertos.
+
+Isso reduziu, mas não eliminou: o **primeiro teste de um arquivo** continuava caindo, e
+**qual arquivo mudava a cada corrida**. A foto mostrava `/login` com os campos vazios —
+tínhamos chegado ao MFA e voltado. Testei a hipótese barata (replay do código TOTP, que é
+de uso único) e ela foi **descartada por medição**: com o guard de replay no lugar, a falha
+continuou, só trocou de arquivo. A causa exata do lado do GoTrue não foi isolada (o
+container tinha sido reiniciado e não guardava log do período).
+
+O que se sabia bastava para decidir: a falha vinha de **logins consecutivos**, e nenhuma
+jornada além de uma precisa exercitar o login. `tests/journeys/auth.setup.ts` loga **uma
+vez** e guarda a sessão; as demais herdam via `storageState`. `canais-baseline` declara
+`storageState` vazio de propósito — ali o login **é** o objeto do teste, e herdar a sessão
+faria o teste passar sem exercitar o que ele afirma cobrir.
+
+Resultado: de 3 passados em 2min para **10 passados em 52,8s**.
+
+### Dois achados que vieram de graça por rodar tudo junto
+
+1. **O teste `6-7: lembrete (follow-up) e Radar de Risco` não estava quebrado.** Ele constava
+   como dívida herdada ("quebrado desde o merge de 79 commits"). Estava sendo **abortado**
+   pelo flake de login do teste anterior no mesmo `describe` serial. Passa em 10,9s.
+
+2. **Seletor frouxo no envio de texto.** `getByRole("button", { name: "Enviar" })` casa por
+   **substring**, e passou a resolver 2 elementos quando o preview da última mensagem na
+   lista de conversas continha a palavra "enviar". Não era a UI: era o seletor, que
+   funcionava só enquanto nenhum dado tinha casado por acaso. Corrigido com `exact: true`.
+
+3. **Eu criei uma config duplicada.** Escrevi `playwright.journeys.config.ts` na raiz sem
+   procurar antes — `tests/journeys/playwright.config.ts` já existia, com as flags de
+   microfone falso que a jornada de áudio precisa. A duplicata foi removida e as melhorias
+   migradas para a que já existia. Cometi, no mesmo turno, o defeito que estava consertando
+   três parágrafos acima.
+
+### Agora existe `pnpm run test:journeys`
+
+As jornadas rodavam por linha de comando decorada. Viraram script no `package.json`, para
+que um clone consiga repetir a prova:
+
+```bash
+set -a && . ./.env.local && set +a
+E2E_PORT=3007 pnpm run test:journeys
+```

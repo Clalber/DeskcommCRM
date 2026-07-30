@@ -7,7 +7,7 @@ import { defineConfig } from "@playwright/test";
  * mudaria de composição em relação ao baseline gravado na Task 0 — e o próprio
  * artefato de comparação viraria a variável que muda.
  *
- * Rodar: `pnpm exec playwright test --config tests/journeys/playwright.config.ts`
+ * Rodar: `pnpm run test:journeys` (ou `playwright test -c tests/journeys/playwright.config.ts`).
  * Pré-requisitos: app já buildada e servida na porta (não sobe servidor aqui —
  * o server é compartilhado com a coleta do trace de gates).
  */
@@ -32,5 +32,16 @@ export default defineConfig({
     },
     permissions: ["microphone"],
   },
-  projects: [{ name: "chromium", use: { browserName: "chromium" } }],
+  projects: [
+    // Loga UMA vez e guarda a sessão para as demais jornadas. O cabeçalho de
+    // `auth.setup.ts` documenta o defeito que isto remove: com login por teste,
+    // o PRIMEIRO teste de um arquivo caía, e qual arquivo mudava a cada corrida.
+    { name: "setup", testMatch: /auth\.setup\.ts/ },
+    {
+      name: "chromium",
+      dependencies: ["setup"],
+      testIgnore: /auth\.setup\.ts/,
+      use: { browserName: "chromium", storageState: ".auth/journeys-admin.json" },
+    },
+  ],
 });

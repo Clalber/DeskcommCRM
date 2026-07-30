@@ -13,18 +13,10 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 
-import { generateTotp, msUntilNextTotpWindow } from "../e2e/utils/totp";
 
-interface Creds {
-  password: string;
-  users: Record<string, { email: string } | undefined>;
-  admin_totp?: { secret: string };
-}
-const creds = JSON.parse(
-  fs.readFileSync(path.join(process.cwd(), ".e2e-creds.json"), "utf8"),
-) as Creds;
+
 
 const EVIDENCE = path.join(
   process.cwd(),
@@ -39,41 +31,10 @@ const REAL = {
   token: process.env.META_SYSTEM_USER_TOKEN ?? "",
 };
 
-async function loginAdmin(page: Page): Promise<void> {
-  const secret = creds.admin_totp?.secret;
-  if (!secret) throw new Error(".e2e-creds.json sem admin_totp");
-  await page.goto("/login");
-  await page.locator("#email").fill(creds.users.admin!.email);
-  await page.locator("#password").fill(creds.password);
-  await page.getByRole("button", { name: /entrar/i }).click();
-  await page.waitForURL(/\/login\/mfa/, { timeout: 30_000 });
-
-  for (let tentativa = 0; tentativa < 3; tentativa++) {
-    // Se o MFA da tentativa anterior JÁ passou, o campo não existe mais e clicar
-    // nele trava até o timeout do teste. Foi assim que esta jornada falhou com o
-    // app carregado na tela: o laço não percebeu o sucesso a tempo.
-    if (/\/(app|onboarding)\//.test(page.url())) return;
-
-    if (msUntilNextTotpWindow() < 3_000) await page.waitForTimeout(msUntilNextTotpWindow() + 200);
-    await page.locator('input[aria-label="Dígito 1"]').click({ timeout: 15_000 });
-    await page.keyboard.type(generateTotp(secret), { delay: 40 });
-    try {
-      // 30s, não 10s: sob carga a validação do MFA passa dos 10 e o laço re-digita
-      // num campo que já sumiu — o defeito acima, pela outra ponta.
-      await page.waitForURL(/\/(app|onboarding)\//, { timeout: 30_000 });
-      return;
-    } catch {
-      if (/\/(app|onboarding)\//.test(page.url())) return;
-      await page.waitForTimeout(msUntilNextTotpWindow() + 200);
-    }
-  }
-  throw new Error("MFA falhou após 3 tentativas");
-}
 
 test.describe.configure({ mode: "serial" });
 
 test("o admin chega ao canal oficial pelo hub de configurações", async ({ page }) => {
-  await loginAdmin(page);
   await page.goto("/app/settings");
 
   // Foto ANTES da asserção: quando o card não aparece, o artefato de erro do
@@ -94,7 +55,6 @@ test("o admin chega ao canal oficial pelo hub de configurações", async ({ page
 test("credencial errada é RECUSADA com o motivo da Meta, e nada é gravado", async ({ page }) => {
   // É o caso que separa "validar" de "aceitar e torcer". Sem ele, o operador acharia
   // que conectou e só entenderia que não na primeira mensagem que não sai.
-  await loginAdmin(page);
   await page.goto("/app/settings/canal-oficial");
   await expect(page.getByTestId("canal-oficial-root")).toBeVisible({ timeout: 20_000 });
 
@@ -130,7 +90,6 @@ test("credencial errada é RECUSADA com o motivo da Meta, e nada é gravado", as
 test("credencial real conecta e a tela mostra o que colar na Meta", async ({ page }) => {
   test.skip(!REAL.token, "sem META_SYSTEM_USER_TOKEN no ambiente");
 
-  await loginAdmin(page);
   await page.goto("/app/settings/canal-oficial");
   await expect(page.getByTestId("canal-oficial-root")).toBeVisible({ timeout: 20_000 });
 

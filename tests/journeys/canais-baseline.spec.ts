@@ -22,24 +22,22 @@ import * as path from "node:path";
 import { createClient } from "@supabase/supabase-js";
 import { test, expect, type Page } from "@playwright/test";
 
-import { generateTotp, msUntilNextTotpWindow } from "../e2e/utils/totp";
+import { lerCreds, loginAdmin } from "./_login";
 
-const CREDS_PATH = path.join(process.cwd(), ".e2e-creds.json");
+// As demais jornadas herdam a sessão do `auth.setup.ts`. ESTA prova o login pela
+// tela, então precisa começar deslogada — herdar a sessão faria o teste passar
+// sem nunca exercitar o que ele afirma cobrir.
+test.use({ storageState: { cookies: [], origins: [] } });
+
+
 const EVIDENCE = path.join(
   process.cwd(),
   process.env.CANAIS_EVIDENCE_DIR ?? "evidence/canais/baseline",
 );
 fs.mkdirSync(EVIDENCE, { recursive: true });
 
-interface Creds {
-  org_id: string;
-  password: string;
-  users: Record<string, { email: string }>;
-  admin_totp?: { factor_id: string; secret: string };
-  radar?: { at_risk_title: string };
-}
 
-const creds = JSON.parse(fs.readFileSync(CREDS_PATH, "utf8")) as Creds;
+const creds = lerCreds();
 
 /** .env.local lido na mão — os specs rodam fora do runtime do Next. */
 function envLocal(): Record<string, string> {
@@ -77,29 +75,6 @@ async function shot(page: Page, name: string): Promise<void> {
   await page.screenshot({ path: path.join(EVIDENCE, name), fullPage: true });
 }
 
-async function loginAdmin(page: Page): Promise<void> {
-  const secret = creds.admin_totp?.secret;
-  if (!secret) throw new Error(".e2e-creds.json sem admin_totp — rode scripts/seed-e2e-credentials.ts");
-  await page.goto("/login");
-  await page.locator("#email").fill(creds.users.admin!.email);
-  await page.locator("#password").fill(creds.password);
-  await page.getByRole("button", { name: /entrar/i }).click();
-  await page.waitForURL(/\/login\/mfa/, { timeout: 30_000 });
-
-  for (let attempt = 0; attempt < 3; attempt++) {
-    if (msUntilNextTotpWindow() < 3_000) await page.waitForTimeout(msUntilNextTotpWindow() + 200);
-    const code = generateTotp(secret);
-    await page.locator('input[aria-label="Dígito 1"]').click();
-    await page.keyboard.type(code, { delay: 40 });
-    try {
-      await page.waitForURL(/\/(app|onboarding)\//, { timeout: 10_000 });
-      return;
-    } catch {
-      await page.waitForTimeout(msUntilNextTotpWindow() + 200);
-    }
-  }
-  throw new Error("MFA falhou após 3 tentativas de TOTP");
-}
 
 /**
  * O admin da org de e2e é o DONO — com `organizations.onboarded_at` nulo, todo
@@ -152,7 +127,11 @@ test.describe("jornada WAHA — baseline do seam de canais", () => {
 
     const texto = `baseline canais ${new Date().toISOString().slice(11, 19)}`;
     await page.getByLabel("Mensagem").fill(texto);
-    await page.getByRole("button", { name: "Enviar" }).click();
+    // `exact: true` não é zelo: sem ele, `name` casa por SUBSTRING e o card da
+    // lista de conversas — cujo preview mostra o texto da última mensagem —
+    // entra no match quando essa mensagem por acaso contém "enviar". O seletor
+    // frouxo funcionava só enquanto nenhum dado tinha casado por acaso.
+    await page.getByRole("button", { name: "Enviar", exact: true }).click();
     // O que se mede é a mensagem APARECER na timeline com o estado que o
     // sistema lhe deu (enviada, falha, pendente) — não que ela chegue ao celular.
     await expect(page.getByText(texto)).toBeVisible({ timeout: 30_000 });

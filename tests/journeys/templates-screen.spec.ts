@@ -11,18 +11,10 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 
-import { generateTotp, msUntilNextTotpWindow } from "../e2e/utils/totp";
 
-interface Creds {
-  password: string;
-  users: Record<string, { email: string } | undefined>;
-  admin_totp?: { secret: string };
-}
-const creds = JSON.parse(
-  fs.readFileSync(path.join(process.cwd(), ".e2e-creds.json"), "utf8"),
-) as Creds;
+
 
 const EVIDENCE = path.join(
   process.cwd(),
@@ -35,34 +27,10 @@ fs.mkdirSync(EVIDENCE, { recursive: true });
  * mesmo fluxo de TOTP da jornada baseline — reimplementar daria um segundo
  * login para manter em sincronia.
  */
-async function loginAdmin(page: Page): Promise<void> {
-  const secret = creds.admin_totp?.secret;
-  if (!secret) throw new Error(".e2e-creds.json sem admin_totp — rode scripts/seed-e2e-credentials.ts");
-  await page.goto("/login");
-  await page.locator("#email").fill(creds.users.admin!.email);
-  await page.locator("#password").fill(creds.password);
-  await page.getByRole("button", { name: /entrar/i }).click();
-  await page.waitForURL(/\/login\/mfa/, { timeout: 30_000 });
-
-  for (let attempt = 0; attempt < 3; attempt++) {
-    if (msUntilNextTotpWindow() < 3_000) await page.waitForTimeout(msUntilNextTotpWindow() + 200);
-    const code = generateTotp(secret);
-    await page.locator('input[aria-label="D\u00edgito 1"]').click();
-    await page.keyboard.type(code, { delay: 40 });
-    try {
-      await page.waitForURL(/\/(app|onboarding)\//, { timeout: 10_000 });
-      return;
-    } catch {
-      await page.waitForTimeout(msUntilNextTotpWindow() + 200);
-    }
-  }
-  throw new Error("MFA falhou ap\u00f3s 3 tentativas de TOTP");
-}
 
 test.describe.configure({ mode: "serial" });
 
 test("o operador chega aos templates pelo hub de configurações", async ({ page }) => {
-  await loginAdmin(page);
 
   await page.goto("/app/settings");
   const card = page.getByRole("link", { name: /Templates do WhatsApp/i });
@@ -76,7 +44,6 @@ test("o operador chega aos templates pelo hub de configurações", async ({ page
 });
 
 test("os parâmetros aparecem derivados, com o contexto como rótulo", async ({ page }) => {
-  await loginAdmin(page);
   await page.goto("/app/settings/templates");
   await expect(page.getByTestId("templates-root")).toBeVisible({ timeout: 20_000 });
 
@@ -105,7 +72,6 @@ test("os parâmetros aparecem derivados, com o contexto como rótulo", async ({ 
 });
 
 test("o botão Sincronizar fala com a Graph API de verdade", async ({ page }) => {
-  await loginAdmin(page);
   await page.goto("/app/settings/templates");
 
   const botao = page.getByTestId("btn-sync");
