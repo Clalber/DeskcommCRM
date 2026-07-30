@@ -98,8 +98,27 @@ jobs:
       # PLACEHOLDERS FALSOS, existem só para o boot passar da validação Zod.
       # Nenhum segredo real entra aqui: este job roda em PR de fork, onde
       # secrets não são expostos por design.
+      # O seed lê `.env.local` do cwd (não de process.env), então o arquivo é
+      # escrito aqui. Ele cria 1 org + 4 usuários com os 4 papéis e um TOTP
+      # verified de secret conhecido no admin — sem isso, todo spec que loga
+      # fica de fora, que era a maior parte da suíte.
+      - name: Semear credenciais de teste
+        run: |
+          cat > .env.local <<EOF
+          NEXT_PUBLIC_SUPABASE_URL=$NEXT_PUBLIC_SUPABASE_URL
+          NEXT_PUBLIC_SUPABASE_ANON_KEY=$NEXT_PUBLIC_SUPABASE_ANON_KEY
+          SUPABASE_SERVICE_ROLE_KEY=$SUPABASE_SERVICE_ROLE_KEY
+          INTERNAL_SECRET=ci-placeholder-nao-e-segredo
+          EOF
+          pnpm exec tsx scripts/seed-e2e-credentials.ts
+
       - name: E2E (subconjunto sem dependência externa)
-        run: pnpm exec playwright test smoke.spec.ts auth.spec.ts error-pages.spec.ts
+        run: |
+          pnpm exec playwright test \
+            smoke.spec.ts auth.spec.ts error-pages.spec.ts \
+            password-recovery.spec.ts signup-journey.spec.ts \
+            rbac-roles.spec.ts inbox-scope.spec.ts reset-password-mfa.spec.ts \
+            degradacao-silenciosa.spec.ts vps-webhook-outbound-ssrf.spec.ts
         env:
           INTERNAL_SECRET: ci-placeholder-nao-e-segredo
           CPF_ENCRYPTION_KEY: ci-placeholder-nao-e-segredo
