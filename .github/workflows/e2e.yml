@@ -1,0 +1,91 @@
+name: e2e
+
+# Issue #63: as 19 specs de tests/e2e/ não rodavam em lugar nenhum. Este job
+# fecha o buraco começando pelo subconjunto que não depende de serviço externo.
+#
+# NÃO-BLOQUEANTE de propósito (continue-on-error) enquanto medimos estabilidade.
+# Quando N execuções seguidas passarem sem flake, remova a flag e ponha `e2e`
+# na lista de checks obrigatórios da branch protection. Enquanto a flag existir,
+# vermelho aqui NÃO segura merge — leia o log, não ignore.
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      # Sobe Postgres + Auth (GoTrue) + PostgREST + Storage. Auth de verdade é
+      # requisito: os specs de login exercitam o GoTrue, não um mock.
+      - name: Subir Supabase local
+        run: supabase start
+
+      - name: Exportar credenciais do stack local
+        run: |
+          supabase status -o env > /tmp/sb.env
+          {
+            echo "NEXT_PUBLIC_SUPABASE_URL=$(grep '^API_URL=' /tmp/sb.env | cut -d'"' -f2)"
+            echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=$(grep '^ANON_KEY=' /tmp/sb.env | cut -d'"' -f2)"
+            echo "SUPABASE_SERVICE_ROLE_KEY=$(grep '^SERVICE_ROLE_KEY=' /tmp/sb.env | cut -d'"' -f2)"
+          } >> "$GITHUB_ENV"
+
+      - name: Build de produção
+        run: pnpm build
+        env:
+          NEXT_TELEMETRY_DISABLED: "1"
+
+      - name: Instalar o browser
+        run: pnpm exec playwright install --with-deps chromium
+
+      # Subconjunto deliberado: specs que não precisam de fixture semeada nem de
+      # serviço externo. O que ficou DE FORA (e por quê) está no passo seguinte —
+      # cobertura parcial silenciosa se lê como cobertura total.
+      - name: E2E (subconjunto sem dependência externa)
+        run: pnpm exec playwright test smoke.spec.ts auth.spec.ts error-pages.spec.ts
+
+      - name: Declarar o que este job ainda NÃO cobre
+        if: always()
+        run: |
+          {
+            echo "## E2E — cobertura deste job"
+            echo ""
+            echo "Rodou: smoke, auth, error-pages."
+            echo ""
+            echo "**Não rodou** (16 specs), por dependerem de fixture semeada ou serviço externo:"
+            echo "- WAHA: followup-journey, webhooks"
+            echo "- WAHA + Redis + Resend + Nuvemshop: vps-fresh-onboarding"
+            echo "- fixture semeada (scripts/seed-e2e-*.ts): followup-builder, followup-queue,"
+            echo "  inbox-scope, invite-lifecycle, kanban-owner-filter, queue-assign, rbac-roles,"
+            echo "  risk-radar, signup-journey, password-recovery, reset-password-mfa,"
+            echo "  degradacao-silenciosa, vps-webhook-outbound-ssrf"
+            echo ""
+            echo "Expandir o subconjunto é trabalho de seguimento — ver issue #63."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
