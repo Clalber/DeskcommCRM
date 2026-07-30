@@ -91,6 +91,7 @@ Migrations applied to Supabase project `rrydmwnporysaiysiztn` (sa-east-1, Postgr
 | `20260729000000` | `0092_stage_names_acentos` | Acentos nas etapas padrão do funil: o seed criava "Em separacao" e "Pos-venda" sem acento, e esses nomes aparecem no quadro principal. Corrige o seed e cura instalações existentes (só onde o nome padrão está intacto). |
 | `20260729130000` | `0093_system_version_compare_failed` | Coluna `system_version.compare_failed`: o agente do host passa a dizer explicitamente quando NÃO conseguiu comparar a versão instalada com a última publicada (clone raso que não completou a história). Sem ela, a ausência de versão nova era lida como "você está em dia" — uma instalação atrasada era informada de que estava atualizada, em silêncio. |
 | `20260730000000` | `0094_system_version_has_known_release` | Coluna `system_version.has_known_release`: distingue "instalação à frente da versão publicada" (existe tag, já contida no HEAD) de "nunca houve versão publicada" (fork sem nenhuma tag `v*`) — as duas produziam a mesma combinação `off_release=true, latest_version="", compare_failed=false`, e a tela afirmava "à frente da publicada" sem versão nenhuma existir. |
+| `20260730180000` | `0095_budget_conta_llm_calls` | O gatilho de consumo do orçamento de IA existia só em `ai_invocations` (workers legados); o agent-engine grava em `llm_calls`, então o contador ficava zerado, a tela mostrava R$ 0,00 com dinheiro saindo e o alarme/pausa nunca disparavam. Passa a valer nas duas + reconcilia o mês corrente. |
 
 ## Reproducibility
 

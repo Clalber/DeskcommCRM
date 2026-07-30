@@ -8466,3 +8466,23 @@ alter table public.system_version
   add column if not exists has_known_release boolean not null default true;
 comment on column public.system_version.has_known_release is
   'false quando o agente do host nunca viu nenhuma tag v* no repositório (fork sem releases). Default true preserva o comportamento anterior para agentes antigos que ainda não enviam este campo.';
+
+-- ---- orçamento de IA conta o runtime real (migration 0095) ----
+-- O gatilho de consumo existia só em ai_invocations (workers legados); o
+-- agent-engine grava em llm_calls, então o contador ficava zerado e o alarme
+-- de 80% / pausa em 100% nunca disparavam. Idempotente.
+drop trigger if exists trg_llm_calls_budget on public.llm_calls;
+create trigger trg_llm_calls_budget
+  after insert on public.llm_calls
+  for each row execute function public.fn_update_budget_consumption();
+
+insert into public.ai_budgets (organization_id, current_month_consumed_cents)
+select o.id,
+       coalesce((select sum(cost_cents) from public.llm_calls c
+                 where c.organization_id = o.id and c.created_at >= date_trunc('month', now())), 0)
+     + coalesce((select sum(cost_cents) from public.ai_invocations i
+                 where i.organization_id = o.id and i.created_at >= date_trunc('month', now())), 0)
+from public.organizations o
+on conflict (organization_id) do update
+set current_month_consumed_cents = excluded.current_month_consumed_cents,
+    updated_at = now();
