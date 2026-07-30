@@ -2,6 +2,31 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { getAdapter } from "@/lib/channels";
 
+/**
+ * O adapter resolve a credencial POR SESSÃO (banco) com o env como fallback. Sem
+ * mockar o admin client, o `fetch` stubado captura a query do Supabase em vez da
+ * chamada à Graph API — foi assim que estes testes vermelharam quando a resolução
+ * por sessão entrou, e o vermelho foi correto.
+ */
+const sessaoNoBanco: { token: string | null } = { token: null };
+vi.mock("@/lib/supabase/admin", () => ({
+  createAdminClient: () => ({
+    from: () => ({
+      select: () => ({
+        eq: () => ({
+          maybeSingle: async () => ({
+            data: sessaoNoBanco.token
+              ? { meta_phone_number_id: "sessao-pn", meta_token_encrypted: "\\xdeadbeef" }
+              : null,
+            error: null,
+          }),
+        }),
+      }),
+    }),
+    rpc: async () => ({ data: sessaoNoBanco.token, error: null }),
+  }),
+}));
+
 const a = () => getAdapter("meta_cloud");
 
 function configurar() {
@@ -23,6 +48,7 @@ function stubFetch(resposta: unknown, ok = true) {
 afterEach(() => {
   vi.unstubAllEnvs();
   vi.unstubAllGlobals();
+  sessaoNoBanco.token = null;
 });
 
 describe("adapter meta_cloud — endereçamento", () => {
@@ -143,5 +169,31 @@ describe("adapter meta_cloud — envio", () => {
     stubFetch({ messages: [] });
     const r = await a().send({ sessionRef: "x", to: "5531", kind: "text", body: "oi" });
     expect(r).toEqual({ externalId: null });
+  });
+});
+
+describe("credencial por sessão — o que destrava multi-tenant", () => {
+  it("com token na SESSÃO, o env deixa de valer", async () => {
+    // Ordem sessão-primeiro: um env esquecido não pode silenciar o que foi
+    // configurado pela tela, senão o operador não entende por que nada mudou.
+    configurar();
+    sessaoNoBanco.token = "token-da-sessao";
+    const spy = stubFetch({ messages: [{ id: "wamid.S" }] });
+
+    await a().send({ sessionRef: "sessao-pn", to: "5531", kind: "text", body: "oi" });
+
+    const [, init] = spy.mock.calls[0]!;
+    expect((init.headers as Record<string, string>).Authorization).toBe("Bearer token-da-sessao");
+  });
+
+  it("sem token na sessão, cai no env — instalação de número único segue funcionando", async () => {
+    configurar();
+    sessaoNoBanco.token = null;
+    const spy = stubFetch({ messages: [{ id: "wamid.E" }] });
+
+    await a().send({ sessionRef: "qualquer", to: "5531", kind: "text", body: "oi" });
+
+    const [, init] = spy.mock.calls[0]!;
+    expect((init.headers as Record<string, string>).Authorization).toBe("Bearer tok");
   });
 });

@@ -19,6 +19,8 @@
  *    da bolha de voz. E a Meta **não converte** — quem manda mp3 com `voice:true` erra;
  *    o outro canal converte por nós, este não.
  */
+import { createAdminClient } from "@/lib/supabase/admin";
+import { resolveMetaCreds } from "../meta/credentials";
 import type { ChannelAdapter, OutboundEnvelope, RecipientInput } from "../types";
 
 /** Só dígitos. `+55 (31) 99896-6398` → `5531998966398`. */
@@ -26,30 +28,17 @@ function toE164Digits(raw: string): string {
   return raw.replace(/\D/g, "");
 }
 
-interface MetaCreds {
-  phoneNumberId: string;
-  token: string;
-  graphVersion: string;
-}
-
 /**
- * Credenciais do canal oficial. `null` = não configurado — e o chamador trata isso
- * como noop, nunca como erro, do mesmo jeito que faz com o outro canal.
+ * Credencial do ambiente — o caminho de instalação de número único.
  *
- * Hoje vêm do ambiente (BYO colado à mão). Quando o Embedded Signup existir (Fase 5),
- * a origem passa a ser a linha de `channel_sessions`, e só esta função muda.
+ * `isConfigured()` continua olhando só o env de propósito: ele responde "dá para
+ * tentar?" de forma SÍNCRONA, e a resposta certa para uma instalação que gravou a
+ * credencial na sessão vem do banco. Quem sabe disso é o `send`, que é async.
+ * Devolver `false` aqui com sessão configurada faria o handler gravar `queued` sem
+ * motivo — por isso o `send` resolve de novo, com a sessão, antes de desistir.
  */
-export function getMetaCreds(): MetaCreds | null {
-  const phoneNumberId = process.env.META_PHONE_NUMBER_ID;
-  const token = process.env.META_SYSTEM_USER_TOKEN;
-  if (!phoneNumberId || !token) return null;
-  return {
-    phoneNumberId,
-    token,
-    // Explícita de propósito: bump de versão da Graph API é decisão, não deriva.
-    graphVersion: process.env.META_GRAPH_VERSION ?? "v22.0",
-  };
-}
+import { metaCredsFromEnv } from "../meta/credentials";
+export { metaCredsFromEnv as getMetaCreds };
 
 /** `kind` do envelope → objeto de mídia da Cloud API. */
 function mediaPayload(env: OutboundEnvelope): Record<string, unknown> | null {
@@ -92,7 +81,9 @@ export const metaCloudAdapter: ChannelAdapter = {
   },
 
   isConfigured(): boolean {
-    return getMetaCreds() !== null;
+    // Síncrono por contrato. Com credencial na sessão, quem confirma é o `send`
+    // (async) — ver o comentário acima.
+    return metaCredsFromEnv() !== null;
   },
 
   codes: {
@@ -102,7 +93,9 @@ export const metaCloudAdapter: ChannelAdapter = {
   },
 
   async send(envelope: OutboundEnvelope): Promise<{ externalId: string | null }> {
-    const creds = getMetaCreds();
+    // Sessão primeiro, env como fallback. O `sessionRef` do canal oficial É o
+    // `phone_number_id` (ver `resolveSessionRef`), então ele é a chave da busca.
+    const creds = await resolveMetaCreds(createAdminClient(), envelope.sessionRef);
     // Mesmo contrato do outro canal: sem credencial é NOOP, não exceção. A UI mostra
     // o banner de "canal não conectado"; transformar em erro mudaria comportamento.
     if (!creds) return { externalId: null };
