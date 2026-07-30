@@ -23,11 +23,30 @@ step "Procurando atualizações"
 git fetch --quiet origin 2>/dev/null || c_ylw "⚠ não consegui falar com o GitHub — sigo com o código que já está aqui."
 LOCAL="$(git rev-parse HEAD 2>/dev/null || echo '?')"
 REMOTE="$(git rev-parse '@{u}' 2>/dev/null || git rev-parse origin/main 2>/dev/null || echo '?')"
-if [ "$LOCAL" = "$REMOTE" ] && [ -z "$FORCE" ]; then
+# O código estar em dia NÃO significa que o app está: quem roda é a imagem.
+# Uma atualização interrompida depois do `git pull` (queda de rede, falta de
+# memória no meio do docker pull) deixa o repositório novo e a imagem velha — e
+# a partir dali TODO update.sh respondia "já está na versão mais recente",
+# prendendo o CRM na versão antiga sem nenhuma saída visível para o dono.
+# Também cobre imagem republicada sem commit novo (rebuild de segurança).
+image_desatualizada() {
+  local img="${APP_IMAGE:-ghcr.io/melgarafael/deskcommcrm:latest}" local_d remote_d
+  local_d="$(docker image inspect "$img" --format '{{if .RepoDigests}}{{index .RepoDigests 0}}{{end}}' 2>/dev/null | sed 's/.*@//')"
+  [ -z "$local_d" ] && return 0                 # nem baixada ainda → atualizar
+  remote_d="$(docker buildx imagetools inspect "$img" 2>/dev/null | awk '/^Digest:/{print $2; exit}')"
+  [ -z "$remote_d" ] && return 1                # sem como consultar → não forçar
+  [ "$local_d" != "$remote_d" ]
+}
+
+if [ "$LOCAL" = "$REMOTE" ] && [ -z "$FORCE" ] && ! image_desatualizada; then
   c_grn "✓ Você já está na versão mais recente. Nada a atualizar."
   exit 0
 fi
-[ "$LOCAL" != "$REMOTE" ] && c_ylw "Há uma versão nova. Vou atualizar com segurança."
+if [ "$LOCAL" != "$REMOTE" ]; then
+  c_ylw "Há uma versão nova. Vou atualizar com segurança."
+else
+  c_ylw "O código já está em dia, mas o app está rodando uma imagem antiga. Vou atualizar a imagem."
+fi
 
 # ── 2. Backup de segurança ANTES de tocar no banco ───────────────────────────
 if [ -z "$SKIP_BACKUP" ]; then

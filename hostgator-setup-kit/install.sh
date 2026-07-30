@@ -328,7 +328,7 @@ source "$KIT_DIR/_common.sh"
 # ── 3. Coleta de config ─────────────────────────────────────────────────────
 step "Configuração"
 # Se já existe .env, carrega pra não repetir perguntas (idempotência).
-if [ -f .env ]; then set -a; . ./.env; set +a; c_grn "✓ .env existente carregado"; fi
+if [ -f .env ]; then load_env .env; c_grn "✓ .env existente carregado"; fi
 
 # Cada linha: VARIÁVEL|pergunta|padrão|validador|secret|opcional
 # A ordem importa: a URL do projeto vem antes das chaves porque os validadores
@@ -435,51 +435,63 @@ c_grn "✓ segredos prontos"
 # ── 5. Escreve .env (600) ───────────────────────────────────────────────────
 step "Escrevendo .env"
 umask 077
-cat > .env <<ENV
-# Gerado por install.sh — NÃO comitar. Contém segredos.
-APP_IMAGE=${APP_IMAGE}
-APP_PULL_POLICY=always
-DOMAIN=${DOMAIN}
-ACME_EMAIL=${ACME_EMAIL}
-NEXT_PUBLIC_SUPABASE_URL=${NEXT_PUBLIC_SUPABASE_URL}
-NEXT_PUBLIC_SUPABASE_ANON_KEY=${NEXT_PUBLIC_SUPABASE_ANON_KEY}
-SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
-SUPABASE_DB_URL=${SUPABASE_DB_URL}
-NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL}
-NEXT_PUBLIC_ADMIN_URL=${NEXT_PUBLIC_ADMIN_URL}
-# Marca da instalação (white-label). Preencha APP_LOGO_URL com a URL de uma
-# imagem pública para trocar o texto por logo na sidebar. Ver lib/branding.ts.
-APP_NAME=${APP_NAME}
-APP_LOGO_URL=${APP_LOGO_URL:-}
-ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
-AI_GATEWAY_API_KEY=${AI_GATEWAY_API_KEY:-}
-# OpenAI: transcrição dos áudios do WhatsApp (Whisper) + embeddings do RAG.
-# Opcional — sem ela a IA responde sem a base e pede o áudio em texto.
-OPENAI_API_KEY=${OPENAI_API_KEY:-}
-INTERNAL_SECRET=${INTERNAL_SECRET}
-INTERNAL_CRON_SECRET=${INTERNAL_CRON_SECRET}
-NUVEMSHOP_OAUTH_ENCRYPTION_KEY=${NUVEMSHOP_OAUTH_ENCRYPTION_KEY}
-CPF_ENCRYPTION_KEY=${CPF_ENCRYPTION_KEY}
-AI_CRED_AES_KEY=${AI_CRED_AES_KEY}
-WAHA_BYO_ENCRYPTION_KEY=${WAHA_BYO_ENCRYPTION_KEY}
-IMPERSONATE_COOKIE_SECRET=${IMPERSONATE_COOKIE_SECRET}
-LGPD_SIGNING_KEY=${LGPD_SIGNING_KEY}
-WAHA_API_BASE_URL=http://waha:3000
-WAHA_WEBHOOK_BASE_URL=http://app:3000
-WAHA_API_KEY=${WAHA_API_KEY}
-WAHA_API_KEY_SHA512=${WAHA_API_KEY_SHA512}
-WAHA_HMAC_SECRET=${WAHA_HMAC_SECRET}
-WAHA_IMAGE=${WAHA_IMAGE:-devlikeapro/waha}
-WAHA_DEFAULT_ENGINE=${WAHA_DEFAULT_ENGINE:-NOWEB}
-UPSTASH_REDIS_REST_URL=http://srh:80
-UPSTASH_REDIS_REST_TOKEN=${UPSTASH_REDIS_REST_TOKEN}
-SRH_TOKEN=${SRH_TOKEN}
-NODE_ENV=production
-NUVEMSHOP_ENABLED=false
-INTERNAL_AGENT_RUN_STUB=false
-OWNER_EMAIL=${OWNER_EMAIL}
-OWNER_PASSWORD=${OWNER_PASSWORD}
-ENV
+
+# Todo valor sai entre aspas simples, com aspa interna escapada. Sem isso, um
+# `APP_NAME=Loja do João` (ou uma senha com # ou $) quebrava tudo que lê este
+# arquivo com `source` — os scripts do kit e a receita do próprio README
+# (`source .env && curl ...`). O Docker Compose remove as aspas ao carregar,
+# então o contêiner recebe exatamente o valor digitado.
+envq() { printf "%s='%s'\n" "$1" "$(printf '%s' "${2-}" | sed "s/'/'\\\\''/g")"; }
+
+{
+  printf '# Gerado por install.sh — NÃO comitar. Contém segredos.\n'
+  envq APP_IMAGE "$APP_IMAGE"
+  envq APP_PULL_POLICY "always"
+  envq DOMAIN "$DOMAIN"
+  envq ACME_EMAIL "$ACME_EMAIL"
+  envq NEXT_PUBLIC_SUPABASE_URL "$NEXT_PUBLIC_SUPABASE_URL"
+  envq NEXT_PUBLIC_SUPABASE_ANON_KEY "$NEXT_PUBLIC_SUPABASE_ANON_KEY"
+  envq SUPABASE_SERVICE_ROLE_KEY "$SUPABASE_SERVICE_ROLE_KEY"
+  envq SUPABASE_DB_URL "$SUPABASE_DB_URL"
+  envq NEXT_PUBLIC_APP_URL "$NEXT_PUBLIC_APP_URL"
+  envq NEXT_PUBLIC_ADMIN_URL "$NEXT_PUBLIC_ADMIN_URL"
+  printf '# Marca da instalação (white-label). Preencha APP_LOGO_URL com a URL de uma\n'
+  printf '# imagem pública para trocar o texto por logo na sidebar. Ver lib/branding.ts.\n'
+  envq APP_NAME "$APP_NAME"
+  envq APP_LOGO_URL "${APP_LOGO_URL:-}"
+  envq ANTHROPIC_API_KEY "$ANTHROPIC_API_KEY"
+  envq AI_GATEWAY_API_KEY "${AI_GATEWAY_API_KEY:-}"
+  printf '# OpenAI: transcrição dos áudios do WhatsApp (Whisper) + embeddings do RAG.\n'
+  printf '# Opcional — sem ela a IA responde sem a base e pede o áudio em texto.\n'
+  envq OPENAI_API_KEY "${OPENAI_API_KEY:-}"
+  printf '# Telemetria de erros. Vazio = manda pro Sentry da comunidade (ajuda a\n'
+  printf '# corrigir bugs que afetam todo mundo). "off" = não envia nada. Ou ponha o\n'
+  printf '# DSN do SEU Sentry para receber os erros desta instalação.\n'
+  envq SENTRY_DSN "${SENTRY_DSN:-}"
+  envq INTERNAL_SECRET "$INTERNAL_SECRET"
+  envq INTERNAL_CRON_SECRET "$INTERNAL_CRON_SECRET"
+  envq NUVEMSHOP_OAUTH_ENCRYPTION_KEY "$NUVEMSHOP_OAUTH_ENCRYPTION_KEY"
+  envq CPF_ENCRYPTION_KEY "$CPF_ENCRYPTION_KEY"
+  envq AI_CRED_AES_KEY "$AI_CRED_AES_KEY"
+  envq WAHA_BYO_ENCRYPTION_KEY "$WAHA_BYO_ENCRYPTION_KEY"
+  envq IMPERSONATE_COOKIE_SECRET "$IMPERSONATE_COOKIE_SECRET"
+  envq LGPD_SIGNING_KEY "$LGPD_SIGNING_KEY"
+  envq WAHA_API_BASE_URL "http://waha:3000"
+  envq WAHA_WEBHOOK_BASE_URL "http://app:3000"
+  envq WAHA_API_KEY "$WAHA_API_KEY"
+  envq WAHA_API_KEY_SHA512 "$WAHA_API_KEY_SHA512"
+  envq WAHA_HMAC_SECRET "$WAHA_HMAC_SECRET"
+  envq WAHA_IMAGE "${WAHA_IMAGE:-devlikeapro/waha}"
+  envq WAHA_DEFAULT_ENGINE "${WAHA_DEFAULT_ENGINE:-NOWEB}"
+  envq UPSTASH_REDIS_REST_URL "http://srh:80"
+  envq UPSTASH_REDIS_REST_TOKEN "$UPSTASH_REDIS_REST_TOKEN"
+  envq SRH_TOKEN "$SRH_TOKEN"
+  envq NODE_ENV "production"
+  envq NUVEMSHOP_ENABLED "false"
+  envq INTERNAL_AGENT_RUN_STUB "false"
+  envq OWNER_EMAIL "$OWNER_EMAIL"
+  envq OWNER_PASSWORD "$OWNER_PASSWORD"
+} > .env
 chmod 600 .env
 c_grn "✓ .env escrito (permissão 600)"
 
@@ -630,10 +642,19 @@ $(c_grn "═══════════════════════�
   2. Faça login com:
        e-mail: ${OWNER_EMAIL}
        senha:  (a que você definiu)
-     No 1º login você vai configurar o MFA (tenha o Google Authenticator/Authy à mão).
 
-  3. Conecte o WhatsApp:
-       No onboarding, escaneie o QR code com o WhatsApp do seu número.
+  3. Conecte o WhatsApp (2º passo do onboarding):
+       Deixe o WhatsApp JÁ ABERTO em Configurações → Aparelhos conectados
+       antes de abrir a tela — o QR code vale só uns minutos. Se expirar,
+       o próprio CRM tem o botão "Gerar novo QR Code".
+
+  4. Ao terminar o onboarding, o CRM pede a verificação em duas etapas:
+       tenha o Google Authenticator/Authy à mão e GUARDE os códigos de
+       recuperação que aparecem. Perdeu o celular? bash hostgator-setup-kit/reset-mfa.sh ${OWNER_EMAIL}
+
+  Telemetria: por padrão os erros desta instalação são enviados ao Sentry do
+  projeto, o que ajuda a corrigir falhas que afetam todo mundo. Para desligar,
+  ponha SENTRY_DSN='off' no .env e rode: docker compose -f ${COMPOSE} up -d
 
   Comandos úteis:
     ver logs:      docker compose -f ${COMPOSE} logs -f app
