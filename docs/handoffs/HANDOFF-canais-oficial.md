@@ -877,3 +877,36 @@ que um clone consiga repetir a prova:
 set -a && . ./.env.local && set +a
 E2E_PORT=3007 pnpm run test:journeys
 ```
+
+### Branch em dia com a `main`, e três correções de registro
+
+Estava **49 commits atrás**. Merge feito com a árvore limpa (`git merge origin/main`), dois
+conflitos, ambos de append no mesmo ponto — resolvidos **combinando**, nunca escolhendo um
+lado: no `MANIFEST.md` os dois grupos de linhas entram em ordem cronológica (0087/0088 meus,
+0089/0090 da main, 0091 meu); no `baseline.sql` os blocos de apêndice são independentes
+(0087/0088/0091 contra 0093–0096) e foram concatenados, com os 10 rótulos conferidos por grep.
+
+Prova de que o baseline mergeado aplica: `pnpm run test:db` verde — 59 arquivos, 394 passados,
+install fresh + update re-aplicado.
+
+**Dois bloqueios de hook, destravados com prova e não com força:**
+
+1. `NNNN=0089 já existe em ci/e2e-expand` — é o **mesmo arquivo** vindo da main: blob
+   `992300f1` idêntico em `ci/e2e-expand`, `origin/main` e no índice. O hook não distingue
+   merge de criação.
+2. `tests/invariants/** é congelado` — o índice é byte-a-byte igual a `origin/main` e
+   `git log origin/main..HEAD -- <arquivo>` é **vazio**: eu nunca toquei o arquivo nesta
+   branch. A mudança é da main.
+
+Em ambos, a prova veio antes do escape. O escape sem a prova seria indistinguível de driblar
+o hook.
+
+**Terceira correção, achada por causa da segunda:** o MANIFEST do `0087` afirmava que a
+migration acompanhava *"uma linha nova em `vocabulario-banco-x-typescript.test.ts`"*. Não
+acompanha — e não deveria: aquele arquivo pareia coluna e símbolo por um extrator genérico
+sobre arrays de valores, e o vocabulário do provider vive numa **union de tipo**. O
+pareamento existe e passa, em `channel-provider-schema.test.ts:147`. Só o registro estava
+errado, e só apareceu porque o hook me obrigou a olhar o arquivo que eu dizia ter mudado.
+
+**Estado pós-merge:** typecheck 0 · lint 164 (0 nos arquivos tocados; a subida de 158→164
+veio dos 49 commits da main) · unit **1646/1646** · test:db 394 passados · jornadas 10/10.
