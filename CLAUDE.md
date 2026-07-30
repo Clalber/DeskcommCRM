@@ -180,10 +180,15 @@ pnpm test:e2e    # Playwright (requer dev server)
 
 **Os invariantes não estão no `test:unit`.** `vitest.config.ts` exclui `tests/invariants/**` de propósito: essa suíte precisa de um Postgres real e roda via `vitest.db.config.ts`, orquestrada por `scripts/test-db.sh`. Rodar só `pnpm test:unit` e concluir "está tudo verde" é um falso verde — o isolamento RLS não foi exercitado.
 
-O CI (`.github/workflows/ci.yml`) tem dois jobs em paralelo, ambos obrigatórios antes de merge:
+Checks **obrigatórios** na branch protection da `main` (verificado na configuração, não só no papel):
 
-- **`verify`** — typecheck + lint + test:unit.
-- **`invariants`** — `pnpm test:db`: sobe `pgvector/pgvector:pg17`, aplica `supabase/baseline.sql` em modo install (`ON_ERROR_STOP=1`) e update (idempotência), e roda os 364 testes de invariante, incluindo o de isolamento RLS entre 2 organizações.
+- **`verify`** (`ci.yml`) — typecheck + lint + test:unit.
+- **`invariants`** (`ci.yml`) — `pnpm test:db`: sobe `pgvector/pgvector:pg17`, aplica `supabase/baseline.sql` em modo install (`ON_ERROR_STOP=1`) e update (idempotência), e roda os testes de invariante, incluindo o de isolamento RLS entre 2 organizações.
+- **`build-and-size`** (`perf.yml`) — `pnpm build` em Node 22.
+
+Check **não-obrigatório** (roda, mas não segura merge):
+
+- **`e2e`** (`e2e.yml`) — sobe Supabase local, aplica o `baseline.sql` e roda **3 das 19 specs** Playwright (`smoke`, `auth`, `error-pages`). As outras 16 dependem de fixture semeada ou serviço externo e seguem sem gate (issue #63). Vira obrigatório quando acumular execuções estáveis.
 
 Ao mexer em schema, RLS, RBAC, atribuição, escopo, roteamento, follow-up, webhooks ou automações: rode `pnpm test:db` **localmente** antes de abrir PR. É o único caminho que exercita o `baseline.sql` que o self-hoster realmente aplica.
 

@@ -61,10 +61,16 @@ pnpm gov:verify       # typecheck + lint + test:unit  ← verificação única a
 mudança toca schema, RLS ou UI, `gov:verify` verde **não** é prova — rode `pnpm test:db`
 (exige Docker) e/ou `pnpm test:e2e` você mesmo. Ver [`docs/harness-audit.md`](docs/harness-audit.md).
 
-**O que o CI cobre** (`.github/workflows/ci.yml`, 2 jobs paralelos): `verify` = typecheck +
-lint + test:unit; `invariants` = `pnpm test:db` (isolamento RLS + invariantes de governança
-contra Postgres efêmero pg17). **Os E2E não rodam em CI** — se você mexeu em UI ou fluxo de
-usuário, ninguém além de você vai provar que funciona.
+**O que o CI cobre.** `.github/workflows/ci.yml`: `verify` = typecheck + lint + test:unit;
+`invariants` = `pnpm test:db` (isolamento RLS + invariantes de governança contra Postgres
+efêmero pg17). `.github/workflows/perf.yml`: `build-and-size` = `pnpm build`.
+**Os três são checks obrigatórios** na branch protection da `main`.
+
+`.github/workflows/e2e.yml` roda **3 das 19 specs** Playwright (`smoke`, `auth`,
+`error-pages`) contra um Supabase local de verdade com o `baseline.sql` aplicado — o mesmo
+banco que o self-hoster tem. **Não é obrigatório ainda** (falta dado de estabilidade) e as
+outras 16 continuam sem gate: se você mexeu em UI ou fluxo de usuário fora desse
+subconjunto, a prova é sua.
 
 ## Padrões de código (observados no repo, não inventados)
 
@@ -112,13 +118,15 @@ usuário, ninguém além de você vai provar que funciona.
 - **56** arquivos de invariante de banco em `tests/invariants/` — RLS/isolamento cross-tenant,
   RBAC, governança (G1–G6). Excluídos do `test:unit` de propósito; rodam via `pnpm test:db`
   **e no job `invariants` do CI**.
-- **19** specs Playwright em `tests/e2e/` — inclui `vps-fresh-onboarding` e
-  `vps-webhook-outbound-ssrf`. **Não rodam no CI.**
+- **19** specs Playwright em `tests/e2e/`. **3 rodam no CI** (`smoke`, `auth`,
+  `error-pages`, via `e2e.yml`, não-obrigatório). As outras 16 — incluindo
+  `vps-fresh-onboarding` e `vps-webhook-outbound-ssrf` — ainda não: dependem de fixture
+  semeada ou de serviço externo. Ver issue #63.
 
 ## Limitações conhecidas (estado em 2026-07-29, contra `origin/main` @ 789dfa6)
 
-- **E2E fora do CI.** Se você mexeu em UI ou fluxo de usuário, a prova é sua — nenhum gate
-  automático cobre isso.
+- **16 das 19 specs E2E seguem fora do CI.** Se você mexeu em UI ou fluxo de usuário fora
+  de `smoke`/`auth`/`error-pages`, a prova é sua — nenhum gate automático cobre.
 - Rate limit HTTP existe em **2** pontos do código (webhook de captação e dispatcher de IA);
   login, signup, aceite de convite, crons e MCP estão sem. Não há lockout por conta no login.
 - Fallback do rate limit é **em memória** — sem Upstash configurado o limite é por processo.

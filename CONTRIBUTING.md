@@ -47,7 +47,7 @@ Ao finalizar um epic:
    - `pnpm typecheck`
    - `pnpm lint`
    - `pnpm test:unit`
-   - `pnpm test:e2e` (subset relevante)
+   - `pnpm test:e2e` (subset relevante) — **opcional se você contribui de fora**, ver abaixo
    - RLS testada se feature toca tabela tenant-aware
    - Audit log emitido se há mutação relevante
    - Rate limit aplicado se rota é pública
@@ -56,7 +56,23 @@ Ao finalizar um epic:
    - Env vars novas em `.env.example` + `lib/env.ts`
    - Docs atualizadas se mudou contrato (PRD/spec)
 4. Abrir PR contra `main`. Description deve referenciar o epic e listar evidências (logs/screenshots dos testes).
-5. CI deve passar antes de merge. Teste de isolamento RLS é gate obrigatório.
+5. CI deve passar antes de merge. Obrigatórios: `verify`, `invariants` (isolamento RLS) e `build-and-size`.
+
+### Se você está contribuindo de fora (fork) — leia isto
+
+Duas coisas vão parecer erro seu e não são:
+
+- **O check `Vercel` fica vermelho** com "Authorization required to deploy". A `main` deste
+  repositório faz deploy de produção, e a Vercel se recusa a construir PR de fork por
+  segurança — o que está certo. **Ignore esse check**; ele não entra no gate de merge.
+- **Os workflows ficam parados esperando aprovação** no seu primeiro PR. É política do
+  GitHub para quem nunca contribuiu antes. Um mantenedor libera; do segundo PR em diante
+  roda sozinho. Se demorar, comente no PR.
+
+E sobre o `pnpm test:e2e` do DoD: rodar a suíte completa exige Docker, banco semeado e WAHA
+local. **Não travamos PR externo nisso** — mande o que conseguiu provar (unit + descrição do
+que testou na mão), que a prova de tela fica com o mantenedor. Exigir prova sem entregar a
+ferramenta de produzi-la seria pedágio, não rigor.
 
 ### Anti-patterns proibidos
 
