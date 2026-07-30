@@ -75,6 +75,18 @@ export function isSendable(state: BindingState): boolean {
 }
 
 /**
+ * A mesma regra, para quem NÃO tem um bind — o agente escolhe `name`+`language` no
+ * turno, sem contrato pré-configurado, então `bindingState` não se aplica.
+ *
+ * Existe como função exportada, e não como constante, porque o call-site não deve
+ * reimplementar a comparação: no dia em que "disparável" deixar de ser exatamente
+ * um status, quem chama não muda.
+ */
+export function isStatusSendable(status: string): boolean {
+  return status === SENDABLE;
+}
+
+/**
  * Frase que o humano lê no inbox/tela. Não é decoração: um item que diz apenas
  * "config inválida" transfere ao operador o trabalho de descobrir o quê — e é
  * assim que item de inbox vira ruído que todo mundo ignora.

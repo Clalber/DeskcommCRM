@@ -910,3 +910,90 @@ errado, e só apareceu porque o hook me obrigou a olhar o arquivo que eu dizia t
 
 **Estado pós-merge:** typecheck 0 · lint 164 (0 nos arquivos tocados; a subida de 158→164
 veio dos 49 commits da main) · unit **1646/1646** · test:db 394 passados · jornadas 10/10.
+
+---
+
+## O wiring do `send_template` — e o defeito que só apareceu ao tentar prová-lo (2026-07-30)
+
+### Onde a cobertura acabava
+
+As **peças** do envio por template somam 127 casos (`meta-render-template`,
+`meta-build-components`, `meta-send-template`, `meta-template-binding`, …). Nenhuma
+tocava a **ligação** dentro de `runAgentTurn`: qual tool entra no prompt, o que o
+`execute` entrega à cadeia de guardrails, e o que chega ao canal.
+
+Rodar o turno de verdade até a tool exigiria um harness que **este repo não tem** — e a
+lacuna é anterior a este trabalho, registrada em `tests/invariants/case-reply-turn.test.ts`:
+*"não existe seam de harness pra rodar o núcleo do turno (LLM + envio) neste repo"*. Os
+seams de injeção existem (`registry`, `channel`, `clock`, `sleep`), mas o `openingContext`
+vai ao CRM por MCP, e stubar isso **é** o harness que falta. Fica declarado: continua
+descoberto, e o guard abaixo não se disfarça de cobertura fim-a-fim.
+
+### `tests/unit/send-template-wiring.test.ts` — 15 casos
+
+Trava as decisões que quebrariam **em silêncio** num refactor (o envio seguiria compilando
+e passando nos testes das peças):
+
+1. a tool só existe onde o canal a exige, e a decisão vem de `capabilitiesOf`, **não** de
+   um literal `provider === 'meta_cloud'` — invariante 1 de `docs/doctrine/restricao-de-canal.md`;
+2. o corpo **renderizado** passa pela cadeia `before_send` — sem isso, "usar template" seria
+   a rota de fuga dos gates de conteúdo;
+3. `isTemplate: true` — sem a flag, o gate `messaging_window` vetaria o envio que ele
+   mesmo instruiu a fazer, e a tool seria um beco;
+4. o veto retorna **antes** do caminho de sucesso — senão reportaria "enviada" para algo
+   que não saiu;
+5. o envio carrega `template: { name, language, values }` — sem isso grava `type: 'text'`,
+   que compila e mente no banco sobre custo e conformidade.
+
+**Sabotagem, sete pontos, um por vez:** cada uma derruba **exatamente uma** asserção, e a
+certa. Guard que não vermelha pelo motivo certo é decoração.
+
+### O defeito real: "existe" não era "pode disparar"
+
+A tela de templates declara *"Só APPROVED pode ser disparado — o resto é informação, não
+opção"*. O caminho **humano** respeitava: `template-binding.ts` recusa com `not_approved`,
+e `sendTemplateForSession` transforma isso em erro. O caminho do **agente** não consultava
+o status — e é o único que age **sem humano olhando**.
+
+Um template `PENDING` ou `REJECTED` iria à Graph API, voltaria erro genérico, e o modelo o
+leria como falha de infraestrutura em vez de configuração pendente — com o lead esperando e
+a janela fechada.
+
+Consertado ligando o caminho do agente à **mesma** regra: `isStatusSendable` exportado de
+`template-binding.ts` (função, não constante — no dia em que "disparável" deixar de ser
+exatamente um status, o call-site não muda). O erro é **separado** de `template_desconhecido`
+de propósito: criar um template e resolver uma reprovação são ações humanas diferentes, e
+colapsá-las manda o operador procurar no lugar errado.
+
+Um dos casos novos compara `isStatusSendable` com `bindingState` em seis status — se alguém
+mudar uma das duas, elas divergem e o teste cai. É o que impede os dois caminhos de voltarem
+a ter opiniões diferentes sobre o que pode ser disparado.
+
+### O alarme falso que virou o teste que faltava
+
+Procurando "template" em `waha-adapter.ts` aparece **só um comentário**. Concluí que o
+adapter — que é o default em produção, medido em `workers/agent-worker/main.ts:364`, onde o
+worker não injeta `deps.channel` — descartava o campo, e que portanto todo envio de template
+do agente gravaria `type: 'text'`.
+
+**Falso.** O adapter passa o `input` **inteiro** para `sendTurnMessage`, e a palavra nunca
+aparece no arquivo. É a **segunda vez neste mesmo dia** que grep de padrão me fez concluir
+ausência de mecanismo — a primeira foi o `install.sh` e a chave de cifra.
+
+O que sobrou é `tests/unit/waha-adapter-template-passthrough.test.ts` (3 casos), que não
+existia: o repasse estava garantido só pela estrutura do TypeScript. Provado que **o
+typecheck não protege** — destrinchar o `input` em campos nomeados (a forma mais natural de
+"deixar explícito o que passa") derruba o template e **compila**, porque o campo é opcional
+dos dois lados. Só o teste vermelha.
+
+### Dois gates que eu mesmo pulei, no mesmo turno
+
+1. Acrescentei um bloco ao teste com `cat >>` e rodei **só o vitest**. O typecheck estava
+   vermelho por um `TemplateBinding` incompleto no meu próprio arquivo — e eu só descobri
+   porque uma sabotagem não relacionada o expôs. Vitest verde não é gate completo.
+2. Ao ver aquele vermelho, quase "corrigi" o comentário do outro teste para dizer que o
+   typecheck protegia o repasse. Medido com a base limpa: **não protege**. O comentário
+   original estava certo, e a correção por impressão é que teria mentido.
+
+**Estado:** typecheck 0 · lint 164 (0 nos arquivos tocados) · unit **1664/1664** · sabotagem
+provada em 7 pontos do wiring + 3 do repasse.

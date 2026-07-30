@@ -95,6 +95,7 @@ import {
 import { readSkillReference, skillHasReferences } from './skill-references';
 import { READ_ONLY_TOOLS, wrapToolsWithBreaker, type ToolBreakerThresholds } from './tool-breaker';
 import { loadChannelProvider, runBeforeSend } from '../guardrails/before-send';
+import { isStatusSendable } from '../../channels/meta/template-binding';
 import { capabilitiesOf } from '@/lib/channels/capabilities';
 import { renderTemplateBody } from '@/lib/channels/meta/render-template';
 import { sendInBubbles } from './split-message';
@@ -1005,8 +1006,12 @@ export async function runAgentTurn(
         // O texto RENDERIZADO vai como `body` da cadeia: os gates de promessa,
         // spinning e disclosure avaliam exatamente o que o contato vai ler. Sem
         // isso, "usar template" seria a forma de escapar dos guardrails de conteúdo.
-        const { rows } = await pool.query<{ components: unknown; parameter_format: string }>(
-          `select components, parameter_format from meta_templates
+        const { rows } = await pool.query<{
+          components: unknown;
+          parameter_format: string;
+          status: string;
+        }>(
+          `select components, parameter_format, status from meta_templates
             where organization_id = $1 and name = $2 and language = $3`,
           [tenantId, template_name, language],
         );
@@ -1019,6 +1024,27 @@ export async function runAgentTurn(
               message:
                 `não existe template "${template_name}" em ${language} nesta conta. ` +
                 'Encerre o turno; um humano precisa configurá-lo.',
+            },
+          };
+        }
+        // "Existe" não é "pode ser disparado". A regra vive em template-binding.ts e
+        // o caminho HUMANO já a respeitava (recusa `not_approved` no menu do composer);
+        // este caminho não a consultava — e é o que age SEM humano olhando. Um template
+        // PENDING ou REJECTED iria à Graph API, voltaria erro genérico, e o modelo
+        // trataria como falha de infraestrutura em vez de configuração pendente.
+        //
+        // Erro SEPARADO de `template_desconhecido` de propósito: as duas causas pedem
+        // ações humanas diferentes — criar o template, ou esperar/consertar a análise
+        // da Meta. Colapsá-las manda o operador procurar no lugar errado.
+        if (!isStatusSendable(linha.status)) {
+          return {
+            ok: false,
+            error: {
+              code: 'template_nao_aprovado',
+              message:
+                `o template "${template_name}" existe mas está ${linha.status} na Meta — ` +
+                'só um template APPROVED pode ser disparado. Encerre o turno; ' +
+                'um humano precisa resolver a aprovação.',
             },
           };
         }
