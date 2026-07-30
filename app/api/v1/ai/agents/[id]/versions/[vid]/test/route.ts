@@ -168,10 +168,7 @@ async function runStubbedTest(args: StubArgs): Promise<Record<string, unknown>> 
       step: 1,
       tool_name: "(stub)",
       args: { sample_message: args.sampleMessage },
-      result: {
-        ok: true,
-        note: "INTERNAL_AGENT_RUN_STUB=true — runtime real bypassed for this test.",
-      },
+      result: { ok: true, note: "INTERNAL_AGENT_RUN_STUB=true — runtime real chega na S-13.08." },
       started_at: args.startedAt.toISOString(),
       ended_at: finishedAt.toISOString(),
     },
@@ -219,8 +216,8 @@ async function callInternalRuntime(args: {
   sampleMessage: string;
   sampleContact?: { name?: string; phone?: string };
 }): Promise<Record<string, unknown>> {
-  // We invoke `runAgent` in-process to avoid a fetch loopback (no cold-start,
-  // no INTERNAL_SECRET required in dev).
+  // S-13.08 wires the real runtime. We invoke `runAgent` in-process to avoid
+  // a fetch loopback (no cold-start, no INTERNAL_SECRET required in dev).
   // The run row is already in is_dry_run=true mode so the runtime bypasses
   // WAHA dispatch + outbound message insert.
   const { runAgent } = await import("@/lib/ai/runtime/agent");
