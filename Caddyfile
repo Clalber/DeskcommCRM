@@ -18,6 +18,21 @@
 		}
 	}
 
+	# O webhook GLOBAL do WAHA (sem token na URL) não é publicado na internet.
+	#
+	# Nesta stack o WAHA fala com o app pela rede interna do Docker
+	# (http://app:3000/api/v1/webhooks/waha), então essa rota nunca precisou ser
+	# alcançável de fora — e estando aberta, qualquer pessoa que soubesse o
+	# endereço injetava mensagem falsa no CRM, escolhia o remetente e fazia o
+	# WhatsApp do dono responder para um número arbitrário (queimando o
+	# orçamento de IA e arriscando banimento do número).
+	#
+	# Quem roda o WAHA em OUTRO servidor deve usar a rota por tenant,
+	# /api/v1/webhooks/waha/<token>, que carrega um token imprevisível na URL e
+	# continua pública — é a variante canônica para essa topologia.
+	@waha_global path /api/v1/webhooks/waha
+	respond @waha_global 403
+
 	# Todo o resto do app.
 	reverse_proxy app:3000
 }
