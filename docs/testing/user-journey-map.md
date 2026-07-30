@@ -155,3 +155,69 @@ Critério: nenhuma tela quebra, nenhum stack trace, nenhum texto de erro cru.
 | M10 | `app/actions/onboarding/skipWhatsapp.ts` | `skipWhatsapp`/`markWhatsappConfigured` redirecionam pro roteador `/onboarding`, não pro step fixo |
 | M11 | `app/actions/onboarding/sendOnboardingInvites.ts` + `invite-team/_form.tsx` | retorna `undelivered[]` com accept_url; UI mostra links copiáveis quando email falha |
 | M12 | `components/auth/MfaEnrollGate.tsx` + `app/app/layout.tsx` | gate latcha a decisão client-side; revalidação não derruba mais a tela de recovery codes |
+
+---
+
+# Sessão 2026-07-29/30 — instalação do zero na VPS + jornada completa
+
+Ambiente: VPS HostGator (143.95.209.17), domínio `test-crm.vidagamificada.com.br`,
+projeto Supabase **novo e virgem** (0 tabelas / 0 usuários / 0 buckets antes de cada
+instalação), cache de build do Docker zerado (a VPS realmente compila o worker),
+imagem `ghcr.io/melgarafael/deskcommcrm:latest` — a mesma que o comprador recebe.
+
+Duas instalações completas do zero: a primeira para achar defeitos, a segunda
+(após todas as correções publicadas na `main`) como prova. Entre elas, o banco
+voltou ao estado virgem — correção não foi validada em cima de instalação remendada.
+
+Nome da organização na instalação final: **"Loja do João QA"** — de propósito com
+espaço e acento, que era o gatilho do defeito #6.
+
+## Defeitos encontrados e corrigidos
+
+| # | Onde | Defeito | Como foi provado |
+|---|---|---|---|
+| 1 | `install.sh` | Morria em **silêncio** (exit 2) com connection string errada: o `psql` falhava dentro de `$( )` sob `set -e`+`pipefail` e o `2>/dev/null` engolia a causa | reproduzido colando a senha sem URL-encoding; log terminava num aviso amarelo e o prompt voltava |
+| 2 | `install.sh` | Nenhuma validação de URL/anon/service_role/connection string | validadores novos + `test-validators.sh` (19 casos, cada rejeição assere o MOTIVO) |
+| 3 | `install.sh` | Impossível corrigir uma resposta errada | `voltar` em qualquer pergunta + tela de conferência editável por número |
+| 4 | `install.sh` | `OPENAI_API_KEY` nunca perguntada → RAG e transcrição de áudio desligados em silêncio | `lib/env.ts:181` consome a variável; o `.env` gerado não a tinha |
+| 5 | `README` | Nenhum comando de instalação de VPS; o único bloco era o Quickstart de dev | leitura do README publicado |
+| 6 | `_common.sh` | Nome com espaço quebrava **os 4 scripts de socorro** (`.env` lido com `source`) | `reset-mfa/reset-password/healthcheck/backup` morriam com `QA: command not found`; após o conserto, exit 0 com o **mesmo** `.env` |
+| 7 | `install.sh` | `SENTRY_DSN` documentado mas nunca escrito no `.env`; telemetria sem aviso | grep no `.env` gerado |
+| 8 | onboarding WhatsApp | QR expirado = beco sem saída apontando `http://localhost:3030` (inexistente numa VPS), sem retry | sessão foi a `FAILED` ("QR refs attempts ended") e a tela ofereceu só "Pular"/"Já configurei" |
+| 9 | `Stepper` | Congelado no passo 1 nas 6 telas: lia `x-pathname`, header que **nada** no projeto escreve (não existe middleware) | após o conserto: `1 Boas-vindas → 2 WhatsApp → 4 IA → 5 Time → 6 Concluído` |
+| 10 | 3 formulários de lead | `249.90` gravava **2.499.000 centavos** (R$ 24.990,00), sem aviso | `value_cents` no banco; parser único em `lib/money.ts` + eco na tela |
+| 11 | onboarding IA | Agente criado **nunca responderia** (sem versão publicada) e a lista dizia "Publicado" | o JOIN que os dois runtimes usam devolvia 0 linhas; hoje devolve o agente |
+| 12 | seed do funil | Etapas "Em separacao" e "Pos-venda" sem acento no quadro principal | migration 0092 + apêndice do baseline |
+| 13 | `update.sh` | Atualização interrompida após o `git pull` prendia o CRM na imagem antiga **para sempre** ("já está na versão mais recente") | digest local `273079c8` ≠ remoto `bb402c13` com o git em dia |
+| 14 | API Tokens | Impossível emitir token que use **MCP**: faltavam `mcp:read`/`mcp:write`/`role:manager` no catálogo da tela | toda tool respondia "Token missing required scope 'mcp:read'"; hoje token criado pela tela chama as tools |
+| 15 | `lib/mcp/audit.ts` | **Nenhuma** ação via MCP era auditada: nome da tool ia para `resource_id` (uuid) e id do token para `actor_user_id` (FK) | log do contêiner + `select count(*) where action='mcp.tool_called'` = 0; hoje grava |
+| 16 | `lib/audit/index.ts` | Falha de audit só fazia `console.error` — foi o que manteve #15 invisível | doutrina exige alerta no Sentry |
+| 17 | crons de follow-up/snooze | **95% do audit log** era batida de cron vazia (1.175 de 1.236 linhas em ~9h paradas) numa tabela append-only com retenção de 5 anos | contagem por `action` |
+
+## Jornadas exercitadas (instalação final, virgem)
+
+| Jornada | Resultado |
+|---|---|
+| Instalação `install.sh` do zero, 3 erros propositais + `voltar` + correção pela tela | PASS — cada erro barrado com motivo e receita |
+| Instalação limpa do zero (respostas certas) | PASS — ~6 min, exit 0, 7 contêineres, 94 tabelas, 8 modelos de IA, SSL válido |
+| Scripts do kit com nome acentuado e com espaço | PASS |
+| Login + onboarding 6 passos + MFA (TOTP) | PASS — zero erro de console/HTTP na jornada inteira |
+| Varredura de 33 telas autenticadas | PASS — todas com conteúdo, sem 4xx/5xx nem erro de JS |
+| Criar lead pela tela, ver no quadro e no banco | PASS |
+| Captação por webhook → lead + contato + `event_log` drenado pelo cron | PASS |
+| Criar fluxo de follow-up e tentar publicar incompleto | PASS — publicação **recusada** com os nós inalcançáveis destacados |
+| MCP: `tools/list` (16 tools), leitura, escrita, RBAC por papel | PASS |
+| Auditoria das ações MCP | PASS (após #15/#16) |
+| `update.sh` com imagem atrasada | PASS (após #13) |
+| **Conectar WhatsApp por QR code** | **PENDENTE** — depende de escanear com o celular do dono |
+
+## Aberto para decisão do dono
+
+- `channel_session.status_changed` é emitido por trigger e **não tem consumidor**
+  (anti-pattern nº 3 do `CLAUDE.md`): as linhas ficam `pending` para sempre. Ou
+  alguém passa a escutar, ou o trigger sai. Não inventei consumidor.
+- Tela de Conexões diz "1 número conectado" mesmo com o número **caído** (conta
+  sessões, não conectados).
+- O autenticador registra o nome fixo "DeskcommCRM", ignorando o `APP_NAME` que o
+  instalador vende como marca de toda a interface.
+- `CLAUDE.md` documenta bearer `tok_...`; o token real nasce com prefixo `dsk_`.
