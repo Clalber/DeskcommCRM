@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { loginSchema, type LoginInput } from "@/lib/auth/schemas";
 import { audit, hashEmail } from "@/lib/audit";
+import { authRateLimited, AUTH_LIMITS } from "@/lib/auth/rate-limit";
 
 export type SignInResult = {
   ok: false;
@@ -42,6 +43,20 @@ export async function signInWithPassword(
   const requestId = hdrs.get("x-request-id");
   const ip = hdrs.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null;
   const userAgent = hdrs.get("user-agent") ?? null;
+
+  // Antes de falar com o GoTrue: sem isto, tentar senha era de graça e
+  // ilimitado (issue #64). Conta por IP e por conta — o ataque distribuído
+  // contra um e-mail só não aparece na contagem por IP.
+  if (await authRateLimited("login", parsed.data.email, AUTH_LIMITS.login)) {
+    await audit({
+      action: "auth.login_rate_limited",
+      metadata: { email_hash: hashEmail(parsed.data.email) },
+      requestId,
+      ip,
+      userAgent,
+    });
+    return { ok: false, error: "rate_limited" };
+  }
 
   const { data, error } = await supabase.auth.signInWithPassword({
     email: parsed.data.email,
