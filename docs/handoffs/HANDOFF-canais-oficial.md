@@ -997,3 +997,64 @@ dos dois lados. Só o teste vermelha.
 
 **Estado:** typecheck 0 · lint 164 (0 nos arquivos tocados) · unit **1664/1664** · sabotagem
 provada em 7 pontos do wiring + 3 do repasse.
+
+---
+
+## O "harness de turno" não precisava ser construído (2026-07-30)
+
+Eu havia fechado a seção anterior dizendo que provar o turno completo exigiria *"um
+harness que este repo não tem"*, e que construí-lo era "um projeto próprio". **Estava
+errado, e o custo real era um arquivo.**
+
+A frase que citei (`case-reply-turn.test.ts`: *"não existe seam de harness pra rodar o
+núcleo do turno"*) é verdadeira. A conclusão que tirei dela, não: presumi que o
+`openingContext` saía para o CRM por MCP. Ele não sai — `getLeadContext` recebe o cfg
+como **`_cfg`**, com underscore, e lê o Postgres direto. Os únicos usos do cliente
+Supabase no turno são `read_skill_reference` (só se o modelo chamar) e o enquadramento
+de mídia (só se houver mídia); nenhum entra num turno de texto.
+
+Os quatro seams já existiam — e `createFakeRegistry`, o modelo fake do repo, estava
+**definido sem nenhum consumidor**: `grep -rl createFakeRegistry` devolvia só o arquivo
+que o define.
+
+### `tests/invariants/agent-send-template-turn.test.ts` — 5 casos
+
+Turno real contra Postgres real, inbound com **30 horas** (janela de 24h fechada de
+verdade), modelo fake escolhendo a tool e adapter capturando o envio:
+
+1. o template sai, com o corpo **renderizado** (`"Oi Ana, tudo certo?"`) e a identidade
+   `{ name, language, values }` preservada;
+2. o gate `messaging_window` **deixa passar** — é a flag fazendo efeito, não só existindo;
+3. template `PENDING` é recusado, **nada** sai, e o modelo **lê** o motivo (o teste
+   inspeciona o `tool-result` que voltou ao modelo — sem isso, "recusou" não distingue
+   ensinar de engolir);
+4. template inexistente idem, com o outro código;
+5. em canal WAHA o modelo **tenta** usar a ferramenta e ela não está lá.
+
+**Sabotagem, três pontos:**
+
+| Sabotagem | Cai |
+|---|---|
+| `isTemplate: false` | os **2** casos de envio — a janela fechada realmente veta |
+| gate de status desligado | o caso do `PENDING` — ele sairia |
+| `requiresTemplates: true` no WAHA | o caso do WAHA — a tool apareceria no canal errado |
+
+### Três erros meus que este arquivo registra
+
+1. **O spike mentiu por otimismo.** A primeira versão assertava só `enviados.length > 0`
+   e **capturava o erro sem falhar**. Passou — e o turno na verdade **enviava sem
+   fechar**: o `parseCheckpointText` rejeita fechamento sem JSON, e o run re-tentava
+   pela fila. Assert frouxo é como afirmação sem medida: dá o resultado que você quer.
+2. **O caso do WAHA não discriminava.** A primeira versão usava um modelo que só falava
+   texto — passaria idêntica com a tool presente, porque ninguém a chamaria. Trocado por
+   um modelo que **tenta** chamá-la; a sabotagem da capability agora vermelha.
+3. **Eu não completava o job.** O worker real faz `completeJob` no sucesso; sem isso o
+   job ficava `running` e, com `maxConcurrency: 1`, o claim do teste seguinte não pegava
+   nada — quatro casos falhando por um motivo que não era o deles.
+
+`scripts/test-db.sh` passou a repassar `"$@"` ao vitest, para dar para rodar um arquivo
+de invariante isolado (era o que faltava para iterar em ciclos de 3min em vez de rodar
+os 60 arquivos a cada sabotagem).
+
+**Estado:** typecheck 0 · test:db **399 passed | 1 skipped, 60 arquivos** · sabotagem
+provada em 3 pontos.

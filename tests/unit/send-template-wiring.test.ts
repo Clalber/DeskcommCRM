@@ -26,9 +26,16 @@ import { CHANNEL_PROVIDER_META, CHANNEL_PROVIDER_WAHA, capabilitiesOf } from "@/
  * removê-las produz vermelho. Cada uma quebraria **em silêncio** num refactor: o envio
  * continuaria compilando e passando nos testes das peças.
  *
- * **Não prova:** que o turno completo, com um modelo escolhendo a tool, envia. Isso
- * continua descoberto e está declarado como dívida no handoff — declarar é o mínimo;
- * o guard não deve se disfarçar de cobertura fim-a-fim.
+ * **Não prova:** que o turno completo, com um modelo escolhendo a tool, envia.
+ *
+ * ATUALIZAÇÃO (2026-07-30): isso deixou de estar descoberto —
+ * `tests/invariants/agent-send-template-turn.test.ts` roda o turno inteiro contra
+ * Postgres real, com modelo e canal fakes. A conclusão de que faltava um harness
+ * estava errada: os seams necessários já existiam, e `createFakeRegistry` estava
+ * definido sem nenhum consumidor. Ver o cabeçalho daquele arquivo.
+ *
+ * Este guard continua valendo — ele é mais barato e falha mais perto do defeito —,
+ * mas não é mais o único a cobrir a ligação.
  */
 
 const FONTE = fs.readFileSync(
