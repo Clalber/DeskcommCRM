@@ -14,6 +14,7 @@ import { isEmbeddingProviderConfigured } from "@/lib/ai/gateway";
 import { embedText } from "@/lib/ai/embed";
 import { acquireDebounce } from "@/lib/ai/rag/debounce";
 import { chunkText, computeContentHash } from "@/lib/ai/rag/chunker";
+import { estimateTokens } from "@/lib/ai/runtime/history";
 import { formatProductForRag, type NuvemshopProduct } from "@/lib/ai/rag/format-product";
 import {
   createKnowledgeVersion,
@@ -219,6 +220,9 @@ async function handleProductSynced(
           position: i,
           content,
           content_hash: contentHash,
+          // NOT NULL no banco. Nenhum dos dois caminhos preenchia, e todo
+          // insert morria com "null value in column token_count".
+          token_count: estimateTokens(content),
           embedding: embedding as unknown as string,
           metadata: {
             source_type: "nuvemshop_product",
@@ -247,6 +251,15 @@ async function handleProductSynced(
     } else {
       successCount++;
     }
+  }
+
+  // NUNCA ativar versão vazia. Se todos os chunks falharem, marcar 'ready' com
+  // zero e ativar troca uma base que funcionava por uma base VAZIA — o agente
+  // perde o RAG em silêncio, que é pior que a indexação ter falhado. Falhando
+  // aqui, a versão anterior continua ativa.
+  if (successCount === 0) {
+    await markVersionFailed(versionId, row.organization_id, "nenhum chunk gravado");
+    return { type: "error", detail: "no_chunks_written" };
   }
 
   await markVersionReady(versionId, row.organization_id, successCount);
@@ -358,6 +371,7 @@ async function handleKnowledgeSourceUpdated(
         position: i,
         content: p.content,
         content_hash: contentHash,
+        token_count: estimateTokens(p.content),
         embedding: embedding as unknown as string,
         metadata: { source_type: p.sourceType },
       },
@@ -370,6 +384,15 @@ async function handleKnowledgeSourceUpdated(
       gravados++;
       gravadosPorFonte.set(p.sourceId, (gravadosPorFonte.get(p.sourceId) ?? 0) + 1);
     }
+  }
+
+  // NUNCA ativar versão vazia. Se todos os chunks falharem, marcar 'ready' com
+  // zero e ativar troca uma base que funcionava por uma base VAZIA — o agente
+  // perde o RAG em silêncio, que é pior que a indexação ter falhado. Falhando
+  // aqui, a versão anterior continua ativa.
+  if (gravados === 0) {
+    await markVersionFailed(versionId, row.organization_id, "nenhum chunk gravado");
+    return { type: "error", detail: "no_chunks_written" };
   }
 
   await markVersionReady(versionId, row.organization_id, gravados);
