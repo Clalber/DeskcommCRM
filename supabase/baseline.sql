@@ -8377,6 +8377,64 @@ create policy tenant_isolation_knowledge_searches_all on knowledge_searches
 -- tabela nunca é lida sem sessão. Idempotente: revogar o que não está lá é no-op.
 revoke all on public.knowledge_searches from anon;
 
+-- ---- atualização self-service pela UI (migration 0089) ----
+--
+-- Duas tabelas de INSTÂNCIA (sem organization_id): descrevem o servidor, não o
+-- inquilino. Sem policy de RLS de propósito — com RLS habilitada e zero policy,
+-- `anon` e `authenticated` não leem nada pelo PostgREST; o acesso passa só pelas
+-- rotas /api/v1/system/*, que usam service role e checam is_platform_admin.
+create table if not exists public.system_version (
+  id                  smallint primary key default 1 check (id = 1),
+  current_version     text not null default '',
+  current_sha         text not null default '',
+  off_release         boolean not null default false,
+  latest_version      text not null default '',
+  changelog_raw       text not null default '',
+  agent_last_seen_at  timestamptz,
+  update_requested_at timestamptz,
+  update_requested_by uuid references auth.users(id) on delete set null,
+  updated_at          timestamptz not null default now()
+);
+comment on table public.system_version is
+  'Singleton: versão instalada e disponível desta instância. Escrito pelo agente do host.';
+insert into public.system_version (id) values (1) on conflict (id) do nothing;
+create table if not exists public.system_update_runs (
+  id            uuid primary key default gen_random_uuid(),
+  from_version  text not null default '',
+  to_version    text not null default '',
+  status        text not null default 'dispatched'
+                check (status in ('dispatched','success','failed','failed_rolled_back')),
+  last_step     text check (last_step in ('backup','codigo','banco')),
+  requested_by  uuid references auth.users(id) on delete set null,
+  dispatched_at timestamptz not null default now(),
+  finished_at   timestamptz,
+  log_tail      text not null default ''
+);
+comment on table public.system_update_runs is
+  'Histórico append de atualizações disparadas pela UI. status/last_step espelham RunStatus/RunStep em lib/system/update-run.ts.';
+create index if not exists idx_system_update_runs_dispatched
+  on public.system_update_runs (dispatched_at desc);
+alter table public.system_version    enable row level security;
+alter table public.system_update_runs enable row level security;
+
+-- ---- índice único parcial: no máximo 1 run "dispatched" por vez (migration 0090) ----
+--
+-- Dedup defensivo ANTES da constraint (clone com dado inconsistente não pode
+-- quebrar o update.sh): mantém só a linha "dispatched" mais recente, marca
+-- as demais como failed.
+with ranked as (
+  select id, row_number() over (order by dispatched_at desc) as rn
+  from public.system_update_runs
+  where status = 'dispatched'
+)
+update public.system_update_runs
+set status = 'failed', finished_at = coalesce(finished_at, now())
+where id in (select id from ranked where rn > 1);
+
+create unique index if not exists uniq_system_update_runs_dispatched
+  on public.system_update_runs (status)
+  where status = 'dispatched';
+
 -- ---- acentos nas etapas padrão do funil (migration 0092) ----
 -- O seed do funil "Pedidos" criava "Em separacao" e "Pos-venda" sem acento —
 -- nomes visíveis no quadro principal, a tela mais usada do CRM. O seed acima já
@@ -8385,3 +8443,26 @@ revoke all on public.knowledge_searches from anon;
 -- tocado.
 update public.crm_stages set name = 'Em separação' where name = 'Em separacao';
 update public.crm_stages set name = 'Pós-venda'    where name = 'Pos-venda';
+
+-- ---- "não consegui comparar" não é "está em dia" (migration 0093) ----
+--
+-- Sem esta coluna, o agente que falha ao comparar (clone raso sem conseguir
+-- completar a história) simplesmente não anuncia versão nova, e a tela lê a
+-- ausência como boa notícia — informando "é a mais recente" a uma instalação
+-- atrasada. Idempotente: `add column if not exists` com default.
+alter table public.system_version
+  add column if not exists compare_failed boolean not null default false;
+comment on column public.system_version.compare_failed is
+  'true quando o agente do host não conseguiu comparar a versão instalada com a última publicada (ex.: clone raso sem conseguir completar a história). A tela mostra "não consegui checar", nunca "você está em dia".';
+
+-- ---- distingue "à frente da publicada" de "nunca houve publicada" (migration 0094) ----
+--
+-- Sem esta coluna, um fork sem nenhuma tag `v*` recebia a MESMA combinação
+-- (off_release=true, latest_version='', compare_failed=false) de uma
+-- instalação que já contém a última tag publicada — e a tela afirmava "você
+-- está à frente da versão publicada" sem versão publicada nenhuma existir.
+-- Default `true` preserva o comportamento anterior para agentes antigos.
+alter table public.system_version
+  add column if not exists has_known_release boolean not null default true;
+comment on column public.system_version.has_known_release is
+  'false quando o agente do host nunca viu nenhuma tag v* no repositório (fork sem releases). Default true preserva o comportamento anterior para agentes antigos que ainda não enviam este campo.';

@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 import { toggleSidebar } from "@/app/actions/shell/toggleSidebar";
 import { usePermission } from "@/hooks/auth/AuthProvider";
 import { ConnectionHealthDot } from "@/components/connections/ConnectionHealthDot";
+import { VersionFooter } from "@/components/shell/VersionFooter";
 import { branding } from "@/lib/branding";
 
 interface NavItem {
@@ -82,7 +83,7 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
           </span>
         )}
       </div>
-      <nav className="flex-1 space-y-1 p-2" aria-label="Navegação principal">
+      <nav className="flex-1 space-y-1 overflow-y-auto p-2" aria-label="Navegação principal">
         {NAV_ITEMS.filter((item) => {
           if (item.permission === "lgpd.execute_redact") return canLgpd;
           if (item.permission === "ai.agents.view") return canAiAgents;
@@ -119,6 +120,7 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
         })}
       </nav>
       <div className="border-t p-2">
+        <VersionFooter collapsed={collapsed} />
         <button
           type="button"
           onClick={() => startTransition(() => toggleSidebar(collapsed))}

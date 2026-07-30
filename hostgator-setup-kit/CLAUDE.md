@@ -129,14 +129,40 @@ Se mesmo assim aparecerem, aqui está o diagnóstico pronto:
 
 ## Depois de instalado
 
-- **Atualizar** para uma versão nova: `bash update.sh` (um comando só). Ele já:
+- **Atualizar para uma versão nova é pelo próprio CRM, sem terminal.** O `install.sh`
+  já deixa um agente rodando no servidor (via cron) que avisa quando existe uma versão
+  nova. A pessoa vê no menu → rodapé → **"Nova versão"** e clica em **"Atualizar
+  agora"** — a tela mostra o que muda, faz backup sozinha e volta no ar em ~2 minutos,
+  tudo sem abrir terminal.
+- **`bash update.sh` continua existindo** como caminho manual — use se o agente
+  estiver fora do ar (a tela avisa "Atualização automática indisponível" e mostra este
+  mesmo comando) ou se preferir operar por SSH. Continua fazendo tudo sozinho:
   (1) checa se há mesmo versão nova (se não, sai na hora); (2) **faz backup do banco
   antes** de mexer em qualquer coisa; (3) puxa o código novo; (4) atualiza o banco
   re-aplicando o `baseline.sql` — que é idempotente e **auto-curativo** (conserta
   conversas bagunçadas de versões antigas). Re-aplicar gera muitos avisos "já existe" /
   "multiple primary keys" — **é esperado e inofensivo**; o script filtra esse ruído e só
   alerta sobre erros de verdade. (5) puxa a imagem nova do app e confere a saúde no fim.
-  Flags: `--force` (atualiza mesmo já estando na última) e `--skip-backup`.
+  Flags: `--force` (instala mesmo que a versão pedida seja igual ou anterior à instalada)
+  e `--skip-backup`.
+- **O alvo agora é a última tag publicada** (`v1.2.3`), não mais o topo da branch
+  `main` — atualizar sempre leva pra uma versão marcada e descrita no `CHANGELOG.md`,
+  nunca pra um commit não testado. O script **recusa** instalar uma versão anterior à que
+  já está no servidor (isso desligaria coisas que a pessoa já tem); voltar no tempo só com
+  `--force`, de propósito. Numa instalação que ainda segue a `main`, é normal ver essa
+  recusa: o código dela está *à frente* da última versão publicada.
+- **Clone raso:** o `install.sh` clona com `--depth 1`, e num repositório raso o git não
+  sabe responder o que é mais novo. O `update.sh` completa a história (`git fetch
+  --unshallow`) antes de decidir; se o servidor não conseguir falar com o GitHub nessa
+  hora, ele **recusa e explica** em vez de arriscar instalar uma versão anterior. Não é
+  travamento: basta tentar de novo com internet. Recusa desse tipo sai com código 3 — o
+  agente da tela usa isso pra saber que **nada foi tocado** e não tentar "desfazer" nada.
+- **A imagem da versão instalada fica gravada no `.env`** (`APP_IMAGE`). Não troque isso
+  pra `latest` na mão: seria app do topo da `main` rodando sobre o banco da versão
+  instalada — exatamente o que a atualização por tag existe pra evitar.
+- **Numa instalação que ainda não tem o agente da tela**, rodar `bash update.sh` **duas
+  vezes** liga o botão: a primeira execução ainda é a do script antigo (que baixa o novo,
+  mas não conhece o agente); a segunda instala o cron do agente.
 - **Backup** (importante! o Supabase grátis não faz sozinho): `bash backup.sh`,
   e sugira agendar um backup diário no cron. O `update.sh` já roda um backup sozinho
   antes de cada atualização.
