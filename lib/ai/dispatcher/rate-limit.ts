@@ -94,3 +94,29 @@ export async function checkRateLimit(
     window_sec: windowSec,
   };
 }
+
+/**
+ * Lê o contador SEM incrementar (issue #64).
+ *
+ * Existe porque bloqueio por tentativa-que-falhou precisa de duas operações
+ * distintas: *consultar* antes de chamar o provedor (senão o ataque nunca é
+ * barrado antes de acontecer) e *incrementar* só quando a tentativa falha
+ * (senão login bem-sucedido consome o orçamento e tranca quem acertou a senha).
+ */
+export async function peekRateLimit(bucket: string, windowSec: number): Promise<number> {
+  const windowStart = Math.floor(Date.now() / (windowSec * 1000));
+  const key = `${bucket}:${windowStart}`;
+
+  const redis = getRedis();
+  if (!redis) {
+    const existing = _memBuckets.get(key);
+    return !existing || existing.expiresAt <= Date.now() ? 0 : existing.count;
+  }
+  try {
+    const value = await redis.get<number | string>(key);
+    return value == null ? 0 : Number(value);
+  } catch {
+    const existing = _memBuckets.get(key);
+    return !existing || existing.expiresAt <= Date.now() ? 0 : existing.count;
+  }
+}

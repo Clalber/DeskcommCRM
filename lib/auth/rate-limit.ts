@@ -22,7 +22,7 @@
 import { createHash } from "node:crypto";
 import { headers } from "next/headers";
 
-import { checkRateLimit } from "@/lib/ai/dispatcher/rate-limit";
+import { checkRateLimit, peekRateLimit } from "@/lib/ai/dispatcher/rate-limit";
 
 export interface AuthRateLimits {
   /** Tentativas por IP na janela. */
@@ -73,8 +73,31 @@ export async function authRateLimited(
  *  - signup e convite: fluxos raros por pessoa, teto baixo.
  */
 export const AUTH_LIMITS = {
-  login: { ip: 30, id: 5, windowSec: 300 },
-  signup: { ip: 5, windowSec: 3600 },
-  reset: { ip: 10, id: 3, windowSec: 3600 },
-  invite_accept: { ip: 20, windowSec: 3600 },
+  login: { ip: 60, id: 5, windowSec: 300 },
+  signup: { ip: 20, windowSec: 3600 },
+  reset: { ip: 30, id: 3, windowSec: 3600 },
+  invite_accept: { ip: 60, windowSec: 3600 },
 } as const satisfies Record<string, AuthRateLimits>;
+
+/**
+ * Bloqueio por FALHA, para o login.
+ *
+ * `authRateLimited` conta toda tentativa — certo para IP, errado para conta:
+ * quem digita a senha certa não pode gastar o próprio orçamento de bloqueio.
+ * Aqui a consulta vem antes do provedor (só assim o ataque é barrado *antes*
+ * de acontecer) e o incremento vem depois, apenas quando a senha errou.
+ *
+ * Efeito: N senhas erradas trancam a conta pela janela, inclusive contra quem
+ * distribui as tentativas por muitos IPs. Acertar na 3ª não custa nada.
+ */
+export async function contaBloqueadaPorFalhas(email: string, limits: AuthRateLimits): Promise<boolean> {
+  if (limits.id === undefined) return false;
+  const atual = await peekRateLimit(`auth:login_fail:id:${opaque(email)}`, limits.windowSec);
+  return atual >= limits.id;
+}
+
+/** Registra uma senha errada no contador da conta. */
+export async function registrarFalhaDeLogin(email: string, limits: AuthRateLimits): Promise<void> {
+  if (limits.id === undefined) return;
+  await checkRateLimit(`auth:login_fail:id:${opaque(email)}`, limits.id, limits.windowSec);
+}
