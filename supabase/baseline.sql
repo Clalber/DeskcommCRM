@@ -8542,3 +8542,37 @@ drop trigger if exists trg_seed_org_llm_defaults on public.organizations;
 create trigger trg_seed_org_llm_defaults
   before insert on public.organizations
   for each row execute function public.fn_seed_org_llm_defaults();
+
+-- ---- limiar do RAG calibrado (migration 0097) ----
+-- 0.72 descartava toda parafrase; medido: relevante 0.49-0.85, irrelevante 0.27.
+alter table public.ai_agents
+  alter column config set default jsonb_build_object(
+    'temperature', 0.3, 'max_tokens', 1024, 'rag_top_k', 5,
+    'rag_similarity_threshold', 0.40, 'context_message_window', 20,
+    'confidence_threshold', 0.55, 'sentiment_threshold', 0.3,
+    'zero_data_retention', false);
+
+-- Cura quem está com o padrão antigo INTACTO. Quem já ajustou o valor na mão
+-- não é tocado.
+update public.ai_agents
+set config = jsonb_set(config, '{rag_similarity_threshold}', '0.40'::jsonb)
+where (config->>'rag_similarity_threshold')::numeric = 0.72;
+
+-- Default da função de busca, para quem chama sem passar o limiar.
+CREATE OR REPLACE FUNCTION "public"."retrieve_top_k_chunks"("p_organization_id" "uuid", "p_kb_version_id" "uuid", "p_embedding" "public"."vector", "p_k" integer DEFAULT 5, "p_threshold" real DEFAULT 0.40) RETURNS TABLE("chunk_id" "uuid", "knowledge_source_id" "uuid", "content" "text", "similarity" real, "metadata" "jsonb")
+    LANGUAGE "sql" STABLE SECURITY DEFINER
+    SET "search_path" TO 'public', 'pg_temp'
+    AS $$
+  select
+    c.id as chunk_id,
+    c.knowledge_source_id,
+    c.content,
+    (1 - (c.embedding <=> p_embedding))::real as similarity,
+    c.metadata
+  from public.ai_chunks c
+  where c.organization_id = p_organization_id
+    and c.kb_version_id   = p_kb_version_id
+    and (1 - (c.embedding <=> p_embedding)) >= p_threshold
+  order by c.embedding <=> p_embedding asc
+  limit greatest(p_k, 0);
+$$;
