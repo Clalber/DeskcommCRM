@@ -380,5 +380,5 @@ Prove que o modelo, vetado pelo gate, **usa a ferramenta**: um turno com janela 
 ## O que esta fase NÃO faz
 
 - **Não propõe template pelo agente** — ficou para a Fase 4b. Submeter template à Meta é ação externa com custo e risco de rejeição de categoria; merece plano próprio com gate humano.
-- **Não faz Embedded Signup** — Fase 5.
+- **Não faz onboarding de canal pela tela** — **Fase 5 — credencial por sessão, com tela** (NÃO Embedded Signup; ver `docs/doctrine/restricao-de-canal.md`, seção "Embedded Signup não cabe em self-host").
 - **Não muda nada do WAHA.** Se o `gates.csv` mostrar diferença que não seja a linha nova de `messaging_window`, é regressão: pare.

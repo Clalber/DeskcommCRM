@@ -986,4 +986,4 @@ Cada uma vira seu próprio arquivo em `docs/superpowers/plans/`, escrito **depoi
 - **Fase 3a** — `deriveTemplateContract` + sync por webhook + tela de templates. *Bloqueia a 3b: o contrato tem que existir antes do sender.*
 - **Fase 3b** — adapter Meta Cloud (send + webhook + mídia), credenciais BYO coladas à mão. **Requer recurso externo:** App Meta + número de teste + URL pública de webhook.
 - **Fase 4** — gate `messaging-window`, fallback de template no follow-up, proposta de template pelo agente.
-- **Fase 5** — Embedded Signup.
+- **Fase 5 — credencial por sessão, com tela** (NÃO Embedded Signup; ver `docs/doctrine/restricao-de-canal.md`, seção "Embedded Signup não cabe em self-host").

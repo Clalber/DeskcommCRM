@@ -464,4 +464,4 @@ describe("bindingState", () => {
 - **Não envia por Meta em produção.** O adapter `meta_cloud` é a Fase 3b; aqui só o contrato, o sync e a tela.
 - **Não propõe template pelo agente** — Fase 4.
 - **Não implementa o gate `messaging-window`** — Fase 4.
-- **Não faz Embedded Signup** — Fase 5. Credenciais seguem coladas à mão (`.env.local`).
+- **Não faz onboarding de canal pela tela** — **Fase 5 — credencial por sessão, com tela** (NÃO Embedded Signup; ver `docs/doctrine/restricao-de-canal.md`, seção "Embedded Signup não cabe em self-host"). Credenciais seguem em `.env.local`.

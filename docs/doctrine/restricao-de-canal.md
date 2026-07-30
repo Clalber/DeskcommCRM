@@ -139,3 +139,38 @@ ver, tela para mudar, e caminho visível de falha.**
 | Invariante | suíte de canal congelada rodando com o provider legado | regressão silenciosa reprova |
 | Trace | `before_send_traces` com `skipped` explícito | não-aplicação é auditável, não invisível |
 | Gate de sessão | item no Living System Checklist (`sistema-vivo.md`) | nenhuma task de canal fecha sem responder |
+
+---
+
+## Embedded Signup não cabe em self-host
+
+Registrado em 2026-07-30, depois de o dono do repo questionar uma premissa que eu tinha
+copiado sem verificar.
+
+**Embedded Signup é a ferramenta de quem onboarda OUTRAS empresas** — Tech Providers e
+Solution Partners. A documentação da Meta exige, antes de qualquer cliente entrar:
+
+- **App Review com Advanced Access** para cada permissão (`whatsapp_business_management`,
+  `whatsapp_business_messaging`);
+- **Business Verification** + **Access Verification** — sem as três, o teto é 10 clientes
+  por janela de 7 dias.
+
+Num produto **self-host** isso não fecha, e os dois caminhos possíveis são ruins:
+
+| Caminho | Por que não |
+|---|---|
+| Cada self-hoster vira Tech Provider | App Review e verificação de negócio **por instalação**. Semanas de processo antes do primeiro envio — ninguém instala. |
+| O projeto vira o Tech Provider central | Deixa de ser self-host: o projeto passa a rodar infraestrutura, a estar no caminho dos dados de onboarding e a ter teto de clientes. |
+
+**A arquitetura certa para self-host é BYO**, e não é uma limitação: o self-hoster já vai,
+necessariamente, criar o próprio app na Meta e a própria WABA — sem isso não existe número
+oficial. Colar as credenciais é o passo seguinte natural, não um remendo.
+
+**O que melhora de verdade** não é substituir BYO por Embedded Signup; é dar superfície ao
+BYO (invariante 6): tela de conexão que valida a credencial na hora (`GET /{phone_number_id}`),
+mostra a URL de webhook e o verify token prontos, e guarda a credencial **por sessão de
+canal, cifrada** — em vez de env global, que hoje limita a instalação a uma WABA só.
+
+**Lição de método:** eu escrevi "Fase 5 = Embedded Signup" em três planos sem perguntar se
+ela cabia no modelo do produto. Vinha do TomikCRM, que é SaaS — lá faz sentido. Premissa
+copiada de outro contexto não vira verdade por estar escrita em três lugares.
