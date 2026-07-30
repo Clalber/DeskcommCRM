@@ -1,9 +1,12 @@
 /**
  * POST /api/v1/ai/agents/:id/versions/:vid/test (admin)
  *
- * Spec 10 §4.4. Cria ai_agent_runs com is_dry_run=true e dispara o runtime
- * interno real por padrão. Quando INTERNAL_AGENT_RUN_STUB=true, o endpoint roda
- * um trace fake síncrono direto na row para desenvolvimento/testes sem LLM.
+ * Spec 10 §4.4. Cria ai_agent_runs com is_dry_run=true e executa o runtime
+ * real (S-13.08) via `callInternalRuntime` → `runAgent`. Esse é o default.
+ *
+ * INTERNAL_AGENT_RUN_STUB=true troca a execução por um trace fabricado —
+ * serve para exercitar o render da UI sem gastar token, e NÃO é o default:
+ * numa instalação nova, "Testar agente" tem que testar o agente.
  *
  * Crítico: dry_run=true → bypass do partial unique
  *   ai_agent_runs_one_running_per_conv (que filtra is_dry_run=false), por
@@ -104,15 +107,26 @@ export async function POST(req: NextRequest, ctx: Ctx): Promise<Response> {
       startedAt,
     });
   } else {
-    // Real runtime in-process. Retorna status failed com error_code/error_message
-    // quando faltar credencial/configuração, em vez de mascarar com stub.
-    resultPayload = await callInternalRuntime({
-      runId: runRow.id,
-      orgId: activeOrg.orgId,
-      versionId: vid,
-      sampleMessage: parsed.data.sample_message,
-      sampleContact: parsed.data.sample_contact,
-    });
+    // Runtime real (S-13.08). Falha aqui é o caso comum de instalação nova —
+    // credencial de IA ausente. Um 500 cru mandaria a pessoa pro log do
+    // servidor; devolvemos o porquê legível na própria tela.
+    try {
+      resultPayload = await callInternalRuntime({
+        runId: runRow.id,
+        orgId: activeOrg.orgId,
+        versionId: vid,
+        sampleMessage: parsed.data.sample_message,
+        sampleContact: parsed.data.sample_contact,
+      });
+    } catch (err) {
+      const detalhe = err instanceof Error ? err.message : String(err);
+      return fail(
+        "internal_error",
+        `Não consegui executar o agente: ${detalhe}. Confira as credenciais de IA da organização.`,
+        500,
+        { requestId },
+      );
+    }
   }
 
   void audit({

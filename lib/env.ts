@@ -103,8 +103,10 @@ const schema = z.object({
     .default("false")
     .transform((v) => v === "true"),
 
-  // Endpoint de teste do agente. Default false: o runtime real roda por padrão;
-  // ligue explicitamente em dev/teste quando quiser um trace fake sem LLM.
+  // O endpoint :test devolve um trace fake quando esta flag = 'true'.
+  // Default 'false' desde que a S-13.08 landou: `callInternalRuntime` executa
+  // o `runAgent` real, então quem instala do zero testa o agente de verdade.
+  // Ligue 'true' só para exercitar o render da UI sem gastar token.
   INTERNAL_AGENT_RUN_STUB: z
     .enum(["true", "false"])
     .optional()
