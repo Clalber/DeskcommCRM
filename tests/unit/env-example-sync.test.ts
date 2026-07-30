@@ -24,4 +24,14 @@ describe(".env.example", () => {
 
     expect(missing).toEqual([]);
   });
+
+  it("deixa o teste de agente real ligado por default", () => {
+    const envSource = readFileSync(join(root, "lib/env.ts"), "utf8");
+    const example = readFileSync(join(root, ".env.example"), "utf8");
+
+    expect(envSource).toContain(
+      'INTERNAL_AGENT_RUN_STUB: z\n    .enum(["true", "false"])\n    .optional()\n    .default("false")',
+    );
+    expect(example).toContain("INTERNAL_AGENT_RUN_STUB=false");
+  });
 });

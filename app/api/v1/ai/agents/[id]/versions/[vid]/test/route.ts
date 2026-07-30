@@ -2,11 +2,8 @@
  * POST /api/v1/ai/agents/:id/versions/:vid/test (admin)
  *
  * Spec 10 §4.4. Cria ai_agent_runs com is_dry_run=true e dispara o runtime
- * interno. Wave 6 ainda não tem o runtime real (S-13.08 entrega) — quando
- * INTERNAL_AGENT_RUN_STUB=true, o endpoint roda um trace fake síncrono
- * direto na row pra UI conseguir renderizar test mode antes do runtime
- * landar. Quando a flag virar false (após S-13.08), o handler delega via
- * fetch para /api/internal/agents/run.
+ * interno real por padrão. Quando INTERNAL_AGENT_RUN_STUB=true, o endpoint roda
+ * um trace fake síncrono direto na row para desenvolvimento/testes sem LLM.
  *
  * Crítico: dry_run=true → bypass do partial unique
  *   ai_agent_runs_one_running_per_conv (que filtra is_dry_run=false), por
@@ -107,7 +104,8 @@ export async function POST(req: NextRequest, ctx: Ctx): Promise<Response> {
       startedAt,
     });
   } else {
-    // Real runtime delega via fetch interno. S-13.08 entrega.
+    // Real runtime in-process. Retorna status failed com error_code/error_message
+    // quando faltar credencial/configuração, em vez de mascarar com stub.
     resultPayload = await callInternalRuntime({
       runId: runRow.id,
       orgId: activeOrg.orgId,
@@ -156,7 +154,10 @@ async function runStubbedTest(args: StubArgs): Promise<Record<string, unknown>> 
       step: 1,
       tool_name: "(stub)",
       args: { sample_message: args.sampleMessage },
-      result: { ok: true, note: "INTERNAL_AGENT_RUN_STUB=true — runtime real chega na S-13.08." },
+      result: {
+        ok: true,
+        note: "INTERNAL_AGENT_RUN_STUB=true — runtime real bypassed for this test.",
+      },
       started_at: args.startedAt.toISOString(),
       ended_at: finishedAt.toISOString(),
     },
@@ -204,8 +205,8 @@ async function callInternalRuntime(args: {
   sampleMessage: string;
   sampleContact?: { name?: string; phone?: string };
 }): Promise<Record<string, unknown>> {
-  // S-13.08 wires the real runtime. We invoke `runAgent` in-process to avoid
-  // a fetch loopback (no cold-start, no INTERNAL_SECRET required in dev).
+  // We invoke `runAgent` in-process to avoid a fetch loopback (no cold-start,
+  // no INTERNAL_SECRET required in dev).
   // The run row is already in is_dry_run=true mode so the runtime bypasses
   // WAHA dispatch + outbound message insert.
   const { runAgent } = await import("@/lib/ai/runtime/agent");
