@@ -226,7 +226,14 @@ async function handleProductSynced(
           },
         },
         {
-          onConflict: "organization_id,kb_version_id,content_hash",
+          // A constraint que existe no banco e ai_chunks_position_unique
+          // (knowledge_source_id, kb_version_id, position). O alvo antigo
+          // (organization_id, kb_version_id, content_hash) nao existe, e o
+          // Postgres respondia "there is no unique or exclusion constraint
+          // matching the ON CONFLICT specification" — TODO chunk falhava ao
+          // gravar. Como cada reindexacao cria uma versao nova, na pratica
+          // nunca ha conflito; o alvo certo e o que faz o insert passar.
+          onConflict: "knowledge_source_id,kb_version_id,position",
           ignoreDuplicates: true,
         },
       );
@@ -330,6 +337,7 @@ async function handleKnowledgeSourceUpdated(
   );
 
   let gravados = 0;
+  const gravadosPorFonte = new Map<string, number>();
   for (let i = 0; i < pedacos.length; i++) {
     const p = pedacos[i]!;
     const contentHash = computeContentHash(p.content);
@@ -353,12 +361,14 @@ async function handleKnowledgeSourceUpdated(
         embedding: embedding as unknown as string,
         metadata: { source_type: p.sourceType },
       },
-      { onConflict: "organization_id,kb_version_id,content_hash", ignoreDuplicates: true },
+      // Ver comentario no caminho de produto: esta e a constraint que existe.
+      { onConflict: "knowledge_source_id,kb_version_id,position", ignoreDuplicates: true },
     );
     if (upErr) {
       console.warn(`[rag-indexer] chunk upsert error at ${i}:`, upErr.message);
     } else {
       gravados++;
+      gravadosPorFonte.set(p.sourceId, (gravadosPorFonte.get(p.sourceId) ?? 0) + 1);
     }
   }
 
@@ -368,12 +378,14 @@ async function handleKnowledgeSourceUpdated(
   // Estado por fonte: a tela mostra "Chunks indexados" e a última indexação.
   const agora = new Date().toISOString();
   for (const s of sources) {
-    const doFonte = pedacos.filter((p) => p.sourceId === s.id).length;
+    // O que REALMENTE entrou, nao o que eu pretendia gravar: contar o planejado
+    // fazia a tela anunciar "4 chunks indexados" com zero chunks no banco.
+    const doFonte = gravadosPorFonte.get(s.id) ?? 0;
     await admin
       .from("ai_knowledge_sources")
       .update({
-        last_index_status: "success",
-        last_index_error: null,
+        last_index_status: doFonte > 0 ? "success" : "failed",
+        last_index_error: doFonte > 0 ? null : "nenhum chunk foi gravado nesta indexação",
         last_indexed_at: agora,
         chunks_count: doFonte,
       })
