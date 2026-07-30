@@ -17,6 +17,22 @@ export default defineConfig({
   testDir: ".",
   timeout: 120_000,
   fullyParallel: false,
+  /**
+   * UM worker, não os 3 que o Playwright escolhe sozinho.
+   *
+   * `fullyParallel: false` serializa apenas DENTRO de cada arquivo; entre arquivos,
+   * os workers continuam concorrendo. E estas jornadas compartilham tudo o que
+   * importa: a MESMA organização, o MESMO contato, a MESMA sessão de canal. Enquanto
+   * `canal-oficial` troca a credencial da sessão, `canais-baseline` está enviando
+   * por ela.
+   *
+   * Medido em 4 corridas seguidas do mesmo código: 8/10, 10/10, 9/10, 8/10 — com
+   * falha diferente a cada vez. Não é lentidão: é interferência.
+   *
+   * O custo é wall-clock; o benefício é um verde que significa alguma coisa. Suíte
+   * que passa em metade das corridas não reprova mudança nenhuma.
+   */
+  workers: 1,
   retries: 0,
   use: {
     baseURL: `http://localhost:${PORT}`,
