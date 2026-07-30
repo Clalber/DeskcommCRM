@@ -8486,3 +8486,59 @@ from public.organizations o
 on conflict (organization_id) do update
 set current_month_consumed_cents = excluded.current_month_consumed_cents,
     updated_at = now();
+
+-- ---- modelo de LLM padrão da organização (migration 0096) ----
+-- Sem isto o caminho GENÉRICO do turno (documentado em resolve-turn-agent.ts)
+-- fica sem modelo e o turno morre com 'modelo LLM não definido'. Idempotente.
+update public.organizations o
+set settings = jsonb_set(
+      coalesce(o.settings, '{}'::jsonb),
+      '{llm}',
+      coalesce(o.settings->'llm', '{}'::jsonb)
+        || jsonb_build_object(
+             'provider', coalesce(o.settings->'llm'->>'provider', 'anthropic'),
+             'default_model', coalesce(
+               (select m.model_id from public.ai_models m
+                where m.provider = coalesce(o.settings->'llm'->>'provider', 'anthropic')
+                  and m.is_default_for_provider
+                  and m.deprecated_at is null
+                limit 1),
+               'claude-sonnet-4-6'
+             )
+           ),
+      true
+    )
+where coalesce(o.settings->'llm'->>'default_model', '') = '';
+
+-- Organização nova já nasce configurada: o mesmo seed que cria o funil padrão
+-- passa a semear o modelo.
+CREATE OR REPLACE FUNCTION "public"."fn_seed_org_llm_defaults"() RETURNS "trigger"
+    LANGUAGE "plpgsql"
+    SET "search_path" TO 'public', 'pg_temp'
+    AS $$
+begin
+  if coalesce(new.settings->'llm'->>'default_model', '') = '' then
+    new.settings := jsonb_set(
+      coalesce(new.settings, '{}'::jsonb),
+      '{llm}',
+      coalesce(new.settings->'llm', '{}'::jsonb)
+        || jsonb_build_object(
+             'provider', 'anthropic',
+             'default_model', coalesce(
+               (select m.model_id from public.ai_models m
+                where m.provider = 'anthropic' and m.is_default_for_provider
+                  and m.deprecated_at is null limit 1),
+               'claude-sonnet-4-6'
+             )
+           ),
+      true
+    );
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_seed_org_llm_defaults on public.organizations;
+create trigger trg_seed_org_llm_defaults
+  before insert on public.organizations
+  for each row execute function public.fn_seed_org_llm_defaults();
