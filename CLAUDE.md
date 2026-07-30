@@ -2,6 +2,14 @@
 
 > Instruções pra futuras sessões Claude trabalhando neste repo. Leitura obrigatória antes de qualquer task de código.
 
+**Este arquivo é a doutrina — a autoridade final sobre convenção e anti-pattern.** Complementos, na ordem em que ajudam:
+
+- [`AGENTS.md`](AGENTS.md) — mesmo contrato em forma portável (para Codex/Cursor/Copilot e afins). É derivado deste arquivo, não o substitui. **Ao mudar doutrina aqui, verifique se `AGENTS.md` desatualizou.**
+- [`docs/index.md`](docs/index.md) — índice dos 123 docs, com regra de precedência quando dois docs discordam. Use antes de sair varrendo `docs/`.
+- [`docs/current-state.md`](docs/current-state.md) — o que está pronto, incompleto e quebrado. **Leia antes de estimar ou prometer qualquer coisa.**
+- [`docs/harness-audit.md`](docs/harness-audit.md) — onde a verificação tem buraco. Importante: `pnpm gov:verify` **não** cobre `test:db` nem `test:e2e` — verde ali não é prova para mudança de schema ou de UI.
+- [`docs/threat-model.md`](docs/threat-model.md) — superfície de ataque real do self-host.
+
 ---
 
 ## Visão (1 parágrafo)
@@ -172,10 +180,15 @@ pnpm test:e2e    # Playwright (requer dev server)
 
 **Os invariantes não estão no `test:unit`.** `vitest.config.ts` exclui `tests/invariants/**` de propósito: essa suíte precisa de um Postgres real e roda via `vitest.db.config.ts`, orquestrada por `scripts/test-db.sh`. Rodar só `pnpm test:unit` e concluir "está tudo verde" é um falso verde — o isolamento RLS não foi exercitado.
 
-O CI (`.github/workflows/ci.yml`) tem dois jobs em paralelo, ambos obrigatórios antes de merge:
+Checks **obrigatórios** na branch protection da `main` (verificado na configuração, não só no papel):
 
-- **`verify`** — typecheck + lint + test:unit.
-- **`invariants`** — `pnpm test:db`: sobe `pgvector/pgvector:pg17`, aplica `supabase/baseline.sql` em modo install (`ON_ERROR_STOP=1`) e update (idempotência), e roda os 364 testes de invariante, incluindo o de isolamento RLS entre 2 organizações.
+- **`verify`** (`ci.yml`) — typecheck + lint + test:unit.
+- **`invariants`** (`ci.yml`) — `pnpm test:db`: sobe `pgvector/pgvector:pg17`, aplica `supabase/baseline.sql` em modo install (`ON_ERROR_STOP=1`) e update (idempotência), e roda os testes de invariante, incluindo o de isolamento RLS entre 2 organizações.
+- **`build-and-size`** (`perf.yml`) — `pnpm build` em Node 22.
+
+Check **não-obrigatório** (roda, mas não segura merge):
+
+- **`e2e`** (`e2e.yml`) — sobe Supabase local, aplica o `baseline.sql` e roda **3 das 19 specs** Playwright (`smoke`, `auth`, `error-pages`). As outras 16 dependem de fixture semeada ou serviço externo e seguem sem gate (issue #63). Vira obrigatório quando acumular execuções estáveis.
 
 Ao mexer em schema, RLS, RBAC, atribuição, escopo, roteamento, follow-up, webhooks ou automações: rode `pnpm test:db` **localmente** antes de abrir PR. É o único caminho que exercita o `baseline.sql` que o self-hoster realmente aplica.
 

@@ -235,7 +235,14 @@ export async function failJob(
        insert into agent_inbox_items (organization_id, kind, severity, title, body, ref_kind, ref_id)
        select organization_id, 'job_dead', 'critical',
               'Job descartado após esgotar tentativas',
-              'kind=' || kind || '; attempts=' || attempts, 'job_queue', id
+              -- O erro que matou o job vai JUNTO. Antes o corpo era só
+              -- 'kind=...; attempts=5' e jogava fora a única informação que
+              -- resolveria: o aviso existia, e não dizia nada. Caso real desta
+              -- VPS: 16 alertas críticos idênticos enquanto o erro guardado em
+              -- last_error dizia exatamente o que configurar.
+              'kind=' || kind || '; attempts=' || attempts
+                || coalesce(chr(10) || 'Motivo: ' || left(last_error, 400), ''),
+              'job_queue', id
        from updated
        where status = 'dead'
      )
@@ -315,7 +322,14 @@ export async function reapExpiredJobs(
        insert into agent_inbox_items (organization_id, kind, severity, title, body, ref_kind, ref_id)
        select organization_id, 'job_dead', 'critical',
               'Job descartado após esgotar tentativas',
-              'kind=' || kind || '; attempts=' || attempts, 'job_queue', id
+              -- O erro que matou o job vai JUNTO. Antes o corpo era só
+              -- 'kind=...; attempts=5' e jogava fora a única informação que
+              -- resolveria: o aviso existia, e não dizia nada. Caso real desta
+              -- VPS: 16 alertas críticos idênticos enquanto o erro guardado em
+              -- last_error dizia exatamente o que configurar.
+              'kind=' || kind || '; attempts=' || attempts
+                || coalesce(chr(10) || 'Motivo: ' || left(last_error, 400), ''),
+              'job_queue', id
        from expired
        where status = 'dead'
      )

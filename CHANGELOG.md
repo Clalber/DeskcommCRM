@@ -8,6 +8,28 @@ Se você roda o DeskcommCRM numa VPS, **leia a seção da versão para a qual es
 
 ## [Não lançado]
 
+## [1.1.0] — 2026-07-30
+
+### Adicionado
+
+- **Atualização pela própria tela.** O dono da instalação vê a versão instalada no rodapé do menu
+  e, quando há versão nova, atualiza com um clique — sem abrir terminal. A tela mostra o que muda,
+  avisa quanto tempo o sistema fica fora do ar e faz uma cópia de segurança antes.
+
+### Alterado
+
+- **A atualização passa a instalar a última versão publicada, não o topo do código em
+  desenvolvimento.** O `update.sh` recusa instalar uma versão anterior à que já está no servidor
+  (voltar no tempo continua possível com `--force`) e grava a imagem escolhida no `.env` — assim um
+  `docker compose up -d` rodado depois não traz o app de volta para a `latest`.
+
+**⚠️ Requer atenção**
+
+Quem já tem o CRM instalado precisa rodar `bash hostgator-setup-kit/update.sh` **duas vezes** pelo
+terminal para ativar o botão. Não é engano: a primeira execução ainda é a do programa antigo, que
+baixa o novo mas não sabe ligar o agente da tela; a segunda já roda o programa atualizado e liga.
+Depois disso, nunca mais é preciso o terminal.
+
 ## [1.0.0] — 2026-07-27
 
 Primeira versão marcada do DeskcommCRM. O projeto vinha sendo desenvolvido publicamente desde abril de 2026 sem tags; esta release estabelece o ponto a partir do qual toda mudança passa a ser versionada e descrita — porque quem hospeda o próprio sistema precisa saber o que muda antes de atualizar.
@@ -77,5 +99,6 @@ Primeira versão marcada do DeskcommCRM. O projeto vinha sendo desenvolvido publ
 
 - **Node 22 é obrigatório para desenvolvimento.** A suíte de invariantes instancia o cliente do Supabase, que exige o `WebSocket` global — nativo apenas a partir do Node 22. Isso não afeta quem apenas hospeda: a VPS roda a imagem pronta.
 
-[Não lançado]: https://github.com/melgarafael/DeskcommCRM/compare/v1.0.0...HEAD
+[Não lançado]: https://github.com/melgarafael/DeskcommCRM/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/melgarafael/DeskcommCRM/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/melgarafael/DeskcommCRM/releases/tag/v1.0.0

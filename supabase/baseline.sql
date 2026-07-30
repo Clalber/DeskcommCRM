@@ -8377,6 +8377,64 @@ create policy tenant_isolation_knowledge_searches_all on knowledge_searches
 -- tabela nunca é lida sem sessão. Idempotente: revogar o que não está lá é no-op.
 revoke all on public.knowledge_searches from anon;
 
+-- ---- atualização self-service pela UI (migration 0089) ----
+--
+-- Duas tabelas de INSTÂNCIA (sem organization_id): descrevem o servidor, não o
+-- inquilino. Sem policy de RLS de propósito — com RLS habilitada e zero policy,
+-- `anon` e `authenticated` não leem nada pelo PostgREST; o acesso passa só pelas
+-- rotas /api/v1/system/*, que usam service role e checam is_platform_admin.
+create table if not exists public.system_version (
+  id                  smallint primary key default 1 check (id = 1),
+  current_version     text not null default '',
+  current_sha         text not null default '',
+  off_release         boolean not null default false,
+  latest_version      text not null default '',
+  changelog_raw       text not null default '',
+  agent_last_seen_at  timestamptz,
+  update_requested_at timestamptz,
+  update_requested_by uuid references auth.users(id) on delete set null,
+  updated_at          timestamptz not null default now()
+);
+comment on table public.system_version is
+  'Singleton: versão instalada e disponível desta instância. Escrito pelo agente do host.';
+insert into public.system_version (id) values (1) on conflict (id) do nothing;
+create table if not exists public.system_update_runs (
+  id            uuid primary key default gen_random_uuid(),
+  from_version  text not null default '',
+  to_version    text not null default '',
+  status        text not null default 'dispatched'
+                check (status in ('dispatched','success','failed','failed_rolled_back')),
+  last_step     text check (last_step in ('backup','codigo','banco')),
+  requested_by  uuid references auth.users(id) on delete set null,
+  dispatched_at timestamptz not null default now(),
+  finished_at   timestamptz,
+  log_tail      text not null default ''
+);
+comment on table public.system_update_runs is
+  'Histórico append de atualizações disparadas pela UI. status/last_step espelham RunStatus/RunStep em lib/system/update-run.ts.';
+create index if not exists idx_system_update_runs_dispatched
+  on public.system_update_runs (dispatched_at desc);
+alter table public.system_version    enable row level security;
+alter table public.system_update_runs enable row level security;
+
+-- ---- índice único parcial: no máximo 1 run "dispatched" por vez (migration 0090) ----
+--
+-- Dedup defensivo ANTES da constraint (clone com dado inconsistente não pode
+-- quebrar o update.sh): mantém só a linha "dispatched" mais recente, marca
+-- as demais como failed.
+with ranked as (
+  select id, row_number() over (order by dispatched_at desc) as rn
+  from public.system_update_runs
+  where status = 'dispatched'
+)
+update public.system_update_runs
+set status = 'failed', finished_at = coalesce(finished_at, now())
+where id in (select id from ranked where rn > 1);
+
+create unique index if not exists uniq_system_update_runs_dispatched
+  on public.system_update_runs (status)
+  where status = 'dispatched';
+
 -- ---- acentos nas etapas padrão do funil (migration 0092) ----
 -- O seed do funil "Pedidos" criava "Em separacao" e "Pos-venda" sem acento —
 -- nomes visíveis no quadro principal, a tela mais usada do CRM. O seed acima já
@@ -8525,3 +8583,101 @@ comment on column public.messages.template_name is
 create index if not exists messages_template_idx
   on public.messages (organization_id, template_name)
   where template_name is not null;
+-- ---- "não consegui comparar" não é "está em dia" (migration 0093) ----
+--
+-- Sem esta coluna, o agente que falha ao comparar (clone raso sem conseguir
+-- completar a história) simplesmente não anuncia versão nova, e a tela lê a
+-- ausência como boa notícia — informando "é a mais recente" a uma instalação
+-- atrasada. Idempotente: `add column if not exists` com default.
+alter table public.system_version
+  add column if not exists compare_failed boolean not null default false;
+comment on column public.system_version.compare_failed is
+  'true quando o agente do host não conseguiu comparar a versão instalada com a última publicada (ex.: clone raso sem conseguir completar a história). A tela mostra "não consegui checar", nunca "você está em dia".';
+
+-- ---- distingue "à frente da publicada" de "nunca houve publicada" (migration 0094) ----
+--
+-- Sem esta coluna, um fork sem nenhuma tag `v*` recebia a MESMA combinação
+-- (off_release=true, latest_version='', compare_failed=false) de uma
+-- instalação que já contém a última tag publicada — e a tela afirmava "você
+-- está à frente da versão publicada" sem versão publicada nenhuma existir.
+-- Default `true` preserva o comportamento anterior para agentes antigos.
+alter table public.system_version
+  add column if not exists has_known_release boolean not null default true;
+comment on column public.system_version.has_known_release is
+  'false quando o agente do host nunca viu nenhuma tag v* no repositório (fork sem releases). Default true preserva o comportamento anterior para agentes antigos que ainda não enviam este campo.';
+
+-- ---- orçamento de IA conta o runtime real (migration 0095) ----
+-- O gatilho de consumo existia só em ai_invocations (workers legados); o
+-- agent-engine grava em llm_calls, então o contador ficava zerado e o alarme
+-- de 80% / pausa em 100% nunca disparavam. Idempotente.
+drop trigger if exists trg_llm_calls_budget on public.llm_calls;
+create trigger trg_llm_calls_budget
+  after insert on public.llm_calls
+  for each row execute function public.fn_update_budget_consumption();
+
+insert into public.ai_budgets (organization_id, current_month_consumed_cents)
+select o.id,
+       coalesce((select sum(cost_cents) from public.llm_calls c
+                 where c.organization_id = o.id and c.created_at >= date_trunc('month', now())), 0)
+     + coalesce((select sum(cost_cents) from public.ai_invocations i
+                 where i.organization_id = o.id and i.created_at >= date_trunc('month', now())), 0)
+from public.organizations o
+on conflict (organization_id) do update
+set current_month_consumed_cents = excluded.current_month_consumed_cents,
+    updated_at = now();
+
+-- ---- modelo de LLM padrão da organização (migration 0096) ----
+-- Sem isto o caminho GENÉRICO do turno (documentado em resolve-turn-agent.ts)
+-- fica sem modelo e o turno morre com 'modelo LLM não definido'. Idempotente.
+update public.organizations o
+set settings = jsonb_set(
+      coalesce(o.settings, '{}'::jsonb),
+      '{llm}',
+      coalesce(o.settings->'llm', '{}'::jsonb)
+        || jsonb_build_object(
+             'provider', coalesce(o.settings->'llm'->>'provider', 'anthropic'),
+             'default_model', coalesce(
+               (select m.model_id from public.ai_models m
+                where m.provider = coalesce(o.settings->'llm'->>'provider', 'anthropic')
+                  and m.is_default_for_provider
+                  and m.deprecated_at is null
+                limit 1),
+               'claude-sonnet-4-6'
+             )
+           ),
+      true
+    )
+where coalesce(o.settings->'llm'->>'default_model', '') = '';
+
+-- Organização nova já nasce configurada: o mesmo seed que cria o funil padrão
+-- passa a semear o modelo.
+CREATE OR REPLACE FUNCTION "public"."fn_seed_org_llm_defaults"() RETURNS "trigger"
+    LANGUAGE "plpgsql"
+    SET "search_path" TO 'public', 'pg_temp'
+    AS $$
+begin
+  if coalesce(new.settings->'llm'->>'default_model', '') = '' then
+    new.settings := jsonb_set(
+      coalesce(new.settings, '{}'::jsonb),
+      '{llm}',
+      coalesce(new.settings->'llm', '{}'::jsonb)
+        || jsonb_build_object(
+             'provider', 'anthropic',
+             'default_model', coalesce(
+               (select m.model_id from public.ai_models m
+                where m.provider = 'anthropic' and m.is_default_for_provider
+                  and m.deprecated_at is null limit 1),
+               'claude-sonnet-4-6'
+             )
+           ),
+      true
+    );
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_seed_org_llm_defaults on public.organizations;
+create trigger trg_seed_org_llm_defaults
+  before insert on public.organizations
+  for each row execute function public.fn_seed_org_llm_defaults();
