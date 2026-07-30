@@ -23,13 +23,14 @@ Next.js 16.2 (App Router) · React 19.2 · TypeScript 6.0 estrito · Tailwind 3.
 shadcn/ui · Supabase (Postgres + Auth + Realtime + Storage) · Upstash Redis ·
 Vercel AI Gateway (`@ai-sdk/anthropic|openai|google`) · WAHA Plus (engine NOWEB) ·
 Zod 3 · Vitest 4 · Playwright 1.61 · Sentry 10.
-Runtime: Node ≥20 (`.nvmrc` = 20). Gerenciador: **pnpm 9.15.9** (`packageManager`).
+Runtime: **Node ≥22** (`.nvmrc` = 22, e o CI roda 22). Gerenciador: **pnpm 9.15.9** (`packageManager`).
+Versão do produto: **1.0.0** (`CHANGELOG.md`, SemVer — mudança que afeta quem roda VPS entra lá).
 
 ## Estrutura que importa
 
 | Path | O quê |
 |---|---|
-| `app/api/v1/` | 149 route handlers REST (versionado por path) |
+| `app/api/v1/` | 169 route handlers REST (versionado por path) |
 | `app/api/internal/`, `app/api/mcp/`, `app/api/v1/cron/` | superfícies não-cookie (secret/bearer próprio) |
 | `app/app/` | UI autenticada do tenant · `app/admin/` UI de plataforma |
 | `app/actions/` | Server Actions (auth, onboarding, team, settings) |
@@ -56,8 +57,13 @@ pnpm gov:verify       # typecheck + lint + test:unit  ← verificação única a
 ```
 
 ⚠️ **`pnpm gov:verify` NÃO cobre tudo.** Ele omite `test:db` e `test:e2e`. Se sua
-mudança toca schema, RLS ou UI, `gov:verify` verde **não** é prova. Ver
-[`docs/harness-audit.md`](docs/harness-audit.md).
+mudança toca schema, RLS ou UI, `gov:verify` verde **não** é prova — rode `pnpm test:db`
+(exige Docker) e/ou `pnpm test:e2e` você mesmo. Ver [`docs/harness-audit.md`](docs/harness-audit.md).
+
+**O que o CI cobre** (`.github/workflows/ci.yml`, 2 jobs paralelos): `verify` = typecheck +
+lint + test:unit; `invariants` = `pnpm test:db` (isolamento RLS + invariantes de governança
+contra Postgres efêmero pg17). **Os E2E não rodam em CI** — se você mexeu em UI ou fluxo de
+usuário, ninguém além de você vai provar que funciona.
 
 ## Padrões de código (observados no repo, não inventados)
 
@@ -75,7 +81,7 @@ mudança toca schema, RLS ou UI, `gov:verify` verde **não** é prova. Ver
   Toda mudança de schema tem que aparecer aqui **como apêndice idempotente**, senão
   não chega em quem instalou. Ver doutrina de Migrations em `CLAUDE.md`.
 - **`supabase/migrations/*.sql` já aplicadas** — nunca edite. Corrija com migration nova.
-- **`lib/supabase/admin.ts`** — service role **bypassa RLS**. 80 rotas o usam; toda
+- **`lib/supabase/admin.ts`** — service role **bypassa RLS**. 89 rotas o usam; toda
   query precisa filtrar `organization_id` manualmente, resolvido de fonte confiável
   (cookie/JWT/webhook secret/path token), **nunca do body**.
 - **`lib/auth/public-paths.ts`** — adicionar path aqui remove a checagem de auth de borda.
@@ -84,7 +90,7 @@ mudança toca schema, RLS ou UI, `gov:verify` verde **não** é prova. Ver
 
 ## Arquivos GERADOS — não editar à mão
 
-- `lib/database.types.ts` (5.8k linhas — gerado do schema Supabase)
+- `lib/database.types.ts` (6.1k linhas — gerado do schema Supabase)
 - `graphify-out/` (grafo de conhecimento; regenerado por `/graphify .`)
 - `pnpm-lock.yaml`, `tsconfig.tsbuildinfo`, `next-env.d.ts`, `.next/`
 
@@ -101,22 +107,29 @@ mudança toca schema, RLS ou UI, `gov:verify` verde **não** é prova. Ver
 
 ## Testes existentes (CONFIRMADO)
 
-- **155** arquivos `*.test.ts(x)` unitários (rodam em `test:unit`)
-- **~31** invariantes de banco em `tests/invariants/` — RLS/isolamento cross-tenant, RBAC,
-  governança (G1–G6). **Só rodam via `pnpm test:db`.**
-- **17** specs Playwright em `tests/e2e/` — inclui `vps-fresh-onboarding` e
+- **221** arquivos `*.test.ts(x)` unitários (rodam em `test:unit` e no CI)
+- **56** arquivos de invariante de banco em `tests/invariants/` — RLS/isolamento cross-tenant,
+  RBAC, governança (G1–G6). Excluídos do `test:unit` de propósito; rodam via `pnpm test:db`
+  **e no job `invariants` do CI**.
+- **19** specs Playwright em `tests/e2e/` — inclui `vps-fresh-onboarding` e
   `vps-webhook-outbound-ssrf`. **Não rodam no CI.**
 
-## Limitações conhecidas (estado em 2026-07-29)
+## Limitações conhecidas (estado em 2026-07-29, contra `origin/main` @ 789dfa6)
 
-- CI (`.github/workflows/ci.yml`) roda **só** typecheck + lint + `test:unit`. O gate de
-  isolamento RLS que a doutrina chama de obrigatório **não roda em CI**.
+- **E2E fora do CI.** Se você mexeu em UI ou fluxo de usuário, a prova é sua — nenhum gate
+  automático cobre isso.
 - Rate limit HTTP existe em **2** pontos do código (webhook de captação e dispatcher de IA);
-  login, signup, aceite de convite, crons e MCP estão sem.
-- `Idempotency-Key` implementado em **1** rota, apesar de o contrato prometer nos POSTs de criação.
+  login, signup, aceite de convite, crons e MCP estão sem. Não há lockout por conta no login.
 - Fallback do rate limit é **em memória** — sem Upstash configurado o limite é por processo.
-- Detalhes e prioridade: [`docs/harness-audit.md`](docs/harness-audit.md) e
-  [`docs/threat-model.md`](docs/threat-model.md).
+- `Idempotency-Key` implementado em **1** rota, apesar de o contrato prometer nos POSTs de criação.
+- **6 vars de `lib/env.ts` faltam no `.env.example`**, incluindo 3 secrets. Se você adicionar
+  env var, adicione nos dois lugares (item 9 do DoD).
+- `lib/auth/invite-token.ts` cai em `"dev-fallback"` como secret HMAC se nenhum secret existir
+  (inalcançável em produção, porque `INTERNAL_SECRET` é obrigatório e derruba o boot).
+- **89 dos 169 handlers usam service role** — sem gate automático para o filtro de
+  `organization_id`. Escrevendo handler novo, o filtro é responsabilidade sua.
+- Detalhes e prioridade: [`docs/harness-audit.md`](docs/harness-audit.md),
+  [`docs/current-state.md`](docs/current-state.md) e [`docs/threat-model.md`](docs/threat-model.md).
 
 ## Regras de segurança
 

@@ -5,12 +5,13 @@ status: draft
 last_updated: 2026-07-29
 generated_by: auditoria documental (Claude Code)
 confidence: alta (inventário de arquivos é CONFIRMADO; agrupamento temático é INFERIDO)
+audited_against: origin/main @ 789dfa6 (v1.0.0, 2026-07-27)
 ---
 
 # Índice da documentação — DeskcommCRM
 
-Mapa dos ~102 documentos do repositório. Existe porque a documentação cresceu em
-20 pastas sem ponto de entrada: sem este índice, humano e agente não acham o que
+Mapa dos 123 documentos do repositório. Existe porque a documentação cresceu em
+19 pastas sem ponto de entrada: sem este índice, humano e agente não acham o que
 já foi decidido e reescrevem por cima.
 
 **Regra de precedência quando dois docs discordam:**
@@ -30,6 +31,7 @@ de menor precedência e registre.
 | [`AGENTS.md`](../AGENTS.md) | Contrato para agentes de código (qualquer ferramenta) |
 | [`CLAUDE.md`](../CLAUDE.md) | **Doutrina não-negociável.** Convenções, anti-patterns, Definition of Done |
 | [`CONTRIBUTING.md`](../CONTRIBUTING.md) | Como contribuir |
+| [`CHANGELOG.md`](../CHANGELOG.md) | Mudanças por versão (SemVer). **Quem roda VPS lê antes de `update.sh`** — mudança que exige ação manual aparece sob "⚠️ Requer atenção" |
 | [`docs/current-state.md`](current-state.md) | **O que está pronto, incompleto e quebrado hoje** |
 
 ## 2. Produto e intenção
@@ -115,29 +117,36 @@ acessibilidade).
 
 Documentação de *processo*. Alta rotatividade; trate como estado, não como contrato.
 
-- [`stories/epics/`](stories/) — épicos e stories (`MASTER.md` = plano por epic/wave)
-- [`superpowers/plans/`](superpowers/) e `superpowers/specs/` — planos e designs datados por onda
-- [`superpowers/handoffs/`](superpowers/) — handoffs de sessão
-- Raiz do repo: `HANDOFF.md` (follow-up), `HANDOFF-casos-humanos.md`,
-  `HANDOFF-harness-evolution.md`, `HANDOFF-inbox-multimodal.md`, `HANDOFF-operacao-visivel.md`
-- [`../plan/`](../plan/) — backlog do gov-loop (`features.json`, `phases.md`, `progress.md`)
-- [`../loop/`](../loop/) — máquina do gov-loop (`LOOP.md`, `CHECKPOINT.md`, `checkpoints/G1..G6-report.md`)
+**Convenção observada:** épico **vivo** mantém o HANDOFF na **raiz** do repo; épico
+**encerrado** é arquivado em [`handoffs/`](handoffs/). Use isso para saber o que está em voo.
+
+- **Raiz (em voo):** `HANDOFF.md` (follow-up), `HANDOFF-harness-evolution.md`, `HANDOFF-operacao-visivel.md`
+- [`handoffs/`](handoffs/) — arquivados: casos humanos, inbox multimodal, CRM vivo, LGPD, wave1-devvivo, contrato wave5, briefing CRM vivo
+- [`stories/`](stories/) — épicos e stories (`epics/MASTER.md` = plano por epic/wave)
+- [`superpowers/`](superpowers/) — `plans/` e `specs/` datados por onda, mais `handoffs/`
+- [`growth/`](growth/) — material de crescimento · [`brand/`](brand/) — marca · [`white-label.md`](white-label.md) — instalação com marca própria
+- [`../plan/`](../plan/) — backlog do gov-loop (`features.json` 31/31, `phases.md`, `progress.md`)
+- [`../loop/`](../loop/) — máquina do gov-loop (`LOOP.md`, `CHECKPOINT.md`, `checkpoints/G1..G6-report.md` + `.approved`)
 - [`../tasks/todo.md`](../tasks/todo.md) — workflow de construção original (Fase 0 → PRD → specs)
 
 ## 9. Grafo de conhecimento
 
-`graphify-out/` — grafo do repositório (7310 nós, 17705 arestas, 538 comunidades).
-Consulte via skill `graphify` antes de varrer código bruto. `GRAPH_REPORT.md` traz
-god nodes, hyperedges e comunidades. **Gerado — não editar.**
+`graphify-out/` — grafo do repositório (7310 nós, 17705 arestas, 538 comunidades na última
+geração). Consulte via skill `graphify` antes de varrer código bruto. `GRAPH_REPORT.md` traz
+god nodes, hyperedges e comunidades. **Gerado — não editar.** ⚠️ Foi gerado contra uma árvore
+anterior à v1.0.0; regenere (`/graphify .`) antes de confiar em detalhe fino.
 
 ---
 
 ## Lacunas conhecidas deste índice
 
 - `docs/vendaval-fusion-plan.md` e `docs/vendaval-vps-deploy-comandos.md` referem-se a uma
-  integração ("Vendaval") cujo status é **A CONFIRMAR** — README a lista como *Fase FG,
-  aguardando priorização do dono*.
-- `docs/evidence/` e `docs/diagrams/` existem mas não foram inventariados neste passe.
+  integração ("Vendaval") cujo status é **A CONFIRMAR** — o README **não a lista mais** em
+  "Próximo", apesar de o gatilho (`loop/checkpoints/G6.approved`) existir.
+- `docs/diagrams/` não tem `.md` e não foi inventariado. `docs/evidence/` é evidência visual
+  (18 PNGs), não documentação de leitura.
 - `docs/architecture/` contém só o diagrama do agent-turn; a doutrina (`CLAUDE.md`, DoD item 13)
   pede que o "mapa vivo" da arquitetura reflita toda peça nova com ≥2 arestas — **NÃO IDENTIFICADO**
-  se isso está sendo cumprido.
+  se isso está sendo cumprido, e é a lacuna documental mais relevante que sobrou.
+- `docs/growth/` (3 docs) e `docs/brand/` (1) não foram lidos em detalhe — classificados por
+  nome de pasta, portanto **INFERIDO**.

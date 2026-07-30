@@ -5,6 +5,7 @@ status: draft
 last_updated: 2026-07-29
 generated_by: auditoria documental (Claude Code) — leitura de rotas, guards, proxy.ts e lib/env.ts
 confidence: média-alta (superfície e guards são CONFIRMADO por leitura de código; explorabilidade é INFERIDO — nada foi testado contra instância viva)
+audited_against: origin/main @ 789dfa6 (v1.0.0, 2026-07-27)
 ---
 
 # Threat model — DeskcommCRM self-host
@@ -85,18 +86,21 @@ O stack de produção do kit inclui `serverless-redis-http` + Redis local (visto
 `docker-compose.prod.yml`), o que resolve — **A CONFIRMAR** se o `install.sh` garante que
 essas duas vars ficam populadas em toda instalação.
 
-### T3 — 80 handlers com service role, sem enforcement automático de tenant 🔴 CONFIRMADO (contagem)
+### T3 — 89 handlers com service role, sem gate de escrita 🟠 CONFIRMADO (contagem)
 
-`createAdminClient` (service role, **bypassa RLS**) é importado em **80 dos 149** route
+`createAdminClient` (service role, **bypassa RLS**) é importado em **89 dos 169** route
 handlers. A regra da doutrina — "filtre `organization_id` manualmente, resolvido de fonte
 confiável, nunca do body" — é aplicada por revisão humana. Não há lint rule nem teste que
-falhe quando um handler novo esquece o filtro.
+falhe quando um handler *novo* esquece o filtro.
 
-Este é o **pior modo de falha do produto**: vazamento cross-tenant. As amostras que li
-(`admin/tenants`, `webhooks/in/:token`, `team/:user_id`) seguem o padrão corretamente, e
-os ~31 invariantes em `tests/invariants/` cobrem isolamento a sério — mas
-**esses invariantes não rodam no CI** (ver [`harness-audit.md`](harness-audit.md)).
-O guard-rail existe e está desligado.
+Este é o **pior modo de falha do produto**: vazamento cross-tenant. Duas mitigações reais
+existem: as amostras que li (`admin/tenants`, `webhooks/in/:token`, `team/:user_id`) seguem o
+padrão corretamente, e os **56 arquivos de invariante em `tests/invariants/` rodam no CI**
+(job `invariants` → `pnpm test:db`), cobrindo isolamento cross-tenant de verdade. O
+guard-rail existe **e está ligado** — rebaixei de 🔴 para 🟠 por isso.
+
+**Lacuna residual:** os invariantes provam que os caminhos cobertos isolam; não impedem que
+um handler novo nasça sem filtro e sem invariante correspondente.
 
 **Mitigação recomendada:** regra de ESLint custom (ou teste que varre o diff) que falhe
 quando um arquivo importa `lib/supabase/admin` sem referenciar `organization_id`. Barato,
@@ -145,7 +149,9 @@ o mesmo valor em todos.
 implementam guard de URL de saída, e existe E2E dedicado
 (`tests/e2e/vps-webhook-outbound-ssrf.spec.ts`). É a defesa mais bem feita do repo.
 
-**Ressalva:** esse E2E **não roda no CI**. Uma regressão no guard passa sem detecção.
+**Ressalva:** esse E2E **não roda no CI** — e é a única prova automatizada do guard.
+`outbound-url.test.ts` é unitário e roda, o que cobre a lógica de decisão; o que não roda é a
+prova de que o egress real está barrado ponta a ponta. Uma regressão na integração passa.
 
 ### T7 — Sem varredura de secret no histórico git 🟡 CONFIRMADO
 
@@ -153,8 +159,13 @@ Sem gitleaks/trufflehog no CI, sem pre-commit hook (`.husky` e `.pre-commit-conf
 ausentes). `.gitignore` cobre `.env*` corretamente, e essa é a única camada.
 
 Agravante específico deste repo: a doutrina de QA visual **incentiva commitar evidência
-visual**, e há 11 PNGs de teste na raiz. Screenshot de tela autenticada pode conter
-telefone, nome de cliente ou token em URL. Num repo público, é irreversível.
+visual**, e há **109 PNGs rastreados** (78 em `evidence/`, 18 em `docs/evidence/`, 13 em
+`loop/checkpoints/evidence/`). Screenshot de tela autenticada pode conter telefone, nome de
+cliente ou token em URL — e várias evidências são explicitamente descritas nos HANDOFFs como
+tiradas em **conta e conversa reais de WhatsApp**. Num repo público, é irreversível.
+
+Não é argumento contra a doutrina de evidência visual, que é boa. É argumento para um passo
+de revisão de PII antes do commit — e `gitleaks` não pega isso, porque não lê imagem.
 
 ### T8 — Onde a auditoria é cega ⚪ NÃO IDENTIFICADO
 
@@ -177,19 +188,21 @@ Não avaliado por falta de execução/instância:
 | # | Risco | Sev | Custo do fix |
 |---|---|---|---|
 | T1 | Sem rate limit em login/signup/convite/crons/MCP | 🔴 | baixo — infra já existe |
-| T3 | Service role sem enforcement de filtro de tenant + invariantes fora do CI | 🔴 | baixo (ligar CI) + médio (lint rule) |
 | T2 | Rate limit degrada silenciosamente para memória | 🟠 | baixo |
+| T3 | Service role sem gate de escrita para handler novo | 🟠 | médio (lint rule) — invariantes já cobrem em CI |
 | T4 | `"dev-fallback"` como secret de convite | 🟠 | trivial |
 | T5 | 3 secrets fora do `.env.example` | 🟠 | trivial |
-| T7 | Sem scan de secret no CI | 🟡 | baixo |
-| T6 | Guard de SSRF existe, mas o teste não roda no CI | 🟢 | baixo |
+| T7 | Sem scan de secret no CI + 109 PNGs de evidência sem revisão de PII | 🟡 | baixo |
+| T6 | Guard de SSRF existe; o E2E que o prova não roda no CI | 🟢 | baixo |
 
 **Conclusão honesta:** os *mecanismos* de segurança deste projeto são acima da média para
 um CRM open-source — HMAC em tempo constante em toda borda, fail-closed nos crons, hash de
 bearer, RLS com helper central, guard de SSRF testado, LGPD implementada de verdade,
-`beforeSend` higienizando PII. O que falta não é mecanismo, é **enforcement**: limite de
-tentativa na frente dos guards, e CI rodando os testes que provariam que os guards seguem
-funcionando.
+`beforeSend` higienizando PII, e **56 arquivos de invariante de isolamento rodando em CI**.
+
+O que falta é estreito e específico: **limite de tentativa na frente dos guards**. Não há
+falha de desenho aqui; há uma camada ausente, e ela é a mais barata de todas as que já foram
+construídas.
 
 ---
 
@@ -199,6 +212,8 @@ funcionando.
    (decide a severidade de T2)
 2. Alguma instância de produção já rodou sem `INTERNAL_SECRET` definido? (decide se T4 já
    foi exposto em campo)
-3. Os 11 PNGs de evidência na raiz foram revisados quanto a PII antes do commit?
-4. Existe branch protection exigindo CI verde no merge? (não é visível no checkout)
-5. Há intenção de pedir pentest externo antes do lançamento público?
+3. Os 109 PNGs de evidência foram revisados quanto a PII antes do commit? Vários são
+   descritos como tirados em conta e conversa reais de WhatsApp.
+4. Existe branch protection exigindo os dois checks do CI verdes no merge? (não é visível
+   no checkout)
+5. Há intenção de pedir pentest externo antes de divulgar a v1.0.0 mais amplamente?
