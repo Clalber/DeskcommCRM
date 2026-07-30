@@ -21,6 +21,11 @@ screenshots), o que é bom sinal, mas nada aqui foi re-verificado por execução
 auditoria — a auditoria é read-only por instrução. Métricas de código, contagem de
 arquivos, conteúdo de CI e cobertura de padrão **foram** verificados diretamente.
 
+**Revisão de manutenção (2026-07-30, `origin/main` @ `b190bbf`):** as contagens da §1 e as
+versões de biblioteca do `AGENTS.md` foram remedidas por um mantenedor na revisão do PR #60.
+Onde a régua divergiu, ela passou a ser declarada junto do número. O estado de épico (§2–§3)
+**não** foi re-verificado nesta revisão — segue valendo o aviso acima.
+
 ---
 
 ## 1. Números do repositório — CONFIRMADO
@@ -36,7 +41,7 @@ o projeto vinha sendo desenvolvido publicamente desde abril de 2026 sem tags.
 | Testes unitários (`*.test.ts(x)`) | 221 arquivos |
 | Invariantes de banco (`tests/invariants/`) | 56 arquivos |
 | Specs E2E (`tests/e2e/`) | 19 |
-| Documentos `.md` em `docs/` | 123 |
+| Documentos `.md` em `docs/` | 119 (em 23 subpastas) |
 | Import cycles | **0** (graphify, medido em árvore anterior) |
 | `console.log` fora de `lib/logger.ts` | **0** |
 | `: any` / `as any` | 7 |
@@ -175,7 +180,8 @@ ausentes). `.gitignore` cobre `.env*` corretamente — a proteção é só essa 
 
 Registrado porque a primeira passada desta auditoria apontou 11 PNGs de evidência
 commitados na raiz. **Já foram movidos**: hoje há **zero** PNGs rastreados na raiz — a
-evidência vive em `evidence/` (78), `docs/evidence/` (18) e `loop/checkpoints/evidence/` (13).
+evidência vive em `evidence/` (85, contando as subpastas), `docs/evidence/` (18) e
+`loop/checkpoints/evidence/` (13) — **116** no total.
 Dois HANDOFFs também migraram para `docs/handoffs/`. Restam 3 na raiz (`HANDOFF.md`,
 `-harness-evolution`, `-operacao-visivel`), o que é consistente com "épico vivo fica visível,
 épico encerrado é arquivado".

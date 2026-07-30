@@ -10,9 +10,10 @@ audited_against: origin/main @ 789dfa6 (v1.0.0, 2026-07-27)
 
 # Índice da documentação — DeskcommCRM
 
-Mapa dos 123 documentos do repositório. Existe porque a documentação cresceu em
-19 pastas sem ponto de entrada: sem este índice, humano e agente não acham o que
-já foi decidido e reescrevem por cima.
+Mapa dos **119** arquivos `.md` de `docs/`, espalhados por **23** subpastas — régua:
+`git ls-files 'docs/**/*.md' | wc -l`. Existe porque a documentação cresceu sem ponto
+de entrada: sem este índice, humano e agente não acham o que já foi decidido e
+reescrevem por cima.
 
 **Regra de precedência quando dois docs discordam:**
 `CLAUDE.md` (doutrina) > `docs/specs/` (contrato técnico) > `docs/prd/` (intenção) >

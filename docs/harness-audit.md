@@ -23,7 +23,7 @@ verificados por leitura de arquivo, config e workflow.
 
 | Nível | Veredito | Evidência |
 |---|---|---|
-| H0 — Não documentado | superado | 123 docs, README de 302 linhas em 3 idiomas, PRDs, specs, `CHANGELOG.md` |
+| H0 — Não documentado | superado | 119 docs em `docs/`, README de 302 linhas em 3 idiomas, PRDs, specs, `CHANGELOG.md` |
 | H1 — Documentado | ✅ | `README.md`, `ARCHITECTURE.md`, `VISION.md`, `CLAUDE.md`, `CONTRIBUTING.md`, `SECURITY.md`, `CHANGELOG.md` (Keep a Changelog + SemVer) |
 | H2 — Reproduzível | ✅ | Quickstart no README, `docs/SETUP.md`, `.nvmrc` (22), `packageManager` fixo, `pnpm-lock.yaml`, `docker-compose.yml`, `install.sh` do kit self-host, `baseline.sql` |
 | H3 — Verificável | ✅ | `lint` + `typecheck` + `test:unit` + `build`; CI roda os 3 primeiros em PR |

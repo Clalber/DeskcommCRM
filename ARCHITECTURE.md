@@ -34,7 +34,7 @@ Detalhes: [`docs/specs/01-spec-platform-base.md`](docs/specs/01-spec-platform-ba
 
 ## Fluxo de uma requisição
 
-**Rota autenticada de tenant** (`/api/v1/*`, 149 handlers):
+**Rota autenticada de tenant** (`/api/v1/*`, 166 handlers):
 
 ```
 request → proxy.ts (X-Request-Id, x-pathname; isPublicPath? → bypass;
@@ -63,7 +63,7 @@ Triggers Postgres emitem linhas em `event_log`. Workers (cron / Realtime listene
 
 Workers vivem em `workers/` (`ai-response`, `ai-sentiment`, `rag-indexer`, `media-persist`,
 `media-derive`, `lgpd-export`, `lgpd-redact`, `storage-cleanup`, `agent-worker`), drenados
-pelos 9 endpoints em `app/api/v1/cron/`. Contrato: [`docs/specs/07-spec-events-workers.md`](docs/specs/07-spec-events-workers.md).
+pelos 10 endpoints em `app/api/v1/cron/`. Contrato: [`docs/specs/07-spec-events-workers.md`](docs/specs/07-spec-events-workers.md).
 
 ## Integrações externas
 

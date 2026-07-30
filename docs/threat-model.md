@@ -89,7 +89,8 @@ essas duas vars ficam populadas em toda instalação.
 ### T3 — 89 handlers com service role, sem gate de escrita 🟠 CONFIRMADO (contagem)
 
 `createAdminClient` (service role, **bypassa RLS**) é importado em **89 dos 169** route
-handlers. A regra da doutrina — "filtre `organization_id` manualmente, resolvido de fonte
+handlers de `app/api/**` (dos quais 166 estão sob `/api/v1/`). A regra da doutrina —
+"filtre `organization_id` manualmente, resolvido de fonte
 confiável, nunca do body" — é aplicada por revisão humana. Não há lint rule nem teste que
 falhe quando um handler *novo* esquece o filtro.
 
@@ -159,8 +160,8 @@ Sem gitleaks/trufflehog no CI, sem pre-commit hook (`.husky` e `.pre-commit-conf
 ausentes). `.gitignore` cobre `.env*` corretamente, e essa é a única camada.
 
 Agravante específico deste repo: a doutrina de QA visual **incentiva commitar evidência
-visual**, e há **109 PNGs rastreados** (78 em `evidence/`, 18 em `docs/evidence/`, 13 em
-`loop/checkpoints/evidence/`). Screenshot de tela autenticada pode conter telefone, nome de
+visual**, e há **116 PNGs rastreados** (85 em `evidence/` contando subpastas, 18 em
+`docs/evidence/`, 13 em `loop/checkpoints/evidence/`). Screenshot de tela autenticada pode conter telefone, nome de
 cliente ou token em URL — e várias evidências são explicitamente descritas nos HANDOFFs como
 tiradas em **conta e conversa reais de WhatsApp**. Num repo público, é irreversível.
 
@@ -192,7 +193,7 @@ Não avaliado por falta de execução/instância:
 | T3 | Service role sem gate de escrita para handler novo | 🟠 | médio (lint rule) — invariantes já cobrem em CI |
 | T4 | `"dev-fallback"` como secret de convite | 🟠 | trivial |
 | T5 | 3 secrets fora do `.env.example` | 🟠 | trivial |
-| T7 | Sem scan de secret no CI + 109 PNGs de evidência sem revisão de PII | 🟡 | baixo |
+| T7 | Sem scan de secret no CI + 116 PNGs de evidência sem revisão de PII | 🟡 | baixo |
 | T6 | Guard de SSRF existe; o E2E que o prova não roda no CI | 🟢 | baixo |
 
 **Conclusão honesta:** os *mecanismos* de segurança deste projeto são acima da média para
@@ -212,7 +213,7 @@ construídas.
    (decide a severidade de T2)
 2. Alguma instância de produção já rodou sem `INTERNAL_SECRET` definido? (decide se T4 já
    foi exposto em campo)
-3. Os 109 PNGs de evidência foram revisados quanto a PII antes do commit? Vários são
+3. Os 116 PNGs de evidência foram revisados quanto a PII antes do commit? Vários são
    descritos como tirados em conta e conversa reais de WhatsApp.
 4. Existe branch protection exigindo os dois checks do CI verdes no merge? (não é visível
    no checkout)

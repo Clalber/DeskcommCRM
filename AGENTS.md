@@ -22,15 +22,16 @@ quebra no clone fresco é um bug de produto, não um detalhe de ambiente.
 Next.js 16.2 (App Router) · React 19.2 · TypeScript 6.0 estrito · Tailwind 3.4 ·
 shadcn/ui · Supabase (Postgres + Auth + Realtime + Storage) · Upstash Redis ·
 Vercel AI Gateway (`@ai-sdk/anthropic|openai|google`) · WAHA Plus (engine NOWEB) ·
-Zod 3 · Vitest 4 · Playwright 1.61 · Sentry 10.
-Runtime: **Node ≥22** (`.nvmrc` = 22, e o CI roda 22). Gerenciador: **pnpm 9.15.9** (`packageManager`).
+Zod 4 · Vitest 4 · Playwright 1.62 · Sentry 10.
+Runtime: **Node ≥22** (`.nvmrc` = 22; o job `ci` roda 22, mas o `perf` ainda builda em 20 —
+divergência com `engines`, registrada como bug). Gerenciador: **pnpm 9.15.9** (`packageManager`).
 Versão do produto: **1.0.0** (`CHANGELOG.md`, SemVer — mudança que afeta quem roda VPS entra lá).
 
 ## Estrutura que importa
 
 | Path | O quê |
 |---|---|
-| `app/api/v1/` | 169 route handlers REST (versionado por path) |
+| `app/api/v1/` | 166 route handlers REST (versionado por path) — 169 contando `app/api/**` |
 | `app/api/internal/`, `app/api/mcp/`, `app/api/v1/cron/` | superfícies não-cookie (secret/bearer próprio) |
 | `app/app/` | UI autenticada do tenant · `app/admin/` UI de plataforma |
 | `app/actions/` | Server Actions (auth, onboarding, team, settings) |
@@ -126,7 +127,7 @@ usuário, ninguém além de você vai provar que funciona.
   env var, adicione nos dois lugares (item 9 do DoD).
 - `lib/auth/invite-token.ts` cai em `"dev-fallback"` como secret HMAC se nenhum secret existir
   (inalcançável em produção, porque `INTERNAL_SECRET` é obrigatório e derruba o boot).
-- **89 dos 169 handlers usam service role** — sem gate automático para o filtro de
+- **89 dos 169 handlers de `app/api/**` usam service role** — sem gate automático para o filtro de
   `organization_id`. Escrevendo handler novo, o filtro é responsabilidade sua.
 - Detalhes e prioridade: [`docs/harness-audit.md`](docs/harness-audit.md),
   [`docs/current-state.md`](docs/current-state.md) e [`docs/threat-model.md`](docs/threat-model.md).
