@@ -73,6 +73,13 @@ export async function POST(req: NextRequest, ctx: RouteCtx): Promise<NextRespons
   const eventos = parseMetaWebhook(envelope as Parameters<typeof parseMetaWebhook>[0]);
   const admin = createAdminClient();
   const now = new Date().toISOString();
+  /**
+   * Desfecho de cada ingestão. Existe porque a versão anterior fazia
+   * `await ingestMetaInbound(...)` e DESCARTAVA o retorno: um insert que falhava
+   * virava `{"received": 1}` com nada gravado, e "chegou e falhou" ficava
+   * indistinguível de "não chegou". Custou uma hora de diagnóstico no lugar errado.
+   */
+  const desfechos: string[] = [];
 
   for (const e of eventos) {
     // O evento chega carimbado com a WABA; se não for a desta sessão, ignoramos.
@@ -83,7 +90,18 @@ export async function POST(req: NextRequest, ctx: RouteCtx): Promise<NextRespons
       // A metade que faltava: mensagem do contato vira linha no inbox, move lead,
       // acorda o agente — e carimba `last_inbound_at`, que é o que ABRE a janela
       // de 24h que o gate da Fase 4 calcula.
-      await ingestMetaInbound(admin, e);
+      const r = await ingestMetaInbound(admin, e);
+      desfechos.push(r.status);
+      if (r.status === "failed" || r.status === "no_session") {
+        // 2xx continua (a Meta re-entregaria em loop), mas a falha NÃO fica muda:
+        // vai ao log estruturado e ao corpo da resposta.
+        console.error("[meta.ingest] inbound não ingerido", {
+          status: r.status,
+          reason: r.status === "failed" ? r.reason : undefined,
+          external_id: e.externalId,
+          phone_number_id: e.phoneNumberId,
+        });
+      }
       continue;
     }
 
@@ -107,5 +125,10 @@ export async function POST(req: NextRequest, ctx: RouteCtx): Promise<NextRespons
   // 200 SEMPRE que a assinatura confere, inclusive para evento que não nos
   // interessa: a Meta re-entrega tudo que não recebe 2xx, e recusar o que
   // ignoramos vira re-tentativa em backoff por horas.
-  return NextResponse.json({ received: eventos.length }, { status: 200 });
+  // `outcomes` no corpo: quem depura vê o que aconteceu com cada evento em vez de
+  // ler um contador que não distingue sucesso de falha.
+  return NextResponse.json(
+    { received: eventos.length, outcomes: desfechos },
+    { status: 200 },
+  );
 }

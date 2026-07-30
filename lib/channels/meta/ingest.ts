@@ -123,6 +123,9 @@ export async function ingestMetaInbound(
     .insert({
       organization_id: orgId,
       conversation_id: conversationId as string,
+      // NOT NULL na tabela. Esquecê-lo fez o insert falhar e — porque a rota
+      // descartava o resultado — a falha virou "recebido: 1" com nada gravado.
+      channel_session_id: sessao.id,
       contact_id: contactId as string,
       direction: "inbound",
       status: "delivered",
