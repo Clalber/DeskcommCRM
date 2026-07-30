@@ -27,7 +27,13 @@ function getRedis(): Redis | null {
     }
     return null;
   }
-  _redis = new Redis({ url, token });
+  // `retry: false`: com Redis inalcançável (URL errada, rede caída), o default
+  // do SDK re-tenta com backoff e cada chamada passa a custar SEGUNDOS. Como
+  // já existe fallback em memória logo abaixo, retentar aqui só transfere a
+  // indisponibilidade do Redis para a latência do login. Falhe rápido e caia
+  // para a memória. Medido: com URL morta, duas chamadas somavam ~8s numa
+  // requisição de recuperação de senha, estourando o timeout da tela.
+  _redis = new Redis({ url, token, retry: false });
   return _redis;
 }
 
