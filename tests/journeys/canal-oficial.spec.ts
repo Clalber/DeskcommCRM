@@ -49,13 +49,21 @@ async function loginAdmin(page: Page): Promise<void> {
   await page.waitForURL(/\/login\/mfa/, { timeout: 30_000 });
 
   for (let tentativa = 0; tentativa < 3; tentativa++) {
+    // Se o MFA da tentativa anterior JÁ passou, o campo não existe mais e clicar
+    // nele trava até o timeout do teste. Foi assim que esta jornada falhou com o
+    // app carregado na tela: o laço não percebeu o sucesso a tempo.
+    if (/\/(app|onboarding)\//.test(page.url())) return;
+
     if (msUntilNextTotpWindow() < 3_000) await page.waitForTimeout(msUntilNextTotpWindow() + 200);
-    await page.locator('input[aria-label="Dígito 1"]').click();
+    await page.locator('input[aria-label="Dígito 1"]').click({ timeout: 15_000 });
     await page.keyboard.type(generateTotp(secret), { delay: 40 });
     try {
-      await page.waitForURL(/\/(app|onboarding)\//, { timeout: 10_000 });
+      // 30s, não 10s: sob carga a validação do MFA passa dos 10 e o laço re-digita
+      // num campo que já sumiu — o defeito acima, pela outra ponta.
+      await page.waitForURL(/\/(app|onboarding)\//, { timeout: 30_000 });
       return;
     } catch {
+      if (/\/(app|onboarding)\//.test(page.url())) return;
       await page.waitForTimeout(msUntilNextTotpWindow() + 200);
     }
   }
@@ -67,6 +75,12 @@ test.describe.configure({ mode: "serial" });
 test("o admin chega ao canal oficial pelo hub de configurações", async ({ page }) => {
   await loginAdmin(page);
   await page.goto("/app/settings");
+
+  // Foto ANTES da asserção: quando o card não aparece, o artefato de erro do
+  // Playwright nem sempre traz o snapshot, e ler evidência indireta me levou a
+  // três diagnósticos errados seguidos.
+  await page.waitForLoadState("networkidle");
+  await page.screenshot({ path: `${EVIDENCE}/00-hub-antes-da-assercao.png`, fullPage: true });
 
   const card = page.getByRole("link", { name: /Canal oficial/i });
   await expect(card).toBeVisible();
@@ -97,7 +111,19 @@ test("credencial errada é RECUSADA com o motivo da Meta, e nada é gravado", as
 
   // 422, não 500: credencial ruim é entrada inválida, não falha nossa.
   expect(res.status()).toBe(422);
-  await expect(page.getByTestId("canal-conectado")).toHaveCount(0);
+
+  // A asserção original era `toHaveCount(0)` — ela presumia estado limpo e
+  // vermelheceu porque já existe uma conexão desta org. O que importa não é
+  // "nada conectado": é que a tentativa RUIM **não estragou a conexão boa**.
+  // Uma credencial errada não pode derrubar quem já estava enviando.
+  await page.reload();
+  await expect(page.getByTestId("canal-oficial-root")).toBeVisible({ timeout: 20_000 });
+  // A conexão anterior segue INTACTA: o número real continua lá e o id inventado
+  // não entrou em lugar nenhum. Não asserto "credencial guardada" aqui porque
+  // neste ponto da série ainda não houve conexão bem-sucedida — asserção que
+  // presume um estado futuro é como a anterior falhou.
+  await expect(page.getByTestId("canal-conectado")).toContainText("1103328999528818");
+  await expect(page.getByTestId("canal-conectado")).not.toContainText("000000000000000");
   await page.screenshot({ path: `${EVIDENCE}/02-credencial-recusada.png`, fullPage: true });
 });
 
