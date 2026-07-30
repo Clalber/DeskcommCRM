@@ -105,13 +105,14 @@ const schema = z.object({
     .default("false")
     .transform((v) => v === "true"),
 
-  // EPIC-13 wave 6: enquanto S-13.08 (runtime real) não landa, o endpoint
-  // :test devolve um trace fake quando esta flag = 'true'. Default 'true' em
-  // dev, deve virar 'false' em produção quando a wave 8 estiver mergeada.
+  // O endpoint :test devolve um trace fake quando esta flag = 'true'.
+  // Default 'false' desde que a S-13.08 landou: `callInternalRuntime` executa
+  // o `runAgent` real, então quem instala do zero testa o agente de verdade.
+  // Ligue 'true' só para exercitar o render da UI sem gastar token.
   INTERNAL_AGENT_RUN_STUB: z
     .enum(["true", "false"])
     .optional()
-    .default("true")
+    .default("false")
     .transform((v) => v === "true"),
 
   // Sentry
