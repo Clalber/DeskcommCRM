@@ -103,6 +103,12 @@ DeskcommCRM é um sistema operacional de vendas open source com agentes de IA na
 - `position_in_stage numeric` (fractional indexing via `midpoint()`) — **NUNCA `int`**
 - `external_id` nullable (mensagem outbound `sending` ainda não tem ID WAHA)
 - `type` é `text` + `check constraint`, **não enum** (enum é difícil de estender)
+  - **Exceção deliberada — colunas de vocabulário ABERTO:** onde um clone pode ter linhas com valor
+    legado (ex.: `crm_lead_activities.type`), o CHECK **não** entra: a constraint faria o `update.sh`
+    do clone quebrar, e a doutrina de migrations proíbe. Nesses casos o vocabulário vive só no
+    TypeScript, o emissor usa **constante compartilhada, nunca string literal**, e a coluna fica
+    **fora** do invariante `tests/invariants/vocabulario-banco-x-typescript.test.ts` — que cobre
+    apenas colunas que JÁ têm CHECK. Ver o cabeçalho desse arquivo antes de "completar" o schema.
 - `tags text[]` + GIN index; promove pra coluna gerada apenas quando vira hot path
 - `custom_fields jsonb` com schema declarativo em `pipeline.settings.fields`; Zod construído dinamicamente
 - `vocabulary jsonb` em pipeline permite renomear lead/deal/won/lost (e-commerce: lead=Cliente, deal=Pedido, won=Pago, lost=Cancelado)
@@ -151,7 +157,7 @@ DeskcommCRM é um sistema operacional de vendas open source com agentes de IA na
 ## Como rodar local
 
 ```bash
-nvm use                    # node 20
+nvm use                    # node 22
 npm install
 cp .env.example .env.local  # preencher
 docker compose up -d        # WAHA local
@@ -165,13 +171,21 @@ Ver `README.md` pra detalhes de setup.
 ## Testes
 
 ```bash
-npm run typecheck   # tsc --noEmit (estrito)
-npm run lint        # eslint next/core-web-vitals
-npm run test:unit   # Vitest
-npm run test:e2e    # Playwright
+pnpm typecheck   # tsc --noEmit (estrito)
+pnpm lint        # eslint next/core-web-vitals
+pnpm test:unit   # Vitest (NÃO inclui tests/invariants/** — ver abaixo)
+pnpm test:db     # Postgres efêmero + baseline install/update + 364 invariantes
+pnpm test:e2e    # Playwright (requer dev server)
 ```
 
-CI deve rodar todos antes de merge. Teste de isolamento RLS é gate obrigatório.
+**Os invariantes não estão no `test:unit`.** `vitest.config.ts` exclui `tests/invariants/**` de propósito: essa suíte precisa de um Postgres real e roda via `vitest.db.config.ts`, orquestrada por `scripts/test-db.sh`. Rodar só `pnpm test:unit` e concluir "está tudo verde" é um falso verde — o isolamento RLS não foi exercitado.
+
+O CI (`.github/workflows/ci.yml`) tem dois jobs em paralelo, ambos obrigatórios antes de merge:
+
+- **`verify`** — typecheck + lint + test:unit.
+- **`invariants`** — `pnpm test:db`: sobe `pgvector/pgvector:pg17`, aplica `supabase/baseline.sql` em modo install (`ON_ERROR_STOP=1`) e update (idempotência), e roda os 364 testes de invariante, incluindo o de isolamento RLS entre 2 organizações.
+
+Ao mexer em schema, RLS, RBAC, atribuição, escopo, roteamento, follow-up, webhooks ou automações: rode `pnpm test:db` **localmente** antes de abrir PR. É o único caminho que exercita o `baseline.sql` que o self-hoster realmente aplica.
 
 ---
 
