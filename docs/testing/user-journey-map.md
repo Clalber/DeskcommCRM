@@ -324,3 +324,17 @@ com um toast que nunca aparecia.
 Prova: áudio real recebido (`type: audio`), agente respondeu *"não consigo ouvi-lo"*.
 Com o 35 corrigido a transcrição passa a rodar; o 36 faz a PRIMEIRA resposta
 ainda sair antes dela.
+
+## Áudio: cadeia fechada (2026-07-31)
+
+| # | Defeito | Prova |
+|---|---|---|
+| 35 | A transcrição mandava a **chave da Anthropic para a OpenAI** (`transcription_401`) | mesmo áudio: antes *"não consigo ouvi-lo"*; depois transcrito (`"Oi!"`) e o agente respondeu ao conteúdo |
+| 36 | O turno era despachado **antes** de a mídia virar texto | log ao vivo: `drain: mídia ainda sendo transcrita — turno adiado (tipo: audio, esperando_ha_ms: 708)` |
+| 37 | 🔴 **Regressão minha**: o alerta de job morto referenciava `last_error` numa CTE que não o devolvia — e como esse reap roda no BOOT, **o worker parou de subir** | worker em loop de reinício; corrigido e validado executando a query INTEIRA contra o banco (em transação com rollback) |
+| 38 | Timeout padrão de 5s por teste reprovava teste saudável em máquina carregada | 3 falsos vermelhos locais em testes diferentes + 1 CI vermelho num PR de documentação; com 15s, 1473 testes verdes sob a mesma carga |
+
+**Erro de método registrado (nº 37):** validei a expressão SQL nova contra linhas
+reais, mas **isolada** — não dentro da CTE onde ela ia viver. Testei a peça, não
+a montagem, e a peça passou. Mudança dentro de string SQL agora se prova
+executando a query inteira.
