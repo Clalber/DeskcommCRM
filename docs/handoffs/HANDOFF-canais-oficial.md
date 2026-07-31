@@ -1058,3 +1058,96 @@ os 60 arquivos a cada sabotagem).
 
 **Estado:** typecheck 0 · test:db **399 passed | 1 skipped, 60 arquivos** · sabotagem
 provada em 3 pontos.
+
+---
+
+## Consertando o e2e — três causas, nenhuma delas "o teste é chato" (2026-07-31)
+
+Estado inicial: **15 falhas, 17 specs sem rodar, 32 passando**. O gate do CI (9 specs
+listados em `.github/workflows/e2e.yml`) falhava, e a `main` também — alternando verde e
+vermelho nas últimas 12 execuções.
+
+Estado final do gate do CI: **20/20 em três corridas seguidas**, e mais rápido (54s contra
+1min06). Suíte completa: de 15 falhas para 2, ambas fora do gate e pré-existentes.
+
+### Causa 1 — o balde global do rate limit (defeito de PRODUÇÃO, não de teste)
+
+`lib/auth/rate-limit.ts` resolvia o IP assim:
+
+```ts
+const ip = hdrs.get("x-forwarded-for")?.split(",")[0]?.trim() || "sem-ip";
+```
+
+Sem o header, **todo mundo cai no mesmo balde**. E o kit self-host expõe o app **direto,
+sem proxy** (`docker-compose.prod.yml`) — ou seja, `x-forwarded-for` não existe em nenhuma
+instalação padrão, e o balde global era o caminho **normal**, não a exceção.
+
+Com `ip: 60`, isso significa que **qualquer anônimo derruba o login da empresa inteira com
+60 requisições**. O limite por IP existe para *isolar uma origem*; sem origem, ele não
+isola nada — só nega serviço, e ainda coloca o atacante no mesmo balde das vítimas.
+
+Conserto: `clientIp()` tenta `x-forwarded-for`, depois `x-real-ip` (o que Nginx simples
+seta), e devolve **`null`** quando não sabe — `null` em vez de string sentinela, para que
+"não sei de onde veio" seja inexprimível como se fosse uma origem. Sem IP, o teto por IP
+não entra. O que barra força bruta de senha continua integralmente: o contador por CONTA
+(`contaBloqueadaPorFalhas`), que não depende de IP e é o desenhado para ataque distribuído.
+
+Três casos novos em `rate-limit.test.ts`, incluindo o contrapeso ("sem IP o teto por conta
+CONTINUA valendo") para impedir a leitura preguiçosa de que sem IP não há limite.
+**Sabotagem:** voltar o `"sem-ip"` derruba o caso do balde; remover a leitura de
+`x-real-ip` derruba o dele.
+
+### Causa 2 — paralelismo sobre estado compartilhado
+
+`fullyParallel: false` serializa apenas DENTRO de cada arquivo; entre arquivos o Playwright
+abria vários workers, e os specs compartilham a MESMA organização, os MESMOS usuários e o
+MESMO banco. Os mesmos specs que falhavam na suíte passavam **em 18s** rodados isolados.
+
+`workers: 1` nos dois configs. O custo é wall-clock; o benefício é que vermelho volta a
+significar "quebrou" em vez de "deu azar na ordem". Na prática ficou **mais rápido**: sem
+interferência não há timeouts de 30s nem retries.
+
+### Causa 3 — assertar UI otimista como se fosse confirmação do servidor
+
+O flake que fazia o CI da main alternar verde/vermelho. `RulesTab.toggleActive` faz
+`qc.setQueryData` **antes** do `mutate`: a tela escreve "Ativa" no mesmo frame do clique,
+com o PATCH ainda voando.
+
+`vps-webhook-outbound-ssrf.spec.ts` assertava o texto e seguia. Disparava o lead enquanto o
+banco ainda tinha `is_active = false`; o handler de automações não casava a regra e marcava
+o evento como `done` — **sem run, sem erro, sem sinal nenhum**. O teste morria 20 segundos
+depois com "a run não apareceu", apontando para vazão em vez de para a corrida real.
+
+Achado por bissecção e por olhar o banco com o cleanup desligado (`SSRF_KEEP=1`): regra
+ativa, evento `done`, zero runs, mesma org, mesmo `trigger_event`, sem condições. O que
+sobrava era o instante.
+
+Conserto: esperar a **resposta** do PATCH, como o próprio spec já fazia na criação.
+
+### Três hipóteses minhas que a medição derrubou
+
+1. **"É backlog do event_log"** — 165 pendentes contra 150 alcançáveis em 3 drenagens.
+   Plausível, e errado: os pendentes eram de tipos sem handler, filtrados de propósito.
+   O conserto que fiz por causa disso (drenar DENTRO do laço, em vez de 3 vezes antes)
+   ficou porque é correto por si — esperar uma quantidade fixa de drenagens presume fila
+   vazia, e instalação com movimento tem fila.
+2. **"A regra nem é criada"** — o banco estava vazio depois da corrida. Só que o spec
+   limpa no `afterAll`. Medi depois do cleanup e quase reportei um defeito inexistente.
+3. **"Foi o commit de áudio da main"** — correlação de horário perfeita (verde 22:03,
+   vermelho 23:51, e um único commit entre eles). Mas ele mexe em
+   `lib/agent-engine/edge/crm/drain.ts`, e o spec usa `lib/event-log/drain.ts`. O
+   histórico das 12 execuções mostrou alternância, não regressão.
+
+### O que continua vermelho, e por quê
+
+| Spec | Motivo | No gate do CI? |
+|---|---|---|
+| `degradacao-silenciosa` | `test.fail` deliberado — lacuna conhecida com catraca | sim, e conta como esperado |
+| `vps-fresh-onboarding` | exige banco FRESCO por desenho; o nosso já passou pelo onboarding | não |
+| `webhooks.spec.ts` | falha também isolado — defeito próprio, pré-existente | não |
+
+As duas últimas falhavam antes deste trabalho e não entram no gate de merge.
+
+**Estado:** typecheck 0 · lint 164 (0 nos arquivos tocados) · unit **1686/1686** ·
+test:db 399 · gate e2e do CI **20/20 em 3 corridas** · jornadas 7/7 sem WhatsApp
+(3 bloqueadas pela sessão WAHA `FAILED`, que precisa de QR).
