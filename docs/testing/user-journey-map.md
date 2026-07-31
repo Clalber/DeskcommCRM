@@ -338,3 +338,46 @@ ainda sair antes dela.
 reais, mas **isolada** — não dentro da CTE onde ela ia viver. Testei a peça, não
 a montagem, e a peça passou. Mudança dentro de string SQL agora se prova
 executando a query inteira.
+
+## Agente pausado que continuava gastando (2026-07-31)
+
+**Achado nº 39 — dinheiro indo pro ralo com o agente desligado.** Pausar o agente
+pela tela tirava a resposta do lead, mas **não** tirava o gasto: o drain
+enfileirava o turno assim mesmo, o worker resolvia credencial, chamava o LLM e só
+então descobria que não havia ninguém publicado para atender. O usuário via
+"pausado" e continuava pagando por token.
+
+**A guarda.** `lib/agent-engine/edge/crm/drain.ts` agora pergunta ao banco, **antes
+de enfileirar** (portanto antes de qualquer gasto), se existe alguém que pode
+atender aquela sessão: agente com versão `published` ligada à sessão, **ou**
+roteador ativo com fallback/membros. Não havendo nenhum dos dois, o turno é
+pulado com log explícito (`nenhum agente publicado para a sessão — turno pulado
+(sem gasto)`) e o evento fecha como processado — não fica reciclando na fila.
+
+**Medida na VPS, com contador de chamadas de LLM (`llm_calls`).** Primeira
+tentativa foi **teste confundido**: caiu na conversa que eu mesmo havia posto em
+atendimento humano, e o log disse "turno pulado — lead em handoff humano", que é
+outra guarda. Refiz com um contato sintético (`QA Sintetico`, número inexistente,
+para o envio falhar sem incomodar ninguém):
+
+| Estado do agente | `llm_calls` antes → depois | Resposta ao lead |
+|---|---|---|
+| pausado | 221 → **221** | nenhuma |
+| republicado | 221 → **227** | respondeu |
+
+Mesma mensagem, mesmo contato, só o estado do agente mudando — a diferença é do
+efeito, não do cenário.
+
+**Cobertura.** `drain.test.ts` ganhou 3 casos de capacidade (nenhum dos dois →
+pula; agente publicado → despacha; roteador com membro → despacha). Sabotada a
+guarda, ficam vermelhos.
+
+**Custo colateral, e a lição.** A guarda deixou vermelho o invariante
+`agent-dispatch-single-consumer`: o fixture dele nunca teve agente publicado,
+então o drain passou a pular — corretamente. O CI pegou, que é o trabalho dele. O
+fixture passou a criar o agente publicado: a premissa "existe alguém que pode
+atender" sempre esteve implícita ali, e a guarda apenas a tornou observável. A
+edição de invariante é congelada por hook; usei a válvula
+`DESKCOMM_GOV_INVARIANTS_EDIT=1` **declarando o uso no commit** (`685d6e7`) em vez
+de contornar em silêncio. CI verde em `2c045c4` (invariants, verify, e2e,
+build-and-size, build-and-push).
