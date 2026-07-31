@@ -17,6 +17,7 @@ import type pg from 'pg';
 
 import type { Logger } from '../../obs/logger';
 import { enqueueJob } from '../../queue/queue';
+import { TIPOS_DERIVAVEIS, DERIVACAO_TERMINADA } from '@/lib/messaging/media/derivable';
 
 const DRAIN_CONSUMER = 'agent-engine';
 
@@ -34,6 +35,7 @@ interface EventRow {
   organization_id: string;
   payload: unknown;
   attempts: number;
+  created_at: string;
 }
 
 export interface DrainKnobs {
@@ -76,13 +78,25 @@ export async function drainTick(
        limit $1
        for update skip locked
      )
-     returning e.id, e.organization_id, e.payload, e.attempts`,
+     returning e.id, e.organization_id, e.payload, e.attempts, e.created_at`,
     [knobs.batchSize, DRAIN_CONSUMER],
   );
 
   for (const event of events) {
     try {
-      await processEvent(pool, event, knobs, log);
+      const desfecho = await processEvent(pool, event, knobs, log);
+      if (desfecho === 'adiar') {
+        // Adiar NÃO é falha: volta a pending com uma espera curta e não gasta
+        // o orçamento de tentativas (que existe para erro de verdade).
+        await pool.query(
+          `update event_log
+           set status = 'pending', attempts = greatest(attempts - 1, 0),
+               next_attempt_at = now() + make_interval(secs => $2 / 1000.0), updated_at = now()
+           where id = $1`,
+          [event.id, ESPERA_DERIVACAO_MS],
+        );
+        continue;
+      }
       await pool.query(
         `update event_log set status = 'done', updated_at = now() where id = $1`,
         [event.id],
@@ -103,12 +117,23 @@ export async function drainTick(
   return events.length;
 }
 
+/** Quanto esperar entre uma checagem e outra da derivação de mídia. */
+const ESPERA_DERIVACAO_MS = 4_000;
+/**
+ * Teto da espera. Passado isto o turno segue SEM o texto derivado: melhor uma
+ * resposta tarde e sem transcrição do que cliente esperando para sempre porque
+ * a derivação travou.
+ */
+const TETO_ESPERA_DERIVACAO_MS = 45_000;
+
+type DesfechoEvento = 'processado' | 'adiar';
+
 async function processEvent(
   pool: pg.Pool,
   event: EventRow,
   knobs: DrainKnobs,
   log: Logger,
-): Promise<void> {
+): Promise<DesfechoEvento> {
   const parsed = dispatchPayloadSchema.safeParse(event.payload);
   if (!parsed.success) {
     // Payload fora do contrato do ingest — evento é descartável (processed), não
@@ -116,7 +141,7 @@ async function processEvent(
     log.warn('drain: payload de dispatch fora do contrato — evento descartado', {
       event_id: event.id,
     });
-    return;
+    return 'processado';
   }
   const p = parsed.data;
 
@@ -128,7 +153,7 @@ async function processEvent(
   );
   if (modeRows[0]?.mode === 'external') {
     log.info('drain: org em modo external (spec 14) — evento pulado', { event_id: event.id });
-    return;
+    return 'processado';
   }
 
   // Grupos: skip, sem exceção (regra dura nº 12).
@@ -138,7 +163,42 @@ async function processEvent(
   );
   if (convRows[0]?.is_group !== false) {
     log.info('drain: conversa de grupo ou inexistente — evento pulado', { event_id: event.id });
-    return;
+    return 'processado';
+  }
+
+  // Mídia ainda virando texto: ESPERAR. Sem isto o turno era despachado no mesmo
+  // instante em que a mensagem chegava, enquanto o áudio ainda estava sendo
+  // baixado e transcrito — e o cliente recebia "recebi seu áudio, mas não
+  // consigo ouvi-lo" segundos ANTES de a transcrição ficar pronta. Medido nesta
+  // VPS: dispatch às 20:24:22, derivação só pedida às 20:25:03.
+  const { rows: msgRows } = await pool.query<{
+    type: string;
+    media_derived_status: string | null;
+  }>(
+    `select type, media_derived_status from messages
+     where organization_id = $1 and id = $2`,
+    [event.organization_id, p.inbound_message_id],
+  );
+  const msg = msgRows[0];
+  if (
+    msg !== undefined &&
+    TIPOS_DERIVAVEIS.has(msg.type) &&
+    !DERIVACAO_TERMINADA.has(msg.media_derived_status ?? '')
+  ) {
+    const esperandoHa = Date.now() - new Date(event.created_at).getTime();
+    if (esperandoHa < TETO_ESPERA_DERIVACAO_MS) {
+      log.info('drain: mídia ainda sendo transcrita — turno adiado', {
+        event_id: event.id,
+        tipo: msg.type,
+        esperando_ha_ms: esperandoHa,
+      });
+      return 'adiar';
+    }
+    log.warn('drain: derivação não concluiu no teto — seguindo sem o texto', {
+      event_id: event.id,
+      tipo: msg.type,
+      esperando_ha_ms: esperandoHa,
+    });
   }
 
   // Coalescência: já existe job PENDING futuro deste contato → esta mensagem
@@ -156,7 +216,7 @@ async function processEvent(
         event_id: event.id,
         job_id: pendingRows[0].id,
       });
-      return;
+      return 'processado';
     }
   }
 
@@ -175,6 +235,7 @@ async function processEvent(
     ...(runAfter !== undefined ? { runAfter } : {}),
   });
   log.info('drain: job de turno enfileirado', { event_id: event.id, job_id: job.id, deduped });
+  return 'processado';
 }
 
 /** Loop do drain — polling com backoff adaptativo (ocioso = tick mais lento). */
