@@ -1216,4 +1216,9 @@ em repo com várias sessões vivas, perguntar QUAL arquivo, não assumir pelo no
 **Prova pela tela:** `tests/journeys/conexoes-abas.spec.ts`, **6/6** — as duas formas de
 conectar lado a lado, a sub-aba de templates, a aba na URL, os dois redirects antigos, e o
 card de Configurações levando ao MESMO lugar (não a um segundo).
-Evidência em `evidence/canais/conexoes/`.
+
+| O que mostra | Evidência |
+|---|---|
+| as duas abas de canal na mesma tela | `evidence/canais/conexoes/01-abas.png` |
+| a aba oficial com a tela de conexão e o webhook a colar | `evidence/canais/conexoes/02-oficial-conexao.png` |
+| os templates da Meta como sub-aba, com parâmetros derivados | `evidence/canais/conexoes/03-oficial-templates.png` |
