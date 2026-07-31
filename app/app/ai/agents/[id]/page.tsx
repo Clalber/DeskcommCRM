@@ -17,7 +17,7 @@ const AGENT_COLUMNS =
   "id, organization_id, name, description, model, system_prompt, is_active, is_default, kind, priority, published_version_id, archived_at, config, guardrails, active_kb_version_id, created_at, updated_at";
 
 const VERSION_COLUMNS =
-  "id, organization_id, agent_id, version_number, system_prompt, provider, model, credential_id, tool_ids, trigger_config, channel_session_id, max_steps, token_budget, cost_budget_cents, history_message_window, history_token_window, handoff_keywords, handoff_tool_enabled, cases_enabled, followup, status, published_at, superseded_at, created_at, created_by";
+  "id, organization_id, agent_id, version_number, system_prompt, provider, model, credential_id, tool_ids, trigger_config, channel_session_id, max_steps, token_budget, cost_budget_cents, history_message_window, history_token_window, handoff_keywords, handoff_tool_enabled, cases_enabled, split_messages, split_max_chars, followup, status, published_at, superseded_at, created_at, created_by";
 
 const CREDENTIAL_COLUMNS =
   "id, organization_id, provider, label, api_key_last4, validated_at, validation_error, models_available, is_active, created_by, created_at, updated_at";
@@ -59,7 +59,7 @@ export default async function AgentEditorPage({
   }
 
   // mcp_agent: busca versions + lookups.
-  const [versionsRes, credentialsRes, channelRes] = await Promise.all([
+  const [versionsRes, credentialsRes, channelRes, routerMemberRes] = await Promise.all([
     supabase
       .from("ai_agent_versions")
       .select(VERSION_COLUMNS)
@@ -74,6 +74,13 @@ export default async function AgentEditorPage({
       .from("channel_sessions")
       .select("id, display_name, status, phone_number, waha_session_name")
       .eq("organization_id", activeOrg.orgId),
+    supabase
+      .from("ai_router_members")
+      .select("router_id, ai_routers(name)")
+      .eq("organization_id", activeOrg.orgId)
+      .eq("agent_id", id)
+      .limit(1)
+      .maybeSingle(),
   ]);
 
   const versions = (versionsRes.data ?? []) as unknown as AgentVersionRow[];
@@ -84,6 +91,10 @@ export default async function AgentEditorPage({
     status: c.status as string,
     phone_number: (c.phone_number as string | null) ?? null,
   }));
+  const routerMemberRow = routerMemberRes.data as { router_id: string; ai_routers: { name: string } | null } | null;
+  const routerMembership = routerMemberRow
+    ? { routerId: routerMemberRow.router_id, routerName: routerMemberRow.ai_routers?.name ?? "roteador" }
+    : null;
 
   const draft =
     versions
@@ -103,6 +114,7 @@ export default async function AgentEditorPage({
         versions={versions}
         credentials={credentials}
         channelSessions={channelSessions}
+        routerMembership={routerMembership}
         readOnly={readOnly}
       />
     </div>

@@ -40,8 +40,20 @@ const LINKS: SettingsLink[] = [
   },
   {
     href: "/app/settings/tenant/pipelines",
-    title: "Pipelines",
-    description: "Vocabulário, custom fields, motivos de perda.",
+    title: "Funis",
+    description: "Para onde o agente leva o card em cada passo do atendimento.",
+    managerOnly: true,
+  },
+  {
+    href: "/app/settings/canal-oficial",
+    title: "Canal oficial (Cloud API)",
+    description: "Conectar o número oficial da Meta e o webhook.",
+    adminOnly: true,
+  },
+  {
+    href: "/app/settings/templates",
+    title: "Templates do WhatsApp",
+    description: "Espelho dos templates da Meta e seus parâmetros.",
     adminOnly: true,
   },
   {

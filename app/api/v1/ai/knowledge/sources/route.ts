@@ -44,7 +44,7 @@ const createSourceSchema = z.object({
   name: z.string().min(2).max(120),
   items: z.array(faqItemSchema).optional(),
   markdown_blob: z.string().optional(),
-  source_metadata: z.record(z.unknown()).optional().default({}),
+  source_metadata: z.record(z.string(), z.unknown()).optional().default({}),
 });
 
 // ---------------------------------------------------------------------------
@@ -126,10 +126,14 @@ export async function POST(req: NextRequest): Promise<Response> {
     return fail("not_found", "Agent não encontrado nesta organização.", 404, { requestId });
   }
 
-  // Resolve FAQ items if source_type is 'faq'.
+  // Itens de conteúdo: valem para 'faq' E 'policy'. Antes só 'faq' era tratado,
+  // e uma política enviada com markdown_blob era ACEITA e descartada em
+  // silêncio — a fonte nascia vazia, sem erro, e o indexador depois a marcava
+  // como falha sem que ninguém entendesse por quê. Os dois tipos guardam
+  // pergunta/resposta na mesma tabela.
   let faqItems: Array<{ question: string; answer: string; tags: string[]; locale: string }> = [];
 
-  if (input.source_type === "faq") {
+  if (input.source_type === "faq" || input.source_type === "policy") {
     if (input.items && input.items.length > 0) {
       faqItems = input.items.map((it) => ({
         question: it.question,

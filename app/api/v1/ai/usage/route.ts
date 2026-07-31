@@ -141,8 +141,49 @@ export async function GET(req: NextRequest): Promise<Response> {
     }
   }
 
+  // ---- 1b. llm_calls: a telemetria do runtime que REALMENTE atende ---------
+  //
+  // Existem duas tabelas de telemetria: `ai_invocations`, escrita pelos workers
+  // legados, e `llm_calls`, escrita pelo agent-engine — que é o consumidor
+  // padrão (AGENT_DISPATCH_CONSUMER=engine). Esta tela lia só a primeira, então
+  // numa instalação nova ela mostrava ZERO custo enquanto o dinheiro saía:
+  // medido nesta VPS, 90 chamadas e R$ 0,15 gastos com a tela em branco.
+  //
+  // O filtro por agente não se aplica aqui (llm_calls guarda job/contato, não
+  // agente); nesse caso a tela continua respondendo só com o legado, em vez de
+  // atribuir custo a um agente que não dá para comprovar.
+  const engineRows: InvocationRow[] = [];
+  if (!parsed.data.agent_id) {
+    const { data: llmRows, error: llmErr } = await supabase
+      .from("llm_calls")
+      .select("created_at, purpose, cost_cents, input_tokens, output_tokens, latency_ms")
+      .eq("organization_id", activeOrg.orgId)
+      .gte("created_at", fromIso)
+      .lte("created_at", toIso)
+      .limit(50_000);
+    if (llmErr) {
+      console.warn("[ai-usage] llm_calls query failed", { error: llmErr.message });
+    } else {
+      for (const r of (llmRows ?? []) as unknown as {
+        created_at: string; purpose: string | null; cost_cents: number | null;
+        input_tokens: number | null; output_tokens: number | null; latency_ms: number | null;
+      }[]) {
+        if (parsed.data.invocation_kind && r.purpose !== parsed.data.invocation_kind) continue;
+        engineRows.push({
+          created_at: r.created_at,
+          invocation_kind: r.purpose ?? "turno",
+          cost_cents: r.cost_cents,
+          prompt_tokens: r.input_tokens,
+          completion_tokens: r.output_tokens,
+          total_tokens: (r.input_tokens ?? 0) + (r.output_tokens ?? 0),
+          latency_ms: r.latency_ms,
+        });
+      }
+    }
+  }
+
   const payload = aggregateUsage(
-    (invRows ?? []) as InvocationRow[],
+    [...((invRows ?? []) as InvocationRow[]), ...engineRows],
     dailyInbounds,
     dailyHandoffs,
     range,

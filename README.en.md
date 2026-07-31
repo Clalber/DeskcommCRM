@@ -2,7 +2,7 @@
 
 [🇧🇷 Português](README.md) · 🇺🇸 English · [🇪🇸 Español](README.es.md)
 
-# 🛠️ DeskcommCRM — The AI Sales OS
+# 🛠️ DeskcommCRM — The open-source AI Sales OS for WhatsApp
 
 **AI agents that answer, qualify and sell on WhatsApp — inside an open-source CRM running on your own server.**
 **No subscription, no gated features, your data stays yours. The open alternative to Kommo, Octadesk and Intercom.**
@@ -11,6 +11,7 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6?logo=typescript)](https://www.typescriptlang.org)
 [![Supabase](https://img.shields.io/badge/Supabase-Postgres%2BAuth%2BStorage-3ecf8e?logo=supabase)](https://supabase.com)
 [![Self-hosted](https://img.shields.io/badge/self--hosted-one%20command-orange)](hostgator-setup-kit/)
+[![CI](https://github.com/melgarafael/DeskcommCRM/actions/workflows/ci.yml/badge.svg)](https://github.com/melgarafael/DeskcommCRM/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
 [**🧭 Vision**](VISION.md) · [**📘 Setup Guide**](docs/SETUP.md) · [**🏗️ Architecture**](ARCHITECTURE.md) · [**🤝 Contributing**](CONTRIBUTING.md) · [**📋 PRDs**](docs/prd/) · [**🗺️ Roadmap**](#%EF%B8%8F-roadmap)
@@ -27,6 +28,22 @@
 >
 > **[👉 Get the HostGator VPS with the partnership discount](https://www.hostgator.com.br/52708-141-3-52.html)** —
 > São Paulo datacenter, ideal for WhatsApp running 24/7. *(partner link — subscribing through it supports the project and costs you less)*
+>
+> Already have the VPS? SSH into it and run:
+>
+> ```bash
+> git clone https://github.com/melgarafael/DeskcommCRM.git
+> cd DeskcommCRM
+> bash hostgator-setup-kit/install.sh
+> ```
+>
+> The installer asks for what only you have (domain, Supabase keys, AI key, admin password),
+> validates each one before moving on, generates every other secret, applies the database
+> schema and brings the whole stack up with HTTPS. Details in
+> [`hostgator-setup-kit/README.md`](hostgator-setup-kit/README.md).
+>
+> ⚠️ The **Quickstart** below is the *development* path (running the app on your machine).
+> If you bought a VPS to run the CRM, use the command above, not the Quickstart.
 
 ## ✨ What is it
 
@@ -62,8 +79,8 @@ Under the hood, every event becomes a row in `event_log` — no database trigger
 git clone https://github.com/melgarafael/DeskcommCRM.git
 cd DeskcommCRM
 
-# 2. Node 20 + pnpm
-nvm use                    # or install Node 20+
+# 2. Node 22 + pnpm
+nvm use                    # or install Node 22+
 npm install -g pnpm
 pnpm install
 
@@ -115,11 +132,14 @@ Details: [`ARCHITECTURE.md`](ARCHITECTURE.md).
 ```bash
 pnpm typecheck     # tsc --noEmit (strict)
 pnpm lint          # eslint next/core-web-vitals
-pnpm test:unit     # Vitest
+pnpm test:unit     # Vitest (does NOT include tests/invariants/**)
+pnpm test:db       # ephemeral Postgres + baseline install/update + invariants
 pnpm test:e2e      # Playwright (requires dev server)
 ```
 
-CI runs everything before merge. **The RLS isolation test is a mandatory gate** — it creates 2 tenants and verifies no leakage. The **governance invariants suite** (100+ tests) locks down RBAC, assignment, scoping and routing against regressions.
+CI runs `typecheck`, `lint` and `test:unit` on every PR. A second job — **`invariants`** — boots a clean Postgres, applies `supabase/baseline.sql` in install mode (`ON_ERROR_STOP=1`) and then in update mode (proving idempotency), and runs **364 invariant tests** across 56 files covering RBAC, assignment, visibility scoping, routing, follow-up, webhooks and automations.
+
+Among them is the **RLS isolation test**: it creates 2 organizations, simulates JWT claims through the same `auth.uid()` / `fn_user_org_ids()` path production policies use, and proves a user of org A sees **zero rows** of org B in `conversations`, `messages`, `contacts` and `crm_leads`. A control case first proves org B's rows actually exist in the database — without it, the test would pass against an empty table.
 
 ---
 
@@ -129,6 +149,7 @@ CI runs everything before merge. **The RLS isolation test is a mandatory gate** 
 |---|---|
 | [`VISION.md`](VISION.md) | **Vision & positioning** — what the project is, what it believes, where it's going |
 | [`docs/SETUP.md`](docs/SETUP.md) | **Complete step-by-step setup** for every integration |
+| [`docs/white-label.md`](docs/white-label.md) | **Installing for clients** — rebranding, one-install-per-client vs shared, reseller operations |
 | [`CLAUDE.md`](CLAUDE.md) | Non-negotiable conventions (required reading to contribute) |
 | [`ARCHITECTURE.md`](ARCHITECTURE.md) | One-page architecture overview |
 | [`CONTRIBUTING.md`](CONTRIBUTING.md) | PR flow |
@@ -175,8 +196,6 @@ For **security vulnerabilities**, **do NOT open a public issue** — use [privat
 - **Visible operation** — screens that let operators understand the agent: anti-ban hold reasons translated in the conversation, a notice center with severities, send-protection controls (window/pace/cap) and flywheel proposals applicable as a new version (human-gated).
 
 ### 🔮 Next
-
-- **Phase FG** — the Vendaval agent consumes governance via `ai_dispatch_mode=external` 🔜 *(awaiting owner prioritization)*
 
 - **Public MCP** — CRM capabilities exposed to the agent ecosystem: plug in any agent and it operates Deskcomm.
 - **Self-improvement flywheel** — the resolved-conversation → knowledge → better-agent loop, measured and human-gated.

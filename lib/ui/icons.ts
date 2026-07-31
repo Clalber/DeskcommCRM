@@ -63,6 +63,9 @@ export {
   Eye,
   ChartBar,
   ClockCountdown,
+  // painéis de evolução / aprendizado
+  ChartLineUp,
+  Lightbulb,
   // theme
   Sun,
   Moon,
@@ -96,4 +99,9 @@ export {
   ArrowRight,
   SignOut,
   WebhooksLogo,
+  PuzzlePiece,
+  UploadSimple,
+  Signpost,
+  // atualização de versão
+  ArrowCircleUp,
 } from "@phosphor-icons/react/dist/ssr";

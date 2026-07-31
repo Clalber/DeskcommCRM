@@ -24,6 +24,8 @@ import {
 import { useCreateLead } from "@/hooks/kanban/useCreateLead";
 import type { Stage } from "@/lib/kanban/types";
 import { createLeadSchema, type CreateLeadInput } from "@/lib/schemas/leads";
+import { parseReaisToCents } from "@/lib/money";
+import { EcoDoValor } from "./EcoDoValor";
 
 interface FormShape {
   title: string;
@@ -39,6 +41,8 @@ interface Props {
   onOpenChange: (v: boolean) => void;
   pipelineId: string;
   stages: Stage[];
+  /** Vincula o lead criado a este contato de origem (ex.: painel do Inbox). */
+  contactId?: string | null;
 }
 
 function defaultStageId(stages: Stage[]): string {
@@ -46,7 +50,7 @@ function defaultStageId(stages: Stage[]): string {
   return open?.id ?? stages[0]?.id ?? "";
 }
 
-export function NewLeadDialog({ open, onOpenChange, pipelineId, stages }: Props) {
+export function NewLeadDialog({ open, onOpenChange, pipelineId, stages, contactId }: Props) {
   const create = useCreateLead(pipelineId);
   const initialStage = useMemo(() => defaultStageId(stages), [stages]);
 
@@ -77,13 +81,11 @@ export function NewLeadDialog({ open, onOpenChange, pipelineId, stages }: Props)
     const reais = values.valueReais.trim();
     let valueCents: number | null = null;
     if (reais.length > 0) {
-      const normalized = reais.replace(/\./g, "").replace(",", ".");
-      const n = Number(normalized);
-      if (!Number.isFinite(n) || n < 0) {
+      valueCents = parseReaisToCents(reais);
+      if (valueCents === null) {
         form.setError("valueReais", { message: "Valor inválido" });
         return;
       }
-      valueCents = Math.round(n * 100);
     }
 
     const payload: Record<string, unknown> = {
@@ -94,6 +96,7 @@ export function NewLeadDialog({ open, onOpenChange, pipelineId, stages }: Props)
       source: "manual",
       tags,
     };
+    if (contactId) payload.contact_id = contactId;
     if (values.description.trim()) payload.description = values.description.trim();
     if (valueCents !== null) payload.value_cents = valueCents;
     if (values.expected_close_date) payload.expected_close_date = values.expected_close_date;
@@ -183,6 +186,7 @@ export function NewLeadDialog({ open, onOpenChange, pipelineId, stages }: Props)
                 placeholder="0,00"
                 {...form.register("valueReais")}
               />
+              <EcoDoValor control={form.control} />
               {form.formState.errors.valueReais && (
                 <p className="text-xs text-error-fg">
                   {form.formState.errors.valueReais.message}

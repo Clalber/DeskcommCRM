@@ -697,10 +697,10 @@ begin
       ('Carrinho abandonado',  'carrinho_abandonado',  false, false),
       ('Aguardando pagamento', 'aguardando_pagamento', false, false),
       ('Pago',                 'pago',                 true,  false),
-      ('Em separacao',         'em_separacao',         false, false),
+      ('Em separação',        'em_separacao',         false, false),
       ('Enviado',              'enviado',              false, false),
       ('Entregue',             'entregue',             false, false),
-      ('Pos-venda',            'pos_venda',            false, false),
+      ('Pós-venda',           'pos_venda',            false, false),
       ('Cancelado',            'cancelado',            false, true)
     ) as t(stage_name, stage_slug, won, lost)
   loop
@@ -4052,6 +4052,28 @@ create policy "tenant_read_lgpd_exports" on storage.objects for select
     )
   );
 
+-- ---- bucket de assets de skills (migration 0068) ----
+insert into storage.buckets (id, name, public, file_size_limit)
+values ('skill-assets', 'skill-assets', false, 5242880)
+on conflict (id) do nothing;
+
+-- Leitura por org (path {org_id}/...) OU plataforma (path platform/...) por qualquer
+-- usuário autenticado (assets de plataforma são públicos p/ tenants; conteúdo é curado).
+drop policy if exists "skill_assets_read" on storage.objects;
+create policy "skill_assets_read" on storage.objects for select to authenticated
+  using (
+    bucket_id = 'skill-assets'
+    and (
+      split_part(name, '/', 1) = 'platform'
+      or exists (
+        select 1 from public.user_organizations uo
+        where uo.user_id = auth.uid() and uo.revoked_at is null
+          and uo.organization_id = (split_part(name, '/', 1))::uuid
+      )
+    )
+  );
+-- Escrita/DELETE de assets é sempre via service role (rota de import) — sem policy de write.
+
 -- ---- realtime: inbox (messages/conversations), kanban (crm_leads) e IA ----
 do $$ begin
   if not exists (select 1 from pg_publication where pubname='supabase_realtime') then
@@ -6870,6 +6892,298 @@ begin
   end loop;
 end $$;
 
+-- ---- skills instaláveis: manifest + skill_activations + catálogo (migration 0068) ----
+-- 0068: Skills instaláveis + marketplace (Fase 2 do épico harness — spec 2026-07-23).
+-- Manifest de arquivos na versão de skill + telemetria de ativação + bucket de
+-- assets + leitura do catálogo de plataforma por clientes user-scoped.
+
+alter table skill_versions add column if not exists manifest jsonb not null default '[]'::jsonb;
+alter table skill_versions add column if not exists forked_from_version_id uuid references skill_versions(id) on delete set null;
+
+create table if not exists skill_activations (
+  id uuid primary key default gen_random_uuid(),
+  organization_id uuid not null references organizations(id) on delete cascade,
+  skill_name text not null,
+  skill_version_id uuid references skill_versions(id) on delete set null,
+  trigger text not null check (trigger in ('hard', 'probe')),
+  job_id uuid,
+  created_at timestamptz not null default now()
+);
+create index if not exists idx_skill_activations_org_created
+  on skill_activations (organization_id, created_at);
+create index if not exists idx_skill_activations_skill
+  on skill_activations (organization_id, skill_name, created_at);
+
+-- RLS das tabelas org-scoped novas (skill_activations). skill_versions/pointers já
+-- estão no loop tenant_isolation do baseline; a leitura de catálogo é policy extra abaixo.
+do $$
+declare t text;
+begin
+  foreach t in array array['skill_activations'] loop
+    execute format('alter table public.%I enable row level security', t);
+    execute format('drop policy if exists tenant_isolation_%s_all on public.%I', t, t);
+    execute format(
+      'create policy tenant_isolation_%s_all on public.%I for all
+         using (organization_id in (select * from public.fn_user_org_ids()))
+         with check (organization_id in (select * from public.fn_user_org_ids()))',
+      t, t
+    );
+    execute format('revoke all on public.%I from anon', t);
+  end loop;
+end $$;
+
+-- Catálogo do marketplace: qualquer usuário autenticado LÊ as skills de plataforma
+-- (organization_id null). Só SELECT; escrita de plataforma continua service-role.
+drop policy if exists catalog_read_skill_versions on skill_versions;
+create policy catalog_read_skill_versions on skill_versions for select
+  to authenticated using (organization_id is null);
+drop policy if exists catalog_read_skill_pointers on skill_pointers;
+create policy catalog_read_skill_pointers on skill_pointers for select
+  to authenticated using (organization_id is null);
+
+-- ---- seed de skills de plataforma: catálogo inicial do marketplace (migration 0069) ----
+-- 0069: seed de skills de plataforma (organization_id null) — catálogo inicial do
+-- marketplace de skills (Fase 2 do épico harness). Duas skills de fábrica, qualidade
+-- sobre quantidade: `objecao-preco` (vendas/genérico) e `agendamento` (clínicas/
+-- serviços). Visíveis em toda org via a policy catalog_read_* acima.
+--
+-- Idempotente: cada bloco só insere versão+ponteiro se o ponteiro de plataforma
+-- ainda não existir pra aquele nome — evita versão órfã (skill_versions é imutável,
+-- sem UPDATE possível) e respeita o unique index uniq_skill_pointers_platform em
+-- re-run.
+
+do $seed$
+declare
+  v_id uuid;
+begin
+  if not exists (
+    select 1 from skill_pointers where organization_id is null and name = 'objecao-preco'
+  ) then
+    insert into skill_versions (organization_id, name, description, body, matcher)
+    values (
+      null,
+      'objecao-preco',
+      'Playbook pra contornar objeção de preço no WhatsApp — diagnostica o motivo real por trás do "caro" antes de reagir, sem ceder desconto não autorizado.',
+      $body$# Playbook: contornar objeção de preço
+
+## Quando usar
+O lead reagiu ao preço/valor com resistência — direta ("tá caro") ou indireta (pediu
+desconto, comparou com concorrente, sumiu depois de saber o valor). Objetivo: entender
+a objeção real por trás do "caro" antes de reagir, e nunca ceder desconto que a
+organização não autorizou.
+
+## Diagnóstico primeiro — "caro" quase nunca é sobre o número
+Antes de responder, identifique QUAL objeção está por trás:
+
+1. **Orçamento real insuficiente** — "não tenho esse valor agora", "tá fora do meu orçamento"
+2. **Não enxergou o valor ainda** — "por que custa isso?", silêncio após o preço, comparação vaga
+3. **Comparação com concorrente/opção mais barata** — "vi mais barato em [X]", "achei um mais em conta"
+4. **Tática de negociação** — pede desconto de cara, sem ter perguntado nada sobre o produto antes
+5. **Timing** — "vou pensar", "deixa eu ver com [sócio/cônjuge]" disfarçado de objeção de preço
+
+Se não der pra diagnosticar pela mensagem, PERGUNTE antes de argumentar: "Só pra eu
+te ajudar melhor — é o valor em si, ou você tava esperando algo diferente do que
+ofereci?"
+
+## If-then por diagnóstico
+
+**SE orçamento real insuficiente:**
+- Não insista no preço cheio. Ofereça: parcelamento, plano de entrada, versão
+  reduzida — SÓ o que já estiver documentado como opção legítima na base de
+  conhecimento do tenant.
+- NUNCA invente parcelamento ou desconto que não está documentado — se não souber a
+  política, faça handoff.
+- Não deprecie o lead por não ter orçamento. Trate como informação, não como recusa.
+
+**SE não enxergou valor ainda:**
+- Não repita o preço. Reforce o resultado concreto que o cliente ganha (não a lista
+  de features).
+- Use um número ou prova social real se a base de conhecimento tiver ("cliente X
+  reduziu Y em Z semanas").
+- Pergunta de reengajamento: "Faz sentido pra você o que isso resolve, ou ficou
+  alguma dúvida sobre o que está incluso?"
+
+**SE comparação com concorrente:**
+- Não ataque o concorrente. Pergunte o que ele viu de diferente ("o que tinha nessa
+  outra opção?") — geralmente revela se é preço mesmo ou outro critério (prazo,
+  suporte, garantia).
+- Destaque o diferencial real do tenant (o que a base de conhecimento tiver de
+  posicionamento), não genérico.
+
+**SE tática de negociação (pediu desconto sem contexto):**
+- Não ceda automaticamente. Pergunte o que faria sentido fechar hoje — muitas vezes
+  revela o número real que o lead tem em mente.
+- Desconto SÓ se a organização tiver uma política documentada na base de
+  conhecimento (RAG) pra esse cenário. Sem isso, handoff — decisão de preço fora do
+  script é gate humano.
+
+**SE for timing disfarçado ("vou pensar"):**
+- Não pressione. Pergunte objetivamente o que falta pra decidir ("o que te ajudaria
+  a decidir com mais segurança agora?").
+- Agende um follow-up explícito (data/hora), não deixe em aberto — lead que "vai
+  pensar" sem follow-up marcado esfria.
+
+## Regras duras
+- Nunca prometa desconto, brinde ou condição especial que não esteja na base de
+  conhecimento do tenant (RAG) ou explicitamente configurada no agente.
+- Nunca minta sobre "promoção que acaba hoje" ou crie urgência falsa.
+- Se o lead ficar hostil, ameaçar cancelar ou pedir falar com humano — handoff
+  imediato, sem insistir mais uma vez.
+- Se depois de 2 trocas de mensagem a objeção não resolver, ofereça handoff
+  explicitamente: "Quer que eu chame alguém do time pra fechar os detalhes com
+  você?"
+
+## Exemplos de resposta (tom, não copiar literal)
+- "Entendo — antes de eu te passar mais opção, me conta: é o valor em si ou esperava
+  algo diferente do que te mostrei?"
+- "Faz sentido. Sobre o valor, hoje temos [opção documentada]. Isso ajudaria a caber
+  no seu momento?"
+- "Show, deixa eu confirmar contigo: o que faria sentido fechar hoje pra você?"
+
+## O que NÃO fazer
+- Não despeje a lista de preços de novo sem contexto.
+- Não ignore a objeção e mude de assunto.
+- Não use frases de pressão tipo "só até hoje" sem essa condição existir de verdade.
+$body$,
+      '{"any_keywords": ["caro", "tá caro", "está caro", "muito caro", "desconto", "abaixar o preço", "mais barato", "achei mais barato", "fora do meu orçamento", "não cabe no orçamento", "valor alto", "preço alto"], "probe_keywords": ["quanto custa", "qual o valor", "quanto é", "parcelamento", "condições de pagamento", "forma de pagamento"]}'::jsonb
+    )
+    returning id into v_id;
+
+    insert into skill_pointers (organization_id, name, version_id)
+    values (null, 'objecao-preco', v_id);
+  end if;
+end
+$seed$;
+
+do $seed$
+declare
+  v_id uuid;
+begin
+  if not exists (
+    select 1 from skill_pointers where organization_id is null and name = 'agendamento'
+  ) then
+    insert into skill_versions (organization_id, name, description, body, matcher)
+    values (
+      null,
+      'agendamento',
+      'Playbook pra marcar/remarcar horário (consulta, visita, sessão) — oferece opções concretas de agenda real, nunca inventa disponibilidade, confirma por escrito antes de fechar.',
+      $body$# Playbook: marcar horário/agendamento
+
+## Quando usar
+O lead pede pra marcar um horário, consulta, visita, demonstração ou sessão —
+qualquer compromisso com data/hora. Comum em clínicas, imobiliárias (visitas),
+serviços e consultorias.
+
+## Regra de ouro: nunca invente disponibilidade
+Se o agente não tiver acesso confirmado à agenda real do tenant (integração/consulta
+de disponibilidade), NÃO ofereça horário específico. Diga que vai confirmar e faça
+handoff, ou pergunte a preferência do lead e sinalize que a confirmação virá em
+seguida. Prometer um horário que depois não existe quebra confiança e gera
+reagendamento forçado.
+
+## Fluxo padrão (if-then)
+
+**1. Identifique o serviço/motivo antes de oferecer horário**
+- SE o lead só disse "quero agendar" sem contexto → pergunte o motivo/serviço
+  primeiro. Agendar sem saber o quê gera erro de encaixe (ex.: consulta de 20min
+  marcada num slot de 1h de procedimento).
+
+**2. Ofereça opções fechadas, não uma pergunta aberta**
+- SE tiver acesso à agenda real → ofereça 2-3 horários concretos ("tenho terça 14h
+  ou quarta 10h, qual funciona?"). Pergunta aberta tipo "qual horário você prefere?"
+  gera ida e volta desnecessária e trava a conversa.
+- SE não tiver acesso à agenda → não invente. Diga algo como "vou confirmar a
+  disponibilidade e te retorno em instantes" e sinalize handoff/task pra quem tem
+  acesso.
+
+**3. Colete os dados obrigatórios antes de confirmar**
+- Nome completo do lead (ou confirme o que já está no CRM).
+- Serviço/motivo específico.
+- Unidade/local, se o tenant tiver mais de uma (clínica com filiais, imobiliária com
+  múltiplos imóveis).
+- Se for reagendamento, o horário anterior a ser substituído.
+
+**4. Confirme por escrito antes de encerrar**
+- SE o lead aceitar um horário → repita de volta por escrito: "Confirmado:
+  [serviço] dia [data] às [hora], em [local]. Confirma pra mim?"
+- Só considere o agendamento fechado depois do "sim"/confirmação explícita do lead —
+  silêncio ou "ok" vago não é confirmação suficiente pra compromissos com custo de
+  no-show alto (ex. consulta médica, visita a imóvel).
+
+**5. Reagendamento e cancelamento**
+- SE o lead pedir pra remarcar → trate como novo agendamento: pergunte novo horário
+  disponível, e cancele/substitua o anterior explicitamente (não deixe os dois
+  marcados).
+- SE o lead pedir pra cancelar → confirme o cancelamento e pergunte se quer remarcar
+  pra outra data, sem pressionar.
+
+**6. Risco de no-show**
+- Se o negócio tiver política de confirmação D-1 documentada na base de
+  conhecimento, siga-a (ex.: mensagem de lembrete automática). Se não houver, não
+  invente política — apenas confirme o agendamento normalmente.
+
+## Regras duras
+- Nunca confirme horário sem ter checado disponibilidade real (ou sem sinalizar que
+  ainda vai confirmar).
+- Nunca marque dois compromissos conflitantes pro mesmo lead sem avisar.
+- Se o lead pedir um horário fora do funcionamento do negócio (ex. domingo,
+  madrugada) e isso não estiver nas regras do tenant, não confirme — explique a
+  janela real de atendimento.
+- Dado sensível (endereço completo, documento) só é coletado se o fluxo do tenant
+  realmente exigir — não peça informação a mais que o agendamento precisa.
+
+## Exemplos de resposta (tom, não copiar literal)
+- "Pra eu te encaixar certo: é pra qual serviço/motivo?"
+- "Tenho quinta às 15h ou sexta às 9h — qual fica melhor pra você?"
+- "Confirmado: consulta dia 28/07 às 15h, na unidade Centro. Pode confirmar pra
+  mim?"
+
+## O que NÃO fazer
+- Não pergunte "qual horário você prefere?" sem oferecer opções concretas quando
+  você tem a agenda.
+- Não confirme agendamento sem resposta explícita do lead.
+- Não invente disponibilidade que você não checou.
+$body$,
+      '{"any_keywords": ["agendar", "marcar horário", "marcar consulta", "marcar uma visita", "agenda", "que horas vocês", "horário disponível", "remarcar", "reagendar", "cancelar o horário", "desmarcar"], "probe_keywords": ["que horas", "qual dia", "tem vaga", "disponibilidade"]}'::jsonb
+    )
+    returning id into v_id;
+
+    insert into skill_pointers (organization_id, name, version_id)
+    values (null, 'agendamento', v_id);
+  end if;
+end
+$seed$;
+
+
+-- ---- ai_pricing backfill (migration 0068) ----
+-- BUG: ai_pricing nascia VAZIA em toda instalação nova. Os seeds existem só na
+-- migration 0010, mas a cadeia fresh não sobe (as 10 primeiras são stubs
+-- `SELECT 1;`) e quem instala aplica este baseline, que semeia ai_models mas
+-- não ai_pricing. Com a tabela vazia, computeCost() devolve 0 sem log e o teto
+-- de ai_budgets nunca dispara. Derivado de ai_models: idempotente e
+-- auto-curativo, cobre qualquer modelo futuro do catálogo.
+insert into public.ai_pricing (model, prompt_cents_per_million_tokens, completion_cents_per_million_tokens, notes)
+select
+  m.model_id,
+  m.input_price_per_million_cents,
+  m.output_price_per_million_cents,
+  'backfill 0068 a partir de ai_models'
+from public.ai_models m
+where m.deprecated_at is null
+  and m.input_price_per_million_cents is not null
+  and m.output_price_per_million_cents is not null
+  and not exists (
+    select 1 from public.ai_pricing p
+    where p.model = m.model_id and p.superseded_at is null
+  );
+
+-- Embedding do RAG — não vive em ai_models.
+insert into public.ai_pricing (model, embedding_cents_per_million_tokens, notes)
+select 'openai/text-embedding-3-small', 20, 'backfill 0068 (seed original da 0010)'
+where not exists (
+  select 1 from public.ai_pricing p
+  where p.model = 'openai/text-embedding-3-small' and p.superseded_at is null
+);
 -- ---- crm_leads owner_kind/owner_agent_id (migration 0070) ----
 -- CRM Vivo · Wave 1 (CORE 1): a IA é dona do NEGÓCIO, não só da conversa.
 -- Mesmo padrão da 0032 (conversations.assignee_kind): backfill ANTES da
@@ -7909,3 +8223,495 @@ update public.crm_stages
 -- escolha de índice em consultas de crm_leads (medido no G4-04). Custa
 -- milissegundos numa tabela vazia.
 analyze public.crm_leads;
+-- ---- intent router: ai_routers/members/decisions + stickiness (migration 0085) ----
+
+-- 0085: Intent Router (Fase 3 do épico harness — spec 2026-07-23).
+-- Um router pluga num channel_session e roteia a conversa para o agente cuja
+-- intenção declarada casa com a mensagem. Tabelas EDITÁVEIS (não versão+ponteiro):
+-- mutação é auditada por trigger, como ai_agents.
+
+create table if not exists ai_routers (
+  id uuid primary key default gen_random_uuid(),
+  organization_id uuid not null references organizations(id) on delete cascade,
+  name text not null check (length(name) > 0),
+  channel_session_id uuid not null references channel_sessions(id) on delete cascade,
+  is_active boolean not null default true,
+  config jsonb not null default jsonb_build_object(
+    'classifier_model', 'claude-haiku-4-5',
+    'sticky', true,
+    'min_confidence', 0.6
+  ),
+  fallback_agent_id uuid references ai_agents(id) on delete set null,
+  created_by uuid,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+-- Um router ativo por sessão de canal (dois routers disputando o mesmo número
+-- seria ambiguidade de roteamento — o índice parcial impede).
+create unique index if not exists uniq_ai_routers_active_session
+  on ai_routers (channel_session_id) where is_active;
+
+create table if not exists ai_router_members (
+  id uuid primary key default gen_random_uuid(),
+  organization_id uuid not null references organizations(id) on delete cascade,
+  router_id uuid not null references ai_routers(id) on delete cascade,
+  agent_id uuid not null references ai_agents(id) on delete cascade,
+  intent_name text not null check (length(intent_name) > 0),
+  intent_description text not null check (length(intent_description) > 0),
+  examples text[] not null default '{}',
+  position integer not null default 0,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (router_id, intent_name)
+);
+
+create index if not exists idx_ai_router_members_router
+  on ai_router_members (router_id, position);
+
+-- Telemetria de decisão (append-only, SEM PII — o texto do lead nunca entra aqui).
+create table if not exists ai_router_decisions (
+  id uuid primary key default gen_random_uuid(),
+  organization_id uuid not null references organizations(id) on delete cascade,
+  router_id uuid references ai_routers(id) on delete set null,
+  conversation_id uuid,
+  intent_name text,
+  confidence numeric(4,3),
+  agent_id uuid references ai_agents(id) on delete set null,
+  outcome text not null check (outcome in ('classified', 'sticky', 'reclassified', 'fallback', 'no_match', 'classifier_failed')),
+  job_id uuid,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_ai_router_decisions_org_created
+  on ai_router_decisions (organization_id, created_at);
+create index if not exists idx_ai_router_decisions_router
+  on ai_router_decisions (router_id, created_at);
+
+-- Stickiness por conversa: qual agente o router entregou e qual intenção.
+alter table conversations add column if not exists active_ai_agent_id uuid references ai_agents(id) on delete set null;
+alter table conversations add column if not exists active_intent text;
+alter table conversations add column if not exists active_agent_set_at timestamptz;
+
+-- Triggers: audit de mutação + updated_at (padrão de ai_agents).
+drop trigger if exists trg_ai_routers_audit on ai_routers;
+create trigger trg_ai_routers_audit
+  after insert or update or delete on ai_routers
+  for each row execute function fn_audit_log_row();
+drop trigger if exists trg_ai_routers_updated_at on ai_routers;
+create trigger trg_ai_routers_updated_at
+  before update on ai_routers
+  for each row execute function fn_set_updated_at();
+
+drop trigger if exists trg_ai_router_members_audit on ai_router_members;
+create trigger trg_ai_router_members_audit
+  after insert or update or delete on ai_router_members
+  for each row execute function fn_audit_log_row();
+drop trigger if exists trg_ai_router_members_updated_at on ai_router_members;
+create trigger trg_ai_router_members_updated_at
+  before update on ai_router_members
+  for each row execute function fn_set_updated_at();
+
+-- RLS (mesmo shape do loop tenant_isolation_* do baseline).
+do $$
+declare t text;
+begin
+  foreach t in array array['ai_routers', 'ai_router_members', 'ai_router_decisions'] loop
+    execute format('alter table public.%I enable row level security', t);
+    execute format('drop policy if exists tenant_isolation_%s_all on public.%I', t, t);
+    execute format(
+      'create policy tenant_isolation_%s_all on public.%I for all
+         using (organization_id in (select * from public.fn_user_org_ids()))
+         with check (organization_id in (select * from public.fn_user_org_ids()))',
+      t, t
+    );
+    execute format('revoke all on public.%I from anon', t);
+  end loop;
+end $$;
+
+-- ---- knowledge_searches: telemetria de busca de conhecimento (migration 0086) ----
+
+-- 0086 — telemetria de busca de conhecimento (Fase 4 do épico do Harness)
+--
+-- POR QUE UMA TABELA E NÃO `metrics`: a pergunta que o painel precisa responder
+-- é "quantas buscas QUASE acertaram", e ela exige o `top_score` da busca ao lado
+-- do `threshold` que estava valendo naquele momento. Métrica agregada perde
+-- exatamente essa distância, que é o número que vira ação.
+--
+-- SEM PII, pelo mesmo contrato de `ai_router_decisions` (0085): não gravamos o
+-- texto da pergunta. `hits`/`top_score` respondem à pergunta do painel sem
+-- carregar conteúdo de conversa para uma tabela de telemetria de retenção longa.
+
+create table if not exists knowledge_searches (
+  id uuid primary key default gen_random_uuid(),
+  organization_id uuid not null references organizations(id) on delete cascade,
+  job_id uuid,
+  kb_version_id uuid,
+  -- Quantos chunks passaram do limiar. 0 = o agente perguntou e a base não tinha.
+  hits int not null default 0,
+  -- Similaridade do MELHOR candidato, mesmo que abaixo do limiar. É o que
+  -- distingue "a base não tem isso" (top_score baixo) de "a base tem e o limiar
+  -- cortou" (top_score logo abaixo do threshold).
+  top_score numeric,
+  -- O limiar vigente na busca. Guardado junto porque ele é configurável por
+  -- agente: comparar `top_score` com o limiar de HOJE mentiria sobre buscas de
+  -- ontem.
+  threshold numeric not null,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_knowledge_searches_org_created
+  on knowledge_searches (organization_id, created_at desc);
+
+alter table knowledge_searches enable row level security;
+
+drop policy if exists tenant_isolation_knowledge_searches_all on knowledge_searches;
+create policy tenant_isolation_knowledge_searches_all on knowledge_searches
+  for all
+  using (organization_id in (select fn_user_org_ids()))
+  with check (organization_id in (select fn_user_org_ids()));
+
+-- Defesa em profundidade, mesmo contrato da 0085: a policy já devolve zero linha
+-- para JWT anônimo (auth.uid() null => fn_user_org_ids() vazio), mas o grant que
+-- o Supabase concede por default privilege não tem razão de existir aqui — esta
+-- tabela nunca é lida sem sessão. Idempotente: revogar o que não está lá é no-op.
+revoke all on public.knowledge_searches from anon;
+
+-- ---- atualização self-service pela UI (migration 0089) ----
+--
+-- Duas tabelas de INSTÂNCIA (sem organization_id): descrevem o servidor, não o
+-- inquilino. Sem policy de RLS de propósito — com RLS habilitada e zero policy,
+-- `anon` e `authenticated` não leem nada pelo PostgREST; o acesso passa só pelas
+-- rotas /api/v1/system/*, que usam service role e checam is_platform_admin.
+create table if not exists public.system_version (
+  id                  smallint primary key default 1 check (id = 1),
+  current_version     text not null default '',
+  current_sha         text not null default '',
+  off_release         boolean not null default false,
+  latest_version      text not null default '',
+  changelog_raw       text not null default '',
+  agent_last_seen_at  timestamptz,
+  update_requested_at timestamptz,
+  update_requested_by uuid references auth.users(id) on delete set null,
+  updated_at          timestamptz not null default now()
+);
+comment on table public.system_version is
+  'Singleton: versão instalada e disponível desta instância. Escrito pelo agente do host.';
+insert into public.system_version (id) values (1) on conflict (id) do nothing;
+create table if not exists public.system_update_runs (
+  id            uuid primary key default gen_random_uuid(),
+  from_version  text not null default '',
+  to_version    text not null default '',
+  status        text not null default 'dispatched'
+                check (status in ('dispatched','success','failed','failed_rolled_back')),
+  last_step     text check (last_step in ('backup','codigo','banco')),
+  requested_by  uuid references auth.users(id) on delete set null,
+  dispatched_at timestamptz not null default now(),
+  finished_at   timestamptz,
+  log_tail      text not null default ''
+);
+comment on table public.system_update_runs is
+  'Histórico append de atualizações disparadas pela UI. status/last_step espelham RunStatus/RunStep em lib/system/update-run.ts.';
+create index if not exists idx_system_update_runs_dispatched
+  on public.system_update_runs (dispatched_at desc);
+alter table public.system_version    enable row level security;
+alter table public.system_update_runs enable row level security;
+
+-- ---- índice único parcial: no máximo 1 run "dispatched" por vez (migration 0090) ----
+--
+-- Dedup defensivo ANTES da constraint (clone com dado inconsistente não pode
+-- quebrar o update.sh): mantém só a linha "dispatched" mais recente, marca
+-- as demais como failed.
+with ranked as (
+  select id, row_number() over (order by dispatched_at desc) as rn
+  from public.system_update_runs
+  where status = 'dispatched'
+)
+update public.system_update_runs
+set status = 'failed', finished_at = coalesce(finished_at, now())
+where id in (select id from ranked where rn > 1);
+
+create unique index if not exists uniq_system_update_runs_dispatched
+  on public.system_update_runs (status)
+  where status = 'dispatched';
+
+-- ---- acentos nas etapas padrão do funil (migration 0092) ----
+-- O seed do funil "Pedidos" criava "Em separacao" e "Pos-venda" sem acento —
+-- nomes visíveis no quadro principal, a tela mais usada do CRM. O seed acima já
+-- nasce corrigido; este bloco cura quem instalou antes. Idempotente e seguro:
+-- só casa com o nome padrão intacto, então tenant que renomeou a etapa não é
+-- tocado.
+update public.crm_stages set name = 'Em separação' where name = 'Em separacao';
+update public.crm_stages set name = 'Pós-venda'    where name = 'Pos-venda';
+
+-- ---- channel provider (migration 0087) ----
+-- O canal deixa de ser suposto. Até aqui o sistema INTEIRO supunha WAHA (o
+-- handler de envio chamava `getAdapter("waha")` com literal; o ctx de produção
+-- do `before_send` fixava `provider: 'waha'`), e supor o canal é o que impede o
+-- seam de existir.
+--
+-- Tagged union, não flag: `provider` sozinho aceitaria uma sessão `meta_cloud`
+-- sem `meta_phone_number_id` e uma `waha` sem `waha_session_name` — as duas
+-- irresolvíveis na hora do envio, descobertas em runtime com a mensagem do
+-- cliente já aceita. O CHECK move a descoberta para o INSERT.
+--
+-- `waha_session_name` perde o NOT NULL porque ele É o identificador de um dos
+-- ramos da união; obrigatório, `meta_cloud` seria inexprimível. A UNIQUE dele
+-- continua valendo (NULLs são distintos no Postgres).
+--
+-- NÃO cria índice único de (organization_id, phone_number): a trava já existe
+-- desde o snapshot — `channel_sessions_phone_per_org_unique ... DEFERRABLE
+-- INITIALLY DEFERRED` — e já responde a "um número vive em UM provider", porque
+-- não olha o provider. Duplicá-la custaria checagem em toda escrita e colocaria
+-- uma trava NÃO-deferível ao lado de uma deferível, quebrando no meio qualquer
+-- transação que hoje troca números entre sessões.
+--
+-- Auto-curativo para o `update.sh` de clone: o default preenche as linhas
+-- existentes no mesmo ALTER e `waha_session_name` era NOT NULL antes desta
+-- mudança — então TODA linha pré-existente já satisfaz o ramo 'waha' quando o
+-- CHECK nasce. Não há dado a deduplicar antes da constraint.
+alter table public.channel_sessions
+  add column if not exists provider text not null default 'waha',
+  add column if not exists meta_phone_number_id text,
+  add column if not exists meta_waba_id text,
+  add column if not exists meta_token_encrypted bytea;
+
+alter table public.channel_sessions alter column waha_session_name drop not null;
+
+do $$ begin
+  alter table public.channel_sessions add constraint channel_sessions_provider_check
+    check (provider = any (array['waha'::text, 'meta_cloud'::text]));
+exception when duplicate_object then null; end $$;
+
+do $$ begin
+  alter table public.channel_sessions add constraint channel_sessions_provider_ref_check check (
+    (provider = 'waha'       and waha_session_name    is not null) or
+    (provider = 'meta_cloud' and meta_phone_number_id is not null)
+  );
+exception when duplicate_object then null; end $$;
+
+comment on column public.channel_sessions.provider is
+  'Canal desta sessão. Vocabulário espelhado em lib/channels/types.ts → ChannelProvider (cobrado por tests/invariants/vocabulario-banco-x-typescript.test.ts).';
+
+-- ---- meta templates (migration 0088) ----
+-- Espelho idempotente da migration 0088. Racional completo no arquivo da
+-- migration; aqui fica o que o install.sh/update.sh precisa executar.
+
+create table if not exists public.meta_templates (
+  id uuid primary key default gen_random_uuid(),
+  organization_id uuid not null references public.organizations(id) on delete cascade,
+  waba_id text not null,
+  name text not null,
+  language text not null,
+  status text not null,                 -- APPROVED | PENDING | REJECTED | PAUSED | DISABLED
+  category text,
+  rejected_reason text,
+  quality_score text,
+  -- Payload de `components` como a Meta o devolveu. É a ENTRADA de
+  -- deriveTemplateContract; guardar o derivado seria a segunda fonte da verdade
+  -- que esta fase inteira existe para eliminar.
+  components jsonb not null,
+  -- sha256 do contrato DERIVADO (não do jsonb cru): muda quando parâmetro muda,
+  -- não muda quando alguém corrige uma vírgula no texto.
+  contract_hash text not null,
+  parameter_format text not null default 'POSITIONAL',
+  synced_at timestamptz not null default now(),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+do $$ begin
+  alter table public.meta_templates
+    add constraint meta_templates_parameter_format_check
+    check (parameter_format in ('POSITIONAL', 'NAMED'));
+exception when duplicate_object then null; end $$;
+
+-- COMMENTs ficam no banco: aparecem em `\d+` e no Supabase Studio, onde quem
+-- inspeciona a tabela não tem este arquivo à mão.
+comment on table public.meta_templates is
+  'Espelho local dos templates hospedados na Meta (migration 0088). Derivado, nunca autoritativo: o schema vive na Meta. contract_hash sai de lib/channels/meta/contract-hash.ts e é a âncora da trava por obsolescência.';
+comment on column public.meta_templates.status is
+  'Vocabulário ABERTO da Meta — deliberadamente SEM CHECK (ela cria estado novo sem avisar; CHECK quebraria o update.sh do clone). Espelhado em lib/channels/meta/template-sync.ts.';
+comment on column public.meta_templates.contract_hash is
+  'SHA-256 do contrato DERIVADO (slots + parameter_format), não do JSON cru. Config de disparo guarda este hash; divergência = config obsoleta.';
+comment on column public.meta_templates.parameter_format is
+  'Valor NORMALIZADO por deriveTemplateContract, não o cru da Meta — por isso TEM CHECK, ao contrário de status.';
+
+create unique index if not exists meta_templates_org_waba_name_lang_uniq
+  on public.meta_templates (organization_id, waba_id, name, language);
+
+-- `name` no fim serve a listagem ordenada da tela sem sort extra (índice dele,
+-- superset do meu — combinado em vez de escolhido).
+create index if not exists meta_templates_org_status_idx
+  on public.meta_templates (organization_id, status, name);
+
+alter table public.meta_templates enable row level security;
+
+drop policy if exists tenant_isolation_meta_templates_all on public.meta_templates;
+create policy tenant_isolation_meta_templates_all on public.meta_templates
+  for all
+  using (organization_id in (select public.fn_user_org_ids()))
+  with check (organization_id in (select public.fn_user_org_ids()));
+
+-- ---- message type: template (migration 0091) ----
+-- Espelho idempotente. Racional completo no arquivo da migration: `template` NAO
+-- podia ser gravado como 'text' porque o tipo e a unica coluna que carrega custo
+-- (template e cobrado por entrega), conformidade de janela, e o que o contato viu.
+-- Backfill: nenhum por construcao — o conjunto antigo e subconjunto do novo.
+
+do $$ begin
+  alter table public.messages drop constraint if exists messages_type_check;
+  alter table public.messages add constraint messages_type_check
+    check (type = any (array[
+      'text', 'image', 'video', 'audio', 'document', 'sticker',
+      'location', 'contact', 'reaction', 'system',
+      -- novo: envio de template aprovado (canal oficial, fora da janela de 24h)
+      'template'
+    ]));
+end $$;
+
+-- Nome do template disparado. Fica em coluna, não só em `metadata`, porque é o que
+-- responde "quanto gastei com o template X?" sem varrer jsonb — e porque `metadata`
+-- é vocabulário aberto por desenho, o que tornaria a consulta uma aposta.
+alter table public.messages
+  add column if not exists template_name text,
+  add column if not exists template_language text;
+
+comment on column public.messages.template_name is
+  'Nome do template da Meta quando type = template. Null nos demais tipos. Em coluna (não em metadata) porque é a chave de custo e de auditoria de janela.';
+
+create index if not exists messages_template_idx
+  on public.messages (organization_id, template_name)
+  where template_name is not null;
+-- ---- "não consegui comparar" não é "está em dia" (migration 0093) ----
+--
+-- Sem esta coluna, o agente que falha ao comparar (clone raso sem conseguir
+-- completar a história) simplesmente não anuncia versão nova, e a tela lê a
+-- ausência como boa notícia — informando "é a mais recente" a uma instalação
+-- atrasada. Idempotente: `add column if not exists` com default.
+alter table public.system_version
+  add column if not exists compare_failed boolean not null default false;
+comment on column public.system_version.compare_failed is
+  'true quando o agente do host não conseguiu comparar a versão instalada com a última publicada (ex.: clone raso sem conseguir completar a história). A tela mostra "não consegui checar", nunca "você está em dia".';
+
+-- ---- distingue "à frente da publicada" de "nunca houve publicada" (migration 0094) ----
+--
+-- Sem esta coluna, um fork sem nenhuma tag `v*` recebia a MESMA combinação
+-- (off_release=true, latest_version='', compare_failed=false) de uma
+-- instalação que já contém a última tag publicada — e a tela afirmava "você
+-- está à frente da versão publicada" sem versão publicada nenhuma existir.
+-- Default `true` preserva o comportamento anterior para agentes antigos.
+alter table public.system_version
+  add column if not exists has_known_release boolean not null default true;
+comment on column public.system_version.has_known_release is
+  'false quando o agente do host nunca viu nenhuma tag v* no repositório (fork sem releases). Default true preserva o comportamento anterior para agentes antigos que ainda não enviam este campo.';
+
+-- ---- orçamento de IA conta o runtime real (migration 0095) ----
+-- O gatilho de consumo existia só em ai_invocations (workers legados); o
+-- agent-engine grava em llm_calls, então o contador ficava zerado e o alarme
+-- de 80% / pausa em 100% nunca disparavam. Idempotente.
+drop trigger if exists trg_llm_calls_budget on public.llm_calls;
+create trigger trg_llm_calls_budget
+  after insert on public.llm_calls
+  for each row execute function public.fn_update_budget_consumption();
+
+insert into public.ai_budgets (organization_id, current_month_consumed_cents)
+select o.id,
+       coalesce((select sum(cost_cents) from public.llm_calls c
+                 where c.organization_id = o.id and c.created_at >= date_trunc('month', now())), 0)
+     + coalesce((select sum(cost_cents) from public.ai_invocations i
+                 where i.organization_id = o.id and i.created_at >= date_trunc('month', now())), 0)
+from public.organizations o
+on conflict (organization_id) do update
+set current_month_consumed_cents = excluded.current_month_consumed_cents,
+    updated_at = now();
+
+-- ---- modelo de LLM padrão da organização (migration 0096) ----
+-- Sem isto o caminho GENÉRICO do turno (documentado em resolve-turn-agent.ts)
+-- fica sem modelo e o turno morre com 'modelo LLM não definido'. Idempotente.
+update public.organizations o
+set settings = jsonb_set(
+      coalesce(o.settings, '{}'::jsonb),
+      '{llm}',
+      coalesce(o.settings->'llm', '{}'::jsonb)
+        || jsonb_build_object(
+             'provider', coalesce(o.settings->'llm'->>'provider', 'anthropic'),
+             'default_model', coalesce(
+               (select m.model_id from public.ai_models m
+                where m.provider = coalesce(o.settings->'llm'->>'provider', 'anthropic')
+                  and m.is_default_for_provider
+                  and m.deprecated_at is null
+                limit 1),
+               'claude-sonnet-4-6'
+             )
+           ),
+      true
+    )
+where coalesce(o.settings->'llm'->>'default_model', '') = '';
+
+-- Organização nova já nasce configurada: o mesmo seed que cria o funil padrão
+-- passa a semear o modelo.
+CREATE OR REPLACE FUNCTION "public"."fn_seed_org_llm_defaults"() RETURNS "trigger"
+    LANGUAGE "plpgsql"
+    SET "search_path" TO 'public', 'pg_temp'
+    AS $$
+begin
+  if coalesce(new.settings->'llm'->>'default_model', '') = '' then
+    new.settings := jsonb_set(
+      coalesce(new.settings, '{}'::jsonb),
+      '{llm}',
+      coalesce(new.settings->'llm', '{}'::jsonb)
+        || jsonb_build_object(
+             'provider', 'anthropic',
+             'default_model', coalesce(
+               (select m.model_id from public.ai_models m
+                where m.provider = 'anthropic' and m.is_default_for_provider
+                  and m.deprecated_at is null limit 1),
+               'claude-sonnet-4-6'
+             )
+           ),
+      true
+    );
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_seed_org_llm_defaults on public.organizations;
+create trigger trg_seed_org_llm_defaults
+  before insert on public.organizations
+  for each row execute function public.fn_seed_org_llm_defaults();
+
+-- ---- limiar do RAG calibrado (migration 0097) ----
+-- 0.72 descartava toda parafrase; medido: relevante 0.49-0.85, irrelevante 0.27.
+alter table public.ai_agents
+  alter column config set default jsonb_build_object(
+    'temperature', 0.3, 'max_tokens', 1024, 'rag_top_k', 5,
+    'rag_similarity_threshold', 0.40, 'context_message_window', 20,
+    'confidence_threshold', 0.55, 'sentiment_threshold', 0.3,
+    'zero_data_retention', false);
+
+-- Cura quem está com o padrão antigo INTACTO. Quem já ajustou o valor na mão
+-- não é tocado.
+update public.ai_agents
+set config = jsonb_set(config, '{rag_similarity_threshold}', '0.40'::jsonb)
+where (config->>'rag_similarity_threshold')::numeric = 0.72;
+
+-- Default da função de busca, para quem chama sem passar o limiar.
+CREATE OR REPLACE FUNCTION "public"."retrieve_top_k_chunks"("p_organization_id" "uuid", "p_kb_version_id" "uuid", "p_embedding" "public"."vector", "p_k" integer DEFAULT 5, "p_threshold" real DEFAULT 0.40) RETURNS TABLE("chunk_id" "uuid", "knowledge_source_id" "uuid", "content" "text", "similarity" real, "metadata" "jsonb")
+    LANGUAGE "sql" STABLE SECURITY DEFINER
+    SET "search_path" TO 'public', 'pg_temp'
+    AS $$
+  select
+    c.id as chunk_id,
+    c.knowledge_source_id,
+    c.content,
+    (1 - (c.embedding <=> p_embedding))::real as similarity,
+    c.metadata
+  from public.ai_chunks c
+  where c.organization_id = p_organization_id
+    and c.kb_version_id   = p_kb_version_id
+    and (1 - (c.embedding <=> p_embedding)) >= p_threshold
+  order by c.embedding <=> p_embedding asc
+  limit greatest(p_k, 0);
+$$;

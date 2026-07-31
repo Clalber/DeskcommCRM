@@ -5,6 +5,8 @@
 export type AuditAction =
   | "auth.login_success"
   | "auth.login_failed"
+  /** Teto de tentativas barrou antes de chegar ao provedor (issue #64). */
+  | "auth.login_rate_limited"
   | "auth.logout"
   | "auth.mfa_enrolled"
   | "auth.mfa_success"
@@ -144,6 +146,13 @@ export type AuditAction =
   | "automation.rule_deleted"
   | "automation.rule_executed"
   | "automation.run_resent"
+  | "ai.skill_imported"
+  | "ai.skill_installed"
+  | "ai.skill_uninstalled"
+  | "ai.router_created"
+  | "ai.router_updated"
+  | "ai.router_deleted"
+  | "ai.router_members_updated"
   | "followup_flow.created"
   | "followup_flow.updated"
   | "followup_flow.published"
@@ -171,4 +180,10 @@ export type AuditAction =
   | "conversation.snooze_watcher_run"
   | "conversation.note_added"
   | "conversation.note_deleted"
-  | "ai.case_replied";
+  | "ai.case_replied"
+  | "pipeline.agent_mapping_updated"
+  | "pipeline.stage_created"
+  | "pipeline.stage_updated"
+  | "pipeline.stage_archived"
+  | "system.update_requested"
+  | "system.update_finished";

@@ -12,6 +12,7 @@ import { describe, expect, it } from "vitest";
 import {
   contactCreateSchema,
   contactListQuerySchema,
+  contactPatchSchema,
   isValidCpf,
   lgpdAnonymizeSchema,
 } from "./contacts";
@@ -82,6 +83,15 @@ describe("contactCreateSchema", () => {
   });
 });
 
+describe("contactPatchSchema", () => {
+  it("não materializa source=manual quando PATCH omite source", () => {
+    const parsed = contactPatchSchema.parse({ tags: ["vip"] });
+
+    expect(parsed).toEqual({ tags: ["vip"] });
+    expect("source" in parsed).toBe(false);
+  });
+});
+
 describe("contactListQuerySchema", () => {
   it("defaults limit to 50", () => {
     const r = contactListQuerySchema.parse({});
@@ -118,7 +128,7 @@ describe("lgpdAnonymizeSchema", () => {
 
   it("accepts well-formed payload", () => {
     const r = lgpdAnonymizeSchema.safeParse({
-      contact_id: "11111111-1111-1111-1111-111111111111",
+      contact_id: "11111111-1111-4111-8111-111111111111",
       justification: "Solicitação formal LGPD do titular do dado.",
     });
     expect(r.success).toBe(true);
