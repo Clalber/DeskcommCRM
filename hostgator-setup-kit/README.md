@@ -42,6 +42,22 @@ e-mail/senha do admin), gera o resto e sobe tudo.
 - Portas **80** e **443** abertas (`ufw allow 80,443,22/tcp`).
 - Docker + Docker Compose v2.
 
+### VPS que já vem com proxy próprio (Hostinger, Coolify, Dokploy…)
+
+Algumas hospedagens entregam a VPS com um **Traefik** já ocupando as portas 80/443 — é ele
+que dá HTTPS automático ao que o painel instala. O Caddy do kit quer as mesmas portas e não
+sobe. O instalador **detecta isso sozinho** e grava `REVERSE_PROXY=traefik` no `.env`; a
+partir daí os scripts do kit incluem o override que desliga o Caddy e publica o app pelo
+Traefik da hospedagem. Rodando compose na mão nessas instalações, use os dois arquivos:
+
+```bash
+docker compose -f docker-compose.prod.yml -f docker-compose.traefik.yml up -d
+```
+
+Não desligue o Traefik da hospedagem para liberar as portas — isso quebra as automações do
+painel dela. Se o seu Traefik usa nomes diferentes de `websecure`/`letsencrypt`, ajuste
+`TRAEFIK_ENTRYPOINT` e `TRAEFIK_CERTRESOLVER` no `.env`.
+
 ## Scripts do kit
 
 | Script | Função |
