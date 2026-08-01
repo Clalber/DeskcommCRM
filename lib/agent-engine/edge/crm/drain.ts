@@ -166,6 +166,52 @@ async function processEvent(
     return 'processado';
   }
 
+  // Ninguém para atender: NÃO gastar. Sem agente publicado para esta sessão e
+  // sem roteador que possa resolver alguém, o turno seguia assim mesmo e caía
+  // no caminho genérico — rodando o pipeline inteiro e pagando por ele.
+  //
+  // Medido nesta VPS com o agente PAUSADO (despublicado pela tela): uma única
+  // mensagem gastou 6 chamadas ao LLM, ~2 centavos, e ainda produziu resposta.
+  // Multiplicado por toda mensagem que chega, com o agente desligado, é dinheiro
+  // saindo sem ninguém ter pedido nada — e "pausei o agente" tem que significar
+  // "parou de gastar".
+  //
+  // Também cobre a instalação recém-feita que ainda não configurou agente
+  // nenhum: hoje ela pagaria por cada mensagem recebida.
+  //
+  // Roteador COM membros ou COM fallback continua passando: ali existe quem
+  // atenda, e o caminho genérico de "classificou e não bateu" segue valendo.
+  const { rows: capacidade } = await pool.query<{
+    tem_agente: boolean;
+    tem_roteador: boolean;
+  }>(
+    `select
+       exists(
+         select 1 from ai_agents a
+         join ai_agent_versions v on v.id = a.published_version_id
+         where a.organization_id = $1 and a.archived_at is null
+           and v.status = 'published' and v.channel_session_id = $2
+       ) as tem_agente,
+       exists(
+         select 1 from ai_routers r
+         where r.organization_id = $1 and r.is_active
+           and r.channel_session_id = $2
+           and (
+             r.fallback_agent_id is not null
+             or exists (select 1 from ai_router_members m where m.router_id = r.id)
+           )
+       ) as tem_roteador`,
+    [event.organization_id, p.channel_session_id],
+  );
+  const cap = capacidade[0];
+  if (cap !== undefined && !cap.tem_agente && !cap.tem_roteador) {
+    log.info('drain: nenhum agente publicado para a sessão — turno pulado (sem gasto)', {
+      event_id: event.id,
+      channel_session_id: p.channel_session_id,
+    });
+    return 'processado';
+  }
+
   // Mídia ainda virando texto: ESPERAR. Sem isto o turno era despachado no mesmo
   // instante em que a mensagem chegava, enquanto o áudio ainda estava sendo
   // baixado e transcrito — e o cliente recebia "recebi seu áudio, mas não

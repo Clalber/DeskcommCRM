@@ -45,12 +45,17 @@ const eventoDeAudio = (criadoHaMs: number) => ({
   created_at: new Date(Date.now() - criadoHaMs).toISOString(),
 });
 
-function poolFalso(msgRow: { type: string; media_derived_status: string | null }, calls: string[]) {
+function poolFalso(
+  msgRow: { type: string; media_derived_status: string | null },
+  calls: string[],
+  capacidade: { tem_agente: boolean; tem_roteador: boolean } = { tem_agente: true, tem_roteador: false },
+) {
   const query = vi.fn().mockImplementation((sql: string) => {
     calls.push(sql);
     if (sql.includes('returning e.id')) return { rows: [eventoDeAudio(Number(process.env.__ESPERA__ ?? 0))] };
     if (sql.includes('ai_dispatch_mode')) return { rows: [{ mode: null }] };
     if (sql.includes('is_group')) return { rows: [{ is_group: false }] };
+    if (sql.includes('tem_agente')) return { rows: [capacidade] };
     if (sql.includes('media_derived_status')) return { rows: [msgRow] };
     return { rows: [] };
   });
@@ -85,5 +90,47 @@ it('mensagem de texto não espera nada', async () => {
   const calls: string[] = [];
   process.env.__ESPERA__ = '0';
   await drainTick(poolFalso({ type: 'text', media_derived_status: null }, calls), knobs, log);
+  expect(calls.some((s) => s.includes('job_queue'))).toBe(true);
+});
+
+
+/**
+ * Agente pausado não pode custar dinheiro.
+ *
+ * Medido em VPS com o agente despublicado pela tela: UMA mensagem rodou o
+ * pipeline inteiro — 6 chamadas ao LLM, ~2 centavos — e ainda produziu
+ * resposta. "Pausei o agente" tem que significar "parou de gastar".
+ */
+const textoSimples = { type: 'text', media_derived_status: null };
+
+it('sem agente publicado e sem roteador: turno pulado ANTES de qualquer gasto', async () => {
+  const calls: string[] = [];
+  process.env.__ESPERA__ = '0';
+  await drainTick(
+    poolFalso(textoSimples, calls, { tem_agente: false, tem_roteador: false }),
+    knobs, log,
+  );
+  expect(calls.some((s) => s.includes('tem_agente'))).toBe(true);
+  expect(calls.some((s) => s.includes('job_queue'))).toBe(false);
+  expect(calls.some((s) => s.includes("status = 'done'"))).toBe(true);
+});
+
+it('com agente publicado: turno segue', async () => {
+  const calls: string[] = [];
+  process.env.__ESPERA__ = '0';
+  await drainTick(
+    poolFalso(textoSimples, calls, { tem_agente: true, tem_roteador: false }),
+    knobs, log,
+  );
+  expect(calls.some((s) => s.includes('job_queue'))).toBe(true);
+});
+
+it('sem agente MAS com roteador que resolve alguém: turno segue (caminho genérico preservado)', async () => {
+  const calls: string[] = [];
+  process.env.__ESPERA__ = '0';
+  await drainTick(
+    poolFalso(textoSimples, calls, { tem_agente: false, tem_roteador: true }),
+    knobs, log,
+  );
   expect(calls.some((s) => s.includes('job_queue'))).toBe(true);
 });
