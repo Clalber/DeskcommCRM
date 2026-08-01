@@ -2,6 +2,13 @@
 
 Este kit sobe o **DeskcommCRM** no seu servidor VPS da HostGator. Você tem dois caminhos:
 
+> **Outra hospedagem?** O kit é feito para a HostGator (é a parceria do projeto e o caminho
+> testado de ponta a ponta), mas roda em qualquer VPS com Docker. Se a sua já vem com um
+> **proxy reverso próprio** ocupando as portas 80/443 — caso de Hostinger, Coolify, Dokploy
+> e CapRover —, o instalador **detecta isso sozinho** e publica o CRM através dele, em vez
+> de tentar subir um Caddy que não caberia. Ver
+> [VPS que já vem com proxy próprio](#vps-que-já-vem-com-proxy-próprio-hostinger-coolify-dokploy).
+
 ## 🤖 Caminho fácil: deixe o Claude Code fazer
 
 1. Contrate um **VPS na HostGator** e acesse-o por SSH.
@@ -27,7 +34,7 @@ e-mail/senha do admin), gera o resto e sobe tudo.
 
 | Item | Onde conseguir |
 |---|---|
-| VPS (Docker) | HostGator — VPS com Docker (n8n/OpenClaw/GatorClaw) |
+| VPS (Docker) | HostGator — VPS com Docker (n8n/OpenClaw/GatorClaw). Outras hospedagens com Docker também servem — se a sua já tiver proxy próprio nas portas 80/443, [veja aqui](#vps-que-já-vem-com-proxy-próprio-hostinger-coolify-dokploy) |
 | Domínio | Registro de domínio (aponte um A-record pro IP do VPS) |
 | Banco de dados | Conta grátis no [supabase.com](https://supabase.com) (3 chaves + connection string) |
 | IA | Chave da [Anthropic](https://console.anthropic.com) |
