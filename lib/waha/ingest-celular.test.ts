@@ -141,10 +141,10 @@ describe("mensagem digitada no celular do dono (fromMe)", () => {
     await dispatchWahaEvent(admin as never, SESSION as never, envelope(CELULAR_NOWEB), "req-1");
 
     expect(messages, "a mensagem do celular sumiu — o webhook devolveu 200 e nada foi gravado").toHaveLength(1);
-    expect(messages[0].external_id).toBe(CELULAR_NOWEB.id);
-    expect(messages[0].direction).toBe("outbound");
-    expect(messages[0].body).toBe("respondi por aqui mesmo");
-    expect(messages[0].sent_via).toBe("external_device");
+    expect(messages[0]!.external_id).toBe(CELULAR_NOWEB.id);
+    expect(messages[0]!.direction).toBe("outbound");
+    expect(messages[0]!.body).toBe("respondi por aqui mesmo");
+    expect(messages[0]!.sent_via).toBe("external_device");
 
     // O contato tem que ser o CHAT (o cliente), com a identidade @lid preservada.
     const contato = rpcs.find((c) => c.fn === "fn_upsert_wa_contact");
@@ -232,7 +232,7 @@ describe("eco do próprio envio", () => {
     await dispatchWahaEvent(admin as never, SESSION as never, envelope(CELULAR_NOWEB), "req-1");
 
     expect(messages, "a mesma frase apareceu duas vezes na conversa").toHaveLength(1);
-    expect(messages[0].external_id).toBe("2A1B890FB8AA87730CBC");
+    expect(messages[0]!.external_id).toBe("2A1B890FB8AA87730CBC");
   });
 
   it("controle: mensagem DIFERENTE no mesmo chat continua entrando", async () => {
