@@ -180,6 +180,51 @@ PROV
 ) || fail=1
 rm -rf "$TMP3"
 
+echo "sincronia: o install.sh grava as chaves que o .env.hostgator.example promete"
+# O install.sh monta o .env a partir de uma LISTA FECHADA de `envq` e fecha com
+# `} > .env`, que TRUNCA. Chave fora da lista simplesmente não é gravada — e se a
+# pessoa a tiver posto à mão, some no próximo install, num script que o README
+# vende como idempotente. Medido: uma chave posta à mão é carregada por load_env
+# e depois DESCARTADA na escrita.
+#
+# Passou despercebido porque o env-example-sync do repo compara .env.example com
+# lib/env.ts e nunca olha para o install.sh — ninguém guardava esta ponta.
+#
+# DÍVIDA: chaves que o install.sh hoje não grava. A lista só pode ENCOLHER; se
+# uma delas passar a ser gravada, o teste manda tirá-la daqui.
+DIVIDA="AGENT_DISPATCH_CONSUMER NUVEMSHOP_APP_ID NUVEMSHOP_CLIENT_ID NUVEMSHOP_CLIENT_SECRET RESEND_API_KEY RESEND_FROM_EMAIL"
+EXEMPLO="${EXEMPLO_ENV:-../.env.hostgator.example}"
+if [ ! -f "$EXEMPLO" ]; then
+  # Pular é aceitável (o kit também roda solto, fora do repo), mas em voz alta:
+  # pulo silencioso é indistinguível de teste que passou.
+  printf '  — pulado: %s não existe (kit fora do repositório)\n' "$EXEMPLO"
+else
+  GRAVA="$(grep -oE '^[[:space:]]*envq [A-Z_0-9]+' install.sh | awk '{print $2}' | sort -u)"
+  novas=""
+  for k in $(grep -oE '^[A-Z_0-9]+=' "$EXEMPLO" | tr -d '=' | sort -u); do
+    printf '%s\n' "$GRAVA" | grep -qx "$k" && continue
+    case " $DIVIDA " in *" $k "*) continue ;; esac
+    novas="$novas $k"
+  done
+  if [ -n "$novas" ]; then
+    printf '  ✗ o .env.hostgator.example promete chave(s) que o install.sh não grava:%s\n' "$novas"
+    printf '     quem instalar pelo kit não recebe essa configuração; quem puser à mão perde no próximo install\n'
+    fail=1
+  else
+    printf '  ✓ nenhuma chave nova fora da lista de escrita\n'
+  fi
+  estagnada=""
+  for k in $DIVIDA; do
+    printf '%s\n' "$GRAVA" | grep -qx "$k" && estagnada="$estagnada $k"
+  done
+  if [ -n "$estagnada" ]; then
+    printf '  ✗ já é gravada pelo install.sh — tire da lista DÍVIDA deste teste:%s\n' "$estagnada"
+    fail=1
+  else
+    printf '  ✓ dívida ainda condiz (%s chaves conhecidas, só pode encolher)\n' "$(printf '%s' "$DIVIDA" | wc -w | tr -d ' ')"
+  fi
+fi
+
 echo
 if [ "$fail" = 0 ]; then echo "todos os validadores passaram"; else echo "FALHOU"; fi
 exit "$fail"

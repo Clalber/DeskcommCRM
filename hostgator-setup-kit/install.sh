@@ -549,6 +549,12 @@ envq() { printf "%s='%s'\n" "$1" "$(printf '%s' "${2-}" | sed "s/'/'\\\\''/g")";
   envq APP_LOGO_URL "${APP_LOGO_URL:-}"
   envq ANTHROPIC_API_KEY "$ANTHROPIC_API_KEY"
   envq AI_GATEWAY_API_KEY "${AI_GATEWAY_API_KEY:-}"
+  printf '# OpenRouter: alternativa ao AI Gateway para o chat da IA. A ordem de\n'
+  printf '# resolução é AI_GATEWAY_API_KEY > OPENROUTER_API_KEY > provider direto,\n'
+  printf '# então deixar vazio NÃO muda nada — o comportamento de hoje continua.\n'
+  printf '# BASE_URL vazia = https://openrouter.ai/api/v1 (só mude se usa proxy).\n'
+  envq OPENROUTER_API_KEY "${OPENROUTER_API_KEY:-}"
+  envq OPENROUTER_BASE_URL "${OPENROUTER_BASE_URL:-}"
   printf '# OpenAI: transcrição dos áudios do WhatsApp (Whisper) + embeddings do RAG.\n'
   printf '# Opcional — sem ela a IA responde sem a base e pede o áudio em texto.\n'
   envq OPENAI_API_KEY "${OPENAI_API_KEY:-}"
