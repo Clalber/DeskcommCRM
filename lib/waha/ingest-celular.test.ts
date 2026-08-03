@@ -195,6 +195,33 @@ describe("controles — o que tem que continuar sendo descartado", () => {
     expect(messages, "grupo não faz binding CRM").toHaveLength(0);
   });
 
+  it("id de 4 segmentos (grupo, formato documentado do WAHA) não cria contato", async () => {
+    // A doc do WAHA declara `{fromMe}_{chatId}_{messageId}[_{participant}]` — o
+    // 4º segmento existe em GRUPO. Com ele, `chatIdFromWaMessageId` devolve
+    // "…@g.us_4CC5…": lixo NÃO-nulo, que por ser não-nulo atropela o `?? p.from`.
+    //
+    // Hoje o desfecho ainda é o certo, mas por ACIDENTE: `parseChatId` joga
+    // qualquer sufixo desconhecido no balde `group`, e grupo é descartado. A
+    // segurança mora em ingest.ts, não no parser — então quem mexer no
+    // `parseChatId` quebra isto aqui, e é para isso que este caso existe.
+    const { admin, messages, rpcs } = bancoDeMentira();
+
+    await dispatchWahaEvent(
+      admin as never,
+      SESSION as never,
+      envelope({
+        id: "true_11111111111@g.us_4CC5EDD64BC22EBA6D639F2AF571346C_9999@lid",
+        from: "11111111111@g.us",
+        fromMe: true,
+        body: "mensagem de grupo com participant no id",
+      }),
+      "req-1",
+    );
+
+    expect(messages).toHaveLength(0);
+    expect(rpcs.some((c) => c.fn === "fn_upsert_wa_contact"), "criou contato a partir do id de grupo").toBe(false);
+  });
+
   it("evento sem corpo e sem mídia continua descartado", async () => {
     // WAHA emite eventos vazios para status/read-receipt/presence.
     const { admin, messages } = bancoDeMentira();
