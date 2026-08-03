@@ -64,12 +64,38 @@ export async function cascadeRedactContact(args: CascadeArgs): Promise<CascadeRe
     ?.avatar_storage_path;
 
   if (avatarPath) {
-    await admin.from("storage_redaction_queue").insert({
-      organization_id: args.organizationId,
-      request_id: args.requestId,
-      bucket: "whatsapp-media",
-      object_path: avatarPath,
-    });
+    // `upsert` que REABRE a linha, e não `insert` cru. A mídia de mensagem tem
+    // caminho único por arquivo, então lá um conflito nunca acontece; o avatar
+    // inverte essa premissa — o caminho é `{org}/avatars/{id}.jpg`, estável por
+    // contato e reaproveitado a cada refresh do cron. Um pedido anterior para o
+    // mesmo contato deixa na fila uma linha terminal, que nada purga, e um
+    // `insert` bateria em `unique (bucket, object_path)`.
+    //
+    // Reabrir é o certo, não ignorar o conflito: se o cron rebaixou a foto
+    // depois daquele pedido, existe um arquivo NOVO naquele mesmo caminho
+    // esperando remoção, e uma linha em estado terminal nunca seria drenada.
+    const { error: filaErro } = await admin.from("storage_redaction_queue").upsert(
+      {
+        organization_id: args.organizationId,
+        request_id: args.requestId,
+        bucket: "whatsapp-media",
+        object_path: avatarPath,
+        status: "pending",
+        attempts: 0,
+        processed_at: null,
+        error_message: null,
+      },
+      { onConflict: "bucket,object_path" },
+    );
+
+    // Falha FECHADA: sem linha na fila, zerar o ponteiro abaixo tornaria o
+    // arquivo inalcançável — contato anonimizado, auditoria afirmando que a
+    // redação ocorreu, e o rosto ainda no bucket sem ninguém capaz de achá-lo.
+    // Melhor abortar a cascata e reprocessar do que anonimizar pela metade.
+    if (filaErro) {
+      throw new Error(`[lgpd-redact-cascade] avatar não enfileirado: ${filaErro.message}`);
+    }
+
     await admin
       .from("contacts")
       .update({ avatar_storage_path: null, avatar_updated_at: new Date().toISOString() })

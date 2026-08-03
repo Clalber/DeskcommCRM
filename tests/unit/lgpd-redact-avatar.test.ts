@@ -17,13 +17,18 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 /** Sequência de operações, na ordem em que o código as aguarda. */
 const ops: string[] = [];
-const inserts: { tabela: string; payload: Record<string, unknown> }[] = [];
+const inserts: {
+  tabela: string;
+  payload: Record<string, unknown>;
+  opcoes?: Record<string, unknown>;
+}[] = [];
 const updates: { tabela: string; patch: Record<string, unknown> }[] = [];
 const removes: { bucket: string; caminhos: string[] }[] = [];
 
 let contatoRow: { avatar_storage_path: string | null } | null = null;
 let filaPendente: Record<string, unknown>[] = [];
 let erroDoRemove: { message: string } | null = null;
+let erroDoInsert: { code?: string; message: string } | null = null;
 
 const rpcMock = vi.fn();
 
@@ -60,7 +65,13 @@ vi.mock("@/lib/supabase/admin", () => ({
         chain(async () => {
           ops.push(`insert:${tabela}`);
           inserts.push({ tabela, payload });
-          return { error: null };
+          return { error: erroDoInsert };
+        }),
+      upsert: (payload: Record<string, unknown>, opcoes?: Record<string, unknown>) =>
+        chain(async () => {
+          ops.push(`insert:${tabela}`);
+          inserts.push({ tabela, payload, opcoes });
+          return { error: erroDoInsert };
         }),
       update: (patch: Record<string, unknown>) =>
         chain(async () => {
@@ -100,6 +111,7 @@ beforeEach(() => {
   removes.length = 0;
   filaPendente = [];
   erroDoRemove = null;
+  erroDoInsert = null;
   contatoRow = { avatar_storage_path: CAMINHO };
   rpcMock.mockReset().mockResolvedValue({
     data: { already_anonymized: false, counts: { contacts: 1 }, media_paths: [] },
@@ -160,6 +172,26 @@ describe("cascadeRedactContact — foto de perfil", () => {
     // um tenant alcançaria a foto de outro.
     await cascadeRedactContact({ organizationId: ORG, contactId: CONTATO, requestId: PEDIDO });
     expect(inserts[0]?.payload).toMatchObject({ organization_id: ORG });
+  });
+
+  it("enfileiramento que falha NÃO pode zerar o ponteiro — seria perder o rastro do arquivo", async () => {
+    // O caminho do avatar é ESTÁVEL por contato (`{org}/avatars/{id}.jpg`) e
+    // reaproveitado a cada refresh, ao contrário da mídia de mensagem. Por isso
+    // ele COLIDE com `unique (bucket, object_path)` quando já houve um pedido
+    // anterior para o mesmo contato — a linha antiga nunca é purgada da fila.
+    //
+    // Se o insert falhar e o código zerar `avatar_storage_path` assim mesmo, o
+    // contato fica anonimizado, a auditoria registra a redação, e o JPEG do
+    // rosto permanece no bucket sem NENHUM ponteiro capaz de encontrá-lo. É a
+    // definição de arquivo órfão que este PR existe para evitar.
+    erroDoInsert = { code: "23505", message: "duplicate key value violates unique constraint" };
+
+    await expect(
+      cascadeRedactContact({ organizationId: ORG, contactId: CONTATO, requestId: PEDIDO }),
+    ).rejects.toThrow();
+
+    expect(updates.find((u) => u.tabela === "contacts")).toBeUndefined();
+    expect(ops).not.toContain("rpc");
   });
 });
 

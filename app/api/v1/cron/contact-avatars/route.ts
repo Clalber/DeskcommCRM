@@ -95,15 +95,27 @@ async function handle(req: NextRequest): Promise<Response> {
     const chatId = c.wa_identity ? chatIdFromIdentity(c.wa_identity) : null;
     // Carimba mesmo sem conseguir resolver o chatId: sem isso o contato voltaria
     // em TODA rodada do cron, para sempre, batendo no canal à toa.
-    const carimbar = async (path: string | null) => {
-      await admin
+    //
+    // `is_anonymized = false` no UPDATE não repete o filtro do SELECT — fecha uma
+    // corrida. Entre a seleção do lote e esta gravação há I/O de rede por contato
+    // (canal, download, upload), e a anonimização em escopo de tenant percorre
+    // centenas de contatos enquanto isto roda. Se o pedido LGPD alcançar este
+    // contato no meio do caminho, sem esta cláusula o cron gravaria o rosto de
+    // volta num contato JÁ anonimizado — e o filtro do SELECT nunca mais o
+    // escolheria para corrigir. Devolve as linhas afetadas para que quem chamou
+    // saiba se a gravação valeu.
+    const carimbar = async (path: string | null): Promise<boolean> => {
+      const { data: afetadas } = await admin
         .from("contacts")
         .update({
           ...(path !== null ? { avatar_storage_path: path } : {}),
           avatar_updated_at: new Date().toISOString(),
         })
         .eq("id", c.id)
-        .eq("organization_id", c.organization_id);
+        .eq("organization_id", c.organization_id)
+        .eq("is_anonymized", false)
+        .select("id");
+      return (afetadas ?? []).length > 0;
     };
 
     if (!chatId) {
@@ -178,7 +190,33 @@ async function handle(req: NextRequest): Promise<Response> {
         continue;
       }
 
-      await carimbar(path);
+      const gravou = await carimbar(path);
+      if (!gravou) {
+        // O contato foi anonimizado enquanto baixávamos a foto dele. O arquivo
+        // já subiu, então bloquear a gravação não basta: sem isto o objeto ficaria
+        // no bucket sem ponteiro nenhum — pior que o defeito original, porque
+        // invisível. Devolvemos à fila de redação, o mesmo caminho que a cascata
+        // usa, e o worker de limpeza remove.
+        await admin.from("storage_redaction_queue").upsert(
+          {
+            organization_id: c.organization_id,
+            bucket: "whatsapp-media",
+            object_path: path,
+            status: "pending",
+            attempts: 0,
+            processed_at: null,
+            error_message: null,
+          },
+          { onConflict: "bucket,object_path" },
+        );
+        logger.warn("[contact-avatars] anonimizado durante a busca; foto devolvida à fila", {
+          contact_id: c.id,
+          organization_id: c.organization_id,
+          requestId,
+        });
+        semFoto++;
+        continue;
+      }
       atualizados++;
     } catch (err) {
       await carimbar(null);
