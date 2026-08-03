@@ -458,20 +458,45 @@ c_grn "✓ segredos prontos"
 # — falha no bind da porta e a instalação morre no meio, com um erro que não diz
 # nada a quem não é técnico. Detectar isso sozinho é o que separa "instalou" de
 # "desistiu". Quem já tem REVERSE_PROXY no .env manda: a detecção não sobrescreve.
+# O candidato precisa PUBLICAR 80/443. Só casar "traefik" no nome/imagem aceita
+# qualquer contêiner chamado `traefik-backup` e desligaria o TLS que o kit
+# controla por causa de um homônimo parado.
+traefik_container=""
+for _c in $(docker ps --format '{{.Names}}' 2>/dev/null); do
+  case "$(docker inspect -f '{{.Config.Image}} {{.Name}}' "$_c" 2>/dev/null)" in
+    *[Tt]raefik*)
+      if docker port "$_c" 2>/dev/null | grep -qE '^(80|443)/tcp'; then
+        traefik_container="$_c"; break
+      fi
+      ;;
+  esac
+done
+
 if [ -z "${REVERSE_PROXY:-}" ]; then
-  if docker ps --format '{{.Image}} {{.Names}}' 2>/dev/null | grep -qi traefik; then
+  if [ -n "$traefik_container" ]; then
     REVERSE_PROXY=traefik
-    c_ylw "⚠ Detectei um Traefik já rodando neste VPS (ele é quem responde nas portas 80/443)."
+    c_ylw "⚠ Detectei um Traefik já rodando neste VPS (contêiner '${traefik_container}', ocupando 80/443)."
     c_ylw "  Vou publicar o CRM através dele em vez de subir um proxy próprio —"
     c_ylw "  desligar o Traefik quebraria o que a sua hospedagem instalou."
   else
     REVERSE_PROXY=caddy
   fi
 fi
-# Nome da rede deste projeto, como o Traefik precisa vê-la: "<projeto>_internal",
-# onde <projeto> é a pasta onde o compose roda (varia por instalação). Mesma
-# normalização que o Compose faz no nome do projeto.
-TRAEFIK_DOCKER_NETWORK="${TRAEFIK_DOCKER_NETWORK:-$(basename "$PWD" | tr '[:upper:]' '[:lower:]' | tr -cd 'a-z0-9_-')_internal}"
+
+# A rede em que o Traefik REALMENTE está. Antes isto era calculado como
+# "<pasta>_internal", ou seja, a rede do PRÓPRIO projeto — e aí nada funcionava:
+# o Traefik não alcança uma bridge que não é dele, e o label `traefik.docker.network`
+# apontando pra lá faz ele mirar um IP inalcançável mesmo com o contêiner conectado
+# nas duas redes. Medido com Traefik v3.3 real: só com o label apontando pra rede do
+# PROXY a requisição sai de HTTP 000 (timeout) para HTTP 200.
+if [ "$REVERSE_PROXY" = "traefik" ] && [ -z "${TRAEFIK_NETWORK:-}" ] && [ -n "$traefik_container" ]; then
+  TRAEFIK_NETWORK="$(docker inspect -f '{{range $k,$v := .NetworkSettings.Networks}}{{$k}} {{end}}' "$traefik_container" 2>/dev/null | awk '{print $1}')"
+fi
+if [ "$REVERSE_PROXY" = "traefik" ] && [ -z "${TRAEFIK_NETWORK:-}" ]; then
+  die "Não consegui descobrir a rede Docker do seu Traefik. Rode 'docker network ls',
+identifique a rede dele e ponha TRAEFIK_NETWORK=<nome> no .env antes de tentar de novo."
+fi
+TRAEFIK_NETWORK="${TRAEFIK_NETWORK:-traefik}"
 
 step "Escrevendo .env"
 umask 077
@@ -494,7 +519,8 @@ envq() { printf "%s='%s'\n" "$1" "$(printf '%s' "${2-}" | sed "s/'/'\\\\''/g")";
   printf '# Em "traefik" entra o docker-compose.traefik.yml, que desliga o Caddy e\n'
   printf '# publica o app por labels. TRAEFIK_* só é lido nesse modo.\n'
   envq REVERSE_PROXY "$REVERSE_PROXY"
-  envq TRAEFIK_DOCKER_NETWORK "$TRAEFIK_DOCKER_NETWORK"
+  envq TRAEFIK_NETWORK "$TRAEFIK_NETWORK"
+  envq TRAEFIK_ENTRYPOINT_HTTP "${TRAEFIK_ENTRYPOINT_HTTP:-web}"
   envq TRAEFIK_ENTRYPOINT "${TRAEFIK_ENTRYPOINT:-websecure}"
   envq TRAEFIK_CERTRESOLVER "${TRAEFIK_CERTRESOLVER:-letsencrypt}"
   envq NEXT_PUBLIC_SUPABASE_URL "$NEXT_PUBLIC_SUPABASE_URL"

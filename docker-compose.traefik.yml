@@ -44,9 +44,23 @@
 
 services:
   app:
+    # Só o `app` entra na rede do proxy. O inverso — juntar o Traefik à rede
+    # `internal` — colocaria um contêiner que serve OUTROS tenants da VPS dentro
+    # de uma rede onde o redis roda sem senha (docker-compose.prod.yml: `redis-server
+    # --save '' --appendonly no`, sem requirepass). waha, redis e srh ficam de fora.
+    networks:
+      - internal
+      - proxy
     labels:
       traefik.enable: "true"
-      traefik.docker.network: "${TRAEFIK_DOCKER_NETWORK:-crm_internal}"
+      # A rede do PROXY, não a do projeto. Este label diz ao Traefik em qual rede
+      # pegar o IP do contêiner; apontando para a `internal` ele mira um IP que não
+      # alcança, e a requisição pendura até dar timeout — mesmo com o contêiner já
+      # conectado nas duas redes. Medido com Traefik v3.3 real:
+      #   app só na internal, label=internal   -> HTTP 000 (timeout)
+      #   app nas duas redes, label=internal   -> HTTP 000 (ainda o IP errado)
+      #   app nas duas redes, label=proxy      -> HTTP 200
+      traefik.docker.network: "${TRAEFIK_NETWORK:-traefik}"
 
       # Rota principal — equivale ao `reverse_proxy app:3000` do Caddyfile.
       traefik.http.routers.deskcomm.rule: "Host(`${DOMAIN}`)"
@@ -78,6 +92,15 @@ services:
       traefik.http.routers.deskcomm-waha-block.middlewares: "deskcomm-deny"
       traefik.http.middlewares.deskcomm-deny.ipallowlist.sourcerange: "192.0.2.1/32"
 
+      # HTTP -> HTTPS. O Caddy fazia isto automaticamente; no Traefik precisa ser
+      # dito. Sem este router, quem digitar http:// não recebe resposta nenhuma.
+      traefik.http.routers.deskcomm-http.rule: "Host(`${DOMAIN}`)"
+      traefik.http.routers.deskcomm-http.entrypoints: "${TRAEFIK_ENTRYPOINT_HTTP:-web}"
+      traefik.http.routers.deskcomm-http.middlewares: "deskcomm-https"
+      traefik.http.routers.deskcomm-http.service: "deskcomm"
+      traefik.http.middlewares.deskcomm-https.redirectscheme.scheme: "https"
+      traefik.http.middlewares.deskcomm-https.redirectscheme.permanent: "true"
+
   # O Caddy não é removido do compose (isso exigiria editar o arquivo base e
   # quebraria quem usa o padrão) — ele só é posto num profile que nunca é
   # ligado. Sem profile ativo, o compose não cria o contêiner e as portas 80/443
@@ -89,3 +112,11 @@ services:
   # update.sh checa REVERSE_PROXY antes de recriar o proxy.
   caddy:
     profiles: ["caddy-nao-usado-com-proxy-externo"]
+
+# A rede do proxy da hospedagem, que JÁ existe — por isso `external: true`. O nome
+# varia (coolify, dokploy-network, traefik...), então o install.sh descobre o nome
+# real inspecionando o contêiner do Traefik e grava em TRAEFIK_NETWORK no .env.
+networks:
+  proxy:
+    external: true
+    name: "${TRAEFIK_NETWORK:-traefik}"
