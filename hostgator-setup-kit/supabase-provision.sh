@@ -84,7 +84,14 @@ fi
 # Extrai um campo string de um JSON PLANO. Mesmo estilo do jwt_claim() do
 # install.sh: o kit promete depender só de bash+curl, então nada de jq/python.
 # Só serve para os campos simples que a API devolve (ref, id, name, status).
-json_str() { grep -o "\"$2\"[[:space:]]*:[[:space:]]*\"[^\"]*\"" <<<"$1" | head -1 | sed 's/.*"\([^"]*\)"$/\1/'; }
+#
+# O `|| true` no fim não é preguiça — é o que mantém as mensagens de erro
+# ALCANÇÁVEIS. Campo ausente faz o `grep` sair 1; com `pipefail`, isso derruba a
+# substituição, e com `set -e` o script inteiro morre em silêncio na linha da
+# atribuição — antes do `die` que explicaria o problema. Medido com token
+# inválido: a API respondia {"message":"Unauthorized"} e o terminal apenas
+# voltava, sem uma palavra. Falhando vazio, quem decide o que dizer é o `die`.
+json_str() { grep -o "\"$2\"[[:space:]]*:[[:space:]]*\"[^\"]*\"" <<<"$1" | head -1 | sed 's/.*"\([^"]*\)"$/\1/' || true; }
 
 api() {
   local method="$1" path="$2" body="${3:-}"
@@ -156,8 +163,11 @@ c_grn "✓ banco no ar (levou $(( (SECONDS-inicio)/60 ))m$(( (SECONDS-inicio)%60
 # ── 5. Chaves ───────────────────────────────────────────────────────────────
 step "Buscando as chaves de API"
 keys="$(api GET "/projects/$REF/api-keys")"
-ANON="$(grep -o '"name"[[:space:]]*:[[:space:]]*"anon"[^}]*' <<<"$keys" | grep -o '"api_key"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 | sed 's/.*"\([^"]*\)"$/\1/')"
-SERVICE="$(grep -o '"name"[[:space:]]*:[[:space:]]*"service_role"[^}]*' <<<"$keys" | grep -o '"api_key"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 | sed 's/.*"\([^"]*\)"$/\1/')"
+# `|| true` pelo mesmo motivo do json_str(): sem ele, resposta inesperada da API
+# mata o script na atribuição e a linha de baixo — que imprime a resposta crua e
+# explica o que houve — nunca roda.
+ANON="$(grep -o '"name"[[:space:]]*:[[:space:]]*"anon"[^}]*' <<<"$keys" | grep -o '"api_key"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 | sed 's/.*"\([^"]*\)"$/\1/' || true)"
+SERVICE="$(grep -o '"name"[[:space:]]*:[[:space:]]*"service_role"[^}]*' <<<"$keys" | grep -o '"api_key"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 | sed 's/.*"\([^"]*\)"$/\1/' || true)"
 [ -n "$ANON" ] && [ -n "$SERVICE" ] || { printf '%s\n' "$keys" >&2; die "Não consegui ler anon/service_role."; }
 c_grn "✓ anon e service_role obtidas"
 
