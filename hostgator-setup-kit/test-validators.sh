@@ -135,6 +135,51 @@ TMP2="$(mktemp -d)"
 ) || fail=1
 rm -rf "$TMP2"
 
+echo "integração: o install.sh não INTERPRETA a saída do provisionamento"
+# O bloco de cima guarda a FUNÇÃO; este guarda o PONTO DE CHAMADA — trocar
+# `sb_carrega_credenciais "$_sb_out"` de volta por `eval "$_sb_out"` passava
+# despercebido, porque a função continuava correta e ninguém mais a chamava.
+#
+# Guarda o COMPORTAMENTO, não o texto: uma asserção do tipo "não existe a palavra
+# eval" pegaria só a reincidência literal, e `. <(printf %s "$_sb_out")` executa
+# igual. Aqui o install.sh roda de verdade (docker é stub, nada de rede) com um
+# provisionamento que devolve uma aspa simples no valor; se qualquer mecanismo
+# interpretar aquilo, o marcador aparece.
+TMP3="$(mktemp -d)"
+(
+  MARCA="$TMP3/executou"
+  mkdir -p "$TMP3/bin" "$TMP3/proj"
+  cp install.sh _common.sh "$TMP3/"
+  : > "$TMP3/proj/docker-compose.prod.yml"
+  printf '#!/usr/bin/env bash\nexit 0\n' > "$TMP3/bin/docker"; chmod +x "$TMP3/bin/docker"
+  cat > "$TMP3/supabase-provision.sh" <<'PROV'
+#!/usr/bin/env bash
+# O que o provisionamento emite quando SUPABASE_REGION (que vem do ambiente)
+# traz uma aspa simples: ela fecha o literal do printf e o resto vira código.
+VENENO="postgresql://u:p@aws-0-x'\$(touch $MARCA)'.pooler.supabase.com:5432/postgres"
+printf "NEXT_PUBLIC_SUPABASE_URL='https://ref.supabase.co'\n"
+printf "NEXT_PUBLIC_SUPABASE_ANON_KEY='a'\n"
+printf "SUPABASE_SERVICE_ROLE_KEY='s'\n"
+printf "SUPABASE_DB_URL='%s'\n" "$VENENO"
+PROV
+
+  saida="$(cd "$TMP3/proj" && env PATH="$TMP3/bin:$PATH" MARCA="$MARCA" \
+    SUPABASE_ACCESS_TOKEN=fake NEXT_PUBLIC_SUPABASE_URL= \
+    bash "$TMP3/install.sh" --yes 2>&1 || true)"
+
+  # Sem esta checagem o teste passaria por VACUIDADE: se o install.sh morresse
+  # antes do bloco (stub quebrado, refactor movendo o trecho), nada executaria o
+  # veneno e o silêncio seria lido como aprovação.
+  if ! printf '%s' "$saida" | grep -q "credenciais entraram sozinhas"; then
+    printf '  ✗ o install.sh não chegou ao bloco do Supabase — teste inconclusivo, não verde\n'; exit 1
+  fi
+  if [ -e "$MARCA" ]; then
+    printf '  ✗ o install.sh INTERPRETOU a saída do provisionamento (eval/source no ponto de chamada?)\n'; exit 1
+  fi
+  printf '  ✓ ponto de chamada não interpreta a saída\n'
+) || fail=1
+rm -rf "$TMP3"
+
 echo
 if [ "$fail" = 0 ]; then echo "todos os validadores passaram"; else echo "FALHOU"; fi
 exit "$fail"
