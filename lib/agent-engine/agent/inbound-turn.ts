@@ -105,6 +105,8 @@ import { loadPromiseTable } from '../guardrails/promise/table';
 import { classifyPromise } from '../guardrails/promise/semantic';
 import { diffCheckpoint } from '@/lib/leads/checkpoint-diff';
 import { emitAgentActivityForContact } from '@/lib/leads/agent-activity';
+import { resolveActiveLeadForContact, type LeadCandidate } from '@/lib/leads/active-lead';
+import { recalculaScoreDoLead } from '@/lib/leads/score-writer';
 import {
   JAILBREAK_ESCALATION_LEVEL,
   classifyJailbreak,
@@ -1852,6 +1854,52 @@ export async function runAgentTurn(
         error: err instanceof Error ? err.name : 'unknown',
       });
     }
+  }
+
+  // ── A NOTA DO NEGÓCIO ──────────────────────────────────────────────────────
+  //
+  // O turno acabou de mexer em TUDO que a fórmula lê: compromissos e objeções
+  // (o checkpoint acima) e a qualificação BANT (`lead_state`, escrita pelo
+  // update_lead_state do modelo). Recalcular aqui é recalcular no instante em
+  // que os sinais mudaram — não há evento melhor.
+  //
+  // ⚠️ POR QUE ISTO EXISTE: `recalculaScoreDoLead` estava escrita, testada e
+  // com constraint no banco exigindo o `reason` — e SEM UM ÚNICO CHAMADOR no
+  // repositório inteiro. Nenhuma nota jamais foi calculada. O modo de falha era
+  // mudo: o card simplesmente não mostrava número, e "não tem nota ainda" é
+  // indistinguível de "ninguém nunca calcula".
+  //
+  // Fora do `if (mudanca.emit)` DE PROPÓSITO: o BANT muda em turnos que não
+  // mexem no checkpoint, e esses turnos também mudam a nota. Amarrar o cálculo
+  // à emissão da atividade faria a nota envelhecer em silêncio — o mesmo
+  // defeito, um andar acima.
+  //
+  // Falha aqui não derruba o turno: nota é derivado, e o próximo turno
+  // recalcula. O que não pode é o cliente ficar sem resposta por causa dela.
+  try {
+    const alvo = await resolveActiveLeadForContact(
+      (
+        await pool.query<LeadCandidate>(
+          `select l.id, l.organization_id, l.pipeline_id, l.status,
+                  l.last_activity_at, l.created_at
+             from crm_leads l
+            where l.organization_id = $1 and l.contact_id = $2`,
+          [tenantId, leadId],
+        )
+      ).rows,
+    );
+    if (alvo.routed) {
+      const r = await recalculaScoreDoLead(pool, tenantId, alvo.leadId);
+      runLog.info('score do negócio recalculado', {
+        lead_id: alvo.leadId,
+        gravou: r.gravou,
+        ...(r.motivo !== undefined ? { motivo: r.motivo } : {}),
+      });
+    }
+  } catch (err) {
+    runLog.error('falha ao recalcular score (segue)', {
+      error: err instanceof Error ? err.name : 'unknown',
+    });
   }
 
   // F3-11: divergência classificador×modelo. O classificador sugeriu um estágio; se o
