@@ -95,14 +95,15 @@ Três projeções puras do mesmo array:
 
 O `Sidebar.tsx` atual chama **sete** `usePermission()` hardcoded (linhas 44-50) e um `if`-chain de sete ramos no filtro (86-94) — porque hooks não podem ser chamados em laço condicional.
 
-`usePermission` (`hooks/auth/AuthProvider.tsx:118`) é um wrapper puro sobre `useAuth()`: toda a lógica é `ROLE_RANK[activeOrg.role] >= ROLE_RANK[required]`. Extraindo a função pura, o filtro vira uma linha:
+Como o registro declara `minRole` (§4.2) em vez de uma string de ação, o filtro vira uma função pura no próprio registro:
 
 ```ts
-export function hasMinRole(minRole: Role | undefined, user: AuthUser, org: ActiveOrg | null): boolean;
-export function usePermission(action: string) { /* passa a chamar hasMinRole */ }
+export function canSee(d: NavDestination, isPlatformAdmin: boolean, role: Role | null): boolean;
 ```
 
 Sete hooks e sete ramos saem; um `useAuth()` e um `.filter()` entram.
+
+> **Decidido na implementação:** não mexer no `AuthProvider`. A versão anterior deste spec previa extrair `hasMinRole()` de lá, mas isso era o *meio*, não o fim — `canSee` no registro atinge o mesmo resultado tocando um arquivo a menos. `usePermission` segue intacto, servindo as ações granulares (`ai.agents.write` etc.), que não são navegação.
 
 ### 4.2 Por que `minRole` e não `permission`
 
