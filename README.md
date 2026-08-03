@@ -91,9 +91,12 @@ cp .env.example .env.local
 # 4. WAHA local (opcional em dev sem WhatsApp)
 docker compose up -d
 
-# 5. Migrations Supabase
+# 5. Schema do banco — aplique o baseline, NÃO as migrations
+#    As migrations 0001-0009 e 0013 são stubs `SELECT 1;`: a cadeia não sobe do
+#    zero. O schema real vive no baseline.sql, que é o mesmo que o install.sh
+#    aplica na VPS. `supabase db push` "passa" e deixa o banco vazio.
 supabase link --project-ref <seu-ref>
-supabase db push
+psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -f supabase/baseline.sql
 
 # 6. Sobe o app
 pnpm dev
@@ -120,7 +123,7 @@ App: <http://localhost:3000> · Health check: <http://localhost:3000/api/v1/heal
 | **Rate limit** | Upstash Redis (sliding window) | Serverless, free tier suficiente |
 | **AI** | Vercel AI SDK v7 (providers Anthropic/Google/OpenAI v4) via AI Gateway | Fallback automático, ZDR |
 | **Validação** | Zod | Input externo, env, payloads |
-| **Observability** | Sentry (com `beforeSend` sanitizado) | Sem PII no breadcrumb |
+| **Observability** | Sentry (scrub em erro, transação, span e breadcrumb) | Telemetria opt-in no install |
 | **Hospedagem** | Vercel (app) + Hostgator VPS Turing/SP (WAHA) | Edge + dedicado pra WhatsApp; datacenter Brasil |
 
 Detalhes: [`ARCHITECTURE.md`](ARCHITECTURE.md).
@@ -273,12 +276,19 @@ Este é um projeto **self-host**: cada pessoa roda o CRM na **própria infraestr
   é com você.
 - **LGPD — atenção:** quem **hospeda** a instância é o **controlador** dos dados pessoais
   ali tratados (clientes, conversas, pedidos), com as obrigações legais decorrentes. Os
-  mantenedores do projeto **não têm acesso** aos seus dados e **não são** controladores
-  nem operadores da sua instância.
-- **Telemetria (Sentry):** por padrão, erros **anonimizados** (CPF/telefone/e-mail
-  removidos) são enviados ao Sentry da comunidade pra ajudar a corrigir bugs que afetam
-  todos. Para **desligar**, use `SENTRY_DSN=off` no `.env`; para enviar ao **seu** Sentry,
-  use `SENTRY_DSN=<seu-dsn>`. Ver [`lib/sentry/dsn.ts`](lib/sentry/dsn.ts).
+  mantenedores do projeto **não são** controladores nem operadores da sua instância, e não
+  têm acesso ao seu banco, ao seu WhatsApp nem ao seu storage. A única coisa que pode sair
+  da sua máquina para nós é o relatório de erro descrito abaixo — e só se você deixar.
+- **Telemetria (Sentry):** o `install.sh` **pergunta** durante a instalação e respeita a
+  sua resposta; em modo não-interativo, sem `SENTRY_DSN` definido, a telemetria fica
+  **desligada**. Se você aceitar o Sentry da comunidade, o que é enviado são **relatórios
+  de erro** (stack trace) com CPF, telefone e e-mail substituídos, cabeçalhos sensíveis
+  removidos, e token de webhook/convite redigido da URL — **sem** rastreamento de
+  performance e **sem** replay de sessão, que ficam em 0 nesse caminho. Para desligar a
+  qualquer momento: `SENTRY_DSN=off` no `.env`. Para mandar ao **seu** Sentry (aí sim com
+  performance e replay): `SENTRY_DSN=<seu-dsn>`. O que é redigido, e por quê, está em
+  [`lib/sentry/scrub.ts`](lib/sentry/scrub.ts); a resolução do DSN em
+  [`lib/sentry/dsn.ts`](lib/sentry/dsn.ts).
 
 ---
 
