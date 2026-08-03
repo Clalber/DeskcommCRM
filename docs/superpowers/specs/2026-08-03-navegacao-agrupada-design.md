@@ -154,7 +154,12 @@ ORGANIZAÇÃO
    Configurações   →
 ```
 
-17 destinos + 6 títulos + 2 links de hub: cabe sem rolar em notebook (hoje são 17 destinos sem nenhuma hierarquia).
+> **Corrigido na implementação (2026-08-03), depois de medir na tela.** Esta divisão não cabia: em 1280×768 o conteúdo dava **1019px contra 663px visíveis** — sete links e os grupos Análise e Organização fora da dobra; em 1080px, Configurações ainda ficava fora. Era trocar "17 itens sem hierarquia" por "20 itens que não cabem". Duas mudanças resolveram, ambas aplicando regras que já estavam neste spec e não foram aplicadas:
+>
+> 1. **Canais (5 telas) ganhou hub** em `/app/canais` — a regra "hub a partir de 5 telas" valia e foi ignorada. Sidebar fica com Conexões e Canal oficial; Templates Meta, Nuvemshop e Webhooks vivem no hub (uso raro: configura-se uma vez). Equipe idem, no hub de Configurações.
+> 2. **Configurações saiu da área rolável para o rodapé fixo** do sidebar. É o item mais procurado por quem não achou algo; deixá-lo dependendo de scroll recriaria o problema. Constante `GRUPO_NO_RODAPE` no registro.
+>
+> Medido depois: **768px** → 715px de conteúdo, nenhum grupo fora da dobra; **900px e 1080px** → não rola. A medição virou teste de não-regressão em `tests/e2e/navegacao.spec.ts`.
 
 **"ANÁLISE", não "Observabilidade"** — a palavra é de engenheiro, e quem instala isto numa VPS é dono de PME.
 
