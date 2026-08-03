@@ -18,8 +18,27 @@ KIT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 REPO_URL="${REPO_URL:-https://github.com/melgarafael/DeskcommCRM.git}"
 REPO_DIR="${REPO_DIR:-deskcommcrm}"
 COMPOSE="docker-compose.prod.yml"
+COMPOSE_TRAEFIK="docker-compose.traefik.yml"
 NONINTERACTIVE=0
 [ "${1:-}" = "--yes" ] && NONINTERACTIVE=1
+
+# Este script é standalone de propósito (roda antes do clone, então não dá para
+# usar o _common.sh). As duas funções abaixo são gêmeas das de lá — se mexer
+# numa, mexa na outra.
+dc() {
+  if [ "${REVERSE_PROXY:-caddy}" = "traefik" ]; then
+    docker compose -f "$COMPOSE" -f "$COMPOSE_TRAEFIK" "$@"
+  else
+    docker compose -f "$COMPOSE" "$@"
+  fi
+}
+dc_files() {
+  if [ "${REVERSE_PROXY:-caddy}" = "traefik" ]; then
+    printf -- '-f %s -f %s' "$COMPOSE" "$COMPOSE_TRAEFIK"
+  else
+    printf -- '-f %s' "$COMPOSE"
+  fi
+}
 
 c_red() { printf '\033[31m%s\033[0m\n' "$*"; }
 c_grn() { printf '\033[32m%s\033[0m\n' "$*"; }
@@ -43,7 +62,7 @@ show_recovery() {
   printf '\n%s\n\n' "Como voltar atrás e recomeçar do zero:"
   printf '  %s\n' "cd ${dir}"
   printf '  %s\n' "rm -f .env                                    # apaga a configuração digitada"
-  printf '  %s\n' "docker compose -f ${COMPOSE} down -v          # derruba o que subiu"
+  printf '  %s\n' "docker compose $(dc_files) down -v          # derruba o que subiu"
   printf '  %s\n' "bash ${KIT_DIR:-hostgator-setup-kit}/install.sh   # começa de novo"
   printf '\n%s\n' "Se o schema chegou a ser aplicado e você quer o banco limpo de novo,"
   printf '%s\n'   "abra o Supabase > SQL Editor e rode (ATENÇÃO: apaga todos os dados):"
@@ -286,12 +305,71 @@ mask() {
   if [ "${#v}" -le 12 ]; then printf '%s' "****"; else printf '%s…%s (%d caracteres)' "${v:0:8}" "${v: -4}" "${#v}"; fi
 }
 
+# Lê as 4 credenciais que o supabase-provision.sh imprime (`CHAVE='valor'`) SEM
+# interpretar o conteúdo.
+#
+# Por que não `eval`: os valores saem de `printf "%s='%s'"` sem escapar a aspa
+# simples, então um valor que contenha `'` fecha o literal e o resto da linha
+# volta a ser CÓDIGO — e `SUPABASE_REGION`, que vem do ambiente, é interpolada
+# dentro da connection string que sai de lá. Mesma postura do `load_env`
+# (_common.sh): casa a chave contra uma lista fixa e copia o valor como texto.
+# Chave fora da lista é ignorada, então a saída nunca cria variável arbitrária.
+sb_carrega_credenciais() {
+  local linha val
+  while IFS= read -r linha; do
+    val="${linha#*=\'}"; val="${val%\'}"
+    case "$linha" in
+      NEXT_PUBLIC_SUPABASE_URL=\'*\')      NEXT_PUBLIC_SUPABASE_URL="$val";;
+      NEXT_PUBLIC_SUPABASE_ANON_KEY=\'*\') NEXT_PUBLIC_SUPABASE_ANON_KEY="$val";;
+      SUPABASE_SERVICE_ROLE_KEY=\'*\')     SUPABASE_SERVICE_ROLE_KEY="$val";;
+      SUPABASE_DB_URL=\'*\')               SUPABASE_DB_URL="$val";;
+    esac
+  done <<<"$1"
+}
+
 # Carrega só as funções acima, sem instalar nada — é assim que
 # `test-validators.sh` exercita os validadores:  INSTALL_SH_LIB=1 . install.sh
 if [ "${INSTALL_SH_LIB:-}" = "1" ]; then trap - EXIT; return 0; fi
 
 # ── 1. Preflight ────────────────────────────────────────────────────────────
 step "Verificando dependências"
+
+# VPS "cru" (Hetzner, DigitalOcean, Contabo…) não vem com Docker. Antes isto era
+# um beco sem saída: o script morria dizendo "instale antes de continuar" e a
+# pessoa — que por definição não é técnica — ficava sem saber como. Hospedagens
+# com template (Hostinger, HostGator) já trazem Docker, então o caso nunca
+# aparecia para quem escreveu o kit.
+#
+# O instalador oficial do Docker é o mesmo comando da documentação deles; não
+# inventamos nada. Em modo interativo PERGUNTA (instalar coisa no servidor de
+# alguém sem avisar é abuso de confiança); com --yes segue direto, que é o
+# contrato desse modo.
+if ! command -v docker >/dev/null 2>&1; then
+  c_ylw "⚠ Docker não está instalado — é o motor que roda o CRM."
+  instalar=1
+  if [ "$NONINTERACTIVE" = 0 ]; then
+    read -r -p "  Posso instalar agora? (S/n) " r
+    case "${r:-S}" in [Nn]*) instalar=0;; esac
+  fi
+  if [ "$instalar" = 1 ]; then
+    c_dim "  Instalando (get.docker.com — o instalador oficial). Leva 1-2 minutos…"
+    # A saída vai para um log em vez de /dev/null: silenciar o stderr também
+    # deixava a falha MUDA (disco cheio, apt travado, arquitetura sem pacote
+    # viravam todos a mesma frase genérica) — exatamente o que o trap lá em cima
+    # existe para impedir. Tela limpa no caminho feliz, causa real no caminho ruim.
+    _docker_log="$(mktemp)"
+    if ! curl -fsSL https://get.docker.com | sh >"$_docker_log" 2>&1; then
+      c_red "  Últimas linhas do instalador do Docker:"; tail -15 "$_docker_log" >&2
+      die "Não consegui instalar o Docker (log em $_docker_log). Rode 'curl -fsSL https://get.docker.com | sh' e tente de novo."
+    fi
+    rm -f "$_docker_log"; unset _docker_log
+    command -v docker >/dev/null 2>&1 || die "Docker instalou mas não ficou no PATH. Reabra o terminal e rode de novo."
+    c_grn "✓ Docker instalado"
+  else
+    die "Sem Docker não dá para seguir. Instale com: curl -fsSL https://get.docker.com | sh"
+  fi
+fi
+
 for bin in docker git openssl curl; do
   command -v "$bin" >/dev/null 2>&1 || die "'$bin' não encontrado. Instale antes de continuar."
 done
@@ -329,6 +407,35 @@ source "$KIT_DIR/_common.sh"
 step "Configuração"
 # Se já existe .env, carrega pra não repetir perguntas (idempotência).
 if [ -f .env ]; then load_env .env; c_grn "✓ .env existente carregado"; fi
+
+# ── Supabase automático (opcional) ──────────────────────────────────────────
+# Criar o projeto no navegador e copiar 4 campos era o passo mais LENTO da
+# instalação (medido: ~59min de preparação contra ~3min de script) e o mais
+# fácil de errar — copiar a "Direct connection", que é IPv6-only e não conecta
+# de um VPS IPv4, é a armadilha campeã.
+#
+# Com SUPABASE_ACCESS_TOKEN no ambiente e as credenciais ainda vazias, o
+# projeto é criado aqui e as 4 variáveis entram direto no fluxo, sem copiar e
+# colar. Sem o token, nada muda: seguem as perguntas de sempre.
+if [ -z "${NEXT_PUBLIC_SUPABASE_URL:-}" ] && [ -n "${SUPABASE_ACCESS_TOKEN:-}" ]; then
+  step "Criando o projeto Supabase automaticamente"
+  _sb_out="$(bash "$KIT_DIR/supabase-provision.sh" "${APP_NAME:-DeskcommCRM}" "${SUPABASE_REGION:-sa-east-1}")" \
+    || die "Não consegui criar o projeto Supabase. Crie no painel e rode de novo sem SUPABASE_ACCESS_TOKEN."
+  # O script imprime `CHAVE='valor'` em stdout (o visual dele vai para stderr).
+  # A leitura é por parse, não por `eval` — o porquê está em
+  # sb_carrega_credenciais(), e `test-validators.sh` cobra isso.
+  sb_carrega_credenciais "$_sb_out"
+  unset _sb_out
+
+  # Credencial que não chegou tem que parar AQUI. Sem esta checagem o install
+  # seguiria com a variável vazia e morreria lá na frente, longe da causa — e a
+  # pessoa veria "erro de conexão" em vez de "o provisionamento não devolveu X".
+  if [ -z "${NEXT_PUBLIC_SUPABASE_URL:-}" ] || [ -z "${NEXT_PUBLIC_SUPABASE_ANON_KEY:-}" ] \
+     || [ -z "${SUPABASE_SERVICE_ROLE_KEY:-}" ] || [ -z "${SUPABASE_DB_URL:-}" ]; then
+    die "O provisionamento não devolveu as 4 credenciais. Crie o projeto no painel e rode de novo sem SUPABASE_ACCESS_TOKEN."
+  fi
+  c_grn "✓ Supabase pronto — as 4 credenciais entraram sozinhas"
+fi
 
 # Cada linha: VARIÁVEL|pergunta|padrão|validador|secret|opcional
 # A ordem importa: a URL do projeto vem antes das chaves porque os validadores
@@ -433,6 +540,81 @@ UPSTASH_REDIS_REST_TOKEN="$SRH_TOKEN"
 c_grn "✓ segredos prontos"
 
 # ── 5. Escreve .env (600) ───────────────────────────────────────────────────
+# ── Proxy reverso: o VPS já tem um? ─────────────────────────────────────────
+# Várias hospedagens entregam a VPS com um Traefik próprio já ocupando 80/443
+# (Hostinger, Coolify, Dokploy...). Nesse caso o Caddy do kit não consegue subir
+# — falha no bind da porta e a instalação morre no meio, com um erro que não diz
+# nada a quem não é técnico. Detectar isso sozinho é o que separa "instalou" de
+# "desistiu". Quem já tem REVERSE_PROXY no .env manda: a detecção não sobrescreve.
+# O candidato precisa PUBLICAR 80/443. Só casar "traefik" no nome/imagem aceita
+# qualquer contêiner chamado `traefik-backup` e desligaria o TLS que o kit
+# controla por causa de um homônimo parado.
+traefik_container=""
+for _c in $(docker ps --format '{{.Names}}' 2>/dev/null); do
+  case "$(docker inspect -f '{{.Config.Image}} {{.Name}}' "$_c" 2>/dev/null)" in
+    *[Tt]raefik*)
+      if docker port "$_c" 2>/dev/null | grep -qE '^(80|443)/tcp'; then
+        traefik_container="$_c"; break
+      fi
+      ;;
+  esac
+done
+
+if [ -z "${REVERSE_PROXY:-}" ]; then
+  if [ -n "$traefik_container" ]; then
+    REVERSE_PROXY=traefik
+    c_ylw "⚠ Detectei um Traefik já rodando neste VPS (contêiner '${traefik_container}', ocupando 80/443)."
+    c_ylw "  Vou publicar o CRM através dele em vez de subir um proxy próprio —"
+    c_ylw "  desligar o Traefik quebraria o que a sua hospedagem instalou."
+  else
+    REVERSE_PROXY=caddy
+  fi
+fi
+
+# A rede em que o Traefik REALMENTE está. Antes isto era calculado como
+# "<pasta>_internal", ou seja, a rede do PRÓPRIO projeto — e aí nada funcionava:
+# o Traefik não alcança uma bridge que não é dele, e o label `traefik.docker.network`
+# apontando pra lá faz ele mirar um IP inalcançável mesmo com o contêiner conectado
+# nas duas redes. Medido com Traefik v3.3 real: só com o label apontando pra rede do
+# PROXY a requisição sai de HTTP 000 (timeout) para HTTP 200.
+if [ "$REVERSE_PROXY" = "traefik" ] && [ -z "${TRAEFIK_NETWORK:-}" ] && [ -n "$traefik_container" ]; then
+  TRAEFIK_NETWORK="$(docker inspect -f '{{range $k,$v := .NetworkSettings.Networks}}{{$k}} {{end}}' "$traefik_container" 2>/dev/null | awk '{print $1}')"
+fi
+if [ "$REVERSE_PROXY" = "traefik" ] && [ -z "${TRAEFIK_NETWORK:-}" ]; then
+  die "Não consegui descobrir a rede Docker do seu Traefik. Rode 'docker network ls',
+identifique a rede dele e ponha TRAEFIK_NETWORK=<nome> no .env antes de tentar de novo."
+fi
+TRAEFIK_NETWORK="${TRAEFIK_NETWORK:-traefik}"
+
+# ── Telemetria: perguntar, não presumir ─────────────────────────────────────
+# Issue #100. Antes, quem não definisse SENTRY_DSN mandava relatório de erro pro
+# Sentry da comunidade sem ter decidido nada — e só ficava sabendo na mensagem
+# final, DEPOIS de instalado. Num produto que roda na infraestrutura do usuário,
+# com dados de clientes dele, o consentimento vem antes.
+# Quem já tem valor no .env manda: a pergunta não sobrescreve escolha anterior.
+if [ -z "${SENTRY_DSN+x}" ]; then
+  if [ "$NONINTERACTIVE" = 1 ]; then
+    # Automação não consente por ninguém. Sem valor explícito, fica desligado.
+    SENTRY_DSN="off"
+  else
+    step "Telemetria de erros (opcional)"
+    printf '%s\n' "Podemos receber os relatórios de ERRO desta instalação (stack trace) para"
+    printf '%s\n' "corrigir bugs que afetam todo mundo. CPF, telefone e e-mail são substituídos,"
+    printf '%s\n' "cabeçalhos sensíveis removidos e tokens de webhook/convite redigidos da URL."
+    printf '%s\n' "NÃO enviamos rastreamento de performance nem replay de sessão."
+    printf '%s\n' "Seus dados de clientes, conversas e banco NUNCA saem daqui."
+    printf '\n%s\n' "Você pode mudar depois no .env, a qualquer momento."
+    read -r -p "  Enviar relatórios de erro anonimizados? (s/N) " _tel
+    if [ "${_tel:-N}" = "s" ] || [ "${_tel:-N}" = "S" ]; then
+      SENTRY_DSN=""
+      c_grn "✓ Telemetria de erros ligada — obrigado, isso ajuda o projeto."
+    else
+      SENTRY_DSN="off"
+      c_grn "✓ Telemetria desligada — nada será enviado."
+    fi
+  fi
+fi
+
 step "Escrevendo .env"
 umask 077
 
@@ -449,6 +631,15 @@ envq() { printf "%s='%s'\n" "$1" "$(printf '%s' "${2-}" | sed "s/'/'\\\\''/g")";
   envq APP_PULL_POLICY "always"
   envq DOMAIN "$DOMAIN"
   envq ACME_EMAIL "$ACME_EMAIL"
+  printf '# Proxy reverso: "caddy" (o kit sobe o dele nas portas 80/443) ou "traefik"\n'
+  printf '# (o VPS já tem um Traefik nessas portas — Hostinger, Coolify, Dokploy...).\n'
+  printf '# Em "traefik" entra o docker-compose.traefik.yml, que desliga o Caddy e\n'
+  printf '# publica o app por labels. TRAEFIK_* só é lido nesse modo.\n'
+  envq REVERSE_PROXY "$REVERSE_PROXY"
+  envq TRAEFIK_NETWORK "$TRAEFIK_NETWORK"
+  envq TRAEFIK_ENTRYPOINT_HTTP "${TRAEFIK_ENTRYPOINT_HTTP:-web}"
+  envq TRAEFIK_ENTRYPOINT "${TRAEFIK_ENTRYPOINT:-websecure}"
+  envq TRAEFIK_CERTRESOLVER "${TRAEFIK_CERTRESOLVER:-letsencrypt}"
   envq NEXT_PUBLIC_SUPABASE_URL "$NEXT_PUBLIC_SUPABASE_URL"
   envq NEXT_PUBLIC_SUPABASE_ANON_KEY "$NEXT_PUBLIC_SUPABASE_ANON_KEY"
   envq SUPABASE_SERVICE_ROLE_KEY "$SUPABASE_SERVICE_ROLE_KEY"
@@ -461,12 +652,20 @@ envq() { printf "%s='%s'\n" "$1" "$(printf '%s' "${2-}" | sed "s/'/'\\\\''/g")";
   envq APP_LOGO_URL "${APP_LOGO_URL:-}"
   envq ANTHROPIC_API_KEY "$ANTHROPIC_API_KEY"
   envq AI_GATEWAY_API_KEY "${AI_GATEWAY_API_KEY:-}"
+  printf '# OpenRouter: alternativa ao AI Gateway para o chat da IA. A ordem de\n'
+  printf '# resolução é AI_GATEWAY_API_KEY > OPENROUTER_API_KEY > provider direto,\n'
+  printf '# então deixar vazio NÃO muda nada — o comportamento de hoje continua.\n'
+  printf '# BASE_URL vazia = https://openrouter.ai/api/v1 (só mude se usa proxy).\n'
+  envq OPENROUTER_API_KEY "${OPENROUTER_API_KEY:-}"
+  envq OPENROUTER_BASE_URL "${OPENROUTER_BASE_URL:-}"
   printf '# OpenAI: transcrição dos áudios do WhatsApp (Whisper) + embeddings do RAG.\n'
   printf '# Opcional — sem ela a IA responde sem a base e pede o áudio em texto.\n'
   envq OPENAI_API_KEY "${OPENAI_API_KEY:-}"
-  printf '# Telemetria de erros. Vazio = manda pro Sentry da comunidade (ajuda a\n'
-  printf '# corrigir bugs que afetam todo mundo). "off" = não envia nada. Ou ponha o\n'
-  printf '# DSN do SEU Sentry para receber os erros desta instalação.\n'
+  printf '# Telemetria de erros (você escolheu isto durante a instalação).\n'
+  printf '#   "off"  = não envia nada.\n'
+  printf '#   vazio  = só ERRO pro Sentry da comunidade, com CPF/telefone/e-mail\n'
+  printf '#            substituídos e token de URL redigido. Sem trace, sem replay.\n'
+  printf '#   <dsn>  = manda pro SEU Sentry (aí com performance e replay).\n'
   envq SENTRY_DSN "${SENTRY_DSN:-}"
   envq INTERNAL_SECRET "$INTERNAL_SECRET"
   envq INTERNAL_CRON_SECRET "$INTERNAL_CRON_SECRET"
@@ -502,8 +701,15 @@ c_grn "✓ .env escrito (permissão 600)"
 # ── 6. Checagem de DNS ──────────────────────────────────────────────────────
 step "Conferindo DNS de ${DOMAIN}"
 public_ip="$(curl -fsS --max-time 8 https://api.ipify.org 2>/dev/null || echo '')"
-resolved="$(getent hosts "$DOMAIN" 2>/dev/null | awk '{print $1}' | head -1 || echo '')"
-if [ -n "$public_ip" ] && [ -n "$resolved" ] && [ "$public_ip" = "$resolved" ]; then
+# Um domínio pode ter A (IPv4) e AAAA (IPv6) ao mesmo tempo, e o resolver não
+# garante ordem entre eles. Comparar só o PRIMEIRO endereço (o antigo `hosts`
+# + `head -1`) dava falso alarme sempre que o AAAA vinha antes do A: o DNS
+# estava correto, o SSL ia ser emitido normalmente, e mesmo assim o instalador
+# dizia que o domínio não apontava pra cá — assustando quem instala bem na hora
+# em que ela mais precisa de confiança. `ahosts` lista TODOS os endereços; basta
+# que UM deles seja o IP do VPS.
+resolved="$(getent ahosts "$DOMAIN" 2>/dev/null | awk '{print $1}' | sort -u | tr '\n' ' ' || echo '')"
+if [ -n "$public_ip" ] && case " $resolved " in *" $public_ip "*) true;; *) false;; esac; then
   c_grn "✓ ${DOMAIN} → ${public_ip} (aponta pra este VPS)"
 else
   c_ylw "⚠ ${DOMAIN} resolve para '${resolved:-nada}' e o IP deste VPS é '${public_ip:-desconhecido}'."
@@ -613,20 +819,20 @@ SQL
 
 # ── 9. Sobe a stack ─────────────────────────────────────────────────────────
 step "Puxando a imagem e subindo os serviços"
-docker compose -f "$COMPOSE" pull
-docker compose -f "$COMPOSE" up -d
+dc pull
+dc up -d
 c_grn "✓ containers no ar"
 
 # ── 10. Healthcheck ─────────────────────────────────────────────────────────
 step "Aguardando o app ficar saudável"
 ok=0
 for i in $(seq 1 30); do
-  if docker compose -f "$COMPOSE" exec -T app node -e "require('net').connect(3000,'127.0.0.1').on('connect',()=>process.exit(0)).on('error',()=>process.exit(1))" 2>/dev/null; then
+  if dc exec -T app node -e "require('net').connect(3000,'127.0.0.1').on('connect',()=>process.exit(0)).on('error',()=>process.exit(1))" 2>/dev/null; then
     ok=1; break
   fi
   sleep 3
 done
-[ "$ok" = 1 ] && c_grn "✓ app respondendo" || c_ylw "⚠ app ainda não respondeu. Veja: docker compose -f $COMPOSE logs app"
+[ "$ok" = 1 ] && c_grn "✓ app respondendo" || c_ylw "⚠ app ainda não respondeu. Veja: docker compose $(dc_files) logs app"
 
 # ── 11. Automações (cron do drain de eventos) ───────────────────────────────
 step "Ativando as automações"
@@ -659,16 +865,16 @@ $(c_grn "═══════════════════════�
 
   Telemetria: por padrão os erros desta instalação são enviados ao Sentry do
   projeto, o que ajuda a corrigir falhas que afetam todo mundo. Para desligar,
-  ponha SENTRY_DSN='off' no .env e rode: docker compose -f ${COMPOSE} up -d
+  ponha SENTRY_DSN='off' no .env e rode: docker compose $(dc_files) up -d
 
   Comandos úteis:
-    ver logs:      docker compose -f ${COMPOSE} logs -f app
-    reiniciar:     docker compose -f ${COMPOSE} restart
+    ver logs:      docker compose $(dc_files) logs -f app
+    reiniciar:     docker compose $(dc_files) restart
     atualizar:     bash hostgator-setup-kit/update.sh
     backup:        bash hostgator-setup-kit/backup.sh
     trocar config: bash hostgator-setup-kit/install.sh
                    (mostra tudo o que você respondeu e deixa corrigir por número)
-    recomeçar:     docker compose -f ${COMPOSE} down -v && rm -f .env
+    recomeçar:     docker compose $(dc_files) down -v && rm -f .env
                    (derruba tudo; depois rode o install.sh de novo)
 
 DONE

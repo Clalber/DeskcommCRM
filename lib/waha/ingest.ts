@@ -14,7 +14,7 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import { audit } from "@/lib/audit";
 import type { createAdminClient } from "@/lib/supabase/admin";
 import { ackToStatus } from "@/lib/types/messaging";
-import { bareWaMessageId } from "@/lib/waha/message-id";
+import { bareWaMessageId, chatIdFromWaMessageId } from "@/lib/waha/message-id";
 
 type Admin = ReturnType<typeof createAdminClient>;
 
@@ -426,11 +426,49 @@ async function handleOutboundFromUserPhone(
   p: WahaPayload,
   requestId: string,
 ): Promise<void> {
-  const chatId = p.to ?? "";
+  // De onde sai o chat, em ordem de confiança:
+  //   1. `to`  — o WEBJS manda; é o destinatário explícito.
+  //   2. o id  — `{fromMe}_{chatId}_{bareId}` carrega o chat em qualquer engine.
+  //   3. `from`— no NOWEB, mensagem fromMe traz o CHAT em `from` (não o número
+  //              do operador, como acontece no WEBJS).
+  //
+  // O NOWEB (engine padrão do kit) **não manda `to`** aqui. Com `p.to ?? ""` o
+  // chatId ficava vazio e a guarda abaixo descartava a mensagem em silêncio —
+  // toda mensagem que o dono digitava no celular sumia do CRM, enquanto as
+  // enviadas pelo composer e pela IA apareciam (essas nascem no banco antes do
+  // webhook, então não dependiam deste caminho). O sintoma era "respondi pelo
+  // celular e o CRM não mostra", sem nenhum erro em log: o webhook devolvia 200.
+  const chatId = p.to ?? chatIdFromWaMessageId(p.id ?? "") ?? p.from ?? "";
   const parsed = parseChatId(chatId);
   if (parsed.kind === "group") return;
   if (!p.id || !chatId) return;
   if (!p.body && !mediaUrlOf(p) && !p.hasMedia) return;
+
+  // ECO DO PRÓPRIO ENVIO — não duplicar.
+  //
+  // Toda mensagem que o CRM manda (composer ou IA) volta pelo webhook como
+  // `fromMe=true`. O dedup por `external_id` NÃO pega esse caso, porque os dois
+  // lados gravam formas diferentes do mesmo id: o envio grava o id "bare"
+  // (`3EB0…`) e o webhook chega com o composto (`true_<chat>_3EB0…`). São
+  // strings distintas, então o unique não dispara e nasce uma segunda linha —
+  // a mesma frase aparecendo duas vezes na conversa.
+  //
+  // Antes isto não aparecia por acidente: sem `to`, esta função voltava cedo e
+  // o eco era descartado junto com as mensagens legítimas do celular. Ao
+  // consertar aquele caminho, a duplicação ficou exposta.
+  //
+  // Mesmo par de candidatos que o `handleAck` usa — cobre NOWEB (bare) e WEBJS
+  // (full) sem depender do engine.
+  const bare = bareWaMessageId(p.id);
+  const idCandidates = bare === p.id ? [p.id] : [p.id, bare];
+  const { data: jaRegistrada } = await admin
+    .from("messages")
+    .select("id")
+    .eq("organization_id", session.organization_id)
+    .in("external_id", idCandidates)
+    .limit(1)
+    .maybeSingle();
+  if (jaRegistrada) return; // nasceu no envio; quem atualiza o status é o ack
 
   const contactId = await upsertContact(admin, session.organization_id, parsed, chatId, notifyNameOf(p));
   if (!contactId) return;
