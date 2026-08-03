@@ -1,6 +1,6 @@
 name: e2e
 
-# Issue #63: as 19 specs de tests/e2e/ não rodavam em lugar nenhum. Este job
+# Issue #63: as 20 specs de tests/e2e/ não rodavam em lugar nenhum. Este job
 # fecha o buraco começando pelo subconjunto que não depende de serviço externo.
 #
 # NÃO-BLOQUEANTE por ausência, não por mordaça: `e2e` não está na lista de

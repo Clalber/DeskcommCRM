@@ -37,11 +37,17 @@ export async function extractPdfText(buffer: Buffer): Promise<string> {
   try {
     const pdfjsLib = (await import("pdfjs-dist/legacy/build/pdf.mjs")) as unknown as typeof PdfjsDist;
 
-    // Disable the worker for server-side Node usage (no DOM/worker thread)
-    if (pdfjsLib.GlobalWorkerOptions) {
-      pdfjsLib.GlobalWorkerOptions.workerSrc = "";
-    }
-
+    // NÃO mexa em GlobalWorkerOptions.workerSrc aqui (issue #102).
+    //
+    // Havia um `workerSrc = ""` nesta linha, com a intenção de "desligar o worker
+    // em Node". O efeito era o oposto: string vazia é falsy, e o getter
+    // `PDFWorker.workerSrc` lança `No "GlobalWorkerOptions.workerSrc" specified.`
+    // ANTES de ler um byte do arquivo — ou seja, o fallback inteiro era inalcançável,
+    // e o erro chegava ao usuário como a mensagem genérica lá de baixo.
+    //
+    // Em Node o pdf.js já se auto-configura; as três linhas sobrescreviam justamente
+    // o que a lib tinha preparado. Medido nas versões 4.10.38 e 6.2.108: com
+    // `workerSrc = ""` falha nas duas; sem tocar, extrai nas duas.
     const loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(buffer) });
     const pdfDocument = await loadingTask.promise;
 
