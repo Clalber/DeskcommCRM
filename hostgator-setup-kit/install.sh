@@ -305,12 +305,71 @@ mask() {
   if [ "${#v}" -le 12 ]; then printf '%s' "****"; else printf '%s…%s (%d caracteres)' "${v:0:8}" "${v: -4}" "${#v}"; fi
 }
 
+# Lê as 4 credenciais que o supabase-provision.sh imprime (`CHAVE='valor'`) SEM
+# interpretar o conteúdo.
+#
+# Por que não `eval`: os valores saem de `printf "%s='%s'"` sem escapar a aspa
+# simples, então um valor que contenha `'` fecha o literal e o resto da linha
+# volta a ser CÓDIGO — e `SUPABASE_REGION`, que vem do ambiente, é interpolada
+# dentro da connection string que sai de lá. Mesma postura do `load_env`
+# (_common.sh): casa a chave contra uma lista fixa e copia o valor como texto.
+# Chave fora da lista é ignorada, então a saída nunca cria variável arbitrária.
+sb_carrega_credenciais() {
+  local linha val
+  while IFS= read -r linha; do
+    val="${linha#*=\'}"; val="${val%\'}"
+    case "$linha" in
+      NEXT_PUBLIC_SUPABASE_URL=\'*\')      NEXT_PUBLIC_SUPABASE_URL="$val";;
+      NEXT_PUBLIC_SUPABASE_ANON_KEY=\'*\') NEXT_PUBLIC_SUPABASE_ANON_KEY="$val";;
+      SUPABASE_SERVICE_ROLE_KEY=\'*\')     SUPABASE_SERVICE_ROLE_KEY="$val";;
+      SUPABASE_DB_URL=\'*\')               SUPABASE_DB_URL="$val";;
+    esac
+  done <<<"$1"
+}
+
 # Carrega só as funções acima, sem instalar nada — é assim que
 # `test-validators.sh` exercita os validadores:  INSTALL_SH_LIB=1 . install.sh
 if [ "${INSTALL_SH_LIB:-}" = "1" ]; then trap - EXIT; return 0; fi
 
 # ── 1. Preflight ────────────────────────────────────────────────────────────
 step "Verificando dependências"
+
+# VPS "cru" (Hetzner, DigitalOcean, Contabo…) não vem com Docker. Antes isto era
+# um beco sem saída: o script morria dizendo "instale antes de continuar" e a
+# pessoa — que por definição não é técnica — ficava sem saber como. Hospedagens
+# com template (Hostinger, HostGator) já trazem Docker, então o caso nunca
+# aparecia para quem escreveu o kit.
+#
+# O instalador oficial do Docker é o mesmo comando da documentação deles; não
+# inventamos nada. Em modo interativo PERGUNTA (instalar coisa no servidor de
+# alguém sem avisar é abuso de confiança); com --yes segue direto, que é o
+# contrato desse modo.
+if ! command -v docker >/dev/null 2>&1; then
+  c_ylw "⚠ Docker não está instalado — é o motor que roda o CRM."
+  instalar=1
+  if [ "$NONINTERACTIVE" = 0 ]; then
+    read -r -p "  Posso instalar agora? (S/n) " r
+    case "${r:-S}" in [Nn]*) instalar=0;; esac
+  fi
+  if [ "$instalar" = 1 ]; then
+    c_dim "  Instalando (get.docker.com — o instalador oficial). Leva 1-2 minutos…"
+    # A saída vai para um log em vez de /dev/null: silenciar o stderr também
+    # deixava a falha MUDA (disco cheio, apt travado, arquitetura sem pacote
+    # viravam todos a mesma frase genérica) — exatamente o que o trap lá em cima
+    # existe para impedir. Tela limpa no caminho feliz, causa real no caminho ruim.
+    _docker_log="$(mktemp)"
+    if ! curl -fsSL https://get.docker.com | sh >"$_docker_log" 2>&1; then
+      c_red "  Últimas linhas do instalador do Docker:"; tail -15 "$_docker_log" >&2
+      die "Não consegui instalar o Docker (log em $_docker_log). Rode 'curl -fsSL https://get.docker.com | sh' e tente de novo."
+    fi
+    rm -f "$_docker_log"; unset _docker_log
+    command -v docker >/dev/null 2>&1 || die "Docker instalou mas não ficou no PATH. Reabra o terminal e rode de novo."
+    c_grn "✓ Docker instalado"
+  else
+    die "Sem Docker não dá para seguir. Instale com: curl -fsSL https://get.docker.com | sh"
+  fi
+fi
+
 for bin in docker git openssl curl; do
   command -v "$bin" >/dev/null 2>&1 || die "'$bin' não encontrado. Instale antes de continuar."
 done
@@ -348,6 +407,35 @@ source "$KIT_DIR/_common.sh"
 step "Configuração"
 # Se já existe .env, carrega pra não repetir perguntas (idempotência).
 if [ -f .env ]; then load_env .env; c_grn "✓ .env existente carregado"; fi
+
+# ── Supabase automático (opcional) ──────────────────────────────────────────
+# Criar o projeto no navegador e copiar 4 campos era o passo mais LENTO da
+# instalação (medido: ~59min de preparação contra ~3min de script) e o mais
+# fácil de errar — copiar a "Direct connection", que é IPv6-only e não conecta
+# de um VPS IPv4, é a armadilha campeã.
+#
+# Com SUPABASE_ACCESS_TOKEN no ambiente e as credenciais ainda vazias, o
+# projeto é criado aqui e as 4 variáveis entram direto no fluxo, sem copiar e
+# colar. Sem o token, nada muda: seguem as perguntas de sempre.
+if [ -z "${NEXT_PUBLIC_SUPABASE_URL:-}" ] && [ -n "${SUPABASE_ACCESS_TOKEN:-}" ]; then
+  step "Criando o projeto Supabase automaticamente"
+  _sb_out="$(bash "$KIT_DIR/supabase-provision.sh" "${APP_NAME:-DeskcommCRM}" "${SUPABASE_REGION:-sa-east-1}")" \
+    || die "Não consegui criar o projeto Supabase. Crie no painel e rode de novo sem SUPABASE_ACCESS_TOKEN."
+  # O script imprime `CHAVE='valor'` em stdout (o visual dele vai para stderr).
+  # A leitura é por parse, não por `eval` — o porquê está em
+  # sb_carrega_credenciais(), e `test-validators.sh` cobra isso.
+  sb_carrega_credenciais "$_sb_out"
+  unset _sb_out
+
+  # Credencial que não chegou tem que parar AQUI. Sem esta checagem o install
+  # seguiria com a variável vazia e morreria lá na frente, longe da causa — e a
+  # pessoa veria "erro de conexão" em vez de "o provisionamento não devolveu X".
+  if [ -z "${NEXT_PUBLIC_SUPABASE_URL:-}" ] || [ -z "${NEXT_PUBLIC_SUPABASE_ANON_KEY:-}" ] \
+     || [ -z "${SUPABASE_SERVICE_ROLE_KEY:-}" ] || [ -z "${SUPABASE_DB_URL:-}" ]; then
+    die "O provisionamento não devolveu as 4 credenciais. Crie o projeto no painel e rode de novo sem SUPABASE_ACCESS_TOKEN."
+  fi
+  c_grn "✓ Supabase pronto — as 4 credenciais entraram sozinhas"
+fi
 
 # Cada linha: VARIÁVEL|pergunta|padrão|validador|secret|opcional
 # A ordem importa: a URL do projeto vem antes das chaves porque os validadores
@@ -564,6 +652,12 @@ envq() { printf "%s='%s'\n" "$1" "$(printf '%s' "${2-}" | sed "s/'/'\\\\''/g")";
   envq APP_LOGO_URL "${APP_LOGO_URL:-}"
   envq ANTHROPIC_API_KEY "$ANTHROPIC_API_KEY"
   envq AI_GATEWAY_API_KEY "${AI_GATEWAY_API_KEY:-}"
+  printf '# OpenRouter: alternativa ao AI Gateway para o chat da IA. A ordem de\n'
+  printf '# resolução é AI_GATEWAY_API_KEY > OPENROUTER_API_KEY > provider direto,\n'
+  printf '# então deixar vazio NÃO muda nada — o comportamento de hoje continua.\n'
+  printf '# BASE_URL vazia = https://openrouter.ai/api/v1 (só mude se usa proxy).\n'
+  envq OPENROUTER_API_KEY "${OPENROUTER_API_KEY:-}"
+  envq OPENROUTER_BASE_URL "${OPENROUTER_BASE_URL:-}"
   printf '# OpenAI: transcrição dos áudios do WhatsApp (Whisper) + embeddings do RAG.\n'
   printf '# Opcional — sem ela a IA responde sem a base e pede o áudio em texto.\n'
   envq OPENAI_API_KEY "${OPENAI_API_KEY:-}"

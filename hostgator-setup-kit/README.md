@@ -18,17 +18,53 @@ Este kit sobe o **DeskcommCRM** no seu servidor VPS da HostGator. Você tem dois
 
 ## ⚙️ Caminho manual: um comando
 
-Dentro do VPS, com Docker instalado:
+Dentro do VPS:
 
 ```bash
 bash install.sh
 ```
+
+> **VPS sem Docker?** O instalador resolve. Se não encontrar o Docker, ele **pergunta**
+> antes e instala pelo `get.docker.com` — o instalador oficial da Docker, que roda como
+> root, como manda a documentação deles. Com `--yes` ele segue sem perguntar, que é o
+> contrato desse modo. Se preferir instalar por conta própria, responda `n` e rode
+> `curl -fsSL https://get.docker.com | sh` antes.
 
 O instalador pergunta o que precisa (domínio, chaves do Supabase e da Anthropic,
 e-mail/senha do admin), gera o resto e sobe tudo.
 
 > Modo não-interativo: copie `.env.hostgator.example` (do repositório) para `.env`,
 > preencha, e rode `bash install.sh --yes`.
+
+## Criar o Supabase automaticamente (opcional)
+
+Criar o projeto no navegador e copiar as 4 credenciais é o passo mais demorado da
+instalação — e o mais fácil de errar (copiar a *Direct connection*, que é IPv6-only e
+não conecta de um VPS IPv4, é a armadilha mais comum). Dá para pular tudo isso:
+
+```bash
+export SUPABASE_ACCESS_TOKEN=sbp_...        # supabase.com/dashboard/account/tokens
+bash install.sh                             # cria o projeto e segue a instalação
+```
+
+O `install.sh` chama o provisionamento sozinho quando encontra o token e as
+credenciais ainda vazias — as 4 variáveis entram no fluxo sem copiar e colar.
+Para criar só o projeto, sem instalar, o script também roda sozinho:
+
+```bash
+bash supabase-provision.sh "Nome do Projeto" sa-east-1 >> .env
+```
+
+O script cria o projeto, **espera o banco ficar `ACTIVE_HEALTHY`** (projeto novo não
+nasce pronto), busca as chaves e **descobre o host do pooler testando conexão real** em
+vez de adivinhar. Imprime as 4 linhas prontas para colar no `.env`.
+
+⚠️ **O token é uma chave mestra** — dá acesso a todos os projetos da conta. Ele é lido do
+ambiente e nunca gravado em disco. Instalando para terceiros, use o token DO CLIENTE, ou
+rode o script na sua máquina e leve só as 4 credenciais para o servidor dele.
+
+⚠️ **Plano grátis: 2 projetos por usuário**, contados em todas as organizações onde ele é
+Owner/Admin. Não dá para hospedar vários clientes numa conta só.
 
 ## O que você precisa antes
 
@@ -47,7 +83,7 @@ e-mail/senha do admin), gera o resto e sobe tudo.
   ~150 MB por sessão de WhatsApp além de ~300 MB de overhead do Node. Com 2 GB você roda
   no limite e vai precisar de swap. Ver `docs/runbooks/waha-hostgator.md`.
 - Portas **80** e **443** abertas (`ufw allow 80,443,22/tcp`).
-- Docker + Docker Compose v2.
+- Docker + Docker Compose v2 — o `install.sh` instala o Docker sozinho se faltar (ver acima).
 
 ### VPS que já vem com proxy próprio (Hostinger, Coolify, Dokploy…)
 
