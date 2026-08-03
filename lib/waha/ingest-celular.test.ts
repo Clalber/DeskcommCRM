@@ -274,6 +274,28 @@ describe("eco do próprio envio", () => {
     expect(messages).toHaveLength(2);
   });
 
+  it("JANELA CONHECIDA: enquanto o envio está `queued` sem external_id, o eco duplica", async () => {
+    // ⚠️ Documenta um defeito conhecido, não o aprova. Se alguém fechar a
+    // janela, este caso fica vermelho — e é para ficar: o número certo passa a
+    // ser 1, e quem consertar atualiza aqui.
+    //
+    // O envio (app/api/v1/messages/_handler.ts) grava a linha ANTES de falar com
+    // o canal (status `queued`, `external_id` NULL) e só carimba o external_id
+    // num UPDATE depois que o adapter responde. O eco que chegar nesse intervalo
+    // não encontra nada para casar — nem por id completo, nem por bare.
+    //
+    // Antes do PR isso não aparecia no NOWEB porque o eco era descartado junto
+    // com as mensagens legítimas do celular. É o preço de consertar aquilo: no
+    // engine padrão do kit, esta duplicação em corrida é comportamento NOVO.
+    const { admin, messages } = bancoDeMentira([
+      { organization_id: "org-1", external_id: null, direction: "outbound", body: "respondi por aqui mesmo" },
+    ]);
+
+    await dispatchWahaEvent(admin as never, SESSION as never, envelope(CELULAR_NOWEB), "req-1");
+
+    expect(messages, "se virou 1, a janela foi fechada — atualize este caso").toHaveLength(2);
+  });
+
   it("o dedup é por organização — o eco de outro tenant não bloqueia o meu", async () => {
     // Service role bypassa RLS: sem o filtro explícito de organization_id, uma
     // linha de OUTRO tenant com o mesmo id faria a mensagem desta org sumir.
@@ -287,30 +309,51 @@ describe("eco do próprio envio", () => {
   });
 });
 
-describe("WEBJS — o número do operador nunca vira contato", () => {
+describe("precedência dos três candidatos a chat", () => {
+  // `from` = OPERADOR é o cenário WEBJS (no NOWEB, `from` é o próprio chat).
   const WEBJS: WahaPayload = {
     id: "true_5511999999999@c.us_3EB0ABCDEF",
-    from: "5599888888888@c.us", // no WEBJS, `from` é o OPERADOR
+    from: "5599888888888@c.us",
     to: "5511999999999@c.us",
     fromMe: true,
     body: "resposta pelo WhatsApp Web",
   };
 
-  it("com `to` presente, o contato é o destinatário", async () => {
+  it("`to` vence: com ele presente, o contato é o destinatário", async () => {
     const { admin, rpcs } = bancoDeMentira();
     await dispatchWahaEvent(admin as never, SESSION as never, envelope(WEBJS), "req-1");
-    const contato = rpcs.find((c) => c.fn === "fn_upsert_wa_contact")!;
-    expect(contato.args.p_chat_id).toBe("5511999999999@c.us");
+    expect(rpcs.find((c) => c.fn === "fn_upsert_wa_contact")!.args.p_chat_id).toBe("5511999999999@c.us");
   });
 
-  it("sem `to`, o id composto resolve o chat ANTES de `from` — o operador não vira contato", async () => {
-    // Este é o risco do terceiro fallback: no WEBJS `from` é o operador, então
-    // usá-lo criaria um contato com o próprio número da empresa. O id composto
-    // (2º fallback) resolve primeiro, e o WEBJS sempre manda id composto.
+  it("sem `to`, o id composto vence `from` — mesmo com `from` sendo outro número", async () => {
+    // Guarda de vacuidade: o `from` aqui é DIFERENTE do chat do id, senão o caso
+    // passaria mesmo que a precedência estivesse invertida.
     const { admin, rpcs } = bancoDeMentira();
     await dispatchWahaEvent(admin as never, SESSION as never, envelope({ ...WEBJS, to: undefined }), "req-1");
-    const contato = rpcs.find((c) => c.fn === "fn_upsert_wa_contact")!;
-    expect(contato.args.p_chat_id).toBe("5511999999999@c.us");
-    expect(contato.args.p_chat_id).not.toBe("5599888888888@c.us");
+    const chat = rpcs.find((c) => c.fn === "fn_upsert_wa_contact")!.args.p_chat_id;
+    expect(chat).toBe("5511999999999@c.us");
+    expect(chat).not.toBe("5599888888888@c.us");
+  });
+
+  it("sem `to` E com id sem chat embutido, `from` VIRA o contato — inclusive no WEBJS", async () => {
+    // ⚠️ Este caso documenta um comportamento, não o aprova.
+    //
+    // No NOWEB está certo: `from` de uma mensagem fromMe É o chat. No WEBJS
+    // seria errado — `from` é o número do operador, e o CRM criaria um contato
+    // com o próprio número da empresa.
+    //
+    // O ingest NÃO sabe qual engine falou com ele. O que impede o dano hoje é o
+    // WAHA nunca produzir a combinação (sem `to` + id bare) no WEBJS — garantia
+    // EXTERNA, não uma proteção do nosso código. Se algum dia produzir, o
+    // sintoma é contato fantasma com o número da empresa. Escrito aqui para que
+    // isso seja uma decisão consciente e não uma surpresa.
+    const { admin, rpcs } = bancoDeMentira();
+    await dispatchWahaEvent(
+      admin as never,
+      SESSION as never,
+      envelope({ id: "3EB0ABCDEF", from: "5599888888888@c.us", fromMe: true, body: "oi" }),
+      "req-1",
+    );
+    expect(rpcs.find((c) => c.fn === "fn_upsert_wa_contact")!.args.p_chat_id).toBe("5599888888888@c.us");
   });
 });
