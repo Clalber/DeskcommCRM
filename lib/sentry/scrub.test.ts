@@ -5,18 +5,17 @@ import { scrubMessage, scrubUrl, sentryScrubHooks } from "./scrub";
 // Issue #100. O que estes testes travam: com `tracesSampleRate: 1` e sem
 // `beforeSendTransaction`/`beforeSendSpan`/`beforeBreadcrumb`, a URL crua saía do
 // servidor do self-hoster em 6 campos (transaction, request.url, url.full,
-// http.url, url.path, http.target). Quatro rotas têm CREDENCIAL no path, e na
-// instalação padrão o token do webhook do WAHA é a credencial inteira daquela
-// rota — `WAHA_WEBHOOK_REQUIRE_SIGNATURE` nasce `false` porque o WAHA Core não assina.
+// http.url, url.path, http.target). As rotas de webhook por tenant têm CREDENCIAL
+// no path, e na instalação padrão esse token é a credencial inteira da rota,
+// porque a exigência de assinatura nasce desligada.
 
 const TOKEN = "wht_9f3a1c8b2e4d6a0f";
 
 describe("scrubUrl", () => {
-  it("redige o token das 4 rotas em que ele é credencial", () => {
+  it("redige o token das rotas em que ele é credencial, inclusive canal novo", () => {
     for (const path of [
-      `/api/v1/webhooks/waha/${TOKEN}`,
       `/api/v1/webhooks/in/${TOKEN}`,
-      `/api/v1/webhooks/meta/${TOKEN}`,
+      `/api/v1/webhooks/canal-qualquer/${TOKEN}`,
       `/team/accept-invite/${TOKEN}`,
     ]) {
       const out = scrubUrl(`https://crm.exemplo.com${path}`);
@@ -52,7 +51,7 @@ describe("scrubUrl", () => {
   });
 
   it("pega o token mesmo com query junto", () => {
-    const out = scrubUrl(`https://crm.exemplo.com/api/v1/webhooks/waha/${TOKEN}?sig=deadbeef`);
+    const out = scrubUrl(`https://crm.exemplo.com/api/v1/webhooks/in/${TOKEN}?sig=deadbeef`);
     expect(out).not.toContain(TOKEN);
     expect(out).not.toContain("deadbeef");
   });
@@ -70,32 +69,40 @@ describe("scrubMessage", () => {
 });
 
 describe("sentryScrubHooks", () => {
-  const urlComToken = `https://crm.exemplo.com/api/v1/webhooks/waha/${TOKEN}?sig=deadbeef`;
+  const urlComToken = `https://crm.exemplo.com/api/v1/webhooks/in/${TOKEN}?sig=deadbeef`;
 
-  it("beforeSend limpa header sensível e a URL do request", () => {
+  it("limpa header sensível por padrão, inclusive de integração que ainda não existe", () => {
     const event = sentryScrubHooks.beforeSend({
       request: {
         url: urlComToken,
-        headers: { authorization: "Bearer segredo", "content-type": "application/json" },
+        headers: {
+          authorization: "Bearer segredo",
+          "x-canal-novo-api-key": "chave-de-integracao-futura",
+          "x-algum-token": "outro-segredo",
+          "content-type": "application/json",
+        },
       },
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } as any);
     expect(event.request?.headers).not.toHaveProperty("authorization");
+    // O ponto do padrão: header de integração nova já nasce coberto.
+    expect(event.request?.headers).not.toHaveProperty("x-canal-novo-api-key");
+    expect(event.request?.headers).not.toHaveProperty("x-algum-token");
     expect(event.request?.headers).toHaveProperty("content-type");
     expect(JSON.stringify(event)).not.toContain(TOKEN);
   });
 
   it("beforeSendTransaction limpa os atributos de trace — o canal que não tinha guarda", () => {
     const event = sentryScrubHooks.beforeSendTransaction({
-      transaction: `GET /api/v1/webhooks/waha/${TOKEN}`,
+      transaction: `GET /api/v1/webhooks/in/${TOKEN}`,
       request: { url: urlComToken },
       contexts: {
         trace: {
           data: {
             "url.full": urlComToken,
             "http.url": urlComToken,
-            "url.path": `/api/v1/webhooks/waha/${TOKEN}`,
-            "http.target": `/api/v1/webhooks/waha/${TOKEN}?sig=deadbeef`,
+            "url.path": `/api/v1/webhooks/in/${TOKEN}`,
+            "http.target": `/api/v1/webhooks/in/${TOKEN}?sig=deadbeef`,
           },
         },
       },

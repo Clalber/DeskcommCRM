@@ -34,14 +34,20 @@ type EventLike = {
 type SpanLike = { description?: string; data?: Record<string, unknown> };
 type BreadcrumbLike = { message?: string; data?: Record<string, unknown> };
 
-export const SENSITIVE_HEADERS = [
-  "authorization",
-  "cookie",
-  "x-api-key",
-  "x-waha-api-key",
-  "x-nuvemshop-token",
-  "x-deskcomm-token",
-];
+/**
+ * Header sensível por PADRÃO, não por lista fechada.
+ *
+ * A lista anterior enumerava os headers de cada integração pelo nome. Isso tem dois
+ * defeitos: header de integração nova entra vazando até alguém lembrar de somar à
+ * lista, e o arquivo passa a nomear provider — o que a doutrina de restrição de canal
+ * proíbe fora de `lib/channels/` (`docs/doctrine/restricao-de-canal.md`). Casar pelo
+ * que torna o header sensível cobre os dois casos de uma vez.
+ */
+const SENSITIVE_HEADER = /authorization|cookie|api[-_]?key|token|secret|password|credential/i;
+
+export function isSensitiveHeader(name: string): boolean {
+  return SENSITIVE_HEADER.test(name);
+}
 
 export function scrubMessage(input: string): string {
   return input
@@ -51,20 +57,25 @@ export function scrubMessage(input: string): string {
 }
 
 /**
- * Rotas cujo segmento de path é CREDENCIAL, não identificador.
+ * Rotas cujo último segmento é CREDENCIAL, não identificador.
  *
  * Os ~134 segmentos `[id]` do app são UUID e ficam de fora de propósito: redigir
  * tudo cegamente tornaria o Sentry inútil para depurar, que é o oposto do objetivo.
- * Estes quatro são diferentes — o token É o mecanismo de autenticação:
+ * Estes são diferentes — o token É o mecanismo de autenticação:
  *
- *   /api/v1/webhooks/{in,meta,waha}/<token>  — o Caddyfile documenta que a variante
- *     por tenant "continua pública" e se apoia no token ser imprevisível. Pior: o
- *     `WAHA_WEBHOOK_REQUIRE_SIGNATURE` nasce `false` (o WAHA Core não assina), então
- *     na instalação padrão o token do path é a credencial INTEIRA daquela rota.
- *   /team/accept-invite/<token>              — link de convite, aberto no browser.
+ *   /api/v1/webhooks/<canal>/<token>  — a variante por tenant é pública por desenho
+ *     (o Caddyfile diz isso com todas as letras) e se apoia em o token ser
+ *     imprevisível. Pior: a exigência de assinatura nasce desligada, porque nem todo
+ *     transporte assina — então na instalação padrão o token do path é a credencial
+ *     INTEIRA daquela rota. Publicá-lo na telemetria a anula.
+ *   /team/accept-invite/<token>       — link de convite, aberto no browser.
+ *
+ * O segmento do canal é `[^/]+` de propósito, não uma lista: canal novo ganha a
+ * proteção sozinho, e este arquivo não precisa nomear provider (invariante 1 de
+ * `docs/doctrine/restricao-de-canal.md`).
  */
 const CREDENTIAL_PATH =
-  /(\/api\/v1\/webhooks\/(?:in|meta|waha)\/|\/team\/accept-invite\/)[^/?#\s]+/g;
+  /(\/api\/v1\/webhooks\/[^/?#\s]+\/|\/team\/accept-invite\/)[^/?#\s]+/g;
 
 /**
  * Redige credencial de path e valor de query string, preservando as CHAVES da query.
@@ -107,7 +118,7 @@ function scrubHeaders(headers: unknown): void {
   if (!headers || typeof headers !== "object") return;
   const record = headers as Record<string, string>;
   for (const key of Object.keys(record)) {
-    if (SENSITIVE_HEADERS.includes(key.toLowerCase())) delete record[key];
+    if (isSensitiveHeader(key)) delete record[key];
   }
 }
 
