@@ -2,14 +2,14 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useTransition } from "react";
-import { ArrowRight, CaretDoubleLeft, CaretDoubleRight } from "@/lib/ui/icons";
+import { ArrowRight, CaretDoubleLeft, CaretDoubleRight, Gear } from "@/lib/ui/icons";
 import { cn } from "@/lib/utils";
 import { toggleSidebar } from "@/app/actions/shell/toggleSidebar";
 import { useAuth } from "@/hooks/auth/AuthProvider";
 import { ConnectionHealthDot } from "@/components/connections/ConnectionHealthDot";
 import { VersionFooter } from "@/components/shell/VersionFooter";
 import { branding } from "@/lib/branding";
-import { sidebarGroups } from "@/lib/navigation/registry";
+import { GRUPO_NO_RODAPE, NAV_GROUPS, sidebarGroups } from "@/lib/navigation/registry";
 
 /**
  * Navegação principal, agrupada por objetivo.
@@ -23,7 +23,11 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
   const pathname = usePathname();
   const [isPending, startTransition] = useTransition();
   const { user, activeOrg } = useAuth();
-  const grupos = sidebarGroups(user.is_platform_admin, activeOrg?.role ?? null);
+  const todos = sidebarGroups(user.is_platform_admin, activeOrg?.role ?? null);
+  // Configurações sai da área que rola e vai para o rodapé fixo: medido em
+  // 1280x768, ele caía fora da dobra mesmo em telas de 1080px.
+  const grupos = todos.filter((g) => g.group.id !== GRUPO_NO_RODAPE);
+  const rodape = NAV_GROUPS.find((g) => g.id === GRUPO_NO_RODAPE)?.hub;
 
   const brand = branding();
 
@@ -58,7 +62,7 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
           </span>
         )}
       </div>
-      <nav className="flex-1 space-y-4 overflow-y-auto p-2" aria-label="Navegação principal">
+      <nav className="flex-1 space-y-3 overflow-y-auto p-2" aria-label="Navegação principal">
         {grupos.map(({ group, items }) => {
           const tituloId = `nav-grupo-${group.id}`;
           return (
@@ -70,7 +74,7 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
               ) : (
                 <h2
                   id={tituloId}
-                  className="px-3 pt-1 text-[11px] font-medium uppercase tracking-wider text-muted-foreground/70"
+                  className="px-3 text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60"
                 >
                   {group.label}
                 </h2>
@@ -86,7 +90,7 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
                         title={collapsed ? item.label : undefined}
                         aria-current={isActive ? "page" : undefined}
                         className={cn(
-                          "relative flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors",
+                          "relative flex items-center gap-3 rounded-md px-3 py-1.5 text-sm transition-colors",
                           isActive
                             ? "bg-accent text-accent-foreground"
                             : "text-muted-foreground hover:bg-accent/50 hover:text-foreground",
@@ -111,7 +115,7 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
                       title={collapsed ? group.hub.label : undefined}
                       aria-current={pathname === group.hub.href ? "page" : undefined}
                       className={cn(
-                        "flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors",
+                        "flex items-center gap-3 rounded-md px-3 py-1.5 text-sm transition-colors",
                         pathname === group.hub.href
                           ? "bg-accent text-accent-foreground"
                           : "text-muted-foreground hover:bg-accent/50 hover:text-foreground",
@@ -129,6 +133,23 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
         })}
       </nav>
       <div className="border-t p-2">
+        {rodape && (
+          <Link
+            href={rodape.href}
+            title={collapsed ? rodape.label : undefined}
+            aria-current={pathname.startsWith(rodape.href) ? "page" : undefined}
+            className={cn(
+              "mb-1 flex items-center gap-3 rounded-md px-3 py-1.5 text-sm transition-colors",
+              pathname.startsWith(rodape.href)
+                ? "bg-accent text-accent-foreground"
+                : "text-muted-foreground hover:bg-accent/50 hover:text-foreground",
+              collapsed && "justify-center px-2",
+            )}
+          >
+            <Gear size={18} aria-hidden />
+            {!collapsed && <span className="truncate">{rodape.label}</span>}
+          </Link>
+        )}
         <VersionFooter collapsed={collapsed} />
         <button
           type="button"

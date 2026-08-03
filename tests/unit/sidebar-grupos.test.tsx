@@ -54,14 +54,9 @@ describe("Sidebar agrupado", () => {
       .getAllByRole("heading")
       .map((el) => el.textContent?.trim())
       .filter(Boolean);
-    expect(titulos).toEqual([
-      "Atendimento",
-      "CRM",
-      "Agente de IA",
-      "Canais",
-      "Análise",
-      "Organização",
-    ]);
+    // Organização não tem título aqui: seu hub (Configurações) vive no rodapé
+    // fixo, fora da área que rola — medido, ele caía fora da dobra até em 1080px.
+    expect(titulos).toEqual(["Atendimento", "CRM", "Agente de IA", "Canais", "Análise"]);
   });
 
   it("leva a Funis sem passar por Configurações", () => {
@@ -71,11 +66,21 @@ describe("Sidebar agrupado", () => {
     expect(funis).toHaveAttribute("href", "/app/settings/tenant/pipelines");
   });
 
-  it("desenterra Conexões, Nuvemshop e Audit Log", () => {
+  it("desenterra Canal oficial e Audit Log", () => {
     comoPapel("admin");
     render(<Sidebar collapsed={false} />);
-    expect(screen.getByRole("link", { name: /Nuvemshop/ })).toBeTruthy();
+    expect(screen.getByRole("link", { name: /Canal oficial/ })).toBeTruthy();
     expect(screen.getByRole("link", { name: /Audit Log/ })).toBeTruthy();
+  });
+
+  it("Configurações fica no rodapé, nunca dependendo de scroll", () => {
+    comoPapel("admin");
+    render(<Sidebar collapsed={false} />);
+    const config = screen.getByRole("link", { name: /Configurações/ });
+    expect(config).toHaveAttribute("href", "/app/settings");
+    // Fora da <nav> que rola.
+    const nav = screen.getByRole("navigation", { name: "Navegação principal" });
+    expect(nav.contains(config)).toBe(false);
   });
 
   it("não deixa cabeçalho órfão quando a permissão esvazia o grupo", () => {
@@ -91,9 +96,9 @@ describe("Sidebar agrupado", () => {
     comoPapel("admin");
     render(<Sidebar collapsed={false} />);
     expect(screen.getByRole("link", { name: /Ver tudo em IA/ })).toHaveAttribute("href", "/app/ai");
-    expect(screen.getByRole("link", { name: /Configurações/ })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: /Ver tudo em Canais/ })).toHaveAttribute(
       "href",
-      "/app/settings",
+      "/app/canais",
     );
   });
 

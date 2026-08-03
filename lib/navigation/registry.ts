@@ -97,7 +97,7 @@ export const NAV_GROUPS: NavGroup[] = [
   { id: "atendimento", label: "Atendimento" },
   { id: "crm", label: "CRM" },
   { id: "ia", label: "Agente de IA", hub: { href: "/app/ai", label: "Ver tudo em IA" } },
-  { id: "canais", label: "Canais" },
+  { id: "canais", label: "Canais", hub: { href: "/app/canais", label: "Ver tudo em Canais" } },
   { id: "analise", label: "Análise" },
   {
     id: "organizacao",
@@ -105,6 +105,17 @@ export const NAV_GROUPS: NavGroup[] = [
     hub: { href: "/app/settings", label: "Configurações" },
   },
 ];
+
+/**
+ * Grupo cujo hub vive no RODAPÉ fixo do sidebar, fora da área que rola.
+ *
+ * Medido em tela (1280×768, o notebook comum): com todos os grupos na área
+ * rolável, o conteúdo dava 1019px contra 663px visíveis — Configurações ficava
+ * fora da dobra em TODAS as alturas testadas, inclusive 1080px. É o item que
+ * mais se procura quando não se acha algo; deixá-lo dependendo de scroll
+ * recriaria, em outra forma, o problema que esta reorganização veio resolver.
+ */
+export const GRUPO_NO_RODAPE: NavGroupId = "organizacao";
 
 /**
  * Como `minRole` foi escolhido — medido tela a tela, não estimado:
@@ -289,6 +300,7 @@ export const NAV_DESTINATIONS: NavDestination[] = [
     description: "Seus números de WhatsApp: saúde, reconexão e novos canais.",
     icon: PlugsConnected,
     group: "canais",
+    section: "Conversar com clientes",
     minRole: "admin",
     sidebar: true,
     healthDot: true,
@@ -306,6 +318,7 @@ export const NAV_DESTINATIONS: NavDestination[] = [
     description: "Conecte o número oficial da WhatsApp Cloud API e o webhook dela.",
     icon: ShieldCheck,
     group: "canais",
+    section: "Conversar com clientes",
     minRole: "admin",
     sidebar: true,
   },
@@ -315,8 +328,8 @@ export const NAV_DESTINATIONS: NavDestination[] = [
     description: "Os modelos aprovados pela Meta e os parâmetros de cada um.",
     icon: FileText,
     group: "canais",
+    section: "Conversar com clientes",
     minRole: "admin",
-    sidebar: true,
   },
   {
     // Não tinha link nenhum no app inteiro: só se chegava digitando a URL.
@@ -325,10 +338,10 @@ export const NAV_DESTINATIONS: NavDestination[] = [
     description: "Conecte a loja para trazer pedidos e clientes para dentro do CRM.",
     icon: Storefront,
     group: "canais",
+    section: "Trazer dados de fora",
     // A página não filtra por papel, mas as Server Actions de conectar e
     // desconectar exigem admin — mostrar a um viewer seria oferecer botão morto.
     minRole: "admin",
-    sidebar: true,
   },
   {
     href: "/app/webhooks",
@@ -336,8 +349,8 @@ export const NAV_DESTINATIONS: NavDestination[] = [
     description: "Avise outros sistemas quando algo acontecer aqui dentro.",
     icon: WebhooksLogo,
     group: "canais",
+    section: "Trazer dados de fora",
     minRole: "manager",
-    sidebar: true,
   },
 
   // ---- Análise — olhar o sistema funcionando ----
@@ -401,7 +414,6 @@ export const NAV_DESTINATIONS: NavDestination[] = [
     icon: UsersThree,
     group: "organizacao",
     section: "Sua empresa",
-    sidebar: true,
   },
   {
     href: "/app/settings/tenant",
