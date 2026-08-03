@@ -54,8 +54,13 @@ export type NavGroupId = "atendimento" | "crm" | "ia" | "canais" | "analise" | "
 export interface NavGroup {
   id: NavGroupId;
   label: string;
-  /** Rota do hub, quando o grupo tem telas demais para caber no sidebar. */
-  hub?: string;
+  /**
+   * Hub do grupo, quando ele tem telas demais para caber no sidebar.
+   * O rótulo é declarado junto do href porque não é derivável: "Ver tudo em IA"
+   * é útil, "Ver tudo em Organização" seria gratuito quando a tela já se chama
+   * Configurações e o usuário a conhece por esse nome.
+   */
+  hub?: { href: string; label: string };
 }
 
 export interface NavDestination {
@@ -90,10 +95,14 @@ export interface NavDestination {
 export const NAV_GROUPS: NavGroup[] = [
   { id: "atendimento", label: "Atendimento" },
   { id: "crm", label: "CRM" },
-  { id: "ia", label: "Agente de IA", hub: "/app/ai" },
+  { id: "ia", label: "Agente de IA", hub: { href: "/app/ai", label: "Ver tudo em IA" } },
   { id: "canais", label: "Canais" },
   { id: "analise", label: "Análise" },
-  { id: "organizacao", label: "Organização", hub: "/app/settings" },
+  {
+    id: "organizacao",
+    label: "Organização",
+    hub: { href: "/app/settings", label: "Configurações" },
+  },
 ];
 
 /**
