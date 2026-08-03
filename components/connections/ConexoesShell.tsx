@@ -49,9 +49,16 @@ export function ConexoesShell({ wahaConfigured }: { wahaConfigured: boolean }) {
   return (
     <Tabs value={aba} onValueChange={(v) => irPara(v, sub)} className="flex flex-col gap-4">
       <TabsList>
-        {/* Rótulos pelo que o usuário RECONHECE, não pelo nome técnico do provedor:
-            ele sabe se leu um QR ou se tem conta na Meta — não sabe o que é "WAHA"
-            nem "Cloud API" sozinho. */}
+        {/* Rótulos pelo que o usuário RECONHECE, não pelo nome técnico do motor por
+            trás: ele sabe se leu um QR ou se tem conta na Meta; a sigla do provedor
+            não diz nada a quem instalou o sistema para vender.
+
+            Este comentário já citou a sigla como exemplo — e o `lint:channels`
+            reprovou, porque o regex da doutrina não distingue prosa de código
+            (limitação registrada no próprio `scripts/lint-channels.ts`). Reescrever
+            a frase custou menos que abrir exceção no gate, e o gate continua
+            estrito: o dia em que alguém escrever o nome do provider aqui DE VERDADE,
+            ele reprova igual. */}
         <TabsTrigger value="numeros">Números por QR</TabsTrigger>
         <TabsTrigger value="oficial">API Oficial (Meta)</TabsTrigger>
       </TabsList>
