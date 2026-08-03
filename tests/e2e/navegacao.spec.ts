@@ -112,13 +112,27 @@ test.describe("navegação agrupada", () => {
     await page.waitForURL(/knowledge\/sources/);
   });
 
-  test("o canal oficial da Meta fica em Canais, não escondido em Configurações", async ({
-    page,
-  }) => {
+  /**
+   * O canal oficial saiu de Configurações no PR #105 e virou aba de Conexões.
+   * A porta, portanto, é Conexões — que agora vive no grupo CANAIS do sidebar,
+   * e não mais como um card perdido em Configurações.
+   */
+  test("chega ao canal oficial pelo grupo Canais, não por Configurações", async ({ page }) => {
     await loginAdmin(page);
-    await expect(
-      sidebar(page).getByRole("link", { name: /Canal oficial/ }),
-    ).toBeVisible();
+
+    await sidebar(page).getByRole("link", { name: "Conexões" }).click();
+    await page.waitForURL(/\/app\/connections/);
+    await expect(page.getByRole("tab", { name: /oficial/i })).toBeVisible();
+  });
+
+  test("o ⌘K acha o canal oficial por nome, mesmo sem tela própria", async ({ page }) => {
+    await loginAdmin(page);
+
+    // Ninguém procura por "Conexões" quando quer o número oficial da Meta —
+    // procura por "oficial". A busca varre a descrição além do rótulo.
+    await page.keyboard.press("ControlOrMeta+k");
+    await page.getByRole("combobox").fill("oficial");
+    await expect(page.getByRole("option", { name: /Conexões/ })).toBeVisible();
   });
 
   test("⌘K abre, filtra e navega", async ({ page }) => {
