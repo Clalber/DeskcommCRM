@@ -66,10 +66,13 @@ describe("Sidebar agrupado", () => {
     expect(funis).toHaveAttribute("href", "/app/settings/tenant/pipelines");
   });
 
-  it("desenterra Canal oficial e Audit Log", () => {
+  it("desenterra Nuvemshop e Audit Log", () => {
     comoPapel("admin");
     render(<Sidebar collapsed={false} />);
-    expect(screen.getByRole("link", { name: /Canal oficial/ })).toBeTruthy();
+    // Nuvemshop não tinha link nenhum no app; Audit Log só existia via card em
+    // Configurações. Canal oficial não está aqui de propósito: virou aba de
+    // Conexões no PR #105, e Conexões é a porta.
+    expect(screen.getByRole("link", { name: /Nuvemshop/ })).toBeTruthy();
     expect(screen.getByRole("link", { name: /Audit Log/ })).toBeTruthy();
   });
 
@@ -96,10 +99,6 @@ describe("Sidebar agrupado", () => {
     comoPapel("admin");
     render(<Sidebar collapsed={false} />);
     expect(screen.getByRole("link", { name: /Ver tudo em IA/ })).toHaveAttribute("href", "/app/ai");
-    expect(screen.getByRole("link", { name: /Ver tudo em Canais/ })).toHaveAttribute(
-      "href",
-      "/app/canais",
-    );
   });
 
   it("colapsado esconde os títulos mas mantém os links", () => {

@@ -97,7 +97,7 @@ export const NAV_GROUPS: NavGroup[] = [
   { id: "atendimento", label: "Atendimento" },
   { id: "crm", label: "CRM" },
   { id: "ia", label: "Agente de IA", hub: { href: "/app/ai", label: "Ver tudo em IA" } },
-  { id: "canais", label: "Canais", hub: { href: "/app/canais", label: "Ver tudo em Canais" } },
+  { id: "canais", label: "Canais" },
   { id: "analise", label: "Análise" },
   {
     id: "organizacao",
@@ -297,39 +297,17 @@ export const NAV_DESTINATIONS: NavDestination[] = [
   {
     href: "/app/connections",
     label: "Conexões",
-    description: "Seus números de WhatsApp: saúde, reconexão e novos canais.",
+    // Cobre os DOIS caminhos desde o PR #105: número por QR e canal oficial da
+    // Meta (com os templates dele), cada um numa aba. A descrição cita "oficial"
+    // e "Meta" de propósito — é por esses nomes que se procura no ⌘K, e a busca
+    // varre a descrição além do rótulo.
+    description:
+      "Seus números de WhatsApp: por QR ou canal oficial da Meta, com saúde, reconexão e templates.",
     icon: PlugsConnected,
     group: "canais",
-    section: "Conversar com clientes",
     minRole: "admin",
     sidebar: true,
     healthDot: true,
-  },
-  {
-    // Estava em Configurações, longe de Conexões — conectar um número tinha
-    // duas respostas dependendo de qual WhatsApp era. Aqui os dois caminhos
-    // ficam lado a lado. A URL não muda.
-    //
-    // O PR #105 (feat/canais-oficial) move esta tela para dentro de Conexões
-    // como aba. Se ele mergear, este destino e o de Templates saem do registro
-    // e Conexões passa a cobrir os dois — o registro é o único lugar a editar.
-    href: "/app/settings/canal-oficial",
-    label: "Canal oficial (Meta)",
-    description: "Conecte o número oficial da WhatsApp Cloud API e o webhook dela.",
-    icon: ShieldCheck,
-    group: "canais",
-    section: "Conversar com clientes",
-    minRole: "admin",
-    sidebar: true,
-  },
-  {
-    href: "/app/settings/templates",
-    label: "Templates do WhatsApp",
-    description: "Os modelos aprovados pela Meta e os parâmetros de cada um.",
-    icon: FileText,
-    group: "canais",
-    section: "Conversar com clientes",
-    minRole: "admin",
   },
   {
     // Não tinha link nenhum no app inteiro: só se chegava digitando a URL.
@@ -338,10 +316,10 @@ export const NAV_DESTINATIONS: NavDestination[] = [
     description: "Conecte a loja para trazer pedidos e clientes para dentro do CRM.",
     icon: Storefront,
     group: "canais",
-    section: "Trazer dados de fora",
     // A página não filtra por papel, mas as Server Actions de conectar e
     // desconectar exigem admin — mostrar a um viewer seria oferecer botão morto.
     minRole: "admin",
+    sidebar: true,
   },
   {
     href: "/app/webhooks",
@@ -349,8 +327,8 @@ export const NAV_DESTINATIONS: NavDestination[] = [
     description: "Avise outros sistemas quando algo acontecer aqui dentro.",
     icon: WebhooksLogo,
     group: "canais",
-    section: "Trazer dados de fora",
     minRole: "manager",
+    sidebar: true,
   },
 
   // ---- Análise — olhar o sistema funcionando ----

@@ -36,6 +36,10 @@ const NAV_ALLOWLIST: Record<string, string> = {
     "sub-fluxo de criar agente, alcançado pelo botão dentro da lista de Agentes",
   "/app/team/invite": "sub-fluxo de convite, alcançado de dentro de Equipe",
   "/app/settings/tenant/whatsapp": "redirect legado para /app/connections; mantido por links salvos",
+  "/app/settings/canal-oficial":
+    "redirect para /app/connections?aba=oficial desde o PR #105 — conectar canal passou a ter um lugar só. Conexões é a porta; a aba é navegação interna dela",
+  "/app/settings/templates":
+    "redirect para /app/connections?aba=oficial&sub=templates — template da Meta só existe por causa do canal oficial, e vive como sub-aba dele",
   "/app/settings/atualizacao":
     "porta é o rodapé de versão (VersionFooter), que aparece justamente quando há versão nova — melhor que um card fixo. Além disso é só do dono do servidor (is_platform_admin), papel que o registro não modela",
 };
