@@ -280,5 +280,6 @@ Antes de declarar uma task pronta:
 11. **Mudança de schema saiu como migration versionada + linha no MANIFEST** (ver Doutrina de Migrations) — clones conseguem atualizar
 12. **Se tocou UI/fluxo de usuário: provado pela tela como um leigo faria**, em ambiente fresco estilo VPS, com evidência visual (ver Doutrina de QA Visual com Recursos Reais) — curl não conta
 13. **Living System Checklist respondido** (ver `docs/doctrine/sistema-vivo.md`) — a feature não é ilha: tem entrada + saída, emite atividade/log, aparece na tela, tem mecanismo anti-morte, e o mapa vivo (`docs/architecture/`) reflete peça nova com ≥2 arestas
+14. **Tela nova tem porta** — declarada em `lib/navigation/registry.ts` com seu grupo, ou na allowlist de `tests/unit/navegacao-completude.test.ts` **com justificativa escrita**. Ter tela e ser alcançável são coisas diferentes: o CI reprova tela que existe mas em que só se chega digitando a URL
 
 Um staff engineer aprovaria? Se não, itera.
