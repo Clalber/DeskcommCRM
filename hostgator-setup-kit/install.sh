@@ -286,6 +286,28 @@ mask() {
   if [ "${#v}" -le 12 ]; then printf '%s' "****"; else printf '%s…%s (%d caracteres)' "${v:0:8}" "${v: -4}" "${#v}"; fi
 }
 
+# Lê as 4 credenciais que o supabase-provision.sh imprime (`CHAVE='valor'`) SEM
+# interpretar o conteúdo.
+#
+# Por que não `eval`: os valores saem de `printf "%s='%s'"` sem escapar a aspa
+# simples, então um valor que contenha `'` fecha o literal e o resto da linha
+# volta a ser CÓDIGO — e `SUPABASE_REGION`, que vem do ambiente, é interpolada
+# dentro da connection string que sai de lá. Mesma postura do `load_env`
+# (_common.sh): casa a chave contra uma lista fixa e copia o valor como texto.
+# Chave fora da lista é ignorada, então a saída nunca cria variável arbitrária.
+sb_carrega_credenciais() {
+  local linha val
+  while IFS= read -r linha; do
+    val="${linha#*=\'}"; val="${val%\'}"
+    case "$linha" in
+      NEXT_PUBLIC_SUPABASE_URL=\'*\')      NEXT_PUBLIC_SUPABASE_URL="$val";;
+      NEXT_PUBLIC_SUPABASE_ANON_KEY=\'*\') NEXT_PUBLIC_SUPABASE_ANON_KEY="$val";;
+      SUPABASE_SERVICE_ROLE_KEY=\'*\')     SUPABASE_SERVICE_ROLE_KEY="$val";;
+      SUPABASE_DB_URL=\'*\')               SUPABASE_DB_URL="$val";;
+    esac
+  done <<<"$1"
+}
+
 # Carrega só as funções acima, sem instalar nada — é assim que
 # `test-validators.sh` exercita os validadores:  INSTALL_SH_LIB=1 . install.sh
 if [ "${INSTALL_SH_LIB:-}" = "1" ]; then trap - EXIT; return 0; fi
@@ -312,8 +334,16 @@ if ! command -v docker >/dev/null 2>&1; then
   fi
   if [ "$instalar" = 1 ]; then
     c_dim "  Instalando (get.docker.com — o instalador oficial). Leva 1-2 minutos…"
-    curl -fsSL https://get.docker.com | sh >/dev/null 2>&1 \
-      || die "Não consegui instalar o Docker. Rode 'curl -fsSL https://get.docker.com | sh' e tente de novo."
+    # A saída vai para um log em vez de /dev/null: silenciar o stderr também
+    # deixava a falha MUDA (disco cheio, apt travado, arquitetura sem pacote
+    # viravam todos a mesma frase genérica) — exatamente o que o trap lá em cima
+    # existe para impedir. Tela limpa no caminho feliz, causa real no caminho ruim.
+    _docker_log="$(mktemp)"
+    if ! curl -fsSL https://get.docker.com | sh >"$_docker_log" 2>&1; then
+      c_red "  Últimas linhas do instalador do Docker:"; tail -15 "$_docker_log" >&2
+      die "Não consegui instalar o Docker (log em $_docker_log). Rode 'curl -fsSL https://get.docker.com | sh' e tente de novo."
+    fi
+    rm -f "$_docker_log"; unset _docker_log
     command -v docker >/dev/null 2>&1 || die "Docker instalou mas não ficou no PATH. Reabra o terminal e rode de novo."
     c_grn "✓ Docker instalado"
   else
@@ -373,10 +403,18 @@ if [ -z "${NEXT_PUBLIC_SUPABASE_URL:-}" ] && [ -n "${SUPABASE_ACCESS_TOKEN:-}" ]
   _sb_out="$(bash "$KIT_DIR/supabase-provision.sh" "${APP_NAME:-DeskcommCRM}" "${SUPABASE_REGION:-sa-east-1}")" \
     || die "Não consegui criar o projeto Supabase. Crie no painel e rode de novo sem SUPABASE_ACCESS_TOKEN."
   # O script imprime `CHAVE='valor'` em stdout (o visual dele vai para stderr).
-  # `eval` aqui é seguro: a entrada é a saída do nosso próprio script, com os
-  # valores já entre aspas simples e escapados.
-  eval "$_sb_out"
+  # A leitura é por parse, não por `eval` — o porquê está em
+  # sb_carrega_credenciais(), e `test-validators.sh` cobra isso.
+  sb_carrega_credenciais "$_sb_out"
   unset _sb_out
+
+  # Credencial que não chegou tem que parar AQUI. Sem esta checagem o install
+  # seguiria com a variável vazia e morreria lá na frente, longe da causa — e a
+  # pessoa veria "erro de conexão" em vez de "o provisionamento não devolveu X".
+  if [ -z "${NEXT_PUBLIC_SUPABASE_URL:-}" ] || [ -z "${NEXT_PUBLIC_SUPABASE_ANON_KEY:-}" ] \
+     || [ -z "${SUPABASE_SERVICE_ROLE_KEY:-}" ] || [ -z "${SUPABASE_DB_URL:-}" ]; then
+    die "O provisionamento não devolveu as 4 credenciais. Crie o projeto no painel e rode de novo sem SUPABASE_ACCESS_TOKEN."
+  fi
   c_grn "✓ Supabase pronto — as 4 credenciais entraram sozinhas"
 fi
 

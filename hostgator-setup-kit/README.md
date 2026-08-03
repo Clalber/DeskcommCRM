@@ -11,11 +11,17 @@ Este kit sobe o **DeskcommCRM** no seu servidor VPS da HostGator. Você tem dois
 
 ## ⚙️ Caminho manual: um comando
 
-Dentro do VPS, com Docker instalado:
+Dentro do VPS:
 
 ```bash
 bash install.sh
 ```
+
+> **VPS sem Docker?** O instalador resolve. Se não encontrar o Docker, ele **pergunta**
+> antes e instala pelo `get.docker.com` — o instalador oficial da Docker, que roda como
+> root, como manda a documentação deles. Com `--yes` ele segue sem perguntar, que é o
+> contrato desse modo. Se preferir instalar por conta própria, responda `n` e rode
+> `curl -fsSL https://get.docker.com | sh` antes.
 
 O instalador pergunta o que precisa (domínio, chaves do Supabase e da Anthropic,
 e-mail/senha do admin), gera o resto e sobe tudo.
@@ -70,7 +76,7 @@ Owner/Admin. Não dá para hospedar vários clientes numa conta só.
   ~150 MB por sessão de WhatsApp além de ~300 MB de overhead do Node. Com 2 GB você roda
   no limite e vai precisar de swap. Ver `docs/runbooks/waha-hostgator.md`.
 - Portas **80** e **443** abertas (`ufw allow 80,443,22/tcp`).
-- Docker + Docker Compose v2.
+- Docker + Docker Compose v2 — o `install.sh` instala o Docker sozinho se faltar (ver acima).
 
 ## Scripts do kit
 

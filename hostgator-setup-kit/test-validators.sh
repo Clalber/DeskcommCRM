@@ -103,6 +103,38 @@ EOF
 ) || fail=1
 rm -rf "$TMP"
 
+echo "credenciais do provisionamento (sb_carrega_credenciais)"
+# Este bloco existe porque a leitura já foi feita com `eval`, e com `eval` ela
+# EXECUTAVA o conteúdo: o provisionamento imprime `CHAVE='valor'` sem escapar a
+# aspa simples, e SUPABASE_REGION — que vem do ambiente — é interpolada dentro da
+# connection string. Medido: com `eval`, o marcador abaixo era criado.
+TMP2="$(mktemp -d)"
+(
+  MARCA="$TMP2/executou"
+  # Exatamente o que o provisionamento emite quando a região traz uma aspa simples.
+  VENENO="postgresql://postgres.ref:senha@aws-0-sa-east-1'\$(touch $MARCA)'.pooler.supabase.com:5432/postgres"
+  PATH_ANTES="$PATH"
+  unset NEXT_PUBLIC_SUPABASE_URL NEXT_PUBLIC_SUPABASE_ANON_KEY SUPABASE_SERVICE_ROLE_KEY SUPABASE_DB_URL
+
+  sb_carrega_credenciais "$(printf "SUPABASE_DB_URL='%s'\n" "$VENENO")"
+
+  eq() { if [ "$2" = "$3" ]; then printf '  ✓ %s\n' "$1"; else printf '  ✗ %s  esperava [%s] obteve [%s]\n' "$1" "$3" "$2"; exit 1; fi; }
+  if [ -e "$MARCA" ]; then printf '  ✗ aspa simples no valor EXECUTOU comando\n'; exit 1; fi
+  printf '  ✓ aspa simples no valor não executa comando\n'
+  eq "valor com aspa chega literal"    "${SUPABASE_DB_URL:-}"  "$VENENO"
+
+  # Chave fora da lista fixa é ignorada — a saída não pode criar variável qualquer.
+  sb_carrega_credenciais "PATH='/pwn'"
+  eq "chave desconhecida é ignorada"   "$PATH"                 "$PATH_ANTES"
+
+  # E o caminho feliz continua inteiro.
+  unset SUPABASE_DB_URL
+  sb_carrega_credenciais "$(printf "NEXT_PUBLIC_SUPABASE_URL='https://abc.supabase.co'\nSUPABASE_DB_URL='postgresql://u:p@h:5432/postgres'\n")"
+  eq "url normal chega íntegra"        "${NEXT_PUBLIC_SUPABASE_URL:-}" "https://abc.supabase.co"
+  eq "db_url normal chega íntegra"     "${SUPABASE_DB_URL:-}"          "postgresql://u:p@h:5432/postgres"
+) || fail=1
+rm -rf "$TMP2"
+
 echo
 if [ "$fail" = 0 ]; then echo "todos os validadores passaram"; else echo "FALHOU"; fi
 exit "$fail"
