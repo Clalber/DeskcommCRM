@@ -19,6 +19,7 @@ import {
   Inbox,
   Kanban,
   Key,
+  Lightbulb,
   Lock,
   PlugsConnected,
   PuzzlePiece,
@@ -258,6 +259,16 @@ export const NAV_DESTINATIONS: NavDestination[] = [
     label: "Alertas",
     description: "O que a IA encontrou e precisa de uma decisão sua.",
     icon: Flag,
+    group: "ia",
+    section: "Acompanhar o agente",
+  },
+  {
+    // Órfã: nenhum lugar do app linkava para cá. O flywheel gerava propostas de
+    // melhoria do agente e a fila só era vista por quem soubesse a URL.
+    href: "/app/ai/proposals",
+    label: "Propostas",
+    description: "Melhorias que a IA sugere para si mesma, esperando sua decisão.",
+    icon: Lightbulb,
     group: "ia",
     section: "Acompanhar o agente",
   },
