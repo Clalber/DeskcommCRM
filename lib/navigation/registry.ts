@@ -283,6 +283,31 @@ export const NAV_DESTINATIONS: NavDestination[] = [
     healthDot: true,
   },
   {
+    // Estava em Configurações, longe de Conexões — conectar um número tinha
+    // duas respostas dependendo de qual WhatsApp era. Aqui os dois caminhos
+    // ficam lado a lado. A URL não muda.
+    //
+    // O PR #105 (feat/canais-oficial) move esta tela para dentro de Conexões
+    // como aba. Se ele mergear, este destino e o de Templates saem do registro
+    // e Conexões passa a cobrir os dois — o registro é o único lugar a editar.
+    href: "/app/settings/canal-oficial",
+    label: "Canal oficial (Meta)",
+    description: "Conecte o número oficial da WhatsApp Cloud API e o webhook dela.",
+    icon: ShieldCheck,
+    group: "canais",
+    minRole: "admin",
+    sidebar: true,
+  },
+  {
+    href: "/app/settings/templates",
+    label: "Templates do WhatsApp",
+    description: "Os modelos aprovados pela Meta e os parâmetros de cada um.",
+    icon: FileText,
+    group: "canais",
+    minRole: "admin",
+    sidebar: true,
+  },
+  {
     // Não tinha link nenhum no app inteiro: só se chegava digitando a URL.
     href: "/app/integrations/nuvemshop",
     label: "Nuvemshop",
