@@ -376,6 +376,7 @@ ask_one() {
     fi
     if [ "$secret" = "secret" ]; then c_grn "  ✓ recebido (${#input} caracteres)"; else c_grn "  ✓"; fi
     printf -v "$var" '%s' "$input"
+    save_partial "$var"
     return 0
   done
 }
@@ -391,6 +392,28 @@ ask_one() {
 # qualquer convenção e ainda pega de sobra as de 2 e 3 GB, que sofrem de verdade.
 RAM_MINIMA_KB=3500000
 ram_abaixo_do_recomendado() { [ "${1:-0}" -lt "$RAM_MINIMA_KB" ]; }
+
+# Uma linha de .env com o valor entre aspas simples e as aspas do conteúdo
+# escapadas — o que faz senha com espaço, `#` ou `$` sobreviver à releitura.
+# Fica aqui em cima (e não junto do bloco que escreve o .env) porque o
+# save_partial abaixo grava durante a ENTREVISTA, muito antes daquele bloco.
+envq() { printf "%s='%s'\n" "$1" "$(printf '%s' "${2-}" | sed "s/'/'\\\\''/g")"; }
+
+# Guarda cada resposta no instante em que ela é aceita. Antes, as 12 respostas
+# só viravam arquivo no FIM: quem travasse na connection string — a pergunta
+# mais difícil, e a última das credenciais — perdia tudo o que já tinha digitado
+# e recomeçava do zero na tentativa seguinte. Justamente quem mais precisa de
+# uma segunda tentativa é quem tem menos paciência para redigitar 11 campos.
+# Mesma permissão do .env (600): o conteúdo é o mesmo, inclusive os segredos.
+PARTIAL_FILE="${PARTIAL_FILE:-.env.partial}"
+save_partial() {
+  local var="$1" val="${!1-}" tmp="${PARTIAL_FILE}.tmp.$$"
+  umask 077
+  { [ -f "$PARTIAL_FILE" ] && grep -vE "^${var}=" "$PARTIAL_FILE" || true; } > "$tmp"
+  envq "$var" "$val" >> "$tmp"
+  chmod 600 "$tmp"
+  mv "$tmp" "$PARTIAL_FILE"
+}
 
 # Esconde o miolo de um segredo para a tela de conferência.
 mask() {
@@ -506,6 +529,13 @@ fase 2 "Suas informações"
 step "Configuração"
 # Se já existe .env, carrega pra não repetir perguntas (idempotência).
 if [ -f .env ]; then load_env .env; c_grn "✓ .env existente carregado"; fi
+# Respostas guardadas de uma tentativa que não chegou ao fim. Carregam DEPOIS do
+# .env de propósito: se as duas fontes têm a chave, a mais recente é esta.
+if [ -f "$PARTIAL_FILE" ]; then
+  load_env "$PARTIAL_FILE"
+  c_grn "✓ retomando: $(grep -c '=' "$PARTIAL_FILE" 2>/dev/null || echo 0) resposta(s) guardadas da tentativa anterior"
+  c_dim "  (para responder tudo de novo do zero: rm $PARTIAL_FILE)"
+fi
 
 # ── Supabase automático (opcional) ──────────────────────────────────────────
 # Criar o projeto no navegador e copiar 4 campos era o passo mais LENTO da
@@ -722,7 +752,6 @@ umask 077
 # arquivo com `source` — os scripts do kit e a receita do próprio README
 # (`source .env && curl ...`). O Docker Compose remove as aspas ao carregar,
 # então o contêiner recebe exatamente o valor digitado.
-envq() { printf "%s='%s'\n" "$1" "$(printf '%s' "${2-}" | sed "s/'/'\\\\''/g")"; }
 
 {
   printf '# Gerado por install.sh — NÃO comitar. Contém segredos.\n'
@@ -795,6 +824,10 @@ envq() { printf "%s='%s'\n" "$1" "$(printf '%s' "${2-}" | sed "s/'/'\\\\''/g")";
   envq OWNER_PASSWORD "$OWNER_PASSWORD"
 } > .env
 chmod 600 .env
+# O .env definitivo existe: o rascunho cumpriu o papel e some — deixá-lo no
+# disco seria uma segunda cópia dos segredos, e desatualizada na primeira
+# correção que alguém fizer no .env.
+rm -f "$PARTIAL_FILE"
 c_grn "✓ .env escrito (permissão 600)"
 
 # ── 6. Checagem de DNS ──────────────────────────────────────────────────────

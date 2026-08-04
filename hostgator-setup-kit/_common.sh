@@ -140,7 +140,16 @@ load_env() {
     case "$key" in ''|*[!A-Za-z0-9_]*) continue;; esac
     case "$val" in
       \"*\") val="${val:1:${#val}-2}";;
-      \'*\') val="${val:1:${#val}-2}";;
+      \'*\')
+        val="${val:1:${#val}-2}"
+        # envq escreve a aspa simples do CONTEÚDO como '\'' (fecha o literal,
+        # escapa a aspa, reabre) — é o que faz a linha ser shell válido. Só que
+        # tirar as aspas de fora não desfaz isso: sem esta troca, uma senha com
+        # aspa volta da releitura com quatro caracteres a mais, e o erro só
+        # aparece longe daqui (o psql recusa a conexão, o login não bate) sem
+        # nada apontando para o .env. Achado pelo teste de round-trip.
+        val="${val//"'\\''"/"'"}"
+        ;;
     esac
     printf -v "$key" '%s' "$val"
     export "${key?}"

@@ -311,6 +311,44 @@ saude_ok "porta aberta, corpo vazio"             nao      ''
 saude_ok "responde, mas degraded"                nao      '{"status":"degraded","db":"down"}'
 saude_ok "proxy devolveu HTML de erro"           nao      '<html>502 Bad Gateway</html>'
 
+echo "rascunho das respostas (save_partial → load_env)"
+# Quem trava na connection string — a pergunta mais difícil, e a última das
+# credenciais — perdia as 11 respostas anteriores. O que importa aqui é o
+# ROUND-TRIP: o valor que volta tem de ser byte a byte o que foi digitado,
+# senão a retomada entrega uma senha adulterada e o erro só aparece lá no
+# psql. Os valores abaixo são os que quebram parser ingênuo.
+partial_ok() {  # partial_ok <descrição> <valor>
+  # kit capturado ANTES do cd: dentro de $( cd "$dir" && … ) o $PWD já é o
+  # temporário, e passar ele como origem dos scripts fazia o subshell não achar
+  # nem install.sh nem _common.sh — e o round-trip voltava vazio, indistinguível
+  # de "o valor se perdeu no arquivo".
+  local desc="$1" val="$2" dir out kit="$PWD"
+  dir="$(mktemp -d)"
+  # As duas fontes: envq/save_partial vivem no install.sh, load_env no
+  # _common.sh — e o guard de biblioteca do install.sh retorna antes de
+  # sourceá-lo. Carregar só um dos dois deixa a metade que falta indefinida, e
+  # o round-trip volta vazio como se o valor tivesse se perdido.
+  out="$(cd "$dir" && PARTIAL_FILE=".p" bash -c '
+      . "$1/_common.sh"
+      INSTALL_SH_LIB=1 . "$1/install.sh"
+      SENHA="$2"
+      save_partial SENHA
+      unset SENHA
+      load_env .p
+      printf "%s" "$SENHA"
+    ' _ "$kit" "$val")"
+  rm -rf "$dir"
+  if [ "$out" = "$val" ]; then printf '  ✓ %s\n' "$desc"
+  else printf '  ✗ %s\n     escreveu: [%s]\n     voltou:   [%s]\n' "$desc" "$val" "$out"; fail=1; fi
+}
+partial_ok "senha simples"              'abc123'
+partial_ok "com espaço"                 'minha senha boa'
+partial_ok "com # (não é comentário)"   'se#nha'
+partial_ok "com \$ (não expande)"       'se$nha$HOME'
+partial_ok "com aspa simples"           "se'nha"
+partial_ok "com aspas duplas"           'se"nha"'
+partial_ok "connection string real"     'postgresql://postgres.abc:p%40ss@aws-1-sa-east-1.pooler.supabase.com:5432/postgres'
+
 echo
 if [ "$fail" = 0 ]; then echo "todos os validadores passaram"; else echo "FALHOU"; fi
 exit "$fail"
