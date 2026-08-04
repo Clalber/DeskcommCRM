@@ -149,7 +149,7 @@ describe("catalogo de tools — linguagem de quem configura", () => {
    * Ao entregar a wave que preenche um destes, REMOVA-O desta lista. Deixar o
    * pacote preenchido e a divida declarada aqui e mentir para a proxima pessoa.
    */
-  const PACOTES_VAZIOS_CONHECIDOS: ReadonlyArray<ToolBundle> = ["reter", "evoluir"];
+  const PACOTES_VAZIOS_CONHECIDOS: ReadonlyArray<ToolBundle> = ["reter"];
 
   it("todo pacote oferecido na tela tem ao menos uma capacidade dentro", () => {
     const usados = new Set<ToolBundle>(TOOL_CATALOG.flatMap((t) => [...t.pacotes]));

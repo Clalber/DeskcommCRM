@@ -14,6 +14,7 @@
  * Client-safe: zero import de zod, supabase ou next/headers.
  */
 import { TOOLS_ATENDIMENTO } from "./atendimento";
+import { TOOLS_EVOLUCAO } from "./evolucao";
 import { TOOLS_FUNIL } from "./funil";
 import { TOOLS_GOVERNANCA } from "./governanca";
 import type { McpToolCatalogEntry } from "./tipos";
@@ -25,6 +26,7 @@ export const TOOL_CATALOG: ReadonlyArray<McpToolCatalogEntry> = [
   ...TOOLS_ATENDIMENTO,
   ...TOOLS_FUNIL,
   ...TOOLS_GOVERNANCA,
+  ...TOOLS_EVOLUCAO,
 ];
 
 /**
