@@ -90,7 +90,7 @@ envelhecer — se a wave entregar as tools e ninguém tirar o pacote da dívida,
 **Entregue por:** DevVivo · branch `feat/ia-360-w2-reter` · worktree
 `/Users/rafaelmelgaco/DeskcommCRM-ia360-w2-reter` · base `99cd0fc`
 
-| Medida | Antes (`99cd0fc`) | Depois (`607888d`) |
+| Medida | Antes (`99cd0fc`) | Depois (`9e2d3fb`) |
 |---|---|---|
 | Capacidades de retorno no catálogo | **0** | **6** |
 | Pacote `reter` | vazio (dívida declarada) | preenchido, fora da dívida |
@@ -119,7 +119,7 @@ tratamento para o radar (`lib/leads/radar-de-risco.ts`, extraído da rota) e par
 **Mapa vivo:** `docs/architecture/ia-360-retencao.architecture.json` (26 peças, 36 arestas) +
 linha no `README.md` do diretório.
 
-**Evidência observada:**
+**Evidência observada — toda ela em `9e2d3fb`, árvore limpa:**
 
 - `pnpm typecheck` limpo · `pnpm lint` 0 erros (170 avisos pré-existentes)
 - `pnpm test:unit` — **226 arquivos, 1994 testes verdes** (eram 224/1963 na base)
@@ -127,6 +127,13 @@ linha no `README.md` do diretório.
 - E2E em tela (`tests/e2e/retorno-anti-morte.spec.ts`) — **2 passed**, evidência visual em
   `.superpowers/evidence/w2-retorno-*.png`. O Radar mostra "Em voo · Assistente retorna em 2d"
   para o negócio parado há 5 dias; a fila mostra "Cancelada" (não "Concluída") depois do clique.
+
+> **Uma execução de `test:unit` em `9e2d3fb` fechou `2 failed | 1992 passed` e as duas seguintes,
+> no MESMO SHA e com a árvore limpa, fecharam verdes (226/1994).** A execução vermelha rodou
+> concorrente com o `test:db` de outra sessão na mesma máquina, e eu **não capturei os nomes dos
+> dois casos** — a informação se perdeu, e por isso está declarada em vez de arredondada. O que
+> está medido é: 2 verdes em 3 execuções no mesmo SHA, com uma vermelha não identificada sob
+> carga. Quem reproduzir isso deve salvar a saída completa antes de re-executar.
 
 **Sabotagem antes de confiar** (toda propriedade nova foi quebrada de propósito e reprovou):
 guard anti-empilhamento removido, limite inferior da janela virando `<=`, corrida perdida virando
