@@ -343,7 +343,14 @@ export async function runAgent(input: RunAgentInput): Promise<RunAgentResult> {
       role: "agent",
       actor: {
         type: "ai_agent",
+        // `id` é o RUN — é o que correlaciona a chamada de tool com o turno no
+        // audit. `agent_id` é a linha em `ai_agents`, e é a única que pode ir
+        // para `crm_lead_activities.actor_agent_id` (FK). Enquanto só existia
+        // `id`, toda tool de escrita chamada por este runtime perdia a atividade
+        // na FK: o lead mudava e a timeline não registrava. Ver `Actor` em
+        // lib/api/handlers/types.ts.
         id: run.id,
+        agent_id: run.agent_id,
         role: "agent",
         api_token_id: ephemeral.id,
       },

@@ -65,7 +65,15 @@ export async function buildMcpTurnTools(
   const ctx: McpContext = {
     organizationId: ids.organizationId,
     role: 'agent',
-    actor: { type: 'ai_agent', id: agentConfig.agentId, role: 'agent', api_token_id: ephemeral.id },
+    // `agent_id` explícito porque é ele que vai para colunas com FK (atividade
+    // da timeline); `id` continua sendo a identidade de correlação do audit.
+    actor: {
+      type: 'ai_agent',
+      id: agentConfig.agentId,
+      agent_id: agentConfig.agentId,
+      role: 'agent',
+      api_token_id: ephemeral.id,
+    },
     apiTokenId: ephemeral.id,
     requestId: ids.jobId,
     supabase: cfg.supabase,
