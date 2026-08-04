@@ -34,7 +34,7 @@ import * as http from "node:http";
 import type { AddressInfo } from "node:net";
 import * as path from "node:path";
 
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect, type Locator, type Page } from "@playwright/test";
 
 const APP_URL = `http://localhost:${process.env.E2E_PORT ?? "3001"}`;
 const CREDS_PATH = path.join(process.cwd(), ".e2e-creds.json");
@@ -106,15 +106,32 @@ async function agenteChama(
   const texto = await res.text();
   if (!res.ok) throw new Error(`MCP ${tool} → HTTP ${res.status}: ${texto.slice(0, 400)}`);
 
-  // O transporte MCP responde JSON puro OU SSE conforme o Accept negociado.
-  const json = texto.startsWith("data:")
-    ? JSON.parse(texto.split("\n").find((l) => l.startsWith("data:"))!.slice(5).trim())
-    : JSON.parse(texto);
+  // O transporte MCP responde JSON puro OU SSE conforme o Accept negociado — e a
+  // resposta SSE abre com `event: message`, não com `data:`. Ancorar no começo
+  // do corpo (a primeira versão fazia isso) quebra justamente no caminho que o
+  // servidor de fato usa; procurar a LINHA `data:` funciona nos dois formatos.
+  const linhaDeDados = texto.split("\n").find((l) => l.startsWith("data:"));
+  const json = JSON.parse(linhaDeDados ? linhaDeDados.slice(5).trim() : texto);
 
   if (json.error) throw new Error(`MCP ${tool} → ${JSON.stringify(json.error)}`);
   const conteudo = json.result?.content?.[0]?.text;
   if (json.result?.isError) throw new Error(`MCP ${tool} devolveu erro: ${conteudo}`);
   return conteudo ? (JSON.parse(conteudo) as Record<string, unknown>) : {};
+}
+
+/**
+ * O CARD inteiro a partir de um texto dentro dele.
+ *
+ * ⚠️ `filter({ hasText }).last()` NÃO SERVE, e isso custou uma rodada: o
+ * `.last()` devolve o `<div>` MAIS INTERNO que casa — o próprio título — e a
+ * asserção passa a procurar "Ativa" dentro de um elemento que só tem o nome.
+ * Subir pelo ancestral com a borda do Card é o que devolve a peça que o usuário
+ * enxerga como um cartão. Mesmo recurso do spec irmão de SSRF.
+ */
+function cardDe(locator: Locator): Locator {
+  return locator.locator(
+    "xpath=ancestor::div[contains(concat(' ', normalize-space(@class), ' '), ' border-border ')][1]",
+  );
 }
 
 async function login(page: Page, quem: "manager"): Promise<void> {
@@ -145,6 +162,11 @@ async function drenar(): Promise<void> {
 
 test.describe("o agente organiza a operação e a tela conta quem foi", () => {
   test("cria etapa, liga automação, e o egress externo continua barrado", async ({ page }) => {
+    // O default de 30s do config é para uma jornada de tela. Este teste espera o
+    // worker de automação: são três drenagens com folga (o `lead.created` só
+    // nasce depois que a captação é consumida), mais duas navegações e um
+    // receiver HTTP. Sem isto, o vermelho seria "o relógio", não "quebrou".
+    test.setTimeout(180_000);
     fs.mkdirSync(EVIDENCIA, { recursive: true });
     const agente = tokenDoAgente();
 
@@ -164,6 +186,7 @@ test.describe("o agente organiza a operação e a tela conta quem foi", () => {
     const urlDoReceiver = `http://127.0.0.1:${porta}/recebido`;
 
     let stageId: string | null = null;
+    let funilId: string | null = null;
     let ruleId: string | null = null;
     let sourceId: string | null = null;
 
@@ -176,6 +199,7 @@ test.describe("o agente organiza a operação e a tela conta quem foi", () => {
       };
       const funil = funis.pipelines.find((p) => p.is_default) ?? funis.pipelines[0]!;
       expect(funil, "a org de E2E precisa de ao menos um funil").toBeTruthy();
+      funilId = funil.id;
 
       const criada = (await agenteChama(agente.bearer, "crm_create_stage", {
         pipeline_id: funil.id,
@@ -188,7 +212,10 @@ test.describe("o agente organiza a operação e a tela conta quem foi", () => {
       await page.goto(`${APP_URL}/app/settings/tenant/pipelines`);
       const linhaDaEtapa = page.getByTestId(`etapa-${stageId}`);
       await expect(linhaDaEtapa).toBeVisible({ timeout: 15_000 });
-      await expect(linhaDaEtapa).toContainText(ETAPA);
+      // O nome mora num campo editável (clique para renomear), então `toContainText`
+      // olharia rótulo e placeholder e nunca veria o nome. O valor do input é o
+      // que o dono da clínica lê na coluna.
+      await expect(page.getByTestId(`nome-${stageId}`)).toHaveValue(ETAPA);
       // O selo é o ponto: sem ele, o dono da clínica vê uma coluna nova no quadro
       // e não tem como saber de onde ela veio.
       const seloDaEtapa = linhaDaEtapa.locator('[data-autoria="ai"]');
@@ -231,10 +258,9 @@ test.describe("o agente organiza a operação e a tela conta quem foi", () => {
       // ---- a tela mostra "Ativa" COM a autoria do assistente ----
       await page.goto(`${APP_URL}/app/webhooks`);
       await page.getByRole("tab", { name: "Automações" }).click();
-      const cardDaRegra = page
-        .locator("div")
-        .filter({ hasText: new RegExp(REGRA.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")) })
-        .last();
+      const tituloDaRegra = page.getByText(REGRA, { exact: true }).first();
+      await expect(tituloDaRegra).toBeVisible({ timeout: 15_000 });
+      const cardDaRegra = cardDe(tituloDaRegra);
       await expect(cardDaRegra).toContainText("Ativa", { timeout: 15_000 });
       const seloDaRegra = cardDaRegra.locator('[data-autoria="ai"]').first();
       await expect(seloDaRegra).toBeVisible();
@@ -272,11 +298,11 @@ test.describe("o agente organiza a operação e a tela conta quem foi", () => {
       // E a tentativa TEM que estar registrada: barrar em silêncio seria pior.
       await page.goto(`${APP_URL}/app/webhooks`);
       await page.getByRole("tab", { name: "Atividade" }).click();
-      const execucao = page
-        .locator("div")
-        .filter({ hasText: new RegExp(REGRA.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")) })
-        .last();
+      const execucao = page.getByText(REGRA, { exact: true }).first();
       await expect(execucao).toBeVisible({ timeout: 20_000 });
+      // A tentativa barrada TEM que aparecer como falha: barrar em silêncio
+      // deixaria o dono achando que o outro sistema recebeu.
+      await expect(cardDe(execucao)).toContainText(/falhou|parcial/i, { timeout: 20_000 });
       await page.screenshot({
         path: path.join(EVIDENCIA, "w4-egress-barrado-com-registro.png"),
         fullPage: true,
@@ -287,6 +313,20 @@ test.describe("o agente organiza a operação e a tela conta quem foi", () => {
       // sessões e um rerun tem que encontrar a casa como a deixou.
       if (ruleId) await page.request.delete(`${APP_URL}/api/v1/automation-rules/${ruleId}`);
       if (sourceId) await page.request.delete(`${APP_URL}/api/v1/webhook-sources/${sourceId}`);
+      // A etapa sai do quadro pela própria capacidade que o teste entregou —
+      // limpar por dentro do banco deixaria a operação de arquivamento sem
+      // exercício e o quadro do E2E crescendo uma coluna por rodada.
+      if (stageId && funilId) {
+        await agenteChama(agente.bearer, "crm_archive_stage", {
+          pipeline_id: funilId,
+          stage_id: stageId,
+          move_leads_to_stage_id: null,
+        }).catch((err: unknown) => {
+          // Falha aqui não invalida o que já foi provado — mas some em silêncio
+          // seria deixar a próxima rodada tropeçar sem saber por quê.
+          console.error("[e2e] limpeza da etapa falhou:", err);
+        });
+      }
     }
   });
 });

@@ -109,7 +109,7 @@ async function main(): Promise<void> {
     path.join(process.cwd(), ".e2e-agente-mcp.json"),
     JSON.stringify(saida, null, 2),
   );
-  console.log(`token MCP de agente emitido para a org ${orgId} (.e2e-agente-mcp.json)`);
+  console.info(`token MCP de agente emitido para a org ${orgId} (.e2e-agente-mcp.json)`);
 }
 
 void main().catch((err) => {

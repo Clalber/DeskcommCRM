@@ -203,18 +203,81 @@ Sabotagem do gate de papel (`capacidade-alcancavel-pelo-agente`): baixar o papel
 `crm_set_automation_rule_active` para `agent` → reprova; mint gravando `role:manager` → reprova o
 controle positivo; nome órfão na lista de exceções → reprova. Restaurado: `5 passed`.
 
+#### Marco 3 — provado pela tela, com receiver HTTP real (`277f676` + ajustes do spec)
+
+`tests/e2e/agente-organiza-operacao.spec.ts` dirige o **frontend**, logado como manager real, e
+chama as capacidades pelo **HTTP do MCP** (`POST /api/mcp` com Bearer carregando
+`actor:ai_agent`) — não pelo handler em processo, porque é o transporte que carrega o ator que
+decide a autoria que a tela vai mostrar.
+
+```
+E2E_PORT=3031 npx playwright test tests/e2e/agente-organiza-operacao.spec.ts
+  1 passed (18.0s)   ·   exit 0
+```
+
+O que ficou provado, em ordem:
+
+1. **O agente cria uma etapa** → ela aparece em `/app/settings/tenant/pipelines` na posição 9 do
+   funil, e o campo `data-autoria="ai"` mostra **"alterado pelo assistente há 2 segundos"**. As
+   oito etapas de fábrica aparecem **sem selo** — silêncio honesto para o que ninguém mediu.
+   Evidência: `.superpowers/evidence/w4-etapa-criada-pelo-agente.png`.
+2. **O agente liga uma regra escrita por um humano** → `/app/webhooks` mostra o cartão com o
+   badge **"Ativa"** e, abaixo, **"alterado pelo assistente há 3 segundos"**. Evidência:
+   `w4-regra-ligada-pelo-agente.png`.
+3. **A regra ligada pelo agente dispara e o egress continua barrado.** Um receiver HTTP de
+   verdade sobe em `127.0.0.1:<porta efêmera>`; a regra aponta para ele; um lead entra pela URL
+   de captação; o `event_log` é drenado. O receiver registrou **zero** requisições
+   (`assertSafeOutboundUrl` recusa host privado antes do `fetch`) **e** a aba Atividade mostra a
+   execução com falha — barrar em silêncio faria o dono achar que o outro sistema recebeu.
+   Evidência: `w4-egress-barrado-com-registro.png`.
+
+**Sabotagem do E2E** (a única propriedade que o despacho cobra nominalmente):
+
+| Sabotagem | Resultado |
+|---|---|
+| `autoriaDaMudanca` gravando `"user"` fixo (rebuild + rerun) | reprova em `expect(seloDaEtapa).toBeVisible()` — `element(s) not found` para `[data-autoria="ai"]` |
+| restaurado (rebuild + rerun) | `1 passed (18.0s)` |
+
+O caminho até o verde também teve valor: **quatro vermelhos diferentes**, todos defeitos reais do
+teste — parser de SSE ancorado em `data:` quando o servidor abre com `event: message`;
+`toContainText` num nome que mora em `<input>`; `filter().last()` devolvendo o título em vez do
+cartão; e o timeout de 30s medindo o relógio em vez do comportamento. Estão comentados no spec
+para a próxima pessoa não repetir.
+
 ---
 
-## Medições que ainda não fecharam
+## Estado final da wave (SHA `277f676` + os ajustes do spec; árvore limpa no commit final)
 
-**`pnpm test:db` — 1 invariante vermelho, e ainda NÃO sei dizer de quem é.**
-`tests/invariants/followup-turn-bridge.test.ts` falhou na suíte completa
-(`expected 2 to be 1` em `tick2.advanced`), e **passa isolado no mesmo SHA** (`5 passed`, exit 0,
-`TEST_DB_PORT=54372`). Não toquei nenhum arquivo de follow-up nesta branch
-(`git diff --name-only 99cd0fc..HEAD | grep -i followup` → vazio), e o log traz erros de outros
-testes logo antes (`uniq_system_update_runs_dispatched`, RLS de `attendant_availability`), o que
-cheira a interferência de estado entre invariantes. **Isso é hipótese, não veredito** — a segunda
-rodada completa está em andamento. Se repetir no mesmo ponto, comparo contra `99cd0fc`.
+| Gate | Resultado |
+|---|---|
+| `npx tsc --noEmit` | exit 0 |
+| `npx eslint .` | **0 errors, 170 warnings** — exatamente a linha de base do épico (`687716a`), zero avisos novos |
+| `npx vitest run` (unit) | **226 arquivos, 2014 testes passando** |
+| `pnpm test:db` — baseline | `install ok` (`ON_ERROR_STOP=1`) e `update ok` (re-aplicação), nas duas rodadas |
+| `pnpm test:db` — invariantes | 412 passam; **1 vermelho instável**, ver abaixo |
+| E2E em tela | `1 passed`, com evidência visual e sabotagem confirmada |
+
+### A medição que não fecha limpa, dita como ela é
+
+**`pnpm test:db` tem 1 invariante vermelho — e ele NÃO é desta wave.** A prova é o par de
+rodadas, não a minha opinião:
+
+| rodada | porta | teste que falhou |
+|---|---|---|
+| 1ª | `TEST_DB_PORT=54371` | `tests/invariants/followup-turn-bridge.test.ts` (`expected 2 to be 1`) |
+| 2ª | `TEST_DB_PORT=54373` | `tests/invariants/followup-reactivity.test.ts` (`expected +0 to be 1`) |
+
+**Testes diferentes, mesmo SHA.** Falha que muda de lugar entre rodadas é instabilidade da suíte,
+não regressão determinística. Reforçando: `followup-turn-bridge` **passa isolado** no mesmo SHA
+(`5 passed`, exit 0, `TEST_DB_PORT=54372`), nenhum arquivo de follow-up foi tocado nesta branch
+(`git diff --name-only 99cd0fc..HEAD | grep -i followup` → vazio), e os dois logs trazem erros de
+outros invariantes logo antes (`uniq_system_update_runs_dispatched`, RLS de
+`attendant_availability`) — a assinatura de estado vazando entre testes que compartilham o mesmo
+Postgres.
+
+**O que isto NÃO prova:** que a suíte de invariantes esteja saudável. Ela tem um flake de
+follow-up que vai pintar o CI de vermelho aleatoriamente, e isso é problema de alguém — só não
+desta wave. **Para o Maestro decidir de quem.**
 
 ---
 
