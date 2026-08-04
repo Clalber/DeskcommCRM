@@ -111,6 +111,20 @@ describe("catalogo de tools — linguagem de quem configura", () => {
     expect(mentiras).toEqual([]);
   });
 
+  it("nao ha dois dominios declarando o mesmo name", () => {
+    // Com times entregando capacidades em paralelo, dois arquivos de
+    // lib/mcp/tools/catalogo/ podem declarar `crm_archive_lead` cada um. O
+    // sintoma seria uma tool sombreando a outra em silencio — o agregador
+    // acusa em dev, este teste acusa no CI.
+    const vistos = new Set<string>();
+    const duplicados: string[] = [];
+    for (const tool of TOOL_CATALOG) {
+      if (vistos.has(tool.name)) duplicados.push(tool.name);
+      vistos.add(tool.name);
+    }
+    expect(duplicados).toEqual([]);
+  });
+
   it("nao ha dois rotulos iguais (o humano nao consegue distinguir)", () => {
     const vistos = new Map<string, string>();
     const colisoes: string[] = [];
