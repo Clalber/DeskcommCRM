@@ -121,26 +121,74 @@ silêncio de monitor é indistinguível de "está rodando".
 
 ---
 
-## Bugs encontrados
+## Bugs encontrados e corrigidos
 
-*(nenhum ainda — esta seção é alimentada por todos os terminais)*
+Formato de cada entrada: onde foi achado (SHA + por quem + executando o quê), o **sintoma
+observado** (não a hipótese), a causa raiz provada, a correção com SHA, e a prova de que o teste
+reprova antes e passa depois.
 
-Formato de cada entrada:
+### BUG-02 — capacidade de escrita inalcançável pelo agente, falhando calado · CORRIGIDO
 
-```
-### BUG-NN — <título curto>
-- **Achado em:** SHA, por quem, executando o quê
-- **Sintoma observado:** o que se vê na tela / no output (não a hipótese)
-- **Causa raiz:** o porquê, provado
-- **Correção:** arquivo:linha + SHA do fix
-- **Prova do fix:** teste que reprova antes e passa depois
-```
+- **Achado em** `99cd0fc` por **MaestroConexoes** (W4), montando o catálogo de operação.
+- **Confirmado** por remedição independente do Maestro antes de aceitar.
+- **Pré-existente na `main`** — não veio deste épico.
 
----
+**Sintoma observado.** `crm_create_lead`, `crm_update_lead`, `crm_move_lead_stage` e
+`crm_send_whatsapp_message` declaram `requiresRole: "manager"`. O agente publicado recebe papel
+`agent`, literal e fixo, nos dois caminhos que montam o contexto MCP
+(`lib/ai/runtime/agent.ts:341-366` e `lib/agent-engine/edge/crm/mcp-tools.ts:68`).
+`ROLE_RANK.agent` (2) `< ROLE_RANK.manager` (3), então `ensureRole` lança 403 — e
+`wrapMcpTool` devolve `{ error }` **ao modelo** em vez de estourar. O modelo lê o erro, segue
+conversando, e **nada aparece na tela do humano** dizendo que a capacidade que ele ligou não
+existe na prática.
 
-## Bugs corrigidos
+**Causa raiz — divergência, não política de segurança.** As quatro rotas HTTP equivalentes exigem
+`agent`, todas:
 
-*(nenhum ainda)*
+| Rota | Papel exigido |
+|---|---|
+| `app/api/v1/leads/route.ts` | `agent` |
+| `app/api/v1/leads/[id]/route.ts` | `agent` |
+| `app/api/v1/leads/[id]/move/route.ts` | `agent` |
+| `app/api/v1/messages/route.ts` | `agent` |
+
+Um atendente humano com papel `agent` cria lead, move etapa e manda mensagem pela tela. A IA, com
+o **mesmo papel**, não podia nenhuma delas. É a Decisão 4 do briefing violada em produção: a IA e
+o humano operando por regras diferentes, e o sistema mentindo para um dos dois.
+
+**Correção** (`bddeeb6`): `requiresRole` alinhado para `agent` nas quatro
+(`lib/mcp/tools/leads.ts`, `lib/mcp/tools/messages.ts`) — restaura a paridade que o produto já
+pratica, não afrouxa nada. E o silêncio, que era a parte pior: recusa por papel **não é erro de
+execução, é defeito de configuração**; `lib/ai/runtime/tools.ts` passa a emitir `logger.error`
+próprio para `McpAuthError` antes de devolver ao modelo.
+
+**Prova.** `tests/unit/capacidade-alcancavel-pelo-agente.test.ts` (escrito na W4, trazido para a
+base, lista de dívidas esvaziada). Sabotado com `crm_create_lead` de volta em `manager`:
+`1 failed | 2 passed`. Revertido: `3 passed`.
+
+### BUG-01 — a IA agia e a timeline não registrava · CORRIGIDO
+
+- **Achado em** `99cd0fc` por **MaestroConexoes** (W4). Confirmado por remedição independente.
+- **Pré-existente na `main`.**
+
+**Sintoma observado.** `crm_lead_activities.actor_agent_id` tem FK para `ai_agents(id)`
+(`supabase/baseline.sql:7293`) e `lib/leads/activity-emitter.ts:131` deriva a autoria de
+`actor.id`. O runtime nativo passava `run.id` — que não existe em `ai_agents`. Toda atividade
+emitida por ele quebrava com `23503` e **falhava baixo, em silêncio**.
+
+**Causa raiz.** Dois caminhos discordando sobre o que `actor.id` significa: o harness sempre usou
+o id do **agente** (`mcp-tools.ts:68`), o runtime nativo usava o id do **run**.
+
+**Correção** (`bddeeb6`): `lib/ai/runtime/agent.ts` passa `run.agent_id`. O run continua
+rastreável por `ctx.requestId` e pelo scope `agent_run:<id>`, e o audit não é afetado —
+`lib/mcp/audit.ts` grava `actor_id` em metadata livre, não em coluna com FK.
+
+**Medição da base após as duas correções**, em `9fc1cc3` com árvore estável durante toda a
+execução: `pnpm test:unit` → 225 arquivos, 1948 testes, exit 0. `pnpm typecheck` limpo.
+
+> Nota de método: a primeira medição desta suíte foi **descartada** — eu havia sabotado
+> `lib/mcp/tools/leads.ts` enquanto ela rodava. Número medido contra disco em movimento não vale,
+> mesmo quando o resultado é o mesmo.
 
 ---
 
