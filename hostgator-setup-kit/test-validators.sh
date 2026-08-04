@@ -294,22 +294,31 @@ echo "saúde do app (wait_app_healthy)"
 # acontece assim que o Node sobe, antes de ele saber se alcança o banco. O caso
 # "corpo vazio" abaixo é exatamente esse: com o probe antigo era verde, e o
 # "Instalação concluída!" saía por cima de um app quebrado.
-saude_ok() {  # saude_ok <descrição> <saudavel|nao> <corpo que o app devolve>
-  local desc="$1" esperado="$2" corpo="$3" real
-  if CORPO="$corpo" bash -c '
+# Os payloads abaixo são o CONTRATO REAL da rota, capturado do app em produção
+# — não um formato inventado aqui. A versão anterior destes testes mockava
+# {"status":"ok"}, que o produto NUNCA emite: `ok` é o vocabulário dos checks
+# individuais, e o status geral usa healthy|degraded|unhealthy. O teste passava
+# validando um contrato que não existia.
+HEALTHY='{"data":{"status":"healthy","version":"0.1.0","checks":{"supabase":{"status":"ok","latency_ms":268},"redis":{"status":"ok","latency_ms":4},"waha":{"status":"ok","latency_ms":6}}}}'
+DEGRADED='{"data":{"status":"degraded","checks":{"supabase":{"status":"ok"},"waha":{"status":"degraded","error":"not_configured"}}}}'
+UNHEALTHY='{"data":{"status":"unhealthy","checks":{"supabase":{"status":"down","error":"http_500"},"redis":{"status":"ok"}}}}'
+
+saude_ok() {  # saude_ok <descrição> <saudavel|nao> <status> <corpo real>
+  local desc="$1" esperado="$2" st="$3" corpo="$4" real
+  if ST="$st" CORPO="$corpo" bash -c '
         . ./_common.sh
-        app_health_body() { printf "%s" "${CORPO}"; }
+        app_health_probe() { printf "%s\n%s\n" "${ST}" "${CORPO}"; }
         wait_app_healthy 2 0
       ' >/dev/null 2>&1
   then real=saudavel; else real=nao; fi
   if [ "$real" = "$esperado" ]; then printf '  ✓ %s\n' "$desc"
   else printf '  ✗ %s  (deu %s, esperava %s)\n' "$desc" "$real" "$esperado"; fail=1; fi
 }
-saude_ok "responde status ok"                    saudavel '{"status":"ok","db":"up"}'
-saude_ok "status ok no meio do JSON"             saudavel '{"uptime":12,"status":"ok"}'
-saude_ok "porta aberta, corpo vazio"             nao      ''
-saude_ok "responde, mas degraded"                nao      '{"status":"degraded","db":"down"}'
-saude_ok "proxy devolveu HTML de erro"           nao      '<html>502 Bad Gateway</html>'
+saude_ok "healthy (payload real de produção)"   saudavel healthy   "$HEALTHY"
+saude_ok "degraded: serviço opcional sem config" saudavel degraded "$DEGRADED"
+saude_ok "unhealthy AINDA QUE o redis esteja ok" nao      unhealthy "$UNHEALTHY"
+saude_ok "porta aberta, app mudo"                nao      ''        ''
+saude_ok "proxy devolveu HTML de erro"           nao      ''        '<html>502 Bad Gateway</html>'
 
 echo "rascunho das respostas (save_partial → load_env)"
 # Quem trava na connection string — a pergunta mais difícil, e a última das

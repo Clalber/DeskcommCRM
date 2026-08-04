@@ -65,24 +65,42 @@ resposta_sim() {
 # banco, Redis e WhatsApp. Era exatamente a diferença entre o install.sh, que
 # testava a porta e imprimia "Instalação concluída!" mesmo sem resposta, e o
 # update.sh, que só declara sucesso com "status":"ok". Um critério, um lugar.
-app_health_body() {
+# Devolve DUAS linhas: o status GERAL na primeira, o corpo inteiro na segunda.
+#
+# A separação existe porque procurar '"status":"ok"' no JSON cru é errado, e
+# erra em silêncio: `ok` é o vocabulário dos CHECKS individuais
+# (ok|degraded|down), enquanto o status geral usa outro (healthy|degraded|
+# unhealthy). Medido contra o app real: um `grep '"status":"ok"'` casa com o
+# `checks.redis`, então um app com o BANCO FORA — status geral "unhealthy" —
+# passava como saudável, desde que qualquer outro check estivesse de pé. Quem
+# decide é o app, no Node que já está sendo invocado; o shell não repete a
+# regra dele.
+app_health_probe() {
   dc exec -T app node -e \
-    "fetch('http://127.0.0.1:3000/api/v1/health').then(r=>r.text()).then(t=>{console.log(t);process.exit(0)}).catch(()=>process.exit(1))" \
+    "fetch('http://127.0.0.1:3000/api/v1/health').then(r=>r.json()).then(j=>{console.log((j&&j.data&&j.data.status)||'sem_status');console.log(JSON.stringify(j))}).catch(()=>process.exit(1))" \
     2>/dev/null || echo ''
 }
 
-# wait_app_healthy [tentativas] [intervalo_s] — devolve 0 quando o app responde
-# "status":"ok"; ecoa o último corpo lido (vazio se nunca respondeu), para quem
-# chama poder mostrar o motivo em vez de só dizer que não deu.
+# wait_app_healthy [tentativas] [intervalo_s] — 0 quando o app se declara
+# `healthy` ou `degraded`, 1 caso contrário. `degraded` entra de propósito:
+# significa que algum serviço OPCIONAL ainda não foi configurado (o check
+# devolve degraded/not_configured), e recusar a instalação por isso reprovaria
+# um CRM que está de pé e atendendo. `unhealthy` é outra história — quer dizer
+# check DOWN, e aí o app não serve. Ecoa o corpo lido, para quem chama poder
+# mostrar o motivo em vez de só dizer que não deu.
 wait_app_healthy() {
-  local tentativas="${1:-20}" intervalo="${2:-3}" out='' i=0
+  local tentativas="${1:-20}" intervalo="${2:-3}" saida='' status='' corpo='' i=0
   while [ "$i" -lt "$tentativas" ]; do
-    out="$(app_health_body)"
-    if printf '%s' "$out" | grep -q '"status":"ok"'; then printf '%s' "$out"; return 0; fi
+    saida="$(app_health_probe)"
+    status="$(printf '%s\n' "$saida" | head -1 | tr -d '\r')"
+    corpo="$(printf '%s\n' "$saida" | tail -n +2)"
+    case "$status" in
+      healthy|degraded) printf '%s' "$corpo"; return 0;;
+    esac
     i=$((i+1))
     [ "$i" -lt "$tentativas" ] && sleep "$intervalo"
   done
-  printf '%s' "$out"
+  printf '%s' "$corpo"
   return 1
 }
 
