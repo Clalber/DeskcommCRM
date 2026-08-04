@@ -289,6 +289,28 @@ ram_ok "VPS de 8 GB (medido de verdade)"       silencia 8025284
 ram_ok "VPS de 3 GB — abaixo do recomendado"   avisa    2900000
 ram_ok "VPS de 2 GB — o plano que não dá conta" avisa   1950000
 
+echo "saúde do app (wait_app_healthy)"
+# O install.sh dava o app por bom quando a PORTA 3000 aceitava conexão — o que
+# acontece assim que o Node sobe, antes de ele saber se alcança o banco. O caso
+# "corpo vazio" abaixo é exatamente esse: com o probe antigo era verde, e o
+# "Instalação concluída!" saía por cima de um app quebrado.
+saude_ok() {  # saude_ok <descrição> <saudavel|nao> <corpo que o app devolve>
+  local desc="$1" esperado="$2" corpo="$3" real
+  if CORPO="$corpo" bash -c '
+        . ./_common.sh
+        app_health_body() { printf "%s" "${CORPO}"; }
+        wait_app_healthy 2 0
+      ' >/dev/null 2>&1
+  then real=saudavel; else real=nao; fi
+  if [ "$real" = "$esperado" ]; then printf '  ✓ %s\n' "$desc"
+  else printf '  ✗ %s  (deu %s, esperava %s)\n' "$desc" "$real" "$esperado"; fail=1; fi
+}
+saude_ok "responde status ok"                    saudavel '{"status":"ok","db":"up"}'
+saude_ok "status ok no meio do JSON"             saudavel '{"uptime":12,"status":"ok"}'
+saude_ok "porta aberta, corpo vazio"             nao      ''
+saude_ok "responde, mas degraded"                nao      '{"status":"degraded","db":"down"}'
+saude_ok "proxy devolveu HTML de erro"           nao      '<html>502 Bad Gateway</html>'
+
 echo
 if [ "$fail" = 0 ]; then echo "todos os validadores passaram"; else echo "FALHOU"; fi
 exit "$fail"

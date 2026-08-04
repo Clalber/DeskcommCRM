@@ -16,6 +16,9 @@ set -euo pipefail
 KIT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 
 REPO_URL="${REPO_URL:-https://github.com/melgarafael/DeskcommCRM.git}"
+# Uma constante, dois usos (o fim feliz e o fim travado) — e o comecar.sh tem a
+# gêmea. Link repetido à mão vira link divergente na primeira troca.
+COMUNIDADE_URL="https://lp-comunidade.automatiklabs.com.br"
 REPO_DIR="${REPO_DIR:-deskcommcrm}"
 COMPOSE="docker-compose.prod.yml"
 COMPOSE_TRAEFIK="docker-compose.traefik.yml"
@@ -945,14 +948,19 @@ c_grn "✓ containers no ar"
 
 # ── 10. Healthcheck ─────────────────────────────────────────────────────────
 step "Aguardando o app ficar saudável"
-ok=0
-for i in $(seq 1 30); do
-  if dc exec -T app node -e "require('net').connect(3000,'127.0.0.1').on('connect',()=>process.exit(0)).on('error',()=>process.exit(1))" 2>/dev/null; then
-    ok=1; break
-  fi
-  sleep 3
-done
-[ "$ok" = 1 ] && c_grn "✓ app respondendo" || c_ylw "⚠ app ainda não respondeu. Veja: docker compose $(dc_files) logs app"
+# Antes isto abria um socket na porta 3000 e dava por bom. A porta abre assim
+# que o Node sobe, então o "✓" saía com o app ainda sem banco — e o bloco
+# "Instalação concluída!" saía logo atrás, incondicionalmente. Um falso verde
+# no exato momento em que a pessoa decide se confia no produto. Agora o critério
+# é o mesmo do update.sh: a rota /api/v1/health responder "status":"ok".
+if health_body="$(wait_app_healthy 30 3)"; then
+  APP_SAUDAVEL=1
+  c_grn "✓ app no ar e saudável"
+else
+  APP_SAUDAVEL=0
+  c_ylw "⚠ os contêineres subiram, mas o app não respondeu que está saudável."
+  [ -n "$health_body" ] && c_dim "  última resposta: $(printf '%s' "$health_body" | head -c 200)"
+fi
 
 # ── 11. Automações (cron do drain de eventos) ───────────────────────────────
 step "Ativando as automações"
@@ -961,6 +969,46 @@ setup_event_log_drain_cron
 setup_update_agent_cron
 
 # ── Final ───────────────────────────────────────────────────────────────────
+# O app não confirmou que está de pé: dizer "Instalação concluída!" aqui seria
+# mentir na única tela que a pessoa vai ler inteira. Ela recebe o estado real e
+# o caminho de diagnóstico — e não a receita de apagar tudo do show_recovery,
+# que existe para quem parou no MEIO. Aqui nada ficou pela metade: a config
+# está salva e a stack está de pé; falta o app responder.
+if [ "${APP_SAUDAVEL:-0}" != 1 ]; then
+  cat <<INCOMPLETO
+
+$(c_ylw "═══════════════════════════════════════════════════════")
+$(c_ylw " Quase lá — falta o app responder")
+$(c_ylw "═══════════════════════════════════════════════════════")
+
+  A configuração está salva e os contêineres estão no ar. Você NÃO precisa
+  refazer nada — falta o app dizer que está saudável.
+
+  O motivo mais comum é uma chave faltando ou errada no .env. O log diz qual:
+
+       docker compose $(dc_files) logs --tail=50 app
+
+     procure por: [env] Falha de validação
+
+  Diagnóstico completo dos serviços:
+
+       bash ${KIT_DIR}/healthcheck.sh
+
+  Depois de corrigir o .env, é só subir de novo (nada é perdido):
+
+       docker compose $(dc_files) up -d
+
+  Travou? Leve o log para a comunidade — tem gente que já passou por isso:
+
+       ${COMUNIDADE_URL}
+
+INCOMPLETO
+  # Sai != 0 para que automação (e o --yes) saiba que não terminou saudável,
+  # mas sem o trap: a receita de "apague tudo e recomece" não cabe aqui.
+  trap - EXIT
+  exit 1
+fi
+
 cat <<DONE
 
 $(c_grn "═══════════════════════════════════════════════════════")
@@ -988,7 +1036,7 @@ $(c_grn "  ─── A comunidade ───────────────�
   É onde saem os avisos de versão nova, os agentes que outras pessoas já
   configuraram e a resposta de quem roda exatamente este CRM:
 
-       https://lp-comunidade.automatiklabs.com.br
+       ${COMUNIDADE_URL}
 
   Telemetria: por padrão os erros desta instalação são enviados ao Sentry do
   projeto, o que ajuda a corrigir falhas que afetam todo mundo. Para desligar,

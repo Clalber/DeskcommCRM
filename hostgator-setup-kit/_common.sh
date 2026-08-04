@@ -60,6 +60,32 @@ resposta_sim() {
   case "$r" in s|sim|y|yes) return 0;; *) return 1;; esac
 }
 
+# Saúde do app pela rota que ele responde de verdade, não pela porta. A porta
+# 3000 aceita conexão assim que o Node sobe — ANTES de o app saber se alcança
+# banco, Redis e WhatsApp. Era exatamente a diferença entre o install.sh, que
+# testava a porta e imprimia "Instalação concluída!" mesmo sem resposta, e o
+# update.sh, que só declara sucesso com "status":"ok". Um critério, um lugar.
+app_health_body() {
+  dc exec -T app node -e \
+    "fetch('http://127.0.0.1:3000/api/v1/health').then(r=>r.text()).then(t=>{console.log(t);process.exit(0)}).catch(()=>process.exit(1))" \
+    2>/dev/null || echo ''
+}
+
+# wait_app_healthy [tentativas] [intervalo_s] — devolve 0 quando o app responde
+# "status":"ok"; ecoa o último corpo lido (vazio se nunca respondeu), para quem
+# chama poder mostrar o motivo em vez de só dizer que não deu.
+wait_app_healthy() {
+  local tentativas="${1:-20}" intervalo="${2:-3}" out='' i=0
+  while [ "$i" -lt "$tentativas" ]; do
+    out="$(app_health_body)"
+    if printf '%s' "$out" | grep -q '"status":"ok"'; then printf '%s' "$out"; return 0; fi
+    i=$((i+1))
+    [ "$i" -lt "$tentativas" ] && sleep "$intervalo"
+  done
+  printf '%s' "$out"
+  return 1
+}
+
 # Código de saída de quem RECUSOU antes de tocar em qualquer coisa — distinto
 # de "falhei no meio" (1). O agent.sh usa isso para não desfazer uma
 # atualização que nunca começou: reiniciar o container e reescrever o .env
