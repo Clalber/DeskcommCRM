@@ -88,7 +88,11 @@ function recomendar(
     case "falhando":
       return `${uso.falhas} de ${uso.total} tentativas falharam. Vale abrir as execuções e entender o que a impede.`;
     case "fora_da_configuracao":
-      return "O agente usou esta capacidade sem ela estar ligada aqui. É o caso do pedido de ajuda humana, oferecido automaticamente quando o repasse para humano está ativado.";
+      // Não afirme a causa: quem cai aqui pode ser o pedido de ajuda humana
+      // (que o sistema oferece sozinho) ou uma capacidade desligada DEPOIS de
+      // já ter sido usada. Dizer "é o caso do pedido de ajuda humana" mente na
+      // segunda hipótese, e foi o que a prova em tela pegou.
+      return "O agente usou esta capacidade sem ela estar ligada nesta configuração. Ou ela foi desligada depois de já ter sido usada, ou é o pedido de ajuda humana — esse o sistema oferece sozinho quando o repasse para uma pessoa está ativado.";
     case "nunca_usada":
       return `Ligada e nunca usada nos últimos ${janelaEmDias} dias. Ela ocupa uma das vagas e concorre com as outras quando o agente escolhe o que fazer — considere desligar.`;
     case "so_em_teste":

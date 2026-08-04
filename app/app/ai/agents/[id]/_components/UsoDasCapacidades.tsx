@@ -59,6 +59,13 @@ const SINAL: Record<SinalDeUso, { rotulo: string; classe: string }> = {
   },
 };
 
+/** `draft`/`published` são palavras do banco, não do dono da clínica. */
+const NOME_DA_VERSAO: Record<string, string> = {
+  draft: "que você está editando",
+  published: "que está no ar",
+  superseded: "antiga",
+};
+
 function formatarData(iso: string | null): string {
   if (!iso) return "nunca";
   return new Date(iso).toLocaleString("pt-BR", {
@@ -120,7 +127,11 @@ export function UsoDasCapacidades({ agentId, active }: Props) {
                     : "capacidades pedem uma decisão sua"
                 }.`
               : "Nada pedindo decisão no momento."}
-            {versao_lida ? ` Configuração lida da versão ${versao_lida.status}.` : null}
+            {versao_lida
+              ? ` O que está ligado vem da versão ${
+                  NOME_DA_VERSAO[versao_lida.status] ?? versao_lida.status
+                }.`
+              : null}
           </p>
         </div>
         <Button
