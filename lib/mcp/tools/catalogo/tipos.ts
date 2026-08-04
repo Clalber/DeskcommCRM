@@ -26,6 +26,22 @@ export interface McpToolCatalogEntry {
   risco: ToolRisk;
   /** >= 1 pacote. Uma capacidade pode servir a mais de uma jornada. */
   pacotes: ReadonlyArray<ToolBundle>;
+  /**
+   * Capacidade operada por PESSOA, nunca pelo agente.
+   *
+   * Existe porque nem toda tool do catalogo deve estar ao alcance da IA. O
+   * exemplo que originou o campo: retomar o atendimento automatico depois que
+   * uma pessoa assumiu. `lib/agent-engine/agent/inbound-turn.ts` registra a
+   * regra dura — "so o humano/CRM libera, o agente nunca reassume" — e um
+   * agente que pudesse chamar essa tool se auto-liberaria do proprio handoff.
+   *
+   * Marcar aqui NAO e o que impede: quem impede e `requiresRole` acima do papel
+   * do agente. A marca serve para (a) distinguir a restricao DELIBERADA do
+   * acidente que o gate de alcancabilidade caca, e (b) dizer a tela que essa
+   * capacidade e operada por gente — senao o dono liga achando que o agente vai
+   * usar, e ela nunca dispara.
+   */
+  apenasHumano?: boolean;
 }
 
 /**

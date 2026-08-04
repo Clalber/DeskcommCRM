@@ -1,27 +1,32 @@
 /**
  * GATE DO PILAR 1 — o papel exigido por uma capacidade é decisão, não descuido.
  *
- * O épico IA 360 promete "a IA tem mãos". Medindo o catálogo, a promessa hoje
- * tem um buraco estrutural: **nenhum agente publicado alcança capacidade de
- * escrita que exija `manager`** — e a maioria das escritas exige, porque espelha
- * o papel que a rota REST equivalente cobra.
+ * O épico IA 360 promete "a IA tem mãos". Uma capacidade declarada no catálogo,
+ * oferecida na tela e ligada pelo dono do negócio, mas recusada em tempo de
+ * execução por papel insuficiente, é uma promessa quebrada — e quebrada do pior
+ * jeito possível: o modelo recebe `{ error: "Role 'agent' insufficient" }` de
+ * volta, segue conversando, e nada aparece na tela do humano dizendo que a
+ * ferramenta que ele ligou não existe na prática.
  *
  * ⚠️ O PAPEL DO AGENTE PUBLICADO É `agent`, LITERAL E FIXO, nos dois caminhos
  * que montam o contexto MCP de um agente:
  *   - `lib/ai/runtime/agent.ts` — `auth.role = "agent"`, `scopes: [… "role:agent"]`
  *   - `lib/agent-engine/edge/crm/mcp-tools.ts` — `role: 'agent'`
  * e `lib/ai/runtime/mcp_token.ts` grava `"role:agent"` no token efêmero sem
- * parâmetro para variar. `ensureRole` compara por `ROLE_RANK` → 403.
+ * parâmetro para variar. `ensureRole` compara por `ROLE_RANK`, então toda tool
+ * com `requiresRole` acima de `agent` é inalcançável para QUALQUER agente
+ * publicado.
  *
- * ⚠️ E O 403 NÃO APARECE EM LUGAR NENHUM. `lib/ai/runtime/tools.ts` devolve o
- * erro **ao modelo** em vez de estourar ("keeps the loop alive"): o agente lê
- * `{ error: "Role 'agent' insufficient" }`, segue conversando, e nada na tela
- * diz ao humano que a ferramenta que ele ligou não existe na prática.
+ * ⚠️ E A RÉGUA NÃO É "TUDO TEM QUE SER ALCANÇÁVEL". Algumas capacidades NÃO
+ * devem estar ao alcance da IA, e o que decide é uma medição, não uma opinião:
+ * **o papel que a ROTA HTTP equivalente exige**. Onde a rota pede `agent` e a
+ * tool pedia `manager`, era divergência — a IA e o humano operando por regras
+ * diferentes sobre a MESMA ação (as quatro tools de lead, corrigidas em
+ * `bddeeb6`). Onde a rota pede `manager`, restringir a IA é PARIDADE: nem um
+ * atendente humano configura aquilo pela tela.
  *
- * ESTE TESTE NÃO CONSERTA ISSO — o conserto mexe no modelo de permissão e é
- * decisão do épico (BUG-02 no `HANDOFF-ia-360.md`). O que ele impede é a saída
- * fácil: baixar o papel das tools para `agent` "porque senão não funciona",
- * concedendo em silêncio poder de configuração a quem só devia atender.
+ * Este arquivo mede as duas coisas: que nada ficou fora do alcance por acidente,
+ * e que nada entrou no alcance por atalho.
  */
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -29,33 +34,54 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { allTools } from "@/lib/mcp/tools";
+import { catalogEntry } from "@/lib/mcp/tools/catalog";
 import { ROLE_RANK, type Role } from "@/lib/auth/types";
 
 const RAIZ = join(__dirname, "..", "..");
 
 /**
  * O papel que um agente publicado de fato recebe. Constante local de propósito —
- * ver o controle positivo abaixo, que confere que ela ainda descreve o código.
+ * ver o controle positivo no fim, que confere que ela ainda descreve o código.
  */
 const PAPEL_DO_AGENTE_PUBLICADO: Role = "agent";
 
 /**
+ * DÍVIDA MEDIDA em `99cd0fc` e PAGA em `bddeeb6`: `crm_create_lead`,
+ * `crm_update_lead`, `crm_move_lead_stage` e `crm_send_whatsapp_message`
+ * exigiam `manager` e nenhum agente as alcançava, enquanto as rotas HTTP
+ * equivalentes exigem `agent` — um atendente humano fazia pela tela o que a IA
+ * não conseguia fazer com o mesmo papel.
+ *
+ * Vazia agora. A penúltima asserção cobra que ela não envelheça: deixar um nome
+ * aqui depois de resolvido mentiria para quem vier.
+ */
+const INALCANCAVEIS_CONHECIDAS: ReadonlyArray<string> = [];
+
+/**
  * As escritas que são TRABALHO DE ATENDENTE, e por isso exigem só `agent`.
  *
- * Direcionar uma conversa e marcar uma conversa é o que um atendente humano faz
- * o dia inteiro; cobrar `manager` para isso tornaria o agente incapaz de fazer o
- * próprio trabalho. Tudo que MUDA A CASA (etapa do funil, entrada automática de
- * contatos, regra que roda sozinha, negócio no funil, mensagem ao cliente) fica
- * de fora desta lista de propósito.
+ * ⚠️ ESTA LISTA É O CONTRAPESO DA DÍVIDA ACIMA, e existe porque as duas falhas
+ * são simétricas. A dívida caça a tool restrita DEMAIS; esta caça a restrita DE
+ * MENOS — alguém baixando `requiresRole` para `agent` "porque senão não
+ * funciona", concedendo em silêncio poder de configuração a quem só devia
+ * atender. Sem ela, consertar uma inalcançável teria um caminho fácil e errado.
  *
- * Acrescentar um nome aqui é conceder poder — faça olhando para a rota REST
- * equivalente, e diga por quê.
+ * Acrescentar um nome aqui é conceder poder. Faça olhando para a rota HTTP
+ * equivalente, e diga qual é.
  */
 const ESCRITA_QUE_E_TRABALHO_DE_ATENDENTE: ReadonlyArray<string> = [
-  // `/api/v1/conversations/[id]/assign` cobra `agent`: é a fila do dia a dia.
+  // `app/api/v1/leads/` — POST exige `agent`. Um atendente cria negócio pela tela.
+  "crm_create_lead",
+  // `app/api/v1/leads/[id]/` — PATCH exige `agent`.
+  "crm_update_lead",
+  // `app/api/v1/leads/[id]/move/` — exige `agent`. Mover card é o trabalho do dia.
+  "crm_move_lead_stage",
+  // `app/api/v1/messages/` — exige `agent`. Responder cliente é o trabalho do dia.
+  "crm_send_whatsapp_message",
+  // `app/api/v1/conversations/[id]/assign` — exige `agent`: é a fila.
   "crm_assign_conversation",
-  // `/api/v1/conversation-tags` é leitura para `viewer`; marcar conversa é
-  // trabalho de atendente, e o dano máximo é um filtro sujo — reversível na tela.
+  // `app/api/v1/conversation-tags` é leitura `viewer`; marcar conversa é trabalho
+  // de atendente e o dano máximo é um filtro sujo, reversível na tela.
   "crm_manage_tags",
 ];
 
@@ -70,7 +96,31 @@ describe("catálogo de tools — papel exigido e alcance real do agente", () => 
     expect(allTools.length).toBeGreaterThan(0);
   });
 
-  it("escrita que muda a casa exige manager, não o papel de atendente", () => {
+  it("nenhuma capacidade nasce inalcançável POR ACIDENTE", () => {
+    // O que este gate caça é a restrição NÃO DECLARADA: a tool que ficou fora do
+    // alcance do agente por descuido de `requiresRole` e falha em silêncio (a
+    // ponte devolve o erro ao modelo, e o humano que ligou não fica sabendo).
+    // Restrição deliberada se DECLARA com `apenasHumano` — e aí não é acidente.
+    const acidentais = allTools
+      .filter((t) => !alcancavelPeloAgente(t.requiresRole))
+      .filter((t) => !catalogEntry(t.name)?.apenasHumano)
+      .map((t) => t.name)
+      .sort();
+    expect(acidentais).toEqual([...INALCANCAVEIS_CONHECIDAS].sort());
+  });
+
+  it("capacidade marcada como operada por pessoa está mesmo fora do alcance do agente", () => {
+    // A marca é declaração, não trava — quem trava é `requiresRole`. Uma tool
+    // marcada `apenasHumano` mas alcançável pelo agente é a pior combinação:
+    // diz na tela que só gente opera, e o agente opera assim mesmo.
+    const mentirosas = allTools
+      .filter((t) => catalogEntry(t.name)?.apenasHumano)
+      .filter((t) => alcancavelPeloAgente(t.requiresRole))
+      .map((t) => t.name);
+    expect(mentirosas).toEqual([]);
+  });
+
+  it("escrita que muda a casa não entra no alcance do agente por atalho", () => {
     const frouxas = allTools
       .filter((t) => t.category === "write")
       .filter((t) => !ESCRITA_QUE_E_TRABALHO_DE_ATENDENTE.includes(t.name))
@@ -79,46 +129,36 @@ describe("catálogo de tools — papel exigido e alcance real do agente", () => 
     expect(frouxas).toEqual([]);
   });
 
-  it("a lista de exceções não guarda nome que já saiu do catálogo", () => {
+  it("as duas listas não guardam nome que já saiu do catálogo", () => {
     // Sem esta guarda, uma exceção sobreviveria à tool que a justificava e
     // passaria a autorizar, em silêncio, a próxima que reusasse o nome.
     const nomes = new Set(allTools.map((t) => t.name));
-    const orfas = ESCRITA_QUE_E_TRABALHO_DE_ATENDENTE.filter((n) => !nomes.has(n));
+    const orfas = [...ESCRITA_QUE_E_TRABALHO_DE_ATENDENTE, ...INALCANCAVEIS_CONHECIDAS].filter(
+      (n) => !nomes.has(n),
+    );
     expect(orfas).toEqual([]);
   });
 
-  /**
-   * A LACUNA MEDIDA. Não é aspiração: é o estado de hoje, e está aqui para que o
-   * relatório de qualquer wave possa citá-lo sem remedir.
-   */
-  it("BUG-02: hoje o agente publicado não alcança NENHUMA escrita que exija manager", () => {
-    const inalcancaveis = allTools
-      .filter((t) => !alcancavelPeloAgente(t.requiresRole))
-      .map((t) => t.name);
-
-    // Guarda de vacuidade ao contrário: se um dia isto zerar, o BUG-02 foi
-    // resolvido (ou alguém afrouxou os papéis) e este teste TEM que ser
-    // reescrito com a realidade nova — em vez de continuar verde sem medir nada.
-    expect(inalcancaveis.length).toBeGreaterThan(0);
-
-    // Toda a lacuna é do MESMO motivo. Se aparecer uma inalcançável que não
-    // exige manager, é outra causa e o diagnóstico do BUG-02 não a cobre.
-    const porOutroMotivo = allTools
-      .filter((t) => !alcancavelPeloAgente(t.requiresRole))
-      .filter((t) => t.requiresRole !== "manager")
-      .map((t) => `${t.name} exige '${t.requiresRole}'`);
-    expect(porOutroMotivo).toEqual([]);
+  it("dívida declarada não esconde capacidade já consertada", () => {
+    const porNome = new Map(allTools.map((t) => [t.name, t]));
+    const jaResolvidas = INALCANCAVEIS_CONHECIDAS.filter((nome) => {
+      const t = porNome.get(nome);
+      // Tool removida do catálogo também sai da dívida — senão a lista
+      // sobreviveria à própria capacidade.
+      return t === undefined || alcancavelPeloAgente(t.requiresRole);
+    });
+    expect(jaResolvidas).toEqual([]);
   });
 
   /**
    * CONTROLE POSITIVO — a constante lá em cima ainda descreve o código?
    *
-   * ⚠️ SEM ISTO O TESTE PASSA SOZINHO DEPOIS DO CONSERTO. `PAPEL_DO_AGENTE_PUBLICADO`
-   * é um literal escrito à mão: no dia em que alguém fizer o token efêmero mintar
-   * `role:manager`, tudo aqui continuaria verde descrevendo um mundo que deixou
-   * de existir — e a dívida do BUG-02 seguiria registrada como aberta depois de
-   * resolvida. Ler o fonte é feio e é o único jeito de a afirmação envelhecer com
-   * barulho.
+   * ⚠️ SEM ISTO O TESTE PASSA SOZINHO DEPOIS DE UM CONSERTO NO MINT.
+   * `PAPEL_DO_AGENTE_PUBLICADO` é um literal escrito à mão: no dia em que alguém
+   * fizer o token efêmero mintar `role:manager`, tudo aqui continuaria verde
+   * descrevendo um mundo que deixou de existir — e as duas listas seguiriam
+   * classificando capacidades por uma régua que não vale mais. Ler o fonte é feio
+   * e é o único jeito de a afirmação envelhecer com barulho.
    */
   it("o mint do token efêmero ainda grava o papel que este teste assume", () => {
     const fonte = readFileSync(join(RAIZ, "lib/ai/runtime/mcp_token.ts"), "utf8");

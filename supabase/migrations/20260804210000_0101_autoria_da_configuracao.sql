@@ -14,12 +14,13 @@
 -- na mesma consulta, pela tela que já existe.
 --
 -- ⚠️ NÃO HÁ COLUNA DE "QUAL AGENTE", E É DELIBERADO. `Actor.id` para `ai_agent`
--- significa coisas diferentes conforme o caminho: no runtime nativo
--- (lib/ai/runtime/agent.ts) é o id da EXECUÇÃO (`ai_agent_runs.id`); no harness
--- de vendas (lib/agent-engine/edge/crm/mcp-tools.ts) é o id do AGENTE
--- (`ai_agents.id`). Uma FK para `ai_agents(id)` alimentada daí seria verdadeira
--- num caminho e recusaria a escrita no outro. Guardar a ESPÉCIE do ator é a
--- afirmação que se sustenta hoje; o identificador cru continua no audit log.
+-- ainda não é uma chave estável de agente nos três caminhos: o runtime nativo e
+-- o harness mandam o id do AGENTE, mas `lib/mcp/auth.ts` `deriveActor()` devolve
+-- o id do RUN (scope `agent_run:<uuid>`) ou o do TOKEN — o caminho de um cliente
+-- MCP externo. Uma FK para `ai_agents(id)` alimentada daí seria verdadeira em
+-- dois caminhos e recusaria a escrita com 23503 no terceiro. Guardar a ESPÉCIE
+-- do ator é a afirmação que se sustenta nos três; o identificador cru continua
+-- no audit log.
 --
 -- Idempotente e auto-curativa: colunas nullable, sem backfill necessário (linha
 -- antiga fica com autoria desconhecida, que é a verdade sobre ela). O CHECK viaja

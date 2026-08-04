@@ -18,12 +18,15 @@
  * responderia isso: o guard roda antes do `fetch`, e um mock do `fetch` já teria
  * passado por ele.
  *
- * ⚠️ O TOKEN DO AGENTE USA `role:manager`, E ISSO É O BUG-02. Um agente
- * PUBLICADO recebe `role:agent` fixo e `ensureRole` recusaria toda escrita —
- * lacuna medida em `tests/unit/capacidade-alcancavel-pelo-agente.test.ts` e
- * registrada no `HANDOFF-ia-360.md`. O caminho exercitado aqui (cliente MCP
- * server-to-server com `actor:ai_agent`) é real e é hoje o único por onde uma
- * escrita de configuração chega ao banco vinda de um ator agente.
+ * ⚠️ O TOKEN USA `role:manager`, E ISSO NÃO É UM ATALHO DO TESTE. As seis
+ * escritas de configuração são `apenasHumano` por PARIDADE: as rotas HTTP que
+ * elas espelham exigem `manager`, e nem um atendente humano configura a operação
+ * pela tela. Um agente PUBLICADO (papel `agent`) não as alcança **de propósito**,
+ * e o gate `tests/unit/capacidade-alcancavel-pelo-agente.test.ts` cobra que essa
+ * restrição continue declarada. O que este spec exercita é o caminho de um
+ * cliente MCP server-to-server com `actor:ai_agent` — real, suportado, e o único
+ * por onde uma escrita de configuração chega ao banco vinda de um ator agente.
+ * A autoria gravada é `ai` pelo scope `actor:ai_agent`, não pelo papel.
  *
  * Self-contido: nomes com sufixo de timestamp, e o que foi criado é removido no
  * final para reruns ficarem verdes num banco compartilhado com outras sessões.
@@ -39,7 +42,13 @@ import { test, expect, type Locator, type Page } from "@playwright/test";
 const APP_URL = `http://localhost:${process.env.E2E_PORT ?? "3001"}`;
 const CREDS_PATH = path.join(process.cwd(), ".e2e-creds.json");
 const AGENTE_PATH = path.join(process.cwd(), ".e2e-agente-mcp.json");
-const EVIDENCIA = path.join(process.cwd(), ".superpowers", "evidence");
+/**
+ * As capturas vão para `evidence/`, que é VERSIONADO — não para a pasta de
+ * trabalho. `tests/unit/evidencia-citada.test.ts` reprova documento que aponta
+ * para imagem fora do `git ls-files`: num projeto aberto, prova citada e não
+ * entregue é uma afirmação sem lastro para quem clona.
+ */
+const EVIDENCIA = path.join(process.cwd(), "evidence", "ia-360-w4");
 
 interface Creds {
   password: string;

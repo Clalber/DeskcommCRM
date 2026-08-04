@@ -16,8 +16,9 @@ import { z } from "zod";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { auditMcpToolCall } from "@/lib/mcp/audit";
-import { ensureRole, ensureScope } from "@/lib/mcp/auth";
+import { McpAuthError, ensureRole, ensureScope } from "@/lib/mcp/auth";
 import type { McpAuthResult } from "@/lib/mcp/auth";
+import { logger } from "@/lib/logger";
 import { allTools, getToolByName } from "@/lib/mcp/tools";
 import type { McpContext, McpToolDefinition } from "@/lib/mcp/types";
 
@@ -87,6 +88,21 @@ function wrapMcpTool(
           success: false,
           errorMessage: message,
         });
+        // Recusa por papel/scope NAO e erro de execucao — e defeito de
+        // configuracao: o humano ligou a capacidade na tela e ela nao existe na
+        // pratica. Devolver so ao modelo faz a promessa quebrada sumir sem
+        // alarme (o modelo le o erro, segue conversando, e ninguem fica
+        // sabendo). Emite sinal proprio para que apareca na observabilidade.
+        if (err instanceof McpAuthError) {
+          logger.error("capacidade ligada na tela e inalcancavel em execucao", {
+            tool_name: def.name,
+            requires_role: def.requiresRole,
+            requires_scope: def.requiresScope,
+            actor_role: input.auth.role,
+            organization_id: input.ctx.organizationId,
+            request_id: input.ctx.requestId,
+          });
+        }
         // Return error to the model rather than throwing — keeps the loop alive.
         return { error: message };
       }

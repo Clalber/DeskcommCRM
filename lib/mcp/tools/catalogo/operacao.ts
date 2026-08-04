@@ -21,6 +21,22 @@
  * Errar para baixo aqui dá ao agente poder que o humano não sabe que concedeu,
  * porque `critico` é exatamente o que `entraPorPacote()` recusa ligar sozinho.
  *
+ * ⚠️ AS SEIS ESCRITAS DESTE ARQUIVO SÃO `apenasHumano`, E ISSO É PARIDADE, NÃO
+ * TIMIDEZ. A régua do épico para o papel de uma capacidade é o que a ROTA HTTP
+ * equivalente exige (ver `tests/unit/capacidade-alcancavel-pelo-agente.test.ts`).
+ * As três rotas que estas tools espelham — `pipelines/[id]/stages`,
+ * `webhook-sources` e `automation-rules` — exigem `manager`, todas: **nem um
+ * atendente humano configura a operação pela tela**. Onde a rota pede `agent` e
+ * a tool pedia `manager` havia divergência e ela foi corrigida (`bddeeb6`); aqui
+ * não há divergência nenhuma, e baixar para `agent` daria à IA um poder que o
+ * produto não dá a uma pessoa com o mesmo papel.
+ *
+ * A consequência é honesta e tem que ser dita na tela, que é para isso que o
+ * campo serve: no pacote "Organizar a operação", o agente **lê tudo e muda
+ * nada**. As dez leituras são o que ele de fato ganhou — explicar a operação,
+ * diagnosticar a entrada que parou de receber, mostrar a automação que falhou,
+ * parar de inventar marcador. As escritas ficam com quem já as tinha.
+ *
  * ⚠️ SEM JARGÃO, e a lista proibida do gate inclui "webhook", "pipeline",
  * "stage", "tag" e "lead". Os nomes escolhidos: **funil**, **etapa**,
  * **marcador**, **oportunidade** e **entrada automática de contatos** — este
@@ -53,6 +69,7 @@ export const TOOLS_OPERACAO = declararTools([
     oQueToca: "Funil de vendas",
     risco: "atencao",
     pacotes: ["organizar"],
+    apenasHumano: true,
   },
   {
     name: "crm_update_stage",
@@ -64,6 +81,7 @@ export const TOOLS_OPERACAO = declararTools([
     oQueToca: "Funil de vendas",
     risco: "atencao",
     pacotes: ["organizar"],
+    apenasHumano: true,
   },
   {
     name: "crm_archive_stage",
@@ -75,6 +93,7 @@ export const TOOLS_OPERACAO = declararTools([
     oQueToca: "Funil de vendas",
     risco: "critico",
     pacotes: ["organizar"],
+    apenasHumano: true,
   },
 
   // ---- marcadores ----
@@ -147,6 +166,7 @@ export const TOOLS_OPERACAO = declararTools([
     oQueToca: "Entrada automática de contatos",
     risco: "critico",
     pacotes: ["organizar"],
+    apenasHumano: true,
   },
   {
     name: "crm_set_webhook_source_active",
@@ -158,6 +178,7 @@ export const TOOLS_OPERACAO = declararTools([
     oQueToca: "Entrada automática de contatos",
     risco: "critico",
     pacotes: ["organizar"],
+    apenasHumano: true,
   },
 
   // ---- regras automáticas ----
@@ -193,6 +214,7 @@ export const TOOLS_OPERACAO = declararTools([
     oQueToca: "Regras automáticas",
     risco: "critico",
     pacotes: ["organizar"],
+    apenasHumano: true,
   },
 
   // ---- time ----

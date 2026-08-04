@@ -13,17 +13,18 @@
  * a autoria mora na PRÓPRIA LINHA: o estado e a autoria do estado são lidos
  * juntos, na mesma consulta, pela tela que já existe.
  *
- * ⚠️ NÃO GUARDAMOS QUAL AGENTE, E ISSO É DELIBERADO. `Actor.id` para
- * `ai_agent` significa coisas DIFERENTES conforme o caminho de execução: no
- * runtime nativo (`lib/ai/runtime/agent.ts`) é o id da EXECUÇÃO
- * (`ai_agent_runs.id`); no harness de vendas
- * (`lib/agent-engine/edge/crm/mcp-tools.ts`) é o id do AGENTE (`ai_agents.id`);
- * e no MCP externo (`lib/mcp/auth.ts`) é o id do run ou o do token. Uma coluna
- * `..._agent_id uuid references ai_agents(id)` alimentada a partir daí seria
- * verdadeira em um caminho e falsa nos outros — e a chave estrangeira recusaria
- * a escrita justamente no caminho mais usado. Enquanto `Actor` não distinguir
- * agente de execução, guardar a ESPÉCIE do ator é a afirmação que se sustenta;
- * o `api_audit_log` continua guardando o identificador cru para quem investiga.
+ * ⚠️ NÃO GUARDAMOS QUAL AGENTE, E ISSO É DELIBERADO — mas o motivo MUDOU, e a
+ * versão anterior desta nota já não descreve o código. Ela dizia que os três
+ * caminhos discordavam sobre o que `Actor.id` significa para `ai_agent`. Dois
+ * foram alinhados: o runtime nativo passou a mandar o id do AGENTE (`bddeeb6`,
+ * BUG-01) e o harness sempre mandou. **O terceiro não.**
+ * `lib/mcp/auth.ts` `deriveActor()` ainda devolve o id do RUN (do scope
+ * `agent_run:<uuid>`) ou, sem ele, o id do TOKEN — e é justamente o caminho de
+ * um cliente MCP externo. Uma coluna `..._agent_id uuid references ai_agents(id)`
+ * alimentada de `Actor.id` seria verdadeira em dois caminhos e recusaria a
+ * escrita com `23503` no terceiro. Guardar a ESPÉCIE do ator é a afirmação que
+ * se sustenta nos três; o `api_audit_log` continua guardando o identificador cru
+ * para quem investiga.
  */
 import type { Actor } from "@/lib/api/handlers/types";
 

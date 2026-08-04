@@ -343,7 +343,14 @@ export async function runAgent(input: RunAgentInput): Promise<RunAgentResult> {
       role: "agent",
       actor: {
         type: "ai_agent",
-        id: run.id,
+        // O id do AGENTE, nao o do run: `crm_lead_activities.actor_agent_id` tem
+        // FK para `ai_agents(id)` e `lib/leads/activity-emitter.ts` deriva a
+        // autoria de `actor.id`. Com o id do run a atividade quebrava com 23503
+        // e falhava baixo, em silencio — a IA agia e a timeline nao registrava.
+        // Tambem repara a divergencia com o harness
+        // (`lib/agent-engine/edge/crm/mcp-tools.ts` sempre usou o id do agente).
+        // O run continua rastreavel: `ctx.requestId` e o scope `agent_run:<id>`.
+        id: run.agent_id,
         role: "agent",
         api_token_id: ephemeral.id,
       },

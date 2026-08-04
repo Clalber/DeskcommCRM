@@ -220,16 +220,16 @@ O que ficou provado, em ordem:
 1. **O agente cria uma etapa** → ela aparece em `/app/settings/tenant/pipelines` na posição 9 do
    funil, e o campo `data-autoria="ai"` mostra **"alterado pelo assistente há 2 segundos"**. As
    oito etapas de fábrica aparecem **sem selo** — silêncio honesto para o que ninguém mediu.
-   Evidência: `.superpowers/evidence/w4-etapa-criada-pelo-agente.png`.
+   Evidência: `evidence/ia-360-w4/w4-etapa-criada-pelo-agente.png`.
 2. **O agente liga uma regra escrita por um humano** → `/app/webhooks` mostra o cartão com o
    badge **"Ativa"** e, abaixo, **"alterado pelo assistente há 3 segundos"**. Evidência:
-   `w4-regra-ligada-pelo-agente.png`.
+   `evidence/ia-360-w4/w4-regra-ligada-pelo-agente.png`.
 3. **A regra ligada pelo agente dispara e o egress continua barrado.** Um receiver HTTP de
    verdade sobe em `127.0.0.1:<porta efêmera>`; a regra aponta para ele; um lead entra pela URL
    de captação; o `event_log` é drenado. O receiver registrou **zero** requisições
    (`assertSafeOutboundUrl` recusa host privado antes do `fetch`) **e** a aba Atividade mostra a
    execução com falha — barrar em silêncio faria o dono achar que o outro sistema recebeu.
-   Evidência: `w4-egress-barrado-com-registro.png`.
+   Evidência: `evidence/ia-360-w4/w4-egress-barrado-com-registro.png`.
 
 **Sabotagem do E2E** (a única propriedade que o despacho cobra nominalmente):
 
@@ -268,77 +268,328 @@ rodadas, não a minha opinião:
 | 2ª | `TEST_DB_PORT=54373` | `tests/invariants/followup-reactivity.test.ts` (`expected +0 to be 1`) |
 
 **Testes diferentes, mesmo SHA.** Falha que muda de lugar entre rodadas é instabilidade da suíte,
-não regressão determinística. Reforçando: `followup-turn-bridge` **passa isolado** no mesmo SHA
-(`5 passed`, exit 0, `TEST_DB_PORT=54372`), nenhum arquivo de follow-up foi tocado nesta branch
-(`git diff --name-only 99cd0fc..HEAD | grep -i followup` → vazio), e os dois logs trazem erros de
-outros invariantes logo antes (`uniq_system_update_runs_dispatched`, RLS de
-`attendant_availability`) — a assinatura de estado vazando entre testes que compartilham o mesmo
-Postgres.
-
-**O que isto NÃO prova:** que a suíte de invariantes esteja saudável. Ela tem um flake de
-follow-up que vai pintar o CI de vermelho aleatoriamente, e isso é problema de alguém — só não
-desta wave. **Para o Maestro decidir de quem.**
+não regressão determinística. `followup-turn-bridge` **passa isolado** no mesmo SHA (`5 passed`,
+exit 0), nenhum arquivo de follow-up foi tocado nesta branch, e os dois logs trazem erros de
+outros invariantes logo antes — assinatura de estado vazando entre testes que compartilham o
+mesmo Postgres. **O Maestro assumiu a caracterização** (rodadas de controle na base); não gastei
+mais tempo nisso a pedido dele.
 
 ---
 
-## Bugs encontrados
+## Depois do merge da base (`feat/ia-360-mcp` = `210669c`)
 
-### BUG-01 — `Actor.id` de `ai_agent` é o run num caminho e o agente no outro
-- **Achado em:** `99cd0fc`, por MaestroConexoes (W4), lendo os três montadores de `McpContext`
-  antes de desenhar a coluna de autoria.
-- **Sintoma observado:** `crm_lead_activities.actor_agent_id` **tem FK** para `ai_agents(id)`
-  (`supabase/baseline.sql`, bloco da 0071). `lib/leads/activity-emitter.ts:131` grava
-  `agentId: actor.id`. Mas `lib/ai/runtime/agent.ts:346` monta `actor.id = run.id` — id de
-  `ai_agent_runs` (a linha vem de `.from("ai_agent_runs")`, e o próprio arquivo usa
-  `run.agent_id` em outro ponto). Já `lib/agent-engine/edge/crm/mcp-tools.ts:67` monta
-  `actor.id = agentConfig.agentId`, que é o certo. `lib/mcp/auth.ts:63` usa o run do scope, ou
-  o id do token como fallback.
-- **Consequência:** toda atividade de lead emitida por tool chamada pelo **runtime nativo**
-  tenta gravar um `actor_agent_id` que não existe em `ai_agents` → `23503`. A emissão de
-  atividade falha BAIXO por doutrina, então isso some sem alarme de usuário.
-- **Estado:** **não corrigido nesta wave** — o conserto é em `lib/ai/runtime/agent.ts`, tocado
-  por outras waves; corrigir aqui geraria conflito e o efeito atravessa o épico inteiro.
-  Contornado: a autoria da configuração (0101) grava a **espécie** do ator, nunca um id de
-  agente. Registrado para o Maestro decidir onde entra.
+O Maestro corrigiu na base os **dois** defeitos que reportei daqui, e mergeei. Três coisas
+mudaram no que eu tinha escrito, e todas exigiram acerto — não só de código:
 
-### BUG-02 — capacidade de escrita que o humano liga e o agente não alcança
-- **Achado em:** `99cd0fc`, por MaestroConexoes (W4), medindo com
-  `tests/unit/capacidade-alcancavel-pelo-agente.test.ts` (`3 passed`, lista exata bate).
-- **Sintoma observado:** `crm_create_lead`, `crm_update_lead`, `crm_move_lead_stage` e
-  `crm_send_whatsapp_message` declaram `requiresRole: "manager"`. O papel de um agente
-  publicado é `"agent"` **literal e fixo** nos dois caminhos que montam o contexto
-  (`lib/ai/runtime/agent.ts:342` e `lib/agent-engine/edge/crm/mcp-tools.ts:66`), e
-  `lib/ai/runtime/mcp_token.ts:85` grava `"role:agent"` sem parâmetro para variar.
-  `ensureRole` compara por `ROLE_RANK` → 403.
-- **Por que passa despercebido:** `lib/ai/runtime/tools.ts:92` devolve o erro **ao modelo**
-  em vez de estourar ("keeps the loop alive"). O agente recebe
-  `{ error: "Role 'agent' insufficient (required: 'manager')" }`, segue conversando, e nada
-  aparece na tela do humano dizendo que a ferramenta que ele ligou não existe na prática.
-- **Estado:** **não corrigido nesta wave, por decisão consciente.** Subir o papel do token
-  efêmero é mexer no modelo de permissão, que o despacho da W4 põe explicitamente fora de
-  escopo — e errar para cima aqui daria ao agente poder que o humano não sabe que concedeu.
-  A dívida está declarada no teste com guarda de envelhecimento: quando for consertada, a
-  segunda asserção reprova até a lista ser limpa.
-- **Impacto no épico:** é o pilar 1 pela metade em outro eixo. Nenhuma tool de escrita nova
-  desta wave é usável por um agente publicado enquanto isto não for decidido. **Precisa do
-  Maestro.**
+### 1. As seis escritas viraram `apenasHumano`, por PARIDADE
 
-Formato de cada entrada:
+A base introduziu `apenasHumano` no catálogo e reescreveu o gate de alcançabilidade: ele deixou
+de exigir "toda capacidade é alcançável" e passou a caçar **restrição não declarada**. A régua
+que decide o papel de uma tool é **o que a rota HTTP equivalente exige**.
 
-```
-### BUG-NN — <título curto>
-- **Achado em:** SHA, por quem, executando o quê
-- **Sintoma observado:** o que se vê na tela / no output (não a hipótese)
-- **Causa raiz:** o porquê, provado
-- **Correção:** arquivo:linha + SHA do fix
-- **Prova do fix:** teste que reprova antes e passa depois
-```
+Medi as minhas: `pipelines/[id]/stages`, `webhook-sources` e `automation-rules` exigem `manager`,
+todas as três. **Não há divergência aqui** — ao contrário das quatro tools de lead, cujas rotas
+pedem `agent`. Nem um atendente humano configura a operação pela tela, então baixar para `agent`
+daria à IA um poder que o produto não dá a uma pessoa com o mesmo papel.
+
+**A consequência, dita sem maquiagem:** no pacote "Organizar a operação", um agente publicado
+**lê tudo e muda nada**. As dez leituras são o ganho real — explicar a operação, diagnosticar a
+entrada que parou, mostrar a automação que falhou, parar de inventar marcador. As seis escritas
+existem, são alcançáveis por cliente MCP com papel de gestor (é o que o E2E exercita), e a tela
+agora **diz** que são operadas por gente, em vez de deixar o dono ligar achando que o agente vai
+usar.
+
+### 2. O gate foi COMBINADO, não escolhido
+
+Meu arquivo e o da base tinham o mesmo nome e conteúdo divergente — convergência independente
+depois do meu reporte. Resolver escolhendo um lado perderia metade em silêncio. O resultado tem
+as duas metades:
+
+| origem | o que aporta |
+|---|---|
+| base | `apenasHumano`, dívida zerada, "inalcançável POR ACIDENTE", "marca não pode mentir" |
+| minha | "escrita que muda a casa não entra por atalho" (a falha SIMÉTRICA), guarda de exceção órfã, e o **controle positivo** que lê o fonte do mint |
+
+O controle positivo é o que impede o arquivo inteiro de passar sozinho no dia em que alguém mudar
+o papel do token efêmero — as duas listas seguiriam classificando por uma régua morta.
+
+**Sabotagem do gate combinado:**
+
+| Sabotagem | Resultado |
+|---|---|
+| tirar `apenasHumano` de `crm_archive_stage` (restrição vira acidente) | `1 failed \| 6 passed` |
+| baixar `crm_archive_stage` para `agent` (atalho + marca mentirosa) | `2 failed \| 5 passed` — as duas guardas acusaram |
+
+Restaurado: `7 passed`.
+
+### 3. BUG-01 tem uma IRMÃ que não foi consertada — e eu tinha texto errado no repo
+
+O conserto do BUG-01 (`bddeeb6`) alinhou o runtime nativo: `lib/ai/runtime/agent.ts` passa
+`run.agent_id`. Fui conferir os três caminhos antes de reescrever meus comentários, e **o
+terceiro não foi**: `lib/mcp/auth.ts` `deriveActor()` continua devolvendo o id do RUN (do scope
+`agent_run:<uuid>`) ou, sem ele, o id do TOKEN — o caminho de um cliente MCP externo.
+
+**Consequência medida por leitura:** uma tool que emita `crm_lead_activities` chamada por MCP
+externo com `actor:ai_agent` tenta gravar em `actor_agent_id` (FK para `ai_agents(id)`) um id que
+não é de agente → `23503`, e a emissão falha baixo, em silêncio. É o mesmo defeito do BUG-01, na
+instância que sobrou. **Não consertei:** o scope `agent_run:<uuid>` não carrega o id do agente, e
+tirá-lo de lá exigiria mudar o que `mintEphemeralToken` grava — transversal, e o arquivo acabou
+de ser tocado pela base. **Para o Maestro.**
+
+Isso também me obrigou a **corrigir cinco textos meus que envelheceram mentindo** (o comentário
+de `lib/operacao/autoria.ts`, a migration 0101, o apêndice do `baseline.sql`, a linha do MANIFEST
+e o card do mapa vivo). Todos afirmavam "os três caminhos discordam", que deixou de ser verdade
+30 minutos depois de eu escrever. A decisão de não criar a FK continua certa; o **motivo** mudou,
+e motivo errado no repo é pior que motivo ausente — o próximo a ler decide com ele.
 
 ---
 
-## Bugs corrigidos
+## Estado final pós-merge
 
-*(nenhum ainda)*
+| Gate | Resultado |
+|---|---|
+| `npx tsc --noEmit` | exit 0 |
+| `npx eslint .` | 0 errors, 170 warnings — a linha de base do épico |
+| `npx vitest run` (unit) | **226 arquivos, 2019 testes passando**, exit 0 |
+| E2E em tela | `1 passed`, evidência visual + sabotagem confirmada |
+
+Um quarto gate reprovou no primeiro try pós-merge e foi acerto meu:
+`tests/unit/evidencia-citada.test.ts` (veio na base) recusou o HANDOFF por citar capturas em
+`.superpowers/evidence/`, que é pasta de trabalho e não entra no `git ls-files` — num projeto
+aberto, prova citada e não entregue é afirmação sem lastro para quem clona. As três capturas
+foram para `evidence/ia-360-w4/` (versionado) e o spec passou a escrever direto lá, para a
+próxima rodada regenerar no lugar certo em vez de recriar o problema.
+
+---
+
+### Orquestração — quatro waves em paralelo (a partir de `99cd0fc`)
+
+Cada wave tem worktree próprio (dois implementadores no mesmo worktree é a regra que mais quebra
+trabalho em paralelo) e escreve num arquivo de catálogo exclusivo — o agregador
+`lib/mcp/tools/catalogo/index.ts` custa **uma linha de import e uma de spread** por domínio.
+
+| Wave | Pacote | Dono | Worktree / branch | Despacho |
+|---|---|---|---|---|
+| W1 | painel do humano | Arquiteto | `-ia360-w1-painel` / `feat/ia-360-w1-painel` | `docs/handoffs/waves/W1-painel-do-humano.md` |
+| W2 | `reter` | DevVivo | `-ia360-w2-reter` / `feat/ia-360-w2-reter` | `docs/handoffs/waves/W2-nao-perder-o-cliente.md` |
+| W3 | `escalar` | Maestro | `-ia360-w3-escalar` / `feat/ia-360-w3-escalar` | `docs/handoffs/waves/W3-passar-para-humano.md` |
+| W4 | `organizar` | MaestroConexoes | `-ia360-w4-organizar` / `feat/ia-360-w4-organizar` | `docs/handoffs/waves/W4-organizar-a-operacao.md` |
+
+Itens no plano compartilhado: `IA360-W1` … `IA360-W4`, com critério de aceite provado em tela.
+
+**Registro de progresso:** cada wave escreve em `HANDOFF-ia-360-W<N>.md` no próprio worktree; o
+Maestro consolida aqui. Correção aplicada logo após o despacho — o pedido original mandava os
+quatro escreverem neste arquivo, o que garantiria conflito de merge em todo hunk, e conflito
+resolvido no automático é onde um achado some em silêncio.
+
+**Vigia armado:** monitor persistente lendo **artefato** (SHA de cada branch, árvore suja) além do
+estado dos terminais — terminal `Idle` não prova que nada foi feito, e `Busy` não prova que algo
+saiu. Cobre também a parada: 30 minutos sem commit novo em nenhuma wave emitem alerta, porque
+silêncio de monitor é indistinguível de "está rodando".
+
+### Waves ainda não despachadas
+
+| Wave | Pacote / escopo | Estado |
+|---|---|---|
+| W5 | `evoluir` — conhecimento, skills, propostas do flywheel, memória da org | pacote **vazio**; assumida pelo Maestro |
+| W6 | leads completos (notas, timeline, score, checkpoints), contatos, conversas, pedidos e produtos | aguarda terminal livre |
+
+---
+
+## Atritos de coordenação (e como foram resolvidos)
+
+Três colisões que só existem porque cinco frentes trabalham ao mesmo tempo. Ficam registradas
+porque a próxima pessoa que orquestrar isto vai encontrá-las de novo.
+
+| # | Colisão | Resolução |
+|---|---|---|
+| C1 | As quatro waves escreveriam no mesmo `HANDOFF-ia-360.md` | Cada uma escreve `HANDOFF-ia-360-W<N>.md`; o Maestro consolida. **Avisado tarde demais para a W3**, que já havia escrito no arquivo comum — merge dela precisa de resolução manual |
+| C2 | **Números de migration colidindo.** Último na `main` é `0099`; W1 e W3 escolheram `0100` **as duas**, W4 pegou `0101`, e W2 pegou `0102` com timestamp mais antigo que todas — o número ficava fora da ordem em que o `psql` aplica | Maestro realocou por ordem de timestamp: **W2→0100, W1→0101, W3→0102, W4→0103** |
+| C3 | Quatro waves acrescentando bloco no fim do mesmo `supabase/baseline.sql` | Conflito garantido no merge. Regra dada a todas: **manter os dois blocos**, nunca escolher um lado — escolher apaga a mudança de schema da outra wave e o clone self-host nunca a recebe |
+| C4 | **Cinco waves rodando E2E ao mesmo tempo.** Porta se resolve com `E2E_PORT`, mas o **banco é compartilhado**: o próprio `playwright.config.ts` registra que os specs usam a mesma organização, os mesmos usuários e o mesmo banco, e que rodar em paralelo produziu 10 a 15 falhas de interferência que sumiam quando o spec rodava isolado | **Fase de E2E serializada pelo Maestro.** Cada wave pede a vez e espera liberação; portas alocadas (W1 3011, W2 3012, W3 3013, W4 3014). O estrago de ignorar isto não seria perder tempo, seria **vermelho falso** — que ninguém interpreta e que na prática desliga o gate |
+
+| C5 | **Conflito que pede combinação, não escolha.** W2 tirou `reter` da lista `PACOTES_VAZIOS_CONHECIDOS`; a W5 tirou `evoluir`. O git vai conflitar naquela linha e **os dois lados estão errados** | Resolução correta é a lista **vazia** — ambos os pacotes foram preenchidos. É o conflito mais perigoso que existe: o git mostra dois lados plausíveis, escolher um compila, os testes do lado escolhido passam, e o trabalho do outro **some sem erro nenhum**. A segunda guarda do mesmo arquivo (`dívida declarada não esconde pacote já preenchido`) acusa se a escolha for errada |
+
+### Regra da prova em tela (vale para todas)
+
+**Escrever o spec não é prova.** Só conta E2E **executado**, com a saída real do Playwright e
+evidência visual salva. Item do plano não fecha sem isso — é o DoD 12 do `CLAUDE.md` e o critério
+de aceite declarado em cada item `IA360-W*`.
+
+Estado em `57384a0`: **nenhuma wave executou E2E ainda.** W3 e W4 têm spec escrito e não
+commitado; W1, W2 e W5 não têm spec.
+
+**Numeração de bugs:** cada wave numerou a partir de `BUG-01` no próprio arquivo, então há colisão
+entre elas. A numeração canônica é a desta seção; a origem de cada um está declarada.
+
+---
+
+## Medições em aberto
+
+### O invariante vermelho da W4 — controle rodado, caso NÃO fechado
+
+A W4 reportou `tests/invariants/followup-turn-bridge.test.ts` falhando na suíte completa
+(`expected 2 to be 1` em `tick2.advanced`) e passando isolado no mesmo SHA, atribuindo a
+interferência de estado entre invariantes — declarando explicitamente que era hipótese.
+
+**Controle rodado pelo Maestro** em `5e8a547`, base, árvore limpa, `TEST_DB_PORT=54391`:
+`62 arquivos, 413 passed | 1 skipped, exit 0`. O invariante **não falhou**.
+
+**O que o controle decide:** derruba a hipótese de defeito determinístico pré-existente na base.
+
+**O que o controle NÃO decide:** um run verde não refuta flaky. Se o fenômeno é interferência de
+estado, ele é não-determinístico por definição — uma foto verde na base contra uma foto vermelha na
+W4 não distingue *causado pela W4* de *flaky que calhou de cair naquela rodada*. Fica em aberto
+até a segunda rodada da W4; se repetir no mesmo ponto, o próximo passo é rodar o invariante isolado
+~5× em cada branch.
+
+**Ruído descartado:** o `ERROR: duplicate key ... uniq_system_update_runs_dispatched` que aparecia
+no log da W4 também aparece **na base com a suíte verde** — é algum teste exercitando conflito, não
+sintoma.
+
+**Correção de método (minha).** Levantei como alternativa que duas waves rodando `test:db`
+concorrentes estivessem no mesmo banco, porque `followup-turn-bridge` é o domínio da W2. A hipótese
+tinha **dois** defeitos, não um:
+
+1. `scripts/test-db.sh` tem `set -euo pipefail` e container com nome único por PID — se a porta
+   estiver ocupada o `docker run` falha e o script morre; a segunda wave não lê o banco da primeira.
+2. Pior: o worktree da W4 está em **outra branch** e não contém nenhuma mudança de follow-up da W2.
+   Ela nunca poderia afetá-lo.
+
+Registrado porque era a explicação **mais interessante** das duas, e a interessante é justamente a
+que passa sem ser medida — teria desviado o trabalho da W4 para caçar um fantasma, vestida de
+achado de maestro.
+
+---
+
+## Bugs encontrados e corrigidos
+
+Formato de cada entrada: onde foi achado (SHA + por quem + executando o quê), o **sintoma
+observado** (não a hipótese), a causa raiz provada, a correção com SHA, e a prova de que o teste
+reprova antes e passa depois.
+
+### BUG-02 — capacidade de escrita inalcançável pelo agente, falhando calado · CORRIGIDO
+
+- **Achado em** `99cd0fc` por **MaestroConexoes** (W4), montando o catálogo de operação.
+- **Confirmado** por remedição independente do Maestro antes de aceitar.
+- **Pré-existente na `main`** — não veio deste épico.
+
+**Sintoma observado.** `crm_create_lead`, `crm_update_lead`, `crm_move_lead_stage` e
+`crm_send_whatsapp_message` declaram `requiresRole: "manager"`. O agente publicado recebe papel
+`agent`, literal e fixo, nos dois caminhos que montam o contexto MCP
+(`lib/ai/runtime/agent.ts:341-366` e `lib/agent-engine/edge/crm/mcp-tools.ts:68`).
+`ROLE_RANK.agent` (2) `< ROLE_RANK.manager` (3), então `ensureRole` lança 403 — e
+`wrapMcpTool` devolve `{ error }` **ao modelo** em vez de estourar. O modelo lê o erro, segue
+conversando, e **nada aparece na tela do humano** dizendo que a capacidade que ele ligou não
+existe na prática.
+
+**Causa raiz — divergência, não política de segurança.** As quatro rotas HTTP equivalentes exigem
+`agent`, todas:
+
+| Rota | Papel exigido |
+|---|---|
+| `app/api/v1/leads/route.ts` | `agent` |
+| `app/api/v1/leads/[id]/route.ts` | `agent` |
+| `app/api/v1/leads/[id]/move/route.ts` | `agent` |
+| `app/api/v1/messages/route.ts` | `agent` |
+
+Um atendente humano com papel `agent` cria lead, move etapa e manda mensagem pela tela. A IA, com
+o **mesmo papel**, não podia nenhuma delas. É a Decisão 4 do briefing violada em produção: a IA e
+o humano operando por regras diferentes, e o sistema mentindo para um dos dois.
+
+**Correção** (`bddeeb6`): `requiresRole` alinhado para `agent` nas quatro
+(`lib/mcp/tools/leads.ts`, `lib/mcp/tools/messages.ts`) — restaura a paridade que o produto já
+pratica, não afrouxa nada. E o silêncio, que era a parte pior: recusa por papel **não é erro de
+execução, é defeito de configuração**; `lib/ai/runtime/tools.ts` passa a emitir `logger.error`
+próprio para `McpAuthError` antes de devolver ao modelo.
+
+**Prova.** `tests/unit/capacidade-alcancavel-pelo-agente.test.ts` (escrito na W4, trazido para a
+base, lista de dívidas esvaziada). Sabotado com `crm_create_lead` de volta em `manager`:
+`1 failed | 2 passed`. Revertido: `3 passed`.
+
+### BUG-01 — a IA agia e a timeline não registrava · CORRIGIDO
+
+- **Achado em** `99cd0fc` por **MaestroConexoes** (W4). Confirmado por remedição independente.
+- **Pré-existente na `main`.**
+
+**Sintoma observado.** `crm_lead_activities.actor_agent_id` tem FK para `ai_agents(id)`
+(`supabase/baseline.sql:7293`) e `lib/leads/activity-emitter.ts:131` deriva a autoria de
+`actor.id`. O runtime nativo passava `run.id` — que não existe em `ai_agents`. Toda atividade
+emitida por ele quebrava com `23503` e **falhava baixo, em silêncio**.
+
+**Causa raiz.** Dois caminhos discordando sobre o que `actor.id` significa: o harness sempre usou
+o id do **agente** (`mcp-tools.ts:68`), o runtime nativo usava o id do **run**.
+
+**Correção** (`bddeeb6`): `lib/ai/runtime/agent.ts` passa `run.agent_id`. O run continua
+rastreável por `ctx.requestId` e pelo scope `agent_run:<id>`, e o audit não é afetado —
+`lib/mcp/audit.ts` grava `actor_id` em metadata livre, não em coluna com FK.
+
+**Medição da base após as duas correções**, em `9fc1cc3` com árvore estável durante toda a
+execução: `pnpm test:unit` → 225 arquivos, 1948 testes, exit 0. `pnpm typecheck` limpo.
+
+> Nota de método: a primeira medição desta suíte foi **descartada** — eu havia sabotado
+> `lib/mcp/tools/leads.ts` enquanto ela rodava. Número medido contra disco em movimento não vale,
+> mesmo quando o resultado é o mesmo.
+
+### BUG-03 — "devolver ao atendimento automático" não devolvia nada · CORRIGIDO
+
+- **Achado em** `99cd0fc` pelo terminal **Maestro** (W3), ao extrair a regra de
+  `POST /api/v1/conversations/[id]/reactivate-bot` para `lib/escalacao/retomada.ts`.
+- **Confirmado** por medição independente do Maestro do épico: `grep` por `force_human` em
+  `lib/`, `app/` e `workers/` devolve **zero** escritas de `false` em toda a base.
+- **Pré-existente na `main`.**
+
+**Sintoma observado.** A rota respondia `{ reactivated: true }` e o agente continuava mudo para
+sempre.
+
+**Causa raiz.** A passagem para humano liga **três** travas e a rota soltava uma.
+`contacts.force_human = true` não era escrito de volta para `false` em lugar nenhum do repo — e é
+lido pelo worker (`skip("force_human")`), pela guarda `isLeadInHandoff` (NO-OP antes de qualquer
+chamada de modelo) e por `before-send.ts` (`(is_blocked or force_human) as stopped`, que veta todo
+envio).
+
+**Correção** (`c0db6aa`): solta o dono pela regra existente, limpa as marcas de passagem e limpa
+`force_human`. **Prova:** invariante contra Postgres real rodando a função de guarda **real**,
+mostrando os dois estados (`true` com só o silêncio limpo, `false` com `force_human` junto).
+
+### BUG-04 — a volta sumia da linha do tempo do negócio · CORRIGIDO
+
+Achado pela W3. `crm_lead_activities` tinha `handoff_triggered` e **nenhum** tipo para a volta: na
+timeline o cliente saía para uma pessoa e nunca voltava — meia continuidade, que se lê como
+continuidade. Corrigido com o tipo `handoff_resolved` emitido via constante compartilhada
+(`c0db6aa`).
+
+### BUG-05 — o agente não tinha como registrar nada num chamado · CORRIGIDO
+
+Achado pela W3. O CHECK de `agent_case_events.kind` não tinha valor honesto para "o agente
+registrou o que aconteceu depois"; reusar `lead_provided` ou `human_replied` faria a linha do tempo
+do chamado mentir sobre quem agiu — e é desse registro que sai o resumo entregue ao próximo
+atendente. Corrigido com migration + apêndice no baseline + MANIFEST, incluindo sabotagem do tipo
+"a migration não chegou ao baseline" (`c0db6aa`).
+
+### BUG-06 — o gate confundia restrição deliberada com acidente · CORRIGIDO
+
+- **Defeito meu (Maestro), introduzido em `bddeeb6`** ao consertar o BUG-02.
+- **Revelado** pela W3, que marcou `crm_resume_ai_attendance` como `manager` de propósito.
+
+**Sintoma observado.** Rodei o gate de alcançabilidade contra o catálogo da W3 e ele acusou
+`crm_resume_ai_attendance` junto com as dívidas reais — reprovando uma escolha **correta**.
+
+**Causa raiz.** A regra que escrevi ("toda capacidade é alcançável pelo agente") é falsa. Algumas
+**não devem** estar ao alcance dele: `inbound-turn.ts:607` registra a regra dura de que só o
+humano/CRM libera um handoff, e um agente capaz de chamar aquela tool se auto-liberaria do próprio
+handoff.
+
+**Correção** (`5f9dd97`): o catálogo ganhou `apenasHumano`, e o gate passou a caçar só a restrição
+**não declarada** — a que ficou fora do alcance por descuido e falha em silêncio. Entrou junto uma
+segunda asserção contra a combinação pior: tool marcada como operada por pessoa **mas alcançável
+pelo agente**, que diz uma coisa na tela e faz outra.
+
+**Prova:** sabotado nas duas direções — inalcançável sem a marca reprova a primeira asserção; marca
+mentirosa em tool alcançável reprova a segunda. Revertido, 4 verdes.
+
+**Consequência de produto** (repassada à W1): capacidade `apenasHumano` precisa aparecer diferente
+na tela, e uso zero dela **não** é sinal de capacidade ociosa — é o esperado.
 
 ---
 

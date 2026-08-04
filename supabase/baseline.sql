@@ -8786,8 +8786,9 @@ create index if not exists idx_contacts_avatar_refresh
 -- (docs/doctrine/sistema-vivo.md, invariante 3).
 --
 -- ⚠️ NÃO HÁ COLUNA DE "QUAL AGENTE", E É DELIBERADO: `Actor.id` para `ai_agent`
--- é o id da EXECUÇÃO num caminho do código e o id do AGENTE no outro, então uma
--- FK para `ai_agents(id)` seria verdadeira num e recusaria a escrita no outro.
+-- ainda não é chave estável de agente nos três caminhos — `lib/mcp/auth.ts`
+-- devolve o id do RUN ou do TOKEN no caminho do cliente MCP externo —, então uma
+-- FK para `ai_agents(id)` recusaria a escrita com 23503 justamente ali.
 --
 -- Idempotente e auto-curativo: colunas nullable, sem backfill (linha antiga fica
 -- com autoria desconhecida, que é a verdade sobre ela). O CHECK viaja inline no

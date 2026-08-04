@@ -8,14 +8,14 @@
  * `autoriaDaMudanca`, e a leitura da tela. Um handler chamado direto no processo
  * de teste pularia a primeira e provaria menos do que parece.
  *
- * ⚠️ O PAPEL É `manager`, E ISSO É O BUG-02 APARECENDO. Um agente PUBLICADO
- * recebe `role:agent` fixo (ver `lib/ai/runtime/mcp_token.ts`) e seria recusado
- * por `ensureRole` em toda tool de escrita — é a lacuna medida em
- * `tests/unit/capacidade-alcancavel-pelo-agente.test.ts`. O caminho exercitado
- * aqui é o do cliente MCP externo (server-to-server), que é real, suportado e
- * hoje o ÚNICO por onde uma escrita de configuração chega ao banco vinda de um
- * ator `ai_agent`. Quando o BUG-02 for decidido, este seed passa a poder usar
- * `role:agent` — e o teste continua valendo.
+ * ⚠️ O PAPEL É `manager` PORQUE A OPERAÇÃO É CONFIGURAÇÃO. As seis escritas do
+ * pacote `organizar` são `apenasHumano`: as rotas HTTP que elas espelham exigem
+ * `manager`, e um agente publicado (papel `agent`) não as alcança de propósito —
+ * paridade com o que o produto já pratica, não lacuna. O caminho exercitado aqui
+ * é o do cliente MCP externo (server-to-server), que é real, suportado e o ÚNICO
+ * por onde uma escrita de configuração chega ao banco vinda de um ator
+ * `ai_agent`. O que faz a autoria sair como `ai` é o scope `actor:ai_agent`, não
+ * o papel — por isso o teste continuaria válido se o papel mudasse.
  *
  * Idempotente: revoga tokens anteriores com o mesmo nome antes de emitir.
  *
