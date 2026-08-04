@@ -429,18 +429,28 @@ save_partial() {
 # um só e o campo vazio do meio SOME — um proxy subido com `docker run` (sem
 # label de compose) perdia a imagem, e o Traefik da hospedagem chamado
 # "coolify-proxy" era classificado como intruso.
-dono_das_portas() {  # dono_das_portas <projeto_a_ignorar>  < linhas
-  local ignorar="${1:-}" nome proj img ports
+dono_das_portas() {  # dono_das_portas  < linhas   → ecoa "nome|projeto|imagem"
+  local nome proj img ports
   while IFS='|' read -r nome proj img ports; do
     [ -n "$nome" ] || continue
-    # Contêiner DESTA instalação: numa re-execução o nosso próprio Caddy está de
-    # pé publicando as portas, e tratá-lo como intruso mataria a idempotência.
-    [ -n "$ignorar" ] && [ "$proj" = "$ignorar" ] && continue
     case "${ports// /}" in
-      *:80-\>*|*:443-\>*) printf '%s|%s' "$nome" "$img"; return 0;;
+      *:80-\>*|*:443-\>*) printf '%s|%s|%s' "$nome" "$proj" "$img"; return 0;;
     esac
   done
   return 1
+}
+
+# O nome que o docker compose dá ao projeto quando ninguém passa -p: basename do
+# diretório, minúsculo, só [a-z0-9_-] — E com os `_`/`-` do INÍCIO aparados
+# (NormalizeProjectName faz TrimLeft). Sem essa aparada, uma pasta como
+# `/root/_deskcomm` faz o kit calcular `_deskcomm` enquanto os contêineres
+# carregam `deskcomm`: a instalação deixa de se reconhecer e passa a se tratar
+# como intrusa. Medido contra o docker compose v2.38.2 em `_deskcomm`,
+# `-deskcomm`, `_-_crm` e `_123` — todos divergiam.
+nome_do_projeto_compose() {  # nome_do_projeto_compose <diretório>
+  local n
+  n="$(basename "$1" | tr '[:upper:]' '[:lower:]' | tr -cd 'a-z0-9_-')"
+  printf '%s' "${n#"${n%%[!_-]*}"}"
 }
 
 # A pergunta que decide é "o Docker consegue publicar a porta?", e a resposta
@@ -453,6 +463,21 @@ dono_das_portas() {  # dono_das_portas <projeto_a_ignorar>  < linhas
 # O contêiner sai na hora; a imagem é a mesma que o compose do kit já usa.
 porta_publicavel() {  # porta_publicavel <porta>
   docker run --rm -p "$1:$1" --entrypoint /bin/true alpine:3.20 >/dev/null 2>&1
+}
+
+# A decisão final, isolada para poder ser exercitada sem Docker: este é o ponto
+# que já errou duas vezes (uma tratando o próprio Caddy como intruso, outra
+# deixando passar proxy que não fosse Traefik), e nas duas o erro só apareceu
+# rodando de verdade numa VPS.
+# Ecoa: caddy | traefik | bloqueia
+decide_proxy() {  # decide_proxy <portas_ocupadas> <projeto_do_dono> <projeto_atual> <imagem> <nome>
+  local ocupadas="${1:-}" dono_proj="${2:-}" meu_proj="${3:-}" img="${4:-}" nome="${5:-}"
+  [ -z "$ocupadas" ] && { printf 'caddy'; return 0; }
+  # As portas estão com ESTA MESMA instalação, já no ar: é a re-execução, que o
+  # próprio kit ensina como caminho para corrigir uma resposta.
+  [ -n "$dono_proj" ] && [ "$dono_proj" = "$meu_proj" ] && { printf 'caddy'; return 0; }
+  eh_traefik "$img" "$nome" && { printf 'traefik'; return 0; }
+  printf 'bloqueia'
 }
 
 # É um Traefik? Compara em minúsculas o par imagem+nome. A versão anterior usava
@@ -604,7 +629,7 @@ fi
 # Caddy está de pé publicando 80/443, e tratá-lo como "outro proxy" mataria a
 # idempotência — que é justamente o que permite rodar de novo para corrigir uma
 # resposta errada.
-proj_atual="${COMPOSE_PROJECT_NAME:-$(basename "$PROJECT_DIR" | tr '[:upper:]' '[:lower:]' | tr -cd 'a-z0-9_-')}"
+proj_atual="${COMPOSE_PROJECT_NAME:-$(nome_do_projeto_compose "$PROJECT_DIR")}"
 
 portas_ocupadas=""; n_ocupadas=0
 porta_publicavel 80  || { portas_ocupadas="80"; n_ocupadas=1; }
@@ -615,12 +640,14 @@ porta_publicavel 443 || { portas_ocupadas="${portas_ocupadas:+$portas_ocupadas e
 # O "|| true" não é decorativo: numa atribuição o status do pipeline vira o
 # status do script, e sob `set -e` + `pipefail` um docker ps que falhe (ou um
 # SIGPIPE do consumidor) mataria o instalador mudo, no meio da fase 2.
-dono_portas=""; dono_imagem=""
+dono_portas=""; dono_projeto=""; dono_imagem=""
 if [ -n "$portas_ocupadas" ]; then
-  _dono="$(docker ps --format '{{.Names}}|{{.Label "com.docker.compose.project"}}|{{.Image}}|{{.Ports}}' 2>/dev/null | dono_das_portas "$proj_atual" || true)"
-  dono_portas="${_dono%%|*}"
-  dono_imagem="${_dono#*|}"
-  [ "$dono_imagem" = "$dono_portas" ] && dono_imagem=""
+  _dono="$(docker ps --format '{{.Names}}|{{.Label "com.docker.compose.project"}}|{{.Image}}|{{.Ports}}' 2>/dev/null | dono_das_portas || true)"
+  if [ -n "$_dono" ]; then
+    dono_portas="${_dono%%|*}"; _resto="${_dono#*|}"
+    dono_projeto="${_resto%%|*}"; dono_imagem="${_resto#*|}"
+    unset _resto
+  fi
   unset _dono
 fi
 
@@ -630,15 +657,22 @@ fi
 traefik_container=""
 
 if [ -z "${REVERSE_PROXY:-}" ]; then
-  if [ -z "$portas_ocupadas" ]; then
+  # A exclusão da própria instalação acontece AQUI, não na varredura: o teste de
+  # bind não tem como se auto-excluir, então filtrar o nosso contêiner antes só
+  # produzia um "ocupado por ninguém" — bloqueio sem um comando sequer.
+  case "$(decide_proxy "$portas_ocupadas" "$dono_projeto" "$proj_atual" "$dono_imagem" "$dono_portas")" in
+  caddy)
     REVERSE_PROXY=caddy
-  elif eh_traefik "$dono_imagem" "$dono_portas"; then
+    [ -n "$portas_ocupadas" ] && c_dim "  (as portas 80/443 já estão com esta instalação — seguindo)"
+    ;;
+  traefik)
     REVERSE_PROXY=traefik
     traefik_container="$dono_portas"
     c_ylw "⚠ Detectei um Traefik já rodando neste VPS (contêiner '${dono_portas}', ocupando 80/443)."
     c_ylw "  Vou publicar o CRM através dele em vez de subir um proxy próprio —"
     c_ylw "  desligar o Traefik quebraria o que a sua hospedagem instalou."
-  else
+    ;;
+  *)
     # A preposição vem junto do trecho: "por o contêiner" sai errado se a frase
     # fixar "por" e o pedaço variável começar com artigo. E a imagem só entra se
     # for conhecida — "(imagem )" vazio era o sintoma de um campo perdido.
@@ -665,7 +699,8 @@ if [ -z "${REVERSE_PROXY:-}" ]; then
       die "Libere as portas ${portas_ocupadas} (ou use a instalação que já existe) e rode de novo."
     fi
     die "Libere a porta ${portas_ocupadas} (ou use a instalação que já existe) e rode de novo."
-  fi
+    ;;
+  esac
 fi
 
 # ── Supabase automático (opcional) ──────────────────────────────────────────

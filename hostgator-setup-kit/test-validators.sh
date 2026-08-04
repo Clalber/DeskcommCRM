@@ -459,28 +459,31 @@ echo "proxy reverso: quem está com as portas 80/443"
 # HOST). A primeira versão disto olhava a porta INTERNA e errava dos dois lados.
 dono_ok() {  # dono_ok <descrição> <esperado: nome|imagem ou vazio> <linhas do docker ps>
   local desc="$1" esperado="$2" linhas="$3" real
-  real="$(printf '%s\n' "$linhas" | dono_das_portas meu-projeto || true)"
+  real="$(printf '%s\n' "$linhas" | dono_das_portas || true)"
   if [ "$real" = "$esperado" ]; then printf '  ✓ %s\n' "$desc"
   else printf '  ✗ %s\n     deu:      [%s]\n     esperava: [%s]\n' "$desc" "$real" "$esperado"; fail=1; fi
 }
 dono_ok "proxy publicando 80 no host é encontrado" \
-  'traefik|traefik:v3.3' 'traefik|infra|traefik:v3.3|0.0.0.0:80->80/tcp, [::]:80->80/tcp'
+  'traefik|infra|traefik:v3.3' 'traefik|infra|traefik:v3.3|0.0.0.0:80->80/tcp, [::]:80->80/tcp'
 dono_ok "app em 8080->80 NÃO é ocupante (80 do host livre)" \
   '' 'phpmyadmin|web|phpmyadmin:latest|0.0.0.0:8080->80/tcp'
 dono_ok "proxy sem privilégio (80->8080) É ocupante" \
-  'traefik|traefik:v3' 'traefik|infra|traefik:v3|0.0.0.0:80->8080/tcp'
+  'traefik|infra|traefik:v3' 'traefik|infra|traefik:v3|0.0.0.0:80->8080/tcp'
 dono_ok "Caddy de outro Deskcomm é encontrado" \
-  'outro-caddy-1|caddy:2-alpine' 'outro-caddy-1|outro|caddy:2-alpine|0.0.0.0:80->80/tcp, 0.0.0.0:443->443/tcp'
+  'outro-caddy-1|outro|caddy:2-alpine' 'outro-caddy-1|outro|caddy:2-alpine|0.0.0.0:80->80/tcp, 0.0.0.0:443->443/tcp'
 dono_ok "contêiner sem porta publicada é ignorado" \
   '' 'worker|app|meu/worker|'
 dono_ok "só 443 no host também conta" \
-  'proxy|nginx' 'proxy|infra|nginx|0.0.0.0:443->443/tcp'
-dono_ok "contêiner DESTA instalação é ignorado (idempotência)" \
-  '' 'crm-caddy-1|meu-projeto|caddy:2-alpine|0.0.0.0:80->80/tcp'
+  'proxy|infra|nginx' 'proxy|infra|nginx|0.0.0.0:443->443/tcp'
+# A varredura NÃO exclui mais ninguém: quem decide é o chamador, comparando o
+# projeto. Excluir aqui produzia um "ocupado por ninguém" — bloqueio sem
+# comando acionável — porque o teste de bind não tem como se auto-excluir.
+dono_ok "contêiner desta instalação é IDENTIFICADO (com o projeto)" \
+  'crm-caddy-1|meu-projeto|caddy:2-alpine' 'crm-caddy-1|meu-projeto|caddy:2-alpine|0.0.0.0:80->80/tcp'
 # Sem label de compose, o campo do meio vem VAZIO — com IFS de tab ele colapsava
 # e a imagem sumia, fazendo um Traefik de `docker run` virar intruso.
 dono_ok "contêiner sem label de compose mantém a imagem" \
-  'meu-traefik|traefik:v3.1' 'meu-traefik||traefik:v3.1|0.0.0.0:80->80/tcp'
+  'meu-traefik||traefik:v3.1' 'meu-traefik||traefik:v3.1|0.0.0.0:80->80/tcp'
 
 echo "proxy reverso: é um Traefik?"
 tk_ok() {  # tk_ok <descrição> <sim|nao> <imagem> <nome>
@@ -494,6 +497,43 @@ tk_ok "nome com maiúsculas (TRAEFIK)"    sim "meureg/proxy:3"    "TRAEFIK-PROXY
 tk_ok "coolify-proxy é traefik na imagem" sim "traefik:v2.11"    "coolify-proxy"
 tk_ok "caddy não é traefik"              nao "caddy:2-alpine"    "outro-caddy-1"
 tk_ok "nginx não é traefik"              nao "nginxproxy/nginx"  "webproxy"
+
+echo "proxy reverso: a decisão"
+dec_ok() {  # dec_ok <descrição> <esperado> <ocupadas> <proj_dono> <proj_atual> <img> <nome>
+  local desc="$1" esperado="$2" real
+  real="$(decide_proxy "${3:-}" "${4:-}" "${5:-}" "${6:-}" "${7:-}")"
+  if [ "$real" = "$esperado" ]; then printf '  ✓ %s\n' "$desc"
+  else printf '  ✗ %s  (deu %s, esperava %s)\n' "$desc" "$real" "$esperado"; fail=1; fi
+}
+dec_ok "portas livres → nosso Caddy"        caddy    ""        ""          "crm" ""              ""
+# ESTE é o caso que a revisão pegou: o teste de bind não tem como se
+# auto-excluir, então numa re-execução as portas aparecem ocupadas — pelo nosso
+# PRÓPRIO Caddy. Tratar isso como intruso bloqueia a instalação que o kit manda
+# rodar de novo para corrigir uma resposta, e sem nem um comando acionável.
+dec_ok "re-execução: portas com esta mesma instalação" caddy "80 e 443" "crm" "crm" "caddy:2-alpine" "crm-caddy-1"
+dec_ok "Caddy de OUTRO Deskcomm → bloqueia" bloqueia "80 e 443" "outro"     "crm" "caddy:2-alpine" "outro-caddy-1"
+dec_ok "Traefik da hospedagem → por ele"    traefik  "80 e 443" "coolify"   "crm" "traefik:v3.3"   "coolify-proxy"
+dec_ok "ocupante não identificado → bloqueia" bloqueia "80"     ""          "crm" ""              ""
+dec_ok "projeto vazio não casa projeto vazio" bloqueia "80"     ""          ""    "nginx"         "web"
+
+echo "nome do projeto que o docker compose usa"
+# O compose faz TrimLeft("_-") no basename. Sem isso, uma pasta /root/_deskcomm
+# faz o kit calcular "_deskcomm" enquanto os contêineres carregam "deskcomm" — a
+# instalação deixa de se reconhecer e se trata como intrusa. Medido contra o
+# docker compose v2.38.2.
+np_ok() {  # np_ok <caminho> <esperado>
+  local real; real="$(nome_do_projeto_compose "$1")"
+  if [ "$real" = "$2" ]; then printf '  ✓ %s → %s\n' "$1" "$real"
+  else printf '  ✗ %s → deu [%s], esperava [%s]\n' "$1" "$real" "$2"; fail=1; fi
+}
+np_ok /root/deskcommcrm  deskcommcrm
+np_ok /root/DeskcommCRM  deskcommcrm
+np_ok /root/_deskcomm    deskcomm
+np_ok /root/-deskcomm    deskcomm
+np_ok /root/_-_crm       crm
+np_ok /root/_123         123
+np_ok /root/deskcomm.crm deskcommcrm
+np_ok /root/crm_cliente  crm_cliente
 
 echo
 if [ "$fail" = 0 ]; then echo "todos os validadores passaram"; else echo "FALHOU"; fi
