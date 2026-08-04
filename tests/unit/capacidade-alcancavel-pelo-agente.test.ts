@@ -22,6 +22,7 @@
 import { describe, expect, it } from "vitest";
 
 import { allTools } from "@/lib/mcp/tools";
+import { catalogEntry } from "@/lib/mcp/tools/catalog";
 import { ROLE_RANK, type Role } from "@/lib/auth/types";
 
 /**
@@ -60,12 +61,33 @@ describe("catálogo de tools — o que o agente publicado consegue de fato usar"
     expect(allTools.length).toBeGreaterThan(0);
   });
 
-  it("nenhuma capacidade NOVA nasce inalcançável para o agente", () => {
-    const inalcancaveis = allTools
+  it("nenhuma capacidade nasce inalcançável POR ACIDENTE", () => {
+    // A regra não é "toda tool tem que ser alcançável pelo agente" — algumas
+    // NÃO devem estar ao alcance dele. `crm_resume_ai_attendance` é o caso que
+    // originou esta distinção: `inbound-turn.ts` registra a regra dura de que
+    // só o humano/CRM libera um handoff, então um agente capaz de chamá-la se
+    // auto-liberaria. Restringir ali é acerto, não defeito.
+    //
+    // O que este gate caça é a restrição NÃO DECLARADA: a tool que ficou fora
+    // do alcance do agente por descuido de `requiresRole` e falha em silêncio
+    // (a ponte devolve o erro ao modelo, e o humano que ligou não fica sabendo).
+    const acidentais = allTools
       .filter((t) => !alcancavel(t.requiresRole))
+      .filter((t) => !catalogEntry(t.name)?.apenasHumano)
       .map((t) => t.name)
       .sort();
-    expect(inalcancaveis).toEqual([...INALCANCAVEIS_CONHECIDAS].sort());
+    expect(acidentais).toEqual([...INALCANCAVEIS_CONHECIDAS].sort());
+  });
+
+  it("capacidade marcada como operada por pessoa está mesmo fora do alcance do agente", () => {
+    // A marca é declaração, não trava — quem trava é `requiresRole`. Uma tool
+    // marcada `apenasHumano` mas alcançável pelo agente é a pior combinação:
+    // diz na tela que só gente opera, e o agente opera assim mesmo.
+    const mentirosas = allTools
+      .filter((t) => catalogEntry(t.name)?.apenasHumano)
+      .filter((t) => alcancavel(t.requiresRole))
+      .map((t) => t.name);
+    expect(mentirosas).toEqual([]);
   });
 
   it("dívida declarada não esconde capacidade já consertada", () => {
