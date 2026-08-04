@@ -121,6 +121,22 @@ silêncio de monitor é indistinguível de "está rodando".
 
 ---
 
+## Atritos de coordenação (e como foram resolvidos)
+
+Três colisões que só existem porque cinco frentes trabalham ao mesmo tempo. Ficam registradas
+porque a próxima pessoa que orquestrar isto vai encontrá-las de novo.
+
+| # | Colisão | Resolução |
+|---|---|---|
+| C1 | As quatro waves escreveriam no mesmo `HANDOFF-ia-360.md` | Cada uma escreve `HANDOFF-ia-360-W<N>.md`; o Maestro consolida. **Avisado tarde demais para a W3**, que já havia escrito no arquivo comum — merge dela precisa de resolução manual |
+| C2 | **Números de migration colidindo.** Último na `main` é `0099`; W1 e W3 escolheram `0100` **as duas**, W4 pegou `0101`, e W2 pegou `0102` com timestamp mais antigo que todas — o número ficava fora da ordem em que o `psql` aplica | Maestro realocou por ordem de timestamp: **W2→0100, W1→0101, W3→0102, W4→0103** |
+| C3 | Quatro waves acrescentando bloco no fim do mesmo `supabase/baseline.sql` | Conflito garantido no merge. Regra dada a todas: **manter os dois blocos**, nunca escolher um lado — escolher apaga a mudança de schema da outra wave e o clone self-host nunca a recebe |
+
+**Numeração de bugs:** cada wave numerou a partir de `BUG-01` no próprio arquivo, então há colisão
+entre elas. A numeração canônica é a desta seção; a origem de cada um está declarada.
+
+---
+
 ## Bugs encontrados e corrigidos
 
 Formato de cada entrada: onde foi achado (SHA + por quem + executando o quê), o **sintoma
@@ -189,6 +205,66 @@ execução: `pnpm test:unit` → 225 arquivos, 1948 testes, exit 0. `pnpm typech
 > Nota de método: a primeira medição desta suíte foi **descartada** — eu havia sabotado
 > `lib/mcp/tools/leads.ts` enquanto ela rodava. Número medido contra disco em movimento não vale,
 > mesmo quando o resultado é o mesmo.
+
+### BUG-03 — "devolver ao atendimento automático" não devolvia nada · CORRIGIDO
+
+- **Achado em** `99cd0fc` pelo terminal **Maestro** (W3), ao extrair a regra de
+  `POST /api/v1/conversations/[id]/reactivate-bot` para `lib/escalacao/retomada.ts`.
+- **Confirmado** por medição independente do Maestro do épico: `grep` por `force_human` em
+  `lib/`, `app/` e `workers/` devolve **zero** escritas de `false` em toda a base.
+- **Pré-existente na `main`.**
+
+**Sintoma observado.** A rota respondia `{ reactivated: true }` e o agente continuava mudo para
+sempre.
+
+**Causa raiz.** A passagem para humano liga **três** travas e a rota soltava uma.
+`contacts.force_human = true` não era escrito de volta para `false` em lugar nenhum do repo — e é
+lido pelo worker (`skip("force_human")`), pela guarda `isLeadInHandoff` (NO-OP antes de qualquer
+chamada de modelo) e por `before-send.ts` (`(is_blocked or force_human) as stopped`, que veta todo
+envio).
+
+**Correção** (`c0db6aa`): solta o dono pela regra existente, limpa as marcas de passagem e limpa
+`force_human`. **Prova:** invariante contra Postgres real rodando a função de guarda **real**,
+mostrando os dois estados (`true` com só o silêncio limpo, `false` com `force_human` junto).
+
+### BUG-04 — a volta sumia da linha do tempo do negócio · CORRIGIDO
+
+Achado pela W3. `crm_lead_activities` tinha `handoff_triggered` e **nenhum** tipo para a volta: na
+timeline o cliente saía para uma pessoa e nunca voltava — meia continuidade, que se lê como
+continuidade. Corrigido com o tipo `handoff_resolved` emitido via constante compartilhada
+(`c0db6aa`).
+
+### BUG-05 — o agente não tinha como registrar nada num chamado · CORRIGIDO
+
+Achado pela W3. O CHECK de `agent_case_events.kind` não tinha valor honesto para "o agente
+registrou o que aconteceu depois"; reusar `lead_provided` ou `human_replied` faria a linha do tempo
+do chamado mentir sobre quem agiu — e é desse registro que sai o resumo entregue ao próximo
+atendente. Corrigido com migration + apêndice no baseline + MANIFEST, incluindo sabotagem do tipo
+"a migration não chegou ao baseline" (`c0db6aa`).
+
+### BUG-06 — o gate confundia restrição deliberada com acidente · CORRIGIDO
+
+- **Defeito meu (Maestro), introduzido em `bddeeb6`** ao consertar o BUG-02.
+- **Revelado** pela W3, que marcou `crm_resume_ai_attendance` como `manager` de propósito.
+
+**Sintoma observado.** Rodei o gate de alcançabilidade contra o catálogo da W3 e ele acusou
+`crm_resume_ai_attendance` junto com as dívidas reais — reprovando uma escolha **correta**.
+
+**Causa raiz.** A regra que escrevi ("toda capacidade é alcançável pelo agente") é falsa. Algumas
+**não devem** estar ao alcance dele: `inbound-turn.ts:607` registra a regra dura de que só o
+humano/CRM libera um handoff, e um agente capaz de chamar aquela tool se auto-liberaria do próprio
+handoff.
+
+**Correção** (`5f9dd97`): o catálogo ganhou `apenasHumano`, e o gate passou a caçar só a restrição
+**não declarada** — a que ficou fora do alcance por descuido e falha em silêncio. Entrou junto uma
+segunda asserção contra a combinação pior: tool marcada como operada por pessoa **mas alcançável
+pelo agente**, que diz uma coisa na tela e faz outra.
+
+**Prova:** sabotado nas duas direções — inalcançável sem a marca reprova a primeira asserção; marca
+mentirosa em tool alcançável reprova a segunda. Revertido, 4 verdes.
+
+**Consequência de produto** (repassada à W1): capacidade `apenasHumano` precisa aparecer diferente
+na tela, e uso zero dela **não** é sinal de capacidade ociosa — é o esperado.
 
 ---
 
