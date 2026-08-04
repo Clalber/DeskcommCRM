@@ -34,11 +34,23 @@ dc_files() {
   fi
 }
 
-c_red() { printf '\033[31m%s\033[0m\n' "$*"; }
-c_grn() { printf '\033[32m%s\033[0m\n' "$*"; }
-c_ylw() { printf '\033[33m%s\033[0m\n' "$*"; }
+# Cor só quando há terminal de verdade — mesma regra do install.sh (se mexer
+# numa, mexa na outra). Aqui isso vale dobrado: o update.sh, que herda estas
+# funções, é rodado pelo agent.sh com a saída redirecionada para arquivo
+# (`> "$LOG"`) a cada 5 minutos, para sempre, em toda instalação. Era daí que
+# vinha o escape ANSI que o esc() do agent.sh precisa varrer byte a byte antes
+# de mandar o log no heartbeat; não emitir na origem é a correção de causa.
+if   [ -n "${NO_COLOR:-}" ];    then COLOR=0
+elif [ -n "${FORCE_COLOR:-}" ]; then COLOR=1
+elif [ -t 1 ];                  then COLOR=1
+else                                 COLOR=0
+fi
+paint() { local code="$1"; shift; if [ "$COLOR" = 1 ]; then printf '\033[%sm%s\033[0m\n' "$code" "$*"; else printf '%s\n' "$*"; fi; }
+c_red() { paint 31 "$*"; }
+c_grn() { paint 32 "$*"; }
+c_ylw() { paint 33 "$*"; }
 die()   { c_red "✖ $*"; exit 1; }
-step()  { printf '\n\033[1m▶ %s\033[0m\n' "$*"; }
+step()  { printf '\n'; paint 1 "▶ $*"; }
 
 # Código de saída de quem RECUSOU antes de tocar em qualquer coisa — distinto
 # de "falhei no meio" (1). O agent.sh usa isso para não desfazer uma

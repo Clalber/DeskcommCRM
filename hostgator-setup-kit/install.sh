@@ -40,12 +40,79 @@ dc_files() {
   fi
 }
 
-c_red() { printf '\033[31m%s\033[0m\n' "$*"; }
-c_grn() { printf '\033[32m%s\033[0m\n' "$*"; }
-c_ylw() { printf '\033[33m%s\033[0m\n' "$*"; }
-c_dim() { printf '\033[2m%s\033[0m\n' "$*"; }
+# ── Aparência ───────────────────────────────────────────────────────────────
+# Cor só quando há terminal de verdade. Antes o ANSI saía sempre, inclusive
+# quando a saída vai para arquivo — o agent.sh redireciona o update.sh (`>
+# "$LOG"`) e o esc() de lá precisa varrer byte a byte para tirar esses escapes
+# do heartbeat. Desligar na origem é a correção de causa. NO_COLOR é a
+# convenção que quem roda em CI espera; FORCE_COLOR é a válvula de quem quer
+# cor mesmo em pipe.
+if   [ -n "${NO_COLOR:-}" ];    then COLOR=0
+elif [ -n "${FORCE_COLOR:-}" ]; then COLOR=1
+elif [ -t 1 ];                  then COLOR=1
+else                                 COLOR=0
+fi
+
+# paint <código ANSI> <texto…>. Sem cor, imprime o texto cru — nunca some.
+paint() { local code="$1"; shift; if [ "$COLOR" = 1 ]; then printf '\033[%sm%s\033[0m\n' "$code" "$*"; else printf '%s\n' "$*"; fi; }
+c_red() { paint 31 "$*"; }
+c_grn() { paint 32 "$*"; }
+c_ylw() { paint 33 "$*"; }
+c_dim() { paint 2  "$*"; }
 die()   { c_red "✖ $*"; exit 1; }
-step()  { printf '\n\033[1m▶ %s\033[0m\n' "$*"; }
+step()  { printf '\n'; paint 1 "▶ $*"; }
+
+# ── Fases da jornada ────────────────────────────────────────────────────────
+# Os passos técnicos (step) são muitos e alguns são condicionais — numerá-los
+# daria um "7 de 11" que muda conforme o caminho de cada instalação. As FASES
+# são estáveis: são o mapa que a pessoa acompanha para saber onde está e
+# quanto falta, num processo que leva minutos e é o primeiro contato dela com
+# o produto.
+FASE_TOTAL=4
+fase() { printf '\n'; paint 1 "━━━ Fase $1/$FASE_TOTAL · $2"; }
+
+# ── Marca ───────────────────────────────────────────────────────────────────
+# Logo em blocos (fonte ANSI Shadow). Os blocos saem no MESMO verde do "✓" já
+# usado aqui, e o relevo (═╗║╝╚╔) em dim: essa dupla lê tanto em terminal de
+# fundo escuro quanto claro, sem precisar detectar o tema — uma cor de acento
+# clara sumiria no branco de quem usa terminal claro.
+#
+# A pintura é por substituição literal de string (${x//…}), não por classe de
+# caractere em sed/awk: sob LC_ALL=C essas ferramentas tratam a entrada como
+# BYTES, e todos esses glifos começam com 0xE2 — uma classe [╗║…] casaria
+# pedaço de █ e embaralharia o desenho na VPS de quem roda em locale C.
+LOGO_COLS=71
+banner() {
+  local cols linha ch
+  cols="$(tput cols 2>/dev/null || echo 80)"
+  case "$cols" in ''|*[!0-9]*) cols=80;; esac
+  printf '\n'
+  # Terminal estreito recebe a versão de uma linha: logo quebrado no meio é
+  # pior do que logo nenhum.
+  if [ "$COLOR" != 1 ] || [ "$cols" -lt $((LOGO_COLS + 2)) ]; then
+    paint 1 "  DESKCOMM"
+  else
+    # Tela limpa: tira o ruído do clone/apt de cima do logo. Exige TTY de
+    # verdade (não basta COLOR=1): com FORCE_COLOR numa saída redirecionada, um
+    # "limpe a tela" no meio do arquivo é lixo que ninguém pediu.
+    [ -t 1 ] && printf '\033[2J\033[H'
+    while IFS= read -r linha; do
+      linha="${linha//█/$'\033[32m'█$'\033[0m'}"
+      for ch in ═ ╗ ║ ╝ ╚ ╔; do linha="${linha//$ch/$'\033[2m'$ch$'\033[0m'}"; done
+      printf '  %s\n' "$linha"
+    done <<'LOGO'
+██████╗ ███████╗███████╗██╗  ██╗ ██████╗ ██████╗ ███╗   ███╗███╗   ███╗
+██╔══██╗██╔════╝██╔════╝██║ ██╔╝██╔════╝██╔═══██╗████╗ ████║████╗ ████║
+██║  ██║█████╗  ███████╗█████╔╝ ██║     ██║   ██║██╔████╔██║██╔████╔██║
+██║  ██║██╔══╝  ╚════██║██╔═██╗ ██║     ██║   ██║██║╚██╔╝██║██║╚██╔╝██║
+██████╔╝███████╗███████║██║  ██╗╚██████╗╚██████╔╝██║ ╚═╝ ██║██║ ╚═╝ ██║
+╚═════╝ ╚══════╝╚══════╝╚═╝  ╚═╝ ╚═════╝ ╚═════╝ ╚═╝     ╚═╝╚═╝     ╚═╝
+LOGO
+  fi
+  printf '\n'
+  c_dim "  Agentes de IA que atendem no WhatsApp, dentro do seu CRM."
+  c_dim "  Open-source · roda no seu servidor · os dados são seus."
+}
 
 # ── Rede de segurança: nenhuma saída silenciosa ─────────────────────────────
 # Antes, qualquer comando que falhasse sob `set -e` derrubava o script sem
@@ -331,7 +398,10 @@ sb_carrega_credenciais() {
 # `test-validators.sh` exercita os validadores:  INSTALL_SH_LIB=1 . install.sh
 if [ "${INSTALL_SH_LIB:-}" = "1" ]; then trap - EXIT; return 0; fi
 
+banner
+
 # ── 1. Preflight ────────────────────────────────────────────────────────────
+fase 1 "Preparando o servidor"
 step "Verificando dependências"
 
 # VPS "cru" (Hetzner, DigitalOcean, Contabo…) não vem com Docker. Antes isto era
@@ -404,6 +474,7 @@ PROJECT_DIR="$(pwd)"
 source "$KIT_DIR/_common.sh"
 
 # ── 3. Coleta de config ─────────────────────────────────────────────────────
+fase 2 "Suas informações"
 step "Configuração"
 # Se já existe .env, carrega pra não repetir perguntas (idempotência).
 if [ -f .env ]; then load_env .env; c_grn "✓ .env existente carregado"; fi
@@ -699,6 +770,7 @@ chmod 600 .env
 c_grn "✓ .env escrito (permissão 600)"
 
 # ── 6. Checagem de DNS ──────────────────────────────────────────────────────
+fase 3 "Banco de dados e domínio"
 step "Conferindo DNS de ${DOMAIN}"
 public_ip="$(curl -fsS --max-time 8 https://api.ipify.org 2>/dev/null || echo '')"
 # Um domínio pode ter A (IPv4) e AAAA (IPv6) ao mesmo tempo, e o resolver não
@@ -818,6 +890,7 @@ end \$\$;
 SQL
 
 # ── 9. Sobe a stack ─────────────────────────────────────────────────────────
+fase 4 "Colocando o CRM no ar"
 step "Puxando a imagem e subindo os serviços"
 dc pull
 dc up -d
@@ -862,6 +935,13 @@ $(c_grn "═══════════════════════�
   4. Ao terminar o onboarding, o CRM pede a verificação em duas etapas:
        tenha o Google Authenticator/Authy à mão e GUARDE os códigos de
        recuperação que aparecem. Perdeu o celular? bash hostgator-setup-kit/reset-mfa.sh ${OWNER_EMAIL}
+
+$(c_grn "  ─── A comunidade ──────────────────────────────────────")
+
+  É onde saem os avisos de versão nova, os agentes que outras pessoas já
+  configuraram e a resposta de quem roda exatamente este CRM:
+
+       https://lp-comunidade.automatiklabs.com.br
 
   Telemetria: por padrão os erros desta instalação são enviados ao Sentry do
   projeto, o que ajuda a corrigir falhas que afetam todo mundo. Para desligar,
