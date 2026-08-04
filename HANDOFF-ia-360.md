@@ -149,6 +149,44 @@ entre elas. A numeração canônica é a desta seção; a origem de cada um est�
 
 ---
 
+## Medições em aberto
+
+### O invariante vermelho da W4 — controle rodado, caso NÃO fechado
+
+A W4 reportou `tests/invariants/followup-turn-bridge.test.ts` falhando na suíte completa
+(`expected 2 to be 1` em `tick2.advanced`) e passando isolado no mesmo SHA, atribuindo a
+interferência de estado entre invariantes — declarando explicitamente que era hipótese.
+
+**Controle rodado pelo Maestro** em `5e8a547`, base, árvore limpa, `TEST_DB_PORT=54391`:
+`62 arquivos, 413 passed | 1 skipped, exit 0`. O invariante **não falhou**.
+
+**O que o controle decide:** derruba a hipótese de defeito determinístico pré-existente na base.
+
+**O que o controle NÃO decide:** um run verde não refuta flaky. Se o fenômeno é interferência de
+estado, ele é não-determinístico por definição — uma foto verde na base contra uma foto vermelha na
+W4 não distingue *causado pela W4* de *flaky que calhou de cair naquela rodada*. Fica em aberto
+até a segunda rodada da W4; se repetir no mesmo ponto, o próximo passo é rodar o invariante isolado
+~5× em cada branch.
+
+**Ruído descartado:** o `ERROR: duplicate key ... uniq_system_update_runs_dispatched` que aparecia
+no log da W4 também aparece **na base com a suíte verde** — é algum teste exercitando conflito, não
+sintoma.
+
+**Correção de método (minha).** Levantei como alternativa que duas waves rodando `test:db`
+concorrentes estivessem no mesmo banco, porque `followup-turn-bridge` é o domínio da W2. A hipótese
+tinha **dois** defeitos, não um:
+
+1. `scripts/test-db.sh` tem `set -euo pipefail` e container com nome único por PID — se a porta
+   estiver ocupada o `docker run` falha e o script morre; a segunda wave não lê o banco da primeira.
+2. Pior: o worktree da W4 está em **outra branch** e não contém nenhuma mudança de follow-up da W2.
+   Ela nunca poderia afetá-lo.
+
+Registrado porque era a explicação **mais interessante** das duas, e a interessante é justamente a
+que passa sem ser medida — teria desviado o trabalho da W4 para caçar um fantasma, vestida de
+achado de maestro.
+
+---
+
 ## Bugs encontrados e corrigidos
 
 Formato de cada entrada: onde foi achado (SHA + por quem + executando o quê), o **sintoma
