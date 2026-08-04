@@ -212,10 +212,31 @@ chama.
   da sua sessão fica inválido e o login de admin falha com "MFA falhou em 2 tentativas" — sintoma
   que não parece o que é. Rode o seed imediatamente antes do E2E.
 - **`update` do baseline emite `ERROR: relation "idx_crm_leads_org_expected_close_overdue" already
-  exists`** (pré-existente, não desta wave: é um `create index` sem `if not exists` no apêndice). Não
-  derruba o `update.sh` porque ele roda sem `ON_ERROR_STOP`, mas aparece como erro vermelho no
-  terminal de quem atualiza um clone. Vale um forward-fix de uma linha para quem estiver mexendo
-  nessa área.
+  exists`** (pré-existente, não desta wave). O sintoma vale: quem atualiza um clone vê vermelho no
+  terminal e se assusta.
+
+  **Correção de atribuição (era minha, e estava errada).** Eu escrevi que era um `create index` sem
+  guarda **no apêndice**, e propus um forward-fix de uma linha. O `@Assistente e Testes` mediu e
+  apontou o dump; remedi em `43639f5`, árvore limpa: o índice está na **linha 2410** e o apêndice só
+  começa na **3987** — ele é do **dump do `pg_dump`**, não do apêndice. Contagem por parte:
+
+  | parte do baseline | índices | com `if not exists` | tabelas | com `if not exists` |
+  |---|---|---|---|---|
+  | dump (1–3986) | 112 | **0** | 38 | 38 |
+  | apêndice (3987–8844) | 74 | 74 | 60 | 60 |
+
+  Ou seja: **um `if not exists` numa linha faria sumir o erro daquela linha e deixaria 111 iguais** —
+  o forward-fix que propus era o conserto por instância de um problema que é de classe. É também por
+  isso que o `update.sh` roda sem `ON_ERROR_STOP`: com um dump sem guardas, re-aplicar em banco
+  existente **tem** que tolerar erro. Isso é desenho, não descuido.
+
+  Um refinamento sobre o dump, para quem for medir: não é que "nenhum `create` do dump tenha guarda"
+  — as **38 tabelas têm** `CREATE TABLE IF NOT EXISTS`. Quem não tem são os **112 índices**. Importa
+  na hora de conferir a contagem de `ERROR` do `update`: o piso vem dos índices, não das tabelas.
+
+  Consertar de verdade é mudar como o kit gera ou consome o baseline — maior que uma linha e maior
+  que este épico. O `@Assistente e Testes` está medindo quantos `ERROR` o `update` emite de fato e
+  abre item próprio. **Ninguém mexe nisso dentro do IA 360.**
 
 ---
 
