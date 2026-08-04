@@ -415,6 +415,23 @@ save_partial() {
   mv "$tmp" "$PARTIAL_FILE"
 }
 
+# Dado QUEM ocupa as portas 80/443, o que fazer? Puro, para ser exercitado sem
+# Docker. Ecoa `traefik` (publicar através dele), `caddy` (portas livres, subimos
+# o nosso) ou `ocupado` (alguém está lá e não sabemos falar com ele).
+#
+# A ordem importa: pergunta-se PRIMEIRO se é Traefik, e só depois se está
+# ocupado. Antes o código só sabia procurar Traefik — qualquer outro proxy,
+# inclusive o Caddy de outro DeskcommCRM na mesma VPS, caía no ramo "portas
+# livres" e a instalação seguia direto para o choque de portas.
+classifica_proxy() {  # classifica_proxy <imagem_do_dono> <nome_do_dono> <ocupante_no_host>
+  local img="${1:-}" nome="${2:-}" host="${3:-}"
+  case "$img $nome" in
+    *[Tt]raefik*) printf 'traefik'; return 0;;
+  esac
+  if [ -n "$nome" ] || [ -n "$host" ]; then printf 'ocupado'; return 0; fi
+  printf 'caddy'
+}
+
 # Esconde o miolo de um segredo para a tela de conferência.
 mask() {
   local v="$1"
@@ -535,6 +552,80 @@ if [ -f "$PARTIAL_FILE" ]; then
   load_env "$PARTIAL_FILE"
   c_grn "✓ retomando: $(grep -c '=' "$PARTIAL_FILE" 2>/dev/null || echo 0) resposta(s) guardadas da tentativa anterior"
   c_dim "  (para responder tudo de novo do zero: rm $PARTIAL_FILE)"
+fi
+
+# ── Proxy reverso: quem está com as portas 80 e 443? ────────────────────────
+# Fica AQUI, logo depois de ler o .env e ANTES de qualquer coisa cara: era a
+# última etapa da fase 2, então quem esbarrava neste problema já tinha criado um
+# projeto Supabase, respondido tudo e esperado o clone — para só então o
+# `docker compose up` morrer com "Bind for 0.0.0.0:80 failed: port is already
+# allocated". Descobrir isso antes de cobrar qualquer trabalho é o mínimo.
+#
+# A varredura NÃO procura por "traefik": procura por QUEM PUBLICA as portas, e
+# só depois pergunta o que é. A versão anterior só reconhecia Traefik, então um
+# Caddy — inclusive o de outro DeskcommCRM instalado na mesma VPS — passava
+# despercebido e a instalação escolhia `caddy`, garantindo o choque de portas.
+# Medido numa VPS com produção rodando: exatamente esse erro, na fase 4.
+#
+# Contêineres DESTA instalação são ignorados: numa re-execução o nosso próprio
+# Caddy está de pé publicando 80/443, e tratá-lo como "outro proxy" mataria a
+# idempotência — que é justamente o que permite rodar de novo para corrigir uma
+# resposta errada.
+proj_atual="${COMPOSE_PROJECT_NAME:-$(basename "$PROJECT_DIR" | tr '[:upper:]' '[:lower:]' | tr -cd 'a-z0-9_-')}"
+dono_portas=""; dono_imagem=""
+while IFS="$(printf '\t')" read -r _nome _proj _img; do
+  [ -n "$_nome" ] || continue
+  [ "$_proj" = "$proj_atual" ] && continue
+  if docker port "$_nome" 2>/dev/null | grep -qE '^(80|443)/tcp'; then
+    dono_portas="$_nome"; dono_imagem="$_img"; break
+  fi
+done <<DOCKERPS
+$(docker ps --format '{{.Names}}\t{{.Label "com.docker.compose.project"}}\t{{.Image}}' 2>/dev/null)
+DOCKERPS
+
+# Nem todo proxy é contêiner: nginx ou apache instalados direto no host seguram
+# as mesmas portas e o Docker recusa o bind igual.
+dono_host=""
+if [ -z "$dono_portas" ] && command -v ss >/dev/null 2>&1; then
+  dono_host="$(ss -tlnp 2>/dev/null | awk '$4 ~ /:(80|443)$/ {print; exit}')"
+fi
+
+# Inicializado sempre: o bloco da rede do Traefik, mais abaixo, lê esta variável
+# sem default, e sob `set -u` uma instalação que já traz REVERSE_PROXY=traefik no
+# .env (portanto sem passar pela detecção) morreria com "unbound variable".
+traefik_container=""
+
+if [ -z "${REVERSE_PROXY:-}" ]; then
+  case "$(classifica_proxy "$dono_imagem" "$dono_portas" "$dono_host")" in
+    traefik)
+      REVERSE_PROXY=traefik
+      traefik_container="$dono_portas"
+      c_ylw "⚠ Detectei um Traefik já rodando neste VPS (contêiner '${dono_portas}', ocupando 80/443)."
+      c_ylw "  Vou publicar o CRM através dele em vez de subir um proxy próprio —"
+      c_ylw "  desligar o Traefik quebraria o que a sua hospedagem instalou."
+      ;;
+    ocupado)
+      # A preposição vem junto do trecho: "por o contêiner" sai errado se a
+      # frase fixar "por" e o pedaço variável começar com artigo.
+      ocupante="${dono_portas:+pelo contêiner '${dono_portas}' (imagem ${dono_imagem})}"
+      ocupante="${ocupante:-por um programa do próprio servidor}"
+      c_red "✖ As portas 80 e 443 já estão ocupadas ${ocupante}."
+      printf '\n%s\n'   "  O CRM precisa dessas duas portas para publicar o site com HTTPS. Subir um"
+      printf '%s\n\n'   "  segundo proxy nelas não funciona: o Docker recusa e a instalação para."
+      printf '%s\n'     "  Como resolver, na ordem do mais provável:"
+      printf '\n%s\n'   "  1. Já é outro DeskcommCRM neste servidor? Então use aquele — entre na"
+      printf '%s\n'     "     pasta dele e rode: bash hostgator-setup-kit/update.sh"
+      printf '\n%s\n'   "  2. Não usa mais o que está ocupando? Desligue e rode este instalador de novo:"
+      [ -n "$dono_portas" ] && printf '%s\n' "       docker stop ${dono_portas}"
+      printf '\n%s\n'   "  3. Quer manter os dois no ar? Aí o CRM tem de sair por um proxy só, e isso"
+      printf '%s\n'     "     é configuração manual — o kit automatiza esse caminho apenas para"
+      printf '%s\n\n'   "     Traefik (ponha REVERSE_PROXY=traefik no .env)."
+      die "Libere as portas 80 e 443 (ou use a instalação que já existe) e rode de novo."
+      ;;
+    *)
+      REVERSE_PROXY=caddy
+      ;;
+  esac
 fi
 
 # ── Supabase automático (opcional) ──────────────────────────────────────────
@@ -669,37 +760,6 @@ UPSTASH_REDIS_REST_TOKEN="$SRH_TOKEN"
 c_grn "✓ segredos prontos"
 
 # ── 5. Escreve .env (600) ───────────────────────────────────────────────────
-# ── Proxy reverso: o VPS já tem um? ─────────────────────────────────────────
-# Várias hospedagens entregam a VPS com um Traefik próprio já ocupando 80/443
-# (Hostinger, Coolify, Dokploy...). Nesse caso o Caddy do kit não consegue subir
-# — falha no bind da porta e a instalação morre no meio, com um erro que não diz
-# nada a quem não é técnico. Detectar isso sozinho é o que separa "instalou" de
-# "desistiu". Quem já tem REVERSE_PROXY no .env manda: a detecção não sobrescreve.
-# O candidato precisa PUBLICAR 80/443. Só casar "traefik" no nome/imagem aceita
-# qualquer contêiner chamado `traefik-backup` e desligaria o TLS que o kit
-# controla por causa de um homônimo parado.
-traefik_container=""
-for _c in $(docker ps --format '{{.Names}}' 2>/dev/null); do
-  case "$(docker inspect -f '{{.Config.Image}} {{.Name}}' "$_c" 2>/dev/null)" in
-    *[Tt]raefik*)
-      if docker port "$_c" 2>/dev/null | grep -qE '^(80|443)/tcp'; then
-        traefik_container="$_c"; break
-      fi
-      ;;
-  esac
-done
-
-if [ -z "${REVERSE_PROXY:-}" ]; then
-  if [ -n "$traefik_container" ]; then
-    REVERSE_PROXY=traefik
-    c_ylw "⚠ Detectei um Traefik já rodando neste VPS (contêiner '${traefik_container}', ocupando 80/443)."
-    c_ylw "  Vou publicar o CRM através dele em vez de subir um proxy próprio —"
-    c_ylw "  desligar o Traefik quebraria o que a sua hospedagem instalou."
-  else
-    REVERSE_PROXY=caddy
-  fi
-fi
-
 # A rede em que o Traefik REALMENTE está. Antes isto era calculado como
 # "<pasta>_internal", ou seja, a rede do PRÓPRIO projeto — e aí nada funcionava:
 # o Traefik não alcança uma bridge que não é dele, e o label `traefik.docker.network`

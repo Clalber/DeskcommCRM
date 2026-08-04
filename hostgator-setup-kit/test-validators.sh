@@ -449,6 +449,30 @@ case "$senha" in
   *)              printf '  ✓ só alfanuméricos (não parte a connection string)\n';;
 esac
 
+echo "proxy reverso: quem está com as portas 80/443"
+# A versão anterior só sabia procurar Traefik. Qualquer outro proxy — inclusive o
+# Caddy de OUTRO DeskcommCRM na mesma VPS — caía no ramo "portas livres", e a
+# instalação seguia até a fase 4 para morrer com "Bind for 0.0.0.0:80 failed:
+# port is already allocated". Medido numa VPS com produção rodando.
+proxy_ok() {  # proxy_ok <descrição> <esperado> <imagem> <nome> <host>
+  local desc="$1" esperado="$2" real
+  real="$(classifica_proxy "${3:-}" "${4:-}" "${5:-}")"
+  if [ "$real" = "$esperado" ]; then printf '  ✓ %s\n' "$desc"
+  else printf '  ✗ %s  (deu %s, esperava %s)\n' "$desc" "$real" "$esperado"; fail=1; fi
+}
+proxy_ok "portas livres → sobe o nosso Caddy"        caddy    ""                    ""                ""
+proxy_ok "Traefik da hospedagem → publica por ele"   traefik  "traefik:v3.3"        "traefik"         ""
+proxy_ok "Traefik com nome maiúsculo"                traefik  "library/Traefik"     "meu-Traefik"     ""
+proxy_ok "Caddy de outro Deskcomm → bloqueia"        ocupado  "caddy:2-alpine"      "outro-caddy-1"   ""
+proxy_ok "nginx-proxy de outro app → bloqueia"       ocupado  "nginxproxy/nginx"    "webproxy"        ""
+proxy_ok "nginx do próprio host → bloqueia"          ocupado  ""                    ""                "LISTEN 0 511 *:80 users:((\"nginx\"))"
+# Sem este caso, um contêiner qualquer chamado "traefik-backup" PARADO (que não
+# publica porta, logo não chega aqui) não é o risco — o risco é o inverso: um
+# ocupante real ser lido como Traefik por causa do nome. O kit já exigia que o
+# candidato publicasse as portas; o teste guarda que a classificação continua
+# olhando imagem E nome.
+proxy_ok "imagem traefik vence nome genérico"        traefik  "traefik:v2"          "proxy-01"        ""
+
 echo
 if [ "$fail" = 0 ]; then echo "todos os validadores passaram"; else echo "FALHOU"; fi
 exit "$fail"
