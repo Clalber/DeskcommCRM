@@ -162,7 +162,29 @@ interferência de estado entre invariantes — declarando explicitamente que era
 
 **O que o controle decide:** derruba a hipótese de defeito determinístico pré-existente na base.
 
-**O que o controle NÃO decide:** um run verde não refuta flaky. Se o fenômeno é interferência de
+**FECHADO — o flaky é pré-existente na base.** Caracterização por repetição, mesma base
+`5e8a547`, árvore limpa, portas `54401/54402/54403`:
+
+| Rodada | Resultado |
+|---|---|
+| controle inicial | `413 passed \| 1 skipped` |
+| 1 | `413 passed \| 1 skipped` |
+| 2 | **`1 failed \| 412 passed \| 1 skipped`** |
+| 3 | `413 passed \| 1 skipped` |
+
+**1 vermelho em 4 rodadas da base, sem nenhuma mudança de wave.** O fenômeno existe no tronco —
+a W4 não o introduziu, e a W2 (dona do domínio de follow-up) também não, já que a base não tem
+mudança de nenhuma das duas.
+
+**Limitação da minha medição, declarada:** filtrei o output pela linha de sumário e **perdi o nome
+do teste** que falhou na rodada 2. Sei que 1 falhou; **não** sei se foi um dos dois de follow-up que
+a W4 viu. Para saber, é preciso repetir capturando a saída inteira — e com taxa observada de ~25%,
+são várias rodadas.
+
+**Comparação que NÃO dá para fazer:** base 1/4 contra W4 2/2 parece diferença, mas com esse número
+de amostras não distingue nada. O que está estabelecido é a existência na base, não a taxa.
+
+**O que o controle inicial NÃO decidia:** um run verde não refuta flaky. Se o fenômeno é interferência de
 estado, ele é não-determinístico por definição — uma foto verde na base contra uma foto vermelha na
 W4 não distingue *causado pela W4* de *flaky que calhou de cair naquela rodada*. Fica em aberto
 até a segunda rodada da W4; se repetir no mesmo ponto, o próximo passo é rodar o invariante isolado
@@ -245,9 +267,24 @@ emitida por ele quebrava com `23503` e **falhava baixo, em silêncio**.
 **Causa raiz.** Dois caminhos discordando sobre o que `actor.id` significa: o harness sempre usou
 o id do **agente** (`mcp-tools.ts:68`), o runtime nativo usava o id do **run**.
 
-**Correção** (`bddeeb6`): `lib/ai/runtime/agent.ts` passa `run.agent_id`. O run continua
-rastreável por `ctx.requestId` e pelo scope `agent_run:<id>`, e o audit não é afetado —
-`lib/mcp/audit.ts` grava `actor_id` em metadata livre, não em coluna com FK.
+**Correção** (`bddeeb6`): `lib/ai/runtime/agent.ts` passa `run.agent_id`.
+
+> ⚠️ **ESTA CORREÇÃO FOI SUPERADA — não a use como referência.** A W2 achou o mesmo defeito de
+> forma independente e resolveu melhor: em vez de trocar o campo, **separou** `id` (correlação de
+> audit, varia por runtime) de `agent_id` (a linha em `ai_agents`, a única que pode ir para uma
+> coluna com FK), tocando também `lib/api/handlers/types.ts`, `lib/leads/activity-emitter.ts` e o
+> harness.
+>
+> A minha perde por três razões, medidas no diff dela:
+> 1. quebra a correlação do run no audit — `metadata.actor_id` passaria a ser o agente;
+> 2. **conserta 1 dos 3 produtores de `actor.id`.** Existem três, e eu só tinha visto dois: o
+>    runtime nativo põe o id do run, o token MCP externo põe o run do escopo `agent_run:` ou o id
+>    do próprio token, e o envio do motor chega a pôr a string literal `'agent-engine'`. Meu
+>    conserto deixava os dois últimos quebrados — e eu teria declarado o bug resolvido;
+> 3. a dela degrada com segurança: sem `agent_id` a linha entra como sistema e perde a **autoria**;
+>    a minha, ao errar, perdia a **linha inteira** na FK.
+>
+> **Resolução do conflito em `lib/ai/runtime/agent.ts`: ficar com o lado da W2, inteiro.**
 
 **Medição da base após as duas correções**, em `9fc1cc3` com árvore estável durante toda a
 execução: `pnpm test:unit` → 225 arquivos, 1948 testes, exit 0. `pnpm typecheck` limpo.
