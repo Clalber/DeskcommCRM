@@ -90,7 +90,7 @@ envelhecer — se a wave entregar as tools e ninguém tirar o pacote da dívida,
 ### Wave 1 — o painel do humano · CONCLUÍDA
 
 **Entregue por:** Arquiteto (worktree `DeskcommCRM-ia360-w1-painel`, branch `feat/ia-360-w1-painel`)
-**Commits:** `ddb53bd` (rota) · `259567e` (tela) · `032f038` (observabilidade) · `<SHA_FINAL>` (prova em tela)
+**Commits:** `ddb53bd` (rota) · `259567e` (tela) · `032f038` (observabilidade) · `41e61b2` (prova em tela + mapa vivo)
 
 #### O que mudou
 
@@ -140,10 +140,23 @@ pnpm typecheck                     → limpo
 pnpm lint                          → 0 erros, 170 avisos (a MESMA linha de base da Wave 0;
                                      nenhum aviso em arquivo desta wave)
 pnpm vitest (4 arquivos da wave)   → 44 passed
+pnpm test:unit (suíte inteira)     → 1986 passed | 1 failed (1987) — ver nota abaixo
 pnpm test:db                       → 419 passed | 1 skipped (63 arquivos)
                                      install (ON_ERROR_STOP=1) + update do baseline verdes
 E2E em tela (Playwright, chromium) → 5 passed (45,2s)
 ```
+
+**Sobre o 1 vermelho do `test:unit`, sem arredondar para verde.** Em três rodadas
+da suíte inteira nesta máquina, falharam **arquivos diferentes a cada vez**
+(`lib/ui/icons`, `TeamMembersClient`, `_mapping`, `composer-emoji`) — todos testes
+de componente estourando tempo (43s, 17s, 15s, 4,5s) enquanto build, docker e E2E
+disputavam a máquina. Cada um **passa isolado** (medido: os três primeiros juntos,
+23 passed em 15,7s; `composer-emoji`, 1 passed em 5,9s). E nenhum deles referencia
+qualquer arquivo desta wave — `grep` por `selecao-por-pacote|catalogo-servido|
+uso-de-capacidades|UsoDasCapacidades|ToolPicker|AgentTabs|AgentForm|mcp/tools`
+nos quatro: nenhuma ocorrência. Os 4 arquivos de teste da wave passaram em todas
+as rodadas. **Não afirmo suíte 100% verde nesta máquina**; afirmo que o vermelho
+é de carga e não desta wave, e que o CI (máquina dedicada) é quem dá a palavra.
 
 Evidência visual versionada em `evidence/ia-360-w1/`:
 ![capacidades por jornada](evidence/ia-360-w1/w1-capacidades-por-jornada.png)
