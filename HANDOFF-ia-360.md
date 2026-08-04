@@ -209,6 +209,59 @@ achado de maestro.
 
 ---
 
+### O `update.sh` cospe 307 erros no terminal de quem atualiza um clone
+
+**Achado pela W1**, executando o baseline. **Diagnóstico dela corrigido pelo Maestro**, e a
+correção muda a ação.
+
+Ela atribuiu a um `create index` sem `if not exists` **no apêndice**
+(`idx_crm_leads_org_expected_close_overdue`) e sugeriu um forward-fix de uma linha. Medido: o
+índice está na **linha 2410** e o apêndice começa na **3987** — é do **dump**. O dump é gerado por
+`pg_dump` e **nenhum** `create` dele tem `if not exists`, então ao re-aplicar num banco existente
+todos reclamam. É por isso que o `update.sh` roda sem `ON_ERROR_STOP`: é desenho, não descuido. O
+forward-fix de uma linha faria o erro daquela linha sumir e levaria o próximo a concluir que
+resolveu.
+
+**Dimensionado** em `5e8a547`, `TEST_DB_PORT=54410`, contando por fase do log:
+
+| Fase | `ERROR:` |
+|---|---|
+| INSTALL (banco novo, `ON_ERROR_STOP=1`) | **0** |
+| UPDATE (re-aplicar em banco existente) | **307** |
+| suíte de invariantes | 28 (testes exercitando RLS/CHECK — não são falha) |
+
+O `update` **termina verde** — funciona. Mas quem atualiza um clone vê 307 linhas vermelhas
+passarem. Pela doutrina de que a instalação é o produto, isso é primeira impressão ruim de um
+caminho que está tecnicamente correto.
+
+**Não corrigido neste épico:** consertar de verdade é mudar como o kit gera ou consome o baseline
+(dump idempotente, ou o `update.sh` filtrar os erros esperados e falhar alto nos inesperados) —
+maior que uma linha e maior que este épico. Item próprio.
+
+**Nota de método:** a primeira contagem que fiz deu `0` porque o log estava filtrado pela linha de
+sumário e as linhas do install nem tinham sido salvas — zero por instrumento cego, não por
+ausência. A segunda deu `335` misturando as fases, e 28 daqueles eram testes exercitando políticas,
+não defeito. O número que vale é o de dentro da fase.
+
+### Migrations: sem duplicata, fora de ordem, e aceito assim
+
+A alocação que dei (W2→0100, W1→0101, W3→0102, W4→0103) **não** foi a que valeu: um hook do repo
+acusou colisão e as waves se auto-organizaram antes da minha mensagem chegar. Estado final:
+
+| Wave | Arquivo | Ordem de aplicação (timestamp) |
+|---|---|---|
+| W2 | `20260804180000_0102_...` | 1º |
+| W3 | `20260804200000_0100_...` | 2º |
+| W4 | `20260804210000_0101_...` | 3º |
+| W1 | `20260804220000_0103_...` | 4º |
+
+**Sem duplicata** — que é o que de fato quebra. O número não acompanha a ordem de aplicação, o que
+é cosmético (o runner aplica por nome de arquivo) e confunde só a leitura do MANIFEST. **Decisão:
+aceitar.** Renomear em quatro branches, duas já fechadas e com merges pela frente, é risco real por
+ganho estético.
+
+---
+
 ## Bugs encontrados e corrigidos
 
 Formato de cada entrada: onde foi achado (SHA + por quem + executando o quê), o **sintoma
