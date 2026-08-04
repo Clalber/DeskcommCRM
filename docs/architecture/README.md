@@ -20,6 +20,7 @@ ser fonte sem ninguém decidir isso.
 | `crm-vivo.architecture.json` | subsistema **CRM Vivo** — 24 peças, 44 arestas, 6 faixas |
 | `atualizacao-self-service.architecture.json` | botão de atualizar pela UI — `agent.sh`/`update.sh` (host) ↔ rota do agente ↔ tabelas de instância ↔ rodapé/tela |
 | `gestao-funis.architecture.json` | gestão de funis pela tela do Kanban — 18 peças, 30 arestas; as três dependências do funil e por que só uma o banco defende |
+| `escalacao-ciclo-humano.architecture.json` | o ciclo agente ↔ pessoa — 30 peças, 38 arestas; as **três** travas da passagem (só uma era solta) e por onde a decisão da pessoa volta ao contexto do turno |
 
 ### `crm-vivo.architecture.json` é PLANTA, não fotografia
 

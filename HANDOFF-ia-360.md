@@ -207,6 +207,70 @@ wave). Em andamento — ver a seção de bugs abaixo para o que já foi medido.
   0100 não chegou ao baseline" (o defeito que deixa o clone self-host sem a
   mudança) — 6 testes reprovam.
 
+### BUG-04 — a rota de devolver o atendimento não tinha porta em tela nenhuma
+
+- **Achado em:** `c0db6aa`, ao montar o E2E do ciclo: não havia o que clicar.
+- **Sintoma observado:** `grep -rn "reactivate-bot"` em `app/` e `components/`
+  devolve só o próprio `route.ts` e um comentário. A rota existe desde a IA-06 e
+  nenhuma tela a chamava — e a conversa com o atendimento automático desligado
+  tinha exatamente a mesma cara de uma conversa normal.
+- **Causa raiz:** o estado nem chegava ao cliente: `SELECT_COLS` de
+  `app/api/v1/conversations/_handler.ts` não trazia `bot_silenced_until` nem
+  `contacts.force_human`, então a tela não tinha como saber que havia algo a
+  devolver.
+- **Correção:** as duas colunas no `SELECT_COLS` (+ tipos), o aviso "Automático
+  pausado" e o botão "Devolver ao automático" em `ConversationHeader`, e o hook
+  `useResumeAiAttendance`. Junto: `STATUS_LABEL` ganhou `pending` — é o estado em
+  que a passagem deixa a conversa, e o rótulo faltava, então TODA conversa
+  escalada mostrava `pending` cru no rosto do atendente.
+- **Prova do fix:** `tests/e2e/escalacao-ciclo.spec.ts` passos (3) e (4), com
+  captura de tela.
+
+### BUG-05 — metade das passagens não aparecia na linha do tempo
+
+- **Achado em:** `c0db6aa`, desenhando o mapa vivo (a aresta não existia).
+- **Sintoma observado:** `crm_lead_activities` recebia `handoff_triggered` só
+  pelo caminho do CRM (`lib/ai/handoff/orchestrator.ts`). `performHumanHandoff` —
+  usada pelo harness (`inbound-turn`) **e** pelo "Assumir eu" dos casos
+  (`POST /ai/cases/:id/reply`) — não gravava atividade nenhuma. No dossiê do
+  cliente o atendimento saía para uma pessoa e sumia.
+- **Causa raiz:** dois caminhos de passagem, um emissor só.
+- **Correção:** `performHumanHandoff` emite via `emitAgentActivityForContact`
+  (mesmo emissor pg do resto do motor), com `reason` **fixo** — `opts.reason`
+  pode ser o texto livre que o atendente escreveu ao escalar, e essa linha
+  aparece na tela e no export de LGPD.
+- **Prova do fix:** `a IDA também aparece na linha do tempo — não só o caminho do
+  CRM` (invariante), que reprova quando o tipo é trocado.
+
+---
+
+## Achados reportados, NÃO consertados (fora do escopo desta wave)
+
+### ACH-01 — o mesmo caminho também não emite `ai.handoff_triggered` no `event_log`
+
+`performHumanHandoff` cancela os crons do próprio motor
+(`cancelPendingCronsForLead`), mas **não** emite `ai.handoff_triggered`. Quem
+consome esse evento é `lib/followup/reactivity.ts` (reação 2), o mecanismo de
+follow-up do lado do CRM: pelo caminho do harness e pelo "Assumir eu" dos casos,
+um `followup_enrollment` ativo **não é pausado** enquanto uma pessoa atende.
+
+Não consertei de propósito: mexer nisso muda o contrato de pausa/retomada do
+follow-up, que é a superfície da **Wave 2 (`reter`)**, e um emissor a mais aqui
+pode virar cancelamento em dobro com o cron do motor. Medido em `c0db6aa` por
+leitura dos dois emissores (`orchestrator.ts` emite; `human-handoff.ts` não) e
+pelos consumidores em `reactivity.handler.ts`.
+
+### ACH-02 — `tests/invariants/followup-reactivity.test.ts` é intermitente
+
+Na suíte completa ele falhou 2 de 5 corridas medidas em `37abfc0`+ (sempre no
+mesmo caso: `marca next_eval_at=now + wake marker`, `expected +0 to be 1`);
+rodado **isolado**, passou 3 de 3. O caso agenda `next_eval_at` com
+`Date.now() - 1_000` (margem de 1 segundo, relógio do host) e depois cobra o
+tick, que compara com o relógio do container.
+
+**Não é meu arquivo** (`git status` não o toca) e a suspeita de autoria está
+sendo medida contra a base `99cd0fc` — o resultado dessa medição entra aqui.
+
 Formato de cada entrada:
 
 ```

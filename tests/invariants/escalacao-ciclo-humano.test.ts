@@ -32,15 +32,30 @@ import { isLeadInHandoff, performHumanHandoff } from "@/lib/agent-engine/agent/h
 
 import {
   GOV_AGENT_A,
-  GOV_CONTACT_1,
-  GOV_CONV_UNASSIGNED,
   GOV_ORG,
+  GOV_PIPELINE,
+  GOV_SESSION,
+  GOV_STAGE,
   seedGov,
   sql,
 } from "./gov-helpers";
 
 /** Org vizinha: prova que as transições recusam alvo de outro tenant. */
 const OUTRA_ORG = "cccccccc-0000-4000-8000-0000000000f1";
+
+/**
+ * Fixtures PRÓPRIAS, não as do `seedGov`.
+ *
+ * Este arquivo liga `contacts.force_human`, mexe em `bot_silenced_until` e em
+ * `assignee_kind`, e apaga chamados da conversa — reusar as linhas compartilhadas
+ * faria os outros 62 arquivos da suíte lerem um estado que este aqui deixou. Com
+ * `fileParallelism: false` o container é o MESMO entre arquivos, então "passou
+ * quando rodei sozinho" não é evidência de nada; a interferência aparece como um
+ * vermelho intermitente em arquivo alheio, que é o pior sinal possível.
+ */
+const ESC_CONTATO = "cccccccc-3333-4000-8000-0000000000e1";
+const ESC_CONVERSA = "cccccccc-4444-4000-8000-0000000000e1";
+const ESC_NEGOCIO = "cccccccc-6666-4000-8000-0000000000e1";
 
 /** O container publica em 127.0.0.1:${TEST_DB_PORT:-54329} (scripts/test-db.sh). */
 const PORTA = process.env.TEST_DB_PORT ?? "54329";
@@ -62,6 +77,17 @@ beforeAll(async () => {
   sql(`
     insert into public.organizations (id, slug, legal_name, display_name)
       values ('${OUTRA_ORG}', 'gov-inv-vizinha', 'Org Vizinha', 'Vizinha')
+      on conflict do nothing;
+    insert into public.contacts (id, organization_id, display_name)
+      values ('${ESC_CONTATO}', '${GOV_ORG}', 'Escalacao Invariant Contact')
+      on conflict do nothing;
+    insert into public.conversations (id, organization_id, contact_id, channel_session_id, status)
+      values ('${ESC_CONVERSA}', '${GOV_ORG}', '${ESC_CONTATO}', '${GOV_SESSION}', 'ai_handling')
+      on conflict do nothing;
+    -- Um negócio ABERTO ligado a este contato: sem ele a atividade da passagem
+    -- não tem onde pousar e o teste da timeline passaria por vacuidade.
+    insert into public.crm_leads (id, organization_id, pipeline_id, stage_id, contact_id, title, status)
+      values ('${ESC_NEGOCIO}', '${GOV_ORG}', '${GOV_PIPELINE}', '${GOV_STAGE}', '${ESC_CONTATO}', 'Negocio da escalacao', 'open')
       on conflict do nothing;
   `);
   // Controle positivo do instrumento: sem isto, um pool que não conecta faria
@@ -86,11 +112,11 @@ afterAll(async () => {
 async function abrirChamadoLimpo(titulo: string): Promise<string> {
   await pool.query(
     `delete from agent_cases where organization_id = $1 and conversation_id = $2`,
-    [GOV_ORG, GOV_CONV_UNASSIGNED],
+    [GOV_ORG, ESC_CONVERSA],
   );
   const res = await openCase(
     pool,
-    { tenantId: GOV_ORG, conversationId: GOV_CONV_UNASSIGNED },
+    { tenantId: GOV_ORG, conversationId: ESC_CONVERSA },
     { title: titulo, summary: "resumo", blocker: "bloqueio" },
   );
   if (!res.ok) throw new Error(`openCase falhou: ${res.error.code}`);
@@ -129,7 +155,7 @@ describe("devolver o atendimento: as três travas", () => {
       `select c.force_human, v.bot_silenced_until, v.assignee_kind
          from conversations v join contacts c on c.id = v.contact_id
         where v.id = $1`,
-      [GOV_CONV_UNASSIGNED],
+      [ESC_CONVERSA],
     );
     return rows[0]!;
   }
@@ -137,24 +163,43 @@ describe("devolver o atendimento: as três travas", () => {
   it("a passagem para humano liga force_human e o silêncio — e o guarda real acusa", async () => {
     await performHumanHandoff(
       pool,
-      { tenantId: GOV_ORG, leadId: GOV_CONTACT_1, conversationId: GOV_CONV_UNASSIGNED },
+      { tenantId: GOV_ORG, leadId: ESC_CONTATO, conversationId: ESC_CONVERSA },
       { reason: "requested_human", conversationSummary: "resumo da conversa", log: logMudo },
     );
 
     const antes = await estadoDaConversa();
     expect(antes.force_human).toBe(true);
     expect(antes.bot_silenced_until).not.toBeNull();
-    expect(await isLeadInHandoff(pool, GOV_ORG, GOV_CONTACT_1)).toBe(true);
+    expect(await isLeadInHandoff(pool, GOV_ORG, ESC_CONTATO)).toBe(true);
+  });
+
+  it("a IDA também aparece na linha do tempo — não só o caminho do CRM", async () => {
+    // `triggerHandoff` (orquestrador do CRM) sempre gravou `handoff_triggered`;
+    // `performHumanHandoff` (harness e o "Assumir eu" dos casos) não gravava
+    // nada. Metade das passagens era invisível no dossiê, e a timeline mostrava
+    // a volta sem a ida.
+    const { rows } = await pool.query<{ reason: string; actor_kind: string }>(
+      `select a.reason, a.actor_kind
+         from crm_lead_activities a
+         join crm_leads l on l.id = a.lead_id
+        where a.organization_id = $1 and l.contact_id = $2 and a.type = 'handoff_triggered'`,
+      [GOV_ORG, ESC_CONTATO],
+    );
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows[0]!.reason).toBe("Atendimento passado para uma pessoa");
+    // O texto que o atendente escreveu ao escalar NÃO entra aqui: esta linha
+    // aparece na tela e no export de LGPD.
+    expect(rows[0]!.reason).not.toContain("requested_human");
   });
 
   it("soltar SÓ o silêncio deixa o agente morto — o defeito que a rota tinha", async () => {
     // Isto é literalmente o que `reactivate-bot` fazia antes: um UPDATE só.
     await pool.query(
       `update conversations set bot_silenced_until = null where organization_id = $1 and id = $2`,
-      [GOV_ORG, GOV_CONV_UNASSIGNED],
+      [GOV_ORG, ESC_CONVERSA],
     );
     expect(
-      await isLeadInHandoff(pool, GOV_ORG, GOV_CONTACT_1),
+      await isLeadInHandoff(pool, GOV_ORG, ESC_CONTATO),
       "com force_human ainda ligado o turno é NO-OP e todo envio é vetado — a rota respondia sucesso mesmo assim",
     ).toBe(true);
   });
@@ -162,9 +207,9 @@ describe("devolver o atendimento: as três travas", () => {
   it("soltar force_human junto devolve o atendimento de verdade", async () => {
     await pool.query(`update contacts set force_human = false where organization_id = $1 and id = $2`, [
       GOV_ORG,
-      GOV_CONTACT_1,
+      ESC_CONTATO,
     ]);
-    expect(await isLeadInHandoff(pool, GOV_ORG, GOV_CONTACT_1)).toBe(false);
+    expect(await isLeadInHandoff(pool, GOV_ORG, ESC_CONTATO)).toBe(false);
   });
 
   it("o guarda do envio lê a mesma coluna — sem soltá-la, nada sai", async () => {
@@ -172,27 +217,27 @@ describe("devolver o atendimento: as três travas", () => {
     const parado = async () => {
       const { rows } = await pool.query<{ stopped: boolean }>(
         "select (is_blocked or force_human) as stopped from contacts where organization_id = $1 and id = $2",
-        [GOV_ORG, GOV_CONTACT_1],
+        [GOV_ORG, ESC_CONTATO],
       );
       return rows[0]!.stopped;
     };
     expect(await parado()).toBe(false);
-    await pool.query(`update contacts set force_human = true where id = $1`, [GOV_CONTACT_1]);
+    await pool.query(`update contacts set force_human = true where id = $1`, [ESC_CONTATO]);
     expect(await parado()).toBe(true);
-    await pool.query(`update contacts set force_human = false where id = $1`, [GOV_CONTACT_1]);
+    await pool.query(`update contacts set force_human = false where id = $1`, [ESC_CONTATO]);
   });
 
   it("assignee_kind='ai' exige conversa sem dono humano (o CHECK protege a volta)", async () => {
     await expect(
       pool.query(
         `update conversations set assigned_to_user_id = $2, assignee_kind = 'ai' where id = $1`,
-        [GOV_CONV_UNASSIGNED, GOV_AGENT_A],
+        [ESC_CONVERSA, GOV_AGENT_A],
       ),
     ).rejects.toThrow(/assignee_kind_coherence/);
     // E o par coerente passa — senão o teste acima estaria medindo outra coisa.
     await pool.query(
       `update conversations set assigned_to_user_id = null, assignee_kind = 'ai' where id = $1`,
-      [GOV_CONV_UNASSIGNED],
+      [ESC_CONVERSA],
     );
     expect((await estadoDaConversa()).assignee_kind).toBe("ai");
   });
@@ -203,7 +248,7 @@ describe("devolver o atendimento: as três travas", () => {
     const { rowCount } = await pool.query(
       `insert into lead_checkpoints (organization_id, contact_id, job_id, rolling_summary)
        values ($1, $2, null, 'resumo da retomada')`,
-      [GOV_ORG, GOV_CONTACT_1],
+      [GOV_ORG, ESC_CONTATO],
     );
     expect(rowCount).toBe(1);
   });
