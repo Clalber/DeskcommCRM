@@ -118,6 +118,16 @@ export interface DbOpts {
 type Linha = Record<string, unknown>;
 
 export interface Registro {
+  /**
+   * O MESMO dublê que `createClient` devolve, exposto para injeção direta.
+   *
+   * As operações de `lib/operacao/` e `lib/leads/stage-operations.ts` recebem o
+   * cliente por parâmetro (é o que permite a rota usar o client do usuário e a
+   * tool usar o service-role). Sem esta saída, testá-las exigiria um segundo
+   * dublê — e dois dublês da mesma tabela divergem no primeiro ajuste, que é
+   * exatamente o defeito que a extração da regra existe para evitar.
+   */
+  client: { from: (table: string) => unknown; rpc: (nome: string, args: unknown) => Promise<unknown> };
   escritas: Escrita[];
   eventos: string[];
   rpcs: Array<{ nome: string; args: unknown }>;
@@ -134,6 +144,8 @@ export interface Registro {
 
 export function makeDb(opts: DbOpts = {}): Registro {
   const registro: Registro = {
+    // preenchido no fim, quando `builder` e `rpc` já existem
+    client: null as unknown as Registro["client"],
     escritas: [],
     eventos: [],
     rpcs: [],
@@ -153,6 +165,7 @@ export function makeDb(opts: DbOpts = {}): Registro {
 
   function builder(table: string) {
     const filtros: Array<[string, unknown]> = [];
+    const pertinencias: Array<[string, unknown[]]> = [];
     let patch: Record<string, unknown> | null = null;
     let nova: Record<string, unknown> | Record<string, unknown>[] | null = null;
     let colunas: string[] | null = null;
@@ -160,15 +173,27 @@ export function makeDb(opts: DbOpts = {}): Registro {
     let contar = false;
     let head = false;
     let apagar = false;
+    let teto: number | null = null;
 
-    const casam = () => (tables[table] ?? []).filter((r) => filtros.every(([c, v]) => r[c] === v));
+    const casam = () =>
+      (tables[table] ?? [])
+        .filter((r) => filtros.every(([c, v]) => r[c] === v))
+        .filter((r) => pertinencias.every(([c, vs]) => vs.includes(r[c])));
 
-    /** Ordena e projeta como o PostgREST faria. */
+    /**
+     * Ordena, corta e projeta como o PostgREST faria.
+     *
+     * `tabela(coluna)` no select é um EMBED: o PostgREST devolve a chave
+     * `tabela`, não a string inteira. Projetar pelo literal deixaria o join
+     * sempre `undefined` — e um teste sobre o nome da regra mediria o dublê.
+     */
     const lidos = () => {
-      const rows = [...casam()];
+      let rows = [...casam()];
       if (ordem) rows.sort((a, b) => Number(a[ordem!]) - Number(b[ordem!]));
+      if (teto !== null) rows = rows.slice(0, teto);
       if (!colunas) return rows;
-      return rows.map((r) => Object.fromEntries(colunas!.map((c) => [c, r[c]])));
+      const chaves = colunas.map((c) => /^(\w+)\(/.exec(c)?.[1] ?? c);
+      return rows.map((r) => Object.fromEntries(chaves.map((c) => [c, r[c]])));
     };
 
     async function escreve(
@@ -256,6 +281,20 @@ export function makeDb(opts: DbOpts = {}): Registro {
         filtros.push([c, v]);
         return b;
       },
+      /** `.is(col, null)` — o único uso real no repo é "convite não revogado". */
+      is: (c: string, v: unknown) => {
+        filtros.push([c, v]);
+        return b;
+      },
+      /** `.in(col, [...])` vira um filtro de pertinência, não de igualdade. */
+      in: (c: string, vs: unknown[]) => {
+        pertinencias.push([c, vs]);
+        return b;
+      },
+      limit: (n: number) => {
+        teto = n;
+        return b;
+      },
       order: (col: string) => {
         ordem = col;
         return b;
@@ -285,7 +324,8 @@ export function makeDb(opts: DbOpts = {}): Registro {
     return { data: null, error: null };
   };
 
-  vi.mocked(createClient).mockResolvedValue({ from: builder, rpc } as never);
+  registro.client = { from: builder, rpc } as unknown as Registro["client"];
+  vi.mocked(createClient).mockResolvedValue(registro.client as never);
   return registro;
 }
 
