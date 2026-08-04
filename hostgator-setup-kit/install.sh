@@ -62,6 +62,18 @@ c_dim() { paint 2  "$*"; }
 die()   { c_red "✖ $*"; exit 1; }
 step()  { printf '\n'; paint 1 "▶ $*"; }
 
+# A resposta é sim? Aceita o que gente digita de verdade: s, S, sim, SIM, y,
+# yes, com espaço em volta. Cada prompt comparava a resposta com uma string
+# exata, então "S" e "sim" — a resposta certa, com a tecla errada — caíam no
+# ramo do NÃO. No gate do DNS isso encerrava a instalação com uma frase que nem
+# correspondia à escolha da pessoa. Gêmea da de _common.sh: se mexer numa,
+# mexa na outra. Coberta por test-validators.sh.
+resposta_sim() {
+  local r
+  r="$(printf '%s' "${1:-}" | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')"
+  case "$r" in s|sim|y|yes) return 0;; *) return 1;; esac
+}
+
 # ── Fases da jornada ────────────────────────────────────────────────────────
 # Os passos técnicos (step) são muitos e alguns são condicionais — numerá-los
 # daria um "7 de 11" que muda conforme o caminho de cada instalação. As FASES
@@ -365,6 +377,18 @@ ask_one() {
   done
 }
 
+# O limiar NÃO é 4 GB, e a diferença importa: `MemTotal` é o que sobra depois
+# do que o kernel reserva para si, sempre menos do que foi vendido. Medido num
+# kernel com 8 GiB configurados: 8025284 KB, ou 95,7% — na mesma proporção uma
+# VPS de 4 GiB reporta ~4.012.000 KB, 0,3% acima de 4.000.000. E quem vende "4
+# GB" em GB decimais entrega 3.906.250 KB, que reporta ~3.735.000. Ou seja: com
+# o corte em 4.000.000 o aviso caía em cima de quem tinha ACABADO de comprar
+# exatamente a VPS recomendada — a pior hora possível para dizer a alguém que o
+# servidor dele é pequeno demais. 3.500.000 KB (3,34 GiB) deixa 4 GB de fora em
+# qualquer convenção e ainda pega de sobra as de 2 e 3 GB, que sofrem de verdade.
+RAM_MINIMA_KB=3500000
+ram_abaixo_do_recomendado() { [ "${1:-0}" -lt "$RAM_MINIMA_KB" ]; }
+
 # Esconde o miolo de um segredo para a tela de conferência.
 mask() {
   local v="$1"
@@ -453,9 +477,10 @@ c_grn "✓ docker, git, openssl, curl ok"
 # instalar em 2GB achando que estava dentro do recomendado.
 if [ -r /proc/meminfo ]; then
   mem_kb=$(awk '/MemTotal/{print $2}' /proc/meminfo)
-  if [ "$mem_kb" -lt 4000000 ]; then
-    c_ylw "⚠ RAM total ~$((mem_kb/1024))MB. Recomendado 4GB para operar (2GB sobe, mas no limite)."
-    c_ylw "  Com menos de 4GB, adicione swap — ver docs/runbooks/waha-hostgator.md."
+  if ram_abaixo_do_recomendado "$mem_kb"; then
+    c_ylw "⚠ Este servidor tem ~$((mem_kb/1024))MB de RAM. O CRM sobe, mas fica no limite:"
+    c_ylw "  são 7 contêineres e o WhatsApp usa ~150MB por número conectado."
+    c_ylw "  Adicione swap antes de operar — ver docs/runbooks/waha-hostgator.md."
   fi
 fi
 
@@ -676,7 +701,7 @@ if [ -z "${SENTRY_DSN+x}" ]; then
     printf '%s\n' "Seus dados de clientes, conversas e banco NUNCA saem daqui."
     printf '\n%s\n' "Você pode mudar depois no .env, a qualquer momento."
     read -r -p "  Enviar relatórios de erro anonimizados? (s/N) " _tel
-    if [ "${_tel:-N}" = "s" ] || [ "${_tel:-N}" = "S" ]; then
+    if resposta_sim "${_tel:-}"; then
       SENTRY_DSN=""
       c_grn "✓ Telemetria de erros ligada — obrigado, isso ajuda o projeto."
     else
@@ -784,9 +809,31 @@ resolved="$(getent ahosts "$DOMAIN" 2>/dev/null | awk '{print $1}' | sort -u | t
 if [ -n "$public_ip" ] && case " $resolved " in *" $public_ip "*) true;; *) false;; esac; then
   c_grn "✓ ${DOMAIN} → ${public_ip} (aponta pra este VPS)"
 else
-  c_ylw "⚠ ${DOMAIN} resolve para '${resolved:-nada}' e o IP deste VPS é '${public_ip:-desconhecido}'."
-  c_ylw "  O SSL (Let's Encrypt) só será emitido quando o A-record apontar pra cá."
-  [ "$NONINTERACTIVE" = 0 ] && { read -r -p "  Continuar mesmo assim? (s/N) " a; [ "${a:-N}" = "s" ] || die "Ajuste o DNS e rode de novo."; }
+  # DNS recém-apontado leva minutos para propagar: chegar aqui é estado NORMAL,
+  # não erro. Antes havia uma única saída — responder exatamente "s" — e
+  # qualquer outra coisa matava a instalação. Agora o padrão é esperar junto com
+  # a pessoa: Enter reconsulta, e sair é uma escolha explícita dela.
+  while [ "$NONINTERACTIVE" = 0 ]; do
+    c_ylw "⚠ ${DOMAIN} resolve para '${resolved:-nada}' e o IP deste VPS é '${public_ip:-desconhecido}'."
+    c_ylw "  O SSL (Let's Encrypt) só será emitido quando o A-record apontar pra cá."
+    printf '\n%s\n'   "  No painel do seu domínio, crie um registro A apontando ${DOMAIN}"
+    printf '%s\n\n'   "  para ${public_ip:-o IP deste servidor}. Costuma valer em poucos minutos."
+    printf '%s\n'     "  Enter = conferir de novo"
+    printf '%s\n'     "  c     = continuar assim mesmo (o site sobe sem cadeado até o DNS valer)"
+    printf '%s\n'     "  s     = sair e voltar depois (o que você já respondeu fica guardado)"
+    if ! read -r -p "  > " a; then a="s"; fi
+    case "$(printf '%s' "$a" | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')" in
+      c|continuar) c_ylw "  Seguindo sem o DNS pronto — lembre de apontar o A-record."; break;;
+      s|sair|n|nao) die "Ajuste o A-record de ${DOMAIN} para ${public_ip:-o IP deste servidor} e rode o instalador de novo.";;
+      *)
+        resolved="$(getent ahosts "$DOMAIN" 2>/dev/null | awk '{print $1}' | sort -u | tr '\n' ' ' || echo '')"
+        if [ -n "$public_ip" ] && case " $resolved " in *" $public_ip "*) true;; *) false;; esac; then
+          c_grn "✓ ${DOMAIN} → ${public_ip} (agora aponta pra este VPS)"; break
+        fi
+        c_ylw "  Ainda não propagou. Dá pra esperar e tentar de novo."
+        ;;
+    esac
+  done
 fi
 
 # ── 7. Aplica o schema (baseline) no Supabase — via container postgres ───────

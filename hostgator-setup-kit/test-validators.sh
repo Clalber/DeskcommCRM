@@ -225,6 +225,70 @@ else
   fi
 fi
 
+echo "resposta afirmativa (resposta_sim)"
+# O gate do DNS comparava a resposta com a string "s" EXATA: quem digitava "S"
+# ou "sim" — a resposta certa, com a tecla errada — era morto por um `die` que
+# ainda dizia "Ajuste o DNS", frase que não corresponde ao que a pessoa
+# escolheu. Mesmo defeito no reset-mfa.sh. Estes casos são o contrato de que
+# nenhum prompt do kit volte a ler a intenção pela grafia.
+sim_ok() {  # sim_ok <descrição> <sim|nao> <entrada>
+  local desc="$1" esperado="$2" val="${3-}" real
+  if resposta_sim "$val"; then real=sim; else real=nao; fi
+  if [ "$real" = "$esperado" ]; then printf '  ✓ %s\n' "$desc"
+  else printf '  ✗ %s  (esperava %s, deu %s para "%s")\n' "$desc" "$esperado" "$real" "$val"; fail=1; fi
+}
+sim_ok "s minúsculo"             sim "s"
+sim_ok "S maiúsculo"             sim "S"
+sim_ok "sim por extenso"         sim "sim"
+sim_ok "SIM em caixa alta"       sim "SIM"
+sim_ok "y (teclado em inglês)"   sim "y"
+sim_ok "yes"                     sim "yes"
+sim_ok "espaço em volta"         sim "  s  "
+sim_ok "Enter (vazio) é não"     nao ""
+sim_ok "n"                       nao "n"
+sim_ok "nao"                     nao "nao"
+sim_ok "não com acento"          nao "não"
+sim_ok "palavra qualquer"        nao "talvez"
+sim_ok "'sims' não vira sim"     nao "sims"
+
+echo "gêmeas: resposta_sim vale nos DOIS arquivos"
+# Esta suíte sourceia install.sh, mas outros blocos sourceiam _common.sh — e a
+# definição que sobrevive é a do último. Descoberto sabotando: com a gêmea do
+# install.sh devolvendo "sim" para tudo, os casos acima continuavam VERDES,
+# porque quem respondia era a cópia boa do _common.sh. Metade da correção
+# estava sem rede. Cada gêmea passa a ser exercitada dentro do seu arquivo,
+# num shell separado.
+gemea_ok() {  # gemea_ok <arquivo> <entrada> <sim|nao>
+  local arq="$1" val="$2" esperado="$3" real
+  if bash -c 'INSTALL_SH_LIB=1 . "./$0" >/dev/null 2>&1; resposta_sim "$1"' "$arq" "$val"
+  then real=sim; else real=nao; fi
+  if [ "$real" = "$esperado" ]; then printf '  ✓ %s: "%s" → %s\n' "$arq" "$val" "$real"
+  else printf '  ✗ %s: "%s" deu %s, esperava %s\n' "$arq" "$val" "$real" "$esperado"; fail=1; fi
+}
+for arquivo in install.sh _common.sh; do
+  gemea_ok "$arquivo" "S"      sim
+  gemea_ok "$arquivo" "sim"    sim
+  gemea_ok "$arquivo" "nao"    nao
+  gemea_ok "$arquivo" ""       nao
+done
+
+echo "RAM: o aviso não pode cair em quem comprou a VPS recomendada"
+# MemTotal é sempre MENOR que o vendido (o kernel reserva). Medido: 8 GiB
+# configurados reportam 8025284 KB (95,7%). Os valores abaixo são o que cada
+# tamanho de VPS realmente reporta — o de 4 GB é o caso que este teste existe
+# para proteger, nas duas convenções em que provedores vendem "4 GB".
+ram_ok() {  # ram_ok <descrição> <avisa|silencia> <mem_kb>
+  local desc="$1" esperado="$2" kb="$3" real
+  if ram_abaixo_do_recomendado "$kb"; then real=avisa; else real=silencia; fi
+  if [ "$real" = "$esperado" ]; then printf '  ✓ %s\n' "$desc"
+  else printf '  ✗ %s  (%s KB → %s, esperava %s)\n' "$desc" "$kb" "$real" "$esperado"; fail=1; fi
+}
+ram_ok "VPS de 4 GiB (95,7% reportado)"        silencia 4012000
+ram_ok "VPS de 4 GB decimais (pior caso)"      silencia 3735000
+ram_ok "VPS de 8 GB (medido de verdade)"       silencia 8025284
+ram_ok "VPS de 3 GB — abaixo do recomendado"   avisa    2900000
+ram_ok "VPS de 2 GB — o plano que não dá conta" avisa   1950000
+
 echo
 if [ "$fail" = 0 ]; then echo "todos os validadores passaram"; else echo "FALHOU"; fi
 exit "$fail"

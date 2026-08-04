@@ -52,6 +52,14 @@ c_ylw() { paint 33 "$*"; }
 die()   { c_red "✖ $*"; exit 1; }
 step()  { printf '\n'; paint 1 "▶ $*"; }
 
+# Gêmea da de install.sh (se mexer numa, mexa na outra) — ver o comentário lá
+# para o defeito que ela fecha. Coberta por test-validators.sh.
+resposta_sim() {
+  local r
+  r="$(printf '%s' "${1:-}" | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')"
+  case "$r" in s|sim|y|yes) return 0;; *) return 1;; esac
+}
+
 # Código de saída de quem RECUSOU antes de tocar em qualquer coisa — distinto
 # de "falhei no meio" (1). O agent.sh usa isso para não desfazer uma
 # atualização que nunca começou: reiniciar o container e reescrever o .env
