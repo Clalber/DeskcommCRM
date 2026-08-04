@@ -1447,7 +1447,15 @@ export async function runAgentTurn(
       ...AGENT_TOOL_DEFS.schedule_followup,
       execute: async (raw) => {
         try {
-          const res = await applyScheduleFollowup(pool, { clock, knobs: followupKnobs }, { tenantId, leadId }, raw);
+          // agentId vai junto para a atividade da timeline nascer com AUTORIA: sem
+          // ele a linha entra como "Sistema" e o humano não sabe qual agente
+          // prometeu voltar — numa org com três agentes isso não responde nada.
+          const res = await applyScheduleFollowup(
+            pool,
+            { clock, knobs: followupKnobs },
+            { tenantId, leadId, agentId: agentConfig?.agentId ?? null },
+            raw,
+          );
           if (!res.ok) {
             return res; // erro de ensino (payload / data no passado / fora da janela)
           }

@@ -16,6 +16,7 @@
 import { TOOLS_ATENDIMENTO } from "./atendimento";
 import { TOOLS_FUNIL } from "./funil";
 import { TOOLS_GOVERNANCA } from "./governanca";
+import { TOOLS_RETENCAO } from "./retencao";
 import type { McpToolCatalogEntry } from "./tipos";
 
 export type { McpToolCatalogEntry } from "./tipos";
@@ -25,6 +26,7 @@ export const TOOL_CATALOG: ReadonlyArray<McpToolCatalogEntry> = [
   ...TOOLS_ATENDIMENTO,
   ...TOOLS_FUNIL,
   ...TOOLS_GOVERNANCA,
+  ...TOOLS_RETENCAO,
 ];
 
 /**

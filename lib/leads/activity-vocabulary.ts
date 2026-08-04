@@ -30,7 +30,10 @@ export type ActivityType =
   | "lead_reactivated"
   | "reactivation_accepted"
   | "reactivation_dismissed"
-  | "reactivation_expired";
+  | "reactivation_expired"
+  | "followup_scheduled"
+  | "followup_cancelled"
+  | "demand_closed";
 
 export const ACTIVITY_LABELS: Record<ActivityType, string> = {
   stage_changed: "Mudou de estágio",
@@ -60,6 +63,18 @@ export const ACTIVITY_LABELS: Record<ActivityType, string> = {
   reactivation_accepted: "Retomada de contato aprovada",
   reactivation_dismissed: "Retomada de contato descartada",
   reactivation_expired: "Sugestão de retomada venceu sem decisão",
+  // O RETORNO É O ANTI-MORTE (invariante 4): marcar e desmarcar são os dois
+  // acontecimentos que decidem se a demanda continua viva. Sem as duas linhas,
+  // o negócio some do radar (ou volta a ele) e a timeline não sabe explicar por
+  // quê — e é justamente o cancelamento que o agente precisa enxergar ao
+  // retomar, para não repropor o que uma pessoa já desmarcou.
+  followup_scheduled: "Retorno agendado",
+  followup_cancelled: "Retorno cancelado",
+  // ENCERRAR É O OUTRO LADO do invariante 4: uma demanda aberta precisa de
+  // próximo passo OU de desfecho registrado. Fechar como ganho ou perdido era
+  // invisível na timeline — só existia em audit e event_log, que ninguém lê na
+  // tela — e o dossiê de um negócio fechado terminava sem dizer que fechou.
+  demand_closed: "Demanda encerrada",
 };
 
 /** Quando o tipo é legado/desconhecido, a linha ainda é honesta — sem jargão. */

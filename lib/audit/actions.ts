@@ -192,4 +192,11 @@ export type AuditAction =
   // vira `pipeline.archived` e a linha continua no banco.
   | "pipeline.deleted"
   | "system.update_requested"
-  | "system.update_finished";
+  | "system.update_finished"
+  // IA 360 · wave 2 — o retorno agendado deixou de ser exclusividade do motor e
+  // virou capacidade configurável. `followup_enrollment.*` é o motor de FLUXOS;
+  // estas duas são a PROMESSA avulsa (cron_jobs), que é outra coisa e precisava
+  // de código próprio para não somar duas grandezas no mesmo relatório.
+  | "followup.scheduled"
+  | "followup.cancelled"
+  | "lead.reactivation_proposed";
