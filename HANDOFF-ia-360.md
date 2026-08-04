@@ -85,9 +85,106 @@ como ser cumprido por um agente que não consegue agendar um retorno.
 O teste lista essa dívida explicitamente e tem uma **segunda guarda** que reprova se a lista
 envelhecer — se a wave entregar as tools e ninguém tirar o pacote da dívida, o teste acusa.
 
+### Wave 2 — Não perder o cliente (pacote `reter`) · CONCLUÍDA
+
+**Entregue por:** DevVivo · branch `feat/ia-360-w2-reter` · worktree
+`/Users/rafaelmelgaco/DeskcommCRM-ia360-w2-reter` · base `99cd0fc`
+
+| Medida | Antes (`99cd0fc`) | Depois (`607888d`) |
+|---|---|---|
+| Capacidades de retorno no catálogo | **0** | **6** |
+| Pacote `reter` | vazio (dívida declarada) | preenchido, fora da dívida |
+| Porta do humano para desmarcar um retorno avulso | **não existia** | fila → `POST /ai/followups/promises/:id/cancel` |
+| Situações distinguíveis de um retorno | 2 (`agendado`, `enabled=false` ambíguo) | 3 (`agendado`, `disparado`, `cancelado`) |
+| Encerrar negócio emitia atividade na timeline | **não** | sim (`demand_closed`) |
+
+**As seis capacidades** (`lib/mcp/tools/catalogo/retencao.ts` + `lib/mcp/tools/retencao.ts`):
+`crm_schedule_followup`, `crm_cancel_followup`, `crm_list_followups`,
+`crm_list_at_risk_leads`, `crm_close_demand` (**crítica** — nunca entra por pacote) e
+`crm_propose_reactivation`. Todas com `requiresRole: "agent"`, porque é com `role:agent` que o
+runtime do agente configurado na tela emite o token efêmero — exigir `manager` entregaria uma
+capacidade que aparece na tela, o humano liga, e o servidor recusa em silêncio.
+
+**A regra virou uma só (Decisão 4 levada a sério).** Janela, guard anti-empilhamento e formato do
+agendamento viviam dentro do motor (`schedule-followup.ts`, sobre `pg.Pool`). Agora vivem em
+`lib/followup/retorno.ts`, sem I/O, atrás da porta `RetornoDb`; cada runtime traz seu adaptador
+(`retorno-pg.ts`, `retorno-crm.ts`). O motor passou a entrar pela mesma porta e o arquivo dele
+ficou só com o que é dele: a whitelist do payload e o ENSINO em português ao modelo. Mesmo
+tratamento para o radar (`lib/leads/radar-de-risco.ts`, extraído da rota) e para o encerramento
+(`lib/leads/encerramento.ts`, extraído das rotas de ganho/perda).
+
+**Schema:** migration `0102_cron_jobs_retorno_cancelado` + apêndice idempotente no
+`baseline.sql` + linha no `MANIFEST.md` — os três juntos.
+
+**Mapa vivo:** `docs/architecture/ia-360-retencao.architecture.json` (26 peças, 36 arestas) +
+linha no `README.md` do diretório.
+
+**Evidência observada:**
+
+- `pnpm typecheck` limpo · `pnpm lint` 0 erros (170 avisos pré-existentes)
+- `pnpm test:unit` — **226 arquivos, 1994 testes verdes** (eram 224/1963 na base)
+- `pnpm test:db` — **63 arquivos, 421 verdes, 1 pulado**
+- E2E em tela (`tests/e2e/retorno-anti-morte.spec.ts`) — **2 passed**, evidência visual em
+  `.superpowers/evidence/w2-retorno-*.png`. O Radar mostra "Em voo · Assistente retorna em 2d"
+  para o negócio parado há 5 dias; a fila mostra "Cancelada" (não "Concluída") depois do clique.
+
+**Sabotagem antes de confiar** (toda propriedade nova foi quebrada de propósito e reprovou):
+guard anti-empilhamento removido, limite inferior da janela virando `<=`, corrida perdida virando
+sucesso, as três emissões de atividade desligadas, e a porta de cancelamento devolvida ao estado
+anterior à wave. Cada uma produziu exatamente uma reprovação; o controle restaurado voltou verde.
+
 ---
 
 ## Bugs encontrados
+
+### BUG-01 — o retorno cancelado era indistinguível do retorno disparado
+- **Achado em:** `99cd0fc`, por DevVivo, ao desenhar `crm_cancel_followup`.
+- **Sintoma observado:** `cron_jobs.enabled = false` é escrito tanto por `fireOneDue` (o one-shot
+  disparou) quanto por um cancelamento. A fila (`/app/ai/followups`) rotulava os dois como
+  "Concluída" — dizendo ao operador que a mensagem saiu para o cliente quando ninguém a enviou.
+- **Causa raiz:** falta de estado no banco, não de código: não existia campo para "quem passou a
+  distinguir um estado novo". Ver a memória `wire_sem_campo_para_nao_sei`.
+- **Correção:** migration `0102` (`cancelled_at` + `cancel_reason`, sem backfill — não se sabe
+  quais linhas antigas foram canceladas, e chutar seria gravar ficção) + `situacaoDoRetorno()`
+  como derivação única + a fila passa a mostrar "Cancelada".
+- **Prova do fix:** `tests/invariants/retorno-anti-morte.test.ts` cancela pelo código de produção
+  contra Postgres real e afirma que a situação lida do banco é `cancelado`, não `disparado`.
+
+### BUG-02 — a atividade da IA morria na FK quando o agente da tela escrevia
+- **Achado em:** `99cd0fc`, por DevVivo, ao ligar a emissão de atividade nas capacidades novas.
+- **Sintoma observado:** `crm_lead_activities.actor_agent_id` tem FK para `ai_agents`, e o
+  runtime nativo (`lib/ai/runtime/agent.ts`) põe em `actor.id` o id do **RUN**
+  (`ai_agent_runs`). O emissor lia `actor.id`. Toda tool de escrita chamada pelo agente
+  configurado na tela — inclusive `crm_move_lead_stage`, que já existia — perdia a atividade no
+  INSERT: a mutação acontecia, a timeline não registrava, e a perda só aparecia em `event_log`.
+  O `send-message` do motor chega a passar a string literal `agent-engine`, que nem uuid é.
+- **Causa raiz:** `id` significava coisas diferentes em cada runtime (run, token, rótulo), e um
+  único campo servia a dois consumidores com exigências incompatíveis (correlação de audit ×
+  coluna com FK).
+- **Correção:** `Actor` do tipo `ai_agent` ganhou `agent_id` explícito
+  (`lib/api/handlers/types.ts`); `actorParaAtividade` passou a ler **só** ele, e os três pontos
+  que conhecem o agente de verdade passaram a preenchê-lo. A polaridade da falha inverteu: sem
+  `agent_id` perde-se a AUTORIA (linha entra como sistema), não a LINHA.
+- **Prova do fix:** `lib/leads/activity-emitter.test.ts` — caso novo "id de RUN em `id` NÃO vira
+  actor_agent_id"; e o invariante contra Postgres real afirma
+  `actor_agent_id = <id do ai_agents>` numa linha escrita pelo caminho de produção.
+
+### BUG-03 — `followup-engine` tem um flake de dois relógios (PRÉ-EXISTENTE, não corrigido)
+- **Achado em:** `607888d`, por DevVivo, rodando `pnpm test:db`.
+- **Sintoma observado:** `tests/invariants/followup-engine.test.ts > trigger → end leva 2 ticks`
+  falha intermitentemente com `summary2.claimed === 0`.
+- **Medição (não suposição):** base `99cd0fc` — **0 falhas em 4 execuções**; branch `607888d` —
+  **2 falhas em 6 execuções**. A suíte completa em `607888d` fechou verde (421 passados).
+- **Causa raiz provável, pelo mecanismo:** `node-handlers.ts` escreve
+  `next_eval_at = clock()` (relógio do **processo**) e `fn_claim_due_followup_enrollments`
+  reivindica com `next_eval_at <= now()` (relógio do **banco**). É o mesmo defeito de dois
+  relógios já documentado no cabeçalho de `lib/leads/risk-seed.ts`, noutro lugar. Nada no diff
+  desta wave toca esse caminho.
+- **Por que NÃO corrigi aqui:** o conserto mexe no núcleo de agendamento do motor de fluxos, que
+  é escopo de outra wave. Fica mastigado para quem o assumir; a correção honesta é ancorar os
+  dois lados no relógio do banco, não afrouxar a asserção.
+
+## Bugs corrigidos
 
 *(nenhum ainda — esta seção é alimentada por todos os terminais)*
 
@@ -106,7 +203,8 @@ Formato de cada entrada:
 
 ## Bugs corrigidos
 
-*(nenhum ainda)*
+BUG-01 e BUG-02 acima já saem corrigidos com prova nesta wave. BUG-03 é pré-existente,
+está medido dos dois lados e **não** foi corrigido — o motivo está escrito nele.
 
 ---
 
@@ -120,3 +218,7 @@ Formato de cada entrada:
 | D4 | Tool é fachada fina sobre a regra já existente | IA e humano têm que operar pela **mesma** regra, senão o sistema mente para um dos dois |
 | D5 | Gate do pilar 3 é teste mecânico, não comentário | `typecheck` e `lint` passam com comentário falso dentro |
 | D6 | Teste do catálogo em `tests/unit/` e não `tests/invariants/` | é puro, não precisa de Postgres — feedback rápido no job `verify` do CI |
+| D7 | Agendar retorno é `atencao`, encerrar demanda é `critico` | agendar não fala com ninguém agora, é visível na fila e no Radar e tem botão de desfazer; encerrar tira o negócio do quadro e voltar é trabalho manual |
+| D8 | Recusa de negócio volta como RESPOSTA, nunca exceção | "já existe retorno vivo" não é falha: exceção faz o modelo repetir a mesma chamada e queimar passos até o teto do turno |
+| D9 | O invariante do retorno roda o CÓDIGO DE PRODUÇÃO contra Postgres real (`pg.Pool`), não SQL à mão | INSERT manual prova que o banco aceita a linha que EU montei; o que precisa ser provado é que o caminho que roda em produção monta a linha certa |
+| D10 | `agent_id` separado de `id` no `Actor` de agente | um campo servia a dois consumidores incompatíveis (correlação de audit × coluna com FK), e o resultado era atividade perdida em silêncio (BUG-02) |

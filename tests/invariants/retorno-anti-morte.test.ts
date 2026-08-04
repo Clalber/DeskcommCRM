@@ -192,9 +192,10 @@ describe("cancelar o retorno — o humano decide e o agente descobre", () => {
 
   it("cancelar de novo não reescreve o desfecho", async () => {
     const db = criaRetornoDbPg(pool);
-    const [{ id }] = JSON.parse(
+    const linhas = JSON.parse(
       psql(`select json_agg(json_build_object('id', id)) from cron_jobs where organization_id='${ORG_A}';`),
     ) as Array<{ id: string }>;
+    const id = linhas[0]!.id;
 
     const r = await cancelaRetorno(
       db,

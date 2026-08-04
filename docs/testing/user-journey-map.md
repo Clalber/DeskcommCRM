@@ -123,6 +123,28 @@ MFA obrigatório pra admin logo após o wizard (`MfaEnrollGate`).
 | J6.9 | Run falho → botão Reenviar | novo run; sucesso após receiver voltar |
 | J6.10 | Automação SEM cron configurado | hoje: morre em silêncio — **candidato a bug de produto** |
 
+## J8 — O cliente não morre por falta de resposta `[P1]`
+
+Contexto do código: pacote `reter` do catálogo (IA 360 · wave 2). A demanda esfria, o
+agente marca o retorno pela capacidade que o dono ligou na tela, o humano vê e pode
+desmarcar, e o agente descobre que desmarcaram. Spec: `tests/e2e/retorno-anti-morte.spec.ts`
+(seed pela capacidade REAL — `scripts/seed-e2e-retorno.ts`, nunca INSERT à mão).
+
+| # | Caso | Expectativa | Resultado |
+|---|------|-------------|-----------|
+| J8.1 | Negócio 5 dias sem movimento com retorno marcado pelo agente | Radar mostra **"Em voo"** e "Assistente retorna em 2d" — não "crítico" | PASS |
+| J8.2 | Linha do tempo do negócio após o agendamento | entrada `Retorno agendado — <motivo>`, com o agente nomeado | PASS |
+| J8.3 | Fila de acompanhamento mostra a promessa | linha "Promessa" com status **Agendada** e botão Cancelar | PASS |
+| J8.4 | Humano desmarca pela fila | diálogo diz o que acontece; status vira **Cancelada** (não "Concluída") | PASS |
+| J8.5 | O agente consulta os retornos depois do cancelamento | vê `situacao: cancelado` **com o motivo** — é o que o impede de reagendar | PASS |
+| J8.6 | Repetir a jornada | seed reseta o retorno; o teste roda de novo sem intervenção | PASS |
+
+Evidência: `.superpowers/evidence/w2-retorno-{no-radar,na-fila-agendada,dialogo-de-cancelamento,na-fila-cancelada}.png`.
+
+**Sabotagem que confirma que o caso não passa por acaso:** devolvendo `podeCancelar` ao
+estado anterior à wave (promessa não cancelável), J8.4 reprova com timeout no clique —
+1 failed / 1 passed. Restaurado, 2 passed.
+
 ## J7 — Exploração completa `[P2]`
 
 Andar por TODAS as rotas navegáveis logado como admin e como agent: settings, contacts,
