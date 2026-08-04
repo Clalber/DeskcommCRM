@@ -87,6 +87,40 @@ envelhecer — se a wave entregar as tools e ninguém tirar o pacote da dívida,
 
 ---
 
+### Orquestração — quatro waves em paralelo (a partir de `99cd0fc`)
+
+Cada wave tem worktree próprio (dois implementadores no mesmo worktree é a regra que mais quebra
+trabalho em paralelo) e escreve num arquivo de catálogo exclusivo — o agregador
+`lib/mcp/tools/catalogo/index.ts` custa **uma linha de import e uma de spread** por domínio.
+
+| Wave | Pacote | Dono | Worktree / branch | Despacho |
+|---|---|---|---|---|
+| W1 | painel do humano | Arquiteto | `-ia360-w1-painel` / `feat/ia-360-w1-painel` | `docs/handoffs/waves/W1-painel-do-humano.md` |
+| W2 | `reter` | DevVivo | `-ia360-w2-reter` / `feat/ia-360-w2-reter` | `docs/handoffs/waves/W2-nao-perder-o-cliente.md` |
+| W3 | `escalar` | Maestro | `-ia360-w3-escalar` / `feat/ia-360-w3-escalar` | `docs/handoffs/waves/W3-passar-para-humano.md` |
+| W4 | `organizar` | MaestroConexoes | `-ia360-w4-organizar` / `feat/ia-360-w4-organizar` | `docs/handoffs/waves/W4-organizar-a-operacao.md` |
+
+Itens no plano compartilhado: `IA360-W1` … `IA360-W4`, com critério de aceite provado em tela.
+
+**Registro de progresso:** cada wave escreve em `HANDOFF-ia-360-W<N>.md` no próprio worktree; o
+Maestro consolida aqui. Correção aplicada logo após o despacho — o pedido original mandava os
+quatro escreverem neste arquivo, o que garantiria conflito de merge em todo hunk, e conflito
+resolvido no automático é onde um achado some em silêncio.
+
+**Vigia armado:** monitor persistente lendo **artefato** (SHA de cada branch, árvore suja) além do
+estado dos terminais — terminal `Idle` não prova que nada foi feito, e `Busy` não prova que algo
+saiu. Cobre também a parada: 30 minutos sem commit novo em nenhuma wave emitem alerta, porque
+silêncio de monitor é indistinguível de "está rodando".
+
+### Waves ainda não despachadas
+
+| Wave | Pacote / escopo | Estado |
+|---|---|---|
+| W5 | `evoluir` — conhecimento, skills, propostas do flywheel, memória da org | pacote **vazio**; assumida pelo Maestro |
+| W6 | leads completos (notas, timeline, score, checkpoints), contatos, conversas, pedidos e produtos | aguarda terminal livre |
+
+---
+
 ## Bugs encontrados
 
 *(nenhum ainda — esta seção é alimentada por todos os terminais)*
