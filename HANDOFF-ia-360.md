@@ -132,6 +132,90 @@ seria verdadeira num caminho e recusaria a escrita no outro.
 
 Restaurado: `3 passed`.
 
+#### Marco 2 — as 15 capacidades de `organizar` (`9ccec11`, árvore limpa)
+
+`lib/mcp/tools/catalogo/operacao.ts` (novo, meu) + duas linhas no agregador, handlers em
+`lib/mcp/tools/operacao.ts`, regra em `lib/operacao/*`.
+
+| # | capacidade | categoria · risco |
+|---|---|---|
+| 1 | `crm_list_stages` — ver as etapas de um funil | read · seguro |
+| 2 | `crm_create_stage` — criar etapa no funil | write · atencao |
+| 3 | `crm_update_stage` — renomear ou reordenar uma etapa | write · atencao |
+| 4 | `crm_archive_stage` — arquivar uma etapa do funil | write · **critico** |
+| 5 | `crm_list_tags` — ver os marcadores em uso | read · seguro |
+| 6 | `crm_list_message_templates` — ver as respostas prontas | read · seguro |
+| 7 | `crm_render_message_template` — preencher uma resposta pronta | read · seguro |
+| 8 | `crm_list_webhook_sources` — ver as entradas automáticas de contatos | read · seguro |
+| 9 | `crm_list_webhook_source_events` — ver o que chegou por uma entrada | read · seguro |
+| 10 | `crm_create_webhook_source` — criar uma entrada automática | write · **critico** |
+| 11 | `crm_set_webhook_source_active` — ligar/desligar uma entrada | write · **critico** |
+| 12 | `crm_list_automation_rules` — ver as regras automáticas | read · seguro |
+| 13 | `crm_list_automation_runs` — ver o que as regras dispararam | read · seguro |
+| 14 | `crm_set_automation_rule_active` — ligar/desligar uma regra | write · **critico** |
+| 15 | `crm_list_team_members` — ver quem trabalha na empresa | read · seguro |
+
+Catálogo: **16 → 31 tools**. O pacote `organizar` saiu de 2 para 16 capacidades.
+
+**A régua de `critico` que usei** (o gate mecânico não distingue `atencao` de `critico`): *o efeito
+acontece quando ninguém está olhando?* Renomear etapa muda o que o usuário vê na hora e ele desfaz
+na tela → `atencao`. Ligar regra/entrada muda o comportamento do sistema para todos os eventos
+futuros e o efeito sai da empresa → `critico`. Arquivar etapa mexe em onde os negócios estão
+parados → `critico`.
+
+**O que o agente deliberadamente NÃO pode**, e por quê:
+
+| não pode | por quê |
+|---|---|
+| criar/editar/apagar regra automática | ligar o que um humano escreveu é reversível e ele sabe o que a regra faz; deixá-lo ESCREVER a ação é deixá-lo escolher para qual endereço externo a empresa manda dados |
+| criar resposta pronta | o texto sai em nome da marca, e nenhuma tela distingue o modelo revisado do inventado |
+| escrever no vocabulário canônico de marcadores | `organizations.settings.canonical_conversation_tags` tem rota de leitura e **nenhuma tela** para ver/mudar — um escritor ali violaria o invariante 6 ("toda configuração tem superfície"). O defeito real (o agente inventar `cliente-vip` quando já existe `vip`) é curado por `crm_list_tags` |
+| mudar papel de alguém | RBAC, fora de escopo por decisão do despacho |
+| apagar entrada automática | Decisão 2 do briefing — desligar resolve, apagar leva a configuração do cliente junto |
+
+**Decisão de vocabulário:** o despacho sugeria "aviso automático" para `webhook_source`. Usei
+**"entrada automática de contatos"** — a peça não avisa ninguém, ela RECEBE gente de fora, e um
+rótulo que descreve errado confunde mais que o termo técnico. Sem jargão da lista proibida.
+
+**Evidência observada:**
+
+```
+npx vitest run tests/unit/catalogo-tools-leigo-friendly.test.ts   → 101 passed
+npx vitest run tests/unit/operacao-do-agente.test.ts              →  19 passed
+npx vitest run tests/unit/capacidade-alcancavel-pelo-agente.test.ts →  5 passed
+npx tsc --noEmit → exit 0 · npx eslint lib/operacao → 0 problemas
+pnpm test:db → install ok · update ok · 412 passed | 1 failed (ver "Medições" abaixo)
+```
+
+**Sabotagem** (`tests/unit/operacao-do-agente.test.ts`, cinco defeitos aplicados um a um):
+
+| Sabotagem | Teste que reprovou |
+|---|---|
+| tirar `eq("organization_id")` da validação do funil | `funil de OUTRA organização → recusa e NENHUMA escrita` |
+| deixar `actions` cru vazar na leitura da regra | `regra automática sai sem a config das ações` |
+| devolver `payload_parsed` no recebimento | `recebimento devolve os NOMES dos campos` |
+| chumbar a autoria como `"user"` | `regra ligada pelo AGENTE grava autoria 'ai'` |
+| esconder as lacunas do modelo preenchido | `sem o dado, denuncia a lacuna` |
+
+Cada uma: `1 failed | 18 passed`. Restaurado: `19 passed`.
+
+Sabotagem do gate de papel (`capacidade-alcancavel-pelo-agente`): baixar o papel de
+`crm_set_automation_rule_active` para `agent` → reprova; mint gravando `role:manager` → reprova o
+controle positivo; nome órfão na lista de exceções → reprova. Restaurado: `5 passed`.
+
+---
+
+## Medições que ainda não fecharam
+
+**`pnpm test:db` — 1 invariante vermelho, e ainda NÃO sei dizer de quem é.**
+`tests/invariants/followup-turn-bridge.test.ts` falhou na suíte completa
+(`expected 2 to be 1` em `tick2.advanced`), e **passa isolado no mesmo SHA** (`5 passed`, exit 0,
+`TEST_DB_PORT=54372`). Não toquei nenhum arquivo de follow-up nesta branch
+(`git diff --name-only 99cd0fc..HEAD | grep -i followup` → vazio), e o log traz erros de outros
+testes logo antes (`uniq_system_update_runs_dispatched`, RLS de `attendant_availability`), o que
+cheira a interferência de estado entre invariantes. **Isso é hipótese, não veredito** — a segunda
+rodada completa está em andamento. Se repetir no mesmo ponto, comparo contra `99cd0fc`.
+
 ---
 
 ## Bugs encontrados
