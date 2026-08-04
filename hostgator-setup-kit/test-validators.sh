@@ -454,24 +454,46 @@ echo "proxy reverso: quem está com as portas 80/443"
 # Caddy de OUTRO DeskcommCRM na mesma VPS — caía no ramo "portas livres", e a
 # instalação seguia até a fase 4 para morrer com "Bind for 0.0.0.0:80 failed:
 # port is already allocated". Medido numa VPS com produção rodando.
-proxy_ok() {  # proxy_ok <descrição> <esperado> <imagem> <nome> <host>
+# dono_das_portas lê o que o `docker ps` imprime de verdade. Os casos com "->"
+# vêm da coluna Ports real; o que decide é o lado ANTES da seta (a porta do
+# HOST). A primeira versão disto olhava a porta INTERNA e errava dos dois lados.
+dono_ok() {  # dono_ok <descrição> <esperado: nome|imagem ou vazio> <linhas do docker ps>
+  local desc="$1" esperado="$2" linhas="$3" real
+  real="$(printf '%s\n' "$linhas" | dono_das_portas meu-projeto || true)"
+  if [ "$real" = "$esperado" ]; then printf '  ✓ %s\n' "$desc"
+  else printf '  ✗ %s\n     deu:      [%s]\n     esperava: [%s]\n' "$desc" "$real" "$esperado"; fail=1; fi
+}
+dono_ok "proxy publicando 80 no host é encontrado" \
+  'traefik|traefik:v3.3' 'traefik|infra|traefik:v3.3|0.0.0.0:80->80/tcp, [::]:80->80/tcp'
+dono_ok "app em 8080->80 NÃO é ocupante (80 do host livre)" \
+  '' 'phpmyadmin|web|phpmyadmin:latest|0.0.0.0:8080->80/tcp'
+dono_ok "proxy sem privilégio (80->8080) É ocupante" \
+  'traefik|traefik:v3' 'traefik|infra|traefik:v3|0.0.0.0:80->8080/tcp'
+dono_ok "Caddy de outro Deskcomm é encontrado" \
+  'outro-caddy-1|caddy:2-alpine' 'outro-caddy-1|outro|caddy:2-alpine|0.0.0.0:80->80/tcp, 0.0.0.0:443->443/tcp'
+dono_ok "contêiner sem porta publicada é ignorado" \
+  '' 'worker|app|meu/worker|'
+dono_ok "só 443 no host também conta" \
+  'proxy|nginx' 'proxy|infra|nginx|0.0.0.0:443->443/tcp'
+dono_ok "contêiner DESTA instalação é ignorado (idempotência)" \
+  '' 'crm-caddy-1|meu-projeto|caddy:2-alpine|0.0.0.0:80->80/tcp'
+# Sem label de compose, o campo do meio vem VAZIO — com IFS de tab ele colapsava
+# e a imagem sumia, fazendo um Traefik de `docker run` virar intruso.
+dono_ok "contêiner sem label de compose mantém a imagem" \
+  'meu-traefik|traefik:v3.1' 'meu-traefik||traefik:v3.1|0.0.0.0:80->80/tcp'
+
+echo "proxy reverso: é um Traefik?"
+tk_ok() {  # tk_ok <descrição> <sim|nao> <imagem> <nome>
   local desc="$1" esperado="$2" real
-  real="$(classifica_proxy "${3:-}" "${4:-}" "${5:-}")"
+  if eh_traefik "${3:-}" "${4:-}"; then real=sim; else real=nao; fi
   if [ "$real" = "$esperado" ]; then printf '  ✓ %s\n' "$desc"
   else printf '  ✗ %s  (deu %s, esperava %s)\n' "$desc" "$real" "$esperado"; fail=1; fi
 }
-proxy_ok "portas livres → sobe o nosso Caddy"        caddy    ""                    ""                ""
-proxy_ok "Traefik da hospedagem → publica por ele"   traefik  "traefik:v3.3"        "traefik"         ""
-proxy_ok "Traefik com nome maiúsculo"                traefik  "library/Traefik"     "meu-Traefik"     ""
-proxy_ok "Caddy de outro Deskcomm → bloqueia"        ocupado  "caddy:2-alpine"      "outro-caddy-1"   ""
-proxy_ok "nginx-proxy de outro app → bloqueia"       ocupado  "nginxproxy/nginx"    "webproxy"        ""
-proxy_ok "nginx do próprio host → bloqueia"          ocupado  ""                    ""                "LISTEN 0 511 *:80 users:((\"nginx\"))"
-# Sem este caso, um contêiner qualquer chamado "traefik-backup" PARADO (que não
-# publica porta, logo não chega aqui) não é o risco — o risco é o inverso: um
-# ocupante real ser lido como Traefik por causa do nome. O kit já exigia que o
-# candidato publicasse as portas; o teste guarda que a classificação continua
-# olhando imagem E nome.
-proxy_ok "imagem traefik vence nome genérico"        traefik  "traefik:v2"          "proxy-01"        ""
+tk_ok "imagem traefik"                   sim "traefik:v3.3"      "proxy-01"
+tk_ok "nome com maiúsculas (TRAEFIK)"    sim "meureg/proxy:3"    "TRAEFIK-PROXY"
+tk_ok "coolify-proxy é traefik na imagem" sim "traefik:v2.11"    "coolify-proxy"
+tk_ok "caddy não é traefik"              nao "caddy:2-alpine"    "outro-caddy-1"
+tk_ok "nginx não é traefik"              nao "nginxproxy/nginx"  "webproxy"
 
 echo
 if [ "$fail" = 0 ]; then echo "todos os validadores passaram"; else echo "FALHOU"; fi

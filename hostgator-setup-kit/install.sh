@@ -415,21 +415,54 @@ save_partial() {
   mv "$tmp" "$PARTIAL_FILE"
 }
 
-# Dado QUEM ocupa as portas 80/443, o que fazer? Puro, para ser exercitado sem
-# Docker. Ecoa `traefik` (publicar através dele), `caddy` (portas livres, subimos
-# o nosso) ou `ocupado` (alguém está lá e não sabemos falar com ele).
+# Quem publica 80 ou 443 NO HOST? Lê linhas "nome|projeto|imagem|portas" (o
+# formato do docker ps) e ecoa "nome|imagem" do primeiro que casar.
 #
-# A ordem importa: pergunta-se PRIMEIRO se é Traefik, e só depois se está
-# ocupado. Antes o código só sabia procurar Traefik — qualquer outro proxy,
-# inclusive o Caddy de outro DeskcommCRM na mesma VPS, caía no ramo "portas
-# livres" e a instalação seguia direto para o choque de portas.
-classifica_proxy() {  # classifica_proxy <imagem_do_dono> <nome_do_dono> <ocupante_no_host>
-  local img="${1:-}" nome="${2:-}" host="${3:-}"
-  case "$img $nome" in
-    *[Tt]raefik*) printf 'traefik'; return 0;;
+# O lado que importa da coluna Ports é o ANTES da seta — "0.0.0.0:80->80/tcp" é
+# host 80; "0.0.0.0:8080->80/tcp" é host 8080 e NÃO disputa nada. A primeira
+# versão disto olhava `docker port` ancorado na porta INTERNA, e errava dos dois
+# lados: abortava a instalação por causa de um phpMyAdmin em `-p 8080:80` (com
+# 80/443 livres, mandando o dono derrubar o site dele), e deixava passar um proxy
+# real em `-p 80:8080`, que é como se sobe Traefik sem privilégio.
+#
+# Separador é "|", não TAB: tab é IFS-whitespace, então dois tabs seguidos viram
+# um só e o campo vazio do meio SOME — um proxy subido com `docker run` (sem
+# label de compose) perdia a imagem, e o Traefik da hospedagem chamado
+# "coolify-proxy" era classificado como intruso.
+dono_das_portas() {  # dono_das_portas <projeto_a_ignorar>  < linhas
+  local ignorar="${1:-}" nome proj img ports
+  while IFS='|' read -r nome proj img ports; do
+    [ -n "$nome" ] || continue
+    # Contêiner DESTA instalação: numa re-execução o nosso próprio Caddy está de
+    # pé publicando as portas, e tratá-lo como intruso mataria a idempotência.
+    [ -n "$ignorar" ] && [ "$proj" = "$ignorar" ] && continue
+    case "${ports// /}" in
+      *:80-\>*|*:443-\>*) printf '%s|%s' "$nome" "$img"; return 0;;
+    esac
+  done
+  return 1
+}
+
+# A pergunta que decide é "o Docker consegue publicar a porta?", e a resposta
+# vem de TENTAR — não de inferir. Toda heurística sobre `docker port` ou `ss`
+# erra em algum caso real (proxy sem privilégio publicando 80:8080, app em
+# 8080:80, bind só no loopback, `ss` fora do PATH, userland-proxy desligado), e
+# erra dos dois lados: ou aborta uma instalação boa, ou entrega o choque de
+# portas lá na frente. Publicar de mentirinha usa exatamente a mecânica que o
+# Caddy vai usar, então não há espaço entre o teste e a realidade.
+# O contêiner sai na hora; a imagem é a mesma que o compose do kit já usa.
+porta_publicavel() {  # porta_publicavel <porta>
+  docker run --rm -p "$1:$1" --entrypoint /bin/true alpine:3.20 >/dev/null 2>&1
+}
+
+# É um Traefik? Compara em minúsculas o par imagem+nome. A versão anterior usava
+# `*[Tt]raefik*`, que só tem classe de equivalência no primeiro caractere:
+# um contêiner "TRAEFIK-PROXY" escapava e era tratado como intruso.
+eh_traefik() {  # eh_traefik <imagem> <nome>
+  case "$(printf '%s %s' "${1:-}" "${2:-}" | tr '[:upper:]' '[:lower:]')" in
+    *traefik*) return 0;;
   esac
-  if [ -n "$nome" ] || [ -n "$host" ]; then printf 'ocupado'; return 0; fi
-  printf 'caddy'
+  return 1
 }
 
 # Esconde o miolo de um segredo para a tela de conferência.
@@ -572,22 +605,23 @@ fi
 # idempotência — que é justamente o que permite rodar de novo para corrigir uma
 # resposta errada.
 proj_atual="${COMPOSE_PROJECT_NAME:-$(basename "$PROJECT_DIR" | tr '[:upper:]' '[:lower:]' | tr -cd 'a-z0-9_-')}"
-dono_portas=""; dono_imagem=""
-while IFS="$(printf '\t')" read -r _nome _proj _img; do
-  [ -n "$_nome" ] || continue
-  [ "$_proj" = "$proj_atual" ] && continue
-  if docker port "$_nome" 2>/dev/null | grep -qE '^(80|443)/tcp'; then
-    dono_portas="$_nome"; dono_imagem="$_img"; break
-  fi
-done <<DOCKERPS
-$(docker ps --format '{{.Names}}\t{{.Label "com.docker.compose.project"}}\t{{.Image}}' 2>/dev/null)
-DOCKERPS
 
-# Nem todo proxy é contêiner: nginx ou apache instalados direto no host seguram
-# as mesmas portas e o Docker recusa o bind igual.
-dono_host=""
-if [ -z "$dono_portas" ] && command -v ss >/dev/null 2>&1; then
-  dono_host="$(ss -tlnp 2>/dev/null | awk '$4 ~ /:(80|443)$/ {print; exit}')"
+portas_ocupadas=""; n_ocupadas=0
+porta_publicavel 80  || { portas_ocupadas="80"; n_ocupadas=1; }
+porta_publicavel 443 || { portas_ocupadas="${portas_ocupadas:+$portas_ocupadas e }443"; n_ocupadas=$((n_ocupadas + 1)); }
+
+# Identificação do ocupante — só para a MENSAGEM. Quem decide é o teste acima,
+# então não saber quem é NUNCA vira "pode instalar": a falha é fechada.
+# O "|| true" não é decorativo: numa atribuição o status do pipeline vira o
+# status do script, e sob `set -e` + `pipefail` um docker ps que falhe (ou um
+# SIGPIPE do consumidor) mataria o instalador mudo, no meio da fase 2.
+dono_portas=""; dono_imagem=""
+if [ -n "$portas_ocupadas" ]; then
+  _dono="$(docker ps --format '{{.Names}}|{{.Label "com.docker.compose.project"}}|{{.Image}}|{{.Ports}}' 2>/dev/null | dono_das_portas "$proj_atual" || true)"
+  dono_portas="${_dono%%|*}"
+  dono_imagem="${_dono#*|}"
+  [ "$dono_imagem" = "$dono_portas" ] && dono_imagem=""
+  unset _dono
 fi
 
 # Inicializado sempre: o bloco da rede do Traefik, mais abaixo, lê esta variável
@@ -596,36 +630,42 @@ fi
 traefik_container=""
 
 if [ -z "${REVERSE_PROXY:-}" ]; then
-  case "$(classifica_proxy "$dono_imagem" "$dono_portas" "$dono_host")" in
-    traefik)
-      REVERSE_PROXY=traefik
-      traefik_container="$dono_portas"
-      c_ylw "⚠ Detectei um Traefik já rodando neste VPS (contêiner '${dono_portas}', ocupando 80/443)."
-      c_ylw "  Vou publicar o CRM através dele em vez de subir um proxy próprio —"
-      c_ylw "  desligar o Traefik quebraria o que a sua hospedagem instalou."
-      ;;
-    ocupado)
-      # A preposição vem junto do trecho: "por o contêiner" sai errado se a
-      # frase fixar "por" e o pedaço variável começar com artigo.
-      ocupante="${dono_portas:+pelo contêiner '${dono_portas}' (imagem ${dono_imagem})}"
-      ocupante="${ocupante:-por um programa do próprio servidor}"
-      c_red "✖ As portas 80 e 443 já estão ocupadas ${ocupante}."
-      printf '\n%s\n'   "  O CRM precisa dessas duas portas para publicar o site com HTTPS. Subir um"
-      printf '%s\n\n'   "  segundo proxy nelas não funciona: o Docker recusa e a instalação para."
-      printf '%s\n'     "  Como resolver, na ordem do mais provável:"
-      printf '\n%s\n'   "  1. Já é outro DeskcommCRM neste servidor? Então use aquele — entre na"
-      printf '%s\n'     "     pasta dele e rode: bash hostgator-setup-kit/update.sh"
-      printf '\n%s\n'   "  2. Não usa mais o que está ocupando? Desligue e rode este instalador de novo:"
-      [ -n "$dono_portas" ] && printf '%s\n' "       docker stop ${dono_portas}"
-      printf '\n%s\n'   "  3. Quer manter os dois no ar? Aí o CRM tem de sair por um proxy só, e isso"
-      printf '%s\n'     "     é configuração manual — o kit automatiza esse caminho apenas para"
-      printf '%s\n\n'   "     Traefik (ponha REVERSE_PROXY=traefik no .env)."
-      die "Libere as portas 80 e 443 (ou use a instalação que já existe) e rode de novo."
-      ;;
-    *)
-      REVERSE_PROXY=caddy
-      ;;
-  esac
+  if [ -z "$portas_ocupadas" ]; then
+    REVERSE_PROXY=caddy
+  elif eh_traefik "$dono_imagem" "$dono_portas"; then
+    REVERSE_PROXY=traefik
+    traefik_container="$dono_portas"
+    c_ylw "⚠ Detectei um Traefik já rodando neste VPS (contêiner '${dono_portas}', ocupando 80/443)."
+    c_ylw "  Vou publicar o CRM através dele em vez de subir um proxy próprio —"
+    c_ylw "  desligar o Traefik quebraria o que a sua hospedagem instalou."
+  else
+    # A preposição vem junto do trecho: "por o contêiner" sai errado se a frase
+    # fixar "por" e o pedaço variável começar com artigo. E a imagem só entra se
+    # for conhecida — "(imagem )" vazio era o sintoma de um campo perdido.
+    ocupante="${dono_portas:+pelo contêiner '${dono_portas}'${dono_imagem:+ (imagem ${dono_imagem})}}"
+    ocupante="${ocupante:-por um programa do próprio servidor}"
+    # Concordância com o número de portas: "A porta 80 e 443 já está ocupada"
+    # saiu na prova real e denuncia texto montado sem olhar o próprio dado.
+    if [ "$n_ocupadas" -gt 1 ]; then
+      c_red "✖ As portas ${portas_ocupadas} já estão ocupadas ${ocupante}."
+    else
+      c_red "✖ A porta ${portas_ocupadas} já está ocupada ${ocupante}."
+    fi
+    printf '\n%s\n'   "  O CRM precisa dessas duas portas para publicar o site com HTTPS. Subir um"
+    printf '%s\n\n'   "  segundo proxy nelas não funciona: o Docker recusa e a instalação para."
+    printf '%s\n'     "  Como resolver, na ordem do mais provável:"
+    printf '\n%s\n'   "  1. Já é outro DeskcommCRM neste servidor? Então use aquele — entre na"
+    printf '%s\n'     "     pasta dele e rode: bash hostgator-setup-kit/update.sh"
+    printf '\n%s\n'   "  2. Não usa mais o que está ocupando? Desligue e rode este instalador de novo:"
+    [ -n "$dono_portas" ] && printf '%s\n' "       docker stop ${dono_portas}"
+    printf '\n%s\n'   "  3. Quer manter os dois no ar? Aí o CRM tem de sair por um proxy só, e isso"
+    printf '%s\n'     "     é configuração manual — o kit automatiza esse caminho apenas para"
+    printf '%s\n\n'   "     Traefik (ponha REVERSE_PROXY=traefik no .env)."
+    if [ "$n_ocupadas" -gt 1 ]; then
+      die "Libere as portas ${portas_ocupadas} (ou use a instalação que já existe) e rode de novo."
+    fi
+    die "Libere a porta ${portas_ocupadas} (ou use a instalação que já existe) e rode de novo."
+  fi
 fi
 
 # ── Supabase automático (opcional) ──────────────────────────────────────────
@@ -767,7 +807,12 @@ c_grn "✓ segredos prontos"
 # nas duas redes. Medido com Traefik v3.3 real: só com o label apontando pra rede do
 # PROXY a requisição sai de HTTP 000 (timeout) para HTTP 200.
 if [ "$REVERSE_PROXY" = "traefik" ] && [ -z "${TRAEFIK_NETWORK:-}" ] && [ -n "$traefik_container" ]; then
-  TRAEFIK_NETWORK="$(docker inspect -f '{{range $k,$v := .NetworkSettings.Networks}}{{$k}} {{end}}' "$traefik_container" 2>/dev/null | awk '{print $1}')"
+  # "|| true": sem ele o `die` explicativo logo abaixo — que é o tratamento
+  # CERTO deste caso — é inalcançável. Numa atribuição o status do pipeline vira
+  # o status do script; se o painel da hospedagem recriou o proxy entre a
+  # detecção e aqui, o docker inspect sai 1, o 2>/dev/null engole a mensagem e o
+  # instalador cai no painel genérico de erro sem dizer o que houve.
+  TRAEFIK_NETWORK="$(docker inspect -f '{{range $k,$v := .NetworkSettings.Networks}}{{$k}} {{end}}' "$traefik_container" 2>/dev/null | awk '{print $1}' || true)"
 fi
 if [ "$REVERSE_PROXY" = "traefik" ] && [ -z "${TRAEFIK_NETWORK:-}" ]; then
   die "Não consegui descobrir a rede Docker do seu Traefik. Rode 'docker network ls',
