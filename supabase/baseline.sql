@@ -8772,4 +8772,54 @@ create index if not exists idx_contacts_avatar_refresh
   on public.contacts (avatar_updated_at nulls first)
   where wa_identity is not null and is_anonymized = false;
 
+
+-- ---- autoria da configuração da operação (migration 0101) ----
+-- Quem mexeu na CONFIGURAÇÃO, ao lado do estado que mudou.
+--
+-- ⚠️ POR QUE EXISTE. Até o agente de IA ganhar mãos sobre a operação (épico IA
+-- 360), toda mudança em etapa de funil, entrada automática de contatos e regra
+-- automática vinha de uma pessoa `manager+` — quem olhava a tela era, por
+-- construção, quem tinha mudado. Uma regra automática ligada pelo assistente
+-- muda o comportamento do sistema quando ninguém está olhando: sem esta coluna,
+-- a tela mostra "Ativa" e não diz mais nada. O `api_audit_log` registra, mas
+-- nenhuma tela de configuração o lê — e log que não aparece é log morto
+-- (docs/doctrine/sistema-vivo.md, invariante 3).
+--
+-- ⚠️ NÃO HÁ COLUNA DE "QUAL AGENTE", E É DELIBERADO: `Actor.id` para `ai_agent`
+-- é o id da EXECUÇÃO num caminho do código e o id do AGENTE no outro, então uma
+-- FK para `ai_agents(id)` seria verdadeira num e recusaria a escrita no outro.
+--
+-- Idempotente e auto-curativo: colunas nullable, sem backfill (linha antiga fica
+-- com autoria desconhecida, que é a verdade sobre ela). O CHECK viaja inline no
+-- `add column if not exists` — em banco que já tem a coluna o comando inteiro é
+-- no-op, que é o que o `update.sh` do clone precisa.
+
+alter table public.crm_stages
+  add column if not exists last_change_actor_kind text
+  check (last_change_actor_kind in ('user','ai','system'));
+
+alter table public.crm_stages
+  add column if not exists last_change_at timestamptz;
+
+alter table public.webhook_sources
+  add column if not exists last_change_actor_kind text
+  check (last_change_actor_kind in ('user','ai','system'));
+
+alter table public.webhook_sources
+  add column if not exists last_change_at timestamptz;
+
+alter table public.automation_rules
+  add column if not exists last_change_actor_kind text
+  check (last_change_actor_kind in ('user','ai','system'));
+
+alter table public.automation_rules
+  add column if not exists last_change_at timestamptz;
+
+comment on column public.crm_stages.last_change_actor_kind is
+  'Espécie de quem fez a última mudança de configuração desta etapa: user | ai | system. NULL = anterior à 0101.';
+comment on column public.webhook_sources.last_change_actor_kind is
+  'Espécie de quem fez a última mudança nesta entrada automática de contatos: user | ai | system. NULL = anterior à 0101.';
+comment on column public.automation_rules.last_change_actor_kind is
+  'Espécie de quem ligou/desligou/editou esta regra por último: user | ai | system. NULL = anterior à 0101.';
+
 notify pgrst, 'reload schema';

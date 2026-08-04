@@ -11,11 +11,12 @@
  * si: "nenhuma escrita quando é 404", "desmarcar antes de marcar" e "mover os
  * negócios antes de arquivar a etapa".
  */
-import { vi } from "vitest";
+import { expect, vi } from "vitest";
 
 import { createClient } from "@/lib/supabase/server";
 import { requireRole } from "@/lib/auth/require-role";
 import type { AuthUser } from "@/lib/auth/types";
+import type { EspecieDeAutor } from "@/lib/operacao/autoria";
 
 export const ORG_ID = "22222222-2222-4222-8222-222222222222";
 export const OUTRA_ORG = "33333333-3333-4333-8333-333333333333";
@@ -286,6 +287,25 @@ export function makeDb(opts: DbOpts = {}): Registro {
 
   vi.mocked(createClient).mockResolvedValue({ from: builder, rpc } as never);
   return registro;
+}
+
+/**
+ * O patch esperado, mais a autoria que TODA escrita em `crm_stages` carrega.
+ *
+ * ⚠️ EXISTE PARA O `toEqual` CONTINUAR EXATO. Trocar os `toEqual` por
+ * `objectContaining` seria a saída fácil e mataria a garantia que estes testes
+ * dão desde o começo: nenhum campo A MAIS na escrita. Aqui a autoria é declarada
+ * — some do patch e o teste reprova, aparece uma coluna nova sem ninguém pedir e
+ * o teste reprova também.
+ *
+ * `last_change_at` é `any(String)` porque é o relógio: fixá-lo mediria o
+ * `Date.now()`, não a operação.
+ */
+export function comAutoria(
+  patch: Record<string, unknown>,
+  quem: EspecieDeAutor = "user",
+): Record<string, unknown> {
+  return { ...patch, last_change_actor_kind: quem, last_change_at: expect.any(String) };
 }
 
 export function authOk(role: "manager" | "admin" = "manager"): void {
