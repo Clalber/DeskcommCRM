@@ -29,6 +29,17 @@
 > **[👉 Assinar a VPS HostGator com desconto da parceria](https://www.hostgator.com.br/52708-141-3-52.html)** —
 > datacenter em São Paulo, ideal pro WhatsApp rodando 24/7. *(link de parceiro — assinar por ele apoia o projeto e sai mais barato)*
 >
+> **Ainda não tem servidor?** Rode isto **no seu computador** (macOS, Linux ou WSL). Ele diz
+> qual plano contratar — com os números do runbook, não um "depende" — e te devolve o
+> comando certo pro seu caso:
+>
+> ```bash
+> curl -fsSL https://raw.githubusercontent.com/melgarafael/DeskcommCRM/main/hostgator-setup-kit/comecar.sh | bash
+> ```
+>
+> *(prefere ler antes de executar? clone o repo e rode `bash hostgator-setup-kit/comecar.sh` —
+> ele não instala nada sem você confirmar.)*
+>
 > Já tem a VPS? Entre nela por SSH e rode:
 >
 > ```bash
