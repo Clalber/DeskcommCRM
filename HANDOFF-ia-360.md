@@ -351,7 +351,7 @@ e motivo errado no repo é pior que motivo ausente — o próximo a ler decide c
 | `npx tsc --noEmit` | exit 0 |
 | `npx eslint .` | 0 errors, 170 warnings — a linha de base do épico |
 | `npx vitest run` (unit) | **226 arquivos, 2019 testes passando**, exit 0 |
-| E2E em tela | `1 passed`, evidência visual + sabotagem confirmada |
+| E2E em tela | `1 passed (1.9m)`, exit 0, rodado contra o SHA pós-merge com `next build` novo; capturas regeneradas em `evidence/ia-360-w4/` |
 
 Um quarto gate reprovou no primeiro try pós-merge e foi acerto meu:
 `tests/unit/evidencia-citada.test.ts` (veio na base) recusou o HANDOFF por citar capturas em
