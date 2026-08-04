@@ -232,7 +232,12 @@ owner_id_by_email() {
 #
 # Agora cada linha carrega um marcador com o diretório da instalação, e o
 # filtro remove só as que são dela.
-cron_tag() { printf '# deskcomm:%s' "${PROJECT_DIR:-$PWD}"; }
+# O marcador identifica a instalação E O PAPEL da linha. O papel não é enfeite:
+# com um marcador só por instalação, a segunda função a rodar apagava a linha da
+# primeira (o filtro remove tudo que casa com o marcador, e as duas linhas
+# casavam). Medido na VPS: depois de instalar, sobrava só o agente e o CRM ficava
+# SEM o drain de eventos — a automação inteira parada, em silêncio.
+cron_tag() { printf '# deskcomm:%s:%s' "${PROJECT_DIR:-$PWD}" "${1:?papel da linha (drain|agent)}"; }
 
 # Puro (testável sem tocar no crontab real): lê o crontab atual em stdin e
 # imprime o novo. Tira as linhas DESTA instalação — pelo marcador, e também
@@ -253,7 +258,7 @@ setup_event_log_drain_cron() {
   [ -n "${NEXT_PUBLIC_APP_URL:-}" ] || { c_ylw "⚠ falta NEXT_PUBLIC_APP_URL — não ativei o cron das automações."; return 0; }
 
   local url_drain="${NEXT_PUBLIC_APP_URL}/api/v1/cron/event-log-drain"
-  local marcador; marcador="$(cron_tag)"
+  local marcador; marcador="$(cron_tag drain)"
 
   # "primeira vez" é sobre ESTA instalação, não sobre o host: com o teste antigo
   # ('existe alguma linha de event-log-drain?'), uma instalação nova numa VPS
@@ -299,7 +304,7 @@ setup_update_agent_cron() {
   # A assinatura legada inclui o PROJECT_DIR: é o que distingue a linha desta
   # instalação da linha de uma vizinha, que roda o mesmo agent.sh em outra pasta.
   local legado="cd ${PROJECT_DIR} && bash hostgator-setup-kit/agent.sh"
-  local marcador; marcador="$(cron_tag)"
+  local marcador; marcador="$(cron_tag agent)"
   local cron_line="*/5 * * * * ${legado} >/dev/null 2>&1 ${marcador}"
   ( crontab -l 2>/dev/null | cron_merge "$marcador" "$legado" "$cron_line" ) | crontab -
   c_grn "✓ atualização pela tela ativa (agente a cada 5 minutos)"

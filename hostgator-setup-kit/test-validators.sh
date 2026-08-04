@@ -392,6 +392,30 @@ n_agent="$(printf '%s\n' "$reexec" | grep -cF 'hostgator-setup-kit/agent.sh')"
 if [ "$n_agent" = 1 ]; then printf '  ✓ re-executar a mesma instalação não duplica a linha\n'
 else printf '  ✗ re-executar duplicou: %s linhas de agent.sh\n' "$n_agent"; fail=1; fi
 
+# As DUAS linhas da mesma instalação têm de coexistir. Com um marcador só por
+# instalação (sem o papel), a segunda função a rodar apagava a linha da
+# primeira — as duas casavam com o mesmo marcador. Medido na VPS: depois de
+# instalar sobrava só o agente, e o CRM ficava SEM o drain de eventos, com a
+# automação inteira parada em silêncio. Este teste roda as duas em sequência,
+# como a instalação faz.
+DIR=/root/instalacao-nova
+TAG_DRAIN="# deskcomm:${DIR}:drain"; TAG_AGENT="# deskcomm:${DIR}:agent"
+L_DRAIN="* * * * * curl \"https://novo.exemplo.com.br/api/v1/cron/event-log-drain\" $TAG_DRAIN"
+L_AGENT="*/5 * * * * cd ${DIR} && bash hostgator-setup-kit/agent.sh $TAG_AGENT"
+depois_drain="$(printf '%s\n' "$CRONTAB_VIZINHO" | cron_merge "$TAG_DRAIN" 'https://novo.exemplo.com.br/api/v1/cron/event-log-drain' "$L_DRAIN")"
+depois_agent="$(printf '%s\n' "$depois_drain" | cron_merge "$TAG_AGENT" "cd ${DIR} && bash hostgator-setup-kit/agent.sh" "$L_AGENT")"
+# Conta as DUAS linhas pelo que elas fazem (a URL do drain, o cd do agente), não
+# pelo formato do marcador: uma asserção sobre o marcador reprovaria uma mudança
+# de formato inofensiva e passaria por perto do que importa, que é as duas
+# tarefas continuarem agendadas.
+tem_drain="$(printf '%s\n' "$depois_agent" | grep -cF 'novo.exemplo.com.br/api/v1/cron/event-log-drain')"
+tem_agent="$(printf '%s\n' "$depois_agent" | grep -cF "cd ${DIR} && bash hostgator-setup-kit/agent.sh")"
+if [ "$tem_drain" -ge 1 ] && [ "$tem_agent" -ge 1 ]; then
+  printf '  ✓ drain e agente da mesma instalação coexistem\n'
+else
+  printf '  ✗ uma apagou a outra (drain=%s, agente=%s — esperava 1 de cada)\n' "$tem_drain" "$tem_agent"; fail=1
+fi
+
 echo "provisionamento do Supabase: senha do banco"
 # Dois testes distintos, porque o defeito e o contrato moram em lugares
 # diferentes — e o primeiro teste que escrevi aqui era VÁCUO por não separá-los.
