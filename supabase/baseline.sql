@@ -8772,4 +8772,28 @@ create index if not exists idx_contacts_avatar_refresh
   on public.contacts (avatar_updated_at nulls first)
   where wa_identity is not null and is_anonymized = false;
 
+
+-- ---- agent_case_events.kind ganha 'agent_noted' (migration 0100) ----
+-- O agente conseguia ABRIR um chamado e nada mais: não havia valor honesto no
+-- CHECK para "o agente registrou o que aconteceu depois" ('lead_provided' é a
+-- informação que o LEAD deu, 'human_replied' é a pessoa). Sem esse registro, o
+-- atendente seguinte que abre o chamado começa do zero.
+-- Idempotente e auto-curativo: a lista só CRESCE, então nenhuma linha existente
+-- viola a constraint nova e não há dado a corrigir antes de criá-la.
+alter table public.agent_case_events
+  drop constraint if exists agent_case_events_kind_check;
+
+alter table public.agent_case_events
+  add constraint agent_case_events_kind_check check (kind in (
+    'opened',
+    'human_replied',
+    'lead_asked',
+    'lead_provided',
+    'lead_unresponsive',
+    'resolved',
+    'escalated',
+    'cancelled',
+    'agent_noted'
+  ));
+
 notify pgrst, 'reload schema';

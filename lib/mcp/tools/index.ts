@@ -28,6 +28,14 @@ import {
   crmManageTags,
   crmGetQueueStatus,
 } from "./governance";
+import {
+  crmListAvailableAttendants,
+  crmListHumanCases,
+  crmGetHumanCase,
+  crmAddCaseNote,
+  crmCloseHumanCase,
+  crmResumeAiAttendance,
+} from "./escalacao";
 import { crmRequestHumanHandoff } from "./handoff";
 
 // Cast via `unknown` porque McpToolDefinition<TInput> nao e covariante
@@ -46,6 +54,9 @@ export const allTools: ReadonlyArray<McpToolDefinition> = [
   crmListLeads,
   crmGetLead,
   crmListPipelines,
+  crmListAvailableAttendants,
+  crmListHumanCases,
+  crmGetHumanCase,
   // write
   crmCreateLead,
   crmUpdateLead,
@@ -53,6 +64,9 @@ export const allTools: ReadonlyArray<McpToolDefinition> = [
   crmSendWhatsappMessage,
   crmAssignConversation,
   crmManageTags,
+  crmAddCaseNote,
+  crmCloseHumanCase,
+  crmResumeAiAttendance,
   // handoff (special)
   crmRequestHumanHandoff,
 ] as unknown as ReadonlyArray<McpToolDefinition>;
