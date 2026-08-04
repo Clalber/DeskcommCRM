@@ -73,11 +73,22 @@ if [ -t 0 ]; then TTY_IN="/dev/stdin"
 elif [ -r /dev/tty ] && { : < /dev/tty; } 2>/dev/null; then TTY_IN="/dev/tty"
 fi
 
+# Devolve != 0 quando a ENTRADA ACABOU, que é diferente de "respondeu vazio"
+# (Enter, que vale o default). Confundir os dois prendia o script: alimentado
+# por um pipe que termina antes das perguntas — `curl … | bash` de quem só
+# responde a primeira —, o processo NÃO terminava (medido: teto de 20s estourado,
+# com o menu parado na tela e nada indicando que só um Ctrl-C sai dali). Com a
+# distinção, o mesmo caso encerra em 0 imprimindo os dois caminhos.
+#
+# O mecanismo exato ficou em aberto: o consumo de CPU na espera é ~0 (perfil de
+# bloqueio), mas a leitura do código sugeriria reentrada no mesmo ramo. Os dois
+# sinais discordam e não vale fechar a questão aqui — o comportamento que
+# importa (não termina × termina) está medido nas duas versões.
 perguntar() {  # perguntar <variável> <texto> [default]
   local var="$1" texto="$2" padrao="${3:-}" resposta=""
   if [ -z "$TTY_IN" ]; then printf -v "$var" '%s' "$padrao"; return 0; fi
   printf '%s' "$texto"
-  read -r resposta < "$TTY_IN" || resposta=""
+  if ! read -r resposta < "$TTY_IN"; then printf '\n'; return 1; fi
   printf -v "$var" '%s' "${resposta:-$padrao}"
 }
 
@@ -92,7 +103,8 @@ tem_navegador() {
 abrir() {
   tem_navegador || return 0
   local sim=""
-  perguntar sim "  Abro isso no seu navegador agora? (S/n) " "S"
+  # EOF aqui não é motivo para abrir nada: na dúvida, não age.
+  perguntar sim "  Abro isso no seu navegador agora? (S/n) " "S" || return 0
   case "$sim" in [Nn]*) return 0;; esac
   if [ "$(uname -s)" = "Darwin" ]; then open "$1" >/dev/null 2>&1 || true
   else xdg-open "$1" >/dev/null 2>&1 || true; fi
@@ -170,7 +182,12 @@ MENU
   # Enter cai no 1 de propósito: quem já tem servidor costuma chegar ao produto
   # pelo README com o SSH aberto e ir direto ao install.sh. Quem chega por AQUI
   # — um vídeo, a comunidade, um link solto — é, na maioria, quem ainda não tem.
-  perguntar escolha "  Digite 1, 2 ou 3 (Enter = 1): " "1"
+  if ! perguntar escolha "  Digite 1, 2 ou 3 (Enter = 1): " "1"; then
+    c_ylw "  (a entrada terminou — deixo os dois caminhos aqui)"
+    mostrar_requisitos
+    comando_de_instalacao
+    exit 0
+  fi
 
   case "$escolha" in
     1)
@@ -200,7 +217,9 @@ SSH
         printf '\n'
         c_ylw "  Atenção: isso instala o CRM NESTA máquina — $(hostname 2>/dev/null || echo 'esta')."
         c_ylw "  Se você está no seu computador pessoal, e não no servidor, responda n."
-        perguntar ok "  Continuar? (s/N) " "N"
+        # EOF aqui cai no ramo de NÃO instalar: este é o único ponto do script
+        # que muda a máquina, e "não consegui perguntar" nunca vira um sim.
+        perguntar ok "  Continuar? (s/N) " "N" || ok="N"
         case "$ok" in
           [Ss]*)
             c_grn "  ✓ achei o instalador aqui do lado. Começando."
