@@ -222,6 +222,28 @@ owner_id_by_email() {
 # lidos por cron, não por trigger→HTTP nem fila gerenciada (doutrina do
 # projeto: trigger Postgres nunca faz HTTP). Chamada por install.sh e
 # update.sh — re-rodar não duplica a linha do crontab.
+# ── Cron: uma instalação nunca mexe na linha de outra ────────────────────────
+# O filtro era `crontab -l | grep -v 'event-log-drain' | crontab -`: casava com
+# a linha de QUALQUER instalação do host. Instalar uma segunda instância na
+# mesma VPS apagava as duas linhas da primeira — o drain de eventos e o agente
+# de atualização — em silêncio, e o dono só descobriria pelo que parou de
+# acontecer. Confirmado numa VPS com produção rodando: as linhas dela seriam
+# levadas por uma instalação nova em outra pasta.
+#
+# Agora cada linha carrega um marcador com o diretório da instalação, e o
+# filtro remove só as que são dela.
+cron_tag() { printf '# deskcomm:%s' "${PROJECT_DIR:-$PWD}"; }
+
+# Puro (testável sem tocar no crontab real): lê o crontab atual em stdin e
+# imprime o novo. Tira as linhas DESTA instalação — pelo marcador, e também
+# pela `assinatura` para as linhas legadas, escritas antes de o marcador
+# existir, que sem isso ficariam duplicadas a cada re-execução.
+cron_merge() {  # cron_merge <marcador> <assinatura_legada> <linha_nova>
+  local marcador="$1" legado="$2" nova="$3"
+  { grep -vF -e "$marcador" | grep -vF -e "$legado"; } || true
+  printf '%s\n' "$nova"
+}
+
 setup_event_log_drain_cron() {
   command -v crontab >/dev/null 2>&1 || { c_ylw "⚠ 'crontab' não encontrado — instale o pacote 'cron' e rode de novo pra ativar as automações."; return 0; }
 
@@ -230,14 +252,17 @@ setup_event_log_drain_cron() {
   [ -n "$secret" ] || { c_ylw "⚠ falta INTERNAL_SECRET/INTERNAL_CRON_SECRET — não ativei o cron das automações."; return 0; }
   [ -n "${NEXT_PUBLIC_APP_URL:-}" ] || { c_ylw "⚠ falta NEXT_PUBLIC_APP_URL — não ativei o cron das automações."; return 0; }
 
-  local first_time=1
-  if crontab -l 2>/dev/null | grep -q 'event-log-drain'; then first_time=0; fi
+  local url_drain="${NEXT_PUBLIC_APP_URL}/api/v1/cron/event-log-drain"
+  local marcador; marcador="$(cron_tag)"
 
-  local cron_line="* * * * * curl -fsS -H \"Authorization: Bearer ${secret}\" \"${NEXT_PUBLIC_APP_URL}/api/v1/cron/event-log-drain\" >/dev/null 2>&1"
-  # "|| true": com pipefail ativo, grep -v sem match nenhum (crontab vazio ou
-  # sem a linha ainda) sai com status 1 e derrubaria o subshell por set -e
-  # ANTES do echo do novo cron_line — neutralizamos aqui, de propósito.
-  ( crontab -l 2>/dev/null | grep -v 'event-log-drain' || true; echo "$cron_line" ) | crontab -
+  # "primeira vez" é sobre ESTA instalação, não sobre o host: com o teste antigo
+  # ('existe alguma linha de event-log-drain?'), uma instalação nova numa VPS
+  # que já roda outra se achava veterana e pulava a higienização de eventos.
+  local first_time=1
+  if crontab -l 2>/dev/null | grep -qF -e "$url_drain"; then first_time=0; fi
+
+  local cron_line="* * * * * curl -fsS -H \"Authorization: Bearer ${secret}\" \"${url_drain}\" >/dev/null 2>&1 ${marcador}"
+  ( crontab -l 2>/dev/null | cron_merge "$marcador" "$url_drain" "$cron_line" ) | crontab -
   c_grn "✓ automações ativas (cron do event-log-drain, a cada minuto)"
 
   if [ "$first_time" = 1 ]; then
@@ -271,9 +296,12 @@ setup_update_agent_cron() {
   # DIRETÓRIO CORRENTE. No cron o CWD é o home do dono do crontab — sem o cd,
   # a linha só funciona por acidente (instalação padrão em /root/deskcommcrm) e
   # morre calada a cada 5 minutos em qualquer REPO_DIR customizado ou /opt.
-  local cron_line="*/5 * * * * cd ${PROJECT_DIR} && bash hostgator-setup-kit/agent.sh >/dev/null 2>&1"
-  # "|| true": com pipefail, grep -v sem match sai 1 e derrubaria o subshell.
-  ( crontab -l 2>/dev/null | grep -v 'hostgator-setup-kit/agent.sh' || true; echo "$cron_line" ) | crontab -
+  # A assinatura legada inclui o PROJECT_DIR: é o que distingue a linha desta
+  # instalação da linha de uma vizinha, que roda o mesmo agent.sh em outra pasta.
+  local legado="cd ${PROJECT_DIR} && bash hostgator-setup-kit/agent.sh"
+  local marcador; marcador="$(cron_tag)"
+  local cron_line="*/5 * * * * ${legado} >/dev/null 2>&1 ${marcador}"
+  ( crontab -l 2>/dev/null | cron_merge "$marcador" "$legado" "$cron_line" ) | crontab -
   c_grn "✓ atualização pela tela ativa (agente a cada 5 minutos)"
 }
 

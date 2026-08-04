@@ -358,6 +358,40 @@ partial_ok "com aspa simples"           "se'nha"
 partial_ok "com aspas duplas"           'se"nha"'
 partial_ok "connection string real"     'postgresql://postgres.abc:p%40ss@aws-1-sa-east-1.pooler.supabase.com:5432/postgres'
 
+echo "cron: instalar uma instância não pode silenciar a outra"
+# Fixture = o crontab REAL de uma VPS com produção rodando (o Bearer trocado por
+# placeholder). O filtro antigo era `grep -v 'event-log-drain'`, que casava com
+# a linha de QUALQUER instalação: subir uma segunda instância na mesma máquina
+# apagava as duas linhas da primeira, em silêncio.
+CRONTAB_VIZINHO='0 8 * * * /root/trend-radar/run_full_vps.sh
+* * * * * curl -fsS -H "Authorization: Bearer SEGREDO" "https://crm.deskcomm.com.br/api/v1/cron/event-log-drain" >/dev/null 2>&1
+*/5 * * * * cd /root/Aula-Youtube/DeskcommCRM && bash hostgator-setup-kit/agent.sh >/dev/null 2>&1'
+
+cron_ok() {  # cron_ok <descrição> <esperado_no_resultado> <marcador> <legado> <linha_nova>
+  local desc="$1" espera="$2" marcador="$3" legado="$4" nova="$5" out
+  out="$(printf '%s\n' "$CRONTAB_VIZINHO" | cron_merge "$marcador" "$legado" "$nova")"
+  if printf '%s' "$out" | grep -qF -e "$espera"; then printf '  ✓ %s\n' "$desc"
+  else printf '  ✗ %s\n     sumiu do crontab: %s\n' "$desc" "$espera"; fail=1; fi
+}
+NOVO_TAG='# deskcomm:/root/instalacao-nova'
+NOVA_URL='https://crm-novo.exemplo.com.br/api/v1/cron/event-log-drain'
+cron_ok "o drain do vizinho sobrevive"  'crm.deskcomm.com.br/api/v1/cron/event-log-drain' \
+        "$NOVO_TAG" "$NOVA_URL" "* * * * * curl \"$NOVA_URL\" $NOVO_TAG"
+cron_ok "o agente do vizinho sobrevive" 'cd /root/Aula-Youtube/DeskcommCRM && bash hostgator-setup-kit/agent.sh' \
+        "$NOVO_TAG" "cd /root/instalacao-nova && bash hostgator-setup-kit/agent.sh" \
+        "*/5 * * * * cd /root/instalacao-nova && bash hostgator-setup-kit/agent.sh $NOVO_TAG"
+cron_ok "a linha alheia (trend-radar) sobrevive" '/root/trend-radar/run_full_vps.sh' \
+        "$NOVO_TAG" "$NOVA_URL" "* * * * * curl \"$NOVA_URL\" $NOVO_TAG"
+
+# Re-executar a MESMA instalação substitui a própria linha em vez de empilhar —
+# inclusive a legada, escrita antes de o marcador existir.
+reexec="$(printf '%s\n' "$CRONTAB_VIZINHO" | cron_merge '# deskcomm:/root/Aula-Youtube/DeskcommCRM' \
+          'cd /root/Aula-Youtube/DeskcommCRM && bash hostgator-setup-kit/agent.sh' \
+          '*/5 * * * * cd /root/Aula-Youtube/DeskcommCRM && bash hostgator-setup-kit/agent.sh # deskcomm:/root/Aula-Youtube/DeskcommCRM')"
+n_agent="$(printf '%s\n' "$reexec" | grep -cF 'hostgator-setup-kit/agent.sh')"
+if [ "$n_agent" = 1 ]; then printf '  ✓ re-executar a mesma instalação não duplica a linha\n'
+else printf '  ✗ re-executar duplicou: %s linhas de agent.sh\n' "$n_agent"; fail=1; fi
+
 echo
 if [ "$fail" = 0 ]; then echo "todos os validadores passaram"; else echo "FALHOU"; fi
 exit "$fail"
