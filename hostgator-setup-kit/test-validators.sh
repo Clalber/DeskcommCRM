@@ -392,6 +392,39 @@ n_agent="$(printf '%s\n' "$reexec" | grep -cF 'hostgator-setup-kit/agent.sh')"
 if [ "$n_agent" = 1 ]; then printf '  ✓ re-executar a mesma instalação não duplica a linha\n'
 else printf '  ✗ re-executar duplicou: %s linhas de agent.sh\n' "$n_agent"; fail=1; fi
 
+echo "provisionamento do Supabase: senha do banco"
+# Dois testes distintos, porque o defeito e o contrato moram em lugares
+# diferentes — e o primeiro teste que escrevi aqui era VÁCUO por não separá-los.
+#
+# (1) CALL SITE. O bug era a atribuição no escopo do script: com pipefail, o
+#     SIGPIPE do `tr` virava o status da atribuição e o `set -e` matava tudo,
+#     logo depois de a senha existir. Medido: o mesmo pipe DENTRO de uma função
+#     sobrevive (o status passa a ser o do printf final), no escopo sai 141.
+#     Então testar a função não pega a regressão que importa — quem pega é
+#     rodar o script e exigir que ele CHEGUE ao passo seguinte.
+#     O passo 3 imprime o título antes de tocar a rede, então a asserção não
+#     depende de a API responder (e o token aqui é propositalmente inválido).
+saida="$(SUPABASE_ACCESS_TOKEN=token-invalido-de-teste SUPABASE_ORG_ID=org-de-teste \
+         bash ./supabase-provision.sh "Projeto de Teste" sa-east-1 2>&1 || true)"
+if printf '%s' "$saida" | grep -q 'Criando o projeto'; then
+  printf '  ✓ o script passa da geração da senha e chega ao passo de criar\n'
+else
+  printf '  ✗ o script MORREU antes de criar o projeto (o defeito voltou)\n'
+  printf '     última linha vista: %s\n' "$(printf '%s' "$saida" | sed -E 's/\x1b\[[0-9;]*m//g' | grep -v '^$' | tail -1)"
+  fail=1
+fi
+
+# (2) CONTRATO da senha. Ela entra na connection string: um '@' ou '/' aqui
+#     parte o host no meio, e o erro só apareceria no psql.
+senha="$(bash -c 'set -euo pipefail; SUPABASE_PROVISION_LIB=1 . ./supabase-provision.sh; gen_db_pass' 2>/dev/null)"
+if [ "${#senha}" = 32 ]; then printf '  ✓ 32 caracteres\n'
+else printf '  ✗ senha com %s caracteres, esperava 32\n' "${#senha}"; fail=1; fi
+case "$senha" in
+  *[!A-Za-z0-9]*) printf '  ✗ tem caractere que quebra a connection string\n'; fail=1;;
+  '')             printf '  ✗ senha vazia\n'; fail=1;;
+  *)              printf '  ✓ só alfanuméricos (não parte a connection string)\n';;
+esac
+
 echo
 if [ "$fail" = 0 ]; then echo "todos os validadores passaram"; else echo "FALHOU"; fi
 exit "$fail"

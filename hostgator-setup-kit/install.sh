@@ -992,7 +992,9 @@ if health_body="$(wait_app_healthy 30 3)"; then
 else
   APP_SAUDAVEL=0
   c_ylw "⚠ os contêineres subiram, mas o app não respondeu que está saudável."
-  [ -n "$health_body" ] && c_dim "  última resposta: $(printf '%s' "$health_body" | head -c 200)"
+  # "|| true": mesma família do pipe que matava o supabase-provision.sh — o
+  # corpo passa de 200 bytes, o head fecha o pipe e o printf leva SIGPIPE.
+  [ -n "$health_body" ] && c_dim "  última resposta: $(printf '%s' "$health_body" | head -c 200 || true)"
 fi
 
 # ── 11. Automações (cron do drain de eventos) ───────────────────────────────
