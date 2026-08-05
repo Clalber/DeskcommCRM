@@ -160,15 +160,26 @@ async function main(): Promise<void> {
     agenteId = (data as { id: string }).id;
   }
 
-  await pool.query(`delete from ai_agent_versions where agent_id = $1`, [agenteId]);
+  // Versões antigas ficam: `ai_agent_runs` referencia a versão que rodou, e
+  // apagar isso apagaria o histórico do que já foi observado. Nova versão a cada
+  // execução (o número cresce), e o ponteiro publicado passa a apontar para ela.
+  const { rows: proxima } = await pool.query<{ n: number }>(
+    `select coalesce(max(version_number), 0) + 1 as n from ai_agent_versions where agent_id = $1`,
+    [agenteId],
+  );
+  await pool.query(
+    `update ai_agent_versions set status = 'superseded', superseded_at = now()
+      where agent_id = $1 and status = 'published'`,
+    [agenteId],
+  );
   const { rows: versao } = await pool.query<{ id: string }>(
     `insert into ai_agent_versions
        (organization_id, agent_id, version_number, system_prompt, provider, model,
         credential_id, tool_ids, channel_session_id, status, published_at,
         handoff_tool_enabled, cases_enabled, max_steps)
-     values ($1,$2,1,$3,'openai','gpt-4o',$4,$5,$6,'published',now(),true,true,12)
+     values ($1,$2,$7,$3,'openai','gpt-4o',$4,$5,$6,'published',now(),true,true,12)
      returning id`,
-    [orgId, agenteId, PROMPT, credId, TOOLS, sessaoId],
+    [orgId, agenteId, PROMPT, credId, TOOLS, sessaoId, proxima[0]!.n],
   );
   await pool.query(`update ai_agents set published_version_id = $2 where id = $1`, [
     agenteId,
@@ -176,12 +187,36 @@ async function main(): Promise<void> {
   ]);
 
   // --- contato + conversa limpos para a observação ---
+  await pool.query(`delete from messages where organization_id = $1 and channel_session_id = $2`, [
+    orgId,
+    sessaoId,
+  ]);
+  await pool.query(
+    `delete from agent_cases where organization_id = $1 and conversation_id in
+       (select id from conversations where channel_session_id = $2)`,
+    [orgId, sessaoId],
+  );
+  await pool.query(
+    `delete from lead_checkpoints where organization_id = $1 and contact_id in
+       (select id from contacts where organization_id = $1 and phone_number = $2)`,
+    [orgId, TELEFONE],
+  );
+  await pool.query(
+    `delete from conversation_notes where organization_id = $1 and conversation_id in
+       (select id from conversations where channel_session_id = $2)`,
+    [orgId, sessaoId],
+  );
   await pool.query(
     `delete from conversations where organization_id = $1 and channel_session_id = $2`,
     [orgId, sessaoId],
   );
+  // A memória durável do lead TAMBÉM entra no reset. Sem isto, uma observação
+  // herda o que a anterior aprendeu (medido: o "15% aprovado" de uma corrida
+  // reapareceu na seguinte, via `lead_notes`) — e aí não são mais duas corridas
+  // comparáveis, são uma continuação disfarçada de repetição.
   await pool.query(
-    `delete from contacts where organization_id = $1 and phone_number = $2`,
+    `delete from lead_notes where organization_id = $1 and contact_id in
+       (select id from contacts where organization_id = $1 and phone_number = $2)`,
     [orgId, TELEFONE],
   );
 

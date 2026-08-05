@@ -353,11 +353,52 @@ incluída. O modelo tinha a capacidade na mão e não a escolheu.
 numa lista paralela e depende de o modelo lembrar — e a doutrina é explícita
 contra confiar na disciplina do modelo para o que o sistema pode garantir.
 
-**Conserto proposto (não implementado — é desenho novo, não conserto da wave):**
-o próprio caminho de escalação consulta a disponibilidade e devolve ao modelo
-"há N pessoas podendo assumir agora / não há ninguém", para a promessa ao cliente
-nascer honesta sem depender de disciplina. Aí `crm_list_available_attendants`
-deixa de ser uma obrigação lembrada e vira consulta opcional.
+### ACH-03 — CONSERTADO, e provado com o mesmo modelo real
+
+`lib/escalacao/disponibilidade.ts`: os DOIS caminhos de escalação
+(`open_human_case` no turno e `applyRequestHumanHandoff`) passaram a consultar
+quem pode assumir e a devolver a expectativa **junto com a confirmação**. O
+modelo não precisa mais lembrar de perguntar — e `crm_list_available_attendants`
+deixou de ser obrigação lembrada (a `description` foi ajustada) para virar
+consulta livre de planejamento.
+
+Não duplica a REGRA: a elegibilidade continua sendo `isAttendantEligible`, a
+mesma função pura do worker de roteamento e da rota do painel. O que difere é o
+CLIENTE — a API fala supabase-js, o motor fala `pg`. Mesmo par que
+`emitLeadActivity`/`emitAgentActivityForContact` formam sobre
+`buildLeadActivityRow`.
+
+**Três frases, não duas.** A terceira é a da instalação fresca: numa VPS
+recém-instalada NINGUÉM está em `attendant_availability`, e sem esse ramo o
+agente prometeria contato para o vazio na primeira conversa de um cliente real.
+E falha de leitura não vira silêncio otimista: sem o dado, a instrução é a
+conservadora (não prometer prazo).
+
+**Prova — par com o MESMO prompt, MESMA pergunta, MESMO modelo, variando só a
+disponibilidade (confirmada por sonda ANTES de cada corrida):**
+
+| Estado da equipe | O que o agente disse ao cliente |
+|---|---|
+| **0 disponíveis** (medido: `{disponiveis:0,total:4}`) | *"Deixei isso registrado e eles vão te responder **assim que possível**."* |
+| **1 disponível** (medido: `{disponiveis:1,total:4}`) | *"Eles devem te retornar **em breve**."* |
+
+Antes do conserto, com o mesmo cenário: *"Vou providenciar para que alguém da
+equipe entre em contato"* — sem prazo e sem ter olhado se havia alguém.
+
+**A primeira tentativa deste par não valeu, e o motivo importa:** eu zerei
+`is_available` e provoquei o turno, e o agente prometeu contato "em breve".
+Quase escrevi que o modelo tinha ignorado a instrução — mas rodei a sonda antes
+de concluir e ela dizia `disponiveis: 1`. Outra sessão do time havia reativado a
+disponibilidade na org compartilhada. **O instrumento estava quebrado, não o
+modelo.** A tabela acima é da corrida refeita, com o controle rodado ANTES de
+provocar.
+
+**Limitação declarada da observação:** o `15%` que aparece nas duas respostas veio
+de `lead_notes` gravado numa observação anterior — meu reset não zerava a memória
+durável do lead (corrigido no script depois). Não afeta a variável manipulada nem
+a diferença medida (a linguagem de prazo), mas as duas corridas não são
+perfeitamente limpas. E o agente concedeu 15% quando a política do prompt dizia
+10%: é o modelo extrapolando, não a mudança — registrado por honestidade.
 
 ### ACH-04 — retentativa de turno perde as tools em silêncio
 

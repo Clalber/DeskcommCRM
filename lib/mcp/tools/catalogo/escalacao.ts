@@ -22,8 +22,9 @@ export const TOOLS_ESCALACAO = declararTools([
     description:
       "Lista os atendentes da org com disponibilidade, capacidade, carga atual e se podem " +
       "receber uma conversa AGORA (mesmo predicado do worker de roteamento: disponível ∧ com " +
-      "folga ∧ dentro do horário). Use ANTES de escalar: sem ninguém elegível a conversa cai " +
-      "numa fila que ninguém vai puxar. Não devolve e-mail nem telefone.",
+      "folga ∧ dentro do horário). Consulta livre: o caminho de escalação JÁ devolve a " +
+      "expectativa sozinho, então isto serve para planejar, não para cumprir obrigação. " +
+      "Não devolve e-mail nem telefone.",
     rotulo: "Ver quem pode assumir agora",
     explicacao:
       "Mostra quais pessoas da equipe estão em atendimento neste momento, quantas conversas cada uma já tem e quem ainda tem espaço para receber mais uma.",
