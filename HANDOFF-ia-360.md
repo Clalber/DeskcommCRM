@@ -216,9 +216,16 @@ correção muda a ação.
 
 Ela atribuiu a um `create index` sem `if not exists` **no apêndice**
 (`idx_crm_leads_org_expected_close_overdue`) e sugeriu um forward-fix de uma linha. Medido: o
-índice está na **linha 2410** e o apêndice começa na **3987** — é do **dump**. O dump é gerado por
-`pg_dump` e **nenhum** `create` dele tem `if not exists`, então ao re-aplicar num banco existente
-todos reclamam. É por isso que o `update.sh` roda sem `ON_ERROR_STOP`: é desenho, não descuido. O
+índice está na **linha 2410** e o apêndice começa na **3987** — é do **dump**, e tem 111 irmãos.
+
+> **Refinamento do Arquiteto, aceito e remedido.** Eu havia escrito que "nenhum `create` do dump
+> tem `if not exists`". Impreciso: no dump, as **38 tabelas TÊM** guarda; quem não tem são os
+> **índices**. Contagem: 95 `CREATE INDEX` + 17 `CREATE UNIQUE INDEX` = **112 sem guarda**.
+>
+> Minha primeira contagem deu 95 e a dele 112 — **discordância de régua, não de fato**: eu
+> filtrava só `^create index` e deixava os `unique` de fora. Confrontar o total foi o que expôs a
+> diferença. O piso esperado de `ERROR` no update vem desses 112, então uma captura que devolvesse
+> muito abaixo disso seria sinal de instrumento cego, não de problema pequeno. É por isso que o `update.sh` roda sem `ON_ERROR_STOP`: é desenho, não descuido. O
 forward-fix de uma linha faria o erro daquela linha sumir e levaria o próximo a concluir que
 resolveu.
 
