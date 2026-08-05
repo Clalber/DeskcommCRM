@@ -325,19 +325,23 @@ decidiu em `lead_checkpoints` — que é de onde `latestCheckpoint` → `ritualB
 já lê na abertura de TODO turno. Nenhum leitor novo no motor: uma superfície
 paralela que só o autor sabe consultar seria ilha.
 
-**Evidência observada em `c0db6aa`:**
+**Evidência observada em `120b27f` (árvore limpa):**
 
 ```
 pnpm typecheck  → limpo
 pnpm lint       → 0 errors, 170 warnings (mesmo baseline da Wave 0)
-pnpm test:unit  → Test Files 226 passed · Tests 1993 passed
-pnpm test:db    → Test Files  63 passed · Tests 429 passed | 1 skipped
-tests/unit/catalogo-tools-leigo-friendly.test.ts → 72 passed (era 53 na Wave 0)
+pnpm test:unit  → Test Files 227 passed · Tests 2001 passed
+pnpm test:db    → Test Files  63 passed · Tests 430 passed | 1 skipped
+E2E             → 1 passed (tests/e2e/escalacao-ciclo.spec.ts)
 ```
 
-Testes novos: `tests/unit/escalacao-retomada.test.ts` (14),
-`tests/unit/mcp-escalacao-tools.test.ts` (16),
-`tests/invariants/escalacao-ciclo-humano.test.ts` (15).
+Testes novos (110 asserções nos 4 arquivos da wave):
+`tests/unit/escalacao-retomada.test.ts` (14),
+`tests/unit/mcp-escalacao-tools.test.ts` (20),
+`tests/unit/attendants-availability-route.test.ts` (4),
+`tests/invariants/escalacao-ciclo-humano.test.ts` (16),
+`tests/e2e/escalacao-ciclo.spec.ts` (1 jornada completa).
+O gate do pilar 3 (`catalogo-tools-leigo-friendly`) foi de **53 para 73**.
 
 **Sabotagem — 8 defeitos aplicados de propósito, cada um reprovou no teste certo:**
 
@@ -529,16 +533,54 @@ pode virar cancelamento em dobro com o cron do motor. Medido em `c0db6aa` por
 leitura dos dois emissores (`orchestrator.ts` emite; `human-handoff.ts` não) e
 pelos consumidores em `reactivity.handler.ts`.
 
-### ACH-02 — `tests/invariants/followup-reactivity.test.ts` é intermitente
+### ACH-02 — `tests/invariants/followup-reactivity.test.ts` é intermitente na suíte completa
 
-Na suíte completa ele falhou 2 de 5 corridas medidas em `37abfc0`+ (sempre no
-mesmo caso: `marca next_eval_at=now + wake marker`, `expected +0 to be 1`);
-rodado **isolado**, passou 3 de 3. O caso agenda `next_eval_at` com
-`Date.now() - 1_000` (margem de 1 segundo, relógio do host) e depois cobra o
-tick, que compara com o relógio do container.
+**O que se vê:** sempre o mesmo caso (`marca next_eval_at=now + wake marker`),
+sempre `AssertionError: expected +0 to be 1` em `tick1.scheduled`.
 
-**Não é meu arquivo** (`git status` não o toca) e a suspeita de autoria está
-sendo medida contra a base `99cd0fc` — o resultado dessa medição entra aqui.
+**O mecanismo, lido no código (não inferido do sintoma):**
+`fn_claim_due_followup_enrollments(p_limit, p_lease)` reclama enrollments
+**globalmente** — sem filtro de organização —, `order by next_eval_at limit
+p_limit`, e marca `claimed_until = now() + 120s`. O teste chama o tick com
+`limit: 5` e cobra `scheduled === 1`. Num banco compartilhado, bastam **5**
+enrollments vencidos e não-reclamados mais antigos, em qualquer organização,
+para encher o lote e deixar o do teste de fora. E `runFollowupTick` engole
+qualquer erro do claim (`catch { return summary }`), então o sintoma é sempre
+`0`, nunca uma exceção.
+
+**Medições (cada uma é uma corrida completa de `pnpm test:db`):**
+
+| Configuração | Resultado |
+|---|---|
+| base `99cd0fc`, sem alteração | **3 de 3 verdes** |
+| base + arquivo que só gasta 45s antes (nada no banco) | **2 de 2 verdes** |
+| base + arquivo que só gasta 150s (acima do lease de 120s) | **2 de 2 verdes** |
+| base, só `followup-engine` + `followup-reactivity` | **4 de 4 verdes** |
+| branch da W3, suíte completa, SHAs intermediários | **3 verdes, 2 vermelhas** (8 corridas ao todo) |
+| branch da W3, suíte completa, SHA final `120b27f` | **3 de 3 verdes** |
+| `followup-reactivity` sozinho, na branch da W3 | **3 de 3 verdes** |
+
+**O que isso permite e não permite afirmar.** A base ficou verde em 11 corridas e
+a branch não: o gatilho está do meu lado, e eu **não consegui isolá-lo**. Descartei
+tempo puro (45s e 150s), a família `followup-*` sozinha e exaustão de conexão
+(zero ocorrência de `too many clients` no log da corrida vermelha). Nenhum arquivo
+meu escreve em `followup_enrollments` — conferido por leitura.
+
+**Três verdes no SHA final NÃO fecham o assunto**, e é importante que ninguém leia
+assim: num intermitente de ~25%, três corridas limpas saem por acaso com quase 40%
+de chance. Entre os vermelhos e agora eu isolei as fixtures do meu invariante (ele
+usava as linhas compartilhadas do `seedGov`) — pode ter sido isso, e pode não ter
+sido: **um dos dois vermelhos aconteceu DEPOIS da isolação**. Fica declarado como
+aberto.
+
+**Não editei o arquivo**: ele é da superfície de follow-up (Wave 2 `reter`), e a
+correção certa mexe na semântica do tick. O conserto que proponho, para quem
+tiver a caneta ali: antes de cada `runFollowupTick` do teste, estacionar os
+enrollments de OUTRAS organizações (`update followup_enrollments set
+claimed_until = now() + interval '1 hour' where organization_id <> <org do
+teste>`). Isso faz o teste medir o que ele quer dizer — "o tick reclama o MEU
+enrollment" — sem afrouxar nada, e vale para todos os ticks do arquivo, não só
+para o que já foi visto falhar.
 
 ### BUG-02 — a atividade da IA morria na FK quando o agente da tela escrevia
 - **Achado em:** `99cd0fc`, por DevVivo, ao ligar a emissão de atividade nas capacidades novas.
