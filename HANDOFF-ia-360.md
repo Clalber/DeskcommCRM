@@ -294,6 +294,92 @@ gitignored por convenção do repo).
 
 ---
 
+## Observação com agente REAL — o que os testes não respondiam
+
+O E2E prova o encanamento. Ele não responde se a superfície é **boa de usar**.
+Para isso rodei um agente publicado de verdade, com as 6 capacidades ligadas,
+atendendo pelo caminho de produção (webhook → `event_log` → worker → turno).
+Receita em `scripts/observar-escalacao-turno-real.ts`; isolada numa
+`channel_session` própria (`loadPublishedAgentConfig` filtra por sessão, então
+nenhum agente das outras waves foi afetado).
+
+**Limitação declarada:** a chave Anthropic desta máquina está **sem crédito**
+(medido direto no provedor: `400 invalid_request_error`, "credit balance is too
+low"), então a observação rodou em **OpenAI/gpt-4o**. Não é equivalência — escolha
+de tool varia entre modelos. Mede se a superfície é usável por um modelo
+competente, não o comportamento do modelo de produção.
+
+### O que o agente fez, turno a turno
+
+**Turno 1** — cliente: *"Quero fechar 200 caixas médias. Consigo 20% de desconto?"*
+(a política do prompt permite até 10%). O agente abriu o chamado
+(`Pedido de desconto de 20%`, bloqueio: *"Não posso aprovar descontos acima de 10%
+sem intervenção humana"*) e respondeu: *"Vou providenciar para que alguém da equipe
+entre em contato com você para tratar desse desconto."*
+
+**Ação do humano** (funções reais): resolveu o chamado com *"Aprovei 15% para as
+200 caixas medias, com entrega em 7 dias uteis. Nao passo de 15%."*, deixou nota
+interna, e devolveu o atendimento.
+
+**Turno 2** — cliente: *"E aí, conseguiram ver o desconto?"*. O agente respondeu:
+
+> *"A equipe revisou seu pedido e conseguiu aprovar um desconto de **15%** para as
+> **200 caixas médias**. Infelizmente, não conseguimos chegar a 20%."*
+
+**O critério da wave passou com modelo real**: o agente retomou citando o valor
+exato, o item exato e respeitando o teto que a pessoa fixou — sem pedir nada de
+novo e sem contradizer. E **sem chamar nenhuma tool para isso**: o contexto chegou
+pelo checkpoint, que é exatamente o desenho. Estado final da conversa medido:
+`force_human=false · silêncio=null · assignee_kind=ai · status=ai_handling`.
+
+### ACH-03 — a capacidade existe, está ligada, e o agente não a usa
+
+Em **2 turnos reais, zero das 6 capacidades novas foram chamadas** (medido em
+`api_audit_log`, filtrando por `actor_id` do meu agente — a org é compartilhada
+com outras waves, então o filtro é obrigatório).
+
+Para as de leitura isso é **bom sinal**: o contexto já chegava pronto, o agente
+não precisou gastar turno perguntando. Mas `crm_list_available_attendants` era
+justamente a que deveria ter sido usada, e não foi: **o agente escalou sem saber
+se havia alguém para receber**, e prometeu ao cliente que "alguém entra em
+contato" — sem prazo e sem checar.
+
+**Não é instrumento quebrado**, e isso foi verificado antes de concluir: o log do
+turno lista as 8 tools montadas pelo nome, `crm_list_available_attendants`
+incluída. O modelo tinha a capacidade na mão e não a escolheu.
+
+**Diagnóstico:** o agente escala pela tool **nativa do motor**
+(`open_human_case`), que não pede nem sugere a checagem. A minha capacidade vive
+numa lista paralela e depende de o modelo lembrar — e a doutrina é explícita
+contra confiar na disciplina do modelo para o que o sistema pode garantir.
+
+**Conserto proposto (não implementado — é desenho novo, não conserto da wave):**
+o próprio caminho de escalação consulta a disponibilidade e devolve ao modelo
+"há N pessoas podendo assumir agora / não há ninguém", para a promessa ao cliente
+nascer honesta sem depender de disciplina. Aí `crm_list_available_attendants`
+deixa de ser uma obrigação lembrada e vira consulta opcional.
+
+### ACH-04 — retentativa de turno perde as tools em silêncio
+
+No primeiro experimento (com a chave sem crédito), o job falhou e retentou. Da
+segunda tentativa em diante o log passou a dizer:
+
+```
+"tools MCP da tela não montadas — turno segue sem elas"
+error: ephemeral_token_insert_failed: duplicate key value violates unique
+constraint "api_tokens_organization_id_prefix_key"
+```
+
+O token efêmero mintado por turno colide no `(organization_id, prefix)` quando a
+retentativa é rápida, e o turno **segue sem capacidade nenhuma**, só logando.
+Ou seja: um turno que falhe uma vez por qualquer motivo (limite de taxa, blip de
+rede) degrada silenciosamente para um agente sem mãos. É a mesma família de
+defeito que o épico existe para matar — capacidade anunciada, ausente na
+execução — e está no caminho que serve as minhas 6. Fora do escopo desta wave
+(é o mint do token, `lib/ai/runtime/mcp_token.ts`), reportado aqui.
+
+---
+
 ## Achados reportados, NÃO consertados (fora do escopo desta wave)
 
 ### ACH-01 — o mesmo caminho também não emite `ai.handoff_triggered` no `event_log`
