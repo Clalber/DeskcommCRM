@@ -127,3 +127,22 @@ export function vagasRestantes(selecionadas: ReadonlyArray<string>): number {
 export function excedeuTeto(selecionadas: ReadonlyArray<string>): boolean {
   return selecionadas.length > TETO_TOOLS_POR_AGENTE;
 }
+
+/**
+ * O texto que o humano lê embaixo do nome da jornada.
+ *
+ * Vive aqui, e não inline no JSX, por um motivo concreto: o caso "pacote sem
+ * capacidade nenhuma" foi coberto por E2E enquanto o pacote `reter` estava
+ * vazio, e deixou de ser alcançável pela tela quando o épico o preencheu. Um
+ * E2E que depende de catálogo vazio não descreve instalação real — mas o
+ * caminho continua existindo no componente, e some da cobertura se ninguém o
+ * segurar aqui.
+ */
+export function textoDaContagem(
+  totalDoPacote: number,
+  ligadas: number,
+): string {
+  if (totalDoPacote === 0) return "Nenhuma capacidade disponível ainda para esta jornada.";
+  const palavra = totalDoPacote === 1 ? "capacidade" : "capacidades";
+  return `${ligadas} de ${totalDoPacote} ${palavra} ligadas`;
+}

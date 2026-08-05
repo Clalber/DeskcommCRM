@@ -169,9 +169,20 @@ test.describe("Configurar o que o agente pode fazer", () => {
     expect(caixa.esquerda).toBeGreaterThanOrEqual(0);
     expect(caixa.direita).toBeLessThanOrEqual(larguraDaJanela);
 
-    // Pacote sem capacidade nenhuma conta isso, em vez de fingir um switch útil.
+    // A contagem diz quantas das capacidades do pacote estão ligadas.
+    //
+    // ⚠️ Esta asserção JÁ COBROU `/Nenhuma capacidade disponível ainda/`, e estava
+    // certa quando foi escrita: a W1 rodou com o pacote `reter` ainda VAZIO,
+    // antes de a W2 entregar. O épico preencheu os seis pacotes e a frase virou
+    // falsa — o teste passou a travar um estado transitório em vez de uma
+    // propriedade. A tela diz "0 de 6 capacidades ligadas", que é o correto.
+    //
+    // O caminho "pacote vazio" não some da cobertura: ele é do COMPONENTE, e
+    // vive em tests/unit/selecao-por-pacote.test.ts (função textoDaContagem) — aqui
+    // não há mais como alcançá-lo sem esvaziar o catálogo, e um E2E que depende
+    // de catálogo vazio não descreve nenhuma instalação real.
     await expect(page.getByTestId("contagem-reter")).toContainText(
-      /Nenhuma capacidade disponível ainda/,
+      /\d+ de \d+ capacidades? ligadas?/,
     );
 
     await page

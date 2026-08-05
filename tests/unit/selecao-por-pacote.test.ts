@@ -25,6 +25,7 @@ import {
   ligarPacote,
   vagasRestantes,
   type CapacidadeSelecionavel,
+  textoDaContagem,
 } from "@/lib/mcp/tools/selecao-por-pacote";
 
 const TODOS: ReadonlyArray<ToolBundle> = PACOTES.map((p) => p.id);
@@ -181,5 +182,24 @@ describe("o catálogo real — a fixture prova a função, isto prova o produto"
         `pacote "${pacote}" liga ${ligadas.length} capacidades e o teto é ${TETO_TOOLS_POR_AGENTE}`,
       ).toBeLessThanOrEqual(TETO_TOOLS_POR_AGENTE);
     }
+  });
+});
+
+describe("texto da contagem — o caminho que saiu do alcance do E2E", () => {
+  it("pacote sem capacidade nenhuma diz isso, em vez de fingir um switch útil", () => {
+    // Este caso ERA coberto por E2E, enquanto o pacote `reter` estava vazio.
+    // Deixou de ser alcançável pela tela quando o épico preencheu os seis
+    // pacotes — e sem este teste sumiria da cobertura junto com a asserção que
+    // foi removida de lá.
+    expect(textoDaContagem(0, 0)).toBe("Nenhuma capacidade disponível ainda para esta jornada.");
+  });
+
+  it("com capacidades, conta quantas estão ligadas", () => {
+    expect(textoDaContagem(6, 0)).toBe("0 de 6 capacidades ligadas");
+    expect(textoDaContagem(6, 3)).toBe("3 de 6 capacidades ligadas");
+  });
+
+  it("uma capacidade só não vira 'capacidades'", () => {
+    expect(textoDaContagem(1, 1)).toBe("1 de 1 capacidade ligadas");
   });
 });

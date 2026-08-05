@@ -34,6 +34,7 @@ import {
   desligarPacote,
   estadoDoPacote,
   ligarPacote,
+  textoDaContagem,
   vagasRestantes,
   type CapacidadeSelecionavel,
 } from "@/lib/mcp/tools/selecao-por-pacote";
@@ -275,9 +276,7 @@ export function ToolPicker({ value, onChange, disabled }: Props) {
                   </div>
                   <p className="text-xs text-muted-foreground">{pacote.explicacao}</p>
                   <p className="text-xs text-muted-foreground" data-testid={`contagem-${pacote.id}`}>
-                    {vazio
-                      ? "Nenhuma capacidade disponível ainda para esta jornada."
-                      : `${ligadas} de ${total} ${total === 1 ? "capacidade" : "capacidades"} ligadas`}
+                    {textoDaContagem(total, ligadas)}
                   </p>
                 </div>
               </div>
