@@ -8936,7 +8936,7 @@ alter table public.agent_case_events
     'agent_noted'
   ));
 
--- ---- catálogo de modelos atualizado (migration 0101) ----
+-- ---- catálogo de modelos atualizado (migration 0104) ----
 -- O catálogo curado estava duas gerações atrás e o kit self-host aplica SÓ o
 -- baseline: sem este apêndice, quem instala numa VPS continua escolhendo entre
 -- modelos velhos e pagando mais caro por pior. Ids verificados no provedor
