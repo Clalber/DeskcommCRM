@@ -7,6 +7,10 @@
  * produto ela foi excluída — o número já foi deslogado no transporte e a
  * credencial do canal oficial já foi revogada.
  *
+ * O caminho de VOLTA (reconectar o mesmo canal) é um só e mora em
+ * `./reactivate`: quem ressuscita a linha grava a coluna por lá, para o estado
+ * final ser "ativo" e não "ativo pela metade".
+ *
  * ─── Por que existe um fallback, e por que ele não é paliativo ───────────────
  * Neste projeto o código chega ao clone/produção por deploy, e aplicar a
  * migration é passo SEPARADO e manual — já aconteceu de a `main` subir sem ela
@@ -25,8 +29,23 @@
 /** Coluna que separa canal vivo de canal excluído pelo usuário. */
 export const ARCHIVED_AT = "archived_at";
 
-/** SQLSTATE do Postgres para "coluna não existe". O PostgREST o repassa em `error.code`. */
-const UNDEFINED_COLUMN = "42703";
+/**
+ * "Coluna não existe" chega em `error.code` de DUAS formas, pela mesma causa:
+ *
+ *  - `42703` é o SQLSTATE do **Postgres**, e é o que volta quando a coluna
+ *    aparece num FILTRO ou num `select`: o PostgREST repassa o nome ao SQL que
+ *    gera e quem recusa é o banco (por isso a mensagem sai com o alias interno
+ *    dele — `column channel_sessions_1.archived_at does not exist`).
+ *  - `PGRST204` é do **PostgREST**, que resolve as colunas do CORPO de uma
+ *    escrita contra o schema cache antes de montar o UPDATE. O caminho de
+ *    desarquivamento (`./reactivate`) grava `archived_at`, então é por aqui que
+ *    ele passa num banco sem a migration.
+ *
+ * As duas levam ao MESMO desfecho — repetir sem a coluna —, então aceitar as
+ * duas não afrouxa nada: o que mantém a detecção estreita é a mensagem NOMEAR a
+ * coluna, não o código.
+ */
+const COLUNA_AUSENTE = new Set(["42703", "PGRST204"]);
 
 export interface DbErrorLike {
   code?: string | null;
@@ -36,7 +55,7 @@ export interface DbErrorLike {
 /** O erro é "a migration 0100 não rodou neste banco" — e não um erro de verdade. */
 export function isArchivedColumnMissing(error: DbErrorLike | null | undefined): boolean {
   if (!error) return false;
-  return error.code === UNDEFINED_COLUMN && (error.message ?? "").includes(ARCHIVED_AT);
+  return COLUNA_AUSENTE.has(error.code ?? "") && (error.message ?? "").includes(ARCHIVED_AT);
 }
 
 /**

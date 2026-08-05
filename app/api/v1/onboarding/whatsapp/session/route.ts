@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { ok, fail } from "@/lib/api/wrappers";
 import { loadAuthUser, resolveActiveOrg } from "@/lib/auth/server";
+import { ARCHIVED_AT, queryTolerantToMissingArchived } from "@/lib/channels/archived";
+import { reactivateChannelSession } from "@/lib/channels/reactivate";
 import { getWahaClient } from "@/lib/waha/client";
 import { createClient } from "@/lib/supabase/server";
 
@@ -25,15 +27,52 @@ function defaultSessionName(orgId: string): string {
   return `org_${orgId.slice(0, 8)}`;
 }
 
+/**
+ * A linha de `channel_sessions` deste onboarding — criando, reutilizando ou
+ * RESSUSCITANDO.
+ *
+ * O nome da sessão aqui é derivado do org (`org_<8>`), então a linha do
+ * onboarding é sempre a MESMA. Quem excluiu o número e voltou para reconectar
+ * cai exatamente nela, arquivada: devolvê-la como está subiria a sessão no
+ * transporte e deixaria um canal que recebe e não entrega nada (webhook, ingest
+ * e envio filtram `archived_at`) — e recusá-la fecharia o onboarding para sempre,
+ * porque o nome nunca muda. Retomar o pareamento é ressuscitar.
+ *
+ * `phone_number` volta a NULL de propósito: o número só se sabe depois do
+ * escaneamento, pode ser outro aparelho, e o health check só preenche o campo
+ * quando ele está vazio — manter o antigo o congelaria errado na tela para
+ * sempre. De quebra, a linha para de disputar o par (org, número) da trava da
+ * 0106 enquanto ninguém escaneou.
+ */
 async function ensureChannelSession(orgId: string, sessionName: string): Promise<string> {
   const supabase = await createClient();
-  const { data: existing } = await supabase
-    .from("channel_sessions")
-    .select("id")
-    .eq("organization_id", orgId)
-    .eq("waha_session_name", sessionName)
-    .maybeSingle();
-  if (existing?.id) return existing.id as string;
+  const buscar = (colunas: string) =>
+    supabase
+      .from("channel_sessions")
+      .select(colunas)
+      .eq("organization_id", orgId)
+      .eq("waha_session_name", sessionName)
+      .maybeSingle();
+  const { data: existingRaw } = await queryTolerantToMissingArchived(
+    () => buscar(`id, ${ARCHIVED_AT}`),
+    () => buscar("id"),
+  );
+  const existing = existingRaw as { id: string; archived_at?: string | null } | null;
+  if (existing?.id) {
+    if (!existing.archived_at) return existing.id;
+    const { error: reErr } = await reactivateChannelSession(
+      supabase,
+      { organizationId: orgId, channelSessionId: existing.id },
+      {
+        status: "STARTING",
+        last_status_change_at: new Date().toISOString(),
+        consecutive_health_fails: 0,
+        phone_number: null,
+      },
+    );
+    if (reErr) throw new Error(`channel_session_reactivate_failed: ${reErr.message}`);
+    return existing.id;
+  }
   const { data: created, error } = await supabase
     .from("channel_sessions")
     .insert({

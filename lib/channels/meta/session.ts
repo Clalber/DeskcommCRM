@@ -63,22 +63,31 @@ export async function metaSessionByWebhookToken(
 }
 
 /**
- * A sessão oficial da organização (se houver). Usada pela tela de templates para
- * saber QUAL WABA espelhar — e para dizer ao operador o que fazer quando não há
- * nenhuma, em vez de mostrar uma tabela vazia sem explicação.
+ * A sessão oficial ATIVA da organização (se houver). Usada pela tela de templates
+ * para saber QUAL WABA espelhar — e para dizer ao operador o que fazer quando não
+ * há nenhuma, em vez de mostrar uma tabela vazia sem explicação.
+ *
+ * Arquivada não conta: sem o filtro, a tela seguia nomeando a WABA de um canal
+ * que o operador excluiu e o botão de sincronizar continuava puxando templates
+ * dela — o token do env não foi revogado junto com o da linha, então a chamada
+ * ia mesmo. "Excluído" que continua operando é a promessa quebrada.
  */
 export async function metaSessionForOrg(
   organizationId: string,
 ): Promise<MetaWebhookSession | null> {
   const admin = createAdminClient();
-  const { data } = await admin
-    .from("channel_sessions")
-    .select("id, organization_id, meta_waba_id")
-    .eq("organization_id", organizationId)
-    .eq("provider", CHANNEL_PROVIDER_META)
-    .order("created_at", { ascending: true })
-    .limit(1)
-    .maybeSingle();
+  const base = () =>
+    admin
+      .from("channel_sessions")
+      .select("id, organization_id, meta_waba_id")
+      .eq("organization_id", organizationId)
+      .eq("provider", CHANNEL_PROVIDER_META)
+      .order("created_at", { ascending: true })
+      .limit(1);
+  const { data } = await queryTolerantToMissingArchived(
+    () => base().is(ARCHIVED_AT, null).maybeSingle(),
+    () => base().maybeSingle(),
+  );
 
   if (!data) return null;
   return {

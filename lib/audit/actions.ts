@@ -134,6 +134,10 @@ export type AuditAction =
   // A auditoria precisa distinguir o que sumiu do que continua no banco.
   | "channel.deleted"
   | "channel.archived"
+  // Contraparte de `archived`: a linha escondida voltou à vida (reconexão do
+  // canal oficial, retomada do pareamento). Sem ela o histórico registra a
+  // exclusão e cala sobre o canal ter voltado a receber e enviar.
+  | "channel.reactivated"
   | "authz.denied"
   | "team.role_changed"
   | "leads.bulk_assigned"

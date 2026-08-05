@@ -17,6 +17,13 @@
  * reescaneamento a cada queda passageira. A UI só oferece o `force` depois que
  * o modo suave falhou.
  *
+ * Canal EXCLUÍDO (arquivado) é recusado, não reconectado: subir a sessão de novo
+ * no transporte devolveria um canal que recebe e não entrega nada — o webhook, o
+ * ingest e o envio filtram `archived_at` e descartariam tudo. Vivo e surdo é pior
+ * que desligado. E não há o que "reconectar": a exclusão deslogou o aparelho e
+ * apagou a sessão no transporte, então o caminho de volta é conectar um número
+ * (que também é o que a mensagem de erro diz).
+ *
  * Admin only. organization_id vem da sessão — nunca do path/body.
  */
 import { randomUUID } from "node:crypto";
@@ -26,6 +33,7 @@ import { z } from "zod";
 import { audit } from "@/lib/audit";
 import { ok, fail } from "@/lib/api/wrappers";
 import { requireRole } from "@/lib/auth/require-role";
+import { ARCHIVED_AT, queryTolerantToMissingArchived } from "@/lib/channels/archived";
 import { createClient } from "@/lib/supabase/server";
 import { getWahaClient, wahaFriendlyError } from "@/lib/waha/client";
 
@@ -58,13 +66,34 @@ export async function POST(
   const { user, org: activeOrg } = authz;
 
   const supabase = await createClient();
-  const { data: session } = await supabase
-    .from("channel_sessions")
-    .select("id, waha_session_name")
-    .eq("organization_id", activeOrg.orgId)
-    .eq("id", id)
-    .maybeSingle();
+  const buscar = (colunas: string) =>
+    supabase
+      .from("channel_sessions")
+      .select(colunas)
+      .eq("organization_id", activeOrg.orgId)
+      .eq("id", id)
+      .maybeSingle();
+  // Tolerante à coluna ausente: num clone sem a migration 0100 nada está
+  // arquivado, e exigir a coluna aqui derrubaria a reconexão inteira — que é o
+  // socorro de quem está com o número fora do ar.
+  const { data: sessionRaw } = await queryTolerantToMissingArchived(
+    () => buscar(`id, waha_session_name, ${ARCHIVED_AT}`),
+    () => buscar("id, waha_session_name"),
+  );
+  const session = sessionRaw as {
+    id: string;
+    waha_session_name: string;
+    archived_at?: string | null;
+  } | null;
   if (!session) return fail("not_found", "Canal não encontrado.", 404, { requestId });
+  if (session.archived_at) {
+    return fail(
+      "channel_archived",
+      "Este número foi excluído da Central de Conexões — reconectar não o traz de volta. Conecte um número para voltar a atender.",
+      409,
+      { requestId },
+    );
+  }
 
   const waha = getWahaClient();
   if (!waha) {
