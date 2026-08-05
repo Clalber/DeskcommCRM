@@ -252,27 +252,46 @@ para a próxima pessoa não repetir.
 |---|---|
 | `npx tsc --noEmit` | exit 0 |
 | `npx eslint .` | **0 errors, 170 warnings** — exatamente a linha de base do épico (`687716a`), zero avisos novos |
-| `npx vitest run` (unit) | **226 arquivos, 2014 testes passando** |
+| `npx vitest run` (unit) | 226 arquivos, 2014 testes — ⚠️ **medido ANTES da última edição deste commit**, ver "O quarto gate" abaixo; o número válido para o estado final é o da tabela pós-merge |
 | `pnpm test:db` — baseline | `install ok` (`ON_ERROR_STOP=1`) e `update ok` (re-aplicação), nas duas rodadas |
-| `pnpm test:db` — invariantes | 412 passam; **1 vermelho instável**, ver abaixo |
+| `pnpm test:db` — invariantes | 412 passam; **1 vermelho por rodada**, em teste que muda de lugar — causa em apuração pela W3, ver abaixo |
 | E2E em tela | `1 passed`, com evidência visual e sabotagem confirmada |
 
-### A medição que não fecha limpa, dita como ela é
+### A medição que não fecha limpa — e a conclusão que eu RETIREI
 
-**`pnpm test:db` tem 1 invariante vermelho — e ele NÃO é desta wave.** A prova é o par de
-rodadas, não a minha opinião:
+**O que medi, e continua valendo:** duas rodadas completas de `pnpm test:db` no meu SHA, dois
+vermelhos, em testes **diferentes** da família follow-up.
 
 | rodada | porta | teste que falhou |
 |---|---|---|
 | 1ª | `TEST_DB_PORT=54371` | `tests/invariants/followup-turn-bridge.test.ts` (`expected 2 to be 1`) |
 | 2ª | `TEST_DB_PORT=54373` | `tests/invariants/followup-reactivity.test.ts` (`expected +0 to be 1`) |
 
-**Testes diferentes, mesmo SHA.** Falha que muda de lugar entre rodadas é instabilidade da suíte,
-não regressão determinística. `followup-turn-bridge` **passa isolado** no mesmo SHA (`5 passed`,
-exit 0), nenhum arquivo de follow-up foi tocado nesta branch, e os dois logs trazem erros de
-outros invariantes logo antes — assinatura de estado vazando entre testes que compartilham o
-mesmo Postgres. **O Maestro assumiu a caracterização** (rodadas de controle na base); não gastei
-mais tempo nisso a pedido dele.
+`followup-turn-bridge` passa isolado no mesmo SHA (`5 passed`, exit 0). Nenhum arquivo de
+follow-up foi tocado nesta branch (`git diff --name-only 99cd0fc..HEAD | grep -i followup` →
+vazio).
+
+**O que eu CONCLUÍ daí, e estava além do dado: "não é desta wave".** Retirado.
+
+O que sustentava a conclusão era a ausência de regressão determinística mais o fato de eu não ter
+tocado follow-up. Nenhum dos dois exclui esta branch: o mecanismo que a W2 encontrou — dois
+relógios diferentes, `node-handlers` em 201 contra o baseline em 6497 — explica **sensibilidade a
+tempo de execução**, e qualquer mudança que altere o tempo da suíte pode disparar isso sem tocar
+uma linha de follow-up.
+
+E o número decisivo é o que eu **não** tinha: **zero corridas de controle na base**. A W3 mediu
+com régua melhor — base **verde em 11 corridas**, branch dela **6 falhas em 8**, com o teste
+identificado. Contra 11 corridas limpas, meu "2 de 2" deixa de ser evidência de tronco doente e
+vira evidência de que **branches disparam**, inclusive a minha.
+
+**A lição, que é a mesma que o Maestro registrou sobre si:** usei uma amostra pequena para dizer
+"não dá para concluir" quando a conclusão me era desfavorável, e usei a MESMA amostra para
+concluir quando ela me era favorável. O erro não é a amostra — é ela mudar de força conforme o
+lado que sustenta.
+
+**Item com dono:** a W3 assumiu, e declarou que 3 corridas verdes no SHA final dela não fecham o
+assunto. Minha contribuição é o par medido acima, com os testes nomeados, mais as corridas
+adicionais neste SHA (reportadas ao Maestro fora deste documento, para não travar a wave).
 
 ---
 
