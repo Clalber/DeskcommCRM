@@ -192,12 +192,27 @@ export async function resolveAlvoDoRetorno(
       .eq("id", ref.leadId)
       .maybeSingle();
     if (error) throw new Error(`alvo_query_failed: ${error.message}`);
-    if (!data) return { ok: false, codigo: "negocio_nao_encontrado" };
-    const contactId = (data as { contact_id: string | null }).contact_id;
-    // Sem contato não há para quem voltar a falar: o retorno nasceria com um
-    // horário e nenhum destinatário, e dispararia um turno que não tem canal.
-    if (!contactId) return { ok: false, codigo: "negocio_sem_contato" };
-    return { ok: true, alvo: { contactId, leadId: ref.leadId } };
+    if (data) {
+      const contactId = (data as { contact_id: string | null }).contact_id;
+      // Sem contato não há para quem voltar a falar: o retorno nasceria com um
+      // horário e nenhum destinatário, e dispararia um turno que não tem canal.
+      if (!contactId) return { ok: false, codigo: "negocio_sem_contato" };
+      return { ok: true, alvo: { contactId, leadId: ref.leadId } };
+    }
+    // ⚠️ NÃO EXISTIR NÃO PODE MATAR A DEMANDA QUANDO O CLIENTE VEIO JUNTO.
+    //
+    // Achado num turno de modelo REAL: com `lead_id` opcional na assinatura, o
+    // modelo preencheu `00000000-0000-0000-0000-000000000000` — o placeholder que
+    // ele usa para "não tenho este campo" — E mandou um `contact_id` correto,
+    // vindo da busca que ele acabara de fazer. A precedência antiga deixava o
+    // campo-lixo envenenar a chamada boa: eu recusava com "confira a capacidade
+    // de listar oportunidades" tendo em mãos tudo o que precisava.
+    //
+    // Só cai aqui quando o id NÃO RESOLVE NADA nesta organização — não há negócio
+    // certo a preservar, então usar o cliente é estritamente melhor que recusar.
+    // Se o id resolvesse para outro negócio, a precedência do lead continuaria
+    // valendo, que é o que impede o retorno de cair no card errado.
+    if (!ref.contactId) return { ok: false, codigo: "negocio_nao_encontrado" };
   }
 
   if (!ref.contactId) return { ok: false, codigo: "cliente_nao_encontrado" };

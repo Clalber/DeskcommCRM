@@ -86,7 +86,23 @@ const agendarShape = {
   /** Preferido: o alvo é exato e a timeline nunca cai no negócio errado. */
   lead_id: z.string().uuid().optional(),
   contact_id: z.string().uuid().optional(),
-  promised_at: z.string().min(1).max(64),
+  /** Instante ABSOLUTO (ISO 8601). Use quando você souber a data exata. */
+  promised_at: z.string().min(1).max(64).optional(),
+  /**
+   * ⚠️ O CAMINHO QUE NÃO DEPENDE DE O AGENTE SABER QUE DIA É HOJE.
+   *
+   * Medido em turnos com modelo real: pedido "retornar daqui a três dias", um
+   * modelo mandou `2023-10-13` (a data do próprio treino) e outro se RECUSOU a
+   * inventar — "qual data e horário exatos devo usar?" — e o retorno não foi
+   * marcado em nenhum dos dois. O runtime nunca diz ao agente que instante é
+   * agora, e a capacidade exigia justamente isso.
+   *
+   * Com o prazo relativo, a conversão para absoluto acontece AQUI, no instante da
+   * chamada, com o relógio do servidor. A doutrina da data absoluta continua
+   * valendo onde ela importa: o que fica GRAVADO é o instante, não "amanhã" —
+   * a promessa é lida dias depois e "amanhã" não significaria nada.
+   */
+  in_hours: z.number().positive().max(4_320).optional(),
   reason: z.string().min(1).max(500),
   promise: z.string().min(1).max(1_000),
   context: z.string().max(4_000).optional(),
@@ -96,25 +112,59 @@ export const crmScheduleFollowup: McpToolDefinition<typeof agendarShape> = {
   name: "crm_schedule_followup",
   description:
     "Agenda o retorno ao cliente num momento futuro. Informe lead_id OU contact_id. " +
-    "promised_at é ISO 8601 ABSOLUTO e no futuro (ex.: '2026-08-12T14:00:00Z') — nunca relativo " +
-    "('amanhã' é lido dias depois e não significa nada). Um retorno vivo por cliente: se já houver, " +
-    "a chamada devolve agendado=false com o motivo, e não é erro — é para você seguir sem duplicar.",
+    "QUANDO: informe `in_hours` (prazo a partir de agora — ex.: 72 para 'daqui a três dias') " +
+    "OU `promised_at` (instante ISO 8601 absoluto). SE VOCÊ NÃO SABE QUE DIA É HOJE, USE " +
+    "`in_hours` — é o caminho certo e não exige adivinhar a data. " +
+    "Um retorno vivo por cliente: se já houver, a chamada devolve agendado=false com o motivo, " +
+    "e não é erro — é para você seguir sem duplicar.",
   inputSchema: agendarShape,
   category: "write",
   requiresRole: "ai_operator",
   requiresScope: "mcp:write",
   handler: async (input, ctx) => {
+    // ⚠️ UM RELÓGIO SÓ para decidir E para ensinar. O modelo NÃO SABE QUE DIA É
+    // HOJE — medido num turno real: pedido "daqui a três dias", ele mandou
+    // `2023-10-13`, a data do treino dele. A recusa antiga dizia só "já passou",
+    // que é verdade e é inútil: sem saber o agora, ele repetiu a MESMA data e
+    // queimou os passos do turno. Quem recusa tem de devolver o que falta para
+    // corrigir.
+    const agora = new Date();
+
+    // ⚠️ `in_hours` GANHA quando os dois vêm — e a primeira versão fazia o
+    // contrário, "instante explícito é mais específico que prazo".
+    //
+    // A medição desmentiu: no turno real o modelo mandou os DOIS, com
+    // `in_hours: 72` (a expressão fiel do que foi combinado) e um `promised_at`
+    // fabricado a partir da data de criação do contato — porque ele não sabe que
+    // dia é hoje. Preferir o campo explícito era preferir o palpite ao dado.
+    //
+    // Quem realmente conhece o instante manda só `promised_at`, e aí ele vale.
+    const prometidoPara =
+      input.in_hours !== undefined
+        ? new Date(agora.getTime() + input.in_hours * 3_600_000).toISOString()
+        : (input.promised_at ?? null);
+    if (prometidoPara === null) {
+      return {
+        agendado: false,
+        motivo: "quando_ausente",
+        mensagem:
+          "diga QUANDO: `in_hours` (prazo a partir de agora, ex.: 72 para daqui a três dias) " +
+          "ou `promised_at` (instante ISO 8601 absoluto). Se você não sabe que dia é hoje, use `in_hours`.",
+      };
+    }
+
     const resultado = await agendaRetornoNoCrm(
       {
         admin: ctx.supabase,
         orgId: ctx.organizationId,
         actor: ctx.actor,
         requestId: ctx.requestId,
+        agora,
       },
       { leadId: input.lead_id ?? null, contactId: input.contact_id ?? null },
       {
         motivo: input.reason,
-        prometidoPara: input.promised_at,
+        prometidoPara,
         promessa: input.promise,
         contexto: input.context ?? null,
       },
@@ -123,14 +173,19 @@ export const crmScheduleFollowup: McpToolDefinition<typeof agendarShape> = {
     if (!resultado.ok) {
       if ("janela" in resultado) {
         const { minAheadMs, maxAheadMs } = resultado.janela;
+        const agoraIso = agora.toISOString();
+        const cedoDemais = new Date(agora.getTime() + minAheadMs).toISOString();
+        const tardeDemais = new Date(agora.getTime() + maxAheadMs).toISOString();
         const ensino: Record<string, string> = {
           instante_invalido:
-            "promised_at não é uma data ISO 8601 válida (ex.: '2026-08-12T14:00:00Z').",
+            `promised_at não é uma data ISO 8601 válida. AGORA é ${agoraIso} — some o prazo pedido ` +
+            `a este instante e mande o resultado absoluto (ex.: '${cedoDemais}').`,
           instante_no_passado:
-            "a data informada já passou; escolha um horário no futuro para o retorno.",
+            `a data informada já passou: AGORA é ${agoraIso}. Some o prazo combinado a este ` +
+            `instante e mande a data absoluta resultante — não repita a mesma data.`,
           instante_fora_da_janela:
-            `horário fora da janela aceitável: marque o retorno entre ${duracaoLegivel(minAheadMs)} ` +
-            `e ${duracaoLegivel(maxAheadMs)} a partir de agora.`,
+            `horário fora da janela aceitável. AGORA é ${agoraIso}; o retorno tem de cair entre ` +
+            `${cedoDemais} e ${tardeDemais} (${duracaoLegivel(minAheadMs)} a ${duracaoLegivel(maxAheadMs)} a partir de agora).`,
           ja_existe_retorno:
             "este cliente JÁ tem um retorno marcado — não marque outro (evita insistir com a mesma pessoa " +
             "várias vezes). Se precisa mudar o horário, cancele o existente antes.",

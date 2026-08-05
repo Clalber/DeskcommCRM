@@ -158,6 +158,7 @@ describe("crm_schedule_followup", () => {
         lead_id: LEAD,
         contact_id: undefined,
         promised_at: daquiADias(2),
+        in_hours: undefined,
         reason: "reconfirmar a consulta",
         promise: "confirmo com você na quarta",
         context: undefined,
@@ -209,6 +210,7 @@ describe("crm_schedule_followup", () => {
         lead_id: LEAD,
         contact_id: undefined,
         promised_at: daquiADias(2),
+        in_hours: undefined,
         reason: "de novo",
         promise: "volto",
         context: undefined,
@@ -221,6 +223,179 @@ describe("crm_schedule_followup", () => {
     expect(cap.inserts.filter((i) => i.table === "cron_jobs")).toHaveLength(0);
   });
 
+  /**
+   * ⚠️ O CAMPO OPCIONAL PREENCHIDO COM LIXO NÃO PODE MATAR A CHAMADA BOA.
+   *
+   * Achado num turno de modelo REAL: `lead_id` é opcional na assinatura, e o
+   * modelo preencheu `00000000-0000-0000-0000-000000000000` — o placeholder que
+   * ele usa para "não tenho este campo" — junto com um `contact_id` CORRETO,
+   * vindo da busca que ele mesmo acabara de fazer. A precedência antiga (lead
+   * primeiro, sempre) deixava o campo-lixo envenenar a chamada: eu recusava com
+   * "confira a capacidade de listar oportunidades" tendo em mãos tudo o que
+   * precisava para marcar o retorno.
+   *
+   * Nenhum teste com humano no comando geraria esse payload.
+   */
+  it("lead_id que não existe + contact_id válido: agenda pelo cliente, não recusa", async () => {
+    const cap = novasCapturas();
+    const leadFantasma: Resolver = (c) => {
+      // O `crm_leads` do maybeSingle é a resolução do alvo: devolve NADA para o
+      // id-placeholder. O `contacts` confirma que o cliente existe.
+      if (c.table === "crm_leads" && c.terminal === "maybeSingle") return { data: null, error: null };
+      if (c.table === "contacts" && c.terminal === "maybeSingle") return { data: { id: CONTATO }, error: null };
+      return caminhoLivre(c);
+    };
+
+    const res = (await crmScheduleFollowup.handler(
+      {
+        lead_id: "00000000-0000-0000-0000-000000000000",
+        contact_id: CONTATO,
+        promised_at: daquiADias(3),
+        in_hours: undefined,
+        reason: "cliente pediu para decidir com calma",
+        promise: "volto em três dias",
+        context: undefined,
+      },
+      ctxDe(leadFantasma, cap),
+    )) as { agendado: boolean; contact_id?: string; motivo?: string };
+
+    expect(res.agendado).toBe(true);
+    expect(res.contact_id).toBe(CONTATO);
+    expect(cap.inserts.some((i) => i.table === "cron_jobs")).toBe(true);
+  });
+
+  it("lead_id que não existe e SEM contact_id continua sendo recusa", async () => {
+    // A tolerância acima vale só quando sobra informação boa. Sem cliente, não
+    // há para quem voltar a falar, e inventar um alvo seria pior que recusar.
+    const cap = novasCapturas();
+    const res = (await crmScheduleFollowup.handler(
+      {
+        lead_id: "00000000-0000-0000-0000-000000000000",
+        contact_id: undefined,
+        promised_at: daquiADias(3),
+        in_hours: undefined,
+        reason: "x",
+        promise: "y",
+        context: undefined,
+      },
+      ctxDe(() => ({ data: null, error: null }), cap),
+    )) as { agendado: boolean; motivo: string };
+
+    expect(res.agendado).toBe(false);
+    expect(res.motivo).toBe("negocio_nao_encontrado");
+  });
+
+  /**
+   * ⚠️ O PRAZO RELATIVO EXISTE PORQUE O AGENTE NÃO TEM RELÓGIO.
+   *
+   * Medido em turnos com modelo real, dois modelos diferentes, mesmo cenário
+   * ("retornar daqui a três dias"): um mandou `2023-10-13` — a data do próprio
+   * treino — e o outro se RECUSOU a inventar ("qual data e horário exatos devo
+   * usar?"). Nenhum dos dois agendou. O runtime nunca diz ao agente que instante
+   * é agora, e a capacidade exigia exatamente isso.
+   *
+   * A conversão acontece AQUI, com o relógio do servidor. O que fica GRAVADO
+   * continua sendo o instante absoluto — a promessa é lida dias depois.
+   */
+  it("in_hours é convertido para instante absoluto com o relógio do servidor", async () => {
+    const cap = novasCapturas();
+    const antes = Date.now();
+    const res = (await crmScheduleFollowup.handler(
+      {
+        lead_id: LEAD,
+        contact_id: undefined,
+        promised_at: undefined,
+        in_hours: 72,
+        reason: "cliente pediu três dias para decidir",
+        promise: "volto em três dias",
+        context: undefined,
+      },
+      ctxDe(caminhoLivre, cap),
+    )) as { agendado: boolean };
+
+    expect(res.agendado).toBe(true);
+    const cron = cap.inserts.find((i) => i.table === "cron_jobs");
+    const payload = cron?.values.payload as { promised_at: string };
+    const gravado = Date.parse(payload.promised_at);
+    // 72 h à frente, com folga para o tempo de execução do próprio teste.
+    expect(gravado).toBeGreaterThan(antes + 71.9 * 3_600_000);
+    expect(gravado).toBeLessThan(antes + 72.1 * 3_600_000);
+  });
+
+  it("sem in_hours e sem promised_at, ensina o QUANDO em vez de estourar", async () => {
+    const cap = novasCapturas();
+    const res = (await crmScheduleFollowup.handler(
+      {
+        lead_id: LEAD,
+        contact_id: undefined,
+        promised_at: undefined,
+        in_hours: undefined,
+        reason: "x",
+        promise: "y",
+        context: undefined,
+      },
+      ctxDe(caminhoLivre, cap),
+    )) as { agendado: boolean; motivo: string; mensagem: string };
+
+    expect(res.agendado).toBe(false);
+    expect(res.motivo).toBe("quando_ausente");
+    expect(res.mensagem).toContain("in_hours");
+    expect(cap.inserts.filter((i) => i.table === "cron_jobs")).toHaveLength(0);
+  });
+
+  /**
+   * ⚠️ A PRECEDÊNCIA FOI DECIDIDA PELA MEDIÇÃO, e ela desmentiu a intuição.
+   *
+   * A primeira versão preferia `promised_at` ("instante explícito é mais
+   * específico que prazo"). No turno real o modelo mandou os DOIS: `in_hours: 72`
+   * — a expressão fiel do que foi combinado — e um `promised_at` fabricado a
+   * partir da data de criação do contato, porque ele não sabe que dia é hoje.
+   * Preferir o campo explícito era preferir o palpite ao dado.
+   */
+  it("in_hours vence promised_at quando os dois vêm — o prazo é o dado confiável", async () => {
+    const cap = novasCapturas();
+    const palpiteDoModelo = "2023-10-13T10:00:00Z";
+    const antes = Date.now();
+    const res = (await crmScheduleFollowup.handler(
+      {
+        lead_id: LEAD,
+        contact_id: undefined,
+        promised_at: palpiteDoModelo,
+        in_hours: 72,
+        reason: "x",
+        promise: "y",
+        context: undefined,
+      },
+      ctxDe(caminhoLivre, cap),
+    )) as { agendado: boolean };
+
+    // Com a precedência antiga isto seria uma data de 2023 e a chamada morreria
+    // em "instante_no_passado" — exatamente o que aconteceu no turno medido.
+    expect(res.agendado).toBe(true);
+    const cron = cap.inserts.find((i) => i.table === "cron_jobs");
+    const gravado = Date.parse((cron?.values.payload as { promised_at: string }).promised_at);
+    expect(gravado).toBeGreaterThan(antes + 71.9 * 3_600_000);
+  });
+
+  it("promised_at sozinho continua valendo — quem sabe o instante manda o instante", async () => {
+    const cap = novasCapturas();
+    const alvo = daquiADias(2);
+    await crmScheduleFollowup.handler(
+      {
+        lead_id: LEAD,
+        contact_id: undefined,
+        promised_at: alvo,
+        in_hours: undefined,
+        reason: "x",
+        promise: "y",
+        context: undefined,
+      },
+      ctxDe(caminhoLivre, cap),
+    );
+    const cron = cap.inserts.find((i) => i.table === "cron_jobs");
+    expect((cron?.values.payload as { promised_at: string }).promised_at).toBe(alvo);
+  });
+
   it("data relativa ('amanhã') vira ensino, não exceção", async () => {
     const cap = novasCapturas();
     const res = (await crmScheduleFollowup.handler(
@@ -228,6 +403,7 @@ describe("crm_schedule_followup", () => {
         lead_id: LEAD,
         contact_id: undefined,
         promised_at: "amanhã de manhã",
+        in_hours: undefined,
         reason: "x",
         promise: "y",
         context: undefined,
@@ -238,6 +414,38 @@ describe("crm_schedule_followup", () => {
     expect(res.agendado).toBe(false);
     expect(res.motivo).toBe("instante_invalido");
     expect(res.mensagem).toContain("ISO 8601");
+  });
+
+  /**
+   * ⚠️ A RECUSA TEM DE DIZER QUE HORAS SÃO — achado num turno de modelo REAL.
+   *
+   * Pedido para marcar "daqui a três dias", o modelo mandou `2023-10-13`: a data
+   * do treino dele. A recusa antiga dizia só "a data já passou", que é verdade e
+   * é inútil — sem saber o AGORA ele repetiu a MESMA data na tentativa seguinte e
+   * o turno morreu sem agendar nada.
+   *
+   * Recusa que não devolve o que falta para corrigir não é ensino, é obstáculo.
+   */
+  it("recusa de data no passado devolve o instante ATUAL, para o modelo poder corrigir", async () => {
+    const cap = novasCapturas();
+    const res = (await crmScheduleFollowup.handler(
+      {
+        lead_id: LEAD,
+        contact_id: undefined,
+        promised_at: "2023-10-13T10:00:00Z",
+        in_hours: undefined,
+        reason: "x",
+        promise: "y",
+        context: undefined,
+      },
+      ctxDe(caminhoLivre, cap),
+    )) as { agendado: boolean; motivo: string; mensagem: string };
+
+    expect(res.agendado).toBe(false);
+    expect(res.motivo).toBe("instante_no_passado");
+    // O ano corrente na mensagem é o que permite ao modelo somar o prazo.
+    expect(res.mensagem).toContain(String(new Date().getUTCFullYear()));
+    expect(res.mensagem.toUpperCase()).toContain("AGORA");
   });
 
   it("negócio sem cliente vinculado é recusado — não há para quem voltar a falar", async () => {
@@ -252,6 +460,7 @@ describe("crm_schedule_followup", () => {
         lead_id: LEAD,
         contact_id: undefined,
         promised_at: daquiADias(2),
+        in_hours: undefined,
         reason: "x",
         promise: "y",
         context: undefined,
@@ -517,6 +726,7 @@ describe("o texto que aparece na linha do tempo", () => {
         lead_id: LEAD,
         contact_id: undefined,
         promised_at: daquiADias(2),
+        in_hours: undefined,
         reason: "reconfirmar a proposta",
         promise: "volto quarta",
         context: undefined,

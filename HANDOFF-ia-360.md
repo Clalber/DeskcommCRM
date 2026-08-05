@@ -292,7 +292,7 @@ segundo é justamente quem mede sidebar, dobra e rolagem do menu).
 **Entregue por:** DevVivo · branch `feat/ia-360-w2-reter` · worktree
 `/Users/rafaelmelgaco/DeskcommCRM-ia360-w2-reter` · base `99cd0fc`
 
-| Medida | Antes (`99cd0fc`) | Depois (`896f6098`) |
+| Medida | Antes (`99cd0fc`) | Depois (`02904498`) |
 |---|---|---|
 | Capacidades de retorno no catálogo | **0** | **6** |
 | Pacote `reter` | vazio (dívida declarada) | preenchido, fora da dívida |
@@ -321,15 +321,16 @@ tratamento para o radar (`lib/leads/radar-de-risco.ts`, extraído da rota) e par
 **Mapa vivo:** `docs/architecture/ia-360-retencao.architecture.json` (26 peças, 36 arestas) +
 linha no `README.md` do diretório.
 
-**Evidência observada — em `896f6098`, árvore limpa** (o SHA da passada de UX; os números de
-`9e2d3fb`, antes dela, eram 1994 unitários e 2 casos de E2E):
+**Evidência observada — no código de `02904498`, árvore limpa** (o SHA da prova com modelo real):
 
 - `pnpm typecheck` limpo · `pnpm lint` 0 erros (170 avisos pré-existentes)
-- `pnpm test:unit` — **226 arquivos, 1997 testes verdes** (eram 224/1963 na base)
-- `pnpm test:db` — **62 de 63 arquivos verdes; 420 passados, 1 pulado, 1 falha**, e a falha é o
-  BUG-03 (flake pré-existente de dois relógios em `followup-engine`). A MESMA suíte fechou
-  **63/63, 421 verdes** em `9e2d3fb`. `tests/invariants/retorno-anti-morte.test.ts` passou nas
-  duas — 8/8.
+- `pnpm test:unit` — **227 arquivos, 2008 testes verdes** (eram 224/1963 na base)
+- `pnpm test:db` — **63 arquivos, 421 verdes, 1 pulado**. (Numa das execuções anteriores,
+  em `896f6098`, esta suíte fechou com UMA falha — o BUG-03, flake pré-existente de dois relógios
+  em `followup-engine`. Ele aparece e some entre execuções do mesmo SHA.)
+- Turno com **MODELO REAL** (`gpt-5.6-terra`, credencial real da organização) escolhendo a
+  capacidade sozinho — ver BUG-05. Antes das correções o retorno não era agendado; depois,
+  4 passos e `agendado: true`.
 - E2E em tela (`tests/e2e/retorno-anti-morte.spec.ts`) — **3 passed**, evidência visual em
   `.superpowers/evidence/w2-retorno-*.png`. O Radar mostra "Em voo · Assistente retorna em 2d"
   para o negócio parado há 5 dias; a fila mostra "Cancelada" (não "Concluída") depois do clique;
@@ -1878,6 +1879,44 @@ BUG-01 e BUG-02 acima já saem corrigidos com prova nesta wave. BUG-03 é pré-e
 - **Prova do fix:** bloco novo em `tests/unit/mcp-retencao-tools.test.ts` ("o texto que aparece na
   linha do tempo") comparando o reason contra `ACTIVITY_LABELS`, e um caso E2E novo que lê o
   dossiê RENDERIZADO. Sabotado (reason voltando a repetir o rótulo): 2 unitários reprovam.
+
+### BUG-05 — o agente não conseguia usar a própria capacidade (achado com MODELO REAL)
+
+Tudo o que a wave provava até aqui era que a capacidade **funciona quando chamada**: E2E,
+invariante e unitários invocam o handler direto. Nada provava que o agente **encontra**,
+**escolhe** e **monta os argumentos** sozinho — que é o que o dono compra.
+
+`scripts/prova-modelo-escolhe-retorno.ts` roda o turno de verdade (`runAgent`, o mesmo que o botão
+"Testar agente" chama), com modelo e credencial reais. O cenário é uma SITUAÇÃO, nunca uma
+instrução: em nenhum lugar se diz "use a ferramenta de agendar retorno".
+
+> *"Acabei de falar por telefone com o Cliente Retorno E2E. Ele disse que só consegue decidir sobre
+> a proposta daqui a três dias e pediu para a gente procurar ele de novo nesse dia."*
+
+**Resultado da primeira rodada: o retorno NÃO foi agendado.** Três defeitos em série, todos
+achados só porque um modelo de verdade estava no comando:
+
+| # | O que o modelo fez | Causa raiz | Correção |
+|---|---|---|---|
+| a | Chamou `crm_search_contacts` com o nome do cliente e recebeu **zero** para um contato que EXISTE; concluiu "pode ser necessário adicionar o cliente ao CRM" | A busca filtrava `name`, `email`, `phone_number` — **nunca `display_name`**, que é a coluna que a UI mostra e que o WhatsApp preenche (contato de WhatsApp nasce só com ela). Medido nesta instalação: **15 de 33 contatos** têm `display_name` e nenhum `name` | `display_name` entra no `OR`, e o termo passa a ser escapado (`%`, `_`, `,`) — vírgula em nome injetava condição extra. `tests/unit/contatos-busca-por-nome-visivel.test.ts` |
+| b | Mandou `lead_id: "00000000-0000-0000-0000-000000000000"` — o placeholder que o modelo usa para "não tenho este campo" — junto com um `contact_id` **correto**, e eu recusei | A precedência (lead sempre primeiro) deixava o campo-lixo envenenar a chamada boa: eu tinha tudo o que precisava e respondia "confira a capacidade de listar oportunidades" | `resolveAlvoDoRetorno` cai para o cliente quando o `lead_id` **não resolve nada**; com `lead_id` válido a precedência continua valendo (é ela que impede o retorno cair no card errado) |
+| c | Pedido "daqui a três dias", um modelo mandou `2023-10-13` (a data do próprio treino) e outro **se recusou a inventar**: *"qual data e horário exatos devo usar?"*. Nenhum agendou | **O agente não tem relógio.** O runtime nunca diz que instante é agora, e a capacidade exigia data absoluta. A recusa antiga dizia só "já passou" — verdade e inútil: sem o agora, o modelo repetia a MESMA data | (1) toda recusa de data passa a **dizer que horas são**, com os limites da janela em instantes absolutos; (2) `in_hours` — prazo relativo convertido com o relógio do SERVIDOR. O que fica gravado continua absoluto |
+
+**Uma decisão foi tomada pela medição, contra a intuição.** A primeira versão do `in_hours` deixava
+`promised_at` ganhar quando os dois viessem ("instante explícito é mais específico"). No turno real
+o modelo mandou os dois: `in_hours: 72` (a expressão fiel do combinado) e um `promised_at`
+fabricado a partir da data de criação do contato. Preferir o campo explícito era preferir o palpite
+ao dado. **`in_hours` passou a vencer.**
+
+**Depois das três correções, mesmo cenário e mesmo modelo** (`gpt-5.6-terra`, credencial real da
+organização, 4 passos): `crm_search_contacts` → `crm_list_followups` → `crm_schedule_followup` →
+`agendado: true`, com `quando = 2026-08-08` (72 h à frente de 2026-08-05). Encerramento do turno:
+*"Retorno agendado para daqui a três dias, sem contato antes."*
+
+**O que NÃO está provado:** o gatilho foi um script, não o botão "Testar agente" na tela. O caminho
+é o mesmo (`runAgent`), mas a rota `:test` exige **admin**, e o fator TOTP do admin desta instalação
+foi rotacionado por outra sessão no meio desta — mexer nele quebraria o teste alheio. Fica como a
+única ponta desta wave provada por código e não por clique.
 
 ---
 
