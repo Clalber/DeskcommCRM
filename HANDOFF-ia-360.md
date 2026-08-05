@@ -850,8 +850,72 @@ O `SeloDeAutoria` passou a dizer "ver o que mudou" apontando para esta tela, e e
 aberto. A tela **existe e carrega** (`h1 = "Audit Log"`, botão "Exportar CSV" —
 `evidence/ia-360-w4/qa-tela-audit.png`).
 
-A primeira sonda disse que o dono **não** encontra a mudança do assistente, mas essa medição está
-**contaminada pelo T3**: a criação de etapa falhou com "Funil não encontrado", então não havia o
-que procurar. Re-rodando com o vazamento corrigido. **Não declaro veredito sobre o audit até a
-medição limpa** — foi exatamente esse tipo de conclusão apressada que eu já tive de retratar duas
-vezes neste épico.
+**Medição limpa, depois do T3 corrigido:** a etapa FOI criada (`last_change_actor_kind = ai`) e o
+registro FOI gravado (`pipeline.stage_created`, ator `ai_agent`, nome correto, 16:17:56). E a tela
+continua **não mostrando**.
+
+**Causa raiz — a borda e o banco discordam sobre quem pode ler:**
+
+| camada | exige |
+|---|---|
+| `app/app/audit/page.tsx` | `manager` |
+| `app/api/v1/audit/route.ts` | `requireRole("manager")` |
+| policy `audit_log_select` (RLS) | **`fn_role_at_least(organization_id, 'admin')`** |
+
+O manager passa pelas duas portas da aplicação, a query roda com o client dele, e a **RLS devolve
+zero linhas**. A tela mostra vazio — **sem erro, sem explicação**. Ele conclui que não há registro.
+
+**E é o destino do meu selo.** O `SeloDeAutoria` diz "ver o que mudou" e aponta para cá: um dono
+com papel `manager` clica, chega numa tela vazia e fica pior do que estava — antes não sabia,
+agora "sabe" que não há nada. Beco que mente é pior que beco.
+
+**Não corrigi, e a razão é a mesma de sempre nesta wave:** as duas saídas mexem em permissão.
+Alinhar a rota para `admin` restringe (falha fechada, honesta); alinhar a RLS para `manager`
+**concede acesso ao log de auditoria**. Isso é decisão de produto, não minha — e o despacho me põe
+RBAC fora de escopo. **Para o Maestro.** Enquanto não for decidido, o link do selo leva um manager
+a uma tela vazia.
+
+---
+
+## O agente usando as mãos — com IA REAL
+
+O bloqueio de crédito foi resolvido: o Rafael forneceu chave OpenAI e o teste rodou com
+**`gpt-5.6-terra`**, pelo mesmo endpoint do botão "Executar teste" da tela. A chave entra por
+`QA_LLM_API_KEY` (ambiente) e é cadastrada **pela rota de credenciais**, que a cifra — nunca no
+arquivo, porque spec versionado é vazamento permanente.
+
+### O modelo escolheu certo nos quatro cenários
+
+| cenário | esperado | o modelo chamou | veredito |
+|---|---|---|---|
+| ler o funil | `list_pipelines` e/ou `list_stages` | `crm_list_pipelines → crm_list_stages` | certo |
+| não duplicar marcador | `list_tags` antes de aplicar | `crm_list_tags` | certo — **não** aplicou marcador sem consultar |
+| diagnosticar entrada parada | `list_webhook_sources` + eventos | `crm_list_webhook_sources` | certo — parou porque não havia fonte alguma, em vez de buscar eventos de nada |
+| criar etapa | tentar `create_stage` | `crm_list_pipelines → crm_list_stages` | **melhor que o esperado** |
+
+Todos `completed`, 4–8s cada. Relatório com as chamadas cruas e as respostas:
+`evidence/ia-360-w4/qa-turnos-do-agente.md`.
+
+### O quarto cenário respondeu uma pergunta que eu não tinha feito
+
+Pedi "cria uma etapa chamada Pós-venda". O modelo **consultou antes de escrever**, viu que
+«Pos-venda» já existia e respondeu:
+
+> "A etapa **"Pos-venda"** já existe no funil **Pedidos**. Não criei uma duplicata."
+
+Isso valida a aposta desta wave — dar LEITURA rica ao agente — de um jeito que eu não tinha
+previsto: a leitura o impediu de fazer besteira **antes** de qualquer barreira de permissão entrar
+em ação. É o mesmo mecanismo do `crm_list_tags` (não inventar marcador), aparecendo sozinho.
+
+### O que NÃO ficou provado
+
+**A barreira `apenasHumano` não foi exercitada.** Justamente porque o modelo se recusou a
+duplicar, ele nunca tentou escrever. Acrescentei um quinto cenário pedindo uma etapa que não
+existe — e os cenários 2 a 5 dessa rodada caíram com `401 unauthenticated`: a sessão do navegador
+expirou no meio da corrida (o spec loga como `admin` com MFA e a rodada é longa). O cenário 1
+passou, os demais não chegaram ao modelo.
+
+Então segue **sem resposta**: quando o modelo de fato tenta uma capacidade `apenasHumano`, o que
+ele diz ao usuário? A recusa por papel volta como texto compreensível, ou como
+`Role 'agent' insufficient` na cara de quem perguntou? Essa é a pergunta que fecha o ciclo, e ela
+continua aberta.

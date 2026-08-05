@@ -45,6 +45,7 @@ function loadCreds(): Creds {
 }
 
 const creds = loadCreds();
+const ts = Date.now();
 
 /** As capacidades da W4 que cabem no teto de 20 por agente, mais o essencial de contexto. */
 const CAPACIDADES = [
@@ -96,6 +97,16 @@ const CENARIOS = [
     mensagem: "Cria uma etapa nova no funil chamada Pós-venda, no fim de tudo.",
     esperado: "crm_create_stage — que é apenasHumano e deve ser RECUSADA pelo papel",
   },
+  {
+    // ⚠️ O CENÁRIO 4 NÃO CHEGOU À BARREIRA, e por um motivo bom: o modelo
+    // consultou antes, viu que «Pos-venda» já existia e se recusou a duplicar.
+    // Ótimo comportamento — e deixou a barreira sem teste. Este pede um nome que
+    // NÃO existe, para ele de fato tentar escrever e bater no papel.
+    nome: "5-barreira-de-verdade",
+    mensagem:
+      "Preciso de uma etapa nova chamada Retorno pos-cirurgico no fim do funil. Ela não existe ainda, cria pra mim.",
+    esperado: "crm_create_stage tentado e RECUSADO (apenasHumano + requiresRole manager)",
+  },
 ];
 
 /**
@@ -132,27 +143,43 @@ async function login(page: Page): Promise<void> {
   throw new Error("MFA falhou depois de 2 tentativas de TOTP");
 }
 
-/** Cria a versão de teste com as capacidades da W4 ligadas. */
+/**
+ * Cria a versão de teste com as capacidades da W4 ligadas.
+ *
+ * ⚠️ A CHAVE VEM DO AMBIENTE (`QA_LLM_API_KEY`), nunca do arquivo. Ela é
+ * cadastrada pela ROTA de credenciais, que a cifra — do jeito que um dono faria
+ * pela tela. Chave em spec versionado é vazamento permanente: o git não esquece.
+ */
 async function versaoComAsCapacidades(req: APIRequestContext, agenteId: string): Promise<string> {
-  const [credRes, canalRes] = await Promise.all([
-    req.get(`${APP_URL}/api/v1/ai/credentials`),
-    req.get(`${APP_URL}/api/v1/channel-sessions`),
-  ]);
-  const cred = (await credRes.json()) as { data?: Array<{ id: string; provider: string }> };
-  const canal = (await canalRes.json()) as { data?: Array<{ id: string }> };
-  const credentialId = cred.data?.find((c) => c.provider === "anthropic")?.id ?? cred.data?.[0]?.id;
-  const canalId = canal.data?.[0]?.id;
-  if (!credentialId || !canalId) {
-    throw new Error(
-      `faltou pré-requisito: credential=${credentialId ?? "?"} canal=${canalId ?? "?"}`,
-    );
+  const chave = process.env.QA_LLM_API_KEY;
+  const provider = (process.env.QA_LLM_PROVIDER ?? "openai") as "openai" | "anthropic";
+  const modelo = process.env.QA_LLM_MODEL ?? "gpt-5.6-terra";
+
+  const canalRes = await req.get(`${APP_URL}/api/v1/channel-sessions`);
+  const canalId = ((await canalRes.json()) as { data?: Array<{ id: string }> }).data?.[0]?.id;
+  if (!canalId) throw new Error("a org de E2E precisa de um canal");
+
+  let credentialId: string | undefined;
+  if (chave) {
+    const nova = await req.post(`${APP_URL}/api/v1/ai/credentials`, {
+      data: { provider, label: `QA W4 ${provider} ${ts}`, api_key: chave },
+    });
+    const corpo = await nova.text();
+    if (!nova.ok()) throw new Error(`criar credencial → ${nova.status()}: ${corpo.slice(0, 300)}`);
+    credentialId = (JSON.parse(corpo) as { data: { id: string } }).data.id;
+    console.info(`[QA] credencial ${provider} cadastrada pela rota (chave veio do ambiente)`);
+  } else {
+    const credRes = await req.get(`${APP_URL}/api/v1/ai/credentials`);
+    const cred = (await credRes.json()) as { data?: Array<{ id: string; provider: string }> };
+    credentialId = cred.data?.find((c) => c.provider === provider)?.id ?? cred.data?.[0]?.id;
   }
+  if (!credentialId) throw new Error("sem credencial de LLM");
 
   const res = await req.post(`${APP_URL}/api/v1/ai/agents/${agenteId}/versions`, {
     data: {
       system_prompt: PROMPT,
-      provider: "anthropic",
-      model: "claude-sonnet-4-6",
+      provider,
+      model: modelo,
       credential_id: credentialId,
       channel_session_id: canalId,
       tool_ids: CAPACIDADES,
