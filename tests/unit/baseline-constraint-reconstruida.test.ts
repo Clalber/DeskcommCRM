@@ -53,9 +53,10 @@ const BASELINE = join(process.cwd(), "supabase", "baseline.sql");
 
 /** Nomes de constraint em cada `add constraint <nome>`, na ordem do arquivo. */
 function constraintsAdicionadas(sql: string): string[] {
-  return [...sql.matchAll(/add\s+constraint\s+([a-z0-9_]+)/gi)].map((m) =>
-    m[1].toLowerCase(),
-  );
+  return [...sql.matchAll(/add\s+constraint\s+([a-z0-9_]+)/gi)]
+    .map((m) => m[1])
+    .filter((nome): nome is string => nome !== undefined)
+    .map((nome) => nome.toLowerCase());
 }
 
 describe("baseline.sql — uma constraint, um bloco", () => {
