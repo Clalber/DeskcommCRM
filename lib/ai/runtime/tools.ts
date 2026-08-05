@@ -20,6 +20,7 @@ import { McpAuthError, ensureRole, ensureScope } from "@/lib/mcp/auth";
 import type { McpAuthResult } from "@/lib/mcp/auth";
 import { logger } from "@/lib/logger";
 import { allTools, getToolByName } from "@/lib/mcp/tools";
+import { recusaDeCapacidadeParaOModelo } from "@/lib/mcp/recusa-para-o-modelo";
 import type { McpContext, McpToolDefinition } from "@/lib/mcp/types";
 
 export interface RuntimeHandoffSignal {
@@ -102,6 +103,15 @@ function wrapMcpTool(
             organization_id: input.ctx.organizationId,
             request_id: input.ctx.requestId,
           });
+        }
+        // ⚠️ O QUE VOLTA AO MODELO NÃO É A MENSAGEM TÉCNICA quando a recusa é de
+        // papel. Medido com LLM real: `Role 'agent' insufficient (required:
+        // 'manager')` virou "SEU perfil atual é agent" na cara de quem perguntou
+        // — o modelo não tinha como saber que o papel era DELE, não do leitor. A
+        // mensagem original continua no log e na observabilidade acima, onde
+        // serve; para o modelo vai uma instrução que já sabe o que é.
+        if (err instanceof McpAuthError) {
+          return { error: recusaDeCapacidadeParaOModelo(def.name) };
         }
         // Return error to the model rather than throwing — keeps the loop alive.
         return { error: message };

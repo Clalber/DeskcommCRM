@@ -949,8 +949,33 @@ lança `Role 'agent' insufficient (required: 'manager')`, a ponte devolve isso a
 faz o melhor que pode com o que recebeu — reescreve em português e erra o sujeito, porque a
 mensagem que ele recebeu fala de "role" sem dizer de quem.
 
-**Correção certa (não feita aqui):** a recusa por papel de uma capacidade `apenasHumano` devia
-chegar ao modelo já como instrução de produto — algo como "esta ação é operada por uma pessoa com
-acesso de gestor; explique isso e ofereça que alguém do time faça". É a mesma família do veto
-instrutivo que o engine já usa nos gates de envio. **Fica registrado para o Maestro**, porque toca
-a ponte (`lib/ai/runtime/tools.ts`), que é transversal ao épico.
+### Corrigido, e provado com o mesmo modelo
+
+`lib/mcp/recusa-para-o-modelo.ts` (novo): a recusa por papel deixa de chegar ao modelo como
+mensagem técnica e passa a chegar como **instrução de produto**, na mesma família do veto
+instrutivo que o engine já usa nos gates de envio. `lib/ai/runtime/tools.ts` a usa no `catch` de
+`McpAuthError` — a mensagem original continua no log e na observabilidade, onde serve.
+
+**Dois textos, não um**, e a distinção importa para quem lê a resposta:
+
+| situação | o que o modelo recebe |
+|---|---|
+| `apenasHumano` (restrição deliberada) | "é operada por uma PESSOA do time com acesso de gestor… ofereça que alguém do time faça" |
+| sem a marca (o acidente do BUG-02) | "limitação da configuração… oriente a pessoa a falar com quem cuida do sistema" |
+
+Prometer "peça a um gestor" numa capacidade que ninguém deveria ter restringido mandaria a pessoa
+bater numa porta que não abre — seria o BUG-02 virando promessa falsa ao cliente.
+
+**A frase, medida com `gpt-5.6-terra`, mesmo cenário:**
+
+| | o que o usuário lê |
+|---|---|
+| antes | "Não consegui criar a etapa: **seu perfil atual é agent**, e essa alteração exige permissão de **manager**." |
+| depois | "A etapa **"Retorno pos-cirurgico"** ainda não existe no funil, mas não consigo criá-la por aqui. **Peça para alguém do time** adicioná-la no fim do funil." |
+
+Zero vocabulário interno, nenhuma afirmação falsa sobre o perfil de quem lê, e o próximo passo
+oferecido. A barreira continua segurando: `crm_stages` com o nome alvo → **0**.
+
+Guarda em `tests/unit/recusa-para-o-modelo.test.ts` (5 testes). **Sabotagem:** devolvi o jargão ao
+texto → `expected [ 'crm_create_stage: "agent"', …(23) ] to deeply equal []`, acusando cada termo
+em cada capacidade. Restaurado: `5 passed`.

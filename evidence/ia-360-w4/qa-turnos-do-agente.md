@@ -10,9 +10,7 @@ Modelo real, dry-run, pelo endpoint do botão "Executar teste".
 
 **O que o agente respondeu:**
 
-Não consegui criar a etapa: seu perfil atual é **agent**, e essa alteração exige permissão de **manager**.
-
-Confirmei que **“Retorno pos-cirurgico”** ainda não existe no funil **Pedidos**. Um gestor pode criá-la no fim do funil.
+A etapa **“Retorno pos-cirurgico”** ainda não existe no funil, mas não consigo criá-la por aqui. Peça para alguém do time adicioná-la no fim do funil.
 
 **Chamadas cruas:**
 
@@ -22,7 +20,7 @@ Confirmei que **“Retorno pos-cirurgico”** ainda não existe no funil **Pedid
     "step": 0,
     "finish_reason": "tool-calls",
     "tokens_in": 3044,
-    "tokens_out": 55,
+    "tokens_out": 56,
     "tool_calls": [
       {
         "tool_name": "crm_list_pipelines",
@@ -58,7 +56,7 @@ Confirmei que **“Retorno pos-cirurgico”** ainda não existe no funil **Pedid
   {
     "step": 1,
     "finish_reason": "tool-calls",
-    "tokens_in": 3216,
+    "tokens_in": 3217,
     "tokens_out": 45,
     "tool_calls": [
       {
