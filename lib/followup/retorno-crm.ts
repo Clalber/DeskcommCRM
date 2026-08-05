@@ -326,6 +326,26 @@ function janelaDe(deps: DepsDoRetorno): JanelaDeRetorno {
 export type FalhaDeAlvo = Extract<ResolucaoDoAlvo, { ok: false }>;
 
 /**
+ * O `reason` NÃO REPETE O RÓTULO — descoberto olhando a tela, não o teste.
+ *
+ * A timeline renderiza o rótulo do tipo (`Retorno agendado`) e, embaixo, o
+ * `reason`. Com o reason começando por "Retorno agendado — ", o dossiê mostrava:
+ *
+ *     Retorno agendado
+ *     Retorno agendado — reconfirmar a proposta que o cliente pediu para pensar
+ *
+ * O teste passava (ele checava `toContain(motivo)`) e a leitura era burra. É a
+ * diferença entre "funcionou" e "ficou bom": nenhuma asserção pega isso, só
+ * abrir o dossiê pega. O padrão da casa é o de `stageChangeReason` — o rótulo
+ * nomeia o QUE aconteceu, o reason conta o PORQUÊ, e eles não se repetem.
+ */
+function motivoLegivel(texto: string): string {
+  const limpo = texto.trim();
+  if (limpo === "") return "Sem motivo informado";
+  return limpo.charAt(0).toUpperCase() + limpo.slice(1);
+}
+
+/**
  * Agenda o retorno e registra o acontecimento.
  *
  * Devolve o mesmo resultado da regra, acrescido do alvo resolvido — quem chamou
@@ -354,7 +374,7 @@ export async function agendaRetornoNoCrm(
     alvo: alvo.alvo,
     tipo: "followup_scheduled",
     actor: deps.actor,
-    reason: `Retorno agendado — ${input.motivo}`,
+    reason: motivoLegivel(input.motivo),
     payload: {
       retorno_id: resultado.retorno.id,
       quando: resultado.retorno.quando,
@@ -400,7 +420,7 @@ export async function cancelaRetornoNoCrm(
     alvo: alvoResolvido,
     tipo: "followup_cancelled",
     actor: deps.actor,
-    reason: `Retorno cancelado — ${input.motivo}`,
+    reason: motivoLegivel(input.motivo),
     payload: {
       retorno_id: resultado.retorno.id,
       quando: resultado.retorno.quando,

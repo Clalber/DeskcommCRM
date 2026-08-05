@@ -184,10 +184,10 @@ export async function encerraDemanda(
     sourceModule: "crm",
     sourceId: input.leadId,
     actor: ctx.actor,
-    reason:
-      input.desfecho === "won"
-        ? "Negócio ganho — demanda encerrada"
-        : `Negócio perdido — ${input.motivo}`,
+    // O rótulo do tipo já diz "Demanda encerrada" na tela; o reason acrescenta o
+    // DESFECHO e, na perda, o motivo — repetir o rótulo aqui deixaria a linha
+    // com a mesma frase duas vezes (ver `motivoLegivel` em retorno-crm.ts).
+    reason: input.desfecho === "won" ? "Ganho" : `Perdido — ${input.motivo}`,
     payload: {
       desfecho: input.desfecho,
       from_stage_id: (lead as { stage_id: string }).stage_id,

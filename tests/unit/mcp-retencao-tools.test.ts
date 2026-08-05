@@ -25,6 +25,7 @@ import {
   crmProposeReactivation,
   crmListAtRiskLeads,
 } from "@/lib/mcp/tools/retencao";
+import { ACTIVITY_LABELS } from "@/lib/leads/activity-vocabulary";
 import type { McpContext } from "@/lib/mcp/types";
 
 vi.mock("@/lib/audit", () => ({ audit: vi.fn().mockResolvedValue(undefined) }));
@@ -490,6 +491,115 @@ describe("crm_propose_reactivation", () => {
     const venceEm = new Date(res.vence_em).getTime() - Date.now();
     expect(venceEm).toBeGreaterThan(47 * 3_600_000);
     expect(venceEm).toBeLessThan(49 * 3_600_000);
+  });
+});
+
+/**
+ * O `reason` NÃO REPETE O RÓTULO — a guarda que faltava.
+ *
+ * ⚠️ ESTE BLOCO NASCEU DE UM DEFEITO QUE NENHUM TESTE PEGOU. A timeline mostra o
+ * rótulo do tipo e, embaixo, o reason. Com o reason começando pela mesma frase, o
+ * dossiê exibia "Retorno agendado / Retorno agendado — reconfirmar a proposta".
+ * Tudo verde, e a leitura burra.
+ *
+ * O motivo de nenhum teste pegar é instrutivo: as asserções eram sobre
+ * `toContain(motivo)` — sobre o que PRECISA estar lá. Nada dizia o que NÃO pode
+ * estar. Foi preciso abrir o dossiê no navegador para ver.
+ */
+describe("o texto que aparece na linha do tempo", () => {
+  const semRedundancia = (rotulo: string, reason: string) =>
+    !reason.toLowerCase().startsWith(rotulo.toLowerCase());
+
+  it("agendar: o reason conta o PORQUÊ, não repete 'Retorno agendado'", async () => {
+    const cap = novasCapturas();
+    await crmScheduleFollowup.handler(
+      {
+        lead_id: LEAD,
+        contact_id: undefined,
+        promised_at: daquiADias(2),
+        reason: "reconfirmar a proposta",
+        promise: "volto quarta",
+        context: undefined,
+      },
+      ctxDe(caminhoLivre, cap),
+    );
+    const reason = String(
+      cap.inserts.find((i) => i.table === "crm_lead_activities")?.values.reason,
+    );
+    expect(semRedundancia(ACTIVITY_LABELS.followup_scheduled, reason)).toBe(true);
+    expect(reason).toContain("Reconfirmar a proposta");
+  });
+
+  it("cancelar: idem, e o motivo entra com inicial maiúscula", async () => {
+    const cap = novasCapturas();
+    const resolver: Resolver = (c) => {
+      if (c.table === "cron_jobs" && c.op === "select" && c.terminal === "maybeSingle") {
+        return {
+          data: {
+            id: RETORNO,
+            contact_id: CONTATO,
+            next_run_at: "2026-08-06T13:00:00.000Z",
+            enabled: true,
+            payload: {},
+            cancelled_at: null,
+            cancel_reason: null,
+          },
+          error: null,
+        };
+      }
+      if (c.table === "cron_jobs" && c.op === "update") return { data: [{ id: RETORNO }], error: null };
+      if (c.table === "crm_leads" && c.terminal === "list") {
+        return {
+          data: [
+            {
+              id: LEAD,
+              organization_id: ORG,
+              pipeline_id: "p1",
+              status: "open",
+              last_activity_at: null,
+              created_at: "2026-08-01T00:00:00Z",
+            },
+          ],
+          error: null,
+        };
+      }
+      if (c.table === "contacts" && c.terminal === "maybeSingle") return { data: { id: CONTATO }, error: null };
+      return { data: c.terminal === "list" ? [] : null, error: null };
+    };
+    await crmCancelFollowup.handler(
+      { followup_id: RETORNO, reason: "o cliente já respondeu" },
+      ctxDe(resolver, cap),
+    );
+    const reason = String(
+      cap.inserts.find((i) => i.table === "crm_lead_activities")?.values.reason,
+    );
+    expect(semRedundancia(ACTIVITY_LABELS.followup_cancelled, reason)).toBe(true);
+    expect(reason).toBe("O cliente já respondeu");
+  });
+
+  it("encerrar: o reason acrescenta o desfecho, não repete 'Demanda encerrada'", async () => {
+    const cap = novasCapturas();
+    const resolver: Resolver = (c) => {
+      if (c.table === "crm_leads" && c.terminal === "maybeSingle") {
+        return {
+          data: { id: LEAD, organization_id: ORG, pipeline_id: "p1", stage_id: STAGE, status: "open", contact_id: CONTATO },
+          error: null,
+        };
+      }
+      if (c.table === "crm_stages" && c.terminal === "maybeSingle") {
+        return { data: { id: STAGE_PERDA, name: "Perdido" }, error: null };
+      }
+      return { data: c.terminal === "list" ? [] : null, error: null };
+    };
+    await crmCloseDemand.handler(
+      { lead_id: LEAD, outcome: "lost", reason: "sem orçamento" },
+      ctxDe(resolver, cap),
+    );
+    const reason = String(
+      cap.inserts.find((i) => i.table === "crm_lead_activities")?.values.reason,
+    );
+    expect(semRedundancia(ACTIVITY_LABELS.demand_closed, reason)).toBe(true);
+    expect(reason).toBe("Perdido — sem orçamento");
   });
 });
 

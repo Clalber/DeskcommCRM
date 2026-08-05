@@ -32,6 +32,7 @@ interface Creds {
   retorno: {
     lead_id: string;
     lead_title: string;
+    pipeline_id: string;
     contact_name: string;
     agent_name: string;
     retorno_id: string;
@@ -95,7 +96,28 @@ test("o retorno marcado pelo agente aparece no Radar e na linha do tempo", async
   };
   const agendado = corpo.data.find((i) => i.type === "followup_scheduled");
   expect(agendado, "a timeline do negócio não registrou o retorno agendado").toBeTruthy();
-  expect(agendado!.reason).toContain(creds.retorno.motivo);
+  expect(agendado!.reason?.toLowerCase()).toContain(creds.retorno.motivo.toLowerCase());
+  // ⚠️ E NÃO REPETE O RÓTULO. A linha na tela é "Retorno agendado" + este texto;
+  // começar por "Retorno agendado — " fazia o dossiê dizer a mesma frase duas
+  // vezes. A asserção anterior (só `toContain` do motivo) passava com a
+  // redundância dentro — foi preciso abrir o dossiê para ver.
+  expect(agendado!.reason?.toLowerCase().startsWith("retorno agendado")).toBe(false);
+});
+
+test("a linha do tempo do negócio mostra o retorno em português de gente", async ({ page }) => {
+  await login(page, creds.users.manager!.email);
+  await page.goto(`/app/pipelines/${creds.retorno.pipeline_id}`);
+
+  await page.getByRole("button", { name: creds.retorno.lead_title, exact: true }).click();
+  const dossie = page.getByRole("dialog").first();
+  await expect(dossie.getByText("Retorno agendado", { exact: true }).first()).toBeVisible();
+
+  // O que o operador LÊ, não o que a API devolve: rótulo humano, sem
+  // identificador técnico e sem a frase repetida.
+  const linha = (await dossie.innerText()).split("LINHA DO TEMPO")[1] ?? "";
+  expect(linha).not.toMatch(/followup_scheduled|followup_cancelled|demand_closed/);
+  expect(linha).not.toContain("Atividade registrada");
+  await captura(page, "w2-retorno-na-linha-do-tempo.png");
 });
 
 test("uma pessoa desmarca o retorno pela fila, e o agente descobre", async ({ page }) => {

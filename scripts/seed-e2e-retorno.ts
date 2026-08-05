@@ -96,7 +96,11 @@ async function ensureContact(orgId: string): Promise<string> {
   return (data as { id: string }).id;
 }
 
-async function ensureLead(orgId: string, contactId: string, agentId: string): Promise<string> {
+async function ensureLead(
+  orgId: string,
+  contactId: string,
+  agentId: string,
+): Promise<{ leadId: string; pipelineId: string }> {
   const { data: pipeline } = await admin
     .from("crm_pipelines")
     .select("id")
@@ -144,7 +148,7 @@ async function ensureLead(orgId: string, contactId: string, agentId: string): Pr
   if (existing) {
     const id = (existing as { id: string }).id;
     await admin.from("crm_leads").update(campos as never).eq("id", id);
-    return id;
+    return { leadId: id, pipelineId };
   }
   const { data, error } = await admin
     .from("crm_leads")
@@ -152,7 +156,7 @@ async function ensureLead(orgId: string, contactId: string, agentId: string): Pr
     .select("id")
     .single();
   if (error || !data) throw new Error(`insert crm_lead: ${error?.message}`);
-  return (data as { id: string }).id;
+  return { leadId: (data as { id: string }).id, pipelineId };
 }
 
 async function main(): Promise<void> {
@@ -162,7 +166,7 @@ async function main(): Promise<void> {
 
   const agentId = await ensureAgent(orgId);
   const contactId = await ensureContact(orgId);
-  const leadId = await ensureLead(orgId, contactId, agentId);
+  const { leadId, pipelineId } = await ensureLead(orgId, contactId, agentId);
 
   // Auto-reset: o teste da tela CANCELA o retorno, então cada execução precisa
   // encontrar exatamente um retorno agendado — não o cancelado da rodada anterior.
@@ -206,6 +210,7 @@ async function main(): Promise<void> {
   const bloco = {
     lead_id: leadId,
     lead_title: LEAD_TITLE,
+    pipeline_id: pipelineId,
     contact_id: contactId,
     contact_name: CONTACT_NAME,
     agent_id: agentId,
