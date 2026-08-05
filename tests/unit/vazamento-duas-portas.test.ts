@@ -14,9 +14,24 @@
  *      (`lead_not_found`, `resume_requires_person`) JÁ caíam na regra de
  *      snake_case — só escapavam o SQLSTATE do Postgres e o código do PostgREST.
  *
- * O RISCO REAL DESTE GATE NÃO É DEIXAR PASSAR, É BARRAR DEMAIS. No caminho do
- * follow-up determinístico o veto é drop silencioso: um gate mal calibrado não
- * degrada, ele MATA a mensagem sem sintoma. Por isso metade deste arquivo é
+ * O RISCO REAL DESTE GATE NÃO É DEIXAR PASSAR, É BARRAR DEMAIS — mas a razão não é
+ * a que a primeira versão deste comentário deu. Ela dizia que no follow-up o veto é
+ * "drop silencioso, mata a mensagem sem sintoma". **Medido, com controle positivo:**
+ *
+ *   - o gate é DESARMADO por default (`args.enforceInternalVocabulary ?? false`) e
+ *     `followup-turn.ts` não o arma (0 ocorrências; `inbound-turn.ts` tem 2). Ele NÃO
+ *     roda no caminho determinístico hoje — o risco lá é condicional a alguém armá-lo,
+ *     e é isso que `gate-vazamento-interno.test.ts` congela;
+ *   - qualquer veto da cadeia persiste trace E emite `send_vetoed` na timeline do
+ *     contato (`emitVetoActivity`), porque "silêncio sem registro é abandono". Quem
+ *     for investigar ACHA. "Silencioso" ali significa sem reescrita, não sem log.
+ *
+ * O custo real de barrar demais é outro, e é pior: no inbound o veto vira erro
+ * instrutivo, e o fail-safe conta vetos e — ao persistir — LIBERA o envio desarmando
+ * este gate. Ou seja, falso positivo teimoso não segura mensagem: ele DESLIGA o
+ * guarda. Um gate mal calibrado não falha barrando; falha virando decoração.
+ *
+ * Por isso metade deste arquivo é
  * falso positivo — número de pedido, CNPJ, CPF, data e horário são o vocabulário
  * legítimo do cliente, e barrá-los é pior que o vazamento que o gate evita.
  */

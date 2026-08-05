@@ -2751,3 +2751,40 @@ protege o falso positivo que importa: a palavra "canal" na boca do cliente não 
 **Lição para quem herdar isto:** um gate que proíbe escrever certo termo torna improibível a
 guarda que usa esse termo. Onde houver gate assim, a cobertura correspondente provavelmente não
 existe — e o verde do CI não vai contar isso.
+
+### Correção — duas afirmações minhas que não resistiram à medição
+
+Publiquei as duas acima (commit, PR, handoff e memória) e as duas estavam erradas. Ficam
+registradas em vez de reescritas, porque o modo como sobreviveram é o achado.
+
+**1. "A guarda era improibível de escrever."** Escrevi que a cobertura faltava por razão
+estrutural — `lint-channels` reprovaria o nome do provider dentro de um teste. Medido com
+controle positivo: literal em `tests/` → **exit 0**; o mesmo literal em `lib/` → **exit 1**.
+`ROOTS = ["app","lib","components","workers"]` nunca incluiu `tests/`. A guarda sempre foi
+escrevível; **a causa real é a chata: ninguém escreveu o teste.**
+
+Escolhi a explicação que rendia lição generalizável em vez da que dizia "faltou fazer" — e ela
+passou cercada de medição de verdade (sabotagem, controle positivo, exit codes). O rigor à volta
+emprestou credibilidade à única frase sem lastro.
+
+**2. "No follow-up o veto é drop silencioso, mata a mensagem sem sintoma."** Repeti isso no PR,
+no teste e aqui. Medido:
+
+- o gate é **desarmado por default** (`args.enforceInternalVocabulary ?? false`) e
+  `followup-turn.ts` **não o arma** (0 ocorrências; `inbound-turn.ts` tem 2). **Ele não roda no
+  caminho determinístico hoje** — o risco lá é condicional a alguém armá-lo;
+- todo veto da cadeia persiste trace **e** emite `send_vetoed` na timeline do contato
+  (`emitVetoActivity`). Quem investigar **acha**. "Silencioso" significa sem reescrita, não sem log.
+
+E ao corrigir a primeira vez eu errei para o outro lado — afirmei que o follow-up mata o disparo
+por veto de vazamento, sem ter medido se o gate estava armado lá. **Retratar-se sem medir é
+afirmar sem medir com o sinal trocado.**
+
+**O custo real de barrar demais é outro, e é pior do que eu vinha dizendo:** no inbound o veto
+vira erro instrutivo, e o fail-safe conta vetos e — ao persistir — **libera o envio desarmando
+este gate**. Falso positivo teimoso não segura mensagem: **desliga o guarda**. Um gate mal
+calibrado não falha barrando, falha virando decoração. O argumento para a metade de falsos
+positivos do teste fica mais forte, não mais fraco — só por outra razão.
+
+**O conserto do código continua válido** (derivar de `CHANNEL_CAPABILITIES` faz provider novo
+entrar na cobertura sozinho). Acerto no código não valida a prosa em volta dele.
