@@ -9113,4 +9113,37 @@ create unique index if not exists channel_sessions_phone_per_org_unique
   on public.channel_sessions (organization_id, phone_number)
   where archived_at is null;
 
+-- ---- agent_inbox_items.kind ganha 'message_send_stuck' (migration 0109) ----
+-- Issue #129. Mensagem outbound nasce `sending` e só sai desse estado quando
+-- quem envia confirma. Se o envio nunca acontece (worker caído, evento sem
+-- consumidor, sessão do canal fora), a linha fica `sending` PARA SEMPRE e o
+-- self-hoster vê uma mensagem eternamente "enviando" — sinal de progresso para
+-- algo que não vai acontecer. Numa VPS ninguém está olhando: ela conclui que o
+-- produto é lento, não que está quebrado. Este kind é o que faz o cron
+-- `recover-stuck-messages` conseguir mostrar o defeito na Central de avisos.
+-- Idempotente: a lista só cresce, nenhuma linha existente viola a nova.
+
+alter table public.agent_inbox_items
+  drop constraint if exists agent_inbox_items_kind_check;
+
+alter table public.agent_inbox_items
+  add constraint agent_inbox_items_kind_check check (kind in (
+    'qr_rescan',
+    'job_dead',
+    'event_dead',
+    'budget_exceeded',
+    'handoff',
+    'promotion_review',
+    'judge_unaligned',
+    'followup_dead',
+    'snooze_expired',
+    'next_action_ambiguous',
+    'risk_backlog_seeded',
+    'reactivation_expired',
+    'capabilities_missing',
+    'message_send_stuck',
+    'other'
+  ));
+
+
 notify pgrst, 'reload schema';
