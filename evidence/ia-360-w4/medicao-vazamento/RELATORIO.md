@@ -214,3 +214,19 @@ rede — não é ela que está segurando os 0%.
   `anthropic/claude-sonnet-4-5` (chave sem crédito) e foi apontado para
   `openai/gpt-5.6-terra`, senão nenhum turno de produção roda. Mudança em banco local, não
   versionada.
+
+---
+
+## Estado de ambiente deixado de propósito (decisão do Rafael, 2026-08-05)
+
+`organizations.settings.llm` da org de E2E (`e2e-test-org`) aponta para
+**`openai/gpt-5.6-terra`**, não mais para `anthropic/claude-sonnet-4-5`.
+
+**Não é resíduo de teste — é decisão.** A chave Anthropic desta base está **sem crédito** (medido:
+o primeiro turno de produção morreu com `Your credit balance is too low`), e sem essa troca
+**nenhum turno de agente roda no ambiente local**. Quem for medir comportamento de agente aqui
+depende disso.
+
+Se algum dia a chave Anthropic voltar a ter saldo e alguém quiser o comportamento antigo, é um
+`update` em `organizations.settings` — mas saiba que estará trocando um modelo que funciona por um
+que hoje não responde.
