@@ -350,14 +350,65 @@ usava as linhas compartilhadas do `seedGov`) — pode ter sido isso, e pode não
 sido: **um dos dois vermelhos aconteceu DEPOIS da isolação**. Fica declarado como
 aberto.
 
-**Não editei o arquivo**: ele é da superfície de follow-up (Wave 2 `reter`), e a
-correção certa mexe na semântica do tick. O conserto que proponho, para quem
-tiver a caneta ali: antes de cada `runFollowupTick` do teste, estacionar os
-enrollments de OUTRAS organizações (`update followup_enrollments set
-claimed_until = now() + interval '1 hour' where organization_id <> <org do
-teste>`). Isso faz o teste medir o que ele quer dizer — "o tick reclama o MEU
-enrollment" — sem afrouxar nada, e vale para todos os ticks do arquivo, não só
-para o que já foi visto falhar.
+### ACH-02 (continuação) — experimento pareado, e o que ele fecha
+
+A primeira comparação estava mal desenhada, e a crítica veio do `@MaestroConexoes`:
+eu tratei "a branch" como variável única quando havia **quatro** estados de código
+dentro dela (fixtures compartilhadas → isoladas → + fixture de negócio → + emissão
+da ida). Um dos dois vermelhos aconteceu DEPOIS da isolação, então nem dentro da
+minha própria série o rótulo era uma variável.
+
+Refeito com **SHA fixo dos dois lados** e rodadas **alternadas** (a carga da
+máquina varia ao longo de horas; rodar um lado inteiro antes do outro confundiria
+efeito com horário):
+
+| Lado | SHA | Corridas | Vermelhos |
+|---|---|---|---|
+| controle | `99cd0fc` | 6 | **0** |
+| tratamento | `6a49417` | 6 | **0** |
+
+Somando as anteriores no MESMO estado de código: base `99cd0fc` **9 de 9 verdes**;
+branch no SHA final **9 de 9 verdes**. Os 2 vermelhos ficam todos em SHAs
+intermediários (5 corridas).
+
+**Poder do experimento, para ninguém ler zero-vermelhos como "resolvido":**
+se a taxa real fosse 25%, 0 em 6 sai por acaso em 17,8% das vezes (0 em 9, em
+7,5%); com 40%, em 4,7%. Ou seja: **taxa alta ficou improvável, taxa moderada
+continua compatível.** Não está fechado — está rebaixado.
+
+### Os dois mecanismos candidatos, e o único conserto que mata os dois
+
+Ambos lidos no código, não inferidos do sintoma — e ambos produzem
+`expected +0 to be 1`, que é por que a atribuição é difícil:
+
+1. **Dois relógios.** `seedEnrollment` grava `next_eval_at` com
+   `new Date(Date.now() - 1_000)` (relógio do HOST) e
+   `fn_claim_due_followup_enrollments` compara com `now()` (relógio do CONTAINER).
+   Margem: 1 segundo.
+2. **Claim global.** A função reclama sem filtro de organização,
+   `order by next_eval_at limit p_limit`, e o teste cobra `scheduled === 1` com
+   `limit: 5`. Cinco enrollments vencidos mais antigos, em qualquer organização
+   do banco compartilhado, enchem o lote.
+
+**Medição que desfavorece o mecanismo 1:** amostrei a defasagem host↔container
+num `pgvector/pgvector:pg17` recém-subido, 5 amostras: o container está **+38 a
++53 ms à FRENTE** do host. O mecanismo 1 exigiria o container mais de **1000 ms
+ATRASADO** — sinal contrário e duas ordens de grandeza de folga. Limite da
+medição: container ocioso, janela de amostragem de ~130 ms, não durante os 8
+minutos de suíte carregada.
+
+**O conserto que imuniza contra os dois** (para quem tem a caneta no follow-up —
+não editei arquivo de outra wave):
+
+- gravar `next_eval_at` pelo relógio do **banco** (`now() - interval '1 second'`
+  no próprio INSERT) em vez do relógio do host — mata o mecanismo 1 na raiz,
+  porque deixa de existir comparação entre relógios;
+- antes de cada `runFollowupTick`, estacionar os enrollments de OUTRAS
+  organizações (`update followup_enrollments set claimed_until = now() +
+  interval '1 hour' where organization_id <> <org do teste>`) — mata o mecanismo 2.
+
+Os dois valem para **todos** os ticks do arquivo, não só para o caso que já foi
+visto falhar: consertar só a instância observada dá álibi às irmãs.
 
 Formato de cada entrada:
 
