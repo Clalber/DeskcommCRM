@@ -842,18 +842,57 @@ c_grn "✓ segredos prontos"
 # nas duas redes. Medido com Traefik v3.3 real: só com o label apontando pra rede do
 # PROXY a requisição sai de HTTP 000 (timeout) para HTTP 200.
 if [ "$REVERSE_PROXY" = "traefik" ] && [ -z "${TRAEFIK_NETWORK:-}" ] && [ -n "$traefik_container" ]; then
-  # "|| true": sem ele o `die` explicativo logo abaixo — que é o tratamento
-  # CERTO deste caso — é inalcançável. Numa atribuição o status do pipeline vira
-  # o status do script; se o painel da hospedagem recriou o proxy entre a
-  # detecção e aqui, o docker inspect sai 1, o 2>/dev/null engole a mensagem e o
-  # instalador cai no painel genérico de erro sem dizer o que houve.
-  TRAEFIK_NETWORK="$(docker inspect -f '{{range $k,$v := .NetworkSettings.Networks}}{{$k}} {{end}}' "$traefik_container" 2>/dev/null | awk '{print $1}' || true)"
+  # Traefik em modo HOST não tem bridge: `.NetworkSettings.Networks` devolve a
+  # string "host", que existe no `docker network ls` mas com driver `host` e não
+  # aceita contêiner junto de uma bridge. Gravar isso em TRAEFIK_NETWORK produz
+  # uma instalação que morre no `up -d` ("network host declared as external"),
+  # longe da causa. É o caso da Hostinger, onde o proxy da hospedagem sobe com
+  # `--network host`.
+  #
+  # E aqui a conclusão se INVERTE em relação ao comentário acima: compartilhando
+  # a stack de rede do host, o Traefik alcança qualquer bridge do Docker — a do
+  # projeto inclusive. A rede a apontar é a do PRÓPRIO projeto, justamente o que
+  # NÃO funciona quando o Traefik está numa bridge dele. Verificado numa VPS
+  # Hostinger com Traefik v3: contêiner `healthy`, labels corretas e o domínio
+  # respondendo 307 em vez de 404.
+  traefik_netmode="$(docker inspect -f '{{.HostConfig.NetworkMode}}' "$traefik_container" 2>/dev/null || true)"
+  if [ "$traefik_netmode" = "host" ]; then
+    TRAEFIK_NETWORK="${COMPOSE_PROJECT_NAME:-$(basename "$PWD")}_internal"
+  else
+    # "|| true": sem ele o `die` explicativo logo abaixo — que é o tratamento
+    # CERTO deste caso — é inalcançável. Numa atribuição o status do pipeline vira
+    # o status do script; se o painel da hospedagem recriou o proxy entre a
+    # detecção e aqui, o docker inspect sai 1, o 2>/dev/null engole a mensagem e o
+    # instalador cai no painel genérico de erro sem dizer o que houve.
+    TRAEFIK_NETWORK="$(docker inspect -f '{{range $k,$v := .NetworkSettings.Networks}}{{$k}} {{end}}' "$traefik_container" 2>/dev/null | awk '{print $1}' || true)"
+  fi
 fi
 if [ "$REVERSE_PROXY" = "traefik" ] && [ -z "${TRAEFIK_NETWORK:-}" ]; then
   die "Não consegui descobrir a rede Docker do seu Traefik. Rode 'docker network ls',
 identifique a rede dele e ponha TRAEFIK_NETWORK=<nome> no .env antes de tentar de novo."
 fi
 TRAEFIK_NETWORK="${TRAEFIK_NETWORK:-traefik}"
+
+# Guard: o compose declara TRAEFIK_NETWORK como rede EXTERNA, então um valor que
+# não seja uma bridge existente só aparece lá na frente, como
+# "network X declared as external, but could not be found" no `up -d` — sem dizer
+# de onde saiu o nome. Falhar aqui, com o nome na mão, é dezenas de minutos de
+# diferença pra quem está instalando. Valor vindo do .env do usuário passa pelo
+# mesmo crivo: um TRAEFIK_NETWORK escrito à mão erra tão fácil quanto a detecção.
+if [ "$REVERSE_PROXY" = "traefik" ]; then
+  traefik_net_driver="$(docker network inspect -f '{{.Driver}}' "$TRAEFIK_NETWORK" 2>/dev/null || true)"
+  if [ -z "$traefik_net_driver" ]; then
+    die "A rede Docker '$TRAEFIK_NETWORK' não existe.
+Rode 'docker network ls', identifique a rede do seu Traefik e ponha
+TRAEFIK_NETWORK=<nome> no .env antes de tentar de novo."
+  fi
+  if [ "$traefik_net_driver" != "bridge" ]; then
+    die "A rede '$TRAEFIK_NETWORK' tem driver '$traefik_net_driver', e o app precisa
+de uma bridge para o Traefik alcançar o contêiner. Se o seu Traefik roda em modo
+host, use a rede do próprio projeto (algo como '$(basename "$PWD")_internal');
+senão, rode 'docker network ls' e ponha a bridge certa em TRAEFIK_NETWORK no .env."
+  fi
+fi
 
 # ── Telemetria: perguntar, não presumir ─────────────────────────────────────
 # Issue #100. Antes, quem não definisse SENTRY_DSN mandava relatório de erro pro
