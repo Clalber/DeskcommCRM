@@ -90,9 +90,11 @@ export async function applyScheduleFollowup(
   }
   const input = parsed.data;
 
+  // Um relógio só para decidir E para ensinar — ver o ⚠️ das mensagens abaixo.
+  const agora = cfg.clock();
   const resultado = await agendaRetorno(
     criaRetornoDbPg(db),
-    { agora: cfg.clock(), janela: cfg.knobs },
+    { agora, janela: cfg.knobs },
     // No harness, "lead" É o contato (inbound-turn: leadId = job.contact_id) — é
     // exatamente o que `cron_jobs.contact_id` guarda.
     { orgId: ids.tenantId, contactId: ids.leadId },
@@ -105,29 +107,40 @@ export async function applyScheduleFollowup(
   );
 
   if (!resultado.ok) {
+    // ⚠️ A RECUSA DIZ QUE HORAS SÃO. O modelo não sabe que dia é hoje — medido
+    // num turno real: pedido "daqui a três dias", ele mandou a data do próprio
+    // treino. Dizer só "já passou" é verdade e é inútil: ele repete a mesma data
+    // e queima os passos do turno. Quem recusa devolve o que falta para corrigir.
+    const agoraIso = agora.toISOString();
     switch (resultado.codigo) {
       case 'instante_invalido':
         return teachInvalidPayload(
-          'promised_at não é uma data ISO 8601 válida (ex.: "2026-07-15T14:00:00Z")',
+          `promised_at não é uma data ISO 8601 válida. AGORA é ${agoraIso} — some o prazo pedido a este instante e mande o resultado absoluto`,
         );
       case 'instante_no_passado':
         return {
           ok: false,
           error: {
             code: 'promised_at_in_past',
-            message: 'a data prometida (promised_at) já passou; escolha um horário no futuro para o retorno.',
+            message:
+              `a data prometida (promised_at) já passou: AGORA é ${agoraIso}. Some o prazo ` +
+              `combinado a este instante e mande a data absoluta resultante — não repita a mesma data.`,
           },
         };
-      case 'instante_fora_da_janela':
+      case 'instante_fora_da_janela': {
+        const cedoDemais = new Date(agora.getTime() + resultado.janela.minAheadMs).toISOString();
+        const tardeDemais = new Date(agora.getTime() + resultado.janela.maxAheadMs).toISOString();
         return {
           ok: false,
           error: {
             code: 'promised_at_out_of_window',
             message:
-              `horário fora da janela aceitável de follow-up: agende o retorno entre ` +
-              `${duracaoLegivel(resultado.janela.minAheadMs)} e ${duracaoLegivel(resultado.janela.maxAheadMs)} a partir de agora.`,
+              `horário fora da janela aceitável de follow-up. AGORA é ${agoraIso}; o retorno tem de ` +
+              `cair entre ${cedoDemais} e ${tardeDemais} ` +
+              `(${duracaoLegivel(resultado.janela.minAheadMs)} a ${duracaoLegivel(resultado.janela.maxAheadMs)} a partir de agora).`,
           },
         };
+      }
       case 'ja_existe_retorno': {
         // Guard anti-empilhamento (1 follow-up VIVO por lead): sem isto, o agente
         // marca um "reconfirmar amanhã" a cada turno e o lead vira alvo de N
