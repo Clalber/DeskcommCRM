@@ -15,14 +15,12 @@
  *    sem atualizar os mapas da tela reprova aqui, que é exatamente o modo de
  *    falha que produziu este bug (o TypeScript não enxerga o CHECK).
  */
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
-
 import { describe, expect, it } from "vitest";
 import { render, within } from "@testing-library/react";
 
 import { badgeVariants } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import { valoresDoCheckNoBaseline } from "@/tests/helpers/baseline-check";
 import type { TenantCounts, TenantOrganization } from "@/hooks/useTenantDetail";
 
 import {
@@ -32,32 +30,14 @@ import {
 } from "./TenantOverview";
 
 /**
- * Vocabulário que o banco aceita, lido do baseline.
- *
- * Falha ALTO se não achar exatamente uma definição ou se não extrair valor
- * nenhum: uma lista vazia faria o `for` abaixo passar verde sem exercitar
- * nada, que é pior que não ter teste.
+ * Vocabulário que o banco aceita, lido do baseline. A leitura (e o "falha alto
+ * em vez de devolver lista vazia") mora em `tests/helpers/baseline-check.ts`,
+ * compartilhada com a rota que alimenta esta tela: dois leitores escritos à mão
+ * seriam a duplicação contra a qual esta guarda existe.
  */
-const STATUS_NO_BANCO: string[] = (() => {
-  const sql = readFileSync(resolve(process.cwd(), "supabase/baseline.sql"), "utf8");
-  const definicoes = sql
-    .split("\n")
-    .filter((linha) => linha.includes("tenant_integrations_status_check"));
-  if (definicoes.length !== 1) {
-    throw new Error(
-      `esperava 1 definição de tenant_integrations_status_check no baseline, achei ${definicoes.length}`,
-    );
-  }
-  const valores = [...definicoes[0]!.matchAll(/'([a-z_]+)'::"text"/g)].map(
-    (m) => m[1]!,
-  );
-  if (valores.length < 2) {
-    throw new Error(
-      `não consegui ler os valores do CHECK no baseline: ${definicoes[0]}`,
-    );
-  }
-  return valores;
-})();
+const STATUS_NO_BANCO = valoresDoCheckNoBaseline(
+  "tenant_integrations_status_check",
+);
 
 const ORG: TenantOrganization = {
   id: "33333333-3333-4333-8333-333333333333",

@@ -247,6 +247,39 @@ describe("GET /api/v1/admin/users — teto de páginas da varredura", () => {
     const body = (await res.json()) as { error: { code: string } };
     expect(body.error.code).toBe("upstream_unavailable");
   });
+
+  it("na fronteira, a falha não afirma o tamanho do diretório — ela conta os pendentes", async () => {
+    // Este é o cenário exato em que os dois mundos são indistinguíveis: o
+    // diretório tem MAX_PAGES páginas não-vazias e o vínculo é órfão (usuário
+    // removido do Auth). A varredura para no teto sem nunca ver a página vazia
+    // que provaria o fim, então "o diretório é maior que o suportado" é uma
+    // causa NÃO medida — e era o que a mensagem afirmava.
+    //
+    // A decisão é falhar fechado na AÇÃO (503; entregar a lista como completa
+    // some com um usuário que existe) e aberto na INFORMAÇÃO: a mensagem fala
+    // do que aconteceu, e o `details` leva o dado que separa os dois mundos na
+    // mão do operador — 1 pendente num diretório grande cheira a órfão,
+    // centenas cheiram a truncamento.
+    const orfao = "aaaaaaaa-0000-4000-8000-000000000009";
+    const vivo = authUser("aaaaaaaa-0000-4000-8000-000000000001", 1);
+    const { stub } = makeAdminStub({
+      uoRows: [uoRow(vivo.id), uoRow(orfao)],
+      authPages: diretorioNoTeto(vivo),
+    });
+    vi.mocked(createAdminClient).mockReturnValue(stub as never);
+
+    const { GET } = await import("./route");
+    const res = await GET(req());
+
+    expect(res.status).toBe(503);
+    const body = (await res.json()) as {
+      error: { code: string; message: string; details?: string };
+    };
+    expect(body.error.code).toBe("upstream_unavailable");
+    expect(body.error.message).not.toMatch(/maior que o suportado/i);
+    // 1 dos 2 vínculos ficou sem usuário: o número é a informação, não a causa.
+    expect(body.error.details).toContain("1 of 2 link(s) unresolved");
+  });
 });
 
 describe("GET /api/v1/admin/users — GoTrue indisponível", () => {

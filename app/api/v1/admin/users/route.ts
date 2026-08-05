@@ -160,10 +160,24 @@ export async function GET(req: NextRequest) {
   const needed = new Set(userIds);
   const authMap = new Map<string, AuthUser>();
   const PER_PAGE = 1000;
-  // Teto defensivo: as paradas naturais são a página vazia e o mapa completo.
-  // Se o diretório for maior que isto e AINDA faltar id para resolver, a rota
-  // falha alto em vez de entregar uma lista truncada que se parece com "esses
-  // são todos os usuários".
+  // Teto defensivo: as paradas naturais da varredura são a página vazia e o
+  // mapa completo, e este é o terceiro fim (o erro do GoTrue, logo abaixo, é o
+  // quarto).
+  //
+  // A condição exata é "a página MAX_PAGES veio NÃO-VAZIA e ainda falta id", que
+  // NÃO é o mesmo que "o diretório é maior que MAX_PAGES × PER_PAGE". Um
+  // diretório com exatamente MAX_PAGES páginas não-vazias e um vínculo órfão
+  // (usuário removido do Auth) cai aqui igual: a varredura nunca chega a ver a
+  // página vazia que provaria o fim, e não há como saber qual dos dois mundos é
+  // o de fora — `listUsers` só preenche `total` quando a resposta traz header
+  // Link, e lê `lastPage` com `.substring(0, 1)` (@supabase/auth-js 2.111.0).
+  //
+  // Sem como distinguir, a rota falha alto: entregar a lista como se estivesse
+  // completa é o erro caro (some um usuário que existe, e ninguém fica sabendo).
+  // O que ela não pode é afirmar a causa que não mediu — daí a mensagem falar da
+  // varredura, e não do tamanho do diretório, e o `details` levar quantos
+  // vínculos ficaram sem resolver: 1 num diretório grande cheira a órfão,
+  // centenas cheiram a truncamento.
   const MAX_PAGES = 50;
   let authPage = 1;
   let directoryExhausted = false;
@@ -207,15 +221,19 @@ export async function GET(req: NextRequest) {
       break;
     }
     // O teto só é falha se ainda falta id para resolver. Um diretório com
-    // exatamente MAX_PAGES páginas cheias cujo último id necessário está na
+    // exatamente MAX_PAGES páginas não-vazias cujo último id necessário está na
     // última delas deixa o mapa COMPLETO: nada foi truncado, e derrubar a
-    // listagem com 503 na fronteira seria mentir sobre o tamanho do diretório.
+    // listagem aqui seria reprovar quem terminou em cima da fronteira.
     if (authMap.size < needed.size && authPage >= MAX_PAGES) {
+      const pendentes = needed.size - authMap.size;
       return fail(
         "upstream_unavailable",
-        "Diretório de usuários maior que o suportado por esta listagem",
+        "Varredura do diretório de usuários atingiu o teto de páginas sem resolver todos os vínculos",
         503,
-        { requestId, details: `scanned ${MAX_PAGES} pages of ${PER_PAGE}` },
+        {
+          requestId,
+          details: `scanned ${MAX_PAGES} pages of ${PER_PAGE}; ${pendentes} of ${needed.size} link(s) unresolved`,
+        },
       );
     }
     authPage += 1;

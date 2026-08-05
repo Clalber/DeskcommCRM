@@ -3,6 +3,9 @@ import { NextRequest } from "next/server";
 
 import { requirePlatformAdmin } from "@/lib/auth/requirePlatformAdmin";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { valoresDoCheckNoBaseline } from "@/tests/helpers/baseline-check";
+
+import { NUVEMSHOP_CLASSIFICACAO, type HealthStatus } from "./route";
 
 /**
  * GET /api/v1/admin/tenants/[id]/health — o painel de saúde do tenant.
@@ -12,6 +15,15 @@ import { createAdminClient } from "@/lib/supabase/admin";
  * scope_missing/disconnected/rate_limited/error). Quem escreve a linha
  * conectada é o callback do OAuth, com `healthy`: integração perfeita aparecia
  * como "Não conectado", e o ramo crítico de token vencido era inalcançável.
+ *
+ * Dois níveis de guarda, os mesmos que `TenantOverview.test.tsx` — a TELA que
+ * esta rota alimenta tinha a cobertura e a rota não, e é a rota que decide o
+ * que a tela recebe:
+ *  - os casos nomeados, que fixam a saúde de cada estado que importa;
+ *  - a cobertura contra o CHECK do `supabase/baseline.sql`. Status novo que uma
+ *    migration acrescente ao banco sem entrar na classificação da rota reprova
+ *    aqui, que é o modo de falha que produziu este bug (o TypeScript não
+ *    enxerga o CHECK).
  */
 
 vi.mock("@/lib/auth/requirePlatformAdmin", () => ({
@@ -73,7 +85,7 @@ async function chamar(
     { params: Promise.resolve({ id: ORG_ID }) },
   );
   const body = (await res.json()) as {
-    data: { nuvemshop: { connected: boolean; status: string } };
+    data: { nuvemshop: { connected: boolean; status: HealthStatus } };
   };
   return body.data.nuvemshop;
 }
@@ -114,3 +126,60 @@ describe("GET /api/v1/admin/tenants/[id]/health — Nuvemshop", () => {
     expect(semLinha.status).toBe("warning");
   });
 });
+
+describe("GET /api/v1/admin/tenants/[id]/health — cobertura do vocabulário", () => {
+  const STATUS_NO_BANCO = valoresDoCheckNoBaseline(
+    "tenant_integrations_status_check",
+  );
+
+  it("todo status que o banco aceita está classificado na rota", () => {
+    for (const status of STATUS_NO_BANCO) {
+      expect(
+        Object.keys(NUVEMSHOP_CLASSIFICACAO),
+        `status '${status}' sem classificação em NUVEMSHOP_CLASSIFICACAO`,
+      ).toContain(status);
+    }
+  });
+
+  it("a classificação declarada é a que a rota entrega, status a status", async () => {
+    // Token com 90 dias de folga de propósito: é o cenário em que o ramo final
+    // devolvia `ok` para qualquer status que a cadeia de `===` não enumerasse.
+    // Exercitar a rota INTEIRA (e não só ler a tabela) é o que impede a tabela
+    // de existir sem ser consultada.
+    const validade = new Date(Date.now() + 90 * DIA).toISOString();
+    for (const status of STATUS_NO_BANCO) {
+      const classe = NUVEMSHOP_CLASSIFICACAO[status];
+      expect(classe, `status '${status}' sem classificação`).toBeDefined();
+      if (!classe) continue;
+
+      const nu = await chamar({ status, expires_at: validade });
+      expect(nu.status, `saúde de '${status}'`).toBe(classe.saude ?? "ok");
+      expect(nu.connected, `vínculo de '${status}'`).toBe(classe.vinculada);
+    }
+  });
+
+  it("status fora do vocabulário não passa por saudável", async () => {
+    // Para valor que o banco aceita este ramo é inalcançável — quem garante é o
+    // teste de cobertura acima. O que ele não pode é ler como "tudo certo", e
+    // era exatamente assim que a rota tratava todo status não enumerado.
+    const nu = await chamar({
+      status: "quota_exceeded",
+      expires_at: new Date(Date.now() + 90 * DIA).toISOString(),
+    });
+    expect(STATUS_NO_BANCO).not.toContain("quota_exceeded");
+    expect(nu.status).toBe("warning");
+    expect(nu.connected).toBe(false);
+  });
+});
+
+// A função de saúde das SESSÕES de canal, logo acima na rota, enumera o
+// `channel_sessions_status_check` à mão do mesmo jeito e também não tem guarda.
+// Ela fica de fora daqui de propósito: o campo da resposta e a função levam o
+// nome do provider, e um teste sobre eles teria de escrevê-lo — o que
+// `scripts/lint-channels.ts` (invariante 1 da restrição de canal) reprova em
+// arquivo novo. Medido: com o caso escrito, `pnpm lint:channels` saía EXIT 1
+// apontando este arquivo. A própria rota já está no KNOWN_DEBT do lint por esse
+// mesmo motivo ("nome de campo de resposta de API pública"), com saída prevista
+// na Fase 3a; a guarda entra junto com a renomeação. Enquanto isso o risco é
+// menor que o da Nuvemshop, e por uma razão medível: o default daquele ramo
+// é `warning`, não `ok` — status novo não vira verde silencioso.
