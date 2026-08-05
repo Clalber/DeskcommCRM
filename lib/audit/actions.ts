@@ -136,7 +136,9 @@ export type AuditAction =
   | "channel.archived"
   // Contraparte de `archived`: a linha escondida voltou à vida (reconexão do
   // canal oficial, retomada do pareamento). Sem ela o histórico registra a
-  // exclusão e cala sobre o canal ter voltado a receber e enviar.
+  // exclusão e cala sobre o canal ter voltado a receber e enviar. Emitida por
+  // `lib/channels/reactivate.ts` — o único caminho de volta, e é o que faz a
+  // frase acima valer para os DOIS casos em vez de para o que lembraram.
   | "channel.reactivated"
   | "authz.denied"
   | "team.role_changed"

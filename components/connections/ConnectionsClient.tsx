@@ -53,17 +53,22 @@ function errMsg(err: unknown, fallback: string): string {
 }
 
 /**
- * "Este canal precisa do serviço de WhatsApp para ser excluído?" — perguntado
- * pelo nome da sessão, que é o que a rota de exclusão de fato desloga; a tela
- * não precisa conhecer provider nenhum.
+ * "Este canal VIVE no serviço de WhatsApp?" — perguntado pelo nome da sessão,
+ * que é o que as rotas de sessão de fato param, deslogam e apagam; a tela não
+ * precisa conhecer provider nenhum.
+ *
+ * Duas perguntas da tela se respondem por aqui, e as duas na mesma direção:
+ * excluir precisa do serviço no ar (a rota desloga o aparelho antes) e
+ * RECONECTAR só existe para quem tem sessão a reiniciar. O canal oficial não tem
+ * nenhuma das duas — a rota de reconectar o recusa com 422 —, então oferecer o
+ * botão seria prometer uma ação que a API já sabe que não vai fazer.
  *
  * O lado que importa é garantido pelo schema: `channel_sessions_provider_ref_check`
  * exige nome de sessão em toda linha pareada por QR, então nenhuma delas escapa
  * da guarda. O canal oficial nasce sem esse nome (nada no código o grava nele) e
- * é revogado por credencial, sem tocar no transporte — por isso continua
- * podendo ser excluído com o serviço fora do ar. Se algum dia uma linha oficial
- * guardar nome de sessão, o efeito é o botão exigir o serviço à toa: restringe
- * demais, nunca promete de menos.
+ * é revogado por credencial, sem tocar no transporte. Se algum dia uma linha
+ * oficial guardar nome de sessão, o efeito é o botão exigir o serviço à toa:
+ * restringe demais, nunca promete de menos.
  */
 function dependeDoTransporte(c: ChannelSession): boolean {
   return Boolean(c.waha_session_name);
@@ -277,7 +282,8 @@ export function ConnectionsClient({ wahaConfigured }: { wahaConfigured: boolean 
             // quem depende dele: oferecer o botão seria prometer uma ação que
             // não acontece. O canal oficial não passa pelo transporte e continua
             // podendo ser excluído.
-            const podeExcluir = wahaConfigured || !dependeDoTransporte(c);
+            const vivaNoTransporte = dependeDoTransporte(c);
+            const podeExcluir = wahaConfigured || !vivaNoTransporte;
             return (
               <Card key={c.id} className="flex flex-col gap-3 p-4">
                 <div className="flex items-start justify-between gap-2">
@@ -300,19 +306,25 @@ export function ConnectionsClient({ wahaConfigured }: { wahaConfigured: boolean 
                     : "Ainda não verificado"}
                 </p>
                 <div className="mt-auto flex gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={busyId === c.id || !wahaConfigured}
-                    onClick={() => handleReconnect(c)}
-                  >
-                    {busyId === c.id ? (
-                      <CircleNotch size={14} className="animate-spin" aria-hidden />
-                    ) : (
-                      <ArrowsClockwise size={14} aria-hidden />
-                    )}
-                    Reconectar
-                  </Button>
+                  {/* Some no canal oficial em vez de aparecer desabilitado: não é
+                      indisponibilidade passageira (como o Excluir sem o serviço no
+                      ar), é uma ação que não existe para esse canal — e o clique
+                      ainda abriria o diálogo de QR, que ele nunca vai ter. */}
+                  {vivaNoTransporte && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={busyId === c.id || !wahaConfigured}
+                      onClick={() => handleReconnect(c)}
+                    >
+                      {busyId === c.id ? (
+                        <CircleNotch size={14} className="animate-spin" aria-hidden />
+                      ) : (
+                        <ArrowsClockwise size={14} aria-hidden />
+                      )}
+                      Reconectar
+                    </Button>
+                  )}
                   <Button variant="outline" size="sm" onClick={() => setAntiBanId(c.id)}>
                     <ShieldCheck size={14} aria-hidden />
                     Proteção de envio

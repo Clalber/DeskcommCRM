@@ -24,6 +24,10 @@
  * apagou a sessão no transporte, então o caminho de volta é conectar um número
  * (que também é o que a mensagem de erro diz).
  *
+ * Canal OFICIAL é recusado por outro motivo, e com outro desfecho (422): ele não
+ * tem sessão no transporte para parar e subir — `waha_session_name` é NULL nele
+ * por CHECK. Reiniciar não é a operação dele; trocar a credencial é.
+ *
  * Admin only. organization_id vem da sessão — nunca do path/body.
  */
 import { randomUUID } from "node:crypto";
@@ -82,7 +86,7 @@ export async function POST(
   );
   const session = sessionRaw as {
     id: string;
-    waha_session_name: string;
+    waha_session_name: string | null;
     archived_at?: string | null;
   } | null;
   if (!session) return fail("not_found", "Canal não encontrado.", 404, { requestId });
@@ -91,6 +95,20 @@ export async function POST(
       "channel_archived",
       "Este número foi excluído da Central de Conexões — reconectar não o traz de volta. Conecte um número para voltar a atender.",
       409,
+      { requestId },
+    );
+  }
+  // O nome da sessão é NULL no canal oficial, e o CHECK
+  // `channel_sessions_provider_ref_check` garante que só nele. Afirmar `string`
+  // aqui (era um cast) não fazia o valor existir: mandava `null` para o
+  // transporte, que pedia `/api/sessions/null/stop` e devolvia erro de serviço —
+  // culpando o WhatsApp por uma pergunta que nunca fez sentido.
+  const nomeSessao = session.waha_session_name;
+  if (!nomeSessao) {
+    return fail(
+      "channel_without_session",
+      "Este canal é o oficial (API da plataforma): ele não tem sessão de WhatsApp para reiniciar. Se parou de entregar, atualize a credencial na tela do canal oficial.",
+      422,
       { requestId },
     );
   }
@@ -106,11 +124,11 @@ export async function POST(
   }
 
   try {
-    await waha.stopSession(session.waha_session_name);
+    await waha.stopSession(nomeSessao);
     // Só no modo forçado: descartar a credencial é irreversível — obriga a
     // reescanear o QR mesmo que ela ainda estivesse boa.
-    if (force) await waha.logoutSession(session.waha_session_name);
-    const remote = (await waha.startSession(session.waha_session_name)) as { status?: string };
+    if (force) await waha.logoutSession(nomeSessao);
+    const remote = (await waha.startSession(nomeSessao)) as { status?: string };
     const nextStatus = remote.status ?? "STARTING";
     await supabase
       .from("channel_sessions")
@@ -129,7 +147,7 @@ export async function POST(
       resourceType: "channel_session",
       resourceId: id,
       requestId,
-      metadata: { waha_session_name: session.waha_session_name, force },
+      metadata: { waha_session_name: nomeSessao, force },
     });
 
     return ok({ id, status: nextStatus, force }, { requestId });

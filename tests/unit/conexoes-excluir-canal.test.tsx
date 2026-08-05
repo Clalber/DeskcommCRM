@@ -151,6 +151,30 @@ describe("Excluir sem o serviço de WhatsApp ativo", () => {
   });
 });
 
+/**
+ * Mesma classe do Excluir, três linhas acima na mesma tela: o botão prometia uma
+ * ação que a API recusa (422 `channel_without_session`). O canal oficial não tem
+ * sessão no transporte para reiniciar — e o clique ainda abria o diálogo de QR,
+ * que ele nunca vai ter, deixando o operador esperando um código que não vem.
+ */
+describe("Reconectar não é oferecido a quem não vive no transporte", () => {
+  it("canal oficial não recebe o botão", () => {
+    listagem.data = [canal({ waha_session_name: null, display_name: "Oficial" })];
+
+    render(wrap(<ConnectionsClient wahaConfigured />));
+
+    expect(screen.queryByRole("button", { name: /Reconectar/ })).not.toBeInTheDocument();
+    // Não-vacuidade: o card É o do canal oficial, e as ações dele continuam lá.
+    expect(screen.getByRole("button", { name: "Excluir Oficial" })).toBeInTheDocument();
+  });
+
+  it("número pareado por QR continua recebendo o botão", () => {
+    render(wrap(<ConnectionsClient wahaConfigured />));
+
+    expect(screen.getByRole("button", { name: /Reconectar/ })).toBeEnabled();
+  });
+});
+
 describe("diálogo de exclusão diz a verdade antes do clique", () => {
   it("consome o preflight e lista o que fica guardado e o que para de atender", async () => {
     getMock.mockResolvedValue({ data: { deletion_impact: IMPACTO_ARQUIVA } });

@@ -310,21 +310,6 @@ describe("POST /api/v1/channels/official — reconectar é ressuscitar", () => {
     expect(db.linhas).toHaveLength(1);
   });
 
-  it("registra channel.reactivated — a auditoria não pode calar sobre o canal ter voltado", async () => {
-    authOk();
-    makeDb({ sessions: [canalOficial({ archived_at: ARQUIVADO_EM })] });
-    const { POST } = await import("@/app/api/v1/channels/official/route");
-    await POST(reqOficial());
-
-    expect(audit).toHaveBeenCalledWith(
-      expect.objectContaining({
-        action: "channel.reactivated",
-        organizationId: ORG,
-        resourceId: CANAL,
-      }),
-    );
-  });
-
   it("canal que já estava ativo: atualiza normalmente e NÃO inventa uma ressurreição", async () => {
     authOk();
     const db = makeDb({ sessions: [canalOficial({ status: "WORKING" })] });
@@ -464,6 +449,27 @@ describe("POST /api/v1/channel-sessions/[id]/reconnect — canal excluído não 
     expect(waha.startSession).toHaveBeenCalledWith(NOME_SESSAO);
   });
 
+  /**
+   * ⭐ O canal OFICIAL não tem sessão no transporte (`waha_session_name` NULL por
+   * CHECK). O tipo aqui afirmava `string` por cast, e o `null` seguia inteiro
+   * até a URL: `POST /api/sessions/null/stop`. O erro que voltava era do
+   * transporte, então a tela culpava o serviço de WhatsApp por uma pergunta que
+   * nunca fez sentido fazer.
+   */
+  it("⭐ canal OFICIAL → 422, e o transporte não é acionado com `null` no lugar do nome", async () => {
+    authOk();
+    const db = makeDb({ sessions: [canalOficial()] });
+    const waha = transporteOk();
+    const { POST } = await import("@/app/api/v1/channel-sessions/[id]/reconnect/route");
+    const res = await POST(req(), ctx());
+
+    expect(res.status).toBe(422);
+    expect((await res.json()).error.code).toBe("channel_without_session");
+    expect(waha.stopSession).not.toHaveBeenCalled();
+    expect(waha.startSession).not.toHaveBeenCalled();
+    expect(db.escritas).toEqual([]);
+  });
+
   it("sem auth não chega no banco nem no transporte", async () => {
     vi.mocked(requireRole).mockResolvedValue({
       ok: false,
@@ -569,6 +575,22 @@ describe("GET /api/v1/channel-sessions/[id]/qr — o QR é o ato de religar", ()
     chamou.mockRestore();
   });
 
+  it("⭐ canal OFICIAL → 409, sem pedir `/api/null/auth/qr` ao transporte", async () => {
+    authOk();
+    makeDb({ sessions: [canalOficial()] });
+    const chamou = fetchSpy();
+    const { GET } = await import("@/app/api/v1/channel-sessions/[id]/qr/route");
+    const res = await GET(req(), ctx());
+
+    // Ele não tem QR por natureza — e o 404 que o transporte devolveria para
+    // `null` é indistinguível de "o QR ainda não ficou pronto", que é o estado
+    // em que a tela fica insistindo.
+    expect(res.status).toBe(409);
+    expect(res.headers.get("x-channel-state")).toBe("no-session");
+    expect(chamou).not.toHaveBeenCalled();
+    chamou.mockRestore();
+  });
+
   it("clone sem a migration 0100: o QR continua aparecendo", async () => {
     authOk();
     makeDb({ sessions: [canalQr()], semColunaArquivada: true });
@@ -586,17 +608,91 @@ describe("GET /api/v1/channel-sessions/[id]/qr — o QR é o ato de religar", ()
   });
 });
 
+/**
+ * ⭐ OS DOIS CAMINHOS DE VOLTA, NA MESMA RÉGUA.
+ *
+ * `channel.reactivated` nasceu com o texto "reconexão do canal oficial, retomada
+ * do pareamento" — e por um tempo valeu só para o primeiro: o oficial auditava
+ * porque o handler lembrou, o onboarding ressuscitava calado. Um caso por rota
+ * não pega isso; a régua precisa ser a MESMA lista percorrida duas vezes, senão
+ * o caminho que ninguém escreveu continua sendo o que ninguém cobre.
+ *
+ * A tabela é a fonte: caminho novo que ressuscite entra aqui, e enquanto não
+ * entrar, quem apagar a auditoria de QUALQUER um dos dois vê vermelho.
+ */
+describe("toda ressurreição é auditada — nenhuma nasce muda", () => {
+  const CAMINHOS = [
+    {
+      nome: "conectar o canal oficial",
+      arquivado: () => canalOficial({ archived_at: ARQUIVADO_EM }),
+      vivo: () => canalOficial({ status: "WORKING" }),
+      chamar: async () => {
+        const { POST } = await import("@/app/api/v1/channels/official/route");
+        return POST(reqOficial());
+      },
+    },
+    {
+      nome: "retomar o pareamento pelo onboarding",
+      arquivado: () => canalQr({ archived_at: ARQUIVADO_EM, status: "STOPPED" }),
+      vivo: () => canalQr(),
+      chamar: async () => {
+        const { POST } = await import("@/app/api/v1/onboarding/whatsapp/session/route");
+        return POST(
+          new Request("http://localhost/api/v1/onboarding/whatsapp/session", { method: "POST" }),
+        );
+      },
+    },
+  ];
+
+  it.each(CAMINHOS)("$nome registra channel.reactivated com ator e canal", async (caminho) => {
+    authOk();
+    const db = makeDb({ sessions: [caminho.arquivado()] });
+    transporteOk();
+
+    const res = await caminho.chamar();
+
+    // Não-vacuidade: o evento só vale se a linha REALMENTE voltou — auditoria
+    // sobre uma volta que não aconteceu seria o defeito ao contrário.
+    expect(res.status).toBe(200);
+    expect(db.linhas[0]?.archived_at).toBeNull();
+    expect(audit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "channel.reactivated",
+        organizationId: ORG,
+        actorUserId: USER,
+        resourceType: "channel_session",
+        resourceId: CANAL,
+      }),
+    );
+  });
+
+  it.each(CAMINHOS)("$nome não emite evento sobre canal que já estava vivo", async (caminho) => {
+    authOk();
+    makeDb({ sessions: [caminho.vivo()] });
+    transporteOk();
+
+    expect((await caminho.chamar()).status).toBe(200);
+    expect(audit).not.toHaveBeenCalledWith(
+      expect.objectContaining({ action: "channel.reactivated" }),
+    );
+  });
+});
+
 describe("reactivateChannelSession — o desarquivamento mora num lugar só", () => {
+  const ator = { userId: USER, requestId: "req-1" };
+
   it("desarquiva no MESMO update que aplica o patch (sem janela de estado misto)", async () => {
     const db = makeDb({ sessions: [canalQr({ archived_at: ARQUIVADO_EM })] });
     const client = await createClient();
     const r = await reactivateChannelSession(
       client,
-      { organizationId: ORG, channelSessionId: CANAL },
+      { organizationId: ORG, channelSessionId: CANAL, archivedAt: ARQUIVADO_EM },
       { status: "WORKING" },
+      ator,
     );
 
     expect(r.error).toBeNull();
+    expect(r.reactivated).toBe(true);
     expect(db.escritas).toHaveLength(1);
     expect(patchDe(db, 0)).toEqual({ status: "WORKING", archived_at: null });
     expect(db.linhas[0]?.archived_at).toBeNull();
@@ -609,8 +705,9 @@ describe("reactivateChannelSession — o desarquivamento mora num lugar só", ()
     const client = await createClient();
     await reactivateChannelSession(
       client,
-      { organizationId: ORG, channelSessionId: CANAL },
+      { organizationId: ORG, channelSessionId: CANAL, archivedAt: ARQUIVADO_EM },
       { status: "WORKING" },
+      ator,
     );
 
     expect(db.linhas[0]?.archived_at).toBe(ARQUIVADO_EM);
@@ -621,16 +718,27 @@ describe("reactivateChannelSession — o desarquivamento mora num lugar só", ()
     const client = await createClient();
     const r = await reactivateChannelSession(
       client,
-      { organizationId: ORG, channelSessionId: CANAL },
+      // Clone sem a 0100: o chamador leu pelo fallback e não tem o estado
+      // anterior. Nada está arquivado lá, então nada ressuscita — e o evento
+      // que não descreve nada não é emitido.
+      { organizationId: ORG, channelSessionId: CANAL, archivedAt: undefined },
       { status: "WORKING" },
+      ator,
     );
 
     expect(r.error).toBeNull();
     expect(r.schemaOutdated).toBe(true);
+    expect(r.reactivated).toBe(false);
     expect(db.linhas[0]?.status).toBe("WORKING");
+    expect(audit).not.toHaveBeenCalled();
   });
 
-  it("erro que NÃO é coluna ausente sobe — não vira sucesso silencioso", async () => {
+  /**
+   * ⭐ Auditoria de uma volta que o banco NEGOU seria pior que auditoria
+   * nenhuma: quem investiga um canal mudo acharia o momento em que ele "voltou"
+   * e pararia de procurar.
+   */
+  it("erro que NÃO é coluna ausente sobe — não vira sucesso silencioso nem evento", async () => {
     makeDb({
       sessions: [canalQr({ archived_at: ARQUIVADO_EM })],
       writeError: () => ({ code: "42501", message: "permission denied" }),
@@ -638,11 +746,56 @@ describe("reactivateChannelSession — o desarquivamento mora num lugar só", ()
     const client = await createClient();
     const r = await reactivateChannelSession(
       client,
-      { organizationId: ORG, channelSessionId: CANAL },
+      { organizationId: ORG, channelSessionId: CANAL, archivedAt: ARQUIVADO_EM },
       { status: "WORKING" },
+      ator,
     );
 
     expect(r.error?.code).toBe("42501");
+    expect(r.reactivated).toBe(false);
+    expect(audit).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * A última resolução operacional que ainda enxergava canal excluído.
+ *
+ * O GET desta mesma rota já filtrava (a tela some com a conexão excluída), e o
+ * PUT continuava aceitando gravar teto diário e knobs de anti-ban nela. O
+ * desfecho não é só inútil: é configuração viva pendurada num canal que não
+ * envia mais, esperando confundir quem for investigar o próximo envio que não
+ * saiu — e, se o canal um dia voltar, os limites de outra época voltam com ele.
+ */
+describe("PUT /api/v1/ai/pacing — knobs não se gravam em canal excluído", () => {
+  const put = (corpo: Record<string, unknown>) =>
+    new NextRequest("http://localhost/api/v1/ai/pacing", {
+      method: "PUT",
+      body: JSON.stringify({ channel_session_id: CANAL, ...corpo }),
+      headers: { "content-type": "application/json" },
+    });
+
+  it("⭐ canal ARQUIVADO → 404 e nenhuma escrita", async () => {
+    authOk();
+    const db = makeDb({
+      sessions: [canalQr({ archived_at: ARQUIVADO_EM, daily_message_limit: 250 })],
+    });
+    const { PUT } = await import("@/app/api/v1/ai/pacing/route");
+    const res = await PUT(put({ daily_message_limit: 300 }));
+
+    expect(res.status).toBe(404);
+    expect((await res.json()).error.code).toBe("session_not_found");
+    expect(db.escritas).toEqual([]);
+    expect(db.linhas[0]?.daily_message_limit).toBe(250);
+  });
+
+  it("canal ATIVO continua salvando (a guarda não matou a tela de anti-ban)", async () => {
+    authOk();
+    const db = makeDb({ sessions: [canalQr({ daily_message_limit: 250 })] });
+    const { PUT } = await import("@/app/api/v1/ai/pacing/route");
+    const res = await PUT(put({ daily_message_limit: 300 }));
+
+    expect(res.status).toBe(200);
+    expect(db.linhas[0]?.daily_message_limit).toBe(300);
   });
 });
 

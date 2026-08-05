@@ -25,7 +25,6 @@ import type { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
 import { fail, ok } from "@/lib/api/wrappers";
-import { audit } from "@/lib/audit";
 import { requireAuth, resolveActiveOrg } from "@/lib/auth/server";
 import { ROLE_RANK } from "@/lib/auth/types";
 import { ARCHIVED_AT, queryTolerantToMissingArchived } from "@/lib/channels/archived";
@@ -181,34 +180,28 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   // O update passa por `reactivateChannelSession` porque reconectar é
   // ressuscitar: o mesmo patch que devolve status, credencial e número tem que
   // devolver a linha à vida, ou o canal fica "conectado" na tela e excluído para
-  // todo o resto do sistema. Para o canal que já estava ativo é um no-op.
-  const ressuscitando = Boolean(existente?.archived_at);
+  // todo o resto do sistema. Para o canal que já estava ativo é um no-op — e a
+  // auditoria de volta sai de lá, junto da ressurreição, não daqui.
   const { error } = existente
     ? await reactivateChannelSession(
         admin,
-        { organizationId: g.orgId, channelSessionId: existente.id },
+        {
+          organizationId: g.orgId,
+          channelSessionId: existente.id,
+          archivedAt: existente.archived_at ?? null,
+        },
         linha,
+        {
+          userId: g.userId,
+          requestId,
+          metadata: { provider: CHANNEL_PROVIDER_META, phone_number: linha.phone_number },
+        },
       )
     : await admin.from("channel_sessions").insert({ ...linha, webhook_secret_encrypted: cifrado });
 
   if (error) {
     return fail("internal_error", error.message ?? "channel_session_write_failed", 500, {
       requestId,
-    });
-  }
-
-  if (ressuscitando && existente) {
-    // Contraparte de `channel.archived`: sem ela o histórico registra a exclusão
-    // e cala sobre o canal ter voltado — quem audita vê um canal excluído
-    // entregando mensagem e não acha o momento em que ele reviveu.
-    void audit({
-      action: "channel.reactivated",
-      actorUserId: g.userId,
-      organizationId: g.orgId,
-      resourceType: "channel_session",
-      resourceId: existente.id,
-      requestId,
-      metadata: { provider: CHANNEL_PROVIDER_META, phone_number: linha.phone_number },
     });
   }
 

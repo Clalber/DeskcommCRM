@@ -150,9 +150,9 @@ export async function GET(
   const waha = getWahaClient();
   // Canal oficial não tem sessão no transporte para consultar — `waha_session_name`
   // é NULL nele por CHECK, e perguntar assim mesmo pediria `/api/sessions/null`.
-  const consultavelAoVivo =
-    session.provider === CHANNEL_PROVIDER_WAHA && Boolean(session.waha_session_name);
-  if (!waha || !consultavelAoVivo) {
+  const nomeSessao =
+    session.provider === CHANNEL_PROVIDER_WAHA ? session.waha_session_name : null;
+  if (!waha || !nomeSessao) {
     // Nada a checar ao vivo (transporte fora do ar, ou canal que não vive nele):
     // devolve o que está no DB, sinalizando que o estado não foi confirmado agora.
     return ok(comImpacto({ ...session, waha_configured: false }), { requestId });
@@ -161,7 +161,7 @@ export async function GET(
   let liveStatus = session.status as string;
   let phoneNumber = session.phone_number as string | null;
   try {
-    const remote = (await waha.getSessionQr(session.waha_session_name as string)) as {
+    const remote = (await waha.getSessionQr(nomeSessao)) as {
       status?: string;
       me?: { id?: string; pushName?: string };
     };

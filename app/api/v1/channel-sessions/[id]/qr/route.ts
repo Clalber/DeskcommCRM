@@ -16,6 +16,9 @@
  * Quem resolve um canal para religá-lo decide sobre `archived_at` — as três rotas
  * irmãs (conectar oficial, reconectar, retomar o onboarding) decidem, esta
  * faltava.
+ *
+ * Canal OFICIAL também não passa daqui: ele não tem sessão no transporte (nem QR
+ * a mostrar), e o `null` seguia para a URL como se fosse nome de sessão.
  */
 import { NextResponse } from "next/server";
 
@@ -52,7 +55,7 @@ export async function GET(
     () => buscar("waha_session_name"),
   );
   const session = sessionRaw as {
-    waha_session_name: string;
+    waha_session_name: string | null;
     archived_at?: string | null;
   } | null;
   if (!session) return new NextResponse(null, { status: 404 });
@@ -62,6 +65,16 @@ export async function GET(
     return new NextResponse(null, {
       status: 409,
       headers: { "x-channel-state": "archived" },
+    });
+  }
+  // Canal oficial não pareia por QR: `waha_session_name` é NULL nele por CHECK.
+  // Afirmar `string` aqui (era um cast) só adiava a mentira até a URL, que virava
+  // `/api/null/auth/qr` — 404 do transporte, indistinguível de "o QR ainda não
+  // ficou pronto", que é exatamente o estado em que a tela fica insistindo.
+  if (!session.waha_session_name) {
+    return new NextResponse(null, {
+      status: 409,
+      headers: { "x-channel-state": "no-session" },
     });
   }
 

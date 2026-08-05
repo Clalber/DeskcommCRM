@@ -21,7 +21,7 @@
  * devolve NULL. É por isso que a segunda garantia é comportamental, e não um
  * teste de texto: quem trocar a expressão vê a consulta explodir.
  */
-import { describe, expect, it, vi } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 
 import type * as InboundTurnModule from "@/lib/agent-engine/agent/inbound-turn";
 import type { JobRow } from "@/lib/agent-engine/queue/queue";
@@ -93,16 +93,46 @@ function fakePool(opts: PoolOpts = {}) {
 
 const ctx = { workerId: "w1" };
 
-async function handler() {
-  const { createFollowupTurnHandler } = await import("@/lib/agent-engine/agent/followup-turn");
-  return createFollowupTurnHandler({} as never);
+/**
+ * O import mora FORA do relógio do `it()`, e isso não é estilo.
+ *
+ * `vi.mock(..., importOriginal)` só resolve na PRIMEIRA importação do módulo. Com
+ * o `await import` dentro do teste, essa primeira vez acontecia lá dentro — e o
+ * transform do grafo inteiro do agent-engine (o handler puxa queue, guardrails,
+ * adapter de canal, cron) era cronometrado como se fosse asserção. O gate relatou
+ * vermelho em 2 de 5 execuções sob carga, sempre neste arquivo, sempre perto dos
+ * 15s do `testTimeout` do `vitest.config.ts`.
+ *
+ * O que foi MEDIDO aqui (a contenção não foi reproduzida nesta máquina): com o
+ * import dentro do teste, o primeiro `it` levava 966ms e os outros três 1ms —
+ * todo o custo cobrado de um caso só. Depois da mudança, 6ms. E o experimento
+ * que fecha a conta, mesma máquina e mesma carga, encolhendo o orçamento em vez
+ * de esperar a lentidão: com `--testTimeout=300` a versão antiga reprova por
+ * timeout e esta passa.
+ *
+ * O `beforeAll` declara o seu próprio orçamento porque o `hookTimeout` padrão do
+ * vitest é 10s (medido: "Hook timed out in 10000ms") — MENOR que o do teste, ou
+ * seja, migrar sem declarar teria apertado a régua em vez de afrouxá-la. 60s dão
+ * folga sobre o custo medido sem esconder travamento: quem trava continua
+ * reprovando.
+ */
+let criarHandler: typeof import("@/lib/agent-engine/agent/followup-turn").createFollowupTurnHandler;
+
+beforeAll(async () => {
+  ({ createFollowupTurnHandler: criarHandler } = await import(
+    "@/lib/agent-engine/agent/followup-turn"
+  ));
+}, 60_000);
+
+function handler() {
+  return criarHandler({} as never);
 }
 
 describe("followup_turn — canal arquivado", () => {
   it("⭐ canal EXCLUÍDO: o job morre com o motivo escrito, sem pagar o turno de modelo", async () => {
     runAgentTurn.mockClear();
     const { pool } = fakePool({ archivedAt: "2026-08-01T10:00:00.000Z" });
-    const run = await handler();
+    const run = handler();
 
     await expect(run(job(), pool, ctx)).rejects.toThrow(/canal arquivado/i);
     expect(runAgentTurn).not.toHaveBeenCalled();
@@ -111,7 +141,7 @@ describe("followup_turn — canal arquivado", () => {
   it("canal ATIVO: o turno acontece (a guarda não matou o caminho bom)", async () => {
     runAgentTurn.mockClear();
     const { pool } = fakePool({ archivedAt: null });
-    const run = await handler();
+    const run = handler();
 
     await run(job(), pool, ctx);
     expect(runAgentTurn).toHaveBeenCalledTimes(1);
@@ -125,7 +155,7 @@ describe("followup_turn — canal arquivado", () => {
   it("clone sem a migration 0100: o follow-up roda igual, a consulta não explode", async () => {
     runAgentTurn.mockClear();
     const { pool, consultas } = fakePool({ semColuna: true });
-    const run = await handler();
+    const run = handler();
 
     await run(job(), pool, ctx);
     expect(runAgentTurn).toHaveBeenCalledTimes(1);
@@ -137,7 +167,7 @@ describe("followup_turn — canal arquivado", () => {
     runAgentTurn.mockClear();
     const { pool, query } = fakePool();
     query.mockResolvedValueOnce({ rows: [] });
-    const run = await handler();
+    const run = handler();
 
     await expect(run(job(), pool, ctx)).rejects.toThrow(/impossível retomar o contato/i);
     expect(runAgentTurn).not.toHaveBeenCalled();
