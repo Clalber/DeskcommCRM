@@ -2693,3 +2693,61 @@ organização da operação. Duas consequências, e a segunda é de produto:
    ficou sem dono: **quem conversa com o agente para ele organizar a casa?** Sem essa superfície,
    o pacote "Organizar a operação" é ferramenta sem mão que a pegue — e a tensão vale para as
    leituras tanto quanto para as escritas. **Para o Maestro e para a W1.**
+
+---
+
+## Bug encontrado e corrigido — o merge que reverteu um conserto alheio
+
+**Encontrado** rodando o CI do PR #163: `verify` reprovou em `lint:channels` apontando
+`lib/agent-engine/guardrails/vazamento-interno.ts`. O arquivo estava certo.
+
+**Causa raiz.** O merge de `feat/ia-360-w4-organizar` levou `scripts/lint-channels.ts` de volta a
+uma versão anterior e **apagou** `scripts/lint-channels.pattern.ts`, desfazendo em silêncio o
+PR #118 (*"a fronteira `\b` não fechava antes de `_`"*). **A W4 nunca tocou esse arquivo** — a
+`main` é que tinha evoluído. É o padrão já registrado: merge que resolve por lado perde o hunk
+que pedia combinação, e some sem conflito.
+
+Os dois arquivos voltaram da `main` — o conserto dela é posterior.
+
+**Correção de uma afirmação minha.** Reportei que o merge "reverteu de 94 para 78 entradas de
+dívida". Errado: aqueles números contavam *linhas do arquivo*. Medido pelo próprio script, a
+dívida é **61 arquivos nos dois lados**. A reversão era real; a caracterização numérica não.
+
+### O segundo defeito, que só apareceu porque o primeiro apareceu
+
+Com o gate certo de volta, ele reprovou `vazamento-interno.ts`: o detector **nomeava o provider**
+para montar a lista de termos barrados. O comentário logo acima já prometia *"derivar em vez de
+copiar — provider novo entra na cobertura sozinho"*, mas o código enumerava duas constantes.
+**O texto descrevia um comportamento que não existia.**
+
+Passou a derivar de `CHANNEL_CAPABILITIES` de verdade: sai da mira do gate sem virar dívida, e
+provider novo passa a ser barrado sozinho — que é exatamente o furo que este detector existe para
+fechar.
+
+### O furo que a sabotagem expôs (o mais grave dos três)
+
+Zerando `PROVIDERES_DE_CANAL`, **os 143 testes de vazamento continuavam verdes**. A cobertura de
+nome de provider existia no código e em teste nenhum: qualquer refactor podia removê-la sem
+sintoma no CI.
+
+A razão de ninguém ter escrito a guarda é **estrutural, não descuido** — `lint-channels` reprova
+qualquer arquivo que grafe o nome do provider, teste incluído. A guarda óbvia era literalmente
+improibível de escrever. `tests/unit/vazamento-nome-de-provider.test.ts` deriva os nomes da mesma
+fonte, carrega guarda de vacuidade (fonte vazia ⇒ `it.each` roda zero caso e passa por vácuo), e
+protege o falso positivo que importa: a palavra "canal" na boca do cliente não pode morrer.
+
+**Sob a mesma sabotagem, o teste novo reprova os 2 providers.**
+
+### Medido em `2aa04357`
+
+| Gate | Resultado |
+|---|---|
+| `lint:channels` | exit 0 — 61 arquivos de dívida, igual à `main` |
+| `typecheck` | exit 0 |
+| `lint` | exit 0 (3 warnings) |
+| `test:unit` | **2539 passed** em 262 files, exit 0 |
+| controle positivo | 2 providers derivados, ambos barrados |
+
+**Lição para quem herdar isto:** um gate que proíbe escrever certo termo torna improibível a
+guarda que usa esse termo. Onde houver gate assim, a cobertura correspondente provavelmente não
+existe — e o verde do CI não vai contar isso.
