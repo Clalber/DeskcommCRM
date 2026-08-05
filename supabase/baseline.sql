@@ -5371,7 +5371,7 @@ end$$;
 
 
 -- ---- trigger de leads sem duplicatas de evento (migration 0043) ----
--- Idempotente (create or replace + drop/create trigger). Ver migrations/20260718160000_0043.
+-- Idempotente (create or replace + drop/create trigger). Ver migrations/20260718160001_0043.
 create or replace function public.fn_emit_event_on_lead_change() returns trigger
     language plpgsql
     set search_path to 'public', 'pg_temp'
