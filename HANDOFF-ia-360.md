@@ -297,6 +297,116 @@ anterior à wave. Cada uma produziu exatamente uma reprovação; o controle rest
 
 ---
 
+### Wave 3 — passar para um humano (pacote `escalar`) · CÓDIGO E TESTES CONCLUÍDOS
+
+**Entregue por:** terminal "Maestro" · worktree `/Users/rafaelmelgaco/DeskcommCRM-ia360-w3-escalar`
+**Branch:** `feat/ia-360-w3-escalar` · **SHA do marco:** `c0db6aa` (árvore limpa) · base `99cd0fc`
+
+O pacote tinha **1** capacidade (chamar um atendente) e agora tem **7**. Mais
+importante que a contagem: a volta humano→IA passou a existir.
+
+**Regra extraída para um lugar só** (Decisão 4 — a rota e a capacidade do agente
+chamam a MESMA função; nenhum SQL duplicado):
+
+| Arquivo novo | O que centraliza | Quem passou a chamar |
+|---|---|---|
+| `lib/escalacao/retomada.ts` | devolver o atendimento ao agente | rota `reactivate-bot` + `crm_resume_ai_attendance` |
+| `lib/escalacao/continuidade.ts` | o que a pessoa fez, em texto que o modelo lê | retomada + `crm_get_human_case` |
+| `lib/escalacao/chamados.ts` | listar/ler chamados | rotas `/ai/cases` e `/ai/cases/[id]` + 2 capacidades |
+| `lib/escalacao/atendentes.ts` | roster + "pode assumir agora" | rota `/attendants/availability` + `crm_list_available_attendants` |
+
+**As 6 capacidades novas** (`lib/mcp/tools/catalogo/escalacao.ts` + handlers em
+`lib/mcp/tools/escalacao.ts`; 1 linha de import e 1 de spread no agregador):
+`crm_list_available_attendants`, `crm_list_human_cases`, `crm_get_human_case`,
+`crm_add_case_note`, `crm_close_human_case`, `crm_resume_ai_attendance`.
+
+**Como a volta virou viva (invariante 2).** A devolução grava o que a pessoa
+decidiu em `lead_checkpoints` — que é de onde `latestCheckpoint` → `ritualBlocks`
+já lê na abertura de TODO turno. Nenhum leitor novo no motor: uma superfície
+paralela que só o autor sabe consultar seria ilha.
+
+**Evidência observada em `c0db6aa`:**
+
+```
+pnpm typecheck  → limpo
+pnpm lint       → 0 errors, 170 warnings (mesmo baseline da Wave 0)
+pnpm test:unit  → Test Files 226 passed · Tests 1993 passed
+pnpm test:db    → Test Files  63 passed · Tests 429 passed | 1 skipped
+tests/unit/catalogo-tools-leigo-friendly.test.ts → 72 passed (era 53 na Wave 0)
+```
+
+Testes novos: `tests/unit/escalacao-retomada.test.ts` (14),
+`tests/unit/mcp-escalacao-tools.test.ts` (16),
+`tests/invariants/escalacao-ciclo-humano.test.ts` (15).
+
+**Sabotagem — 8 defeitos aplicados de propósito, cada um reprovou no teste certo:**
+
+| Sabotagem | Teste que reprovou |
+|---|---|
+| não limpar `contacts.force_human` | `limpa force_human do contato — a trava que ninguém soltava` |
+| sobrescrever o resumo acumulado em vez de acrescentar | `grava o que a pessoa decidiu no checkpoint` |
+| `emit_event` virar fire-and-forget | `emite o sinal de retomada ... e falha alto se ele não sair` |
+| escrever `assigned_to_user_id` na mão | `solta o dono humano pela regra que já existe` |
+| tipo de atividade errado na volta | `a volta aparece na linha do tempo do negócio` |
+| sumir com a guarda de estado do registro | `chamado FECHADO recusa o registro` (invariante) |
+| o agente gravando `actor_kind='human'` | `encerrar como 'resolvido' ... deixa o desfecho escrito` (invariante) |
+| a 0100 não chegar ao `baseline.sql` | 6 testes do invariante, incluindo o do CHECK |
+
+**Schema:** migration `20260804200000_0100_agent_case_events_agent_noted.sql` +
+apêndice idempotente no `baseline.sql` + linha no `MANIFEST.md` — os três juntos.
+Mais o par `agent_case_events.kind` ↔ `CaseEventKind` no invariante de vocabulário.
+
+**O critério que prova a wave — E2E em tela, verde.**
+`tests/e2e/escalacao-ciclo.spec.ts`, uma corrida, o ciclo inteiro:
+chamado na fila → a pessoa decide escrevendo o que combinou → a conversa mostra
+"Automático pausado" e o botão de devolver → a devolução solta as **três** travas
+→ a volta aparece na linha do tempo → **a abertura do próximo turno do agente cita
+a decisão da pessoa**.
+
+O último passo não prende a redação do modelo (isso reprovaria por motivo falso e
+treinaria o time a ignorar vermelho). Ele lê o **bloco de abertura do turno pela
+função REAL do motor** (`latestCheckpoint` → `ritualBlocks`, num processo `tsx` à
+parte) e cobra que a decisão da pessoa esteja lá — é a diferença determinística
+entre o agente voltar cego e voltar sabendo. Trecho medido, com o acumulado
+anterior preservado:
+
+```
+## Resumo acumulado da conversa
+Cliente quer 200 unidades e pediu desconto por volume.
+
+Uma pessoa da equipe assumiu esta conversa e devolveu o atendimento para você.
+O que ela fez, e que o cliente já considera combinado:
+- No chamado "Desconto acima da alçada", resolveu: Aprovei 15% de desconto para
+  as 200 unidades, com entrega em 5 dias uteis.
+- E2E Agent anotou internamente: Cliente confirmou o CNPJ por telefone.
+Retome daqui: não peça de novo o que já foi combinado nem contradiga a decisão
+da pessoa.
+```
+
+Evidência visual em `.superpowers/evidence/ia-360-w3/` (5 arquivos; o diretório é
+gitignored por convenção do repo).
+
+**Sabotagem do E2E** — as duas que importam, cada uma com rebuild completo:
+
+| Sabotagem | O que reprovou |
+|---|---|
+| devolver o CONTROLE sem gravar o CONTEXTO | `se a decisão da pessoa não está na abertura do turno, o agente volta cego` |
+| voltar ao comportamento antigo da rota (só o silêncio) | `soltar só o silêncio deixa o agente morto` (`forcado: true` ≠ `false`) |
+
+**Living System Checklist — o ciclo como peça:**
+
+| Pergunta | Resposta |
+|---|---|
+| Quem me alimenta? | a decisão da pessoa (`agent_case_events`), a nota interna (`conversation_notes`) e o estado da conversa — nunca o input do modelo |
+| Quem eu alimento? | `lead_checkpoints` (lido pelo ritual de abertura de TODO turno), `crm_lead_activities`, `event_log ai.handoff_resolved` |
+| Que atividade/log eu emito? | `handoff_triggered` (ida) e `handoff_resolved` (volta) + `api_audit_log` (`ai.reactivated_by_agent`, `ai.case_noted_by_agent`, `ai.case_closed_by_agent`) |
+| Onde apareço na tela? | aviso "Automático pausado" e botão no cabeçalho da conversa; a volta na linha do tempo do negócio; o registro do agente no chamado |
+| Mecanismo anti-morte | `ai.handoff_resolved` é o único produtor do sinal que retoma acompanhamento pausado — por isso é AWAITED e a rota devolve 500 se falhar |
+| Continuidade IA↔humano | as duas direções: `buildHandoffSummary` na ida (já existia) e o checkpoint de retomada na volta (esta wave) |
+| Mapa vivo atualizado? | `docs/architecture/escalacao-ciclo-humano.architecture.json` — 30 peças, 38 arestas; as 7 peças novas entram com 3 a 8 arestas cada |
+
+---
+
 ## Bugs encontrados
 
 #### Marco 1 — a operação de etapa saiu da rota, e a configuração ganhou autoria (`6d6ea0e`, árvore limpa)
@@ -312,6 +422,123 @@ anterior à wave. Cada uma produziu exatamente uma reprovação; o controle rest
   como derivação única + a fila passa a mostrar "Cancelada".
 - **Prova do fix:** `tests/invariants/retorno-anti-morte.test.ts` cancela pelo código de produção
   contra Postgres real e afirma que a situação lida do banco é `cancelado`, não `disparado`.
+### BUG-01 — devolver o atendimento ao agente não devolvia nada
+
+- **Achado em:** `99cd0fc`, pelo terminal "Maestro", ao extrair a regra da rota
+  `POST /api/v1/conversations/[id]/reactivate-bot` para `lib/escalacao/retomada.ts`.
+- **Sintoma observado:** a rota respondia `{ reactivated: true }` e o agente
+  continuava mudo para sempre. Medido contra Postgres real em
+  `tests/invariants/escalacao-ciclo-humano.test.ts`: depois de
+  `performHumanHandoff`, limpar só `bot_silenced_until` (exatamente o que a rota
+  fazia) deixa a função de guarda REAL `isLeadInHandoff` devolvendo `true`.
+- **Causa raiz:** a passagem para humano liga **três** travas e a rota soltava
+  uma. `contacts.force_human = true` não era escrito de volta para `false` em
+  **lugar nenhum do repo** (`grep -rn force_human`) — e ele é lido por
+  `workers/ai-response-worker.ts` (`skip("force_human")`), por `isLeadInHandoff`
+  (NO-OP antes de qualquer chamada de modelo) e por
+  `lib/agent-engine/guardrails/before-send.ts` (`(is_blocked or force_human) as
+  stopped`, que veta TODO envio). A terceira trava é `assignee_kind='user'`
+  (`skip("assigned_to_human")`).
+- **Correção:** `lib/escalacao/retomada.ts` — solta o dono pela regra existente
+  (`fn_conversation_assign` reason `release`), limpa as marcas de passagem na
+  conversa e limpa `force_human` no contato. SHA do fix: `c0db6aa`.
+- **Prova do fix:** o invariante roda a função de guarda REAL e mostra os dois
+  estados (`true` com só o silêncio limpo, `false` com `force_human` junto); o
+  unitário prende a escrita `{ force_human: false }` e reprova quando ela some.
+
+### BUG-02 — a volta sumia da linha do tempo do negócio
+
+- **Achado em:** `99cd0fc`, mesma extração.
+- **Sintoma observado:** `crm_lead_activities` tinha `handoff_triggered`
+  ("Passou para humano") e nenhum tipo para a volta. Na timeline o cliente saía
+  para uma pessoa e nunca voltava — meia continuidade, que se lê como
+  continuidade.
+- **Causa raiz:** só a ida tinha emissor; o vocabulário fechado
+  (`lib/leads/activity-vocabulary.ts`) não tinha o tipo da volta.
+- **Correção:** tipo `handoff_resolved` ("Voltou para o atendimento automático")
+  + emissão em `lib/escalacao/retomada.ts` via `emitLeadActivity` com a constante
+  compartilhada (nunca string literal). SHA: `c0db6aa`.
+- **Prova do fix:** `a volta aparece na linha do tempo do negócio`, que reprova
+  quando o tipo é trocado.
+
+### BUG-03 — o agente não tinha como registrar nada num chamado
+
+- **Achado em:** `99cd0fc`, ao mapear `agent_case_events`.
+- **Sintoma observado:** o CHECK de `kind` não tinha valor honesto para "o agente
+  registrou o que aconteceu depois". Reusar `lead_provided` ou `human_replied`
+  faria a linha do tempo do chamado mentir sobre quem agiu — e é desse registro
+  que sai o resumo entregue ao próximo atendente.
+- **Correção:** migration `0100` + apêndice no baseline + MANIFEST, e as
+  transições `registrarNotaDoAgente` / `encerrarChamadoPeloAgente` em
+  `lib/agent-engine/agent/human-cases.ts` (mesmo estilo atômico das irmãs).
+  SHA: `c0db6aa`.
+- **Prova do fix:** invariante contra Postgres real, incluindo a sabotagem "a
+  0100 não chegou ao baseline" (o defeito que deixa o clone self-host sem a
+  mudança) — 6 testes reprovam.
+
+### BUG-04 — a rota de devolver o atendimento não tinha porta em tela nenhuma
+
+- **Achado em:** `c0db6aa`, ao montar o E2E do ciclo: não havia o que clicar.
+- **Sintoma observado:** `grep -rn "reactivate-bot"` em `app/` e `components/`
+  devolve só o próprio `route.ts` e um comentário. A rota existe desde a IA-06 e
+  nenhuma tela a chamava — e a conversa com o atendimento automático desligado
+  tinha exatamente a mesma cara de uma conversa normal.
+- **Causa raiz:** o estado nem chegava ao cliente: `SELECT_COLS` de
+  `app/api/v1/conversations/_handler.ts` não trazia `bot_silenced_until` nem
+  `contacts.force_human`, então a tela não tinha como saber que havia algo a
+  devolver.
+- **Correção:** as duas colunas no `SELECT_COLS` (+ tipos), o aviso "Automático
+  pausado" e o botão "Devolver ao automático" em `ConversationHeader`, e o hook
+  `useResumeAiAttendance`. Junto: `STATUS_LABEL` ganhou `pending` — é o estado em
+  que a passagem deixa a conversa, e o rótulo faltava, então TODA conversa
+  escalada mostrava `pending` cru no rosto do atendente.
+- **Prova do fix:** `tests/e2e/escalacao-ciclo.spec.ts` passos (3) e (4), com
+  captura de tela.
+
+### BUG-05 — metade das passagens não aparecia na linha do tempo
+
+- **Achado em:** `c0db6aa`, desenhando o mapa vivo (a aresta não existia).
+- **Sintoma observado:** `crm_lead_activities` recebia `handoff_triggered` só
+  pelo caminho do CRM (`lib/ai/handoff/orchestrator.ts`). `performHumanHandoff` —
+  usada pelo harness (`inbound-turn`) **e** pelo "Assumir eu" dos casos
+  (`POST /ai/cases/:id/reply`) — não gravava atividade nenhuma. No dossiê do
+  cliente o atendimento saía para uma pessoa e sumia.
+- **Causa raiz:** dois caminhos de passagem, um emissor só.
+- **Correção:** `performHumanHandoff` emite via `emitAgentActivityForContact`
+  (mesmo emissor pg do resto do motor), com `reason` **fixo** — `opts.reason`
+  pode ser o texto livre que o atendente escreveu ao escalar, e essa linha
+  aparece na tela e no export de LGPD.
+- **Prova do fix:** `a IDA também aparece na linha do tempo — não só o caminho do
+  CRM` (invariante), que reprova quando o tipo é trocado.
+
+---
+
+## Achados reportados, NÃO consertados (fora do escopo desta wave)
+
+### ACH-01 — o mesmo caminho também não emite `ai.handoff_triggered` no `event_log`
+
+`performHumanHandoff` cancela os crons do próprio motor
+(`cancelPendingCronsForLead`), mas **não** emite `ai.handoff_triggered`. Quem
+consome esse evento é `lib/followup/reactivity.ts` (reação 2), o mecanismo de
+follow-up do lado do CRM: pelo caminho do harness e pelo "Assumir eu" dos casos,
+um `followup_enrollment` ativo **não é pausado** enquanto uma pessoa atende.
+
+Não consertei de propósito: mexer nisso muda o contrato de pausa/retomada do
+follow-up, que é a superfície da **Wave 2 (`reter`)**, e um emissor a mais aqui
+pode virar cancelamento em dobro com o cron do motor. Medido em `c0db6aa` por
+leitura dos dois emissores (`orchestrator.ts` emite; `human-handoff.ts` não) e
+pelos consumidores em `reactivity.handler.ts`.
+
+### ACH-02 — `tests/invariants/followup-reactivity.test.ts` é intermitente
+
+Na suíte completa ele falhou 2 de 5 corridas medidas em `37abfc0`+ (sempre no
+mesmo caso: `marca next_eval_at=now + wake marker`, `expected +0 to be 1`);
+rodado **isolado**, passou 3 de 3. O caso agenda `next_eval_at` com
+`Date.now() - 1_000` (margem de 1 segundo, relógio do host) e depois cobra o
+tick, que compara com o relógio do container.
+
+**Não é meu arquivo** (`git status` não o toca) e a suspeita de autoria está
+sendo medida contra a base `99cd0fc` — o resultado dessa medição entra aqui.
 
 ### BUG-02 — a atividade da IA morria na FK quando o agente da tela escrevia
 - **Achado em:** `99cd0fc`, por DevVivo, ao ligar a emissão de atividade nas capacidades novas.

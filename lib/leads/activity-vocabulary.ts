@@ -23,6 +23,7 @@ export type ActivityType =
   | "ai_turn"
   | "send_vetoed"
   | "handoff_triggered"
+  | "handoff_resolved"
   | "next_action_approved"
   | "next_action_dismissed"
   | "lead_edited"
@@ -41,6 +42,11 @@ export const ACTIVITY_LABELS: Record<ActivityType, string> = {
   ai_turn: "Atendimento da IA",
   send_vetoed: "Envio bloqueado",
   handoff_triggered: "Passou para humano",
+  // A IDA existia e a VOLTA não: a linha do tempo mostrava o cliente saindo para
+  // uma pessoa e nunca voltando, como se o atendimento tivesse parado ali. Meia
+  // continuidade lida como continuidade — e é justamente na volta que quem lê
+  // precisa saber que o combinado com a pessoa foi repassado ao agente.
+  handoff_resolved: "Voltou para o atendimento automático",
   // A RECUSA é sinal, não ausência de sinal: "o humano viu e disse não" é o que
   // impede o agente de repropor o mesmo. Ignorar sem registro faz a IA insistir
   // no que já foi negado — por isso os dois lados geram atividade.

@@ -21,6 +21,8 @@
 import { z } from 'zod';
 import type pg from 'pg';
 
+import { emitAgentActivityForContact } from '@/lib/leads/agent-activity';
+
 import type { Logger } from '../obs/logger';
 import { cancelPendingCronsForLead } from '../cron/scheduler';
 import { findForbiddenKey, zodIssuesSummary } from './lead-state';
@@ -195,6 +197,37 @@ export async function performHumanHandoff(
       ids.leadId,
     ],
   );
+
+  // (e) A IDA na linha do tempo do NEGÓCIO. `triggerHandoff` (o caminho do CRM)
+  // já gravava `handoff_triggered`; este caminho — o do harness e o do "Assumir
+  // eu" dos casos — não gravava nada. Metade das passagens era invisível no
+  // dossiê do cliente, e quem lesse a timeline veria a volta sem a ida.
+  //
+  // O `reason` é FIXO de propósito: `opts.reason` pode ser o texto livre que o
+  // atendente escreveu ao escalar, e esta linha aparece na tela e no export de
+  // LGPD (regra do activity-emitter: o porquê é legível, sem PII).
+  //
+  // Try/catch porque a timeline não pode derrubar a operação que ela descreve —
+  // mesma disciplina fire-and-forget do emissor da API.
+  try {
+    const roteou = await emitAgentActivityForContact({
+      pool: db,
+      organizationId: ids.tenantId,
+      contactId: ids.leadId,
+      type: 'handoff_triggered',
+      sourceModule: 'human-handoff',
+      sourceId: ids.conversationId,
+      reason: 'Atendimento passado para uma pessoa',
+      payload: { conversation_id: ids.conversationId },
+    });
+    if (!roteou.routed) {
+      opts.log.warn('handoff: atividade não roteada para um negócio', { reason: roteou.reason });
+    }
+  } catch (err) {
+    opts.log.warn('handoff: atividade da passagem não foi gravada', {
+      error: err instanceof Error ? err.message.slice(0, 200) : 'erro desconhecido',
+    });
+  }
 
   // PII fora do log: só ids/motivo — nunca o resumo da conversa (regra dura 8).
   opts.log.info('handoff humano aplicado (force_human + silêncio + crons cancelados + inbox)', {

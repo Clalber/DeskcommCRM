@@ -181,6 +181,10 @@ export type AuditAction =
   | "conversation.note_added"
   | "conversation.note_deleted"
   | "ai.case_replied"
+  // O agente participando do chamado — separado de `ai.case_replied` (a pessoa
+  // respondendo) porque juntar os dois apagaria justamente quem agiu.
+  | "ai.case_noted_by_agent"
+  | "ai.case_closed_by_agent"
   | "pipeline.agent_mapping_updated"
   | "pipeline.stage_created"
   | "pipeline.stage_updated"

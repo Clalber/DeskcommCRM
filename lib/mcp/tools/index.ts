@@ -28,6 +28,14 @@ import {
   crmManageTags,
   crmGetQueueStatus,
 } from "./governance";
+import {
+  crmListAvailableAttendants,
+  crmListHumanCases,
+  crmGetHumanCase,
+  crmAddCaseNote,
+  crmCloseHumanCase,
+  crmResumeAiAttendance,
+} from "./escalacao";
 import { crmRequestHumanHandoff } from "./handoff";
 import { crmSearchKnowledge, crmListKnowledgeSources } from "./evolucao";
 import {
@@ -86,6 +94,9 @@ export const allTools: ReadonlyArray<McpToolDefinition> = [
   crmListTeamMembers,
   crmListFollowups,
   crmListAtRiskLeads,
+  crmListAvailableAttendants,
+  crmListHumanCases,
+  crmGetHumanCase,
   // write
   crmCreateLead,
   crmUpdateLead,
@@ -104,6 +115,9 @@ export const allTools: ReadonlyArray<McpToolDefinition> = [
   crmCancelFollowup,
   crmCloseDemand,
   crmProposeReactivation,
+  crmAddCaseNote,
+  crmCloseHumanCase,
+  crmResumeAiAttendance,
   // handoff (special)
   crmRequestHumanHandoff,
 ] as unknown as ReadonlyArray<McpToolDefinition>;
