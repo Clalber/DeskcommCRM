@@ -260,7 +260,7 @@ o painel da W1 mostrou as duas, marcadas "só em teste" (o run era dry-run)
 ```
 
 Isto é o fecho da alça que a wave existe para fazer: **configurei pela tela → a IA
-real decidiu usar → eu vejo o que ela usou**. Evidência: `w1-ia-real-uso-no-painel.png`.
+real decidiu usar → eu vejo o que ela usou**. Evidência: `evidence/ia-360-w1/w1-ia-real-uso-no-painel.png`.
 
 **Um defeito MEU que só a IA real revelou.** Dois minutos depois de criar o agente, o
 painel dizia *"7 capacidades pedem uma decisão sua"* e recomendava **desligar** o que o
@@ -283,7 +283,7 @@ fala com engenheiro — *"Max steps"*, *"Token budget"*, *"Custo máx (cents)"*,
 regex"* com exemplo `(?i)\b(pedido|status)\b`, *"Maior prioridade = avaliado primeiro
 pelo dispatcher"*, *"Permitir handoff via tool"*, e o título *"Novo agent"*. O pilar 3
 foi aplicado num bloco e não na tela. Não corrigi: é escopo de produto e toca campos de
-outras waves — **item para o Maestro**, com a captura `w1-nova-01-tela-de-criar.png`.
+outras waves — **item para o Maestro**, com a captura `evidence/ia-360-w1/w1-nova-01-tela-de-criar.png`.
 
 **O que este spec NÃO alcança, declarado:** o estado "instalei agora e não tenho
 credencial nem número". A primeira versão tentou montá-lo interceptando as listagens no
@@ -1562,6 +1562,148 @@ quem for medir tela:
 
 O padrão comum: **a sonda respondeu com confiança sobre o que não mediu.** É a
 mesma família dos defeitos do épico, na camada da ferramenta de medir.
+
+---
+
+
+## Provas visuais do ciclo com IA real e das telas abertas
+
+**O ciclo fechado com modelo de verdade (W1).** Chave real cadastrada PELA TELA, agente
+criado PELO FORMULÁRIO, turno completo em 6,7s — e a IA escolheu sozinha
+`crm_list_pipelines` e `crm_list_leads`. Passo a passo:
+
+- `evidence/ia-360-w1/w1-ia-01-credencial.png`
+- `evidence/ia-360-w1/w1-ia-02-credencial-validada.png`
+- `evidence/ia-360-w1/w1-ia-03-agente-preenchido.png`
+- `evidence/ia-360-w1/w1-ia-04-teste-antes.png`
+- `evidence/ia-360-w1/w1-ia-05-teste-resultado.png`
+- `evidence/ia-360-w1/w1-ia-06-uso-real.png`
+- `evidence/ia-360-w1/w1-ia-real-uso-no-painel.png`
+- `evidence/ia-360-w1/w1-nova-01-tela-de-criar.png`
+- `evidence/ia-360-w1/w1-nova-02-preenchido.png`
+- `evidence/ia-360-w1/w1-nova-03-agente-criado.png`
+- `evidence/ia-360-w1/w1-nova-03-preenchido.png`
+- `evidence/ia-360-w1/w1-nova-04-sem-recursos.png`
+- `evidence/ia-360-w1/w1-uso-01-tela.png`
+- `evidence/ia-360-w1/w1-uso-02-periodo-vazio.png`
+
+**As sete telas do épico que não tinham cobertura nenhuma**, abertas com login real e
+MFA: todas com conteúdo, nenhuma com erro de console. Tela sadia provada também é
+resultado — e até então ninguém as tinha aberto.
+
+- `evidence/ia-360-w5/tela-acervo-de-conhecimento.png`
+- `evidence/ia-360-w5/tela-caixa-do-humano.png`
+- `evidence/ia-360-w5/tela-consumo.png`
+- `evidence/ia-360-w5/tela-criar-agente.png`
+- `evidence/ia-360-w5/tela-habilidades.png`
+- `evidence/ia-360-w5/tela-memoria-da-organizacao.png`
+- `evidence/ia-360-w5/tela-roteadores.png`
+
+**Outras provas desta rodada:**
+
+- `evidence/README.md`
+- `evidence/canais/README.md`
+- `evidence/canais/baseline/e2e-paralelo.txt`
+- `evidence/canais/baseline/e2e.txt`
+- `evidence/canais/baseline/gates.csv`
+- `evidence/canais/baseline/unit.txt`
+- `evidence/canais/fase2/gates.csv`
+- `evidence/canais/fase2/lint-channels.txt`
+- `evidence/canais/fase2/lint.txt`
+- `evidence/canais/fase2/test-db.txt`
+- `evidence/canais/fase2/typecheck.txt`
+- `evidence/canais/fase2/unit.txt`
+- `evidence/canais/fase3a/envio-real-buildcomponents.txt`
+- `evidence/canais/fase3a/prova-erros-meta.md`
+- `evidence/canais/fase3a/prova-tela-templates.md`
+- `evidence/canais/fase3a/prova-webhook-ao-vivo.md`
+- `evidence/canais/fase4/adapter-meta-real.txt`
+- `evidence/canais/fase4/envio-real-template.txt`
+- `evidence/canais/fase4/gates.csv`
+- `evidence/canais/fase4/prova-adapter-meta.md`
+- `evidence/canais/fase4/prova-cadeia-v5.md`
+- `evidence/canais/fase4/prova-envio-template.md`
+- `evidence/canais/fase4/prova-inbound-ao-vivo.md`
+- `evidence/canais/fase4/prova-tool-send-template.md`
+- `evidence/canais/fase5/prova-tela-conexao.md`
+- `evidence/canais/task1/gates.csv`
+- `evidence/canais/task4/gates.csv`
+- `evidence/canais/task5/gates.csv`
+- `evidence/canais/task6/gates.csv`
+- `evidence/cenario-23-ciclo.md`
+- `evidence/f4-painel-com-dado.png`
+- `evidence/f4-painel-sem-dado.png`
+- `evidence/f4-prova-real-whatsapp.png`
+- `evidence/ia-360-w4/qa-turnos-do-agente.md`
+- `evidence/lgpd.md`
+- `evidence/raio-board-MORTO.png`
+- `evidence/raio-board-controle.png`
+- `evidence/raio-dossie-MORTO.png`
+- `evidence/raio-dossie-controle.png`
+- `evidence/raio-inbox-MORTO.png`
+- `evidence/raio-inbox-controle.png`
+- `evidence/raio-x-realtime.md`
+- `evidence/video-c23/cenario-23-ciclo-5ecb8f.webm`
+- `evidence/wave-0-board-antes-full.png`
+- `evidence/wave-0.md`
+- `evidence/wave-1-board-com-agente.png`
+- `evidence/wave-1-cenario-1-agente-com-versao.png`
+- `evidence/wave-1-cenario-1-agente-sem-versao.png`
+- `evidence/wave-1-cenario-1-card-agente.png`
+- `evidence/wave-1-cenario-2-filtrado-por-agente.png`
+- `evidence/wave-1-cenario-2-filtro-aberto.png`
+- `evidence/wave-1-cenario-3-dono-agente.png`
+- `evidence/wave-1-cenario-3-dono-humano.png`
+- `evidence/wave-1-cenario-4-viewer.png`
+- `evidence/wave-1-devvivo-card-agente.png`
+- `evidence/wave-1-devvivo-dono-agente.png`
+- `evidence/wave-1-devvivo-revertido.png`
+- `evidence/wave-1.md`
+- `evidence/wave-2-board-depois.png`
+- `evidence/wave-2.md`
+- `evidence/wave-3-aba-b-antes.png`
+- `evidence/wave-3-aba-b-depois.png`
+- `evidence/wave-3-aba-c-outro-tenant.png`
+- `evidence/wave-3-c10-painel-falha-de-leitura.png`
+- `evidence/wave-3-c10-painel-inbox.png`
+- `evidence/wave-3-c10-timeline-contato.png`
+- `evidence/wave-3-c11-timeline-veto.png`
+- `evidence/wave-3-c12-apos-pulso.png`
+- `evidence/wave-3-c12-outro-tenant.png`
+- `evidence/wave-3-c12d-duas-chegadas.png`
+- `evidence/wave-3-c12rm-movimento-reduzido.png`
+- `evidence/wave-3.md`
+- `evidence/wave-4-13a-card-com-proposta.png`
+- `evidence/wave-4-13b-timeline-aprovacao.png`
+- `evidence/wave-4-13c-timeline-recusa.png`
+- `evidence/wave-4-13d-um-contato-dois-negocios.png`
+- `evidence/wave-4-13e-autorizacao-vencida.png`
+- `evidence/wave-4-14-card-sem-proposta.png`
+- `evidence/wave-4.md`
+- `evidence/wave-5-tela-com-score-CASO-CONSTRUIDO.png`
+- `evidence/wave-5-tela-par-com-e-sem-score-CASO-CONSTRUIDO.png`
+- `evidence/wave-5.md`
+- `evidence/wave-6.md`
+- `evidence/wave-7.md`
+- `evidence/wave-8.md`
+- `evidence/wave3-pulso/pulso-claro-1-antes.png`
+- `evidence/wave3-pulso/pulso-claro-2-durante.png`
+- `evidence/wave3-pulso/pulso-claro-3-cessou.png`
+- `evidence/wave3-pulso/pulso-escuro-1-antes.png`
+- `evidence/wave3-pulso/pulso-escuro-2-durante.png`
+- `evidence/wave3-pulso/pulso-reduce-1-antes.png`
+- `evidence/wave3-pulso/pulso-reduce-2-durante.png`
+- `evidence/wave6-d20-editar-sem-fechar.png`
+- `evidence/wave6-d21-outra-aba-ao-vivo.png`
+- `evidence/wave6-d24-lead-sem-contato.png`
+- `evidence/wave7-agrupamento-por-dia.png`
+- `evidence/wave7-card-reativacao-decidido.png`
+- `evidence/wave7-card-reativacao.png`
+- `evidence/wave7-janela-do-worker.png`
+- `evidence/wave7-rede-de-seguranca.png`
+- `evidence/wave7-rede-dossie.png`
+- `evidence/wave8-agente-move-antes.png`
+- `evidence/wave8-agente-move-depois.png`
 
 ---
 
