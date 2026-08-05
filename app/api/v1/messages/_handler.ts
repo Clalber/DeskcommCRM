@@ -42,8 +42,16 @@ type SB = SupabaseClient;
  * conversa", o que vale para o eco e também para uma mensagem legítima que o
  * atendente digitou no celular enquanto o envio estava em voo: medido, esperado
  * 2 mensagens e obtido 1, com a do celular descartada. Seria o defeito do #108
- * de volta — e permanente, porque nada tira uma linha de `queued` (o cron
- * `recover-stuck-messages` do CLAUDE.md:93 não existe no código).
+ * de volta — e permanente, porque nada tira uma linha de `queued`.
+ *
+ * ATUALIZAÇÃO (issue #129): o cron `recover-stuck-messages` passou a existir
+ * (`app/api/v1/cron/recover-stuck-messages/route.ts`), mas ele cobre `sending`,
+ * não `queued` — e a diferença é deliberada. `queued` é estado de espera com
+ * DONO: o agent-engine reagenda o job (`SEND_QUEUED_RETRY_MS`, 5 min por
+ * padrão) enquanto a sessão do canal não está WORKING, e o watchdog redirige.
+ * Um cron marcando `queued` como falha depois de 5 min brigaria com essa
+ * retentativa e perderia mensagem que ia sair. `sending` não tem dono nenhum —
+ * é ali que a linha morre em silêncio.
  *
  * Aqui não há ambiguidade: o canal acabou de devolver o id EXATO da mensagem que
  * mandamos. Casa por id, nunca por proximidade.
