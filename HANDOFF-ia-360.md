@@ -686,13 +686,55 @@ error: ephemeral_token_insert_failed: duplicate key value violates unique
 constraint "api_tokens_organization_id_prefix_key"
 ```
 
-O token efêmero mintado por turno colide no `(organization_id, prefix)` quando a
-retentativa é rápida, e o turno **segue sem capacidade nenhuma**, só logando.
-Ou seja: um turno que falhe uma vez por qualquer motivo (limite de taxa, blip de
-rede) degrada silenciosamente para um agente sem mãos. É a mesma família de
-defeito que o épico existe para matar — capacidade anunciada, ausente na
-execução — e está no caminho que serve as minhas 6. Fora do escopo desta wave
-(é o mint do token, `lib/ai/runtime/mcp_token.ts`), reportado aqui.
+### ACH-04 — CONSERTADO: são DOIS defeitos, e um só não resolvia
+
+**1. A colisão não era rara — era garantida.** O prefixo do token efêmero era
+`dsk_run_${runId.slice(0, 8)}`, derivado só do run, e `api_tokens` tem
+`unique (organization_id, prefix)`. Toda retentativa do mesmo job mintava com o
+mesmo prefixo. `buildEphemeralPrefix` (agora exportada, `mcp_token.ts`) ganhou 4
+bytes aleatórios — o que também mata o irmão silencioso: dois jobs distintos cujos
+uuid coincidem nos 8 primeiros caracteres.
+
+Seguro mexer ali: a autenticação bate `token_hash` (`lib/mcp/auth.ts`), nunca o
+prefixo — ele é identificação para humano ler no audit, não chave de busca.
+
+**2. O silêncio, que era o pior dos dois.** A falha não derrubava o turno, e isso
+está certo: a conversa do cliente não pode morrer porque uma tool extra falhou. O
+errado era o comentário logo abaixo do `catch`, que dizia **"o humano vê o log"**.
+Não vê. O log sai no stdout do worker, num contêiner de VPS que o dono do negócio
+nunca abre.
+
+Agora o turno cria um item na Central de avisos
+(`agent_inbox_items`, kind novo `capabilities_missing`, migration `0102` na
+tripla): *"Um atendimento saiu sem as ferramentas que você ligou"* — o que
+aconteceu com o CLIENTE, não o que quebrou por dentro; o motivo técnico fica no
+corpo, para quem for investigar. Dedup por episódio aberto da organização: o
+defeito é sistêmico, não por conversa, e uma rajada de retentativas viraria
+dezenas de linhas iguais — inbox inundado é inbox ignorado. Resolvido e voltando,
+nasce um item novo.
+
+**O compilador cobrou o que eu ia esquecer:** `KIND_LABEL` é
+`satisfies Record<InboxKind, string>` e o build quebrou até o rótulo em português
+existir. O par `agent_inbox_items.kind` ↔ `InboxKind` do invariante de vocabulário
+cobriu o outro lado.
+
+**Duas vezes eu quase deixei o teste virar a segunda cópia da regra**, e as duas
+estão consertadas: a primeira versão de `tests/invariants/capacidades-ausentes.test.ts`
+tinha a própria função de prefixo e o próprio INSERT do aviso — reverter o
+conserto no código deixaria os dois casos verdes. Agora ele importa
+`buildEphemeralPrefix` e `avisarCapacidadesAusentes` do código real.
+
+**Sabotagem — três defeitos aplicados de propósito, 5 casos reprovaram:**
+
+| Sabotagem | O que reprovou |
+|---|---|
+| prefixo volta a ser derivado só do `runId` | os 3 casos de colisão |
+| sumir com a guarda de dedup do aviso | `o aviso nasce na Central e deduplica` |
+| a 0102 não chegar ao `baseline.sql` | `'capabilities_missing' é aceito pelo banco` |
+
+O 6º caso (a constraint `api_tokens_organization_id_prefix_key` existe) seguiu
+verde de propósito: ele é o controle positivo, e sem ele os três primeiros
+passariam num banco que simplesmente não tem o mecanismo.
 
 ---
 

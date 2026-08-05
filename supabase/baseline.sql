@@ -9042,4 +9042,32 @@ on conflict (model) do update set
   notes = excluded.notes,
   superseded_at = null;
 
+-- ---- agent_inbox_items.kind ganha 'capabilities_missing' (migration 0105capabilities_missing
+-- Quando o turno não consegue montar as capacidades configuradas na tela, ele
+-- segue sem elas (a conversa do cliente não pode morrer por uma tool extra) —
+-- mas o aviso ia só para o log do worker, que numa VPS ninguém abre. Este kind
+-- é o que faz o defeito aparecer na Central de avisos. Idempotente: a lista só
+-- cresce, nenhuma linha existente viola a constraint nova.
+
+alter table public.agent_inbox_items
+  drop constraint if exists agent_inbox_items_kind_check;
+
+alter table public.agent_inbox_items
+  add constraint agent_inbox_items_kind_check check (kind in (
+    'qr_rescan',
+    'job_dead',
+    'event_dead',
+    'budget_exceeded',
+    'handoff',
+    'promotion_review',
+    'judge_unaligned',
+    'followup_dead',
+    'snooze_expired',
+    'next_action_ambiguous',
+    'risk_backlog_seeded',
+    'reactivation_expired',
+    'capabilities_missing',
+    'other'
+  ));
+
 notify pgrst, 'reload schema';
