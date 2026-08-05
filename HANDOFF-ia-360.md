@@ -830,27 +830,85 @@ para a próxima pessoa não repetir.
 |---|---|
 | `npx tsc --noEmit` | exit 0 |
 | `npx eslint .` | **0 errors, 170 warnings** — exatamente a linha de base do épico (`687716a`), zero avisos novos |
-| `npx vitest run` (unit) | **226 arquivos, 2014 testes passando** |
+| `npx vitest run` (unit) | 226 arquivos, 2014 testes — ⚠️ **medido ANTES da última edição deste commit**, ver "O quarto gate" abaixo; o número válido para o estado final é o da tabela pós-merge |
 | `pnpm test:db` — baseline | `install ok` (`ON_ERROR_STOP=1`) e `update ok` (re-aplicação), nas duas rodadas |
-| `pnpm test:db` — invariantes | 412 passam; **1 vermelho instável**, ver abaixo |
+| `pnpm test:db` — invariantes | 412 passam; **1 vermelho por rodada**, em teste que muda de lugar — causa em apuração pela W3, ver abaixo |
 | E2E em tela | `1 passed`, com evidência visual e sabotagem confirmada |
 
-### A medição que não fecha limpa, dita como ela é
+### A medição que não fecha limpa — e a conclusão que eu RETIREI
 
-**`pnpm test:db` tem 1 invariante vermelho — e ele NÃO é desta wave.** A prova é o par de
-rodadas, não a minha opinião:
+**O que medi, e continua valendo:** duas rodadas completas de `pnpm test:db` no meu SHA, dois
+vermelhos, em testes **diferentes** da família follow-up.
 
 | rodada | porta | teste que falhou |
 |---|---|---|
 | 1ª | `TEST_DB_PORT=54371` | `tests/invariants/followup-turn-bridge.test.ts` (`expected 2 to be 1`) |
 | 2ª | `TEST_DB_PORT=54373` | `tests/invariants/followup-reactivity.test.ts` (`expected +0 to be 1`) |
 
-**Testes diferentes, mesmo SHA.** Falha que muda de lugar entre rodadas é instabilidade da suíte,
-não regressão determinística. `followup-turn-bridge` **passa isolado** no mesmo SHA (`5 passed`,
-exit 0), nenhum arquivo de follow-up foi tocado nesta branch, e os dois logs trazem erros de
-outros invariantes logo antes — assinatura de estado vazando entre testes que compartilham o
-mesmo Postgres. **O Maestro assumiu a caracterização** (rodadas de controle na base); não gastei
-mais tempo nisso a pedido dele.
+`followup-turn-bridge` passa isolado no mesmo SHA (`5 passed`, exit 0). Nenhum arquivo de
+follow-up foi tocado nesta branch (`git diff --name-only 99cd0fc..HEAD | grep -i followup` →
+vazio).
+
+**O que eu CONCLUÍ daí, e estava além do dado: "não é desta wave".** Retirado.
+
+O que sustentava a conclusão era a ausência de regressão determinística mais o fato de eu não ter
+tocado follow-up. Nenhum dos dois exclui esta branch: o mecanismo que a W2 encontrou — dois
+relógios diferentes, `node-handlers` em 201 contra o baseline em 6497 — explica **sensibilidade a
+tempo de execução**, e qualquer mudança que altere o tempo da suíte pode disparar isso sem tocar
+uma linha de follow-up.
+
+E o número decisivo é o que eu **não** tinha: **zero corridas de controle na base**. A W3 mediu
+com régua melhor — base **verde em 11 corridas**, branch dela **6 falhas em 8**, com o teste
+identificado. Contra 11 corridas limpas, meu "2 de 2" deixa de ser evidência de tronco doente e
+vira evidência de que **branches disparam**, inclusive a minha.
+
+**A lição, que é a mesma que o Maestro registrou sobre si:** usei uma amostra pequena para dizer
+"não dá para concluir" quando a conclusão me era desfavorável, e usei a MESMA amostra para
+concluir quando ela me era favorável. O erro não é a amostra — é ela mudar de força conforme o
+lado que sustenta.
+
+**Item com dono:** a W3 assumiu. Minha contribuição são as medições abaixo — **declaradas por
+SHA, nunca agregadas**, porque somar corridas de estados de código diferentes sob o rótulo "a
+branch" é o erro que a própria W3 retratou na série dela:
+
+| SHA | o que é | corridas | resultado |
+|---|---|---|---|
+| `4202acf` | pré-merge | 2 | 2 vermelhos, em testes **diferentes** (`followup-turn-bridge`, `followup-reactivity`) |
+| `dc20317` | pós-merge, estado final | 3 | **3 verdes** (`413 passed \| 1 skipped`, exit 0 nas três) |
+
+**O que isso NÃO prova:** que sumiu. Três corridas verdes não refutam um fenômeno intermitente —
+a W3 já declarou isso sobre as três dela, e vale igual para as minhas.
+
+### O segundo mecanismo, confirmado por leitura independente
+
+A W3 encontrou um mecanismo que **não depende de relógio**, e eu o confirmei no código sem partir
+do achado dela — `supabase/baseline.sql:6485`:
+
+```sql
+create or replace function fn_claim_due_followup_enrollments(p_limit int, p_lease_seconds int)
+...
+    select id from followup_enrollments
+    where status in ('active','waiting_reply') and next_eval_at <= now() ...
+    order by next_eval_at limit p_limit for update skip locked
+```
+
+**Não há `organization_id` na assinatura nem no corpo.** O claim varre `followup_enrollments`
+inteiro. Medidas que acrescento ao achado dela:
+
+- `DEFAULT_CLAIM_LIMIT = 20` e `CLAIM_LEASE_SECONDS = 120` (`lib/followup/engine.ts:29-30`);
+- `runFollowupTick` **engole** a falha do claim (`catch { return summary }`, linha 409): devolve
+  `claimed: 0`, que é indistinguível de "nada vencido" — os dois mecanismos produzem o MESMO
+  sintoma, como a W3 disse;
+- **não é vazamento entre tenants.** O lote é global, mas cada enrollment é processado com o
+  `orgId` dele (`loadFlowGraph`/`loadLeadFacts` filtram por organização). O defeito é outro:
+  **starvation**. Numa instalação com mais de uma organização, quem tiver mais de 20 follow-ups
+  vencidos monopoliza cada tick — e, como a ordem é por `next_eval_at` crescente, quem está
+  atrasado continua tendo os mais antigos. É starvation **persistente**, não transitória, e atinge
+  em silêncio o invariante 4 da doutrina ("nenhuma demanda sem próximo passo") nas organizações
+  menores.
+
+Hoje o impacto real é baixo porque o uso corrente é de um operador só; num SaaS multi-tenant, não
+seria. **Não é item desta wave** — é registro para quem for fechar o do follow-up.
 
 ---
 
@@ -928,15 +986,45 @@ e motivo errado no repo é pior que motivo ausente — o próximo a ler decide c
 |---|---|
 | `npx tsc --noEmit` | exit 0 |
 | `npx eslint .` | 0 errors, 170 warnings — a linha de base do épico |
-| `npx vitest run` (unit) | **226 arquivos, 2019 testes passando**, exit 0 |
+| `npx vitest run` (unit) | **226 arquivos, 2017 testes passando**, exit 0 — rodado DEPOIS da última edição do commit |
 | E2E em tela | `1 passed (1.9m)`, exit 0, rodado contra o SHA pós-merge com `next build` novo; capturas regeneradas em `evidence/ia-360-w4/` |
 
-Um quarto gate reprovou no primeiro try pós-merge e foi acerto meu:
-`tests/unit/evidencia-citada.test.ts` (veio na base) recusou o HANDOFF por citar capturas em
-`.superpowers/evidence/`, que é pasta de trabalho e não entra no `git ls-files` — num projeto
+### O quarto gate, e o que ele revelou sobre a minha própria medição
+
+`tests/unit/evidencia-citada.test.ts` recusou o HANDOFF por citar capturas em
+`.superpowers/evidence/`, que é pasta de trabalho e não entra no `git ls-files`. Num projeto
 aberto, prova citada e não entregue é afirmação sem lastro para quem clona. As três capturas
-foram para `evidence/ia-360-w4/` (versionado) e o spec passou a escrever direto lá, para a
-próxima rodada regenerar no lugar certo em vez de recriar o problema.
+foram para `evidence/ia-360-w4/` (versionado) e **o spec passou a escrever direto lá** — apagar
+o sintoma deixaria a próxima rodada recriando o problema.
+
+**Atribuição corrigida.** Escrevi antes que esse gate "veio na base". Errado nos dois sentidos, e
+o Maestro cobrou a correção — crédito errado manda o próximo procurar o dono errado quando o gate
+incomodar. Medido: `git log --diff-filter=A` → nasceu em `49a3cb0` (2026-07-24, épico **crm-vivo**),
+evoluiu em seis commits, e `ce93ab0` (2026-07-27, growth) foi o **último retoque** (+8/−2). Ambos
+já estavam em `origin/main` = `687716a`, logo **o gate já estava na minha branch desde o primeiro
+commit** — não veio no merge.
+
+**E é aí que está o achado que interessa, porque é sobre mim.** Se o gate já estava lá, por que a
+suíte que reportei como `2014 testes passando` não o pegou? Fui medir em vez de supor: restaurei
+o `HANDOFF-ia-360.md` de `4202acf` no disco e rodei o gate isolado — **reprova**
+(`HANDOFF-ia-360.md não cita imagem fora do versionamento`).
+
+A causa não é o gate: é a **ordem em que eu medi**. Rodei a suíte completa e, só depois, escrevi a
+seção do Marco 3 com as citações — e commitei as duas coisas juntas em `4202acf`. O número não era
+falso; ele simplesmente **não descrevia o commit ao qual eu o atribuí**. Medi contra um disco que
+mudou antes do commit fechar.
+
+A regra que eu já devia estar aplicando, escrita aqui para a próxima pessoa (e para mim): **o
+`vitest run` que sustenta uma afirmação sobre um SHA roda DEPOIS da última edição que entra nele**,
+nunca antes. Foi o que fiz na rodada final — `2017 testes`, com a árvore já no estado do commit.
+
+> **Nota sobre o número, para ele não pegar carona.** Uma rodada intermediária deu `2019`. Não
+> rastreei a origem da diferença de dois; o que verifiquei é que **nenhum arquivo de teste sumiu**
+> (226 nas duas) e que os dois geradores dinâmicos que este trabalho toca continuam cobrindo o que
+> devem — o gate do catálogo roda sobre as 31 tools (`99 passed`) e o de evidência sobre todos os
+> documentos que citam prova (`32 passed`). A diferença está em `it` gerados por dado, não em
+> cobertura perdida. Registro assim porque "provavelmente é X" num rodapé de estado é exatamente o
+> tipo de frase que ninguém audita depois.
 
 ---
 
