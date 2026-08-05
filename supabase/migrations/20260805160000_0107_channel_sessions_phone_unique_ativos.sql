@@ -1,7 +1,7 @@
--- 0106 — a trava de número único passa a ignorar canal ARQUIVADO
+-- 0107 — a trava de número único passa a ignorar canal ARQUIVADO
 --
 -- `channel_sessions_phone_per_org_unique UNIQUE (organization_id, phone_number)`
--- é do snapshot original e nasceu antes de existir arquivamento (0100): ela não
+-- é do snapshot original e nasceu antes de existir arquivamento (0106): ela não
 -- sabe o que é um canal arquivado, então a linha arquivada continua ocupando o
 -- par (organização, número) para sempre.
 --

@@ -14,7 +14,7 @@
  * Devolver lista vazia quando a consulta falhou é indistinguível de "esta
  * organização não tem número" — e é assim que se convida alguém a parear de novo
  * um número que já está no ar. A única falha tolerada é a coluna `archived_at`
- * não existir (código novo, banco sem a migration 0100): aí nada está arquivado,
+ * não existir (código novo, banco sem a migration 0106): aí nada está arquivado,
  * e a lista sem o filtro é a lista exata (ver `./archived`).
  */
 import type { SupabaseClient } from "@supabase/supabase-js";

@@ -1,4 +1,4 @@
--- 0100 — channel_sessions.archived_at
+-- 0106 — channel_sessions.archived_at
 --
 -- Permite "excluir" um canal WhatsApp da Central de Conexões sem destruir o
 -- histórico. Excluir de verdade (DELETE na linha) só é possível para um canal

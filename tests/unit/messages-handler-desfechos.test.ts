@@ -48,7 +48,7 @@ interface ConversationShape {
   isBlocked?: boolean;
   sessionStatus?: string | null;
   provider?: string;
-  /** Canal excluído pelo usuário (migration 0100) — a linha sobrevive, o canal não. */
+  /** Canal excluído pelo usuário (migration 0106) — a linha sobrevive, o canal não. */
   archivedAt?: string | null;
 }
 
@@ -89,7 +89,7 @@ function conversationRow(shape: ConversationShape = {}): Row {
 function makeSupabase(
   conversation: Row,
   templateRow: Row | null = null,
-  /** `semColunaArquivada`: banco em que a migration 0100 ainda não rodou. */
+  /** `semColunaArquivada`: banco em que a migration 0106 ainda não rodou. */
   opts: { semColunaArquivada?: boolean } = {},
 ) {
   const state: { message: Row | null } = { message: null };
@@ -472,7 +472,7 @@ describe('sendMessageHandler — os 6 desfechos do envio', () => {
 
   /**
    * ⭐ Este é O caminho de saída do sistema (UI, automação, MCP e agente passam
-   * por aqui). Num clone que subiu o CÓDIGO sem aplicar a migration 0100 — cenário
+   * por aqui). Num clone que subiu o CÓDIGO sem aplicar a migration 0106 — cenário
    * medido neste projeto —, pedir `archived_at` direto derrubaria TODO envio com
    * 42703. Sem a coluna nada está arquivado, então repetir sem ela é o resultado
    * exato, não um paliativo.

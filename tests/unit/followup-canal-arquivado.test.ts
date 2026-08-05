@@ -11,7 +11,7 @@
  *     chamada de modelo inclusive — já teria sido pago para produzir um texto que
  *     não sai, e a fila retentaria contra o vazio.
  *  2. a coluna é lida por `to_jsonb(cs) ->> 'archived_at'`, e não por
- *     `cs.archived_at`, porque num clone que subiu o código sem a migration 0100
+ *     `cs.archived_at`, porque num clone que subiu o código sem a migration 0106
  *     a referência direta derruba a consulta com 42703 — ou seja, TODO follow-up
  *     da instalação, em silêncio. Um "cleanup" bem-intencionado dessa linha é
  *     exatamente o tipo de mudança que passa em revisão.
@@ -63,7 +63,7 @@ function job(over: Partial<JobRow> = {}): JobRow {
 
 interface PoolOpts {
   archivedAt?: string | null;
-  /** Clone sem a migration 0100: a coluna simplesmente não existe na tabela. */
+  /** Clone sem a migration 0106: a coluna simplesmente não existe na tabela. */
   semColuna?: boolean;
 }
 
@@ -152,7 +152,7 @@ describe("followup_turn — canal arquivado", () => {
    * `cs.archived_at`, o clone sem a migration para de rodar follow-up inteiro —
    * e não com erro visível na tela, com job falhando num worker.
    */
-  it("clone sem a migration 0100: o follow-up roda igual, a consulta não explode", async () => {
+  it("clone sem a migration 0106: o follow-up roda igual, a consulta não explode", async () => {
     runAgentTurn.mockClear();
     const { pool, consultas } = fakePool({ semColuna: true });
     const run = handler();

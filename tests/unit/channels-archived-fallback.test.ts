@@ -1,5 +1,5 @@
 /**
- * O fallback de `archived_at` só pode cobrir UMA coisa: a migration 0100 que não
+ * O fallback de `archived_at` só pode cobrir UMA coisa: a migration 0106 que não
  * rodou neste banco.
  *
  * O risco desta função não é ela falhar — é ela funcionar demais. Afrouxar a

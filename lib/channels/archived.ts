@@ -2,7 +2,7 @@
  * `channel_sessions.archived_at` — e o que fazer quando a coluna ainda não existe.
  *
  * Arquivar é como um canal "sai" do sistema sem levar o histórico junto
- * (migration 0100). A partir daí, TODO caminho que resolve uma sessão precisa
+ * (migration 0106). A partir daí, TODO caminho que resolve uma sessão precisa
  * ignorar as arquivadas: a linha continua lá como âncora das FKs, mas para o
  * produto ela foi excluída — o número já foi deslogado no transporte e a
  * credencial do canal oficial já foi revogada.
@@ -52,7 +52,7 @@ export interface DbErrorLike {
   message?: string | null;
 }
 
-/** O erro é "a migration 0100 não rodou neste banco" — e não um erro de verdade. */
+/** O erro é "a migration 0106 não rodou neste banco" — e não um erro de verdade. */
 export function isArchivedColumnMissing(error: DbErrorLike | null | undefined): boolean {
   if (!error) return false;
   return COLUNA_AUSENTE.has(error.code ?? "") && (error.message ?? "").includes(ARCHIVED_AT);

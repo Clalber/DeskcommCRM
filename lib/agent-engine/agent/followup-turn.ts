@@ -222,7 +222,7 @@ export function createFollowupTurnHandler(deps: FollowupTurnDeps) {
     // só existe para contato que já conversou; ausência é anomalia → dead-letter.
     //
     // `to_jsonb(cs) ->> 'archived_at'` em vez de `cs.archived_at`: a coluna nasce na
-    // migration 0100 e, num clone que subiu o código sem aplicá-la, referenciá-la
+    // migration 0106 e, num clone que subiu o código sem aplicá-la, referenciá-la
     // direto derrubaria TODO follow-up com 42703. `to_jsonb` de uma linha sem a
     // chave devolve NULL — que é o valor certo, porque sem a coluna nada está
     // arquivado.

@@ -77,7 +77,7 @@ export async function POST(
       .eq("organization_id", activeOrg.orgId)
       .eq("id", id)
       .maybeSingle();
-  // Tolerante à coluna ausente: num clone sem a migration 0100 nada está
+  // Tolerante à coluna ausente: num clone sem a migration 0106 nada está
   // arquivado, e exigir a coluna aqui derrubaria a reconexão inteira — que é o
   // socorro de quem está com o número fora do ar.
   const { data: sessionRaw } = await queryTolerantToMissingArchived(

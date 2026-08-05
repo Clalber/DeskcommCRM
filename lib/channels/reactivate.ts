@@ -2,7 +2,7 @@
  * O caminho de VOLTA de um canal: reconectar é ressuscitar.
  *
  * ─── Por que isto é uma função, e não `archived_at: null` em cada handler ────
- * O arquivamento (migration 0100) fez `archived_at` virar a chave que decide se
+ * O arquivamento (migration 0106) fez `archived_at` virar a chave que decide se
  * o canal existe: o webhook descarta o que chega nele, o ingest não cria
  * conversa, os seletores não o oferecem e o envio recusa. Enquanto isso, os
  * caminhos que RELIGAM um canal — reconectar o oficial, retomar o pareamento

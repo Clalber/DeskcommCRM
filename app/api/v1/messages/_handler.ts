@@ -228,7 +228,7 @@ export async function sendMessageHandler(
 ): Promise<Message> {
   // `archived_at` entra pelo helper tolerante porque este é O caminho de saída do
   // sistema inteiro (UI, automação, MCP e o agente passam por aqui): num clone que
-  // subiu o código sem a migration 0100, pedir a coluna direto derrubaria TODO
+  // subiu o código sem a migration 0106, pedir a coluna direto derrubaria TODO
   // envio com 42703. Sem a coluna, nada está arquivado — e a consulta sem ela é a
   // consulta certa (ver lib/channels/archived).
   const convSelect = (comArchived: boolean) =>
@@ -332,7 +332,7 @@ export async function sendMessageHandler(
   if (c.channel_sessions?.archived_at) {
     // Canal ARQUIVADO = canal excluído pelo usuário: a sessão já foi deslogada e
     // removida do transporte, e a credencial do canal oficial já foi revogada. É a
-    // promessa da migration 0100 ("não é mais elegível para envio") virando
+    // promessa da migration 0106 ("não é mais elegível para envio") virando
     // comportamento.
     //
     // `failed` e não `queued` de propósito: fila implica "vai sair quando der", e

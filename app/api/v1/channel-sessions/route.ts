@@ -40,7 +40,7 @@ export async function GET(): Promise<Response> {
   // (conversations/messages). Para o usuário eles foram excluídos.
   //
   // Tolerante à coluna ausente porque esta é a PRIMEIRA tela de quem já tem
-  // número ligado: num clone que subiu o código sem a migration 0100, o filtro
+  // número ligado: num clone que subiu o código sem a migration 0106, o filtro
   // devolveria 42703 → 500 → "Nenhum número conectado ainda", convidando o
   // operador a parear de novo um número que já está no ar. Sem a coluna, nada
   // está arquivado, e a lista sem o filtro é a lista certa (ver lib/channels/archived).

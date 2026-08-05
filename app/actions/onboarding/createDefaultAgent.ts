@@ -62,7 +62,10 @@ async function publishFirstVersion(
       version_number: 1,
       system_prompt: systemPrompt,
       provider: "anthropic",
-      model: (model?.model_id as string) ?? "claude-sonnet-4-6",
+      // Fallback do modelo vem da main (catálogo do 0104); o canal vem daqui
+      // (listagem que exclui arquivado). O hunk pedia as DUAS metades: ficar com
+      // um lado só perderia o modelo atual ou o filtro de canal excluído.
+      model: (model?.model_id as string) ?? "claude-sonnet-5",
       channel_session_id: canal.id,
       status: "published",
       published_at: new Date().toISOString(),

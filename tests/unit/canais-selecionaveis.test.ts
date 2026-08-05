@@ -91,7 +91,7 @@ describe("listSelectableChannels", () => {
     expect(trilha).toContain("is(archived_at=null)");
   });
 
-  it("banco sem a migration 0100: repete sem o filtro em vez de devolver lista vazia", async () => {
+  it("banco sem a migration 0106: repete sem o filtro em vez de devolver lista vazia", async () => {
     const { db, chamadas } = fakeDb([
       { data: null, error: { code: "42703", message: "column channel_sessions.archived_at does not exist" } },
       { data: [LINHA], error: null },

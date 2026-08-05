@@ -17,7 +17,7 @@
  *   - onboarding → RESSUSCITA (o nome da sessão é derivado do org e nunca muda;
  *     recusar fecharia o onboarding para sempre).
  *
- * O dublê simula também o clone que subiu o código sem a migration 0100: lá a
+ * O dublê simula também o clone que subiu o código sem a migration 0106: lá a
  * coluna não existe, e um caminho de volta que a exigisse quebraria a reconexão
  * inteira — por um motivo que nem existe naquele banco.
  */
@@ -77,7 +77,7 @@ interface Registro {
 interface DbOpts {
   sessions?: Linha[];
   /**
-   * Clone que subiu o código sem a migration 0100. Qualquer consulta que NOMEIE
+   * Clone que subiu o código sem a migration 0106. Qualquer consulta que NOMEIE
    * `archived_at` falha — no filtro/select com o 42703 do Postgres, no corpo de
    * uma escrita com o PGRST204 do PostgREST, que resolve as colunas do corpo
    * contra o schema cache antes de montar o UPDATE.
@@ -338,7 +338,7 @@ describe("POST /api/v1/channels/official — reconectar é ressuscitar", () => {
    * pior: o clone sem a 0100 pararia de conectar o canal oficial — e lá nada
    * está arquivado, então a coluna nem faria falta.
    */
-  it("clone sem a migration 0100: a conexão FUNCIONA, repetindo sem a coluna", async () => {
+  it("clone sem a migration 0106: a conexão FUNCIONA, repetindo sem a coluna", async () => {
     authOk();
     const db = makeDb({
       sessions: [canalOficial({ status: "STOPPED" })],
@@ -392,7 +392,7 @@ describe("GET /api/v1/channels/official — a tela não chama de conectado o que
     expect(body.data.webhook.callbackUrl).toContain("tok");
   });
 
-  it("clone sem a migration 0100: a tela continua enxergando o canal", async () => {
+  it("clone sem a migration 0106: a tela continua enxergando o canal", async () => {
     authOk();
     makeDb({
       sessions: [canalOficial({ webhook_path_token: "tok" })],
@@ -438,7 +438,7 @@ describe("POST /api/v1/channel-sessions/[id]/reconnect — canal excluído não 
     expect(db.linhas[0]?.status).toBe("STARTING");
   });
 
-  it("clone sem a migration 0100: reconectar continua funcionando", async () => {
+  it("clone sem a migration 0106: reconectar continua funcionando", async () => {
     authOk();
     makeDb({ sessions: [canalQr({ status: "FAILED" })], semColunaArquivada: true });
     const waha = transporteOk();
@@ -591,7 +591,7 @@ describe("GET /api/v1/channel-sessions/[id]/qr — o QR é o ato de religar", ()
     chamou.mockRestore();
   });
 
-  it("clone sem a migration 0100: o QR continua aparecendo", async () => {
+  it("clone sem a migration 0106: o QR continua aparecendo", async () => {
     authOk();
     makeDb({ sessions: [canalQr()], semColunaArquivada: true });
     const chamou = fetchSpy().mockResolvedValue(
@@ -817,7 +817,7 @@ describe("metaSessionForOrg — a tela de templates não fala por um canal exclu
     expect(await metaSessionForOrg(ORG)).toMatchObject({ id: CANAL, wabaId: WABA });
   });
 
-  it("clone sem a migration 0100: continua achando a sessão (nada está arquivado lá)", async () => {
+  it("clone sem a migration 0106: continua achando a sessão (nada está arquivado lá)", async () => {
     makeDb({ sessions: [canalOficial({ meta_waba_id: WABA })], semColunaArquivada: true });
     const { metaSessionForOrg } = await import("@/lib/channels/meta/session");
     expect(await metaSessionForOrg(ORG)).toMatchObject({ id: CANAL, wabaId: WABA });
@@ -854,7 +854,7 @@ describe("metaSessionByWebhookToken — a entrega da plataforma para no canal ex
     expect(await metaSessionByWebhookToken(TOKEN)).toMatchObject({ id: CANAL, wabaId: "waba-9" });
   });
 
-  it("clone sem a migration 0100: a entrega continua chegando", async () => {
+  it("clone sem a migration 0106: a entrega continua chegando", async () => {
     makeDb({
       sessions: [canalOficial({ webhook_path_token: TOKEN })],
       semColunaArquivada: true,

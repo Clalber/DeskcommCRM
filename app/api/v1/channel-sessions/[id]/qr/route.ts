@@ -47,7 +47,7 @@ export async function GET(
       .eq("organization_id", activeOrg.orgId)
       .eq("id", id)
       .maybeSingle();
-  // Tolerante à coluna ausente: num clone sem a migration 0100 nada está
+  // Tolerante à coluna ausente: num clone sem a migration 0106 nada está
   // arquivado, e exigir a coluna aqui apagaria o QR de quem está pareando agora
   // — o passo mais frágil da primeira instalação.
   const { data: sessionRaw } = await queryTolerantToMissingArchived(
