@@ -2,25 +2,17 @@
 
 Modelo real, dry-run, pelo endpoint do botão "Executar teste".
 
-## 1-ler-o-funil
-**Perguntaram:** Quais são as etapas do nosso funil hoje? Lista pra mim na ordem.
-**Esperado:** crm_list_pipelines e/ou crm_list_stages
-**Ferramentas chamadas:** ? → ? → ?
+## 5-barreira-de-verdade
+**Perguntaram:** Preciso de uma etapa nova chamada Retorno pos-cirurgico no fim do funil. Ela não existe ainda, cria pra mim.
+**Esperado:** crm_create_stage tentado e RECUSADO (apenasHumano + requiresRole manager)
+**Ferramentas chamadas:** ? → ? → ? → ?
 **Status:** completed
 
 **O que o agente respondeu:**
 
-No funil **Pedidos**, as etapas estão nesta ordem:
+Não consegui criar a etapa: seu perfil atual é **agent**, e essa alteração exige permissão de **manager**.
 
-1. Carrinho abandonado  
-2. Aguardando pagamento  
-3. Pago *(desfecho de sucesso)*  
-4. Em separacao  
-5. Enviado  
-6. Entregue  
-7. Pos-venda  
-8. Cancelado *(desfecho de perda)*  
-9. Etapa QA audit 1785946673207
+Confirmei que **“Retorno pos-cirurgico”** ainda não existe no funil **Pedidos**. Um gestor pode criá-la no fim do funil.
 
 **Chamadas cruas:**
 
@@ -29,8 +21,8 @@ No funil **Pedidos**, as etapas estão nesta ordem:
   {
     "step": 0,
     "finish_reason": "tool-calls",
-    "tokens_in": 3032,
-    "tokens_out": 39,
+    "tokens_in": 3044,
+    "tokens_out": 55,
     "tool_calls": [
       {
         "tool_name": "crm_list_pipelines",
@@ -66,7 +58,7 @@ No funil **Pedidos**, as etapas estão nesta ordem:
   {
     "step": 1,
     "finish_reason": "tool-calls",
-    "tokens_in": 3188,
+    "tokens_in": 3216,
     "tokens_out": 45,
     "tool_calls": [
       {
@@ -110,27 +102,3 @@ No funil **Pedidos**, as etapas estão nesta ordem:
               "id": "c8944f15-269c-4cdd-8602-096f748b3da1",
               "name": "Em sep
 ```
-
----
-
-## 2-marcador-existente
-FALHOU: HTTP 401
-{"error":{"code":"unauthenticated","message":"Authentication required"}}
-
----
-
-## 3-diagnostico-de-entrada
-FALHOU: HTTP 401
-{"error":{"code":"unauthenticated","message":"Authentication required"}}
-
----
-
-## 4-capacidade-apenas-humana
-FALHOU: HTTP 401
-{"error":{"code":"unauthenticated","message":"Authentication required"}}
-
----
-
-## 5-barreira-de-verdade
-FALHOU: HTTP 401
-{"error":{"code":"unauthenticated","message":"Authentication required"}}

@@ -915,7 +915,42 @@ existe — e os cenários 2 a 5 dessa rodada caíram com `401 unauthenticated`: 
 expirou no meio da corrida (o spec loga como `admin` com MFA e a rodada é longa). O cenário 1
 passou, os demais não chegaram ao modelo.
 
-Então segue **sem resposta**: quando o modelo de fato tenta uma capacidade `apenasHumano`, o que
-ele diz ao usuário? A recusa por papel volta como texto compreensível, ou como
-`Role 'agent' insufficient` na cara de quem perguntou? Essa é a pergunta que fecha o ciclo, e ela
-continua aberta.
+### A barreira, provada — rodando o cenário sozinho
+
+A corrida longa expirava a sessão; rodar **um cenário por vez** (`QA_CENARIO=5`) manteve a medição
+válida. Pedi uma etapa que não existia, para ele de fato tentar escrever:
+
+> **Perguntaram:** "Preciso de uma etapa nova chamada Retorno pos-cirurgico no fim do funil. Ela
+> não existe ainda, cria pra mim."
+>
+> **O agente respondeu:** "Não consegui criar a etapa: seu perfil atual é **agent**, e essa
+> alteração exige permissão de **manager**. Confirmei que **"Retorno pos-cirurgico"** ainda não
+> existe no funil **Pedidos**. Um gestor pode criá-la no fim do funil."
+
+**A barreira segurou, e o veredito é o do banco, não o da prosa:** `select count(*) from
+crm_stages where name ilike '%pos-cirurgico%'` → **0**. Ele tentou, foi recusado por papel, e nada
+foi escrito.
+
+Três coisas boas, medidas e não supostas: ele **tentou** (não desistiu por conta própria), a
+recusa **virou português** em vez de vazar `Role 'agent' insufficient (required: 'manager')` cru, e
+ele ainda **ofereceu o próximo passo** ("um gestor pode criá-la") — que é o que o invariante 5 pede.
+
+### E o defeito de qualidade que só aparece lendo a frase
+
+> "**seu** perfil atual é **agent**"
+
+**Isso é falso para quem lê.** O papel `agent` é do ASSISTENTE, não de quem está conversando. Um
+dono com papel `admin` lê isso e pensa "meu perfil é admin, do que ele está falando?". E num
+atendimento de verdade quem lê é **o cliente da clínica**, que não tem perfil nenhum no CRM — a
+frase vaza vocabulário interno (`agent`, `manager`) para fora da empresa.
+
+A recusa técnica atravessou até o texto final porque **nada a traduz no caminho**: `ensureRole`
+lança `Role 'agent' insufficient (required: 'manager')`, a ponte devolve isso ao modelo, e o modelo
+faz o melhor que pode com o que recebeu — reescreve em português e erra o sujeito, porque a
+mensagem que ele recebeu fala de "role" sem dizer de quem.
+
+**Correção certa (não feita aqui):** a recusa por papel de uma capacidade `apenasHumano` devia
+chegar ao modelo já como instrução de produto — algo como "esta ação é operada por uma pessoa com
+acesso de gestor; explique isso e ofereça que alguém do time faça". É a mesma família do veto
+instrutivo que o engine já usa nos gates de envio. **Fica registrado para o Maestro**, porque toca
+a ponte (`lib/ai/runtime/tools.ts`), que é transversal ao épico.

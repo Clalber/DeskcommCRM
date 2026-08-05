@@ -205,8 +205,19 @@ test.describe("QA — o agente usa as mãos que a W4 entregou?", () => {
     const versaoId = await versaoComAsCapacidades(page.request, agenteId!);
     console.info(`[QA] versão de teste ${versaoId} com ${CAPACIDADES.length} capacidades`);
 
+    /**
+     * ⚠️ FILTRO DE CENÁRIO, e ele existe por um defeito medido, não por conforto.
+     * A rodada com os cinco cenários levou os quatro últimos a `401
+     * unauthenticated`: a sessão do admin com MFA expira numa corrida longa, e o
+     * teste passa a medir o relógio em vez do modelo. Rodar um cenário por vez
+     * mantém a corrida curta o bastante para a medição valer.
+     */
+    const alvo = process.env.QA_CENARIO;
+    const aRodar = alvo ? CENARIOS.filter((c) => c.nome.startsWith(alvo)) : CENARIOS;
+    console.info(`[QA] cenários nesta corrida: ${aRodar.map((c) => c.nome).join(", ")}`);
+
     const relatorio: string[] = [];
-    for (const cenario of CENARIOS) {
+    for (const cenario of aRodar) {
       const res = await page.request.post(
         `${APP_URL}/api/v1/ai/agents/${agenteId}/versions/${versaoId}/test`,
         { data: { sample_message: cenario.mensagem }, timeout: 180_000 },
