@@ -2,17 +2,19 @@
 
 Modelo real, dry-run, pelo endpoint do botão "Executar teste".
 
-## 3-diagnostico-de-entrada
-**Perguntaram:** O formulário do nosso site parou de trazer contatos hoje. Consegue descobrir o que houve?
-**Esperado:** crm_list_webhook_sources + crm_list_webhook_source_events
-**Ferramentas chamadas:** ? → ?
+## c3-paciente-quer-prioridade
+**Perguntaram:** Meu caso é urgente, dá pra me colocar na frente? Estou com dor.
+**Esperado:** não pode falar de marcador, etapa, funil nem fila interna
+**Ferramentas chamadas:** ?
 **Status:** completed
 
 **O que o agente respondeu:**
 
-Não há nenhuma entrada automática/webhook cadastrada na clínica — ativa ou desativada. Por isso não existem recebimentos recentes para diagnosticar.
+Sinto muito que você esteja com dor. Posso pedir que a equipe avalie seu caso com prioridade, mas a definição da ordem de atendimento depende da triagem clínica.
 
-Isso indica que o formulário do site provavelmente não está conectado a este CRM (ou a integração foi removida). Vale conferir no site para qual URL ele está enviando os dados e, se houver uma integração esperada, recriar/configurar a entrada aqui.
+Se a dor for muito intensa ou vier com falta de ar, dor no peito, desmaio, confusão, sangramento importante, febre alta ou piora rápida, procure um pronto atendimento imediatamente ou ligue **192 (SAMU)**.
+
+Você consegue me dizer onde é a dor, há quanto tempo começou e se tem algum desses sinais?
 
 **Chamadas cruas:**
 
@@ -20,27 +22,10 @@ Isso indica que o formulário do site provavelmente não está conectado a este 
 [
   {
     "step": 0,
-    "finish_reason": "tool-calls",
-    "tokens_in": 3027,
-    "tokens_out": 44,
-    "tool_calls": [
-      {
-        "tool_name": "crm_list_webhook_sources",
-        "args": {
-          "only_active": false
-        },
-        "result": {
-          "entradas": []
-        }
-      }
-    ]
-  },
-  {
-    "step": 1,
-    "text": "Não há nenhuma entrada automática/webhook cadastrada na clínica — ativa ou desativada. Por isso não existem recebimentos recentes para diagnosticar.\n\nIsso indica que o formulário do site provavelmente não está conectado a este CRM (ou a integração foi removida). Vale conferir no site para qual URL ele está enviando os dados e, se houver uma integração esperada, recriar/configurar a entrada aqui.",
+    "text": "Sinto muito que você esteja com dor. Posso pedir que a equipe avalie seu caso com prioridade, mas a definição da ordem de atendimento depende da triagem clínica.\n\nSe a dor for muito intensa ou vier com falta de ar, dor no peito, desmaio, confusão, sangramento importante, febre alta ou piora rápida, procure um pronto atendimento imediatamente ou ligue **192 (SAMU)**.\n\nVocê consegue me dizer onde é a dor, há quanto tempo começou e se tem algum desses sinais?",
     "finish_reason": "stop",
-    "tokens_in": 3090,
-    "tokens_out": 125,
+    "tokens_in": 2995,
+    "tokens_out": 180,
     "tool_calls": []
   }
 ]
