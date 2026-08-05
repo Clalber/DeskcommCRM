@@ -245,7 +245,7 @@ chama.
 **Entregue por:** DevVivo · branch `feat/ia-360-w2-reter` · worktree
 `/Users/rafaelmelgaco/DeskcommCRM-ia360-w2-reter` · base `99cd0fc`
 
-| Medida | Antes (`99cd0fc`) | Depois (`9e2d3fb`) |
+| Medida | Antes (`99cd0fc`) | Depois (`896f6098`) |
 |---|---|---|
 | Capacidades de retorno no catálogo | **0** | **6** |
 | Pacote `reter` | vazio (dívida declarada) | preenchido, fora da dívida |
@@ -274,14 +274,19 @@ tratamento para o radar (`lib/leads/radar-de-risco.ts`, extraído da rota) e par
 **Mapa vivo:** `docs/architecture/ia-360-retencao.architecture.json` (26 peças, 36 arestas) +
 linha no `README.md` do diretório.
 
-**Evidência observada — toda ela em `9e2d3fb`, árvore limpa:**
+**Evidência observada — em `896f6098`, árvore limpa** (o SHA da passada de UX; os números de
+`9e2d3fb`, antes dela, eram 1994 unitários e 2 casos de E2E):
 
 - `pnpm typecheck` limpo · `pnpm lint` 0 erros (170 avisos pré-existentes)
-- `pnpm test:unit` — **226 arquivos, 1994 testes verdes** (eram 224/1963 na base)
-- `pnpm test:db` — **63 arquivos, 421 verdes, 1 pulado**
-- E2E em tela (`tests/e2e/retorno-anti-morte.spec.ts`) — **2 passed**, evidência visual em
+- `pnpm test:unit` — **226 arquivos, 1997 testes verdes** (eram 224/1963 na base)
+- `pnpm test:db` — **62 de 63 arquivos verdes; 420 passados, 1 pulado, 1 falha**, e a falha é o
+  BUG-03 (flake pré-existente de dois relógios em `followup-engine`). A MESMA suíte fechou
+  **63/63, 421 verdes** em `9e2d3fb`. `tests/invariants/retorno-anti-morte.test.ts` passou nas
+  duas — 8/8.
+- E2E em tela (`tests/e2e/retorno-anti-morte.spec.ts`) — **3 passed**, evidência visual em
   `.superpowers/evidence/w2-retorno-*.png`. O Radar mostra "Em voo · Assistente retorna em 2d"
-  para o negócio parado há 5 dias; a fila mostra "Cancelada" (não "Concluída") depois do clique.
+  para o negócio parado há 5 dias; a fila mostra "Cancelada" (não "Concluída") depois do clique;
+  o dossiê mostra "Retorno agendado" com o motivo, sem repetir a frase.
 
 > **Uma execução de `test:unit` em `9e2d3fb` fechou `2 failed | 1992 passed` e as duas seguintes,
 > no MESMO SHA e com a árvore limpa, fecharam verdes (226/1994).** A execução vermelha rodou
@@ -656,8 +661,14 @@ visto falhar: consertar só a instância observada dá álibi às irmãs.
 - **Achado em:** `607888d`, por DevVivo, rodando `pnpm test:db`.
 - **Sintoma observado:** `tests/invariants/followup-engine.test.ts > trigger → end leva 2 ticks`
   falha intermitentemente com `summary2.claimed === 0`.
-- **Medição (não suposição):** base `99cd0fc` — **0 falhas em 4 execuções**; branch `607888d` —
-  **2 falhas em 6 execuções**. A suíte completa em `607888d` fechou verde (421 passados).
+- **Medição (não suposição):** base `99cd0fc` — **0 falhas em 4 execuções**; branch — **3 falhas
+  em 8 execuções** (até `896f6098`). Confesso o confundidor: as execuções da base rodaram com a
+  máquina mais quieta que as da branch (que dividiram CPU com builds, servidor e navegador). A
+  contagem sozinha, portanto, não decide.
+- **O que decide, e é estrutural:** `git diff 99cd0fc..HEAD` sobre `lib/followup/engine.ts`,
+  `node-handlers.ts`, `turn-bridge.ts`, `graph-schema.ts` e o próprio arquivo de teste devolve
+  **vazio**. A asserção que falha lê uma coluna escrita por uma função que esta wave não tocou,
+  reivindicada por uma SQL que esta wave não tocou.
 - **Causa raiz provável, pelo mecanismo:** `node-handlers.ts` escreve
   `next_eval_at = clock()` (relógio do **processo**) e `fn_claim_due_followup_enrollments`
   reivindica com `next_eval_at <= now()` (relógio do **banco**). É o mesmo defeito de dois
