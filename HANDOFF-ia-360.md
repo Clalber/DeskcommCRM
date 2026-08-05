@@ -1076,7 +1076,21 @@ interferência de estado entre invariantes — declarando explicitamente que era
 
 **O que o controle decide:** derruba a hipótese de defeito determinístico pré-existente na base.
 
-**FECHADO — o flaky é pré-existente na base.** Caracterização por repetição, mesma base
+> ⚠️ **REABERTO — minha conclusão de "pré-existente" NÃO se sustenta.** A W3 mediu depois, com
+> mais amostras e teste identificado: **base verde em 11 corridas**, branch dela **6 falhas em 8**.
+> Com n=11 na base, a hipótese de defeito do tronco cai para `followup-reactivity`
+> especificamente. Meu 1-em-4 foi de **teste desconhecido** (perdi o nome no filtro), então
+> provavelmente era outro. Régua dela: identificada e n=11. Régua minha: anônima e n=4. A dela
+> vence, e eu havia usado a minha para dizer à W4 que estava inocentada — o que era mais do que o
+> dado sustentava.
+>
+> O que sobrevive: o **mecanismo dos dois relógios** achado pela W2 (`node-handlers.ts:201` usa
+> `clock()` do processo, `baseline:6497` compara com `now()` do banco) continua sendo a explicação
+> de por que esses testes são sensíveis. O que muda é o **gatilho**: não é o tronco sozinho, há
+> algo nas branches que o dispara. A W3 diz que o gatilho é do lado dela e que não conseguiu
+> isolá-lo — e declarou que 3 corridas verdes no SHA final **não fecham o assunto**.
+
+**~~FECHADO — o flaky é pré-existente na base.~~** Caracterização por repetição, mesma base
 `5e8a547`, árvore limpa, portas `54401/54402/54403`:
 
 | Rodada | Resultado |
