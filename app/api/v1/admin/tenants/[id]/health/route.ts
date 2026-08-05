@@ -50,9 +50,9 @@ export interface TenantHealthResponse {
 
 function wahaOverallStatus(sessions: WahaSession[]): HealthStatus {
   if (sessions.length === 0) return "warning";
-  const hasWorking = sessions.some(
-    (s) => s.status === "WORKING" || s.status === "CONNECTED",
-  );
+  // `channel_sessions_status_check` só admite STARTING/SCAN_QR_CODE/WORKING/
+  // STOPPED/FAILED. Comparar com "CONNECTED" (que não existe) era um ramo morto.
+  const hasWorking = sessions.some((s) => s.status === "WORKING");
   const hasFailed = sessions.some(
     (s) => s.status === "FAILED" || s.status === "STOPPED",
   );
@@ -61,11 +61,26 @@ function wahaOverallStatus(sessions: WahaSession[]): HealthStatus {
   return "ok";
 }
 
+// Estados em que a loja ainda não está (ou deixou de estar) vinculada. O resto
+// do vocabulário de `tenant_integrations_status_check` significa loja vinculada
+// — inclusive `token_expired`, que é a integração existente pedindo
+// reautorização, e é justamente quando o admin precisa ver vermelho em vez de
+// "Não conectado" (que ele leria como "nunca conectaram").
+const NUVEMSHOP_DESLIGADO = new Set(["connecting", "disconnected"]);
+
 function nuvemshopOverallStatus(
-  connected: boolean,
+  status: string | null,
   daysUntilExpiry: number | null,
 ): HealthStatus {
-  if (!connected) return "warning";
+  if (status === null || NUVEMSHOP_DESLIGADO.has(status)) return "warning";
+  if (
+    status === "token_expired" ||
+    status === "scope_missing" ||
+    status === "error"
+  ) {
+    return "critical";
+  }
+  if (status === "rate_limited") return "warning";
   if (daysUntilExpiry !== null && daysUntilExpiry <= 0) return "critical";
   if (daysUntilExpiry !== null && daysUntilExpiry <= 7) return "warning";
   return "ok";
@@ -154,14 +169,20 @@ export async function GET(
     updated_at: string | null;
   };
   const nuRow = (nuvemshopRes.data?.[0] as NuvemshopRow | undefined) ?? null;
-  const nuConnected = !!nuRow && nuRow.status === "active";
+  // `active` não existe no vocabulário da coluna (ver
+  // `tenant_integrations_status_check`); quem escreve a linha conectada é o
+  // callback do OAuth, com `healthy`. A comparação antiga nunca casava, então
+  // integração perfeita aparecia como "Não conectado" e o ramo crítico de token
+  // vencido era inalcançável.
+  const nuRowStatus = nuRow?.status ?? null;
+  const nuConnected = nuRowStatus !== null && !NUVEMSHOP_DESLIGADO.has(nuRowStatus);
   const nuExpiresAt = nuRow?.expires_at ?? null;
   const nuDaysUntilExpiry = nuExpiresAt
     ? Math.floor(
         (new Date(nuExpiresAt).getTime() - Date.now()) / (1000 * 60 * 60 * 24),
       )
     : null;
-  const nuStatus = nuvemshopOverallStatus(nuConnected, nuDaysUntilExpiry);
+  const nuStatus = nuvemshopOverallStatus(nuRowStatus, nuDaysUntilExpiry);
 
   // --- AI Budget ---
   type AiBudgetRow = {

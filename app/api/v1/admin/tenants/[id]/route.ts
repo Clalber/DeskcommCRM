@@ -85,7 +85,11 @@ export async function GET(
       .from("lgpd_requests")
       .select("*", { count: "exact", head: true })
       .eq("organization_id", id)
-      .eq("status", "pending"),
+      // `pending` não existe em `lgpd_requests_status_check`
+      // (received/processing/completed/failed/expired), então este contador era
+      // sempre 0 e a tela jurava que o tenant não devia nada à LGPD. O critério
+      // é o mesmo do KPI de plataforma: pendente = ainda não fechado.
+      .not("status", "in", "(completed,failed)"),
     admin
       .from("ai_invocations")
       .select("*", { count: "exact", head: true })
