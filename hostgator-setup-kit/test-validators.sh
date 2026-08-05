@@ -516,6 +516,203 @@ dec_ok "Traefik da hospedagem → por ele"    traefik  "80 e 443" "coolify"   "c
 dec_ok "ocupante não identificado → bloqueia" bloqueia "80"     ""          "crm" ""              ""
 dec_ok "projeto vazio não casa projeto vazio" bloqueia "80"     ""          ""    "nginx"         "web"
 
+echo "proxy reverso: Traefik em MODO HOST (o caso da Hostinger, issue #139)"
+# Os fixtures acima têm todos porta publicada, e por isso a suíte inteira passava
+# sem nunca exercitar o proxy em modo host — o cenário que gerou a issue.
+# Medido no docker 28.3.2: contêiner em `--network host` sai do `docker ps` com a
+# coluna Ports VAZIA, inclusive quando subido com `-p 80:80` (o daemon avisa
+# "Published ports are discarded when using host network mode"). Controle
+# positivo: o mesmo nginx numa bridge com `-p 8080:80` sai com
+# "0.0.0.0:8080->80/tcp". Logo, dono_das_portas NUNCA o encontra — é por isso que
+# existe uma segunda varredura, sobre `docker ps --filter network=host`.
+uni_ok() {  # uni_ok <descrição> <esperado: nome|projeto|imagem ou vazio> <linhas>
+  local desc="$1" esperado="$2" linhas="$3" real
+  real="$(printf '%s\n' "$linhas" | unico_traefik || true)"
+  if [ "$real" = "$esperado" ]; then printf '  ✓ %s\n' "$desc"
+  else printf '  ✗ %s\n     deu:      [%s]\n     esperava: [%s]\n' "$desc" "$real" "$esperado"; fail=1; fi
+}
+# Ports vazio é o dado REAL do modo host, não um campo esquecido no fixture.
+uni_ok "Traefik em modo host (Ports vazio) é encontrado" \
+  'traefik|hostinger|traefik:v3.3' 'traefik|hostinger|traefik:v3.3|'
+uni_ok "entre outros contêineres em modo host, acha o Traefik" \
+  'proxy-hostinger||traefik:v3' 'node-exporter||prom/node-exporter|
+proxy-hostinger||traefik:v3|
+netdata||netdata/netdata|'
+# Fecha FECHADO no plural: com dois não dá para saber qual está com 80/443, e
+# apontar para o errado publica um CRM que instala "com sucesso" e não responde.
+uni_ok "dois Traefiks → não elege ninguém" \
+  '' 'traefik-a||traefik:v3|
+traefik-b||traefik:v2.11|'
+uni_ok "nenhum Traefik → não elege ninguém" \
+  '' 'nginx-host||nginx:alpine|'
+uni_ok "lista vazia → não elege ninguém" '' ''
+
+echo "proxy reverso: qual rede gravar em TRAEFIK_NETWORK"
+# As duas conclusões são OPOSTAS e as duas foram, em algum momento, a única
+# implementada. Bridge própria → a rede do PROXY (medido com Traefik v3.3: com o
+# label na rede do projeto a requisição fica em HTTP 000). Modo host → uma bridge
+# NOSSA (medido: contêiner em `--network host` alcança por IP um contêiner numa
+# bridge separada, HTTP 200; e o compose recusa `external` apontando para a rede
+# que ele mesmo criaria).
+rt_ok() {  # rt_ok <descrição> <esperado> <netmode> <redes do contêiner> <bridge do projeto>
+  local desc="$1" esperado="$2" real
+  real="$(rede_do_traefik "${3:-}" "${4:-}" "${5:-}")"
+  if [ "$real" = "$esperado" ]; then printf '  ✓ %s\n' "$desc"
+  else printf '  ✗ %s  (deu [%s], esperava [%s])\n' "$desc" "$real" "$esperado"; fail=1; fi
+}
+# NetworkMode e Networks medidos no docker 28.3.2 (não inventados): rede custom
+# devolve o nome dela nos dois campos; modo host devolve "host" nos dois.
+rt_ok "Traefik em bridge própria → a rede DELE"  coolify    coolify    "coolify "        crm_proxy
+rt_ok "Traefik na bridge default → bridge"       bridge     bridge     "bridge "         crm_proxy
+rt_ok "Traefik em 2 redes → a primeira"          coolify    coolify    "coolify web "    crm_proxy
+# ESTE é o defeito da issue #139: em modo host `.NetworkSettings.Networks` devolve
+# a string "host", que é uma rede de driver `host` — gravá-la em TRAEFIK_NETWORK
+# mata o `up -d` com "network host declared as external, but could not be found".
+rt_ok "modo host NÃO grava a pseudo-rede 'host'" crm_proxy  host       "host "           crm_proxy
+
+echo "proxy reverso: a rede externa existe e serve?"
+vr_ok() {  # vr_ok <descrição> <esperado> <driver encontrado> <rede> <bridge do projeto>
+  local desc="$1" esperado="$2" real
+  real="$(veredito_rede_do_proxy "${3:-}" "${4:-}" "${5:-}")"
+  if [ "$real" = "$esperado" ]; then printf '  ✓ %s\n' "$desc"
+  else printf '  ✗ %s  (deu %s, esperava %s)\n' "$desc" "$real" "$esperado"; fail=1; fi
+}
+vr_ok "bridge existente → segue"                  ok            bridge  coolify    crm_proxy
+# Sem este caso a instalação NOVA em modo host morre: a bridge do projeto ainda
+# não existe (quem a cria é este instalador), e recusar aqui só deixaria instalar
+# quem já tivesse instalado antes.
+vr_ok "a bridge do PROJETO ainda não existe → cria" criar       ""      crm_proxy  crm_proxy
+vr_ok "rede de outro que não existe → morre"      inexistente   ""      coolify    crm_proxy
+# TRAEFIK_NETWORK=host escrito à mão: existe, mas não aceita contêiner de bridge.
+vr_ok "driver host → morre"                       driver_errado host    host       crm_proxy
+vr_ok "driver overlay → morre"                    driver_errado overlay traefik    crm_proxy
+# Sem bridge do projeto conhecida (chamada defensiva), ausência volta a ser morte.
+vr_ok "sem rede nossa declarada → não inventa"    inexistente   ""      crm_proxy  ""
+
+echo "integração: instalação NOVA numa VPS com Traefik em modo host"
+# Os blocos acima guardam as FUNÇÕES; este guarda o CAMINHO INTEIRO, que é onde
+# esta correção já falhou uma vez. O ramo do modo host chegou a ser escrito sendo
+# INALCANÇÁVEL: dependia de `traefik_container`, atribuído só quando o dono das
+# portas era identificado pela coluna Ports — vazia em modo host. As funções
+# ficavam certas e a VPS continuava morrendo no painel "porta 80 já ocupada".
+#
+# O install.sh roda de verdade contra um `docker` dublê que imita a Hostinger:
+# 80/443 ocupadas, NINGUÉM publicando, um Traefik em `--network host`, e a rede do
+# projeto ainda não existindo (é uma instalação nova). As três pontas medidas no
+# docker 28.3.2 e no compose v2.38.2 estão nos comentários do install.sh.
+#
+# A pasta tem ponto e maiúscula de propósito: o nome do projeto que o compose usa
+# é `crmhost_teste`, e um `basename` cru mandaria o instalador criar
+# `CRM.Host_Teste_proxy` enquanto o compose procuraria outra rede.
+TMP4="$(mktemp -d)"
+(
+  PROJ="$TMP4/CRM.Host_Teste"
+  mkdir -p "$TMP4/bin" "$PROJ"
+  cp install.sh _common.sh "$TMP4/"
+  : > "$PROJ/docker-compose.prod.yml"
+  cat > "$TMP4/bin/docker" <<'STUB'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$DOCKER_LOG"
+case "$1" in
+  # `dc exec app node` é a sonda de saúde. Sem resposta o instalador tenta 30
+  # vezes com 3s de intervalo, e cada rodada deste teste custaria 90 segundos —
+  # suíte lenta é suíte que ninguém roda.
+  compose) case "$*" in *" exec "*) printf 'healthy\n{"data":{"status":"healthy"}}\n' ;; esac; exit 0 ;;
+  # `--entrypoint` só aparece no porta_publicavel: o bind falha, 80/443 ocupadas.
+  # Os demais `docker run` (psql do validador) seguem normais.
+  run)     case "$*" in *--entrypoint*) exit 1 ;; esac; exit 0 ;;
+  # Ninguém publica porta; o Traefik só aparece filtrando por rede host.
+  ps)      for a in "$@"; do [ "$a" = "network=host" ] && em_host=1; done
+           [ "${em_host:-0}" = 1 ] && printf 'traefik-hostinger|hostinger|traefik:v3.3|\n'; exit 0 ;;
+  inspect) case "$*" in *NetworkMode*) printf 'host\n';; *Networks*) printf 'host \n';; esac; exit 0 ;;
+  # Instalação nova: a rede do projeto ainda NÃO existe.
+  network) case "$2" in inspect) exit 1 ;; esac; exit 0 ;;
+esac
+exit 0
+STUB
+  # Só o v_supabase_url exige resposta online (000 reprova); os outros toleram.
+  printf '#!/usr/bin/env bash\nprintf 200\n' > "$TMP4/bin/curl"
+  # O install.sh vai até o fim, e no fim ele AGENDA CRON. Sem este dublê a suíte
+  # escreveria no crontab de quem a roda — apontando para um diretório temporário
+  # que ela mesma apaga em seguida. Teste que suja a máquina do desenvolvedor é
+  # defeito do teste; medido aqui: 10 linhas órfãs no crontab depois de algumas
+  # execuções, uma delas batendo numa URL de exemplo a cada minuto.
+  printf '#!/usr/bin/env bash\ncat >/dev/null 2>&1\nexit 0\n' > "$TMP4/bin/crontab"
+  chmod +x "$TMP4/bin/docker" "$TMP4/bin/curl" "$TMP4/bin/crontab"
+
+  # .env completo para o modo --yes: o que interessa aqui é o proxy, e as demais
+  # respostas só precisam passar pelos validadores. REVERSE_PROXY e
+  # TRAEFIK_NETWORK ficam de FORA — são justamente o que o instalador decide.
+  # É preciso reescrever a cada rodada: o próprio install.sh grava as duas de
+  # volta no .env, e a segunda rodada não estaria mais decidindo nada.
+  BASE_ENV="DOMAIN='crm.exemplo.com.br'
+ACME_EMAIL='eu@exemplo.com.br'
+NEXT_PUBLIC_SUPABASE_URL='https://abcdefghijklmnop.supabase.co'
+NEXT_PUBLIC_SUPABASE_ANON_KEY='$(mkjwt anon abcdefghijklmnop)'
+SUPABASE_SERVICE_ROLE_KEY='$(mkjwt service_role abcdefghijklmnop)'
+SUPABASE_DB_URL='postgresql://postgres.abcdefghijklmnop:senha@aws-1-sa-east-1.pooler.supabase.com:5432/postgres'
+ANTHROPIC_API_KEY='sk-ant-teste'
+OWNER_EMAIL='eu@exemplo.com.br'
+OWNER_PASSWORD='senha12345'"
+
+  LOG="$TMP4/docker.log"
+  rodar() {  # rodar [linha extra do .env]  → ecoa a saída sem ANSI, zera o log
+    printf '%s\n%s\n' "$BASE_ENV" "${1-}" > "$PROJ/.env"
+    : > "$LOG"
+    (cd "$PROJ" && env PATH="$TMP4/bin:$PATH" DOCKER_LOG="$LOG" \
+      bash "$TMP4/install.sh" --yes 2>&1 || true) | sed -E 's/\x1b\[[0-9;]*m//g'
+  }
+
+  saida="$(rodar)"
+
+  # Vacuidade: sem isto, um install.sh que morresse ANTES da detecção (dublê
+  # incompleto, refactor movendo o bloco) passaria — a ausência do painel de
+  # bloqueio seria lida como aprovação. O marcador é a MECÂNICA, não uma frase:
+  # o teste de bind é a porta de entrada de todo o resto.
+  if ! grep -q -- '-p 80:80' "$LOG"; then
+    printf '  ✗ o install.sh não chegou a testar a porta 80 — teste inconclusivo, não verde\n'; exit 1
+  fi
+  if printf '%s' "$saida" | grep -q 'já estão ocupadas'; then
+    printf '  ✗ caiu no painel de bloqueio: o Traefik em modo host não foi identificado\n'
+    printf '     %s\n' "$(printf '%s' "$saida" | grep -m1 'já estão ocupadas')"; exit 1
+  fi
+  printf '  ✓ o Traefik em modo host é reconhecido como dono de 80/443\n'
+
+  # A rede é EXTERNA no compose: se não existir, o `up -d` morre em "declared as
+  # external, but could not be found" — inclusive numa instalação nova, que é o
+  # normal. Criar é a resposta; recusar deixaria instalar só quem já instalou.
+  if ! grep -qx 'network create crmhost_teste_proxy' "$LOG"; then
+    printf '  ✗ a rede do projeto não foi criada — o "up -d" morreria em "declared as external"\n'
+    printf '     chamadas de rede vistas: %s\n' "$(grep '^network' "$LOG" | tr '\n' ' ')"; exit 1
+  fi
+  printf '  ✓ a bridge do projeto é criada antes de o compose precisar dela\n'
+
+  if ! grep -qx "TRAEFIK_NETWORK='crmhost_teste_proxy'" "$PROJ/.env"; then
+    printf '  ✗ TRAEFIK_NETWORK errado no .env: %s\n' "$(grep -E '^TRAEFIK_NETWORK=' "$PROJ/.env" || echo '(ausente)')"
+    exit 1
+  fi
+  printf '  ✓ .env recebe a rede certa, com o nome de projeto que o compose usa\n'
+
+  # O OUTRO caminho, e o mais percorrido de todos: o painel de bloqueio manda pôr
+  # REVERSE_PROXY=traefik no .env. Quem obedece PULA a detecção inteira — e
+  # morria adiante em "Não consegui descobrir a rede Docker do seu Traefik",
+  # porque `traefik_container` só era preenchido dentro do ramo que foi pulado.
+  # O instalador mandava fazer uma coisa que ele mesmo não sabia terminar.
+  saida="$(rodar "REVERSE_PROXY='traefik'")"
+  if ! grep -q -- '-p 80:80' "$LOG"; then
+    printf '  ✗ o install.sh não chegou a testar a porta 80 — teste inconclusivo, não verde\n'; exit 1
+  fi
+  if printf '%s' "$saida" | grep -q 'Não consegui descobrir a rede'; then
+    printf '  ✗ com REVERSE_PROXY=traefik no .env o instalador morre sem achar a rede\n'; exit 1
+  fi
+  if ! grep -qx "TRAEFIK_NETWORK='crmhost_teste_proxy'" "$PROJ/.env"; then
+    printf '  ✗ REVERSE_PROXY=traefik à mão: TRAEFIK_NETWORK saiu %s\n' \
+      "$(grep -E '^TRAEFIK_NETWORK=' "$PROJ/.env" || echo '(ausente)')"; exit 1
+  fi
+  printf '  ✓ REVERSE_PROXY=traefik escrito à mão também acha a rede\n'
+) || fail=1
+rm -rf "$TMP4"
+
 echo "nome do projeto que o docker compose usa"
 # O compose faz TrimLeft("_-") no basename. Sem isso, uma pasta /root/_deskcomm
 # faz o kit calcular "_deskcomm" enquanto os contêineres carregam "deskcomm" — a

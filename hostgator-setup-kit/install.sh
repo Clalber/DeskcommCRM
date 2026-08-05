@@ -490,6 +490,80 @@ eh_traefik() {  # eh_traefik <imagem> <nome>
   return 1
 }
 
+# O ÚNICO Traefik de uma lista do `docker ps` — e só quando é único.
+#
+# Existe porque a busca por porta publicada NÃO enxerga proxy em modo host:
+# compartilhando a stack de rede da máquina, ele ouve 80/443 sem publicar nada e
+# a coluna Ports do `docker ps` sai VAZIA. Medido no docker 28.3.2: um contêiner
+# em `--network host` sai com Ports=[] mesmo subido com `-p 80:80` (o daemon
+# avisa "Published ports are discarded when using host network mode"); controle
+# positivo, o mesmo nginx numa bridge com `-p 8080:80` sai com
+# "0.0.0.0:8080->80/tcp". É o caso da Hostinger, e sem este caminho o dono das
+# portas fica "não identificado" — a instalação morre no painel de bloqueio.
+#
+# Falha FECHADA no plural: com dois Traefiks não dá para saber qual está com as
+# portas, e chutar publica o CRM atrás do proxy errado — um site que "instala com
+# sucesso" e não responde. Nesse caso ninguém é eleito e o painel de bloqueio, que
+# ao menos diz o que fazer, volta a ser o desfecho.
+unico_traefik() {  # unico_traefik  < linhas "nome|projeto|imagem|portas"  → ecoa "nome|projeto|imagem"
+  local nome proj img ports achado="" n=0
+  while IFS='|' read -r nome proj img ports; do
+    [ -n "$nome" ] || continue
+    eh_traefik "$img" "$nome" || continue
+    achado="$nome|$proj|$img"; n=$((n + 1))
+  done
+  [ "$n" = 1 ] || return 1
+  printf '%s' "$achado"
+}
+
+# Qual rede gravar em TRAEFIK_NETWORK. Isolada do Docker para poder ser
+# exercitada: é aqui que moram DUAS conclusões opostas, e cada uma já foi a
+# única implementada em algum momento do kit.
+#
+#   Traefik numa bridge PRÓPRIA  → a rede dele (o app é anexado a ela).
+#     Medido com Traefik v3.3 real: com o label apontando para a rede do projeto
+#     a requisição fica em HTTP 000 (timeout) mesmo com o contêiner nas duas
+#     redes; só apontando para a rede do PROXY vira HTTP 200.
+#
+#   Traefik em modo HOST         → uma bridge NOSSA, que o instalador cria.
+#     Aqui o proxy não está em rede nenhuma do Docker (`.NetworkSettings.Networks`
+#     devolve a string "host", que existe no `docker network ls` mas com driver
+#     `host` e não aceita contêiner junto de uma bridge). Compartilhando a stack
+#     do host ele alcança qualquer bridge por IP — medido nesta máquina: contêiner
+#     em `--network host` faz `curl` no IP de um contêiner numa bridge separada e
+#     recebe HTTP 200. Então a rede a apontar é uma bridge onde o app esteja, e
+#     usamos uma dedicada em vez da `_internal` do projeto por dois motivos
+#     medidos: (1) o compose recusa `external` apontando para a rede que ele
+#     mesmo criaria — "network <projeto>_internal declared as external, but could
+#     not be found" numa instalação nova; (2) a `internal` tem o redis SEM SENHA,
+#     e a rede do proxy é a única que um dia pode receber contêiner de fora.
+rede_do_traefik() {  # rede_do_traefik <NetworkMode do contêiner> <redes do contêiner> <bridge do projeto>
+  local netmode="${1:-}" redes="${2:-}" nossa="${3:-}"
+  [ "$netmode" = host ] && { printf '%s' "$nossa"; return 0; }
+  printf '%s' "$redes" | awk '{print $1}'
+}
+
+# O compose declara TRAEFIK_NETWORK como rede EXTERNA, e rede externa que não
+# existe é recusada ANTES de o compose criar qualquer coisa — medido com o
+# compose v2.38.2: `up -d` morre em "network X declared as external, but could
+# not be found", sem dizer de onde saiu o nome. Descobrir isso aqui, com o nome na
+# mão, é dezenas de minutos de diferença para quem está instalando. Valor escrito
+# à mão no .env passa pelo mesmo crivo: erra tão fácil quanto a detecção.
+#
+# A rede que o instalador reserva para si é o caso em que não existir é NORMAL —
+# instalação nova, ou alguém que rodou `docker network prune`. Aí a resposta é
+# criar, não morrer: o nome é nosso e sabemos a forma dele.
+# Ecoa: ok | criar | inexistente | driver_errado
+veredito_rede_do_proxy() {  # veredito_rede_do_proxy <driver encontrado> <rede> <bridge do projeto>
+  local drv="${1:-}" rede="${2:-}" nossa="${3:-}"
+  if [ -z "$drv" ]; then
+    [ -n "$nossa" ] && [ "$rede" = "$nossa" ] && { printf 'criar'; return 0; }
+    printf 'inexistente'; return 0
+  fi
+  [ "$drv" = bridge ] && { printf 'ok'; return 0; }
+  printf 'driver_errado'
+}
+
 # Esconde o miolo de um segredo para a tela de conferência.
 mask() {
   local v="$1"
@@ -651,6 +725,22 @@ if [ -n "$portas_ocupadas" ]; then
   unset _dono
 fi
 
+# Ninguém PUBLICA as portas, mas elas estão ocupadas: o candidato é um proxy em
+# modo host, que ouve 80/443 pela stack de rede da máquina e por isso sai com a
+# coluna Ports vazia (a medição está em `unico_traefik`). Sem este ramo o dono
+# ficava "não identificado" e a instalação parava no painel de bloqueio — que
+# manda pôr REVERSE_PROXY=traefik no .env, caminho que também morria adiante.
+# É exatamente a VPS Hostinger da issue #139.
+if [ -n "$portas_ocupadas" ] && [ -z "$dono_portas" ]; then
+  _host="$(docker ps --filter network=host --format '{{.Names}}|{{.Label "com.docker.compose.project"}}|{{.Image}}|{{.Ports}}' 2>/dev/null | unico_traefik || true)"
+  if [ -n "$_host" ]; then
+    dono_portas="${_host%%|*}"; _resto="${_host#*|}"
+    dono_projeto="${_resto%%|*}"; dono_imagem="${_resto#*|}"
+    unset _resto
+  fi
+  unset _host
+fi
+
 # Inicializado sempre: o bloco da rede do Traefik, mais abaixo, lê esta variável
 # sem default, e sob `set -u` uma instalação que já traz REVERSE_PROXY=traefik no
 # .env (portanto sem passar pela detecção) morreria com "unbound variable".
@@ -701,6 +791,25 @@ if [ -z "${REVERSE_PROXY:-}" ]; then
     die "Libere a porta ${portas_ocupadas} (ou use a instalação que já existe) e rode de novo."
     ;;
   esac
+fi
+
+# Fica FORA do `case` porque quem põe REVERSE_PROXY=traefik no .env à mão — o
+# caminho que o painel de bloqueio logo acima ENSINA — pula o `case` inteiro e
+# chegava no bloco da rede com a variável vazia, para morrer em "Não consegui
+# descobrir a rede Docker do seu Traefik". O instalador mandava fazer uma coisa
+# que ele mesmo não sabia terminar.
+if [ "${REVERSE_PROXY:-}" = "traefik" ] && [ -z "$traefik_container" ]; then
+  if [ -n "$dono_portas" ] && eh_traefik "$dono_imagem" "$dono_portas"; then
+    traefik_container="$dono_portas"
+  else
+    # Nem dono das portas nem modo host: o Traefik pode simplesmente estar
+    # parado agora (painel reiniciando, VPS recém-ligada). Procurá-lo entre
+    # TODOS os contêineres é o que resta — e continua fechado no plural, porque
+    # apontar para o Traefik errado publica o CRM num proxy que ninguém acessa.
+    _tk="$(docker ps --format '{{.Names}}|{{.Label "com.docker.compose.project"}}|{{.Image}}|{{.Ports}}' 2>/dev/null | unico_traefik || true)"
+    [ -n "$_tk" ] && traefik_container="${_tk%%|*}"
+    unset _tk
+  fi
 fi
 
 # ── Supabase automático (opcional) ──────────────────────────────────────────
@@ -835,37 +944,25 @@ UPSTASH_REDIS_REST_TOKEN="$SRH_TOKEN"
 c_grn "✓ segredos prontos"
 
 # ── 5. Escreve .env (600) ───────────────────────────────────────────────────
-# A rede em que o Traefik REALMENTE está. Antes isto era calculado como
-# "<pasta>_internal", ou seja, a rede do PRÓPRIO projeto — e aí nada funcionava:
-# o Traefik não alcança uma bridge que não é dele, e o label `traefik.docker.network`
-# apontando pra lá faz ele mirar um IP inalcançável mesmo com o contêiner conectado
-# nas duas redes. Medido com Traefik v3.3 real: só com o label apontando pra rede do
-# PROXY a requisição sai de HTTP 000 (timeout) para HTTP 200.
+# Onde o Traefik encontra o app. Os dois cenários e as duas medições que os
+# separam estão em `rede_do_traefik`; aqui só se busca no Docker o que ela pede.
+#
+# A bridge reservada a este projeto usa `proj_atual`, o mesmo nome que o compose
+# calcula (NormalizeProjectName: minúsculas, só [a-z0-9_-], `_`/`-` iniciais
+# aparados). Um `basename` cru diverge numa pasta com maiúscula, ponto ou
+# underscore inicial — e aí o instalador cria uma rede e o compose procura outra.
+rede_do_projeto="${proj_atual}_proxy"
 if [ "$REVERSE_PROXY" = "traefik" ] && [ -z "${TRAEFIK_NETWORK:-}" ] && [ -n "$traefik_container" ]; then
-  # Traefik em modo HOST não tem bridge: `.NetworkSettings.Networks` devolve a
-  # string "host", que existe no `docker network ls` mas com driver `host` e não
-  # aceita contêiner junto de uma bridge. Gravar isso em TRAEFIK_NETWORK produz
-  # uma instalação que morre no `up -d` ("network host declared as external"),
-  # longe da causa. É o caso da Hostinger, onde o proxy da hospedagem sobe com
-  # `--network host`.
-  #
-  # E aqui a conclusão se INVERTE em relação ao comentário acima: compartilhando
-  # a stack de rede do host, o Traefik alcança qualquer bridge do Docker — a do
-  # projeto inclusive. A rede a apontar é a do PRÓPRIO projeto, justamente o que
-  # NÃO funciona quando o Traefik está numa bridge dele. Verificado numa VPS
-  # Hostinger com Traefik v3: contêiner `healthy`, labels corretas e o domínio
-  # respondendo 307 em vez de 404.
+  # "|| true" nas duas: sem ele o `die` explicativo logo abaixo — que é o
+  # tratamento CERTO deste caso — é inalcançável. Numa atribuição o status do
+  # pipeline vira o status do script; se o painel da hospedagem recriou o proxy
+  # entre a detecção e aqui, o docker inspect sai 1, o 2>/dev/null engole a
+  # mensagem e o instalador cai no painel genérico de erro sem dizer o que houve.
   traefik_netmode="$(docker inspect -f '{{.HostConfig.NetworkMode}}' "$traefik_container" 2>/dev/null || true)"
-  if [ "$traefik_netmode" = "host" ]; then
-    TRAEFIK_NETWORK="${COMPOSE_PROJECT_NAME:-$(basename "$PWD")}_internal"
-  else
-    # "|| true": sem ele o `die` explicativo logo abaixo — que é o tratamento
-    # CERTO deste caso — é inalcançável. Numa atribuição o status do pipeline vira
-    # o status do script; se o painel da hospedagem recriou o proxy entre a
-    # detecção e aqui, o docker inspect sai 1, o 2>/dev/null engole a mensagem e o
-    # instalador cai no painel genérico de erro sem dizer o que houve.
-    TRAEFIK_NETWORK="$(docker inspect -f '{{range $k,$v := .NetworkSettings.Networks}}{{$k}} {{end}}' "$traefik_container" 2>/dev/null | awk '{print $1}' || true)"
-  fi
+  traefik_redes="$(docker inspect -f '{{range $k,$v := .NetworkSettings.Networks}}{{$k}} {{end}}' "$traefik_container" 2>/dev/null || true)"
+  TRAEFIK_NETWORK="$(rede_do_traefik "$traefik_netmode" "$traefik_redes" "$rede_do_projeto")"
+  [ "$traefik_netmode" = "host" ] && \
+    c_dim "  (o Traefik roda em modo host, então o CRM publica numa rede própria: ${TRAEFIK_NETWORK})"
 fi
 if [ "$REVERSE_PROXY" = "traefik" ] && [ -z "${TRAEFIK_NETWORK:-}" ]; then
   die "Não consegui descobrir a rede Docker do seu Traefik. Rode 'docker network ls',
@@ -873,25 +970,40 @@ identifique a rede dele e ponha TRAEFIK_NETWORK=<nome> no .env antes de tentar d
 fi
 TRAEFIK_NETWORK="${TRAEFIK_NETWORK:-traefik}"
 
-# Guard: o compose declara TRAEFIK_NETWORK como rede EXTERNA, então um valor que
-# não seja uma bridge existente só aparece lá na frente, como
-# "network X declared as external, but could not be found" no `up -d` — sem dizer
-# de onde saiu o nome. Falhar aqui, com o nome na mão, é dezenas de minutos de
-# diferença pra quem está instalando. Valor vindo do .env do usuário passa pelo
-# mesmo crivo: um TRAEFIK_NETWORK escrito à mão erra tão fácil quanto a detecção.
+# O porquê de checar aqui — e de a rede reservada a nós ser criada em vez de
+# recusada — está em `veredito_rede_do_proxy`.
 if [ "$REVERSE_PROXY" = "traefik" ]; then
   traefik_net_driver="$(docker network inspect -f '{{.Driver}}' "$TRAEFIK_NETWORK" 2>/dev/null || true)"
-  if [ -z "$traefik_net_driver" ]; then
+  case "$(veredito_rede_do_proxy "$traefik_net_driver" "$TRAEFIK_NETWORK" "$rede_do_projeto")" in
+  criar)
+    # O motivo vai junto porque aqui NÃO se sabe qual é: o comando está certo, e
+    # quem recusou foi o Docker (falta de faixa de IP livre numa VPS com muitas
+    # stacks é um caso conhecido). Sem repassar a resposta dele, a mensagem
+    # mandaria repetir à mão o comando que acabou de falhar.
+    if ! _erro="$(docker network create "$TRAEFIK_NETWORK" 2>&1 >/dev/null)"; then
+      die "Não consegui criar a rede Docker '$TRAEFIK_NETWORK'. O Docker respondeu:
+  ${_erro}"
+    fi
+    unset _erro
+    c_dim "  (rede '$TRAEFIK_NETWORK' criada — é por ela que o Traefik alcança o CRM)"
+    ;;
+  inexistente)
     die "A rede Docker '$TRAEFIK_NETWORK' não existe.
 Rode 'docker network ls', identifique a rede do seu Traefik e ponha
 TRAEFIK_NETWORK=<nome> no .env antes de tentar de novo."
-  fi
-  if [ "$traefik_net_driver" != "bridge" ]; then
+    ;;
+  driver_errado)
+    # Mandar quem está em modo host "procurar a rede do seu Traefik" é mandar
+    # procurar o que não existe: em modo host ele não está em rede nenhuma do
+    # Docker. Para esse caso a saída é apagar a linha e deixar o instalador
+    # decidir — ele cria a bridge do projeto sozinho.
     die "A rede '$TRAEFIK_NETWORK' tem driver '$traefik_net_driver', e o app precisa
 de uma bridge para o Traefik alcançar o contêiner. Se o seu Traefik roda em modo
-host, use a rede do próprio projeto (algo como '$(basename "$PWD")_internal');
-senão, rode 'docker network ls' e ponha a bridge certa em TRAEFIK_NETWORK no .env."
-  fi
+host (é o caso quando 'docker ps' não mostra porta publicada nele), APAGUE a linha
+TRAEFIK_NETWORK do .env: o instalador cria e usa a rede '$rede_do_projeto'.
+Senão, rode 'docker network ls' e ponha a bridge certa em TRAEFIK_NETWORK no .env."
+    ;;
+  esac
 fi
 
 # ── Telemetria: perguntar, não presumir ─────────────────────────────────────
