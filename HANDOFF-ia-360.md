@@ -1521,6 +1521,43 @@ mentirosa em tool alcançável reprova a segunda. Revertido, 4 verdes.
 **Consequência de produto** (repassada à W1): capacidade `apenasHumano` precisa aparecer diferente
 na tela, e uso zero dela **não** é sinal de capacidade ociosa — é o esperado.
 BUG-01 e BUG-02 acima já saem corrigidos com prova nesta wave. BUG-03 é pré-existente,
+### BUG-04 — a linha do tempo repetia a mesma frase duas vezes (achado OLHANDO, não testando)
+- **Achado em:** `31332c0`, por DevVivo, abrindo o dossiê no navegador — **depois** de a wave
+  estar declarada pronta, com typecheck, 1994 unitários, 421 invariantes e E2E verdes.
+- **Sintoma observado:** o dossiê renderiza o rótulo do tipo e, embaixo, o `reason`. Com o reason
+  começando pela mesma frase, a tela dizia:
+  `Retorno agendado` / `Retorno agendado — reconfirmar a proposta que o cliente pediu para pensar`.
+  Idem para cancelar e encerrar.
+- **Por que nenhum teste pegou:** as asserções eram sobre o que PRECISA estar no texto
+  (`toContain(motivo)`). Nada dizia o que NÃO pode estar — um `reason` redundante satisfaz
+  `toContain` perfeitamente. O gate media presença, não legibilidade.
+- **Correção:** `motivoLegivel()` em `retorno-crm.ts` (o reason passa a ser só o PORQUÊ, com
+  inicial maiúscula) e `encerramento.ts` passa a dizer `Ganho` / `Perdido — <motivo>`. É o padrão
+  que `stageChangeReason` já seguia: o rótulo nomeia o quê, o reason conta o porquê.
+- **Prova do fix:** bloco novo em `tests/unit/mcp-retencao-tools.test.ts` ("o texto que aparece na
+  linha do tempo") comparando o reason contra `ACTIVITY_LABELS`, e um caso E2E novo que lê o
+  dossiê RENDERIZADO. Sabotado (reason voltando a repetir o rótulo): 2 unitários reprovam.
+
+---
+
+## Achados de EXPERIÊNCIA ainda abertos (olhados na tela, não corrigidos)
+
+Levantados na passada de UX em `31332c0`, dirigindo o navegador com intenção de julgar a
+experiência — não de confirmar asserção. Nenhum é regressão desta wave; os quatro ficaram
+visíveis por causa dela, e nenhum é meu para resolver sozinho.
+
+| # | O que se vê | Por que não corrigi aqui |
+|---|---|---|
+| UX-1 | A tela de configuração do agente lista as capacidades como `crm_schedule_followup` em fonte monoespaçada, com a `description` TÉCNICA embaixo (a que fala com o modelo: `lead_id`, `contact_id`, `ISO 8601`). O `rotulo`/`explicacao` da wave 0 **não são consumidos por essa tela**. Medido no navegador: as 6 capacidades aparecem, `mostraRotuloAmigavel: false`. | É exatamente o `ToolPicker` por pacote que a **wave 1** entrega. Editar aqui colide de frente com o Arquiteto. |
+| UX-2 | A linha do tempo diz **"Sistema"** agendou o retorno, enquanto o cabeçalho do mesmo card diz "Agente Retorno E2E". A constraint 0071 recusa autoria de IA sem lastro e o emissor degrada para `system` — correto —, mas `actorName()` descarta o `actor_agent_id` que o próprio emissor faz questão de preservar. | Decidir se "sistema com agente conhecido" pode exibir o nome do agente é tensão doutrinária real (afirmar autoria sem prova). Não é decisão de uma wave sozinha. |
+| UX-3 | A linha do tempo não diz **quando** é o retorno — só o Radar e a fila dizem. O instante está no `payload` e o componente não o lê. | Renderizar data no servidor esbarra no fuso da organização; o lugar certo é o componente. Fica proposto, não meio-feito. |
+| UX-4 | Na fila, a coluna "Nó atual / Motivo" mostra `trigger-1` / `end-1` ao usuário, e o título da tela é "Follow-ups" — a palavra que o próprio gate do catálogo proíbe no texto do humano. | Pré-existente e fora do pacote `reter`; entra como dívida declarada, não como conserto silencioso no meio de outra entrega. |
+
+---
+
+## Bugs corrigidos
+
+BUG-01, BUG-02 e BUG-04 acima já saem corrigidos com prova nesta wave. BUG-03 é pré-existente,
 está medido dos dois lados e **não** foi corrigido — o motivo está escrito nele.
 
 ---
