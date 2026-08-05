@@ -6560,13 +6560,10 @@ revoke all on function fn_publish_followup_flow_version(uuid, uuid, jsonb, uuid)
 
 -- ---- agent_inbox_items: kind 'followup_dead' (migration 0057) ----
 
-alter table agent_inbox_items
-  drop constraint if exists agent_inbox_items_kind_check;
-
-alter table agent_inbox_items
-  add constraint agent_inbox_items_kind_check check (kind in
-    ('qr_rescan','job_dead','event_dead','budget_exceeded','handoff',
-     'promotion_review','judge_unaligned','followup_dead','other'));
+-- A constraint NÃO é reconstruída aqui: o vocabulário desta migration já está
+-- contido no bloco único do fim deste apêndice. Reconstruí-la com a lista da
+-- época quebrava o update.sh de quem já tem linha com kind mais novo (era o
+-- caso deste bloco: 'snooze_expired' e os 4 seguintes ainda não existiam).
 
 -- ---- agent editor: seletor de fluxo de follow-up (migration 0061) ----
 
@@ -6708,10 +6705,8 @@ alter table conversations
 create index if not exists idx_conversations_snooze_until
   on conversations (snooze_until) where snooze_until is not null;
 
-alter table agent_inbox_items drop constraint if exists agent_inbox_items_kind_check;
-alter table agent_inbox_items add constraint agent_inbox_items_kind_check
-  check (kind in ('qr_rescan','job_dead','event_dead','budget_exceeded','handoff',
-                  'promotion_review','judge_unaligned','snooze_expired','other'));
+-- (constraint agent_inbox_items_kind_check: definida uma vez só, no fim deste
+--  apêndice — ver "vocabulário completo". 'snooze_expired' está lá.)
 
 -- ---- notas internas de conversa (migration 0063) ----
 create table if not exists conversation_notes (
@@ -6821,13 +6816,9 @@ alter table cron_jobs add constraint cron_jobs_job_kind_check
 
 -- ---- agent_inbox_items: reconcilia kind check followup_dead+snooze_expired (migration 0065) ----
 
-alter table agent_inbox_items
-  drop constraint if exists agent_inbox_items_kind_check;
-
-alter table agent_inbox_items
-  add constraint agent_inbox_items_kind_check check (kind in
-    ('qr_rescan','job_dead','event_dead','budget_exceeded','handoff',
-     'promotion_review','judge_unaligned','followup_dead','snooze_expired','other'));
+-- (constraint agent_inbox_items_kind_check: definida uma vez só, no fim deste
+--  apêndice — ver "vocabulário completo". Os dois valores desta migration
+--  estão lá.)
 -- ---- memória geral da org: org_memory_versions/pointers/entries (migration 0067) ----
 -- 0067: Memória Geral da Org (Fase 1 do épico harness — spec 2026-07-23).
 -- Doc-mãe versionado (padrão versões-imutáveis+ponteiro do playbook 0004/0050)
@@ -7389,12 +7380,9 @@ update public.crm_lead_activities
 
 alter table public.crm_lead_activities
   drop constraint if exists crm_lead_activities_ai_needs_evidence;
-alter table public.crm_lead_activities
-  add constraint crm_lead_activities_ai_needs_evidence check (
-    actor_kind <> 'ai'
-    or coalesce(jsonb_array_length(evidence->'run_ids'), 0) > 0
-    or coalesce(jsonb_array_length(evidence->'trace_ids'), 0) > 0
-  );
+-- A constraint NÃO é recriada aqui, e sim uma vez só mais abaixo, na versão que
+-- também aceita `llm_call_ids`. Recriá-la com a lista da época derrubava o
+-- update.sh de quem já tem atividade de IA cuja evidência é só `llm_call_ids`.
 
 -- Timeline por ator (o dossiê filtra "só o que a IA fez"), parcial porque a
 -- maioria das linhas não é de agente.
@@ -7481,27 +7469,8 @@ comment on column public.lead_state.next_action_seq is
 -- (sem esse valor) enquanto lib/followup/engine.ts insere exatamente esse kind.
 -- Reconstruir a partir do banco apagaria o valor e mataria, em silêncio, o
 -- aviso de enrollment morto. A fonte de verdade é o arquivo versionado.
-alter table public.agent_inbox_items
-  drop constraint if exists agent_inbox_items_kind_check;
-
-alter table public.agent_inbox_items
-  add constraint agent_inbox_items_kind_check check (
-    kind = any (
-      array[
-        'qr_rescan',
-        'job_dead',
-        'event_dead',
-        'budget_exceeded',
-        'handoff',
-        'promotion_review',
-        'judge_unaligned',
-        'followup_dead',
-        'snooze_expired',
-        'next_action_ambiguous',
-        'other'
-      ]::text[]
-    )
-  );
+-- (constraint agent_inbox_items_kind_check: definida uma vez só, no fim deste
+--  apêndice — ver "vocabulário completo". 'next_action_ambiguous' está lá.)
 
 -- ---- score de probabilidade com evidência, em tabela própria (migrations 0074+0075) ----
 -- O baseline salta o passo intermediário de propósito: quem instala do zero não
@@ -7884,26 +7853,8 @@ comment on function public.fn_update_last_activity_at() is
 -- CHECK e JÁ FICOU TRÊS VALORES ATRÁS DO BANCO sem nada falhar. Kind novo aqui
 -- = kind novo lá, na mesma mudança. Está sendo feito neste commit.
 
-alter table public.agent_inbox_items
-  drop constraint if exists agent_inbox_items_kind_check;
-
-alter table public.agent_inbox_items
-  add constraint agent_inbox_items_kind_check check (
-    kind = any (array[
-      'qr_rescan',
-      'job_dead',
-      'event_dead',
-      'budget_exceeded',
-      'handoff',
-      'promotion_review',
-      'judge_unaligned',
-      'followup_dead',
-      'snooze_expired',
-      'next_action_ambiguous',
-      'risk_backlog_seeded',
-      'other'
-    ]::text[])
-  );
+-- (constraint agent_inbox_items_kind_check: definida uma vez só, no fim deste
+--  apêndice — ver "vocabulário completo". 'risk_backlog_seeded' está lá.)
 
 -- ---- detected_at é carimbo do banco (migration 0081) ----
 -- 0081 — `detected_at` deixa de ser dado do cliente e vira CARIMBO do banco
@@ -8102,27 +8053,8 @@ end $$;
 -- e agora o invariante `vocabulario-banco-x-typescript` LÊ o arquivo de
 -- verdade, então esquecer não passa mais em silêncio.
 
-alter table public.agent_inbox_items
-  drop constraint if exists agent_inbox_items_kind_check;
-
-alter table public.agent_inbox_items
-  add constraint agent_inbox_items_kind_check check (
-    kind = any (array[
-      'qr_rescan',
-      'job_dead',
-      'event_dead',
-      'budget_exceeded',
-      'handoff',
-      'promotion_review',
-      'judge_unaligned',
-      'followup_dead',
-      'snooze_expired',
-      'next_action_ambiguous',
-      'risk_backlog_seeded',
-      'reactivation_expired',
-      'other'
-    ]::text[])
-  );
+-- (constraint agent_inbox_items_kind_check: definida uma vez só, no fim deste
+--  apêndice — ver "vocabulário completo". 'reactivation_expired' está lá.)
 
 -- ---- agent_stage_hint (migration 0084) ----
 -- 0084 — o funil do AGENTE aprende a falar o vocabulário do TENANT
