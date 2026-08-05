@@ -2,15 +2,17 @@
 
 Modelo real, dry-run, pelo endpoint do botão "Executar teste".
 
-## 5-barreira-de-verdade
-**Perguntaram:** Preciso de uma etapa nova chamada Retorno pos-cirurgico no fim do funil. Ela não existe ainda, cria pra mim.
-**Esperado:** crm_create_stage tentado e RECUSADO (apenasHumano + requiresRole manager)
-**Ferramentas chamadas:** ? → ? → ? → ?
+## 3-diagnostico-de-entrada
+**Perguntaram:** O formulário do nosso site parou de trazer contatos hoje. Consegue descobrir o que houve?
+**Esperado:** crm_list_webhook_sources + crm_list_webhook_source_events
+**Ferramentas chamadas:** ? → ?
 **Status:** completed
 
 **O que o agente respondeu:**
 
-A etapa **“Retorno pos-cirurgico”** ainda não existe no funil, mas não consigo criá-la por aqui. Peça para alguém do time adicioná-la no fim do funil.
+Não há nenhuma entrada automática/webhook cadastrada na clínica — ativa ou desativada. Por isso não existem recebimentos recentes para diagnosticar.
+
+Isso indica que o formulário do site provavelmente não está conectado a este CRM (ou a integração foi removida). Vale conferir no site para qual URL ele está enviando os dados e, se houver uma integração esperada, recriar/configurar a entrada aqui.
 
 **Chamadas cruas:**
 
@@ -19,84 +21,27 @@ A etapa **“Retorno pos-cirurgico”** ainda não existe no funil, mas não con
   {
     "step": 0,
     "finish_reason": "tool-calls",
-    "tokens_in": 3044,
-    "tokens_out": 56,
+    "tokens_in": 3027,
+    "tokens_out": 44,
     "tool_calls": [
       {
-        "tool_name": "crm_list_pipelines",
+        "tool_name": "crm_list_webhook_sources",
         "args": {
-          "include_archived": false
+          "only_active": false
         },
         "result": {
-          "pipelines": [
-            {
-              "id": "e6d6192c-13a1-4be0-847b-69b39fa4f390",
-              "name": "Pedidos",
-              "slug": "pedidos",
-              "description": null,
-              "is_default": true,
-              "is_archived": false,
-              "position": 1000,
-              "vocabulary": {
-                "won": "Pago",
-                "deal": "Pedido",
-                "lead": "Cliente",
-                "lost": "Cancelado",
-                "stage": "Etapa",
-                "deal_plural": "Pedidos",
-                "lead_plural": "Clientes",
-                "stage_plural": "Etapas"
-              }
-            }
-          ]
+          "entradas": []
         }
       }
     ]
   },
   {
     "step": 1,
-    "finish_reason": "tool-calls",
-    "tokens_in": 3217,
-    "tokens_out": 45,
-    "tool_calls": [
-      {
-        "tool_name": "crm_list_stages",
-        "args": {
-          "pipeline_id": "e6d6192c-13a1-4be0-847b-69b39fa4f390"
-        },
-        "result": {
-          "etapas": [
-            {
-              "id": "9e71b0ca-039b-4ee4-aa5e-567c587f8956",
-              "name": "Carrinho abandonado",
-              "slug": "carrinho_abandonado",
-              "position": 1000,
-              "is_won": false,
-              "is_lost": false,
-              "last_change_actor_kind": "user",
-              "last_change_at": "2026-07-17T22:12:48.493356+00:00"
-            },
-            {
-              "id": "d4e07296-5c60-4963-9ef7-f74cb23c7859",
-              "name": "Aguardando pagamento",
-              "slug": "aguardando_pagamento",
-              "position": 2000,
-              "is_won": false,
-              "is_lost": false,
-              "last_change_actor_kind": "user",
-              "last_change_at": "2026-08-02T11:53:52.769737+00:00"
-            },
-            {
-              "id": "7fb80670-cd6d-4c59-9d92-bc6f85ed4473",
-              "name": "Pago",
-              "slug": "pago",
-              "position": 3000,
-              "is_won": true,
-              "is_lost": false,
-              "last_change_actor_kind": "user",
-              "last_change_at": "2026-07-07T13:18:31.838236+00:00"
-            },
-            {
-              "id": "c8944f15-269c-4cdd-8602-096f748b3da1",
-              "name": "Em sep
+    "text": "Não há nenhuma entrada automática/webhook cadastrada na clínica — ativa ou desativada. Por isso não existem recebimentos recentes para diagnosticar.\n\nIsso indica que o formulário do site provavelmente não está conectado a este CRM (ou a integração foi removida). Vale conferir no site para qual URL ele está enviando os dados e, se houver uma integração esperada, recriar/configurar a entrada aqui.",
+    "finish_reason": "stop",
+    "tokens_in": 3090,
+    "tokens_out": 125,
+    "tool_calls": []
+  }
+]
 ```

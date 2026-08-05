@@ -979,3 +979,47 @@ oferecido. A barreira continua segurando: `crm_stages` com o nome alvo → **0**
 Guarda em `tests/unit/recusa-para-o-modelo.test.ts` (5 testes). **Sabotagem:** devolvi o jargão ao
 texto → `expected [ 'crm_create_stage: "agent"', …(23) ] to deeply equal []`, acusando cada termo
 em cada capacidade. Restaurado: `5 passed`.
+
+---
+
+## Os quatro cenários com a frase nova, e um vazamento que o contrato impede consertar
+
+Rodados **um por vez** (a corrida com os cinco juntos expira a sessão do admin com MFA), mesmo
+modelo `gpt-5.6-terra`:
+
+| cenário | ferramentas escolhidas | igual à rodada anterior? |
+|---|---|---|
+| ler o funil | `crm_list_pipelines → crm_list_stages` | sim |
+| não duplicar marcador | `crm_list_tags` | sim |
+| diagnosticar entrada parada | `crm_list_webhook_sources` | sim |
+| criar etapa que já existe | `crm_list_pipelines → crm_list_stages` | sim |
+
+Comportamento **estável**: a tradução da recusa mexe só no `catch` de `McpAuthError`, e os caminhos
+felizes não mudaram — que era o esperado, e agora está medido em vez de suposto.
+
+### O jargão vaza para o cliente por DUAS portas, e só uma era minha
+
+**Porta 1 — a `description`, e essa eu fechei.** O contrato do épico separa `description` (para o
+modelo) de `rotulo`/`explicacao` (para o humano), assumindo que o modelo não repassa a primeira.
+**Ele repassa:** `"entradas automáticas de contatos (webhook_sources)"` virou, na resposta ao
+usuário, *"nenhuma entrada automática de contatos **(webhook)** configurada"*. Tirei os nomes de
+tabela de todas as minhas `description`.
+
+**Porta 2 — o `name` da capacidade, e essa NÃO tem conserto por aqui.** Refiz o cenário depois da
+limpeza e o termo voltou:
+
+> *"Não há nenhuma entrada automática/**webhook** cadastrada na clínica — ativa ou desativada."*
+
+A fonte agora é o próprio identificador da ferramenta que ele chamou: `crm_list_webhook_sources`.
+O modelo lê o nome do que executou e o repete. E `name` é **contrato de wire** — a Decisão 3 do
+briefing proíbe renomear tool publicada, porque agentes em VPS de clientes e clientes MCP externos
+quebram.
+
+**O que sobra**, e é decisão de quem define o prompt de sistema, não minha: instruir o agente a
+nunca citar o nome interno de uma ferramenta ao usuário. É a mesma família da correção da recusa —
+o modelo repete o que lê, então o que ele lê tem que ser escrito pensando em quem vai ouvir.
+**Registrado para o Maestro.**
+
+> O gate `catalogo-tools-leigo-friendly` não pega nenhuma das duas: ele vigia `rotulo`,
+> `explicacao` e `oQueToca` — os textos que vão à TELA. O caminho que vai à CONVERSA
+> (`description` + `name`) nunca teve guarda.

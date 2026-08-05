@@ -218,7 +218,7 @@ const listTemplatesShape = {};
 export const crmListMessageTemplates: McpToolDefinition<typeof listTemplatesShape> = {
   name: "crm_list_message_templates",
   description:
-    "Lista as respostas prontas da organização (message_templates): título, corpo com as marcações {{...}}, " +
+    "Lista as respostas prontas da organização: título, corpo com as marcações {{...}}, " +
     "atalho e se é compartilhada ou pessoal. Use quando a empresa já tiver decidido como diz algo, em vez de escrever do zero.",
   inputSchema: listTemplatesShape,
   category: "read",
@@ -265,7 +265,7 @@ const listSourcesShape = {
 export const crmListWebhookSources: McpToolDefinition<typeof listSourcesShape> = {
   name: "crm_list_webhook_sources",
   description:
-    "Lista as entradas automáticas de contatos da org (webhook_sources): nome, se está ativa, para qual pipeline/stage " +
+    "Lista as entradas automáticas de contatos da org: nome, se está ativa, para qual pipeline/stage " +
     "manda, quando recebeu pela última vez e a autoria da última mudança. O segredo nunca sai — só `has_secret`.",
   inputSchema: listSourcesShape,
   category: "read",

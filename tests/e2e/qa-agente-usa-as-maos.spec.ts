@@ -159,6 +159,20 @@ async function versaoComAsCapacidades(req: APIRequestContext, agenteId: string):
   const canalId = ((await canalRes.json()) as { data?: Array<{ id: string }> }).data?.[0]?.id;
   if (!canalId) throw new Error("a org de E2E precisa de um canal");
 
+  // ⚠️ REUSA CREDENCIAL JÁ VALIDADA ANTES DE CRIAR OUTRA. Cada corrida criando
+  // uma nova esbarrava em `credential_not_validated`: a validação da chave é
+  // assíncrona e nem sempre termina antes do turno começar — o teste passava a
+  // medir a corrida entre validação e execução, não o modelo.
+  const jaExiste = await req.get(`${APP_URL}/api/v1/ai/credentials`);
+  const existentes = (await jaExiste.json()) as {
+    data?: Array<{ id: string; provider: string; validated_at?: string | null }>;
+  };
+  const validada = existentes.data?.find((c) => c.provider === provider && c.validated_at);
+  if (validada) {
+    console.info(`[QA] reusando credencial ${provider} já validada`);
+    return criarVersao(req, agenteId, validada.id, canalId, provider, modelo);
+  }
+
   let credentialId: string | undefined;
   if (chave) {
     const nova = await req.post(`${APP_URL}/api/v1/ai/credentials`, {
@@ -175,6 +189,17 @@ async function versaoComAsCapacidades(req: APIRequestContext, agenteId: string):
   }
   if (!credentialId) throw new Error("sem credencial de LLM");
 
+  return criarVersao(req, agenteId, credentialId, canalId, provider, modelo);
+}
+
+async function criarVersao(
+  req: APIRequestContext,
+  agenteId: string,
+  credentialId: string,
+  canalId: string,
+  provider: string,
+  modelo: string,
+): Promise<string> {
   const res = await req.post(`${APP_URL}/api/v1/ai/agents/${agenteId}/versions`, {
     data: {
       system_prompt: PROMPT,
