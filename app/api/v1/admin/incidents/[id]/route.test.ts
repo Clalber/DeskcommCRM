@@ -26,7 +26,10 @@ const INCIDENT_ID = "44444444-4444-4444-8444-444444444444";
 const INCIDENT = {
   id: INCIDENT_ID,
   organization_id: ORG_ID,
-  type: "waha.session_failed",
+  // Tipo genérico de propósito: nenhum caso aqui inspeciona `type`, e nomear o
+  // provider num arquivo fora de lib/channels/ reprova o `lint:channels`
+  // (doutrina restrição-de-canal, invariante 1) — gate obrigatório do CI.
+  type: "channel.session_failed",
   severity: "critical",
   status: "open",
   payload: { session: "default" },
