@@ -8999,6 +8999,18 @@ alter table public.agent_inbox_items
     'risk_backlog_seeded',
     'reactivation_expired',
     'capabilities_missing',
+    -- (migration 0109, issue #129) Mensagem outbound nasce `sending` e, quando o
+    -- envio nunca acontece, fica `sending` para sempre — o self-hoster vê uma
+    -- mensagem eternamente "enviando", sinal de progresso para algo que não vai
+    -- acontecer. O cron `recover-stuck-messages` marca `failed` e usa este kind
+    -- para o defeito APARECER na Central de avisos.
+    --
+    -- Entra NESTA lista, e não num bloco novo no fim do arquivo: o #159 do @jmpo
+    -- mostrou que reconstruir a mesma constraint em N blocos quebra o
+    -- `update.sh` de todo clone que já tenha uma linha de vocabulário posterior
+    -- — os blocos antigos rodam antes e falham em cadeia. Um bloco por
+    -- constraint, vigiado por tests/unit/baseline-constraint-reconstruida.test.ts.
+    'message_send_stuck',
     'other'
   ));
 
@@ -9104,6 +9116,5 @@ grant execute on function public.fn_user_org_ids() to authenticated, service_rol
 grant execute on function public.fn_user_role_in_org(uuid) to authenticated, service_role;
 grant execute on function public.fn_user_role_in(uuid) to authenticated, service_role;
 grant execute on function public.fn_role_at_least(uuid, text) to authenticated, service_role;
-
 
 notify pgrst, 'reload schema';
