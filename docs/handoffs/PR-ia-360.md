@@ -1,7 +1,8 @@
 # IA 360 — o agente ganha mãos, e o humano ganha painel
 
 > Corpo do PR de integração `feat/ia-360-mcp` → `main`.
-> Números medidos em `08d5bbec` (a W1 ainda fecha; atualizar antes de abrir).
+> Números medidos em `4ed080d8`, árvore limpa: 242 files changed, 24673 insertions(+), 1428 deletions(-) · 100 commits.
+> Gates: `typecheck` ✓ · `lint` ✓ (0 erros) · `test:unit` 2232 ✓ · `test:db` 457 ✓ · `build` ✓
 
 ## O problema
 
