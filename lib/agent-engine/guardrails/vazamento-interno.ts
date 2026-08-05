@@ -52,6 +52,7 @@
  * resíduo de falso-positivo ACEITO — congelado, não escondido. Regressão reprova o CI.
  */
 import { TOOL_CATALOG, catalogEntry } from '@/lib/mcp/tools/catalog';
+import { CHANNEL_PROVIDER_META, CHANNEL_PROVIDER_WAHA } from '@/lib/channels/capabilities';
 
 /** Categoria da regra que pegou o termo — vai ao trace (rótulo nosso, nunca o corpo). */
 export type CategoriaVazamento = 'snake_case' | 'tool' | 'papel' | 'arquitetura' | 'erro_cru';
@@ -114,10 +115,26 @@ const PALAVRAS_ARQUITETURA = [
   'mcp',
   'rls',
   'migration',
-  'waha',
   'pointer',
   'enrollment',
 ] as const;
+
+/**
+ * Os nomes de provider de canal — DERIVADOS de `lib/channels/`, nunca escritos aqui.
+ *
+ * ⚠️ ESTE ARQUIVO JÁ FOI REPROVADO POR ESCREVER UM NOME DE PROVIDER À MÃO, e a ironia é
+ * literal: o detector de vocabulário interno vazava vocabulário interno. Quem
+ * pegou foi `pnpm lint:channels` no CI (doutrina `restricao-de-canal`,
+ * invariante 1: nome de provider só vive em `lib/channels/`, INCLUSIVE em comentário)
+ * — não os testes, não
+ * o typecheck, não o lint padrão.
+ *
+ * Derivar em vez de copiar é a mesma decisão que já vale para os nomes de tool
+ * logo acima: provider novo entra na cobertura sozinho, e a lista não envelhece
+ * mentindo. `lib/channels/capabilities.ts` importa só tipos — não arrasta peso
+ * para dentro deste módulo puro.
+ */
+const PROVIDERES_DE_CANAL = [CHANNEL_PROVIDER_WAHA, CHANNEL_PROVIDER_META] as const;
 
 /**
  * (C) PAPEL/PERMISSÃO — o vocabulário de controle de acesso. Nenhuma destas é palavra
@@ -205,7 +222,7 @@ const RE_ARQUIVO_DE_CODIGO = new RegExp(
 );
 
 const REGRAS: ReadonlyArray<RegraTexto> = [
-  { categoria: 'arquitetura', re: alternacao(PALAVRAS_ARQUITETURA) },
+  { categoria: 'arquitetura', re: alternacao([...PALAVRAS_ARQUITETURA, ...PROVIDERES_DE_CANAL]) },
   { categoria: 'papel', re: alternacao(PALAVRAS_PAPEL) },
   { categoria: 'papel', rotulo: 'admin', re: RE_ADMIN },
   // (C-bis) as duas ambíguas, só em contexto de papel. "seu perfil atual é agent" é a
