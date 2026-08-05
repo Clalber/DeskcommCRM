@@ -17,82 +17,27 @@
  * campos `<input type="date">` aparecem como mm/dd/yyyy, que parece defeito do
  * produto e é do ambiente.
  */
-import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 
 import { test, expect, type Page } from "@playwright/test";
 
-import { generateTotp, msUntilNextTotpWindow } from "./utils/totp";
+import { loginComoAdmin, lerCreds, type CredsE2E } from "./helpers/login-admin";
 
-const CREDS_PATH = path.join(process.cwd(), ".e2e-creds.json");
 const EVIDENCIA = path.join(process.cwd(), "evidence", "ia-360-w1");
 
-interface Creds {
-  password: string;
-  users: Record<string, { email: string }>;
-  admin_totp?: { secret: string };
-}
-
-function loadCreds(): Creds {
-  if (!fs.existsSync(CREDS_PATH)) {
-    execFileSync("npx", ["tsx", "scripts/seed-e2e-credentials.ts"], { stdio: "inherit" });
-  }
-  return JSON.parse(fs.readFileSync(CREDS_PATH, "utf8")) as Creds;
-}
-
-const creds = loadCreds();
+let creds: CredsE2E = lerCreds();
 
 test.use({ locale: "pt-BR" });
 
-/**
- * O último código TOTP entregue ao servidor nesta execução.
- *
- * Um código de 6 dígitos vale para a janela de 30 segundos inteira, mas o
- * servidor aceita cada um UMA vez (proteção contra replay). Testes que logam em
- * sequência caem na mesma janela e mandam o mesmo código — o segundo é recusado,
- * e o sintoma que aparece é "MFA falhou", que lê como bug de senha, de relógio
- * ou da tela de MFA. Medido: este spec passava isolado e falhava inteiro em
- * sequência, com 2 minutos de timeout por caso.
- */
-let ultimoCodigoEnviado: string | null = null;
-
-async function loginComoAdmin(page: Page): Promise<void> {
-  const secret = creds.admin_totp!.secret;
-  await page.goto("/login");
-  await page.locator("#email").fill(creds.users.admin!.email);
-  await page.locator("#password").fill(creds.password);
-  await page.getByRole("button", { name: /entrar/i }).click();
-  await page.waitForURL(/\/login\/mfa/);
-
-  for (let tentativa = 0; tentativa < 3; tentativa++) {
-    // Espera a próxima janela quando ela está por virar OU quando o código
-    // desta janela já foi gasto por um login anterior.
-    if (msUntilNextTotpWindow() < 3_000 || generateTotp(secret) === ultimoCodigoEnviado) {
-      await page.waitForTimeout(msUntilNextTotpWindow() + 300);
-    }
-    const codigo = generateTotp(secret);
-    ultimoCodigoEnviado = codigo;
-
-    const digito = page.locator('input[aria-label="Dígito 1"]');
-    await digito.waitFor({ state: "visible", timeout: 15_000 });
-    await digito.click();
-    await page.keyboard.type(codigo, { delay: 40 });
-    try {
-      await page.waitForURL(/\/app\//, { timeout: 10_000 });
-      return;
-    } catch {
-      await page.waitForTimeout(msUntilNextTotpWindow() + 300);
-    }
-  }
-  throw new Error("MFA do admin falhou depois de 3 tentativas de TOTP");
-}
-
-test.describe.configure({ timeout: 120_000 });
+// 240s e não 120s: o orçamento inclui UMA re-semeadura de credenciais, que o
+// login dispara sozinho quando outra sessão rotaciona o fator TOTP deste banco
+// compartilhado. Medido: o primeiro caso da bateria estourava 120s só nisso.
+test.describe.configure({ timeout: 240_000 });
 
 test.beforeEach(async ({ page }) => {
   fs.mkdirSync(EVIDENCIA, { recursive: true });
-  await loginComoAdmin(page);
+  creds = await loginComoAdmin(page, creds);
 });
 
 test.describe("Criar um agente pela tela", () => {
@@ -105,10 +50,12 @@ test.describe("Criar um agente pela tela", () => {
     await expect(criar).toBeDisabled();
 
     // E ela diz o que falta — as três exigências que o servidor também impõe.
+    // Escritas como instrução, não como acusação — um formulário recém-aberto
+    // que já diz "obrigatório" em vermelho trata o usuário como quem errou.
     for (const exigencia of [
-      /selecione um modelo/i,
-      /selecione uma credencial/i,
-      /selecione um número de whatsapp/i,
+      /escolha o modelo/i,
+      /escolha a chave de acesso/i,
+      /escolha por qual número de whatsapp/i,
     ]) {
       await expect(page.getByText(exigencia).first()).toBeVisible();
     }
@@ -219,7 +166,7 @@ test.describe("Olhar o consumo de IA", () => {
     await expect(page.getByRole("heading", { name: /uso de ia/i })).toBeVisible();
 
     // Os quatro cartões do topo existem e trazem número, não traço.
-    for (const rotulo of [/custo no período/i, /invocações/i]) {
+    for (const rotulo of [/custo no período/i, /atendimentos com ia/i]) {
       await expect(page.getByText(rotulo).first()).toBeVisible();
     }
 

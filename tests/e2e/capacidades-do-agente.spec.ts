@@ -22,7 +22,7 @@ import * as path from "node:path";
 
 import { test, expect, type Page } from "@playwright/test";
 
-import { generateTotp, msUntilNextTotpWindow } from "./utils/totp";
+import { loginComoAdmin } from "./helpers/login-admin";
 
 const CREDS_PATH = path.join(process.cwd(), ".e2e-creds.json");
 // Versionada de propósito: `.superpowers/evidence/` está no `.gitignore`, e o
@@ -57,7 +57,7 @@ function loadCreds(): Creds {
   return c;
 }
 
-const creds = loadCreds();
+let creds = loadCreds();
 const AGENTE = creds.capacidades!.agent_id;
 
 /** O que o seed deixa ligado — o cenário conhecido de onde os casos partem. */
@@ -81,30 +81,11 @@ async function login(page: Page, email: string): Promise<void> {
  * `role < admin`, e o formulário inteiro (inclusive os switches de pacote)
  * nasce desabilitado. Isso é RBAC pré-existente do repo — foi a prova em tela
  * que mostrou, com o switch resolvendo para `<button disabled>`.
- * E admin tem MFA obrigatório (doutrina do repo), daí o TOTP.
+ * E admin tem MFA obrigatório (doutrina do repo), daí o TOTP — cuja fragilidade
+ * em banco compartilhado está tratada no helper.
  */
-async function loginComoAdmin(page: Page): Promise<void> {
-  const secret = creds.admin_totp!.secret;
-  await page.goto("/login");
-  await page.locator("#email").fill(creds.users.admin!.email);
-  await page.locator("#password").fill(creds.password);
-  await page.getByRole("button", { name: /entrar/i }).click();
-  await page.waitForURL(/\/login\/mfa/);
-
-  for (let tentativa = 0; tentativa < 2; tentativa++) {
-    if (msUntilNextTotpWindow() < 3_000) {
-      await page.waitForTimeout(msUntilNextTotpWindow() + 200);
-    }
-    await page.locator('input[aria-label="Dígito 1"]').click();
-    await page.keyboard.type(generateTotp(secret), { delay: 40 });
-    try {
-      await page.waitForURL(/\/app\//, { timeout: 8_000 });
-      return;
-    } catch {
-      await page.waitForTimeout(msUntilNextTotpWindow() + 200);
-    }
-  }
-  throw new Error("MFA do admin falhou em 2 tentativas de TOTP");
+async function entrarComoAdmin(page: Page): Promise<void> {
+  creds = (await loginComoAdmin(page, creds)) as typeof creds;
 }
 
 async function abrirConfiguracao(page: Page): Promise<void> {
@@ -142,10 +123,13 @@ test.beforeEach(() => {
 });
 
 test.describe("Configurar o que o agente pode fazer", () => {
-  test.describe.configure({ timeout: 120_000 });
+  // 240s e não 120s: o orçamento inclui UMA re-semeadura de credenciais, que o
+  // login dispara sozinho quando outra sessão rotaciona o fator TOTP deste banco
+  // compartilhado. Medido: o primeiro caso da bateria estourava 120s só nisso.
+  test.describe.configure({ timeout: 240_000 });
 
   test.beforeEach(async ({ page }) => {
-    await loginComoAdmin(page);
+    await entrarComoAdmin(page);
   });
 
   test("as jornadas aparecem em português, com explicação e contagem", async ({ page }) => {
@@ -292,7 +276,10 @@ test.describe("Configurar o que o agente pode fazer", () => {
 });
 
 test.describe("Olhar o agente funcionando", () => {
-  test.describe.configure({ timeout: 120_000 });
+  // 240s e não 120s: o orçamento inclui UMA re-semeadura de credenciais, que o
+  // login dispara sozinho quando outra sessão rotaciona o fator TOTP deste banco
+  // compartilhado. Medido: o primeiro caso da bateria estourava 120s só nisso.
+  test.describe.configure({ timeout: 240_000 });
 
   // De propósito como MANAGER: olhar o agente funcionando é atividade de quem
   // opera, e a rota `/tool-usage` foi escrita com essa régua. Se a leitura
