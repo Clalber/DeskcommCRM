@@ -68,6 +68,18 @@ function fazerSupabase(resolve: Resolver) {
   return { from, rpc: () => Promise.resolve({ data: [{ id: CONV }], error: null }) };
 }
 
+/**
+ * Ctx de uma PESSOA operando (token de usuário), não do agente atendendo.
+ * `crm_resume_ai_attendance` recusa ator de IA por regra dura, então o caminho
+ * feliz dela precisa deste ator — e o teste do bloqueio usa o ctx padrão.
+ */
+function ctxDePessoa(resolve: Resolver): McpContext {
+  return {
+    ...fazerCtx(resolve, "manager"),
+    actor: { type: "user", id: ANA, role: "manager" },
+  } as McpContext;
+}
+
 function fazerCtx(resolve: Resolver, role: McpContext["role"] = "agent"): McpContext {
   return {
     organizationId: ORG,
@@ -346,7 +358,7 @@ describe("crm_resume_ai_attendance", () => {
 
     const res = (await crmResumeAiAttendance.handler(
       { conversation_id: CONV },
-      fazerCtx(resolve, "manager"),
+      ctxDePessoa(resolve),
     )) as {
       resumed: boolean;
       human_continuity: { summary: string; pending_with_customer: string | null };
@@ -359,12 +371,24 @@ describe("crm_resume_ai_attendance", () => {
 
   it("conversa de outra organização não é encontrada", async () => {
     await expect(
-      crmResumeAiAttendance.handler({ conversation_id: CONV }, fazerCtx(() => ({ data: null }), "manager")),
+      crmResumeAiAttendance.handler({ conversation_id: CONV }, ctxDePessoa(() => ({ data: null }))),
     ).rejects.toThrow(/conversation_not_found/);
   });
 
-  it("exige papel de gestor — reativar automação para quem pediu uma pessoa é decisão de peso", () => {
-    expect(crmResumeAiAttendance.requiresRole).toBe("manager");
+  it("o AGENTE não desfaz a própria passagem — regra dura 2, dita no handler", async () => {
+    // O ctx padrão daqui é `ai_agent` (o mesmo que o runtime monta). A recusa é
+    // explícita e ensina o caminho certo, em vez de devolver um erro de papel.
+    await expect(
+      crmResumeAiAttendance.handler({ conversation_id: CONV }, fazerCtx(() => ({ data: null }))),
+    ).rejects.toThrow(/resume_requires_person/);
+  });
+
+  it("é alcançável por papel — a regra é o ator, não o ranking", () => {
+    // `lib/ai/runtime/agent.ts` grava role 'agent' FIXO e `ensureRole` compara
+    // por ROLE_RANK: exigir 'manager' aqui não seria regra, seria capacidade
+    // inalcançável por qualquer agente publicado, com o modelo recebendo
+    // "Role 'agent' insufficient" e seguindo a conversa como se nada fosse.
+    expect(crmResumeAiAttendance.requiresRole).toBe("agent");
     expect(crmResumeAiAttendance.requiresScope).toBe("mcp:write");
   });
 });

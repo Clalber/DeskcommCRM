@@ -98,7 +98,7 @@ export const TOOLS_ESCALACAO = declararTools([
       "decisão de peso — por isso é capacidade de risco crítico.",
     rotulo: "Retomar o atendimento automático",
     explicacao:
-      "Devolve a conversa para o atendimento automático depois que uma pessoa atendeu, levando junto o que ficou combinado com o cliente.",
+      "Devolve a conversa para o atendimento automático depois que uma pessoa atendeu, levando junto o que ficou combinado com o cliente. Só uma pessoa pode acionar.",
     oQueToca: "Atendimento",
     risco: "critico",
     pacotes: ["escalar"],

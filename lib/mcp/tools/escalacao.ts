@@ -276,12 +276,34 @@ export const crmResumeAiAttendance: McpToolDefinition<typeof retomarInputShape> 
     "Devolve o atendimento da conversa ao agente: solta o dono humano, limpa " +
     "contacts.force_human e bot_silenced_until, e grava no checkpoint do lead o que a pessoa " +
     "decidiu — o próximo turno abre já sabendo. Devolve `human_continuity` com o resumo. " +
-    "Idempotente. Erros: conversation_not_found, assignment_conflict.",
+    "Idempotente. SÓ uma pessoa pode chamar: um agente de IA recebe " +
+    "`resume_requires_person`. Erros: conversation_not_found, assignment_conflict.",
   inputSchema: retomarInputShape,
   category: "write",
-  requiresRole: "manager",
+  /**
+   * `agent`, e a regra dura mora no handler, NÃO no papel.
+   *
+   * A tentação era exigir `manager` para impedir o agente de desfazer a própria
+   * passagem. Medido: `lib/ai/runtime/agent.ts` grava `role: "agent"` fixo (3
+   * pontos), `mcp_token.ts` mint a `"role:agent"` sem parâmetro para variar, e
+   * `ensureRole` compara por `ROLE_RANK` — então `manager` aqui não seria uma
+   * regra, seria uma capacidade INALCANÇÁVEL por qualquer agente publicado,
+   * devolvendo `Role 'agent' insufficient` ao modelo. Regra que só funciona por
+   * acidente de ranking é regra que ninguém consegue ler nem testar.
+   */
+  requiresRole: "agent",
   requiresScope: "mcp:write",
   handler: async (input, ctx) => {
+    // REGRA DURA 2, dita em voz alta: quem devolve o atendimento é uma PESSOA.
+    // O cliente pediu para falar com gente; o agente desfazer a própria passagem
+    // seria devolvê-lo à automação contra o que ele pediu.
+    if (ctx.actor.type === "ai_agent") {
+      throw new Error(
+        "resume_requires_person: devolver o atendimento é decisão de uma pessoa. " +
+          "Você não desfaz a própria passagem — use crm_get_human_case para ler o que foi decidido.",
+      );
+    }
+
     const resultado = await devolverAtendimentoAoAgente(
       {
         supabase: ctx.supabase,
