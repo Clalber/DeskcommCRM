@@ -350,15 +350,45 @@ e motivo errado no repo é pior que motivo ausente — o próximo a ler decide c
 |---|---|
 | `npx tsc --noEmit` | exit 0 |
 | `npx eslint .` | 0 errors, 170 warnings — a linha de base do épico |
-| `npx vitest run` (unit) | **226 arquivos, 2019 testes passando**, exit 0 |
+| `npx vitest run` (unit) | **226 arquivos, 2017 testes passando**, exit 0 — rodado DEPOIS da última edição do commit |
 | E2E em tela | `1 passed (1.9m)`, exit 0, rodado contra o SHA pós-merge com `next build` novo; capturas regeneradas em `evidence/ia-360-w4/` |
 
-Um quarto gate reprovou no primeiro try pós-merge e foi acerto meu:
-`tests/unit/evidencia-citada.test.ts` (veio na base) recusou o HANDOFF por citar capturas em
-`.superpowers/evidence/`, que é pasta de trabalho e não entra no `git ls-files` — num projeto
+### O quarto gate, e o que ele revelou sobre a minha própria medição
+
+`tests/unit/evidencia-citada.test.ts` recusou o HANDOFF por citar capturas em
+`.superpowers/evidence/`, que é pasta de trabalho e não entra no `git ls-files`. Num projeto
 aberto, prova citada e não entregue é afirmação sem lastro para quem clona. As três capturas
-foram para `evidence/ia-360-w4/` (versionado) e o spec passou a escrever direto lá, para a
-próxima rodada regenerar no lugar certo em vez de recriar o problema.
+foram para `evidence/ia-360-w4/` (versionado) e **o spec passou a escrever direto lá** — apagar
+o sintoma deixaria a próxima rodada recriando o problema.
+
+**Atribuição corrigida.** Escrevi antes que esse gate "veio na base". Errado nos dois sentidos, e
+o Maestro cobrou a correção — crédito errado manda o próximo procurar o dono errado quando o gate
+incomodar. Medido: `git log --diff-filter=A` → nasceu em `49a3cb0` (2026-07-24, épico **crm-vivo**),
+evoluiu em seis commits, e `ce93ab0` (2026-07-27, growth) foi o **último retoque** (+8/−2). Ambos
+já estavam em `origin/main` = `687716a`, logo **o gate já estava na minha branch desde o primeiro
+commit** — não veio no merge.
+
+**E é aí que está o achado que interessa, porque é sobre mim.** Se o gate já estava lá, por que a
+suíte que reportei como `2014 testes passando` não o pegou? Fui medir em vez de supor: restaurei
+o `HANDOFF-ia-360.md` de `4202acf` no disco e rodei o gate isolado — **reprova**
+(`HANDOFF-ia-360.md não cita imagem fora do versionamento`).
+
+A causa não é o gate: é a **ordem em que eu medi**. Rodei a suíte completa e, só depois, escrevi a
+seção do Marco 3 com as citações — e commitei as duas coisas juntas em `4202acf`. O número não era
+falso; ele simplesmente **não descrevia o commit ao qual eu o atribuí**. Medi contra um disco que
+mudou antes do commit fechar.
+
+A regra que eu já devia estar aplicando, escrita aqui para a próxima pessoa (e para mim): **o
+`vitest run` que sustenta uma afirmação sobre um SHA roda DEPOIS da última edição que entra nele**,
+nunca antes. Foi o que fiz na rodada final — `2017 testes`, com a árvore já no estado do commit.
+
+> **Nota sobre o número, para ele não pegar carona.** Uma rodada intermediária deu `2019`. Não
+> rastreei a origem da diferença de dois; o que verifiquei é que **nenhum arquivo de teste sumiu**
+> (226 nas duas) e que os dois geradores dinâmicos que este trabalho toca continuam cobrindo o que
+> devem — o gate do catálogo roda sobre as 31 tools (`99 passed`) e o de evidência sobre todos os
+> documentos que citam prova (`32 passed`). A diferença está em `it` gerados por dado, não em
+> cobertura perdida. Registro assim porque "provavelmente é X" num rodapé de estado é exatamente o
+> tipo de frase que ninguém audita depois.
 
 ---
 
