@@ -189,8 +189,13 @@ export async function criarEntradaAutomatica(
 ): Promise<FonteVisivel> {
   await destinoValido(deps, input.default_pipeline_id, input.default_stage_id);
 
-  // `path_token` é a identidade PÚBLICA da URL de captação (como o
-  // webhook_path_token do WAHA), não um segredo forte — por isso volta no corpo.
+  // `path_token` é a identidade PÚBLICA da URL de captação — mesmo papel que o
+  // token de caminho que os adapters de canal já usam —, não um segredo forte.
+  // Por isso volta no corpo da resposta.
+  //
+  // Sem nomear provider aqui de propósito: `pnpm lint:channels` proíbe o nome
+  // fora de `lib/channels/` inclusive em comentário, e está certo — prosa é
+  // onde o acoplamento reaparece primeiro, porque ninguém a compila.
   const pathToken = randomBytes(24).toString("base64url");
 
   const { data: created, error } = await deps.supabase
