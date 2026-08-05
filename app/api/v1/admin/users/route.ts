@@ -160,9 +160,10 @@ export async function GET(req: NextRequest) {
   const needed = new Set(userIds);
   const authMap = new Map<string, AuthUser>();
   const PER_PAGE = 1000;
-  // Teto defensivo: a única condição de parada natural é a página vazia. Se o
-  // diretório for maior que isto, a rota falha alto em vez de entregar uma
-  // lista truncada que se parece com "esses são todos os usuários".
+  // Teto defensivo: as paradas naturais são a página vazia e o mapa completo.
+  // Se o diretório for maior que isto e AINDA faltar id para resolver, a rota
+  // falha alto em vez de entregar uma lista truncada que se parece com "esses
+  // são todos os usuários".
   const MAX_PAGES = 50;
   let authPage = 1;
   let directoryExhausted = false;
@@ -205,7 +206,11 @@ export async function GET(req: NextRequest) {
       directoryExhausted = true;
       break;
     }
-    if (authPage >= MAX_PAGES) {
+    // O teto só é falha se ainda falta id para resolver. Um diretório com
+    // exatamente MAX_PAGES páginas cheias cujo último id necessário está na
+    // última delas deixa o mapa COMPLETO: nada foi truncado, e derrubar a
+    // listagem com 503 na fronteira seria mentir sobre o tamanho do diretório.
+    if (authMap.size < needed.size && authPage >= MAX_PAGES) {
       return fail(
         "upstream_unavailable",
         "Diretório de usuários maior que o suportado por esta listagem",

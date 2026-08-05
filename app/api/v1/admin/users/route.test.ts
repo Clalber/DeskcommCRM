@@ -195,6 +195,60 @@ describe("GET /api/v1/admin/users — custo no GoTrue", () => {
   });
 });
 
+describe("GET /api/v1/admin/users — teto de páginas da varredura", () => {
+  // 50 é o `MAX_PAGES` da rota. Os dois casos rodam EM CIMA da fronteira, não
+  // perto dela — é lá que o off-by-one mora. Mexer no teto sem mexer aqui
+  // deixa este bloco vermelho, e isso é o certo: o número é o objeto do teste.
+  const MAX_PAGES = 50;
+
+  /** Diretório com MAX_PAGES páginas CHEIAS; `alvo`, se dado, vai na última. */
+  function diretorioNoTeto(alvo?: AuthUserStub): AuthUserStub[][] {
+    return Array.from({ length: MAX_PAGES }, (_, i) => {
+      const enchimento = authUser(
+        `bbbbbbbb-0000-4000-8000-${String(i).padStart(12, "0")}`,
+        i,
+      );
+      return i === MAX_PAGES - 1 && alvo ? [enchimento, alvo] : [enchimento];
+    });
+  }
+
+  it("id necessário na ÚLTIMA página permitida devolve a lista, não 503", async () => {
+    const alvo = authUser("aaaaaaaa-0000-4000-8000-000000000001", 1);
+    const { stub, listUsers } = makeAdminStub({
+      uoRows: [uoRow(alvo.id)],
+      authPages: diretorioNoTeto(alvo),
+    });
+    vi.mocked(createAdminClient).mockReturnValue(stub as never);
+
+    const { GET } = await import("./route");
+    const res = await GET(req());
+
+    // O mapa está COMPLETO ao fim da página 50: nada foi truncado, e o teto
+    // não tem o que denunciar.
+    expect(res.status).toBe(200);
+    expect(listUsers.mock.calls.length).toBe(MAX_PAGES);
+    const body = (await res.json()) as { data: Array<{ user_id: string }> };
+    expect(body.data.map((r) => r.user_id)).toEqual([alvo.id]);
+  });
+
+  it("id ainda pendente depois do teto continua falhando alto", async () => {
+    const orfao = "aaaaaaaa-0000-4000-8000-000000000009";
+    const { stub, listUsers } = makeAdminStub({
+      uoRows: [uoRow(orfao)],
+      authPages: diretorioNoTeto(),
+    });
+    vi.mocked(createAdminClient).mockReturnValue(stub as never);
+
+    const { GET } = await import("./route");
+    const res = await GET(req());
+
+    expect(res.status).toBe(503);
+    expect(listUsers.mock.calls.length).toBe(MAX_PAGES);
+    const body = (await res.json()) as { error: { code: string } };
+    expect(body.error.code).toBe("upstream_unavailable");
+  });
+});
+
 describe("GET /api/v1/admin/users — GoTrue indisponível", () => {
   it("falha alto em vez de devolver lista curta", async () => {
     const u = authUser("aaaaaaaa-0000-4000-8000-000000000001", 1);

@@ -26,7 +26,12 @@ function formatDate(iso: string | null): string {
 // comparava com "active", que não existe nele: a integração saudável escrita
 // pelo callback do OAuth ('healthy') caía no ramo final e a tela imprimia a
 // string crua do banco.
-const NUVEMSHOP_LABEL: Record<string, string> = {
+//
+// Exportados para o teste conferir a COBERTURA contra o CHECK do
+// `supabase/baseline.sql` (TenantOverview.test.tsx): status novo que uma
+// migration acrescente ao banco sem entrar nestes mapas volta a vazar cru para
+// a tela, e é isso que o teste reprova.
+export const NUVEMSHOP_LABEL: Record<string, string> = {
   connecting: "Conectando",
   healthy: "Conectado",
   token_expired: "Token expirado",
@@ -36,7 +41,7 @@ const NUVEMSHOP_LABEL: Record<string, string> = {
   error: "Com erro",
 };
 
-const NUVEMSHOP_VARIANT: Record<string, "success" | "warning" | "error" | "neutral"> = {
+export const NUVEMSHOP_VARIANT: Record<string, "success" | "warning" | "error" | "neutral"> = {
   connecting: "neutral",
   healthy: "success",
   token_expired: "error",
