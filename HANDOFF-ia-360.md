@@ -1023,3 +1023,39 @@ o modelo repete o que lê, então o que ele lê tem que ser escrito pensando em 
 > O gate `catalogo-tools-leigo-friendly` não pega nenhuma das duas: ele vigia `rotulo`,
 > `explicacao` e `oQueToca` — os textos que vão à TELA. O caminho que vai à CONVERSA
 > (`description` + `name`) nunca teve guarda.
+
+---
+
+## O que chega ao LEAD — medido com prompt de atendimento, não de operador
+
+Pergunta do Rafael, e ela expôs um viés que eu não tinha declarado: **meus cenários usavam prompt
+de OPERADOR** ("você é o assistente de operação da clínica… USE as ferramentas"). O agente
+principal do produto fala direto com o lead. Refiz com prompt de **atendimento** — como um
+self-hoster escreveria, sem uma palavra sobre ferramentas — e voz de **paciente**:
+
+| o paciente disse | o agente respondeu | jargão |
+|---|---|---|
+| "fiz a cirurgia, queria marcar o retorno" | "Olá! Espero que sua recuperação esteja indo bem. 😊…" | **0** |
+| "mandei mensagem pelo site faz três dias e ninguém respondeu" | "Sinto muito pela demora… não consigo verificar por aqui o que ocorreu com **a mensagem enviada pelo site**, mas posso pedir que a equipe confira." | **0** |
+| "é urgente, dá pra me colocar na frente?" | "Sinto muito que você esteja com dor. Posso pedir que a equipe avalie seu caso com prioridade…" | **0** |
+
+**Zero vocabulário interno nas três.** O segundo é o mais próximo do risco — o paciente pergunta
+justamente pelo formulário do site, que é a "entrada automática de contatos" — e o agente disse
+"a mensagem enviada pelo site". Traduziu certo.
+
+### Mas a razão do zero importa mais que o zero
+
+**Ele não chamou ferramenta nenhuma.** Não vazou porque não usou — um paciente não pede
+organização da operação. Duas consequências, e a segunda é de produto:
+
+1. **O risco é condicional ao prompt.** Onde o jargão vazou (`(webhook)`, "seu perfil é agent")
+   foi com prompt de operador. Um self-hoster que escreva "você atende E mantém a casa em ordem"
+   — combinação plausível — traz o risco de volta para dentro da conversa com o cliente.
+   A correção da recusa e a limpeza das `description` valem justamente para esse caso.
+
+2. **As 15 capacidades não têm gatilho na conversa com o lead.** Elas só se ativam com alguém
+   falando em voz de operador — e **esse canal não existe no produto**: o dono não conversa com o
+   agente pelo WhatsApp do atendimento. Isto não é defeito do que entreguei; é a pergunta que
+   ficou sem dono: **quem conversa com o agente para ele organizar a casa?** Sem essa superfície,
+   o pacote "Organizar a operação" é ferramenta sem mão que a pegue — e a tensão vale para as
+   leituras tanto quanto para as escritas. **Para o Maestro e para a W1.**

@@ -65,13 +65,57 @@ const CAPACIDADES = [
   "crm_list_team_members",
 ];
 
-const PROMPT = [
+/**
+ * ⚠️ DOIS PROMPTS, PORQUE SÃO DOIS DESTINATÁRIOS — e a diferença é a pergunta que
+ * mais importa nesta wave. O agente principal do produto fala DIRETO COM O LEAD:
+ * o que ele escreve chega no WhatsApp de um cliente da clínica. O prompt de
+ * OPERADOR abaixo enviesa o teste para o caso do dono conversando com o sistema;
+ * o de ATENDIMENTO é o caso real de produção.
+ *
+ * Se o jargão de operação vaza no primeiro, é feio. Se vaza no segundo, chega ao
+ * CLIENTE — e aí é problema de produto, não de texto.
+ */
+const PROMPT_OPERADOR = [
   "Você é o assistente de operação de uma clínica. Além de atender, você ajuda a manter a casa",
   "em ordem: conhece o funil, os marcadores em uso, as respostas prontas, as entradas automáticas",
   "de contatos e as regras automáticas.",
   "Quando perguntarem sobre a operação, USE as ferramentas para responder com o que existe de",
   "verdade — nunca invente nome de etapa, de marcador ou de regra.",
 ].join(" ");
+
+/** O agente de atendimento, como um self-hoster o escreveria. Sem uma palavra sobre "usar ferramentas". */
+const PROMPT_ATENDIMENTO = [
+  "Você é a atendente virtual da Clínica Bem Viver. Fale com o paciente de forma acolhedora e simples.",
+  "Responda dúvidas sobre atendimento, horários e agendamento.",
+  "Nunca invente informação: se não souber, diga que vai verificar com a equipe.",
+].join(" ");
+
+const PROMPT = process.env.QA_PROMPT === "atendimento" ? PROMPT_ATENDIMENTO : PROMPT_OPERADOR;
+
+/**
+ * Cenários de CLIENTE — a voz de quem está do outro lado do WhatsApp.
+ *
+ * Nenhum deles pede organização da operação: são pedidos de paciente. O que se
+ * mede é se o agente, tendo as capacidades ligadas, deixa vazar vocabulário
+ * interno na resposta que o PACIENTE vai ler.
+ */
+const CENARIOS_CLIENTE = [
+  {
+    nome: "c1-paciente-pede-retorno",
+    mensagem: "Oi! Fiz a cirurgia semana passada e queria marcar o retorno. Como faço?",
+    esperado: "resposta de atendimento, ZERO vocabulário interno",
+  },
+  {
+    nome: "c2-paciente-cobra-resposta",
+    mensagem: "Mandei mensagem pelo site faz três dias e ninguém respondeu. O que aconteceu?",
+    esperado: "pode consultar por dentro, mas a resposta não pode citar as peças do sistema",
+  },
+  {
+    nome: "c3-paciente-quer-prioridade",
+    mensagem: "Meu caso é urgente, dá pra me colocar na frente? Estou com dor.",
+    esperado: "não pode falar de marcador, etapa, funil nem fila interna",
+  },
+];
 
 /** Os cenários. Cada um é uma pergunta que um humano faria de verdade. */
 const CENARIOS = [
@@ -238,7 +282,8 @@ test.describe("QA — o agente usa as mãos que a W4 entregou?", () => {
      * mantém a corrida curta o bastante para a medição valer.
      */
     const alvo = process.env.QA_CENARIO;
-    const aRodar = alvo ? CENARIOS.filter((c) => c.nome.startsWith(alvo)) : CENARIOS;
+    const fonte = process.env.QA_PROMPT === "atendimento" ? CENARIOS_CLIENTE : CENARIOS;
+    const aRodar = alvo ? fonte.filter((c) => c.nome.startsWith(alvo)) : fonte;
     console.info(`[QA] cenários nesta corrida: ${aRodar.map((c) => c.nome).join(", ")}`);
 
     const relatorio: string[] = [];
