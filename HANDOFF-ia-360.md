@@ -90,6 +90,160 @@ envelhecer — se a wave entregar as tools e ninguém tirar o pacote da dívida,
 **Terminal:** MaestroConexoes · worktree `/Users/rafaelmelgaco/DeskcommCRM-ia360-w4-organizar`
 · branch `feat/ia-360-w4-organizar` · base `99cd0fc` (contém `origin/main` = `687716a`;
 `git log HEAD..origin/main` vazio, medido antes de começar).
+### Wave 1 — o painel do humano · CONCLUÍDA
+
+**Entregue por:** Arquiteto (worktree `DeskcommCRM-ia360-w1-painel`, branch `feat/ia-360-w1-painel`)
+**Commits:** `ddb53bd` (rota) · `259567e` (tela) · `032f038` (observabilidade) · `41e61b2` (prova em tela + mapa vivo)
+
+#### O que mudou
+
+**1. A rota serve a camada do humano** (`ddb53bd`)
+`app/api/v1/mcp/tools/route.ts` montava a resposta só a partir dos handlers, que carregam a metade
+do MODELO. Agora `lib/mcp/tools/catalogo-servido.ts` junta as duas metades por `name` e **recusa
+servir handler sem entrada no catálogo** — servir com rótulo vazio empurra o defeito para a tela do
+dono da clínica, onde ele aparece como um id monoespaçado dentro de um card. Campos novos no wire:
+`rotulo`, `explicacao`, `o_que_toca`, `risco`, `pacotes`.
+
+**Para as outras waves:** o teste `tests/unit/catalogo-servido.test.ts` prende a bijeção nos DOIS
+sentidos. Entrada no catálogo sem handler faz o `tool_ids` aceitar o id, o agente ser publicado e o
+runtime descartar a capacidade em silêncio (`pickToolsFromMcp` faz `if (!def) continue`) — o humano
+vê ligado na tela algo que nunca chega ao modelo. Se você adicionar entrada, adicione o handler.
+
+**2. A tela por jornada** (`259567e`)
+`ToolPicker.tsx` reconstruído. Caminho padrão = os 6 pacotes; modo avançado = checkbox por
+capacidade com a ficha (rótulo, explicação, o que toca, risco) e o `name` técnico só ali.
+
+A regra **não** mora no componente: `lib/mcp/tools/selecao-por-pacote.ts` é função pura sobre listas
+de nome. O que ela prende, além de `entraPorPacote`:
+- desligar um pacote leva junto a capacidade `critico` **dele** — declarar que a jornada acabou e
+  ficar com o direito de enviar WhatsApp é a pior surpresa possível (falha fechado);
+- o que pertence a outro pacote ainda ligado sobrevive, senão desligar um esvaziaria o vizinho;
+- pacote só com capacidade crítica nunca aparece "ligado".
+
+O teto de 20 saiu de número mágico em três lugares para `TETO_TOOLS_POR_AGENTE`, que
+`lib/ai/agents/validation.ts` importa: o teto que a tela mostra é o que o servidor recusa.
+
+**3. O uso das capacidades, que era log morto** (`032f038`)
+`api_audit_log` registrava `mcp.tool_called` desde a Spec 11 e **nenhuma tela lia**. Nova aba
+**Capacidades** na página do agente: por capacidade, usos, falhas, quantos vieram de teste, última
+vez — e a recomendação do que fazer (invariante 5). `fn_agent_tool_usage` (migration **0103** +
+apêndice no baseline + MANIFEST) faz a agregação no banco; o elo é
+`api_audit_log.request_id = ai_agent_runs.id`.
+
+Medido em pg17 com 708.020 linhas de audit (10,2% tool calls) e 36.000 runs, melhor de 3:
+**345,7 ms** sem janela no lado do audit · **224,0 ms** com a janela nos dois lados · **165,0 ms**
+com um índice parcial dedicado — o índice **não** foi adotado (audit é append-only de escrita
+altíssima; 60 ms numa aba não pagam manutenção em todo INSERT). A medição está na migration como
+linha de base.
+
+#### Evidência observada (SHA `032f038` + prova em tela no working tree)
+
+```
+pnpm typecheck                     → limpo
+pnpm lint                          → 0 erros, 170 avisos (a MESMA linha de base da Wave 0;
+                                     nenhum aviso em arquivo desta wave)
+pnpm vitest (4 arquivos da wave)   → 44 passed
+pnpm test:unit (suíte inteira)     → 1986 passed | 1 failed (1987) — ver nota abaixo
+pnpm test:db                       → 419 passed | 1 skipped (63 arquivos)
+                                     install (ON_ERROR_STOP=1) + update do baseline verdes
+E2E em tela (Playwright, chromium) → 5 passed (45,2s)
+```
+
+**Sobre o 1 vermelho do `test:unit`, sem arredondar para verde.** Em três rodadas
+da suíte inteira nesta máquina, falharam **arquivos diferentes a cada vez**
+(`lib/ui/icons`, `TeamMembersClient`, `_mapping`, `composer-emoji`) — todos testes
+de componente estourando tempo (43s, 17s, 15s, 4,5s) enquanto build, docker e E2E
+disputavam a máquina. Cada um **passa isolado** (medido: os três primeiros juntos,
+23 passed em 15,7s; `composer-emoji`, 1 passed em 5,9s). E nenhum deles referencia
+qualquer arquivo desta wave — `grep` por `selecao-por-pacote|catalogo-servido|
+uso-de-capacidades|UsoDasCapacidades|ToolPicker|AgentTabs|AgentForm|mcp/tools`
+nos quatro: nenhuma ocorrência. Os 4 arquivos de teste da wave passaram em todas
+as rodadas. **Não afirmo suíte 100% verde nesta máquina**; afirmo que o vermelho
+é de carga e não desta wave, e que o CI (máquina dedicada) é quem dá a palavra.
+
+Evidência visual versionada em `evidence/ia-360-w1/`:
+![capacidades por jornada](evidence/ia-360-w1/w1-capacidades-por-jornada.png)
+![pacote ligado sem o envio](evidence/ia-360-w1/w1-pacote-ligado-sem-envio.png)
+![modo avançado](evidence/ia-360-w1/w1-modo-avancado.png)
+![uso das capacidades](evidence/ia-360-w1/w1-uso-das-capacidades.png)
+
+#### Sabotagem (verde de primeira não prova nada)
+
+| Sabotagem | O que reprovou |
+|---|---|
+| `entraPorPacote` → sempre `true` (unit) | 6 de 19, incl. "ligar Atender não dá direito de enviar WhatsApp" |
+| `desligarPacote` não leva a crítica | 1 de 19 |
+| `estadoDoPacote` contando a crítica | 2 de 19 |
+| junção servindo ficha vazia em vez de lançar | 1 de 7 |
+| entrada removida do catálogo | arquivo inteiro reprova no import |
+| precedência dos sinais invertida | os 2 casos de precedência |
+| `fn_agent_tool_usage` sem filtro de agente (Postgres real) | 6 de 6 |
+| idem, sem filtro de `action` | 4 de 6 |
+| idem, `em_teste` fixo em 0 | 1 de 6 |
+| **`entraPorPacote` → `true` + rebuild + E2E NA TELA** | **o caso do WhatsApp reprovou na tela** |
+
+A última é a que importa: unitário prova a função, só a tela prova que a função é a que o clique
+chama.
+
+#### Achados (dois defeitos meus, pegos pela prova em tela)
+
+1. **A recomendação afirmava uma causa que nem sempre é a certa.** "Usada sem estar ligada" dizia
+   "é o caso do pedido de ajuda humana" — verdade para o handoff auto-injetado, mentira para uma
+   capacidade que foi **desligada depois** de já ter sido usada. Corrigido para nomear as duas
+   hipóteses. Só apareceu porque o E2E rodou contra um cenário onde a segunda hipótese existia.
+2. **Um teste meu passou por sorte.** O caso de persistência lia o estado inicial do DOM antes de a
+   configuração carregar, comparava `[]` com `[]` e passava — e ainda deixava o cenário do próximo
+   caso diferente. Agora espera o consumo do teto estabilizar e devolve o cenário pelo seed.
+
+#### Coisas que a W1 NÃO conseguiu provar (declarado de propósito)
+
+- **A recusa do teto de 20 não é alcançável pela tela hoje.** O catálogo tem 16 capacidades e
+  ligar tudo dá menos que 20 — o caminho de recusa existe, tem teste unitário, e só vira alcançável
+  quando W2/W3/W4 entregarem. O que a tela prova hoje é o **consumo** ("11 de 20").
+- **`lib/database.types.ts` não foi regenerado** para incluir `fn_agent_tool_usage` (exigiria
+  conexão ao projeto Supabase remoto). A rota usa o admin client, que não é tipado — não há erro de
+  tipo hoje, mas quem regenerar os types deve incluí-la.
+
+#### Duas coisas que atrapalham quem for rodar E2E depois
+
+- **Configurar exige `admin`, não `manager`.** `page.tsx` passa `readOnly` quando `role < admin`, e
+  o formulário inteiro nasce desabilitado (o switch resolve para `<button disabled>`). É RBAC
+  pré-existente; o spec loga como admin com TOTP. A aba **Capacidades** (observabilidade) é de
+  `manager`, e a rota foi escrita com essa régua de propósito.
+- **As quatro waves compartilham o mesmo Supabase local.** `seed-e2e-credentials.ts` **rotaciona o
+  factor TOTP do admin** e reescreve `.e2e-creds.json`. Quando outra wave roda esse seed, o segredo
+  da sua sessão fica inválido e o login de admin falha com "MFA falhou em 2 tentativas" — sintoma
+  que não parece o que é. Rode o seed imediatamente antes do E2E.
+- **`update` do baseline emite `ERROR: relation "idx_crm_leads_org_expected_close_overdue" already
+  exists`** (pré-existente, não desta wave). O sintoma vale: quem atualiza um clone vê vermelho no
+  terminal e se assusta.
+
+  **Correção de atribuição (era minha, e estava errada).** Eu escrevi que era um `create index` sem
+  guarda **no apêndice**, e propus um forward-fix de uma linha. O `@Assistente e Testes` mediu e
+  apontou o dump; remedi em `43639f5`, árvore limpa: o índice está na **linha 2410** e o apêndice só
+  começa na **3987** — ele é do **dump do `pg_dump`**, não do apêndice. Contagem por parte:
+
+  | parte do baseline | índices | com `if not exists` | tabelas | com `if not exists` |
+  |---|---|---|---|---|
+  | dump (1–3986) | 112 | **0** | 38 | 38 |
+  | apêndice (3987–8844) | 74 | 74 | 60 | 60 |
+
+  Ou seja: **um `if not exists` numa linha faria sumir o erro daquela linha e deixaria 111 iguais** —
+  o forward-fix que propus era o conserto por instância de um problema que é de classe. É também por
+  isso que o `update.sh` roda sem `ON_ERROR_STOP`: com um dump sem guardas, re-aplicar em banco
+  existente **tem** que tolerar erro. Isso é desenho, não descuido.
+
+  Um refinamento sobre o dump, para quem for medir: não é que "nenhum `create` do dump tenha guarda"
+  — as **38 tabelas têm** `CREATE TABLE IF NOT EXISTS`. Quem não tem são os **112 índices**. Importa
+  na hora de conferir a contagem de `ERROR` do `update`: o piso vem dos índices, não das tabelas.
+
+  Consertar de verdade é mudar como o kit gera ou consome o baseline — maior que uma linha e maior
+  que este épico. O `@Assistente e Testes` está medindo quantos `ERROR` o `update` emite de fato e
+  abre item próprio. **Ninguém mexe nisso dentro do IA 360.**
+
+---
+
+## Bugs encontrados
 
 #### Marco 1 — a operação de etapa saiu da rota, e a configuração ganhou autoria (`6d6ea0e`, árvore limpa)
 

@@ -34,6 +34,8 @@ import { TokenCounter } from "@/lib/ui/TokenCounter";
 import { Info } from "@/lib/ui/icons";
 import Link from "next/link";
 
+import { TETO_TOOLS_POR_AGENTE } from "@/lib/mcp/tools/selecao-por-pacote";
+
 import { ModelPicker, useModelMeta } from "./ModelPicker";
 import { CredentialPicker, findCredential } from "./CredentialPicker";
 import { ToolPicker } from "./ToolPicker";
@@ -230,7 +232,8 @@ export function AgentForm(props: Props) {
     if (!form.credential_id) errors.credential_id = "Selecione uma credencial.";
     if (!form.channel_session_id)
       errors.channel_session_id = "Selecione um número de WhatsApp.";
-    if (form.tool_ids.length > 20) errors.tool_ids = "Máximo de 20 tools.";
+    if (form.tool_ids.length > TETO_TOOLS_POR_AGENTE)
+      errors.tool_ids = `Máximo de ${TETO_TOOLS_POR_AGENTE} capacidades por agente.`;
 
     // Tenta o schema completo:
     if (Object.keys(errors).length === 0) {
@@ -681,9 +684,13 @@ export function AgentForm(props: Props) {
             ) : null}
           </Card>
 
-          {/* Tools */}
+          {/* Capacidades */}
           <Card className="space-y-2 p-4">
-            <h3 className="text-sm font-medium">Tools (catálogo MCP)</h3>
+            <h3 className="text-sm font-medium">O que o agente pode fazer</h3>
+            <p className="text-xs text-muted-foreground">
+              Ligue por jornada de trabalho. O agente só consegue fazer o que estiver
+              ligado aqui — e o que estiver ligado, ele fará sozinho durante o atendimento.
+            </p>
             <ToolPicker
               value={form.tool_ids}
               onChange={(ids) => patch({ tool_ids: ids })}

@@ -8824,3 +8824,72 @@ comment on column public.automation_rules.last_change_actor_kind is
   'Espécie de quem ligou/desligou/editou esta regra por último: user | ai | system. NULL = anterior à 0101.';
 
 notify pgrst, 'reload schema';
+
+-- ---- uso das capacidades do agente (migration 0103) ----
+-- Toda chamada de tool do agente já era auditada em api_audit_log
+-- (action='mcp.tool_called') e NENHUMA tela lia — log invisível é log morto
+-- (invariante 3 da doutrina do sistema vivo). Esta função é o leitor.
+--
+-- Vive no banco porque não há FK entre api_audit_log e ai_agent_runs: amarrar os
+-- dois no Node exigiria mandar de volta os ids de ~9.000 runs mensais de um
+-- tenant PME num in(...). O elo é api_audit_log.request_id = ai_agent_runs.id (o
+-- runtime usa o id do run como requestId do McpContext); request_id é text, daí
+-- o cast.
+--
+-- A janela é aplicada nos DOIS lados (r.started_at e a.created_at): os runs saem
+-- de ai_agent_runs_agent_idx, e a data no audit deixa o planner cortar por
+-- idx_audit_action_time em vez de varrer uma tabela que retém 5 anos. Medido em
+-- pg17 com 708.020 linhas de audit (10,2% tool calls) e 36.000 runs, melhor de
+-- 3: sem a janela no audit 345,7 ms · com a janela 224,0 ms · com um índice
+-- parcial dedicado 165,0 ms — o índice NÃO foi adotado, porque api_audit_log é
+-- append-only de escrita altíssima e 60 ms numa aba não pagam manutenção de
+-- índice em todo INSERT.
+--
+-- em_teste separa o que veio de execução de teste (is_dry_run): sem isso a tela
+-- diria "usada 4 vezes" quando as 4 foram o dono clicando em Testar.
+--
+-- security invoker: pelo service role (rota já resolve a org do cookie) a RLS não
+-- se aplica; por usuário autenticado, audit_log_select continua exigindo admin.
+create or replace function public.fn_agent_tool_usage(
+  p_organization_id uuid,
+  p_agent_id        uuid,
+  p_since           timestamptz
+)
+returns table (
+  tool_name  text,
+  total      bigint,
+  falhas     bigint,
+  em_teste   bigint,
+  ultima_vez timestamptz
+)
+language sql
+stable
+security invoker
+set search_path = public
+as $$
+  select
+    a.metadata->>'tool_name'                                          as tool_name,
+    count(*)::bigint                                                  as total,
+    count(*) filter (where a.metadata->>'success' = 'false')::bigint   as falhas,
+    count(*) filter (where r.is_dry_run)::bigint                       as em_teste,
+    max(a.created_at)                                                 as ultima_vez
+  from public.ai_agent_runs r
+  join public.api_audit_log a
+    on  a.request_id      = r.id::text
+    and a.action          = 'mcp.tool_called'
+    and a.organization_id = p_organization_id
+    and a.created_at     >= p_since
+  where r.organization_id = p_organization_id
+    and r.agent_id        = p_agent_id
+    and r.started_at     >= p_since
+    and a.metadata->>'tool_name' is not null
+  group by 1
+$$;
+
+comment on function public.fn_agent_tool_usage(uuid, uuid, timestamptz) is
+  'Uso das capacidades (tools MCP) de um agente: total, falhas, quantos vieram de execução de teste e a última vez. Elo audit<->run é api_audit_log.request_id = ai_agent_runs.id.';
+
+grant execute on function public.fn_agent_tool_usage(uuid, uuid, timestamptz)
+  to authenticated, service_role;
+
+notify pgrst, 'reload schema';
