@@ -199,7 +199,12 @@ describe("texto da contagem — o caminho que saiu do alcance do E2E", () => {
     expect(textoDaContagem(6, 3)).toBe("3 de 6 capacidades ligadas");
   });
 
-  it("uma capacidade só não vira 'capacidades'", () => {
-    expect(textoDaContagem(1, 1)).toBe("1 de 1 capacidade ligadas");
+  it("com uma só, substantivo E particípio ficam no singular", () => {
+    // ⚠️ Esta asserção JÁ GRAVOU a forma errada — "1 de 1 capacidade ligadas".
+    // O nome do caso prometia guardar a concordância e a asserção congelava o
+    // defeito: um teste respondendo com confiança sobre o que não mediu.
+    // Achado pelo Arquiteto (W1) conferindo o merge.
+    expect(textoDaContagem(1, 1)).toBe("1 de 1 capacidade ligada");
+    expect(textoDaContagem(1, 0)).toBe("0 de 1 capacidade ligada");
   });
 });
