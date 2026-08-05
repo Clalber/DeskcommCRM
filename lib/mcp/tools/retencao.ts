@@ -17,12 +17,20 @@
  * Reimplementar qualquer uma faria a IA e o humano operarem por regras
  * diferentes, e o sistema mentiria para um dos dois.
  *
- * ⚠️ `requiresRole: "agent"` EM TODAS, inclusive nas de escrita. O runtime que
- * executa o agente configurado na tela emite um token efêmero com `role:agent`
- * (`lib/ai/runtime/agent.ts`). Exigir `manager` aqui entregaria uma capacidade
- * que aparece na tela, o humano liga, e o servidor recusa em silêncio — o pior
- * modo de falha possível para quem configura. A tenancy continua vindo de
- * `ctx.organizationId`, nunca do input.
+ * ⚠️ PAPEL: as leituras e o encerramento pedem `agent`; AGENDAR e CANCELAR
+ * retorno pedem `ai_operator`. A distinção não é estética.
+ *
+ * As rotas equivalentes (`ai/followups/enrollments` POST e `.../[id]/cancel`
+ * POST) exigem `manager`: um ATENDENTE humano não mexe na régua de retorno pela
+ * tela. Deixar essas duas em `agent` daria à IA um poder que o produto não dá a
+ * uma pessoa do mesmo papel — divergência na direção perigosa. Fechá-las em
+ * `manager` tiraria do agente o que ele existe para fazer, e o invariante 4 da
+ * doutrina (nenhuma demanda sem próximo passo) voltaria a ser incumprível.
+ *
+ * `ai_operator` resolve os dois: senta entre `agent` e `manager`, existe SÓ no
+ * escopo do token efêmero e NUNCA em `user_organizations`. O agente alcança; um
+ * atendente humano não; um gerente continua alcançando pela rota. A tenancy
+ * segue vindo de `ctx.organizationId`, nunca do input.
  *
  * ⚠️ RECUSA DE NEGÓCIO NÃO É EXCEÇÃO. "Já existe um retorno vivo" e "esta
  * oportunidade não existe" são RESPOSTAS: o modelo precisa aprender e seguir, não
@@ -93,7 +101,7 @@ export const crmScheduleFollowup: McpToolDefinition<typeof agendarShape> = {
     "a chamada devolve agendado=false com o motivo, e não é erro — é para você seguir sem duplicar.",
   inputSchema: agendarShape,
   category: "write",
-  requiresRole: "agent",
+  requiresRole: "ai_operator",
   requiresScope: "mcp:write",
   handler: async (input, ctx) => {
     const resultado = await agendaRetornoNoCrm(
@@ -196,7 +204,7 @@ export const crmCancelFollowup: McpToolDefinition<typeof cancelarShape> = {
     "Retorno já disparado ou já cancelado devolve cancelado=false, e isso não é erro.",
   inputSchema: cancelarShape,
   category: "write",
-  requiresRole: "agent",
+  requiresRole: "ai_operator",
   requiresScope: "mcp:write",
   handler: async (input, ctx) => {
     const resultado = await cancelaRetornoNoCrm(

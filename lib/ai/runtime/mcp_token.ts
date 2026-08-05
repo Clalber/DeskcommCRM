@@ -84,7 +84,7 @@ export async function mintEphemeralToken(
         "mcp:write",
         "actor:ai_agent",
         `agent_run:${input.runId}`,
-        "role:agent",
+        "role:ai_operator",
       ],
       expires_at: expiresAt,
     })
