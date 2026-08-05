@@ -305,9 +305,60 @@ nenhum agente das outras waves foi afetado).
 
 **Limitação declarada:** a chave Anthropic desta máquina está **sem crédito**
 (medido direto no provedor: `400 invalid_request_error`, "credit balance is too
-low"), então a observação rodou em **OpenAI/gpt-4o**. Não é equivalência — escolha
-de tool varia entre modelos. Mede se a superfície é usável por um modelo
-competente, não o comportamento do modelo de produção.
+low"), então a observação rodou em **OpenAI**. Não é equivalência — escolha de
+tool varia entre modelos. Mede se a superfície é usável por um modelo competente,
+não o comportamento do modelo de produção da Anthropic.
+
+### Segunda rodada — no PADRÃO NOVO do catálogo (`gpt-5.6-terra`)
+
+Depois da 0101, repeti a observação **no modelo que o catálogo passou a oferecer
+como padrão da OpenAI**. De propósito: se o catálogo aponta para um modelo que o
+motor não consegue usar, quem descobre é o self-hoster, atendendo.
+
+Medido em `llm_calls` — `gpt-5.6-terra` rodou os cinco propósitos do turno
+(`agent_turn`, `checkpoint`, `stage_classifier`, `jailbreak_detect`,
+`promise_semantic`). As 8 tools montaram; **zero** avisos `capabilities_missing`
+(ACH-04 segurando). O agente abriu o chamado *"Avaliar desconto de 20% para 200
+caixas médias"* e respondeu:
+
+> *"Para 20% de desconto, preciso da aprovação do time. Já encaminhei seu pedido
+> para 200 caixas médias, e **alguém da equipe continua o atendimento com você em
+> seguida**."*
+
+A última frase é a `fraseDeExpectativa` do ACH-03 chegando ao cliente — com
+disponibilidade confirmada antes (1 pessoa livre).
+
+**E aqui um dado que muda a leitura do ACH-03:** com `gpt-5.6-terra` o agente
+**chamou** as capacidades novas — `crm_get_contact` e `crm_get_human_case` (2×).
+Com `gpt-4o`, na primeira rodada, não chamou nenhuma. Ou seja: a superfície é
+usável, e o "modelo não usou" era do modelo, não do desenho. O conserto do ACH-03
+continua certo pelo motivo certo — não se aposta a promessa ao cliente na
+capacidade do modelo da vez.
+
+### O alarme falso que eu quase transformei em conserto
+
+Testando os ids novos com `curl` direto em `/v1/chat/completions`, os três
+`gpt-5.6-*` responderam **`Function tools ... are not supported`**, e os dois
+`-pro`, **`This is not a chat model`**. Concluí que cinco dos nove modelos que eu
+tinha acabado de commitar estavam com `supports_tools` errado — e que o padrão da
+OpenAI que eu escolhi deixaria todo self-hoster com um agente sem tools.
+
+Antes de corrigir, medi pelo **caminho real do motor** (`createDefaultRegistry` de
+`lib/agent-engine/edge/llm/providers.ts`, `@ai-sdk/openai@4.0.24`): **os nove
+chamam tools normalmente**. O `curl` estava medindo um endpoint que o produto não
+percorre.
+
+Fica registrado porque o erro é instrutivo e eu já o cometi nesta mesma sessão de
+outra forma: **medi o proxy em vez do caminho real**, e o resultado era alarmante
+o bastante para eu quase "consertar" um catálogo que estava certo. A regra que
+saiu daqui: id de modelo se confere no `/v1/models`, mas capacidade de tool se
+confere pelo registry do motor — são perguntas diferentes.
+
+**O que continua NÃO verificado por chamada:** `claude-opus-5`, `claude-sonnet-5`
+e `claude-opus-4-8` têm existência confirmada (`GET /v1/models`) e `supports_tools`
+**presumido**, porque a conta Anthropic desta máquina não tem crédito. Quem tiver
+crédito deve repetir a sonda do registry antes de confiar no `supports_tools`
+deles.
 
 ### O que o agente fez, turno a turno
 
