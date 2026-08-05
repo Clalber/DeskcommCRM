@@ -33,6 +33,7 @@ export type SinalDeUso =
   | "so_falha"
   | "falhando"
   | "nunca_usada"
+  | "recem_ligada"
   | "so_em_teste"
   | "saudavel";
 
@@ -60,14 +61,25 @@ const GRAVIDADE: Record<SinalDeUso, number> = {
   nunca_usada: 3,
   so_em_teste: 4,
   saudavel: 5,
+  // Recém-ligada não pede decisão nenhuma: vai para o fim da lista.
+  recem_ligada: 6,
 };
 
-function classificar(ligada: boolean, uso: LinhaDeUso | undefined): SinalDeUso {
+function classificar(
+  ligada: boolean,
+  uso: LinhaDeUso | undefined,
+  configuracaoRecente: boolean,
+): SinalDeUso {
   const total = uso?.total ?? 0;
   const falhas = uso?.falhas ?? 0;
   const emTeste = uso?.em_teste ?? 0;
 
-  if (total === 0) return "nunca_usada";
+  // "Nunca usada nos últimos 30 dias, considere desligar" só quer dizer algo se
+  // a capacidade TEVE 30 dias para ser usada. Numa configuração feita agora, a
+  // mesma frase manda o dono desligar o que ele acabou de ligar — foi o que a
+  // prova com IA real mostrou: 7 capacidades "pedindo decisão" dois minutos
+  // depois de criadas.
+  if (total === 0) return configuracaoRecente ? "recem_ligada" : "nunca_usada";
   if (falhas === total) return "so_falha";
   if (falhas > 0) return "falhando";
   if (!ligada) return "fora_da_configuracao";
@@ -80,6 +92,9 @@ function recomendar(
   uso: { total: number; falhas: number; em_teste: number },
   janelaEmDias: number,
 ): string {
+  if (sinal === "recem_ligada") {
+    return "Ligada há pouco tempo. Ainda não houve atendimento em que ela fosse útil — volte aqui depois de alguns dias.";
+  }
   switch (sinal) {
     case "so_falha":
       return uso.total === 1
@@ -110,6 +125,13 @@ export interface MontarUsoInput {
   catalogo: ReadonlyArray<CapacidadeConhecida>;
   linhas: ReadonlyArray<LinhaDeUso>;
   janelaEmDias: number;
+  /**
+   * Quando esta configuração passou a valer (ISO). Se ela é mais nova que a
+   * janela, "nunca usada" não é diagnóstico — é só o relógio.
+   */
+  configuradaEm?: string | null;
+  /** Injetável para o teste não depender do relógio da máquina. */
+  agora?: number;
 }
 
 /**
@@ -120,7 +142,12 @@ export interface MontarUsoInput {
  * catálogo, e listá-la afogaria as poucas linhas que pedem decisão.
  */
 export function montarUsoDeCapacidades(input: MontarUsoInput): CapacidadeComUso[] {
-  const { ligadas, catalogo, linhas, janelaEmDias } = input;
+  const { ligadas, catalogo, linhas, janelaEmDias, configuradaEm } = input;
+
+  const agora = input.agora ?? Date.now();
+  const configuracaoRecente =
+    configuradaEm != null &&
+    agora - new Date(configuradaEm).getTime() < janelaEmDias * 86_400_000;
 
   const usoPorNome = new Map(linhas.map((l) => [l.tool_name, l]));
   const ligadasSet = new Set(ligadas);
@@ -133,7 +160,7 @@ export function montarUsoDeCapacidades(input: MontarUsoInput): CapacidadeComUso[
     const uso = usoPorNome.get(name);
     const ligada = ligadasSet.has(name);
     const conhecida = porNome.get(name);
-    const sinal = classificar(ligada, uso);
+    const sinal = classificar(ligada, uso, configuracaoRecente);
     const total = uso?.total ?? 0;
     const falhas = uso?.falhas ?? 0;
     const emTeste = uso?.em_teste ?? 0;
@@ -176,6 +203,7 @@ export function resumirUso(capacidades: ReadonlyArray<CapacidadeComUso>): {
   return {
     usos: capacidades.reduce((acc, c) => acc + c.total, 0),
     falhas: capacidades.reduce((acc, c) => acc + c.falhas, 0),
+    // `recem_ligada` fica de fora de propósito: ela não pede decisão nenhuma.
     precisam_de_atencao: capacidades.filter(
       (c) => c.sinal === "so_falha" || c.sinal === "falhando" || c.sinal === "nunca_usada",
     ).length,

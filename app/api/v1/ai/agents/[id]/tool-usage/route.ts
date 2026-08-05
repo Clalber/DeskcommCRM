@@ -82,13 +82,13 @@ export async function GET(req: NextRequest, ctx: Ctx): Promise<Response> {
   const { data: versao } = agente.published_version_id
     ? await admin
         .from("ai_agent_versions")
-        .select("id, tool_ids, status")
+        .select("id, tool_ids, status, created_at")
         .eq("organization_id", activeOrg.orgId)
         .eq("id", agente.published_version_id)
         .maybeSingle()
     : await admin
         .from("ai_agent_versions")
-        .select("id, tool_ids, status")
+        .select("id, tool_ids, status, created_at")
         .eq("organization_id", activeOrg.orgId)
         .eq("agent_id", id)
         .order("created_at", { ascending: false })
@@ -124,6 +124,10 @@ export async function GET(req: NextRequest, ctx: Ctx): Promise<Response> {
       ultima_vez: l.ultima_vez,
     })),
     janelaEmDias,
+    // Sem isto, uma configuração feita agora recebe "nunca usada nos últimos 30
+    // dias, considere desligar" — conselho de desligar o que o dono acabou de
+    // ligar.
+    configuradaEm: (versao?.created_at as string | undefined) ?? null,
   });
 
   return ok(

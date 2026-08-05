@@ -242,6 +242,63 @@ desktop?) e mexe no shell de todos — **item para o Maestro**, não conserto de
 Regressão dos dois fixes: `capacidades-do-agente` + `navegacao` = **14 passed** (o
 segundo é justamente quem mede sidebar, dobra e rolagem do menu).
 
+#### Telas descobertas + prova com IA REAL (pedido do Maestro)
+
+Duas telas do épico não tinham spec nenhum: `ai/agents/new` e `ai/usage`. Agora têm
+(`tests/e2e/agente-novo-e-uso.spec.ts`, **5 passed**), e o agente é criado **pelo
+formulário**, não por seed — a diferença entre provar que a tela funciona com dado
+plantado e provar que alguém chega lá sozinho.
+
+**O ciclo inteiro com IA de verdade.** Com a chave real do Rafael, cadastrada **pela
+tela** de credenciais, agente criado **pela tela** com `openai / gpt-5.6-terra`:
+
+```
+turno real: status completed · 6.760 ms · 9.652 tokens in / 210 out · 3 cents
+a IA escolheu sozinha:  crm_list_pipelines  (16:24:46)
+                        crm_list_leads      (16:24:48)
+o painel da W1 mostrou as duas, marcadas "só em teste" (o run era dry-run)
+```
+
+Isto é o fecho da alça que a wave existe para fazer: **configurei pela tela → a IA
+real decidiu usar → eu vejo o que ela usou**. Evidência: `w1-ia-real-uso-no-painel.png`.
+
+**Um defeito MEU que só a IA real revelou.** Dois minutos depois de criar o agente, o
+painel dizia *"7 capacidades pedem uma decisão sua"* e recomendava **desligar** o que o
+dono tinha acabado de ligar — porque "nunca usada nos últimos 30 dias" tratava
+configuração nova e configuração abandonada como a mesma coisa. A frase estava certa
+sobre o dado e errada sobre o mundo. Corrigido com o sinal `recem_ligada`, que compara a
+idade da configuração com a janela; a rota passa `created_at` da versão. Depois do
+conserto, na mesma tela: **"1 capacidade pede uma decisão sua"** — a única que de fato
+falhou. Testado com relógio injetado (`agora`), não com o da máquina.
+
+**Achado para quem cuida do funil:** no mesmo turno real, `crm_create_stage` ("Criar
+etapa no funil") aparece como *falhando sempre* — 1 tentativa, 1 falha. A IA tentou e não
+conseguiu. Não investiguei: não é da W1, e o painel agora torna isso visível, que era o
+objetivo.
+
+**Achado de linguagem, e ele contradiz o pilar 3 do épico.** A tela de criar agente é
+**bilíngue**: o bloco de capacidades fala com o dono da clínica, e o resto da mesma tela
+fala com engenheiro — *"Max steps"*, *"Token budget"*, *"Custo máx (cents)"*, *"Provider"*,
+*"System prompt"*, *"Histórico (msgs)"*, *"Concorrência: 1 por conversa"*, *"Filtro por
+regex"* com exemplo `(?i)\b(pedido|status)\b`, *"Maior prioridade = avaliado primeiro
+pelo dispatcher"*, *"Permitir handoff via tool"*, e o título *"Novo agent"*. O pilar 3
+foi aplicado num bloco e não na tela. Não corrigi: é escopo de produto e toca campos de
+outras waves — **item para o Maestro**, com a captura `w1-nova-01-tela-de-criar.png`.
+
+**O que este spec NÃO alcança, declarado:** o estado "instalei agora e não tenho
+credencial nem número". A primeira versão tentou montá-lo interceptando as listagens no
+navegador e **passou sem medir nada** — a página é Server Component, as consultas
+acontecem no servidor. Montar de verdade exige organização zerada, que este banco não
+tem. O que ficou no lugar é o que dá para cobrar sempre: a tela exige credencial e
+número, então tem de oferecer link para conseguir os dois — e oferece.
+
+**Custo de processo que atrapalhou (para o épico, não para mim):** o TOTP do admin foi
+rotacionado por outra frente **três vezes** durante esta sessão, cada uma derrubando uma
+bateria inteira com "MFA falhou" — sintoma que não parece o que é. Some com isso um
+segundo tropeço próprio: logins em sequência reusavam o **mesmo código** dentro da janela
+de 30 s e o servidor recusa repetição (proteção de replay). O helper deste spec agora
+nunca reenvia o código da janela anterior.
+
 #### Coisas que a W1 NÃO conseguiu provar (declarado de propósito)
 
 - **A recusa do teto de 20 não é alcançável pela tela hoje.** O catálogo tem 16 capacidades e
