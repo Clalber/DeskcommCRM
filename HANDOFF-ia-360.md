@@ -337,7 +337,7 @@ Varredura final de jargão no texto visível (`TreeWalker` sobre nós de texto, 
 `ai/credentials`: **limpo** nas três. O único casamento restante é o nome de uma
 credencial criada pelo seed de teste — dado, não interface.
 
-Prova: `w1-pt-01-criar-agente.png`, `w1-pt-02-uso-de-ia.png`, `w1-pt-03-chaves.png`.
+Prova: `evidence/ia-360-w1/w1-pt-01-criar-agente.png`, `evidence/ia-360-w1/w1-pt-02-uso-de-ia.png`, `evidence/ia-360-w1/w1-pt-03-chaves.png`.
 `pnpm typecheck` limpo · `pnpm lint` 0 erros · E2E das duas telas **10 passed**.
 
 **E o login de E2E agora se recupera sozinho** (`tests/e2e/helpers/login-admin.ts`):
@@ -1801,6 +1801,61 @@ resultado — e até então ninguém as tinha aberto.
 - `evidence/wave7-rede-dossie.png`
 - `evidence/wave8-agente-move-antes.png`
 - `evidence/wave8-agente-move-depois.png`
+
+---
+
+
+### A tela inteira em português, não só o bloco de capacidades (W1)
+
+O pilar 3 tinha sido aplicado NUM BLOCO: o quadro de capacidades falava com o dono da
+clínica e o resto da mesma tela falava com engenheiro. Corrigido em três telas — e dois
+dos itens não eram tradução, eram **promessa falsa**: o card de orçamento dizia
+"pausa ao 100%" de um teto que não existia, e as validações acusavam "Nome obrigatório"
+antes de a pessoa digitar.
+
+- `evidence/README.md`
+- `evidence/canais/README.md`
+- `evidence/canais/baseline/e2e-paralelo.txt`
+- `evidence/canais/baseline/e2e.txt`
+- `evidence/canais/baseline/gates.csv`
+- `evidence/canais/baseline/unit.txt`
+- `evidence/canais/fase2/gates.csv`
+- `evidence/canais/fase2/lint-channels.txt`
+- `evidence/canais/fase2/lint.txt`
+- `evidence/canais/fase2/test-db.txt`
+- `evidence/canais/fase2/typecheck.txt`
+- `evidence/canais/fase2/unit.txt`
+- `evidence/canais/fase3a/envio-real-buildcomponents.txt`
+- `evidence/canais/fase3a/prova-erros-meta.md`
+- `evidence/canais/fase3a/prova-tela-templates.md`
+- `evidence/canais/fase3a/prova-webhook-ao-vivo.md`
+- `evidence/canais/fase4/adapter-meta-real.txt`
+- `evidence/canais/fase4/envio-real-template.txt`
+- `evidence/canais/fase4/gates.csv`
+- `evidence/canais/fase4/prova-adapter-meta.md`
+- `evidence/canais/fase4/prova-cadeia-v5.md`
+- `evidence/canais/fase4/prova-envio-template.md`
+- `evidence/canais/fase4/prova-inbound-ao-vivo.md`
+- `evidence/canais/fase4/prova-tool-send-template.md`
+- `evidence/canais/fase5/prova-tela-conexao.md`
+- `evidence/canais/task1/gates.csv`
+- `evidence/canais/task4/gates.csv`
+- `evidence/canais/task5/gates.csv`
+- `evidence/canais/task6/gates.csv`
+- `evidence/cenario-23-ciclo.md`
+- `evidence/ia-360-w4/qa-turnos-do-agente.md`
+- `evidence/lgpd.md`
+- `evidence/raio-x-realtime.md`
+- `evidence/video-c23/cenario-23-ciclo-5ecb8f.webm`
+- `evidence/wave-0.md`
+- `evidence/wave-1.md`
+- `evidence/wave-2.md`
+- `evidence/wave-3.md`
+- `evidence/wave-4.md`
+- `evidence/wave-5.md`
+- `evidence/wave-6.md`
+- `evidence/wave-7.md`
+- `evidence/wave-8.md`
 
 ---
 
