@@ -8773,3 +8773,16 @@ create index if not exists idx_contacts_avatar_refresh
   where wa_identity is not null and is_anonymized = false;
 
 notify pgrst, 'reload schema';
+
+-- ---- channel_sessions.archived_at (migration 0100) ----
+-- Arquivar em vez de apagar: conversations/messages referenciam
+-- channel_sessions com ON DELETE RESTRICT, então canal com histórico não pode
+-- ser removido — some da UI e a linha fica como âncora das FKs.
+alter table public.channel_sessions
+  add column if not exists archived_at timestamptz;
+
+create index if not exists channel_sessions_org_active_idx
+  on public.channel_sessions (organization_id, created_at)
+  where archived_at is null;
+
+notify pgrst, 'reload schema';
