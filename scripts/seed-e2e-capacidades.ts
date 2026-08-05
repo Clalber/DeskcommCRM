@@ -107,7 +107,14 @@ async function main(): Promise<void> {
     // cenário — senão o segundo `pnpm test:e2e` mede o resto do primeiro.
     const { error } = await admin
       .from("ai_agent_versions")
-      .update({ tool_ids: TOOLS_LIGADAS })
+      .update({
+        tool_ids: TOOLS_LIGADAS,
+        // Configuração DATADA de 60 dias atrás de propósito. O painel distingue
+        // "ligada agora" (não pede decisão) de "ligada há tempo e nunca usada"
+        // (pede), e uma versão criada neste instante só alcançaria o primeiro
+        // caso — o segundo, que é o diagnóstico útil, ficaria sem prova em tela.
+        created_at: new Date(Date.now() - 60 * 86_400_000).toISOString(),
+      })
       .eq("id", versionId);
     if (error) throw error;
   }

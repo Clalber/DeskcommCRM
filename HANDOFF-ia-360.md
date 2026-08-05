@@ -299,6 +299,52 @@ segundo tropeço próprio: logins em sequência reusavam o **mesmo código** den
 de 30 s e o servidor recusa repetição (proteção de replay). O helper deste spec agora
 nunca reenvia o código da janela anterior.
 
+#### A tela bilíngue, resolvida (pedido do Rafael)
+
+O achado anterior era que o pilar 3 tinha sido aplicado **num bloco** e não na tela.
+Agora foi aplicado na tela inteira, em três telas:
+
+| onde | antes | agora |
+|---|---|---|
+| criar agente | "Identificação" · "Modelo & credencial" · "Provider" · "Sessão" | "Quem é este agente" · "A inteligência que ele usa" · "Empresa de inteligência artificial" · "Número conectado" |
+| limites | "Max steps" · "Token budget" · "Custo máx (cents)" · "Histórico (msgs)" | "Freios de segurança": "Ações por atendimento" · "Volume de texto por atendimento" · "Custo máximo por atendimento (centavos)" · "Mensagens anteriores que ele lê" |
+| prioridade | "Maior prioridade = avaliado primeiro pelo dispatcher" | "Quando mais de um agente puder atender a mesma conversa, o de número maior tenta primeiro. Se você só tem um agente, pode deixar como está." |
+| gatilhos | "Eventos" · `message` · "Filtro por regex" com `(?i)\b(pedido\|status)\b` · "Concorrência: 1 por conversa" | "Quando ele entra em ação" · "Uma mensagem nova do cliente" · "Só responder quando a mensagem falar de algo específico" com `pedido\|status\|orçamento` · "Um de cada vez por conversa" |
+| handoff | "Handoff humano" · "Permitir handoff via tool (decisão do agent)" | "Passar para uma pessoa" · "Deixar o agente chamar uma pessoa quando perceber que não é caso dele" |
+| uso de IA | "Invocações" · "Handoff rate" · "p95 latência 17.621 ms" · "Tokens / dia" | "Atendimentos com IA" · "Passaram para uma pessoa" · "Tempo de resposta 16,2 s" · "Volume de texto processado por dia" |
+| chaves | "Chaves BYO (Bring-Your-Own) por provider. Cifradas em repouso (AES-GCM)" | "A conta de inteligência artificial é sua: você contrata direto na Anthropic, OpenAI ou Google e cola a chave aqui." |
+
+**Duas mudanças que não são tradução, são conserto:**
+
+1. **As validações deixaram de acusar.** O formulário recém-aberto exibia "Nome
+   obrigatório." em vermelho antes de a pessoa digitar qualquer coisa. Agora são
+   instruções — "Dê um nome para este agente" —, mesmo comportamento, outro tom.
+2. **O orçamento parou de prometer proteção que não existe.** Sem limite definido, a
+   tela dizia "R$ 0,00 de —" e, ao lado, "pausa ao 100%" — 100% de um teto inexistente.
+   Agora: "Sem limite definido — a IA não vai parar sozinha por gasto."
+
+**Um defeito que eu mesmo criei e peguei antes de commitar:** troquei o título do
+gráfico para "Tempo de resposta por dia (segundos)" e o eixo continuava em
+milissegundos (24.000 na lateral). Título e régua discordando é pior que os dois em
+jargão. Corrigido no eixo e no tooltip.
+
+**Resíduo declarado:** o contador do campo de instruções ainda diz "~21 tokens".
+`lib/ui/TokenCounter.tsx` é compartilhado com outras telas fora do escopo desta wave,
+e "token" não tem tradução consagrada — trocar ali mexe em tela que não é minha.
+
+Varredura final de jargão no texto visível (`TreeWalker` sobre nós de texto, pulando
+`script`/`style` e elementos sem caixa) em `ai/agents/new`, `ai/usage` e
+`ai/credentials`: **limpo** nas três. O único casamento restante é o nome de uma
+credencial criada pelo seed de teste — dado, não interface.
+
+Prova: `w1-pt-01-criar-agente.png`, `w1-pt-02-uso-de-ia.png`, `w1-pt-03-chaves.png`.
+`pnpm typecheck` limpo · `pnpm lint` 0 erros · E2E das duas telas **10 passed**.
+
+**E o login de E2E agora se recupera sozinho** (`tests/e2e/helpers/login-admin.ts`):
+quando outra frente rotaciona o fator TOTP deste banco compartilhado, ele re-semeia
+uma vez e segue, em vez de derrubar a bateria com "MFA falhou". O orçamento de tempo
+dos describes subiu para 240 s para caber essa recuperação.
+
 #### Coisas que a W1 NÃO conseguiu provar (declarado de propósito)
 
 - **A recusa do teto de 20 não é alcançável pela tela hoje.** O catálogo tem 16 capacidades e
