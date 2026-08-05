@@ -73,11 +73,15 @@ export async function GET(_req: NextRequest) {
 
   // Step 3: resolve emails via the Auth Admin API.
   //
-  // NÃO dá para consultar `auth.users` pelo PostgREST: o Supabase só expõe
-  // `public` e `graphql_public`, então `.schema("auth")` devolve PGRST106
-  // ("Invalid schema: auth") e esta rota inteira virava 500 — a tela mostrava
-  // "Erro ao carregar platform admins" mesmo com o service role correto.
-  // A Admin API fala com o GoTrue direto e não depende do schema exposto.
+  // NÃO dá para consultar `auth.users` pelo PostgREST: `auth` não está entre os
+  // schemas expostos (`supabase/config.toml` expõe `public`, `storage` e
+  // `graphql_public`), então `.schema("auth")` devolve PGRST106 ("Invalid
+  // schema: auth") e esta rota inteira virava 500 — a tela mostrava "Erro ao
+  // carregar platform admins" mesmo com o service role correto. A Admin API
+  // fala com o GoTrue direto e não depende do schema exposto.
+  //
+  // Um request por id, e não uma varredura do diretório: aqui N são os platform
+  // admins mais quem concedeu/revogou o grant — unidades, não a base inteira.
   type AuthUser = {
     id: string;
     email: string | null;
@@ -87,10 +91,19 @@ export async function GET(_req: NextRequest) {
   const resolved = await Promise.all(
     allUserIds.map(async (uid) => {
       const { data, error } = await admin.auth.admin.getUserById(uid);
-      // Usuário deletado no Auth mas ainda referenciado aqui é possível (o
-      // grant não some sozinho). Devolvemos a linha com email null em vez de
-      // derrubar a listagem toda por causa de um registro órfão.
-      if (error || !data?.user) return null;
+      if (error) {
+        // Só 404/user_not_found é "esse usuário não existe" — aí o grant é
+        // órfão (o Auth deletou o usuário, o grant não some sozinho) e a linha
+        // sai com email null. Qualquer outro erro é indisponibilidade: o
+        // GoTrue devolve AuthRetryableFetchError SEM lançar em 504/500/socket
+        // fechado, e engolir isso publicava uma tela de admins sem e-mail
+        // nenhum como se fosse o estado real da instalação.
+        const naoExiste =
+          error.status === 404 || error.code === "user_not_found";
+        if (!naoExiste) return { unavailable: error.message } as const;
+        return null;
+      }
+      if (!data?.user) return null;
       return {
         id: data.user.id,
         email: data.user.email ?? null,
@@ -100,8 +113,21 @@ export async function GET(_req: NextRequest) {
     }),
   );
 
+  const indisponivel = resolved.find(
+    (r): r is { unavailable: string } =>
+      r !== null && "unavailable" in r,
+  );
+  if (indisponivel) {
+    return fail("upstream_unavailable", "Auth indisponível", 503, {
+      requestId,
+      details: indisponivel.unavailable,
+    });
+  }
+
   const authMap = new Map<string, AuthUser>(
-    resolved.filter((u): u is AuthUser => u !== null).map((u) => [u.id, u]),
+    resolved
+      .filter((u): u is AuthUser => u !== null && "id" in u)
+      .map((u) => [u.id, u]),
   );
 
   // Step 4: build enriched rows

@@ -50,9 +50,9 @@ export interface TenantHealthResponse {
 
 function wahaOverallStatus(sessions: WahaSession[]): HealthStatus {
   if (sessions.length === 0) return "warning";
-  const hasWorking = sessions.some(
-    (s) => s.status === "WORKING" || s.status === "CONNECTED",
-  );
+  // `channel_sessions_status_check` só admite STARTING/SCAN_QR_CODE/WORKING/
+  // STOPPED/FAILED. Comparar com "CONNECTED" (que não existe) era um ramo morto.
+  const hasWorking = sessions.some((s) => s.status === "WORKING");
   const hasFailed = sessions.some(
     (s) => s.status === "FAILED" || s.status === "STOPPED",
   );
@@ -61,11 +61,64 @@ function wahaOverallStatus(sessions: WahaSession[]): HealthStatus {
   return "ok";
 }
 
+interface NuvemshopClassificacao {
+  /** A loja conta como vinculada neste estado? */
+  vinculada: boolean;
+  /**
+   * Saúde que o próprio estado determina. `null` = o estado não decide sozinho,
+   * quem decide é a validade do token (só `healthy` cai nisso).
+   */
+  saude: HealthStatus | null;
+}
+
+/**
+ * Classificação de CADA valor de `tenant_integrations.status`.
+ *
+ * O vocabulário estava escrito à mão duas vezes aqui (um Set de "desligado" e
+ * uma cadeia de `===` logo abaixo), sem guarda nenhuma — enquanto a tela que
+ * esta rota alimenta (`components/admin/tenants/TenantOverview.tsx`) já tinha a
+ * dela. Exportado para o teste conferir a COBERTURA contra o CHECK
+ * `tenant_integrations_status_check` do `supabase/baseline.sql`, que é o arquivo
+ * que o self-hoster aplica: status novo que uma migration acrescente ao banco
+ * sem entrar aqui reprova em `route.test.ts`.
+ *
+ * `connecting`/`disconnected` são os únicos estados sem loja vinculada. O resto
+ * significa loja vinculada — inclusive `token_expired`, que é a integração
+ * existente pedindo reautorização, e é justamente quando o admin precisa ver
+ * vermelho em vez de "Não conectado" (que ele leria como "nunca conectaram").
+ */
+export const NUVEMSHOP_CLASSIFICACAO: Record<string, NuvemshopClassificacao> = {
+  connecting: { vinculada: false, saude: "warning" },
+  healthy: { vinculada: true, saude: null },
+  token_expired: { vinculada: true, saude: "critical" },
+  scope_missing: { vinculada: true, saude: "critical" },
+  disconnected: { vinculada: false, saude: "warning" },
+  rate_limited: { vinculada: true, saude: "warning" },
+  error: { vinculada: true, saude: "critical" },
+};
+
+// Estado que a rota não sabe classificar sai como NÃO vinculado e em `warning`.
+// Não é o ideal — o card dirá "Não conectado" sobre uma loja que talvez esteja
+// vinculada. O inverso é pior: verde com "Conectado" esconde o estado novo
+// justamente de quem teria de agir, e era assim que a rota se comportava (o
+// ramo final devolvia `ok`). Para valor que o banco aceita este ramo é
+// inalcançável, e quem garante isso é o teste de cobertura contra o CHECK.
+const NUVEMSHOP_DESCONHECIDO: NuvemshopClassificacao = {
+  vinculada: false,
+  saude: "warning",
+};
+
+function classificarNuvemshop(status: string | null): NuvemshopClassificacao {
+  if (status === null) return NUVEMSHOP_DESCONHECIDO;
+  return NUVEMSHOP_CLASSIFICACAO[status] ?? NUVEMSHOP_DESCONHECIDO;
+}
+
 function nuvemshopOverallStatus(
-  connected: boolean,
+  status: string | null,
   daysUntilExpiry: number | null,
 ): HealthStatus {
-  if (!connected) return "warning";
+  const { saude } = classificarNuvemshop(status);
+  if (saude !== null) return saude;
   if (daysUntilExpiry !== null && daysUntilExpiry <= 0) return "critical";
   if (daysUntilExpiry !== null && daysUntilExpiry <= 7) return "warning";
   return "ok";
@@ -154,14 +207,20 @@ export async function GET(
     updated_at: string | null;
   };
   const nuRow = (nuvemshopRes.data?.[0] as NuvemshopRow | undefined) ?? null;
-  const nuConnected = !!nuRow && nuRow.status === "active";
+  // `active` não existe no vocabulário da coluna (ver
+  // `tenant_integrations_status_check`); quem escreve a linha conectada é o
+  // callback do OAuth, com `healthy`. A comparação antiga nunca casava, então
+  // integração perfeita aparecia como "Não conectado" e o ramo crítico de token
+  // vencido era inalcançável.
+  const nuRowStatus = nuRow?.status ?? null;
+  const nuConnected = classificarNuvemshop(nuRowStatus).vinculada;
   const nuExpiresAt = nuRow?.expires_at ?? null;
   const nuDaysUntilExpiry = nuExpiresAt
     ? Math.floor(
         (new Date(nuExpiresAt).getTime() - Date.now()) / (1000 * 60 * 60 * 24),
       )
     : null;
-  const nuStatus = nuvemshopOverallStatus(nuConnected, nuDaysUntilExpiry);
+  const nuStatus = nuvemshopOverallStatus(nuRowStatus, nuDaysUntilExpiry);
 
   // --- AI Budget ---
   type AiBudgetRow = {
