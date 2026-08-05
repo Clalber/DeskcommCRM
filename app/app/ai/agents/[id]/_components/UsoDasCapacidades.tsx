@@ -49,6 +49,10 @@ const SINAL: Record<SinalDeUso, { rotulo: string; classe: string }> = {
     rotulo: "nunca usada",
     classe: "border-amber-500/40 text-amber-700 dark:text-amber-400",
   },
+  recem_ligada: {
+    rotulo: "ligada agora",
+    classe: "border-border/60 text-muted-foreground",
+  },
   so_em_teste: {
     rotulo: "só em teste",
     classe: "border-border/60 text-muted-foreground",

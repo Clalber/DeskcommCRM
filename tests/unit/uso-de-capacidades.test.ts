@@ -34,8 +34,19 @@ function uso(p: Partial<LinhaDeUso> & { tool_name: string }): LinhaDeUso {
   };
 }
 
+const AGORA = Date.parse("2026-08-05T12:00:00.000Z");
+/** Configuração velha o bastante para "nunca usada" ser diagnóstico, não relógio. */
+const CONFIG_ANTIGA = "2026-05-01T12:00:00.000Z";
+
 function montar(ligadas: string[], linhas: LinhaDeUso[], janelaEmDias = 30) {
-  return montarUsoDeCapacidades({ ligadas, catalogo: CATALOGO, linhas, janelaEmDias });
+  return montarUsoDeCapacidades({
+    ligadas,
+    catalogo: CATALOGO,
+    linhas,
+    janelaEmDias,
+    configuradaEm: CONFIG_ANTIGA,
+    agora: AGORA,
+  });
 }
 
 describe("o sinal de cada capacidade", () => {
@@ -163,5 +174,62 @@ describe("o resumo do topo", () => {
   it("tudo saudável não inventa pendência", () => {
     const linhas = montar(["crm_ler"], [uso({ tool_name: "crm_ler", total: 3 })]);
     expect(resumirUso(linhas).precisam_de_atencao).toBe(0);
+  });
+});
+
+describe("configuração recém-feita não pede decisão nenhuma", () => {
+  it("ligada há 2 minutos NÃO manda desligar", () => {
+    // O defeito que a prova com IA real expôs: o painel dizia "nunca usada nos
+    // últimos 30 dias, considere desligar" para sete capacidades ligadas dois
+    // minutos antes. A frase estava certa sobre o dado e errada sobre o mundo.
+    const [linha] = montarUsoDeCapacidades({
+      ligadas: ["crm_ler"],
+      catalogo: CATALOGO,
+      linhas: [],
+      janelaEmDias: 30,
+      configuradaEm: new Date(AGORA - 2 * 60_000).toISOString(),
+      agora: AGORA,
+    });
+    expect(linha!.sinal).toBe("recem_ligada");
+    expect(linha!.recomendacao).not.toMatch(/considere desligar/);
+    expect(resumirUso([linha!]).precisam_de_atencao).toBe(0);
+  });
+
+  it("passada a janela, a mesma capacidade vira cobrança", () => {
+    const [linha] = montarUsoDeCapacidades({
+      ligadas: ["crm_ler"],
+      catalogo: CATALOGO,
+      linhas: [],
+      janelaEmDias: 30,
+      configuradaEm: new Date(AGORA - 31 * 86_400_000).toISOString(),
+      agora: AGORA,
+    });
+    expect(linha!.sinal).toBe("nunca_usada");
+    expect(linha!.recomendacao).toMatch(/considere desligar/);
+    expect(resumirUso([linha!]).precisam_de_atencao).toBe(1);
+  });
+
+  it("sem saber quando foi configurada, mantém a cobrança (não inventa desculpa)", () => {
+    const [linha] = montarUsoDeCapacidades({
+      ligadas: ["crm_ler"],
+      catalogo: CATALOGO,
+      linhas: [],
+      janelaEmDias: 30,
+      configuradaEm: null,
+      agora: AGORA,
+    });
+    expect(linha!.sinal).toBe("nunca_usada");
+  });
+
+  it("recém-ligada não atropela falha: quem quebrou continua em primeiro", () => {
+    const linhas = montarUsoDeCapacidades({
+      ligadas: ["crm_ler", "crm_mover"],
+      catalogo: CATALOGO,
+      linhas: [uso({ tool_name: "crm_mover", total: 2, falhas: 2 })],
+      janelaEmDias: 30,
+      configuradaEm: new Date(AGORA - 60_000).toISOString(),
+      agora: AGORA,
+    });
+    expect(linhas.map((l) => l.sinal)).toEqual(["so_falha", "recem_ligada"]);
   });
 });
