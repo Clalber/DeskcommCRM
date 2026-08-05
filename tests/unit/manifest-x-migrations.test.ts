@@ -63,6 +63,25 @@ const DIVERGENCIAS_CONHECIDAS = {
   semLinha: ["00001_initial_schema"],
 } as const;
 
+/**
+ * Timestamps que já nasciam repetidos. Declarados pelo mesmo motivo das
+ * divergências acima: renomear migration aplicada é reescrever história.
+ */
+const TIMESTAMPS_REPETIDOS_CONHECIDOS = [
+  "20260717190000",
+  "20260718160000",
+  "20260721120000",
+  "20260722160000",
+];
+
+/** Só os arquivos que carregam timestamp no nome — as legadas não têm. */
+function arquivosComTimestamp(): { timestamp: string; arquivo: string }[] {
+  return readdirSync(DIR)
+    .filter((f) => f.endsWith(".sql"))
+    .map((arquivo) => ({ timestamp: /^(\d{14})_/.exec(arquivo)?.[1] ?? "", arquivo }))
+    .filter((m) => m.timestamp !== "");
+}
+
 function nomesDoManifest(): string[] {
   return readFileSync(MANIFEST, "utf8")
     .split("\n")
@@ -126,6 +145,25 @@ describe("MANIFEST × arquivos de migration", () => {
     expect(duplicados.filter((d) => !d.startsWith("0068:"))).toEqual([]);
   });
 
+  // Regra SEPARADA da de número, e não um detalhe dela: número repetido quebra a
+  // IDENTIDADE da migration; timestamp repetido quebra a ORDEM de aplicação, que é
+  // quem decide qual DDL roda antes num banco novo. Sintomas diferentes ⇒ casos e
+  // sabotagens diferentes, senão um passa de carona no vermelho do outro e não se
+  // sabe qual dos dois está de fato vigiado.
+  it("nenhum timestamp é usado duas vezes", () => {
+    const porTimestamp = new Map<string, string[]>();
+    for (const { timestamp, arquivo } of arquivosComTimestamp()) {
+      porTimestamp.set(timestamp, [...(porTimestamp.get(timestamp) ?? []), arquivo]);
+    }
+    const duplicados = [...porTimestamp.entries()]
+      .filter(([ts, fs]) => fs.length > 1 && !TIMESTAMPS_REPETIDOS_CONHECIDOS.includes(ts))
+      .map(([ts, fs]) => `${ts}: ${fs.join(", ")}`);
+    expect(
+      duplicados,
+      "duas migrations com o mesmo timestamp — a ordem de aplicação vira desempate do runner",
+    ).toEqual([]);
+  });
+
   it("as divergências declaradas continuam existindo (a lista não pode envelhecer)", () => {
     // Deixar um nome aqui depois de resolvido mentiria para a próxima pessoa —
     // ela leria "isto é conhecido e aceito" sobre algo que já foi consertado.
@@ -137,5 +175,14 @@ describe("MANIFEST × arquivos de migration", () => {
 
     const jaTemLinha = DIVERGENCIAS_CONHECIDAS.semLinha.filter((c) => registrados.has(c));
     expect(jaTemLinha, "saiu da dívida: remova de DIVERGENCIAS_CONHECIDAS.semLinha").toEqual([]);
+
+    const comTimestamp = arquivosComTimestamp();
+    const jaResolvidos = TIMESTAMPS_REPETIDOS_CONHECIDOS.filter(
+      (ts) => comTimestamp.filter((m) => m.timestamp === ts).length < 2,
+    );
+    expect(
+      jaResolvidos,
+      "saiu da dívida: remova de TIMESTAMPS_REPETIDOS_CONHECIDOS",
+    ).toEqual([]);
   });
 });
