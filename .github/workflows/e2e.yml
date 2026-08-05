@@ -124,7 +124,8 @@ jobs:
             rbac-roles.spec.ts inbox-scope.spec.ts reset-password-mfa.spec.ts \
             degradacao-silenciosa.spec.ts vps-webhook-outbound-ssrf.spec.ts \
             kanban-owner-filter.spec.ts queue-assign.spec.ts \
-            risk-radar.spec.ts invite-lifecycle.spec.ts system-update.spec.ts
+            risk-radar.spec.ts invite-lifecycle.spec.ts system-update.spec.ts \
+            distribuicao-atendimento.spec.ts
         env:
           INTERNAL_SECRET: ci-placeholder-nao-e-segredo
           CPF_ENCRYPTION_KEY: ci-placeholder-nao-e-segredo
@@ -143,10 +144,11 @@ jobs:
           {
             echo "## E2E — cobertura deste job"
             echo ""
-            echo "**Rodou (15 de 20 specs):** smoke, auth, error-pages, password-recovery,"
+            echo "**Rodou (16 de 33 specs):** smoke, auth, error-pages, password-recovery,"
             echo "signup-journey, rbac-roles, inbox-scope, reset-password-mfa,"
             echo "degradacao-silenciosa, vps-webhook-outbound-ssrf, kanban-owner-filter,"
-            echo "queue-assign, risk-radar, invite-lifecycle, system-update."
+            echo "queue-assign, risk-radar, invite-lifecycle, system-update,"
+            echo "distribuicao-atendimento."
             echo ""
             echo "**Não rodou (5):**"
             echo "- precisa de WAHA: followup-journey, webhooks"
