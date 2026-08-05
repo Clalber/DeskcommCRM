@@ -12,6 +12,7 @@
  */
 import { describe, expect, it, vi } from "vitest";
 
+import { TOOL_CATALOG } from "@/lib/mcp/tools/catalog";
 import {
   crmAddCaseNote,
   crmCloseHumanCase,
@@ -91,6 +92,54 @@ function fazerCtx(resolve: Resolver, role: McpContext["role"] = "agent"): McpCon
     supabase: fazerSupabase(resolve) as any,
   } as McpContext;
 }
+
+// ---------------------------------------------------------------------------
+// registro: declaração ↔ handler
+// ---------------------------------------------------------------------------
+
+describe("as seis capacidades chegam de fato ao agregador", () => {
+  const AS_SEIS = [
+    crmListAvailableAttendants,
+    crmListHumanCases,
+    crmGetHumanCase,
+    crmAddCaseNote,
+    crmCloseHumanCase,
+    crmResumeAiAttendance,
+  ];
+
+  it("cada handler tem a declaração correspondente no catálogo", async () => {
+    // `lib/mcp/tools/index.ts` tem a guarda 1:1, mas ela só roda ao IMPORTAR o
+    // agregador fora de produção — e nenhum teste do repo o importava, então a
+    // guarda nunca disparava. Handler sem declaração some da tela do humano;
+    // declaração sem handler vira tool anunciada que estoura ao ser chamada.
+    const { allTools } = await import("@/lib/mcp/tools");
+    const nomesDeHandler = new Set(allTools.map((t) => t.name));
+    const nomesDeCatalogo = new Set(TOOL_CATALOG.map((t) => t.name));
+
+    for (const tool of AS_SEIS) {
+      expect(nomesDeHandler.has(tool.name), `${tool.name} fora do agregador de handlers`).toBe(true);
+      expect(nomesDeCatalogo.has(tool.name), `${tool.name} fora do catálogo`).toBe(true);
+    }
+  });
+
+  it("todas entram no pacote de passar para uma pessoa", () => {
+    for (const tool of AS_SEIS) {
+      const entrada = TOOL_CATALOG.find((t) => t.name === tool.name);
+      expect(entrada?.pacotes, `${tool.name} sem o pacote escalar`).toContain("escalar");
+    }
+  });
+
+  it("só a de devolver o atendimento é crítica — as outras não pedem cerimônia à toa", () => {
+    // `critico` NUNCA entra ligada por pacote (entraPorPacote): marcar demais
+    // esvazia o pacote que o dono do negócio liga, marcar de menos liga sozinha
+    // uma capacidade que não volta atrás.
+    const criticas = AS_SEIS.map((t) => TOOL_CATALOG.find((c) => c.name === t.name))
+      .filter((c) => c?.risco === "critico")
+      .map((c) => c!.name)
+      .sort();
+    expect(criticas).toEqual(["crm_close_human_case", "crm_resume_ai_attendance"]);
+  });
+});
 
 // ---------------------------------------------------------------------------
 // crm_list_available_attendants
