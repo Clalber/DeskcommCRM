@@ -192,6 +192,53 @@ chama.
    configuração carregar, comparava `[]` com `[]` e passava — e ainda deixava o cenário do próximo
    caso diferente. Agora espera o consumo do teto estabilizar e devolve o cenário pelo seed.
 
+#### Passada de QUALIDADE (não de funcionamento) — e o que ela achou
+
+O E2E respondia "funciona?". Faltava "ficou bom?". `tests/sonda-qualidade-capacidades.ts`
+mede o que teste verde não vê: sobreposição real (`elementFromPoint`), contraste
+(WCAG AA), largura, teclado, tema escuro e estado de erro. Rodada final: **0 defeitos,
+7 OK, 3 não-conclusivos declarados**.
+
+**A sonda mentiu três vezes antes de acertar, e isso é o registro mais útil daqui:**
+
+| o que ela disse | por que era falso | o que consertou |
+|---|---|---|
+| "algo cobre o card" (3 pontos) | `elementFromPoint` fora da viewport devolve `null`, e eu lia `null` como "coberto" | rolar até o elemento + só medir ponto dentro do quadro |
+| "não mostra recado no erro" | `isVisible()` **não espera** — o `timeout` dele não faz o locator aguardar | `waitFor({state:"visible"})`; a tela mostra o recado em **96 ms** (500) e **901 ms** (rede caída, 3 tentativas) |
+| "contraste OK" com **2** amostras | aprovação por amostra vazia | seletor mais largo + guarda que reprova amostra < 10; agora **14 medidas**, nenhuma < 4,5:1 |
+
+**Um defeito REAL, meu, e o conserto:** a fila de abas do detalhe do agente passou de
+5 para 6 (eu adicionei "Capacidades") e, em 390px, media **814px** — a página inteira
+rolava na horizontal. Isolei ancestral por ancestral: quem decidia era o container de
+conteúdo do `AppShell`, com o `min-width: auto` que todo flex item tem. Duas linhas:
+`min-w-0` no `AppShell` e `max-w-full overflow-x-auto` na `TabsList`.
+
+Medido depois, em várias larguras (estouro horizontal da página):
+
+| largura | antes | depois | abas |
+|---|---|---|---|
+| 1440 / 1280 / 1024 / 900 | 0 | 0 | cabem |
+| 768 | 0 | **0** | rolam dentro da própria caixa |
+| 600 | — | 2 | rolam |
+| 390 | **476** | **212** | rolam |
+
+Os 212px que sobram em 390px **não são desta tela**: a lista de agentes, que não é
+minha, estoura os mesmos 212px. É o piso do app.
+
+O conserto foi no `components/ui/tabs.tsx` e no `AppShell`, não na minha tela, de
+propósito: **toda** `TabsList` do app tinha a mesma fragilidade, e consertar só onde
+eu esbarrei deixaria as irmãs quebradas com um álibi de "já foi tratado".
+
+**Achado que NÃO é meu e eu não consertei** (`evidence/ia-360-w1/w1-achado-390px-sidebar-fixo.png`):
+em 390px o app é inutilizável — o sidebar é fixo em **240px** e não colapsa, sobrando
+~150px de conteúdo, com campos de formulário de uma letra por linha. Vale para toda
+tela do produto, não só esta. Ponto de quebra medido: **768px é o menor tamanho usável**
+(estouro 0). Isto é decisão de produto (o DeskcommCRM é ferramenta de operação em
+desktop?) e mexe no shell de todos — **item para o Maestro**, não conserto de wave.
+
+Regressão dos dois fixes: `capacidades-do-agente` + `navegacao` = **14 passed** (o
+segundo é justamente quem mede sidebar, dobra e rolagem do menu).
+
 #### Coisas que a W1 NÃO conseguiu provar (declarado de propósito)
 
 - **A recusa do teto de 20 não é alcançável pela tela hoje.** O catálogo tem 16 capacidades e
