@@ -12,6 +12,7 @@
  * regra valendo de verdade — a rota vira transporte puro e não sabe com quem fala.
  */
 import { createAdminClient } from "@/lib/supabase/admin";
+import { ARCHIVED_AT, queryTolerantToMissingArchived } from "../archived";
 import { CHANNEL_PROVIDER_META } from "../capabilities";
 
 export interface MetaWebhookSession {
@@ -28,6 +29,13 @@ export interface MetaWebhookSession {
  * é do APP e vale para todas as WABAs de todos os tenants — sozinho, ele autentica
  * a origem mas não decide o destino. Sem o token, quem conhecesse o segredo
  * escreveria em qualquer organização.
+ *
+ * Canal ARQUIVADO conta como token desconhecido, e essa é a única resposta
+ * honesta: o usuário mandou excluir o canal. A exclusão já revoga a credencial e
+ * rotaciona este token, mas o evento em voo (e a re-entrega que a plataforma faz
+ * de tudo que não recebe 2xx) chegaria com o token antigo e ressuscitaria o
+ * canal — criando contato, conversa e mensagem num inbox onde o operador nem
+ * consegue responder, porque o arquivamento deixa a sessão STOPPED.
  */
 export async function metaSessionByWebhookToken(
   token: string,
@@ -35,12 +43,16 @@ export async function metaSessionByWebhookToken(
   if (!token || token.length < 8) return null;
 
   const admin = createAdminClient();
-  const { data } = await admin
-    .from("channel_sessions")
-    .select("id, organization_id, meta_waba_id")
-    .eq("webhook_path_token", token)
-    .eq("provider", CHANNEL_PROVIDER_META)
-    .maybeSingle();
+  const base = () =>
+    admin
+      .from("channel_sessions")
+      .select("id, organization_id, meta_waba_id")
+      .eq("webhook_path_token", token)
+      .eq("provider", CHANNEL_PROVIDER_META);
+  const { data } = await queryTolerantToMissingArchived(
+    () => base().is(ARCHIVED_AT, null).maybeSingle(),
+    () => base().maybeSingle(),
+  );
 
   if (!data) return null;
   return {

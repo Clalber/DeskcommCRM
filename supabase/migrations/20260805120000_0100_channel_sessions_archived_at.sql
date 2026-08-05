@@ -6,9 +6,12 @@
 -- channel_sessions com ON DELETE RESTRICT, então o banco recusa apagar um canal
 -- que já atendeu alguém — e isso é o comportamento correto, não um obstáculo.
 --
--- Para os canais com histórico, arquivar é a saída: a sessão é deslogada e
--- removida do WAHA (para de consumir recursos e de receber webhooks), a linha
--- permanece como âncora das FKs, e a UI deixa de listá-la.
+-- Para os canais com histórico, arquivar é a saída: o acesso ao número é
+-- revogado no provider — sessão deslogada e removida no canal pareado por QR;
+-- credencial apagada e caminho de webhook rotacionado no canal oficial, que não
+-- tem sessão a deslogar —, a linha permanece como âncora das FKs, e a UI deixa
+-- de listá-la. A resolução de sessão dos webhooks filtra `archived_at`, para que
+-- evento em voo não ressuscite o canal.
 --
 -- Coluna nullable sem default: aditiva, não reescreve a tabela, e toda linha
 -- existente continua ativa (archived_at IS NULL).
