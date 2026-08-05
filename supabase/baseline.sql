@@ -8891,5 +8891,27 @@ comment on function public.fn_agent_tool_usage(uuid, uuid, timestamptz) is
 
 grant execute on function public.fn_agent_tool_usage(uuid, uuid, timestamptz)
   to authenticated, service_role;
+-- ---- retorno cancelado ≠ retorno disparado (migration 0102) ----------------
+-- `cron_jobs.enabled = false` significa DUAS coisas: o one-shot disparou ou
+-- alguém desmarcou. Enquanto forem a mesma linha no banco, o agente não sabe, ao
+-- retomar, que o humano cancelou o retorno — o invariante 2 da doutrina
+-- (continuidade humano→IA) fica pela metade — e a fila mostra "concluída" para
+-- um retorno que ninguém executou.
+--
+-- Sem backfill: as linhas antigas ficam com `cancelled_at` nulo porque essa é a
+-- verdade disponível. Não se sabe quais foram canceladas antes desta coluna
+-- existir, e chutar seria gravar ficção em histórico.
+alter table public.cron_jobs
+  add column if not exists cancelled_at  timestamptz,
+  add column if not exists cancel_reason text;
+
+comment on column public.cron_jobs.cancelled_at is
+  'Quando o retorno foi desmarcado. NULL = nunca cancelado (disparou ou ainda vai disparar). Distingue cancelado de disparado, que enabled=false sozinho não distingue.';
+comment on column public.cron_jobs.cancel_reason is
+  'Por que foi desmarcado, em texto curto e sem PII. Mesmo vocabulário de followup_enrollments.cancel_reason.';
+
+create index if not exists idx_cron_jobs_retorno_vivo
+  on public.cron_jobs (organization_id, contact_id, next_run_at)
+  where enabled = true and job_kind = 'followup_turn';
 
 notify pgrst, 'reload schema';

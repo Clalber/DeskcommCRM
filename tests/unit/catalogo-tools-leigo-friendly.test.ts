@@ -141,15 +141,17 @@ describe("catalogo de tools — linguagem de quem configura", () => {
    * Pacote vazio e promessa quebrada: o humano liga "Nao perder o cliente" e o
    * agente nao ganha nada.
    *
-   * Estes dois nascem vazios e a divida esta DECLARADA aqui de proposito — sao
-   * exatamente o buraco que o epico IA 360 existe para fechar. Nao ha nenhuma
-   * capacidade de follow-up nem de conhecimento no catalogo hoje, e o
-   * invariante 4 da doutrina (nada morre sem proximo passo) depende disso.
+   * `reter` SAIU desta lista na wave 2 do epico (pacote preenchido por
+   * lib/mcp/tools/catalogo/retencao.ts): agendar, cancelar e listar retorno,
+   * radar de risco, encerramento da demanda e proposta de retomada.
    *
-   * Ao entregar a wave que preenche um destes, REMOVA-O desta lista. Deixar o
+   * `evoluir` continua vazio e a divida segue DECLARADA de proposito — nao ha
+   * nenhuma capacidade de conhecimento/memoria no catalogo ainda.
+   *
+   * Ao entregar a wave que preenche o que resta, REMOVA-O desta lista. Deixar o
    * pacote preenchido e a divida declarada aqui e mentir para a proxima pessoa.
    */
-  const PACOTES_VAZIOS_CONHECIDOS: ReadonlyArray<ToolBundle> = ["reter"];
+  const PACOTES_VAZIOS_CONHECIDOS: ReadonlyArray<ToolBundle> = [];
 
   it("todo pacote oferecido na tela tem ao menos uma capacidade dentro", () => {
     const usados = new Set<ToolBundle>(TOOL_CATALOG.flatMap((t) => [...t.pacotes]));

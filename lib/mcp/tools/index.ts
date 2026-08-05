@@ -47,6 +47,14 @@ import {
   crmSetWebhookSourceActive,
   crmUpdateStage,
 } from "./operacao";
+import {
+  crmScheduleFollowup,
+  crmCancelFollowup,
+  crmListFollowups,
+  crmListAtRiskLeads,
+  crmCloseDemand,
+  crmProposeReactivation,
+} from "./retencao";
 
 // Cast via `unknown` porque McpToolDefinition<TInput> nao e covariante
 // em TInput (handler usa TInput em posicao contravariante). Coletar
@@ -76,6 +84,8 @@ export const allTools: ReadonlyArray<McpToolDefinition> = [
   crmListAutomationRules,
   crmListAutomationRuns,
   crmListTeamMembers,
+  crmListFollowups,
+  crmListAtRiskLeads,
   // write
   crmCreateLead,
   crmUpdateLead,
@@ -90,6 +100,10 @@ export const allTools: ReadonlyArray<McpToolDefinition> = [
   crmCreateWebhookSource,
   crmSetWebhookSourceActive,
   crmSetAutomationRuleActive,
+  crmScheduleFollowup,
+  crmCancelFollowup,
+  crmCloseDemand,
+  crmProposeReactivation,
   // handoff (special)
   crmRequestHumanHandoff,
 ] as unknown as ReadonlyArray<McpToolDefinition>;

@@ -18,6 +18,7 @@ import { TOOLS_EVOLUCAO } from "./evolucao";
 import { TOOLS_FUNIL } from "./funil";
 import { TOOLS_GOVERNANCA } from "./governanca";
 import { TOOLS_OPERACAO } from "./operacao";
+import { TOOLS_RETENCAO } from "./retencao";
 import type { McpToolCatalogEntry } from "./tipos";
 
 export type { McpToolCatalogEntry } from "./tipos";
@@ -29,6 +30,7 @@ export const TOOL_CATALOG: ReadonlyArray<McpToolCatalogEntry> = [
   ...TOOLS_GOVERNANCA,
   ...TOOLS_EVOLUCAO,
   ...TOOLS_OPERACAO,
+  ...TOOLS_RETENCAO,
 ];
 
 /**

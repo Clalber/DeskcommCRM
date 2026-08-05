@@ -21,6 +21,7 @@ ser fonte sem ninguém decidir isso.
 | `atualizacao-self-service.architecture.json` | botão de atualizar pela UI — `agent.sh`/`update.sh` (host) ↔ rota do agente ↔ tabelas de instância ↔ rodapé/tela |
 | `gestao-funis.architecture.json` | gestão de funis pela tela do Kanban — 18 peças, 30 arestas; as três dependências do funil e por que só uma o banco defende |
 | `ia-360-organizar.architecture.json` | IA 360 W4 — o agente organiza a operação: 18 peças, 24 arestas; uma regra por operação servindo REST e MCP, a autoria da configuração ao lado do estado, e **quatro não-ligações declaradas** (autoria não aponta para `ai_agents`; o agente não escreve regra automática, nem resposta pronta, nem o vocabulário canônico de marcadores) |
+| `ia-360-retencao.architecture.json` | pacote **Não perder o cliente** (IA 360 · wave 2) — 26 peças, 36 arestas; a regra única do retorno para o motor e para a capacidade configurável, e por que cancelado precisou deixar de ser igual a disparado |
 
 ### `crm-vivo.architecture.json` é PLANTA, não fotografia
 

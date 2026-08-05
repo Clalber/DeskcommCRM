@@ -78,6 +78,11 @@ const ESCRITA_QUE_E_TRABALHO_DE_ATENDENTE: ReadonlyArray<string> = [
   "crm_move_lead_stage",
   // `app/api/v1/messages/` — exige `agent`. Responder cliente é o trabalho do dia.
   "crm_send_whatsapp_message",
+  // `app/api/v1/leads/[id]/lose/` — POST exige `agent`. Encerrar demanda que o
+  // cliente declarou encerrada é o trabalho do dia (paridade medida na W2→base).
+  "crm_close_demand",
+  // `app/api/v1/leads/[id]/reactivation/` — POST exige `agent`.
+  "crm_propose_reactivation",
   // `app/api/v1/conversations/[id]/assign` — exige `agent`: é a fila.
   "crm_assign_conversation",
   // `app/api/v1/conversation-tags` é leitura `viewer`; marcar conversa é trabalho
