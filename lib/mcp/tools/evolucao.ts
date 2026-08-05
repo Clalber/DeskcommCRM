@@ -122,3 +122,99 @@ export const crmListKnowledgeSources: McpToolDefinition<typeof listarMateriaisIn
     return { materiais: data ?? [] };
   },
 };
+
+// ---------------------------------------------------------------------------
+// propostas de melhoria (flywheel) — LEITURA. A IA não aprova a si mesma.
+// ---------------------------------------------------------------------------
+
+const propostasInputShape = {
+  limite: z.number().int().min(1).max(20).optional().default(10),
+};
+
+export const crmListImprovementProposals: McpToolDefinition<typeof propostasInputShape> = {
+  name: "crm_list_improvement_proposals",
+  description:
+    "Lista as propostas de melhoria que o ciclo de aprendizado gerou, com tipo, alvo e a " +
+    "evidência que as motivou. LEITURA apenas: aprovar continua sendo decisão de uma pessoa.",
+  inputSchema: propostasInputShape,
+  category: "read",
+  requiresRole: "agent",
+  requiresScope: "mcp:read",
+  handler: async (input, ctx) => {
+    const { data, error } = await ctx.supabase
+      .from("flywheel_distiller_proposals")
+      .select("id, run_id, dataset, type, target, content, evidence, proposed_at")
+      .eq("organization_id", ctx.organizationId)
+      .order("proposed_at", { ascending: false })
+      .limit(input.limite);
+
+    if (error) throw new Error(`listar_propostas_falhou: ${error.message}`);
+    return { propostas: data ?? [] };
+  },
+};
+
+// ---------------------------------------------------------------------------
+// memória da organização
+// ---------------------------------------------------------------------------
+
+const lerMemoriaInputShape = {
+  limite: z.number().int().min(1).max(50).optional().default(20),
+};
+
+export const crmGetOrgMemory: McpToolDefinition<typeof lerMemoriaInputShape> = {
+  name: "crm_get_org_memory",
+  description:
+    "Lê o que a empresa registrou sobre si mesma — políticas, combinados e aprendizados que " +
+    "valem para todo atendimento. Use antes de inventar regra de negócio.",
+  inputSchema: lerMemoriaInputShape,
+  category: "read",
+  requiresRole: "agent",
+  requiresScope: "mcp:read",
+  handler: async (input, ctx) => {
+    const { data, error } = await ctx.supabase
+      .from("org_memory_entries")
+      .select("id, title, body, source, status, created_at, updated_at")
+      .eq("organization_id", ctx.organizationId)
+      .eq("status", "active")
+      .order("updated_at", { ascending: false })
+      .limit(input.limite);
+
+    if (error) throw new Error(`ler_memoria_falhou: ${error.message}`);
+    return { anotacoes: data ?? [] };
+  },
+};
+
+const gravarMemoriaInputShape = {
+  titulo: z.string().trim().min(3).max(200),
+  corpo: z.string().trim().min(10).max(4000),
+};
+
+export const crmSaveOrgMemory: McpToolDefinition<typeof gravarMemoriaInputShape> = {
+  name: "crm_save_org_memory",
+  description:
+    "Registra um aprendizado que vale para toda a operação, não para um cliente só. Nasce com " +
+    "origem 'agent' para o humano distinguir o que a IA anotou do que ele mesmo escreveu.",
+  inputSchema: gravarMemoriaInputShape,
+  category: "write",
+  // `ai_operator`: a rota equivalente (`ai/memory/entries` POST) exige `manager`
+  // — um atendente humano não escreve política da empresa pela tela, e a IA não
+  // pode ter mais poder que uma pessoa do mesmo papel.
+  requiresRole: "ai_operator",
+  requiresScope: "mcp:write",
+  handler: async (input, ctx) => {
+    const { data, error } = await ctx.supabase
+      .from("org_memory_entries")
+      .insert({
+        organization_id: ctx.organizationId,
+        title: input.titulo,
+        body: input.corpo,
+        source: "agent",
+        status: "active",
+      })
+      .select("id, title, status, created_at")
+      .single();
+
+    if (error) throw new Error(`gravar_memoria_falhou: ${error.message}`);
+    return { anotacao: data };
+  },
+};

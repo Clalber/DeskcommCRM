@@ -37,7 +37,15 @@ import {
   crmResumeAiAttendance,
 } from "./escalacao";
 import { crmRequestHumanHandoff } from "./handoff";
-import { crmSearchKnowledge, crmListKnowledgeSources } from "./evolucao";
+import {
+  crmSearchKnowledge,
+  crmListKnowledgeSources,
+  crmListImprovementProposals,
+  crmGetOrgMemory,
+  crmSaveOrgMemory,
+} from "./evolucao";
+import { crmListContactOrders, crmSearchProducts } from "./comercio";
+import { crmListPrivacyRequests } from "./privacidade";
 import {
   crmArchiveStage,
   crmCreateStage,
@@ -82,6 +90,12 @@ export const allTools: ReadonlyArray<McpToolDefinition> = [
   crmListPipelines,
   crmSearchKnowledge,
   crmListKnowledgeSources,
+  crmListImprovementProposals,
+  crmGetOrgMemory,
+  crmSaveOrgMemory,
+  crmListContactOrders,
+  crmSearchProducts,
+  crmListPrivacyRequests,
   // read — organizar a operação (W4)
   crmListStages,
   crmListTags,
