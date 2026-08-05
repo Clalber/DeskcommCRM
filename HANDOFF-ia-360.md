@@ -1289,6 +1289,52 @@ silêncio de monitor é indistinguível de "está rodando".
 
 ---
 
+## ESTADO FINAL — `dffa823a`, árvore limpa
+
+| Gate | Resultado |
+|---|---|
+| `pnpm typecheck` | exit 0 |
+| `pnpm lint` | exit 0 · 171 avisos, 0 erros |
+| `pnpm test:unit` | **236 arquivos · 2190 passed** |
+| `pnpm test:db` | **67 arquivos · 457 passed \| 1 skipped** (aplica as 6 migrations em banco novo E re-aplica em existente) |
+| `pnpm build` | exit 0 |
+| E2E (passada selada) | **11 specs passed**, com as 45 capacidades e o papel novo no mesmo ambiente |
+
+**Catálogo:** 16 → 45 capacidades. **Migrations:** 6, sem duplicata de `NNNN`, cada
+uma com apêndice idempotente no baseline e linha no MANIFEST. **Evidência
+versionada:** 152 arquivos, todos citados por documento (gate `evidencia-citada`).
+
+### O papel novo, em uma frase
+
+`ai_operator` senta entre `agent` e `manager` e vive **só no escopo do token
+efêmero, nunca em `user_organizations`** — é isso que faz o agente alcançar
+agendar/cancelar retorno sem que nenhuma PESSOA ganhe o mesmo poder. O CHECK do
+banco, `fn_role_at_least` e a RLS ficaram intactos: zero impacto em instalação
+existente.
+
+### Itens abertos (com dono, causa e número)
+
+| # | Item | Estado |
+|---|---|---|
+| 1 | **Starvation do follow-up** — claim global com limite 20; org com >20 vencidos monopoliza cada tick | invisível hoje (single-operator), grave em SaaS multi-tenant |
+| 2 | **`followup-reactivity` intermitente** | **rebaixado, não fechado** — 9/9 verdes dos dois lados no experimento pareado; poder declarado: taxa de 25% sairia zero-em-9 em 7,5% das vezes. CSV das 12 corridas em `docs/testing/` |
+| 3 | **`update.sh` cospe 307 erros** — 112 índices do dump sem `if not exists` | install limpo; conserto é mudar como o kit gera/consome o baseline |
+| 4 | **Irmã do BUG-01** em `deriveActor` | sequenciada de propósito para depois da W2; curada por degradação (entra como sistema em vez de morrer na FK) |
+| 5 | **App inutilizável abaixo de 768px** — sidebar fixo de 240px não colapsa | medido: 150px de conteúdo em 390px. Não consertado: trocaria o escopo do épico no fim |
+
+### O que só apareceu porque alguém testou o que os testes não testavam
+
+- **A W4 testou o USO, não o instante:** aprovou o selo num funil recém-instalado
+  e reprovou depois de simular um mês — 13% do sinal, 12% da altura da lista.
+- **A W3 rodou o AGENTE REAL:** as 6 capacidades estavam ligadas e montadas no
+  turno, e **nenhuma foi chamada**. Ter não é usar. Fechado consertando o caminho
+  de escalação, não a descrição da tool.
+- **A W1 fez a passada de qualidade:** achou a fila de abas empurrando a página
+  inteira, e consertou na **classe** (`AppShell` + `TabsList` compartilhada), não
+  na tela dela.
+
+---
+
 ## Balanço — o que o épico entregou (SHA `34e3425` + merge final da W3)
 
 ### Os três pilares
