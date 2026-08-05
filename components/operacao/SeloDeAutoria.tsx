@@ -1,8 +1,9 @@
 "use client";
+import Link from "next/link";
 import { formatDistanceToNowStrict } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
-import { Robot, Users } from "@/lib/ui/icons";
+import { Robot, Gear } from "@/lib/ui/icons";
 import { autorNaTela, mudadoPorAgente } from "@/lib/operacao/autoria";
 import { cn } from "@/lib/utils";
 
@@ -16,14 +17,17 @@ import { cn } from "@/lib/utils";
  * (doutrina do sistema vivo, invariante 3 — o log existe no `api_audit_log` e
  * nenhuma tela de configuração o lê, então é log morto).
  *
- * ⚠️ O PESO VISUAL É DIFERENTE DE PROPÓSITO, e não é enfeite. Mudança feita por
- * gente é confirmação do que a pessoa acabou de fazer: fica discreta. Mudança
- * feita pelo assistente é NOTÍCIA — é o caso em que o usuário pode não saber que
- * aconteceu, e é o único motivo desta peça existir. Tratar os dois com o mesmo
- * cinza jogaria fora a informação que o dado carrega.
+ * ⚠️ SÓ FALA QUANDO NÃO FOI UMA PESSOA, e isso foi medido (ver
+ * `lib/operacao/autoria.ts`): com o funil já usado, o selo de humano ocupava 7 de
+ * 8 linhas e afogava a única que importava. Mudança feita por gente é confirmação
+ * do que a própria pessoa acabou de fazer; repeti-la em toda linha destrói a
+ * notícia que esta peça existe para dar.
  *
- * ⚠️ SILÊNCIO QUANDO NÃO SE SABE. Linha anterior à migration 0101 não tem
- * autoria, e inventar "alterado por você" ali seria afirmar o que ninguém mediu.
+ * ⚠️ E O SELO LEVA A ALGUM LUGAR. A doutrina (invariante 5) exige que todo dado
+ * na tela responda "por que estou vendo isto **e o que faço a seguir**". A
+ * primeira versão respondia só a metade: dizia ao dono que o assistente mexeu e
+ * o deixava sem saída — um susto sem caminho. Agora é um link para o histórico,
+ * onde a mudança está registrada com o que foi alterado e quando.
  */
 export function SeloDeAutoria({
   kind,
@@ -38,22 +42,27 @@ export function SeloDeAutoria({
   if (!texto) return null;
 
   const doAgente = mudadoPorAgente(kind);
-  const Icone = doAgente ? Robot : Users;
+  const Icone = doAgente ? Robot : Gear;
+  const quando = em
+    ? ` ${formatDistanceToNowStrict(new Date(em), { addSuffix: true, locale: ptBR })}`
+    : "";
 
   return (
-    <p
+    <Link
+      href="/app/audit"
       className={cn(
-        "flex items-center gap-1 text-xs",
+        "inline-flex w-fit items-center gap-1 rounded-sm text-xs underline-offset-2 hover:underline",
         doAgente ? "font-medium text-accent" : "text-muted-foreground",
         className,
       )}
       data-autoria={kind ?? "desconhecida"}
+      title="Ver no histórico o que foi alterado"
     >
       <Icone className="h-3.5 w-3.5 shrink-0" aria-hidden />
       <span>
         {texto}
-        {em ? ` ${formatDistanceToNowStrict(new Date(em), { addSuffix: true, locale: ptBR })}` : ""}
+        {quando} — ver o que mudou
       </span>
-    </p>
+    </Link>
   );
 }

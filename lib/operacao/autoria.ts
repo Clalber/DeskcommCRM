@@ -59,21 +59,32 @@ export function especieDe(actor: Actor): EspecieDeAutor {
 }
 
 /**
- * Como a autoria é dita na tela.
+ * Como a autoria é dita na tela — e QUANDO ela não é dita.
  *
- * ⚠️ A FRASE MUDA DE FORÇA CONFORME O AUTOR, de propósito. "Você/time" é
- * confirmação; "o assistente" é NOTÍCIA — é o caso em que o usuário pode não
- * saber que a mudança aconteceu, e é o único motivo de esta coluna existir. Um
- * texto neutro para os dois ("alterado por…") desperdiçaria a diferença que o
- * dado carrega.
+ * ⚠️ MUDANÇA FEITA POR PESSOA NÃO GERA SELO, e isso foi MEDIDO, não estimado.
+ * A primeira versão mostrava "alterado por você/time" em cinza discreto, e num
+ * funil recém-instalado (uma etapa do agente, oito de fábrica sem autoria) ela
+ * parecia ótima. Simulei um mês de uso normal — o dono renomeando e reordenando
+ * etapas ao longo de semanas — e abri a tela:
  *
- * `null` acontece nas linhas anteriores à migration 0101 (e é honesto: ninguém
- * sabe quem mexeu naquelas) — a tela simplesmente não diz nada.
+ *   selos na tela → assistente: 1 · você/time: 7   (13% do sinal era o que importa)
+ *   altura ocupada por selo: 128px de 1091px da lista (12%)
+ *
+ * Sete linhas dizendo ao dono que foi ele quem mexeu, informação que ele já tem,
+ * afogando a única linha que ele PRECISA ver. O selo existe para responder "fui
+ * eu ou foi ele?" — e responder "foi você" em toda linha destrói a própria
+ * resposta. Silêncio para pessoa é o que faz a notícia continuar sendo notícia.
+ *
+ * ⚠️ A AMBIGUIDADE QUE ISSO CRIA É INÓCUA, e é o que sustenta a decisão: sem
+ * selo passa a significar "foi uma pessoa" OU "é anterior à migration 0101". Nos
+ * dois casos a resposta à pergunta que importa é a mesma — **não foi o
+ * assistente**. Quem precisa do detalhe tem o `api_audit_log`, que guarda os
+ * dois casos com nome e hora.
  */
 export function autorNaTela(kind: string | null): string | null {
   if (kind === "ai") return "alterado pelo assistente";
-  if (kind === "user") return "alterado por você/time";
   if (kind === "system") return "alterado automaticamente pelo sistema";
+  // `user` e `null` não falam: ver o aviso acima.
   return null;
 }
 

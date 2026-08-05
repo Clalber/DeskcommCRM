@@ -71,14 +71,23 @@ async function main(): Promise<void> {
   if (donoErr) throw new Error(donoErr.message);
   if (!dono) throw new Error("nenhum admin ativo na org de E2E");
 
-  // Idempotência: o token anterior deste seed morre antes do novo nascer — dois
-  // tokens vivos com o mesmo nome tornariam impossível dizer qual foi usado.
+  // ⚠️ SÓ O LIXO VELHO MORRE, e a janela existe por um defeito que este seed
+  // causou: a versão anterior revogava TODO token vivo do mesmo nome antes de
+  // emitir. Duas execuções próximas (um rerun, dois specs em sequência) faziam a
+  // segunda matar o token que a primeira estava usando no meio da corrida — e o
+  // sintoma chegava como `Token revoked` numa chamada MCP, parecendo defeito do
+  // produto. Medido: quatro tokens emitidos em 35s, três revogados em cascata.
+  //
+  // Dez minutos é maior que qualquer execução do spec e muito menor que o TTL de
+  // 6h, então o lixo continua sendo limpo sem atropelar quem está correndo.
+  const CORTE_MIN = 10;
   await admin
     .from("api_tokens")
     .update({ revoked_at: new Date().toISOString() })
     .eq("organization_id", orgId)
     .eq("name", NOME)
-    .is("revoked_at", null);
+    .is("revoked_at", null)
+    .lt("created_at", new Date(Date.now() - CORTE_MIN * 60_000).toISOString());
 
   const prefix = `dsk_e2eag_${randomBytes(3).toString("hex")}`;
   const plaintext = `${prefix}_${randomBytes(32).toString("base64url")}`;

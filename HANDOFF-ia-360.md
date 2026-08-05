@@ -691,3 +691,89 @@ na tela, e uso zero dela **não** é sinal de capacidade ociosa — é o esperad
 | D4 | Tool é fachada fina sobre a regra já existente | IA e humano têm que operar pela **mesma** regra, senão o sistema mente para um dos dois |
 | D5 | Gate do pilar 3 é teste mecânico, não comentário | `typecheck` e `lint` passam com comentário falso dentro |
 | D6 | Teste do catálogo em `tests/unit/` e não `tests/invariants/` | é puro, não precisa de Postgres — feedback rápido no job `verify` do CI |
+
+---
+
+## QA de uso — o que só apareceu USANDO o produto
+
+A wave foi entregue com E2E de tela verde. Isso responde "funciona?", não "ficou bom?". A pergunta
+foi feita depois, usando o produto como usuário, e produziu **quatro achados** — três deles
+invisíveis para qualquer teste que eu já tinha.
+
+### A1 · A tela de configuração não recebe NADA da camada de apresentação · CONFIRMADO
+
+Medido em `/api/v1/mcp/tools`, que é a fonte do `ToolPicker`:
+
+```
+capacidades da W4 servidas à tela: 15/15
+campos servidos: ["id","description","input_schema","category","requires_role","requires_scope"]
+campo "rotulo": 0/15 · "explicacao": 0/15 · "risco": 0/15 · "pacotes": 0/15 · "apenasHumano": 0/15
+```
+
+O dono lê `crm_list_stages` e a descrição escrita **para o modelo**. Pior: as seis capacidades
+`apenasHumano` aparecem marcáveis, sem aviso — o dono liga achando que o agente vai usar, e **ela
+nunca dispara**, que é literalmente o defeito que o campo foi criado para impedir. O campo existe
+no dado e não chega à tela. **É a W1, mas o buraco é de agora** — enquanto ela não sai, ligar uma
+capacidade de configuração é uma promessa que o produto não cumpre e não avisa.
+
+### A2 · Dois pacotes ocupam o teto inteiro do agente · CONFIRMADO
+
+| pacote | capacidades | entram por pacote (as `critico` ficam de fora) |
+|---|---|---|
+| atender | 12 | 11 |
+| vender | 9 | 9 |
+| escalar | 6 | 6 |
+| **organizar** | **17** | **13** |
+
+Teto por agente: **20** (`lib/ai/agents/validation.ts`). Medido: `organizar + atender` = **20,
+exatamente no limite**; `organizar + atender + vender` = **25, estoura**. A combinação mais natural
+de uma clínica não cabe. A Decisão 1 do épico foi "pacotes em vez de 60 checkboxes" — e o pacote
+que esta wave entregou sozinho come 65% do orçamento. **Eu adicionei 15 capacidades sem nunca
+perguntar quantas cabem.**
+
+### A3 · O selo de autoria virava ruído com o funil usado · CORRIGIDO
+
+Eu aprovei o selo num funil recém-instalado: uma etapa do agente, oito de fábrica sem autoria.
+Simulei um mês de uso normal e abri a tela:
+
+```
+antes  → assistente: 1 · você/time: 7   (13% do sinal era o que importa)
+         altura de selo: 128px de 1091px da lista (12%)
+depois → assistente: 1 · você/time: 0   (100%)
+         altura de selo: 16px de 895px (2%) — a lista encolheu 196px
+```
+
+Sete linhas dizendo ao dono que foi ele quem mexeu, afogando a única que ele precisa ver.
+**Correção:** mudança feita por pessoa não gera selo (`lib/operacao/autoria.ts`). A ambiguidade
+resultante é inócua — sem selo passa a significar "foi uma pessoa" **ou** "é anterior à 0101", e
+nos dois casos a resposta à pergunta que importa é a mesma. Guardado em
+`tests/e2e/qa-selo-no-funil-usado.spec.ts`, que reprova se o ruído voltar.
+
+### A4 · O selo era um susto sem saída · CORRIGIDO
+
+A doutrina (invariante 5) exige que todo dado responda "por que vejo isto **e o que faço a
+seguir**". O selo respondia só a primeira metade: dizia que o assistente mexeu e deixava o dono
+sem caminho. Agora é link para o histórico (`/app/audit`), com o texto "— ver o que mudou".
+
+### O que ficou BLOQUEADO, e não vou fingir que testei
+
+**Nunca vi um modelo de verdade escolhendo estas capacidades.** Montei o teste completo
+(`tests/e2e/qa-agente-usa-as-maos.spec.ts`, quatro cenários, pelo mesmo endpoint do botão
+"Executar teste"), e os quatro turnos falharam em ~400ms com:
+
+```
+error_code: runtime_error
+Your credit balance is too low to access the Anthropic API.
+```
+
+A credencial do banco **e** a chave do ambiente estão sem saldo (confirmei com chamada direta à
+API: HTTP 400, mesma mensagem). O spec fica pronto para rodar quando houver crédito. Até lá,
+seguem **sem resposta**: o modelo escolhe a tool certa? as 15 novas degradam a escolha? o retorno
+serve para ele? `crm_list_tags` de fato o impede de inventar marcador?
+
+### Um defeito do meu próprio instrumento, achado no caminho
+
+`seed-e2e-agente-mcp.ts` revogava **todo** token vivo do mesmo nome antes de emitir. Duas
+execuções próximas faziam a segunda matar o token da primeira no meio da corrida — e o sintoma
+chegava como `Token revoked` numa chamada MCP, **parecendo defeito do produto**. Medido: quatro
+tokens em 35s, três revogados em cascata. Agora só revoga o que tem mais de 10 minutos.
