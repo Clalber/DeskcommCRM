@@ -197,6 +197,16 @@ async function main(): Promise<void> {
     `delete from agent_inbox_items where organization_id = $1 and ref_kind = 'contact' and ref_id = $2`,
     [orgId, contatoId],
   );
+  // As atividades TAMBÉM entram no reset, e antes de `performHumanHandoff`.
+  // Sem isto o E2E passaria com sobra da corrida anterior: a asserção "a volta
+  // aparece na linha do tempo" é `toContain`, e uma linha de ontem a satisfaz
+  // sem que esta corrida tenha emitido nada.
+  if (negocioId) {
+    await pool.query(`delete from crm_lead_activities where organization_id = $1 and lead_id = $2`, [
+      orgId,
+      negocioId,
+    ]);
+  }
   await pool.query(
     `update conversations set assigned_to_user_id = null, assignee_kind = 'ai', status = 'ai_handling' where id = $1`,
     [conversaId],
