@@ -136,9 +136,13 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     status: "WORKING",
   };
 
-  // `update` quando já existe em vez de upsert: a trava única de (org, phone_number)
-  // é DEFERRABLE e o Postgres recusa constraint deferível como árbitro de
-  // `ON CONFLICT` — medido ao criar a sessão de teste da Fase 3b.
+  // `update` quando já existe em vez de upsert: a trava única de (org,
+  // phone_number) não serve de árbitro de `ON CONFLICT` aqui. Era DEFERRABLE
+  // (medido ao criar a sessão de teste da Fase 3b, e o Postgres recusa
+  // constraint deferível na inferência); a migration 0106 a trocou por um índice
+  // único PARCIAL (`where archived_at is null`), que só seria inferível se a
+  // cláusula repetisse o predicado — e o cliente do PostgREST não expõe isso.
+  // Mudou a razão, não a escolha.
   const { error } = existente
     ? await admin.from("channel_sessions").update(linha).eq("id", existente.id)
     : await admin.from("channel_sessions").insert({ ...linha, webhook_secret_encrypted: cifrado });

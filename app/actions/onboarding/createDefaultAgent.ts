@@ -8,6 +8,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 
 import { audit } from "@/lib/audit";
+import { listSelectableChannels } from "@/lib/channels/selectable";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { aiAgentDefaultSchema, type PromptTemplate } from "@/lib/schemas/onboarding";
 import { requireOnboardingCtx, patchOnboardingState, OnboardingError } from "./_shared";
@@ -39,14 +40,11 @@ async function publishFirstVersion(
   systemPrompt: string,
   userId: string,
 ): Promise<void> {
-  const { data: session } = await admin
-    .from("channel_sessions")
-    .select("id")
-    .eq("organization_id", orgId)
-    .order("created_at", { ascending: true })
-    .limit(1)
-    .maybeSingle();
-  if (!session?.id) return; // sem canal ainda: fica rascunho, e a lista mostra "Rascunho"
+  // Mesma lista que os seletores das telas de IA: canal arquivado não é destino
+  // válido de agente, e publicar uma versão apontando para um deixaria o
+  // onboarding terminar com um agente que nunca receberia uma mensagem.
+  const [canal] = await listSelectableChannels(admin, orgId);
+  if (!canal) return; // sem canal ainda: fica rascunho, e a lista mostra "Rascunho"
 
   const { data: model } = await admin
     .from("ai_models")
@@ -65,7 +63,7 @@ async function publishFirstVersion(
       system_prompt: systemPrompt,
       provider: "anthropic",
       model: (model?.model_id as string) ?? "claude-sonnet-4-6",
-      channel_session_id: session.id as string,
+      channel_session_id: canal.id,
       status: "published",
       published_at: new Date().toISOString(),
       created_by: userId,
