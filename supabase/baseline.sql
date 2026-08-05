@@ -9113,4 +9113,65 @@ create unique index if not exists channel_sessions_phone_per_org_unique
   on public.channel_sessions (organization_id, phone_number)
   where archived_at is null;
 
+-- ---- SECURITY DEFINER exposta a anon/authenticated (migration 0108) ----
+-- Issue #128. O `ALTER DEFAULT PRIVILEGES ... GRANT ALL ON FUNCTIONS TO anon`
+-- (e a irmã TO authenticated) lá em cima vale para toda função criada DEPOIS
+-- dele — isto é, para TODO apêndice deste arquivo, que sempre nasce no fim — e
+-- concede grant DIRETO, que `revoke all ... from public` não remove. Copiar as
+-- duas linhas padrão de uma função antiga produz função exposta.
+--
+-- Medido com o baseline da main aplicado: das 25 `security definer` de public,
+-- 8 tinham EXECUTE para anon — incluindo `fn_publish_ai_agent_version`, que
+-- ESCREVE e recebe o org por argumento sem checar membership.
+--
+-- REGRA (vigiada por tests/invariants/hardening-definer-varredura.test.ts):
+--   anon          → nenhuma definer de public executável, sem exceção;
+--   authenticated → definer VOLÁTIL só continua executável com call site de
+--                   sessão de usuário (emit_event, fn_conversation_assign,
+--                   fn_log_event). As demais só são chamadas pelo client de
+--                   service role, e o grant era escrita cross-tenant à toa.
+-- Idempotente e auto-curativo: revoke de privilégio ausente é no-op.
+
+-- ---- anon: nenhuma SECURITY DEFINER de public ----
+-- Duas origens de EXECUTE, e cada uma pede um revoke diferente — medir o ACL
+-- real (`proacl`) foi o que mostrou isso: `{=X/postgres,...}` é grant a PUBLIC,
+-- que `revoke ... from anon` NÃO remove. As duas linhas juntas cobrem os dois
+-- caminhos, e o re-grant explícito devolve quem de fato precisa.
+revoke execute on function public.fn_is_platform_admin() from public, anon;
+revoke execute on function public.fn_user_org_ids() from public, anon;
+revoke execute on function public.fn_user_role_in_org(uuid) from public, anon;
+revoke execute on function public.fn_user_role_in(uuid) from public, anon;
+revoke execute on function public.fn_role_at_least(uuid, text) from public, anon;
+revoke execute on function public.fn_publish_ai_agent_version(uuid, uuid, uuid) from public, anon;
+revoke execute on function public.fn_emit_conversation_routing() from public, anon;
+revoke execute on function public.rls_auto_enable() from public, anon;
+
+-- ---- authenticated: definer volátil sem call site de sessão de usuário ----
+revoke execute on function public.fn_upsert_wa_contact(uuid, text, text, text, text, text) from authenticated;
+revoke execute on function public.fn_upsert_wa_conversation(uuid, uuid, uuid) from authenticated;
+revoke execute on function public.fn_mark_conversation_message(uuid, text, text, timestamptz) from authenticated;
+revoke execute on function public.fn_publish_ai_agent_version(uuid, uuid, uuid) from authenticated;
+revoke execute on function public.activate_kb_version(uuid, uuid) from authenticated;
+-- Funções de TRIGGER: ninguém as chama por RPC, e o disparo do trigger não
+-- consulta EXECUTE. O grant só existia por herança dos padrões do Postgres.
+revoke execute on function public.fn_emit_conversation_routing() from authenticated;
+revoke execute on function public.rls_auto_enable() from authenticated;
+
+-- ---- re-grant explícito: quem precisa continua podendo (probe positivo) ----
+grant execute on function public.fn_upsert_wa_contact(uuid, text, text, text, text, text) to service_role;
+grant execute on function public.fn_upsert_wa_conversation(uuid, uuid, uuid) to service_role;
+grant execute on function public.fn_mark_conversation_message(uuid, text, text, timestamptz) to service_role;
+grant execute on function public.fn_publish_ai_agent_version(uuid, uuid, uuid) to service_role;
+grant execute on function public.activate_kb_version(uuid, uuid) to service_role;
+grant execute on function public.fn_emit_conversation_routing() to service_role;
+grant execute on function public.rls_auto_enable() to service_role;
+-- Helpers de RLS: as policies são avaliadas com o papel de quem consulta, então
+-- `authenticated` PRECISA de EXECUTE — sem isto toda leitura logada quebra.
+grant execute on function public.fn_is_platform_admin() to authenticated, service_role;
+grant execute on function public.fn_user_org_ids() to authenticated, service_role;
+grant execute on function public.fn_user_role_in_org(uuid) to authenticated, service_role;
+grant execute on function public.fn_user_role_in(uuid) to authenticated, service_role;
+grant execute on function public.fn_role_at_least(uuid, text) to authenticated, service_role;
+
+
 notify pgrst, 'reload schema';
