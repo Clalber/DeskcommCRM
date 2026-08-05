@@ -1224,6 +1224,74 @@ apareceu. O que invalidou foi o **agregado**, não os controles.
 
 ---
 
+## Passadas de QUALIDADE — o que o E2E verde não pegava
+
+O E2E prova que funciona. Não prova que é **bom de usar**, e não prova o que
+acontece depois de a instalação viver um pouco. Duas waves fizeram essa passada
+por conta própria, e as duas acharam defeito real.
+
+### O selo de autoria virava ruído com o funil usado (W4)
+
+O selo foi aprovado num funil **recém-instalado**: uma etapa do agente, oito de
+fábrica sem autoria. Simulado um mês de uso e medido de novo: assistente 1,
+você/time 7 — **13% do sinal era o que importa, e o selo comia 12% da altura da
+lista**. Sete linhas dizendo ao dono que foi ele mesmo quem mexeu, afogando a
+única que ele precisa ver.
+
+Corrigido: mudança feita por pessoa não gera selo. **100% do sinal, 2% da altura,
+lista 196px mais curta.** A ambiguidade resultante é inócua — sem selo significa
+"foi uma pessoa" ou "é anterior à 0101", e nos dois casos a resposta à pergunta
+que importa é a mesma.
+
+Segundo defeito no mesmo lugar: o selo respondia *"por que vejo isto"* e não
+*"o que faço a seguir"* — metade do invariante 5.
+
+Evidência: `evidence/ia-360-w4/qa-selo-no-funil-usado.png` e
+`evidence/ia-360-w4/qa-tela-de-escolha-de-capacidades.png`.
+
+### A fila de abas empurrava a página inteira (W1)
+
+Ao adicionar "Capacidades", a fila foi de 5 para 6 abas e mediu 814px em 390px de
+viewport — fazendo a **página** rolar na horizontal. Isolado ancestral por
+ancestral: a causa era o `min-width: auto` que todo flex item tem, no container do
+AppShell.
+
+**Consertado na classe, não na instância:** `min-w-0` no `AppShell` e
+`max-w-full overflow-x-auto` na `TabsList` compartilhada — toda fila de abas do
+app tinha a mesma fragilidade. Estouro em 390px caiu de 476px para 212, e os 212
+restantes foram medidos como **não sendo dessa tela** (a lista de agentes estoura
+os mesmos).
+
+Evidência: `evidence/ia-360-w1/w1-tablet-768px.png` (largura usável) e
+`evidence/ia-360-w1/w1-tema-escuro.png`.
+
+### Achado de produto NÃO consertado, com o número junto
+
+**Em 390px o app inteiro é inutilizável:** o sidebar é fixo em 240px e não
+colapsa, sobrando 150px de conteúdo — campo de formulário com uma letra por
+linha. **Menor largura usável medida: 768px, com estouro zero.**
+
+Vale para toda tela do produto e mexe no shell de todas. **Decisão do Maestro:
+não consertar neste épico** — trocaria o escopo no fim, sem pedido. Fica com a
+medição junto, que é o que torna o item acionável: quem pegar decide com número,
+não com impressão.
+
+### Três sondas que mentiram antes de acertar (W1)
+
+Avisos que ela mandou em vez de só consertar o próprio caso, e que valem para
+quem for medir tela:
+
+| Sonda | Como mentiu |
+|---|---|
+| `elementFromPoint` | devolve `null` fora da viewport, e `null` foi lido como "coberto" — ausência lida como fato |
+| `isVisible` | **não espera**: o timeout escrito ali não faz o locator aguardar, e a sonda acusou tela sadia que mostra o recado em 96ms |
+| contraste | aprovado com amostra de **2 elementos** |
+
+O padrão comum: **a sonda respondeu com confiança sobre o que não mediu.** É a
+mesma família dos defeitos do épico, na camada da ferramenta de medir.
+
+---
+
 ## Regras de método que este épico produziu
 
 Extraídas de erros cometidos aqui, não de teoria. Cada uma tem o caso que a originou.
