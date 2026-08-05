@@ -705,6 +705,27 @@ export async function runAgentTurn(
   // Sem isso, self-host que configurou tudo pela tela (que não preenche default_model)
   // morria no primeiro classificador: "modelo LLM não definido".
   const agentModel = agentConfig?.model;
+  // Bug observado em prod (2026-08-05): quando o classificador auxiliar não tem
+  // model dedicado (env vazio) e cai no fallback `agentModel`, o `model` vinha do
+  // agente ativo mas o PROVIDER continuava o default da org — um agente mcp_agent
+  // em openai (ex.: gpt-5-mini) mandava o model id certo pro provider errado
+  // (anthropic), 404 "not_found_error", turno inteiro derrubado (não só o
+  // classificador). Model e provider/credencial têm que vir do MESMO lugar: se o
+  // knob de env está configurado, ele já pressupõe o provider default da org (uso
+  // consciente do operador) — sem override. Se caiu no fallback do agente, o
+  // provider/credencial do agente vêm JUNTO, nunca soltos.
+  function auxModelArgs(
+    configuredModel: string | undefined,
+  ): { model?: string; llmOverride?: { provider: string; credentialId: string | null } } {
+    if (configuredModel !== undefined) return { model: configuredModel };
+    if (agentModel === undefined) return {};
+    return {
+      model: agentModel,
+      ...(agentConfig !== null
+        ? { llmOverride: { provider: agentConfig.provider, credentialId: agentConfig.credentialId } }
+        : {}),
+    };
+  }
   const turnContextKnobs =
     agentConfig !== null
       ? { historyLimit: agentConfig.historyMessageWindow, maxTokens: deps.knobs.maxContextTokens }
@@ -916,9 +937,7 @@ export async function runAgentTurn(
             { tenantId, leadId, jobId: job.id },
             {
               candidate,
-              ...((deps.knobs.promiseSemantic?.model ?? agentModel) !== undefined
-                ? { model: (deps.knobs.promiseSemantic?.model ?? agentModel) as string }
-                : {}),
+              ...auxModelArgs(deps.knobs.promiseSemantic?.model),
             },
             { ...(deps.registry !== undefined ? { registry: deps.registry } : {}), log: runLog },
           )
@@ -1632,9 +1651,7 @@ export async function runAgentTurn(
       {
         context: effectiveContext,
         currentStage,
-        ...((deps.knobs.stageClassifier.model ?? agentModel) !== undefined
-          ? { model: (deps.knobs.stageClassifier.model ?? agentModel) as string }
-          : {}),
+        ...auxModelArgs(deps.knobs.stageClassifier.model),
       },
       { registry: deps.registry, log: runLog },
     );
@@ -1655,9 +1672,7 @@ export async function runAgentTurn(
       { tenantId, leadId, jobId: job.id },
       {
         message: skillSignal,
-        ...((deps.knobs.jailbreak.model ?? agentModel) !== undefined
-          ? { model: (deps.knobs.jailbreak.model ?? agentModel) as string }
-          : {}),
+        ...auxModelArgs(deps.knobs.jailbreak.model),
       },
       { registry: deps.registry, log: runLog },
     );
