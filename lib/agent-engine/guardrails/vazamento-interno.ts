@@ -248,6 +248,36 @@ const REGRAS: ReadonlyArray<RegraTexto> = [
     rotulo: '403',
     re: /\b(?:erro|error|status|http)\b[^.!?\n]{0,12}?\b403\b|\b403\b\s*(?:forbidden|unauthorized)\b/g,
   },
+  // (E2) IDENTIFICADOR OPACO — a segunda porta, achada medindo turno real: um UUID
+  // de usuário chegou à tela do cliente. Detector de PALAVRA não pega isto, porque
+  // não há palavra: é FORMA.
+  //
+  // O formato 8-4-4-4-12 hex não colide com nada que o cliente reconheça — número
+  // de pedido (`2026-00815`), CPF, CNPJ e data têm outra forma, e todos foram
+  // medidos passando limpo. Um identificador assim NUNCA significa nada para quem
+  // lê: se o agente precisa referenciar algo, referencia pelo nome ou pelo número
+  // que o cliente conhece.
+  {
+    categoria: 'erro_cru',
+    rotulo: 'identificador interno',
+    re: /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi,
+  },
+  // (E3) CÓDIGO DE ERRO OPACO — a outra metade da terceira porta: o código veio do
+  // DADO que a tool devolveu, não do nome dela.
+  //
+  // Os códigos canônicos com underscore (`lead_not_found`) já caem na regra (A) de
+  // snake_case — medido. Aqui ficam só os que ESCAPAM dela: SQLSTATE do Postgres e
+  // código do PostgREST.
+  //
+  // ⚠️ SQLSTATE EXIGE VIZINHANÇA DE ERRO. Cinco dígitos soltos são ambíguos: o
+  // pedido `2026-00815` do cliente tem cinco. Sem o contexto, o gate barraria a
+  // frase que o cliente mais precisa ouvir.
+  {
+    categoria: 'erro_cru',
+    rotulo: 'código de erro do banco',
+    re: /\b(?:erro|error|falh\w+|code|código|codigo)\b[^.!?\n]{0,20}?\b\d{5}\b|\b\d{5}\b[^.!?\n]{0,12}?\b(?:erro|error)\b/gi,
+  },
+  { categoria: 'erro_cru', rotulo: 'código PostgREST', re: /\bPGRST\d{3}\b/gi },
   // (E) ERRO CRU — o texto que a máquina escreveu para a máquina.
   { categoria: 'erro_cru', rotulo: 'Error:', re: /\berror\s*:/g },
   { categoria: 'erro_cru', re: /\b(?:typeerror|referenceerror|syntaxerror|rangeerror)\b/g },
