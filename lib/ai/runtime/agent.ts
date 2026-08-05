@@ -340,18 +340,18 @@ export async function runAgent(input: RunAgentInput): Promise<RunAgentResult> {
 
     const auth: McpAuthResult = {
       organizationId: run.organization_id,
-      role: "agent",
+      role: "ai_operator",
       actor: {
         type: "ai_agent",
-        // O id do AGENTE, nao o do run: `crm_lead_activities.actor_agent_id` tem
-        // FK para `ai_agents(id)` e `lib/leads/activity-emitter.ts` deriva a
-        // autoria de `actor.id`. Com o id do run a atividade quebrava com 23503
-        // e falhava baixo, em silencio — a IA agia e a timeline nao registrava.
-        // Tambem repara a divergencia com o harness
-        // (`lib/agent-engine/edge/crm/mcp-tools.ts` sempre usou o id do agente).
-        // O run continua rastreavel: `ctx.requestId` e o scope `agent_run:<id>`.
-        id: run.agent_id,
-        role: "agent",
+        // `id` é o RUN — é o que correlaciona a chamada de tool com o turno no
+        // audit. `agent_id` é a linha em `ai_agents`, e é a única que pode ir
+        // para `crm_lead_activities.actor_agent_id` (FK). Enquanto só existia
+        // `id`, toda tool de escrita chamada por este runtime perdia a atividade
+        // na FK: o lead mudava e a timeline não registrava. Ver `Actor` em
+        // lib/api/handlers/types.ts.
+        id: run.id,
+        agent_id: run.agent_id,
+        role: "ai_operator",
         api_token_id: ephemeral.id,
       },
       apiTokenId: ephemeral.id,
@@ -360,12 +360,12 @@ export async function runAgent(input: RunAgentInput): Promise<RunAgentResult> {
         "mcp:write",
         "actor:ai_agent",
         `agent_run:${run.id}`,
-        "role:agent",
+        "role:ai_operator",
       ],
     };
     const ctx: McpContext = {
       organizationId: run.organization_id,
-      role: "agent",
+      role: "ai_operator",
       actor: auth.actor,
       apiTokenId: ephemeral.id,
       requestId: run.id,
@@ -542,6 +542,7 @@ export async function runAgent(input: RunAgentInput): Promise<RunAgentResult> {
         supabase: admin,
         organizationId: run.organization_id,
         runId: run.id,
+        agentId: run.agent_id,
         conversationId: run.conversation_id,
         text: finalText,
         requestId: run.id,

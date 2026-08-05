@@ -20,6 +20,7 @@ import { McpAuthError, ensureRole, ensureScope } from "@/lib/mcp/auth";
 import type { McpAuthResult } from "@/lib/mcp/auth";
 import { logger } from "@/lib/logger";
 import { allTools, getToolByName } from "@/lib/mcp/tools";
+import { catalogEntry } from "@/lib/mcp/tools/catalog";
 import { recusaDeCapacidadeParaOModelo } from "@/lib/mcp/recusa-para-o-modelo";
 import type { McpContext, McpToolDefinition } from "@/lib/mcp/types";
 
@@ -127,6 +128,20 @@ export function pickToolsFromMcp(input: PickToolsInput): Record<string, Tool> {
     const def = getToolByName(id);
     if (!def) continue;
     if (def.name === HANDOFF_TOOL_NAME && !input.handoffToolEnabled) continue;
+
+    // Capacidade `apenasHumano` NÃO é montada no turno do agente.
+    //
+    // Medido com IA real: `crm_create_stage` aparecia no painel como "1
+    // tentativa, 1 falha". O que acontecia: o dono liga na tela, a ponte monta
+    // a tool, o modelo GASTA uma chamada, e só então o servidor recusa por
+    // papel. A trava existia (requiresRole acima do papel do agente) mas só
+    // agia DEPOIS da tentativa — o modelo aprendia o limite errando, e o painel
+    // registrava falha onde não havia defeito.
+    //
+    // A marca era declaração sem efeito no runtime: eu a criei no catálogo e
+    // não a apliquei aqui. Não montar é o que faz a declaração valer.
+    if (catalogEntry(def.name)?.apenasHumano) continue;
+
     result[def.name] = wrapMcpTool(def, input);
   }
 

@@ -43,7 +43,7 @@ const RAIZ = join(__dirname, "..", "..");
  * O papel que um agente publicado de fato recebe. Constante local de propósito —
  * ver o controle positivo no fim, que confere que ela ainda descreve o código.
  */
-const PAPEL_DO_AGENTE_PUBLICADO: Role = "agent";
+const PAPEL_DO_AGENTE_PUBLICADO: Role = "ai_operator";
 
 /**
  * DÍVIDA MEDIDA em `99cd0fc` e PAGA em `bddeeb6`: `crm_create_lead`,
@@ -78,6 +78,22 @@ const ESCRITA_QUE_E_TRABALHO_DE_ATENDENTE: ReadonlyArray<string> = [
   "crm_move_lead_stage",
   // `app/api/v1/messages/` — exige `agent`. Responder cliente é o trabalho do dia.
   "crm_send_whatsapp_message",
+  // `app/api/v1/ai/cases/[id]/reply/` — POST exige `agent`. Registrar no chamado
+  // é o trabalho de quem atende (paridade medida na integração do papel novo).
+  "crm_add_case_note",
+  // `app/api/v1/ai/cases/[id]/` — exige `agent`.
+  "crm_close_human_case",
+  // `app/api/v1/conversations/[id]/reactivate-bot/` — POST exige `agent`.
+  // A regra dura aqui NÃO é o papel: o handler recusa `actor.type === "ai_agent"`
+  // com `resume_requires_person`. Proteção dita em voz alta em vez de acidente de
+  // ranking — e por isso sobreviveu à troca do papel do agente para `ai_operator`,
+  // que um piso de `manager` teria transformado em bloqueio por coincidência.
+  "crm_resume_ai_attendance",
+  // `app/api/v1/leads/[id]/lose/` — POST exige `agent`. Encerrar demanda que o
+  // cliente declarou encerrada é o trabalho do dia (paridade medida na W2→base).
+  "crm_close_demand",
+  // `app/api/v1/leads/[id]/reactivation/` — POST exige `agent`.
+  "crm_propose_reactivation",
   // `app/api/v1/conversations/[id]/assign` — exige `agent`: é a fila.
   "crm_assign_conversation",
   // `app/api/v1/conversation-tags` é leitura `viewer`; marcar conversa é trabalho
@@ -124,7 +140,11 @@ describe("catálogo de tools — papel exigido e alcance real do agente", () => 
     const frouxas = allTools
       .filter((t) => t.category === "write")
       .filter((t) => !ESCRITA_QUE_E_TRABALHO_DE_ATENDENTE.includes(t.name))
-      .filter((t) => ROLE_RANK[t.requiresRole] < ROLE_RANK.manager)
+      // Piso `ai_operator`, não `manager`. Não é afrouxamento: `ai_operator`
+      // vive só no escopo do token efêmero e NUNCA em `user_organizations`,
+      // então nenhuma PESSOA o alcança — que é o que esta guarda protege. O
+      // que muda é o agente passar a alcançar, deliberadamente.
+      .filter((t) => ROLE_RANK[t.requiresRole] < ROLE_RANK.ai_operator)
       .map((t) => `${t.name} exige apenas '${t.requiresRole}'`);
     expect(frouxas).toEqual([]);
   });

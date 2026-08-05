@@ -28,7 +28,24 @@ import {
   crmManageTags,
   crmGetQueueStatus,
 } from "./governance";
+import {
+  crmListAvailableAttendants,
+  crmListHumanCases,
+  crmGetHumanCase,
+  crmAddCaseNote,
+  crmCloseHumanCase,
+  crmResumeAiAttendance,
+} from "./escalacao";
 import { crmRequestHumanHandoff } from "./handoff";
+import {
+  crmSearchKnowledge,
+  crmListKnowledgeSources,
+  crmListImprovementProposals,
+  crmGetOrgMemory,
+  crmSaveOrgMemory,
+} from "./evolucao";
+import { crmListContactOrders, crmSearchProducts } from "./comercio";
+import { crmListPrivacyRequests } from "./privacidade";
 import {
   crmArchiveStage,
   crmCreateStage,
@@ -46,6 +63,14 @@ import {
   crmSetWebhookSourceActive,
   crmUpdateStage,
 } from "./operacao";
+import {
+  crmScheduleFollowup,
+  crmCancelFollowup,
+  crmListFollowups,
+  crmListAtRiskLeads,
+  crmCloseDemand,
+  crmProposeReactivation,
+} from "./retencao";
 
 // Cast via `unknown` porque McpToolDefinition<TInput> nao e covariante
 // em TInput (handler usa TInput em posicao contravariante). Coletar
@@ -63,6 +88,14 @@ export const allTools: ReadonlyArray<McpToolDefinition> = [
   crmListLeads,
   crmGetLead,
   crmListPipelines,
+  crmSearchKnowledge,
+  crmListKnowledgeSources,
+  crmListImprovementProposals,
+  crmGetOrgMemory,
+  crmSaveOrgMemory,
+  crmListContactOrders,
+  crmSearchProducts,
+  crmListPrivacyRequests,
   // read — organizar a operação (W4)
   crmListStages,
   crmListTags,
@@ -73,6 +106,11 @@ export const allTools: ReadonlyArray<McpToolDefinition> = [
   crmListAutomationRules,
   crmListAutomationRuns,
   crmListTeamMembers,
+  crmListFollowups,
+  crmListAtRiskLeads,
+  crmListAvailableAttendants,
+  crmListHumanCases,
+  crmGetHumanCase,
   // write
   crmCreateLead,
   crmUpdateLead,
@@ -87,6 +125,13 @@ export const allTools: ReadonlyArray<McpToolDefinition> = [
   crmCreateWebhookSource,
   crmSetWebhookSourceActive,
   crmSetAutomationRuleActive,
+  crmScheduleFollowup,
+  crmCancelFollowup,
+  crmCloseDemand,
+  crmProposeReactivation,
+  crmAddCaseNote,
+  crmCloseHumanCase,
+  crmResumeAiAttendance,
   // handoff (special)
   crmRequestHumanHandoff,
 ] as unknown as ReadonlyArray<McpToolDefinition>;

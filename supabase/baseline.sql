@@ -8824,3 +8824,250 @@ comment on column public.automation_rules.last_change_actor_kind is
   'Espécie de quem ligou/desligou/editou esta regra por último: user | ai | system. NULL = anterior à 0101.';
 
 notify pgrst, 'reload schema';
+
+-- ---- uso das capacidades do agente (migration 0103) ----
+-- Toda chamada de tool do agente já era auditada em api_audit_log
+-- (action='mcp.tool_called') e NENHUMA tela lia — log invisível é log morto
+-- (invariante 3 da doutrina do sistema vivo). Esta função é o leitor.
+--
+-- Vive no banco porque não há FK entre api_audit_log e ai_agent_runs: amarrar os
+-- dois no Node exigiria mandar de volta os ids de ~9.000 runs mensais de um
+-- tenant PME num in(...). O elo é api_audit_log.request_id = ai_agent_runs.id (o
+-- runtime usa o id do run como requestId do McpContext); request_id é text, daí
+-- o cast.
+--
+-- A janela é aplicada nos DOIS lados (r.started_at e a.created_at): os runs saem
+-- de ai_agent_runs_agent_idx, e a data no audit deixa o planner cortar por
+-- idx_audit_action_time em vez de varrer uma tabela que retém 5 anos. Medido em
+-- pg17 com 708.020 linhas de audit (10,2% tool calls) e 36.000 runs, melhor de
+-- 3: sem a janela no audit 345,7 ms · com a janela 224,0 ms · com um índice
+-- parcial dedicado 165,0 ms — o índice NÃO foi adotado, porque api_audit_log é
+-- append-only de escrita altíssima e 60 ms numa aba não pagam manutenção de
+-- índice em todo INSERT.
+--
+-- em_teste separa o que veio de execução de teste (is_dry_run): sem isso a tela
+-- diria "usada 4 vezes" quando as 4 foram o dono clicando em Testar.
+--
+-- security invoker: pelo service role (rota já resolve a org do cookie) a RLS não
+-- se aplica; por usuário autenticado, audit_log_select continua exigindo admin.
+create or replace function public.fn_agent_tool_usage(
+  p_organization_id uuid,
+  p_agent_id        uuid,
+  p_since           timestamptz
+)
+returns table (
+  tool_name  text,
+  total      bigint,
+  falhas     bigint,
+  em_teste   bigint,
+  ultima_vez timestamptz
+)
+language sql
+stable
+security invoker
+set search_path = public
+as $$
+  select
+    a.metadata->>'tool_name'                                          as tool_name,
+    count(*)::bigint                                                  as total,
+    count(*) filter (where a.metadata->>'success' = 'false')::bigint   as falhas,
+    count(*) filter (where r.is_dry_run)::bigint                       as em_teste,
+    max(a.created_at)                                                 as ultima_vez
+  from public.ai_agent_runs r
+  join public.api_audit_log a
+    on  a.request_id      = r.id::text
+    and a.action          = 'mcp.tool_called'
+    and a.organization_id = p_organization_id
+    and a.created_at     >= p_since
+  where r.organization_id = p_organization_id
+    and r.agent_id        = p_agent_id
+    and r.started_at     >= p_since
+    and a.metadata->>'tool_name' is not null
+  group by 1
+$$;
+
+comment on function public.fn_agent_tool_usage(uuid, uuid, timestamptz) is
+  'Uso das capacidades (tools MCP) de um agente: total, falhas, quantos vieram de execução de teste e a última vez. Elo audit<->run é api_audit_log.request_id = ai_agent_runs.id.';
+
+grant execute on function public.fn_agent_tool_usage(uuid, uuid, timestamptz)
+  to authenticated, service_role;
+-- ---- retorno cancelado ≠ retorno disparado (migration 0102) ----------------
+-- `cron_jobs.enabled = false` significa DUAS coisas: o one-shot disparou ou
+-- alguém desmarcou. Enquanto forem a mesma linha no banco, o agente não sabe, ao
+-- retomar, que o humano cancelou o retorno — o invariante 2 da doutrina
+-- (continuidade humano→IA) fica pela metade — e a fila mostra "concluída" para
+-- um retorno que ninguém executou.
+--
+-- Sem backfill: as linhas antigas ficam com `cancelled_at` nulo porque essa é a
+-- verdade disponível. Não se sabe quais foram canceladas antes desta coluna
+-- existir, e chutar seria gravar ficção em histórico.
+alter table public.cron_jobs
+  add column if not exists cancelled_at  timestamptz,
+  add column if not exists cancel_reason text;
+
+comment on column public.cron_jobs.cancelled_at is
+  'Quando o retorno foi desmarcado. NULL = nunca cancelado (disparou ou ainda vai disparar). Distingue cancelado de disparado, que enabled=false sozinho não distingue.';
+comment on column public.cron_jobs.cancel_reason is
+  'Por que foi desmarcado, em texto curto e sem PII. Mesmo vocabulário de followup_enrollments.cancel_reason.';
+
+create index if not exists idx_cron_jobs_retorno_vivo
+  on public.cron_jobs (organization_id, contact_id, next_run_at)
+  where enabled = true and job_kind = 'followup_turn';
+-- ---- agent_case_events.kind ganha 'agent_noted' (migration 0100) ----
+-- O agente conseguia ABRIR um chamado e nada mais: não havia valor honesto no
+-- CHECK para "o agente registrou o que aconteceu depois" ('lead_provided' é a
+-- informação que o LEAD deu, 'human_replied' é a pessoa). Sem esse registro, o
+-- atendente seguinte que abre o chamado começa do zero.
+-- Idempotente e auto-curativo: a lista só CRESCE, então nenhuma linha existente
+-- viola a constraint nova e não há dado a corrigir antes de criá-la.
+alter table public.agent_case_events
+  drop constraint if exists agent_case_events_kind_check;
+
+alter table public.agent_case_events
+  add constraint agent_case_events_kind_check check (kind in (
+    'opened',
+    'human_replied',
+    'lead_asked',
+    'lead_provided',
+    'lead_unresponsive',
+    'resolved',
+    'escalated',
+    'cancelled',
+    'agent_noted'
+  ));
+
+-- ---- catálogo de modelos atualizado (migration 0104) ----
+-- O catálogo curado estava duas gerações atrás e o kit self-host aplica SÓ o
+-- baseline: sem este apêndice, quem instala numa VPS continua escolhendo entre
+-- modelos velhos e pagando mais caro por pior. Ids verificados no provedor
+-- (GET /v1/models) para Anthropic e OpenAI; os do Google seguem a convenção e
+-- NÃO foram verificados — ver o cabeçalho da migration. Idempotente por
+-- `on conflict do update`.
+
+-- ---------------------------------------------------------------------------
+-- 1. catálogo curado (o que a tela oferece)
+-- ---------------------------------------------------------------------------
+insert into public.ai_models
+  (provider, model_id, display_name, description,
+   input_price_per_million_cents, output_price_per_million_cents, supports_tools)
+values
+  -- Anthropic
+  ('anthropic', 'claude-opus-5',     'Claude Opus 5',
+   'O mais capaz da Anthropic para trabalho agêntico complexo.', 500, 2500, true),
+  ('anthropic', 'claude-sonnet-5',   'Claude Sonnet 5',
+   'Alto desempenho para atendimento e agentes. Preço de introdução ($2/$10 por milhão) até 31/08/2026; depois volta a $3/$15 — reveja este preço nessa data.',
+   200, 1000, true),
+  ('anthropic', 'claude-opus-4-8',   'Claude Opus 4.8',
+   'Geração anterior do Opus.', 500, 2500, true),
+  -- OpenAI
+  ('openai',    'gpt-5.6-sol',       'GPT-5.6 Sol',
+   'O mais capaz da linha 5.6.', 500, 3000, true),
+  ('openai',    'gpt-5.6-terra',     'GPT-5.6 Terra',
+   'Equilíbrio de custo e capacidade da linha 5.6.', 200, 1200, true),
+  ('openai',    'gpt-5.6-luna',      'GPT-5.6 Luna',
+   'O mais barato da linha 5.6, para classificação e tarefas simples.', 20, 120, true),
+  ('openai',    'gpt-5.5',           'GPT-5.5',              null, 500, 3000, true),
+  ('openai',    'gpt-5.5-pro',       'GPT-5.5 Pro',
+   'Raciocínio estendido; custo alto.', 3000, 18000, true),
+  ('openai',    'gpt-5.4',           'GPT-5.4',              null, 250, 1500, true),
+  ('openai',    'gpt-5.4-mini',      'GPT-5.4 Mini',         null, 75, 450, true),
+  ('openai',    'gpt-5.4-nano',      'GPT-5.4 Nano',         null, 20, 125, true),
+  ('openai',    'gpt-5.4-pro',       'GPT-5.4 Pro',
+   'Raciocínio estendido; custo alto.', 3000, 18000, true),
+  -- Google (ids NÃO verificados — ver cabeçalho)
+  ('google',    'gemini-3.1-pro-preview', 'Gemini 3.1 Pro (Preview)',
+   'Prévia; preço sobe para $4/$18 por milhão acima de 200 mil tokens de entrada.', 200, 1200, true),
+  ('google',    'gemini-3.5-flash',  'Gemini 3.5 Flash',     null, 150, 900, true),
+  ('google',    'gemini-2.5-flash-lite', 'Gemini 2.5 Flash-Lite',
+   'O mais barato da linha Gemini.', 10, 40, true),
+  ('google',    'gemini-2.0-flash',  'Gemini 2.0 Flash',     null, 10, 40, true)
+on conflict (provider, model_id) do update set
+  display_name = excluded.display_name,
+  description = excluded.description,
+  input_price_per_million_cents = excluded.input_price_per_million_cents,
+  output_price_per_million_cents = excluded.output_price_per_million_cents,
+  supports_tools = excluded.supports_tools;
+
+-- Correção de preço nos que JÁ existiam e estavam errados: a saída do
+-- gemini-2.5-pro é $10 (não $5) e a do gemini-2.5-flash é $2,50 (não $1,20).
+-- Preço errado no catálogo vira orçamento errado na tela do cliente.
+update public.ai_models set output_price_per_million_cents = 1000
+ where provider = 'google' and model_id = 'gemini-2.5-pro';
+update public.ai_models set output_price_per_million_cents = 250
+ where provider = 'google' and model_id = 'gemini-2.5-flash';
+
+-- ---------------------------------------------------------------------------
+-- 2. padrão por provedor
+--
+-- O índice `ai_models_one_default_per_provider` é UNIQUE parcial e IMEDIATO:
+-- limpar o padrão anterior tem de vir ANTES de marcar o novo, senão a migration
+-- quebra no meio.
+-- ---------------------------------------------------------------------------
+update public.ai_models set is_default_for_provider = false
+ where provider in ('anthropic', 'openai', 'google') and is_default_for_provider;
+
+update public.ai_models set is_default_for_provider = true
+ where (provider = 'anthropic' and model_id = 'claude-sonnet-5')
+    or (provider = 'openai'    and model_id = 'gpt-5.6-terra')
+    or (provider = 'google'    and model_id = 'gemini-3.5-flash');
+
+-- ---------------------------------------------------------------------------
+-- 3. contabilidade de custo — a MESMA lista, senão o gasto é calculado com
+--    preço de outro modelo (ou não é calculado, que é pior: some do orçamento).
+-- ---------------------------------------------------------------------------
+insert into public.ai_pricing
+  (model, prompt_cents_per_million_tokens, completion_cents_per_million_tokens, notes)
+values
+  ('claude-opus-5',          500,   2500,  'catálogo 0101'),
+  ('claude-sonnet-5',        200,   1000,  'catálogo 0101 — introdução até 31/08/2026; depois 300/1500'),
+  ('claude-opus-4-8',        500,   2500,  'catálogo 0101'),
+  ('gpt-5.6-sol',            500,   3000,  'catálogo 0101'),
+  ('gpt-5.6-terra',          200,   1200,  'catálogo 0101'),
+  ('gpt-5.6-luna',            20,    120,  'catálogo 0101'),
+  ('gpt-5.5',                500,   3000,  'catálogo 0101'),
+  ('gpt-5.5-pro',           3000,  18000,  'catálogo 0101'),
+  ('gpt-5.4',                250,   1500,  'catálogo 0101'),
+  ('gpt-5.4-mini',            75,    450,  'catálogo 0101'),
+  ('gpt-5.4-nano',            20,    125,  'catálogo 0101'),
+  ('gpt-5.4-pro',           3000,  18000,  'catálogo 0101'),
+  ('gemini-3.1-pro-preview', 200,   1200,  'catálogo 0101 — sobe acima de 200k tokens de entrada'),
+  ('gemini-3.5-flash',       150,    900,  'catálogo 0101'),
+  ('gemini-2.5-flash-lite',   10,     40,  'catálogo 0101'),
+  ('gemini-2.0-flash',        10,     40,  'catálogo 0101'),
+  ('gemini-2.5-pro',         125,   1000,  'catálogo 0101 — saída corrigida de 500 para 1000'),
+  ('gemini-2.5-flash',        30,    250,  'catálogo 0101 — saída corrigida de 120 para 250')
+on conflict (model) do update set
+  prompt_cents_per_million_tokens = excluded.prompt_cents_per_million_tokens,
+  completion_cents_per_million_tokens = excluded.completion_cents_per_million_tokens,
+  notes = excluded.notes,
+  superseded_at = null;
+
+-- ---- agent_inbox_items.kind ganha 'capabilities_missing' (migration 0105capabilities_missing
+-- Quando o turno não consegue montar as capacidades configuradas na tela, ele
+-- segue sem elas (a conversa do cliente não pode morrer por uma tool extra) —
+-- mas o aviso ia só para o log do worker, que numa VPS ninguém abre. Este kind
+-- é o que faz o defeito aparecer na Central de avisos. Idempotente: a lista só
+-- cresce, nenhuma linha existente viola a constraint nova.
+
+alter table public.agent_inbox_items
+  drop constraint if exists agent_inbox_items_kind_check;
+
+alter table public.agent_inbox_items
+  add constraint agent_inbox_items_kind_check check (kind in (
+    'qr_rescan',
+    'job_dead',
+    'event_dead',
+    'budget_exceeded',
+    'handoff',
+    'promotion_review',
+    'judge_unaligned',
+    'followup_dead',
+    'snooze_expired',
+    'next_action_ambiguous',
+    'risk_backlog_seeded',
+    'reactivation_expired',
+    'capabilities_missing',
+    'other'
+  ));
+
+notify pgrst, 'reload schema';
