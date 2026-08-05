@@ -9071,3 +9071,46 @@ alter table public.agent_inbox_items
   ));
 
 notify pgrst, 'reload schema';
+
+-- ---- channel_sessions.archived_at (migration 0106) ----
+-- Arquivar em vez de apagar: conversations/messages referenciam
+-- channel_sessions com ON DELETE RESTRICT, então canal com histórico não pode
+-- ser removido — some da UI e a linha fica como âncora das FKs.
+alter table public.channel_sessions
+  add column if not exists archived_at timestamptz;
+
+create index if not exists channel_sessions_org_active_idx
+  on public.channel_sessions (organization_id, created_at)
+  where archived_at is null;
+
+notify pgrst, 'reload schema';
+
+-- ---- número único só entre canais ATIVOS (migration 0107) ----
+-- A trava `channel_sessions_phone_per_org_unique` é do snapshot e não sabe o que
+-- é arquivamento: a linha arquivada seguia ocupando o par (org, número), e
+-- reparear o MESMO número estourava 23505 na linha nova. O invariante real é "um
+-- número vive em UM canal ATIVO" — vira índice parcial `where archived_at is
+-- null`, com o MESMO NOME (o invariante do repo cobra o nome dentro da mensagem
+-- de erro). Perde o DEFERRABLE: medido, nenhum caminho escreve
+-- channel_sessions.phone_number com violação transitória.
+--
+-- Auto-curativo: a constraint antiga é ESTRITAMENTE mais forte que o índice novo
+-- (todas as linhas vs. um subconjunto), então nenhum banco que a satisfazia pode
+-- violar o índice — não há dado a deduplicar antes de criá-lo.
+do $$
+begin
+  if exists (
+    select 1 from pg_constraint
+     where conrelid = 'public.channel_sessions'::regclass
+       and conname = 'channel_sessions_phone_per_org_unique'
+  ) then
+    alter table public.channel_sessions
+      drop constraint channel_sessions_phone_per_org_unique;
+  end if;
+end $$;
+
+create unique index if not exists channel_sessions_phone_per_org_unique
+  on public.channel_sessions (organization_id, phone_number)
+  where archived_at is null;
+
+notify pgrst, 'reload schema';

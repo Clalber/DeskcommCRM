@@ -51,10 +51,14 @@ const KNOWN_DEBT: { reason: string; files: string[] }[] = [
       "Superfície de TRANSPORTE do provider legado (control plane de sessão, " +
       "webhook receiver, download de mídia). Mesma natureza de `lib/waha/`, que " +
       "já é exceção: não são features perguntando identidade, são o próprio " +
-      "canal. Saem junto com `lib/waha/` na Fase 3.",
+      "canal. Saem junto com `lib/waha/` na Fase 3. O teste de rota entra pela " +
+      "mesma porta: para exercitar a revogação por canal ele precisa montar as " +
+      "duas linhas da união e dublar o cliente do transporte — sai quando a " +
+      "rota que ele cobre sair.",
     files: [
       "app/api/v1/channel-sessions/[id]/qr/route.ts",
       "app/api/v1/channel-sessions/[id]/reconnect/route.ts",
+      "app/api/v1/channel-sessions/[id]/route.test.ts",
       "app/api/v1/channel-sessions/[id]/route.ts",
       "app/api/v1/channel-sessions/route.ts",
       "app/api/v1/health/route.ts",
