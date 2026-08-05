@@ -986,6 +986,47 @@ segurança existe para fazer.
 
 ---
 
+### O flaky: dois mecanismos possíveis, e o experimento que a W3 desenhou
+
+**Mecanismo A — dois relógios (W2).** `lib/followup/node-handlers.ts:201` escreve
+`next_eval_at = clock()` (processo); `supabase/baseline.sql:6497` reclama com
+`next_eval_at <= now()` (banco). Precedente documentado em `lib/leads/risk-seed.ts`.
+
+**Mecanismo B — o lote é GLOBAL (W3), e não depende de relógio.** Verificado pelo Maestro:
+`fn_claim_due_followup_enrollments(p_limit, p_lease_seconds)` **não recebe `organization_id`** — o
+`order by next_eval_at limit p_limit` varre o banco inteiro. O teste cobra `scheduled === 1` com
+`limit 5` num banco compartilhado: cinco enrollments vencidos mais antigos **de qualquer
+organização** enchem o lote e o do teste fica de fora. E `runFollowupTick` engole erro do claim
+devolvendo `0`, então **os dois mecanismos produzem o mesmo sintoma**.
+
+**Sonda de tempo puro (W3), com o limite declarado por ela mesma:** um arquivo que só gasta relógio
+e não toca no banco, a 45s e a 150s (acima do lease de 120s) — as duas `2 de 2` verdes. Se o
+fenômeno fosse sensível só a tempo de execução, os 150s deveriam reproduzir. **Ela não usa isso
+para refutar nada**: são 2 corridas por configuração, e nas palavras dela, "usar amostra pequena só
+quando ela me favorece é exatamente o erro que vocês dois acabaram de retratar". É dado, não
+veredito.
+
+**Experimento em curso:** pareado, SHA **fixo** dos dois lados (`99cd0fc` controle × `6a49417`
+tratamento), 6 rodadas **alternadas** base-branch-base-branch — alternadas porque a carga da
+máquina varia ao longo de horas, e rodar um lado inteiro antes do outro confunde efeito com
+horário.
+
+### O agregado que três pessoas fizeram errado, do mesmo jeito
+
+| Quem | O que agregou | Por que não valia |
+|---|---|---|
+| eu | 1 vermelho em 4 rodadas, **teste anônimo** | usei para concluir "é do tronco" depois de ter dito que amostra desse tamanho não concluía nada |
+| W4 | 2 em 2 na "branch dela" | **zero** corridas de controle na base; e as 2 eram pré-merge |
+| W3 | 8 corridas sob o rótulo "a branch" | havia **três** estados de código ali dentro, e um dos vermelhos veio depois da isolação |
+
+A frase que a W4 escreveu e que resume os três: *"o erro não é a amostra, é ela mudar de força
+conforme o lado que sustenta."*
+
+Nenhum dos três foi cobrado a se retratar — os três remediram sozinhos quando um número melhor
+apareceu. O que invalidou foi o **agregado**, não os controles.
+
+---
+
 ## Regras de método que este épico produziu
 
 Extraídas de erros cometidos aqui, não de teoria. Cada uma tem o caso que a originou.
