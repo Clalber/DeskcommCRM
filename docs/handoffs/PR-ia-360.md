@@ -77,12 +77,17 @@ taxa fosse 25%).
    versionado, conserto proposto.
 3. **`update.sh` cospe 307 erros** — 112 índices do dump sem `if not exists`. Install limpo.
 4. **App inutilizável abaixo de 768px** — sidebar fixo de 240px não colapsa.
-5. **Tela de criar agente é bilíngue** — o pilar 3 vale no ToolPicker; o resto da tela ainda fala
-   `Max steps`, `Token budget`, `Novo agent`.
+5. **Contador de tokens ainda diz "~21 tokens"** — resíduo declarado pela W1: o componente é
+   compartilhado com telas fora do épico, então não foi tocado.
+
+> A tela bilíngue **saiu desta lista**: era o item 5 até a W1 traduzir as três telas
+> (`Max steps` → **Ações por atendimento**, `p95 latência 17.621 ms` → **Tempo de resposta 16,2 s**),
+> e junto vieram dois consertos que não eram tradução — o card de orçamento prometia "pausa ao 100%"
+> de um teto que não existia, e as validações acusavam antes de a pessoa digitar.
 
 ## Contexto
 
 - Contrato e decisões: `docs/handoffs/BRIEFING-ia-360.md`
 - Registro vivo, com SHA em cada afirmação: `HANDOFF-ia-360.md`
-- Evidência visual versionada: `evidence/` (221 arquivos, todos citados por documento — há gate
+- Evidência visual versionada: `evidence/` (224 arquivos, todos citados por documento — há gate
   mecânico para isso)
