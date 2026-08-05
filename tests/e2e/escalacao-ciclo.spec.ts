@@ -241,10 +241,16 @@ test.describe("IA 360 W3 — o agente para, a pessoa continua, o agente retoma s
         .select("type")
         .eq("organization_id", creds.org_id)
         .eq("lead_id", e.lead_id);
-      const tipos = ((atividades ?? []) as Array<{ type: string }>).map((a) => a.type);
-      expect(tipos, "a passagem tem duas pontas e as duas são vida do negócio").toContain(
+      const tipos = ((atividades ?? []) as Array<{ type: string }>).map((a) => a.type).sort();
+
+      // EXATAMENTE estas duas. `toContain` sozinho passaria com uma linha de uma
+      // corrida anterior — o seed limpa as atividades do negócio antes de
+      // reabrir o episódio, e a igualdade exata é o que prova que a limpeza
+      // funcionou E que ESTA corrida emitiu as duas pontas.
+      expect(tipos, "a passagem tem duas pontas e as duas são vida do negócio").toEqual([
         "handoff_resolved",
-      );
+        "handoff_triggered",
+      ]);
     }
 
     // ---------------------------------------------------------------------
