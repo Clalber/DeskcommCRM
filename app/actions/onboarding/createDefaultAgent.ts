@@ -64,7 +64,7 @@ async function publishFirstVersion(
       version_number: 1,
       system_prompt: systemPrompt,
       provider: "anthropic",
-      model: (model?.model_id as string) ?? "claude-sonnet-4-6",
+      model: (model?.model_id as string) ?? "claude-sonnet-5",
       channel_session_id: session.id as string,
       status: "published",
       published_at: new Date().toISOString(),

@@ -103,6 +103,7 @@ import type { DisclosureMode } from '../guardrails/disclosure/template';
 import { decidePromise } from '../guardrails/promise/engine';
 import { loadPromiseTable } from '../guardrails/promise/table';
 import { classifyPromise } from '../guardrails/promise/semantic';
+import { expectativaDeAtendimento } from '@/lib/escalacao/disponibilidade';
 import { diffCheckpoint } from '@/lib/leads/checkpoint-diff';
 import { emitAgentActivityForContact } from '@/lib/leads/agent-activity';
 import { resolveActiveLeadForContact, type LeadCandidate } from '@/lib/leads/active-lead';
@@ -1535,10 +1536,17 @@ export async function runAgentTurn(
           );
           if (!res.ok) return res;
           openedCaseThisTurn = true;
+          // ACH-03: a expectativa vai junto com a confirmação. Medido num turno
+          // real: o agente abria o caso e prometia ao cliente que "alguém entra
+          // em contato" sem nunca ter olhado se havia alguém — a capacidade de
+          // consultar existia, estava ligada e montada no turno, e ele não a
+          // usou. Capacidade que depende de o modelo lembrar não existe metade
+          // das vezes; esta o sistema garante.
+          const { frase } = await expectativaDeAtendimento(pool, tenantId, new Date());
           return {
             ok: true,
             case_id: res.caseId,
-            message: 'caso aberto; continue a conversa com o lead normalmente.',
+            message: `caso aberto; continue a conversa com o lead normalmente. ${frase}`,
           };
         } catch (err) {
           noteRunError(err instanceof Error ? err : new Error(String(err)));

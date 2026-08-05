@@ -21,6 +21,7 @@
 import { z } from 'zod';
 import type pg from 'pg';
 
+import { expectativaDeAtendimento } from '@/lib/escalacao/disponibilidade';
 import { emitAgentActivityForContact } from '@/lib/leads/agent-activity';
 
 import type { Logger } from '../obs/logger';
@@ -274,12 +275,18 @@ export async function applyRequestHumanHandoff(
     log: opts.log,
   });
 
+  // ACH-03: a expectativa vai JUNTO com a confirmação. Antes, a mensagem afirmava
+  // que "um atendente vai assumir" sem que ninguém tivesse olhado se havia
+  // alguém — e o agente repassava essa promessa ao cliente. Agora a resposta
+  // carrega o estado real da equipe, e o modelo não precisa lembrar de perguntar.
+  const { frase } = await expectativaDeAtendimento(db, ids.tenantId, new Date());
+
   return {
     ok: true,
     status: 'handoff_solicitado',
     message:
-      'Handoff humano acionado: um atendente vai assumir a conversa. Encerre o turno AGORA, ' +
-      'sem enviar mais mensagens ao lead.',
+      `Handoff humano acionado; a conversa saiu do atendimento automático. ${frase} ` +
+      'Encerre o turno AGORA, sem enviar mais mensagens ao lead além do aviso.',
   };
 }
 
