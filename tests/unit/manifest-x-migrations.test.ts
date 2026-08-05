@@ -64,15 +64,21 @@ const DIVERGENCIAS_CONHECIDAS = {
 } as const;
 
 /**
- * Timestamps que já nasciam repetidos. Declarados pelo mesmo motivo das
- * divergências acima: renomear migration aplicada é reescrever história.
+ * Os quatro pares que já nasciam repetidos foram DESFEITOS (issue #143), então
+ * esta lista está vazia — e é para continuar assim.
+ *
+ * A versão anterior desta catraca os declarava com a razão "renomear migration
+ * aplicada é reescrever história". A razão estava errada por um fato que não
+ * tinha sido medido: o Supabase CLI usa o timestamp como PK de
+ * `supabase_migrations.schema_migrations`, então esses pares nunca chegaram a
+ * ficar registrados nos dois — `db push` colide na PK no segundo arquivo e
+ * `db reset` quebra. Não havia história a preservar; havia história que o CLI
+ * nunca conseguiu escrever, e todo fork esbarrava nela a cada merge.
+ *
+ * O que se preservou de fato: o CONTEÚDO (renomeamos só o prefixo) e a ORDEM
+ * (o CLI ordena alfabeticamente, e +1s mantém cada arquivo depois do irmão).
  */
-const TIMESTAMPS_REPETIDOS_CONHECIDOS = [
-  "20260717190000",
-  "20260718160000",
-  "20260721120000",
-  "20260722160000",
-];
+const TIMESTAMPS_REPETIDOS_CONHECIDOS: readonly string[] = [];
 
 /** Só os arquivos que carregam timestamp no nome — as legadas não têm. */
 function arquivosComTimestamp(): { timestamp: string; arquivo: string }[] {

@@ -111,6 +111,10 @@ subconjunto, a prova é sua.
    como prova de UX (doutrina de QA Visual em `CLAUDE.md`).
 5. Mudou schema → migration versionada em `supabase/migrations/` **+** apêndice idempotente
    em `supabase/baseline.sql` **+** linha em `supabase/migrations/MANIFEST.md`. Os três juntos.
+6. Criou função em `public` → `revoke execute on function ... from public, anon;` e depois
+   `grant` só a quem precisa. São **duas** origens de `EXECUTE` e revogar uma só deixa a
+   função exposta como RPC alcançável pela anon key. Detalhe em `CLAUDE.md`, item 9 da
+   doutrina de Migrations.
 
 ## Testes existentes (CONFIRMADO)
 
