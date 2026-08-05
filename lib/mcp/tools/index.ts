@@ -30,6 +30,23 @@ import {
 } from "./governance";
 import { crmRequestHumanHandoff } from "./handoff";
 import { crmSearchKnowledge, crmListKnowledgeSources } from "./evolucao";
+import {
+  crmArchiveStage,
+  crmCreateStage,
+  crmCreateWebhookSource,
+  crmListAutomationRules,
+  crmListAutomationRuns,
+  crmListMessageTemplates,
+  crmListStages,
+  crmListTags,
+  crmListTeamMembers,
+  crmListWebhookSourceEvents,
+  crmListWebhookSources,
+  crmRenderMessageTemplate,
+  crmSetAutomationRuleActive,
+  crmSetWebhookSourceActive,
+  crmUpdateStage,
+} from "./operacao";
 
 // Cast via `unknown` porque McpToolDefinition<TInput> nao e covariante
 // em TInput (handler usa TInput em posicao contravariante). Coletar
@@ -49,6 +66,16 @@ export const allTools: ReadonlyArray<McpToolDefinition> = [
   crmListPipelines,
   crmSearchKnowledge,
   crmListKnowledgeSources,
+  // read — organizar a operação (W4)
+  crmListStages,
+  crmListTags,
+  crmListMessageTemplates,
+  crmRenderMessageTemplate,
+  crmListWebhookSources,
+  crmListWebhookSourceEvents,
+  crmListAutomationRules,
+  crmListAutomationRuns,
+  crmListTeamMembers,
   // write
   crmCreateLead,
   crmUpdateLead,
@@ -56,6 +83,13 @@ export const allTools: ReadonlyArray<McpToolDefinition> = [
   crmSendWhatsappMessage,
   crmAssignConversation,
   crmManageTags,
+  // write — organizar a operação (W4)
+  crmCreateStage,
+  crmUpdateStage,
+  crmArchiveStage,
+  crmCreateWebhookSource,
+  crmSetWebhookSourceActive,
+  crmSetAutomationRuleActive,
   // handoff (special)
   crmRequestHumanHandoff,
 ] as unknown as ReadonlyArray<McpToolDefinition>;

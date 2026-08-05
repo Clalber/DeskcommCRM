@@ -85,6 +85,281 @@ como ser cumprido por um agente que não consegue agendar um retorno.
 O teste lista essa dívida explicitamente e tem uma **segunda guarda** que reprova se a lista
 envelhecer — se a wave entregar as tools e ninguém tirar o pacote da dívida, o teste acusa.
 
+### Wave 4 — Organizar a operação · EM ANDAMENTO
+
+**Terminal:** MaestroConexoes · worktree `/Users/rafaelmelgaco/DeskcommCRM-ia360-w4-organizar`
+· branch `feat/ia-360-w4-organizar` · base `99cd0fc` (contém `origin/main` = `687716a`;
+`git log HEAD..origin/main` vazio, medido antes de começar).
+
+#### Marco 1 — a operação de etapa saiu da rota, e a configuração ganhou autoria (`6d6ea0e`, árvore limpa)
+
+- `lib/leads/stage-operations.ts` (novo) — `lerFunil`, `criarEtapa`, `atualizarEtapa`,
+  `arquivarEtapa`. A regra e, principalmente, **a ordem das escritas** (desmarcar a etapa de
+  ganho antiga antes de marcar a nova; mover os negócios antes de arquivar) estavam dentro do
+  `route.ts`. Com o agente também organizando o funil, duas superfícies escreveriam na mesma
+  tabela por caminhos diferentes — Decisão 4 do briefing. As duas rotas de etapa ficaram só
+  com transporte; `app/api/v1/pipelines/[id]/stages/_funil.ts` foi absorvido e removido.
+- `lib/api/recusa.ts` (novo) — `respostaDeRecusa()`: `ApiError` do domínio → `Response`. Erro
+  que não é `ApiError` **sobe**: traduzi-lo para um 500 educado apagaria o stack trace.
+- `lib/operacao/autoria.ts` + **migration 0101** — `last_change_actor_kind` (`user|ai|system`,
+  com CHECK) e `last_change_at` em `crm_stages`, `webhook_sources`, `automation_rules`.
+  Migration + apêndice idempotente no `baseline.sql` + linha no MANIFEST, os três juntos.
+
+**Evidência observada:**
+
+```
+npx vitest run app/api/v1/pipelines
+ Test Files  5 passed (5)
+      Tests  95 passed (95)     ← 8 delas reprovaram primeiro, pela autoria a mais no patch
+
+npx tsc --noEmit → exit 0
+```
+
+**Por que a autoria virou coluna e não um feed de audit log.** O `api_audit_log` já registra
+tudo — e **nenhuma tela de configuração o lê**. Log que não aparece é log morto (doutrina §3).
+Com a coluna, o estado e a autoria do estado saem na mesma consulta que a tela já faz.
+
+**Por que NÃO há coluna de "qual agente".** Ver BUG-01: `Actor.id` para `ai_agent` significa
+coisas diferentes em cada caminho de execução. Uma FK para `ai_agents(id)` alimentada dali
+seria verdadeira num caminho e recusaria a escrita no outro.
+
+**Sabotagem do gate novo** (`tests/unit/capacidade-alcancavel-pelo-agente.test.ts`):
+
+| Sabotagem | Resultado |
+|---|---|
+| tirar `crm_move_lead_stage` da lista de dívida | `1 failed \| 2 passed` — acusou a que faltava |
+| fingir `PAPEL_DO_AGENTE_PUBLICADO = "admin"` | `2 failed \| 1 passed` — as duas guardas acusaram |
+
+Restaurado: `3 passed`.
+
+#### Marco 2 — as 15 capacidades de `organizar` (`9ccec11`, árvore limpa)
+
+`lib/mcp/tools/catalogo/operacao.ts` (novo, meu) + duas linhas no agregador, handlers em
+`lib/mcp/tools/operacao.ts`, regra em `lib/operacao/*`.
+
+| # | capacidade | categoria · risco |
+|---|---|---|
+| 1 | `crm_list_stages` — ver as etapas de um funil | read · seguro |
+| 2 | `crm_create_stage` — criar etapa no funil | write · atencao |
+| 3 | `crm_update_stage` — renomear ou reordenar uma etapa | write · atencao |
+| 4 | `crm_archive_stage` — arquivar uma etapa do funil | write · **critico** |
+| 5 | `crm_list_tags` — ver os marcadores em uso | read · seguro |
+| 6 | `crm_list_message_templates` — ver as respostas prontas | read · seguro |
+| 7 | `crm_render_message_template` — preencher uma resposta pronta | read · seguro |
+| 8 | `crm_list_webhook_sources` — ver as entradas automáticas de contatos | read · seguro |
+| 9 | `crm_list_webhook_source_events` — ver o que chegou por uma entrada | read · seguro |
+| 10 | `crm_create_webhook_source` — criar uma entrada automática | write · **critico** |
+| 11 | `crm_set_webhook_source_active` — ligar/desligar uma entrada | write · **critico** |
+| 12 | `crm_list_automation_rules` — ver as regras automáticas | read · seguro |
+| 13 | `crm_list_automation_runs` — ver o que as regras dispararam | read · seguro |
+| 14 | `crm_set_automation_rule_active` — ligar/desligar uma regra | write · **critico** |
+| 15 | `crm_list_team_members` — ver quem trabalha na empresa | read · seguro |
+
+Catálogo: **16 → 31 tools**. O pacote `organizar` saiu de 2 para 16 capacidades.
+
+**A régua de `critico` que usei** (o gate mecânico não distingue `atencao` de `critico`): *o efeito
+acontece quando ninguém está olhando?* Renomear etapa muda o que o usuário vê na hora e ele desfaz
+na tela → `atencao`. Ligar regra/entrada muda o comportamento do sistema para todos os eventos
+futuros e o efeito sai da empresa → `critico`. Arquivar etapa mexe em onde os negócios estão
+parados → `critico`.
+
+**O que o agente deliberadamente NÃO pode**, e por quê:
+
+| não pode | por quê |
+|---|---|
+| criar/editar/apagar regra automática | ligar o que um humano escreveu é reversível e ele sabe o que a regra faz; deixá-lo ESCREVER a ação é deixá-lo escolher para qual endereço externo a empresa manda dados |
+| criar resposta pronta | o texto sai em nome da marca, e nenhuma tela distingue o modelo revisado do inventado |
+| escrever no vocabulário canônico de marcadores | `organizations.settings.canonical_conversation_tags` tem rota de leitura e **nenhuma tela** para ver/mudar — um escritor ali violaria o invariante 6 ("toda configuração tem superfície"). O defeito real (o agente inventar `cliente-vip` quando já existe `vip`) é curado por `crm_list_tags` |
+| mudar papel de alguém | RBAC, fora de escopo por decisão do despacho |
+| apagar entrada automática | Decisão 2 do briefing — desligar resolve, apagar leva a configuração do cliente junto |
+
+**Decisão de vocabulário:** o despacho sugeria "aviso automático" para `webhook_source`. Usei
+**"entrada automática de contatos"** — a peça não avisa ninguém, ela RECEBE gente de fora, e um
+rótulo que descreve errado confunde mais que o termo técnico. Sem jargão da lista proibida.
+
+**Evidência observada:**
+
+```
+npx vitest run tests/unit/catalogo-tools-leigo-friendly.test.ts   → 101 passed
+npx vitest run tests/unit/operacao-do-agente.test.ts              →  19 passed
+npx vitest run tests/unit/capacidade-alcancavel-pelo-agente.test.ts →  5 passed
+npx tsc --noEmit → exit 0 · npx eslint lib/operacao → 0 problemas
+pnpm test:db → install ok · update ok · 412 passed | 1 failed (ver "Medições" abaixo)
+```
+
+**Sabotagem** (`tests/unit/operacao-do-agente.test.ts`, cinco defeitos aplicados um a um):
+
+| Sabotagem | Teste que reprovou |
+|---|---|
+| tirar `eq("organization_id")` da validação do funil | `funil de OUTRA organização → recusa e NENHUMA escrita` |
+| deixar `actions` cru vazar na leitura da regra | `regra automática sai sem a config das ações` |
+| devolver `payload_parsed` no recebimento | `recebimento devolve os NOMES dos campos` |
+| chumbar a autoria como `"user"` | `regra ligada pelo AGENTE grava autoria 'ai'` |
+| esconder as lacunas do modelo preenchido | `sem o dado, denuncia a lacuna` |
+
+Cada uma: `1 failed | 18 passed`. Restaurado: `19 passed`.
+
+Sabotagem do gate de papel (`capacidade-alcancavel-pelo-agente`): baixar o papel de
+`crm_set_automation_rule_active` para `agent` → reprova; mint gravando `role:manager` → reprova o
+controle positivo; nome órfão na lista de exceções → reprova. Restaurado: `5 passed`.
+
+#### Marco 3 — provado pela tela, com receiver HTTP real (`277f676` + ajustes do spec)
+
+`tests/e2e/agente-organiza-operacao.spec.ts` dirige o **frontend**, logado como manager real, e
+chama as capacidades pelo **HTTP do MCP** (`POST /api/mcp` com Bearer carregando
+`actor:ai_agent`) — não pelo handler em processo, porque é o transporte que carrega o ator que
+decide a autoria que a tela vai mostrar.
+
+```
+E2E_PORT=3031 npx playwright test tests/e2e/agente-organiza-operacao.spec.ts
+  1 passed (18.0s)   ·   exit 0
+```
+
+O que ficou provado, em ordem:
+
+1. **O agente cria uma etapa** → ela aparece em `/app/settings/tenant/pipelines` na posição 9 do
+   funil, e o campo `data-autoria="ai"` mostra **"alterado pelo assistente há 2 segundos"**. As
+   oito etapas de fábrica aparecem **sem selo** — silêncio honesto para o que ninguém mediu.
+   Evidência: `evidence/ia-360-w4/w4-etapa-criada-pelo-agente.png`.
+2. **O agente liga uma regra escrita por um humano** → `/app/webhooks` mostra o cartão com o
+   badge **"Ativa"** e, abaixo, **"alterado pelo assistente há 3 segundos"**. Evidência:
+   `evidence/ia-360-w4/w4-regra-ligada-pelo-agente.png`.
+3. **A regra ligada pelo agente dispara e o egress continua barrado.** Um receiver HTTP de
+   verdade sobe em `127.0.0.1:<porta efêmera>`; a regra aponta para ele; um lead entra pela URL
+   de captação; o `event_log` é drenado. O receiver registrou **zero** requisições
+   (`assertSafeOutboundUrl` recusa host privado antes do `fetch`) **e** a aba Atividade mostra a
+   execução com falha — barrar em silêncio faria o dono achar que o outro sistema recebeu.
+   Evidência: `evidence/ia-360-w4/w4-egress-barrado-com-registro.png`.
+
+**Sabotagem do E2E** (a única propriedade que o despacho cobra nominalmente):
+
+| Sabotagem | Resultado |
+|---|---|
+| `autoriaDaMudanca` gravando `"user"` fixo (rebuild + rerun) | reprova em `expect(seloDaEtapa).toBeVisible()` — `element(s) not found` para `[data-autoria="ai"]` |
+| restaurado (rebuild + rerun) | `1 passed (18.0s)` |
+
+O caminho até o verde também teve valor: **quatro vermelhos diferentes**, todos defeitos reais do
+teste — parser de SSE ancorado em `data:` quando o servidor abre com `event: message`;
+`toContainText` num nome que mora em `<input>`; `filter().last()` devolvendo o título em vez do
+cartão; e o timeout de 30s medindo o relógio em vez do comportamento. Estão comentados no spec
+para a próxima pessoa não repetir.
+
+---
+
+## Estado final da wave (SHA `277f676` + os ajustes do spec; árvore limpa no commit final)
+
+| Gate | Resultado |
+|---|---|
+| `npx tsc --noEmit` | exit 0 |
+| `npx eslint .` | **0 errors, 170 warnings** — exatamente a linha de base do épico (`687716a`), zero avisos novos |
+| `npx vitest run` (unit) | **226 arquivos, 2014 testes passando** |
+| `pnpm test:db` — baseline | `install ok` (`ON_ERROR_STOP=1`) e `update ok` (re-aplicação), nas duas rodadas |
+| `pnpm test:db` — invariantes | 412 passam; **1 vermelho instável**, ver abaixo |
+| E2E em tela | `1 passed`, com evidência visual e sabotagem confirmada |
+
+### A medição que não fecha limpa, dita como ela é
+
+**`pnpm test:db` tem 1 invariante vermelho — e ele NÃO é desta wave.** A prova é o par de
+rodadas, não a minha opinião:
+
+| rodada | porta | teste que falhou |
+|---|---|---|
+| 1ª | `TEST_DB_PORT=54371` | `tests/invariants/followup-turn-bridge.test.ts` (`expected 2 to be 1`) |
+| 2ª | `TEST_DB_PORT=54373` | `tests/invariants/followup-reactivity.test.ts` (`expected +0 to be 1`) |
+
+**Testes diferentes, mesmo SHA.** Falha que muda de lugar entre rodadas é instabilidade da suíte,
+não regressão determinística. `followup-turn-bridge` **passa isolado** no mesmo SHA (`5 passed`,
+exit 0), nenhum arquivo de follow-up foi tocado nesta branch, e os dois logs trazem erros de
+outros invariantes logo antes — assinatura de estado vazando entre testes que compartilham o
+mesmo Postgres. **O Maestro assumiu a caracterização** (rodadas de controle na base); não gastei
+mais tempo nisso a pedido dele.
+
+---
+
+## Depois do merge da base (`feat/ia-360-mcp` = `210669c`)
+
+O Maestro corrigiu na base os **dois** defeitos que reportei daqui, e mergeei. Três coisas
+mudaram no que eu tinha escrito, e todas exigiram acerto — não só de código:
+
+### 1. As seis escritas viraram `apenasHumano`, por PARIDADE
+
+A base introduziu `apenasHumano` no catálogo e reescreveu o gate de alcançabilidade: ele deixou
+de exigir "toda capacidade é alcançável" e passou a caçar **restrição não declarada**. A régua
+que decide o papel de uma tool é **o que a rota HTTP equivalente exige**.
+
+Medi as minhas: `pipelines/[id]/stages`, `webhook-sources` e `automation-rules` exigem `manager`,
+todas as três. **Não há divergência aqui** — ao contrário das quatro tools de lead, cujas rotas
+pedem `agent`. Nem um atendente humano configura a operação pela tela, então baixar para `agent`
+daria à IA um poder que o produto não dá a uma pessoa com o mesmo papel.
+
+**A consequência, dita sem maquiagem:** no pacote "Organizar a operação", um agente publicado
+**lê tudo e muda nada**. As dez leituras são o ganho real — explicar a operação, diagnosticar a
+entrada que parou, mostrar a automação que falhou, parar de inventar marcador. As seis escritas
+existem, são alcançáveis por cliente MCP com papel de gestor (é o que o E2E exercita), e a tela
+agora **diz** que são operadas por gente, em vez de deixar o dono ligar achando que o agente vai
+usar.
+
+### 2. O gate foi COMBINADO, não escolhido
+
+Meu arquivo e o da base tinham o mesmo nome e conteúdo divergente — convergência independente
+depois do meu reporte. Resolver escolhendo um lado perderia metade em silêncio. O resultado tem
+as duas metades:
+
+| origem | o que aporta |
+|---|---|
+| base | `apenasHumano`, dívida zerada, "inalcançável POR ACIDENTE", "marca não pode mentir" |
+| minha | "escrita que muda a casa não entra por atalho" (a falha SIMÉTRICA), guarda de exceção órfã, e o **controle positivo** que lê o fonte do mint |
+
+O controle positivo é o que impede o arquivo inteiro de passar sozinho no dia em que alguém mudar
+o papel do token efêmero — as duas listas seguiriam classificando por uma régua morta.
+
+**Sabotagem do gate combinado:**
+
+| Sabotagem | Resultado |
+|---|---|
+| tirar `apenasHumano` de `crm_archive_stage` (restrição vira acidente) | `1 failed \| 6 passed` |
+| baixar `crm_archive_stage` para `agent` (atalho + marca mentirosa) | `2 failed \| 5 passed` — as duas guardas acusaram |
+
+Restaurado: `7 passed`.
+
+### 3. BUG-01 tem uma IRMÃ que não foi consertada — e eu tinha texto errado no repo
+
+O conserto do BUG-01 (`bddeeb6`) alinhou o runtime nativo: `lib/ai/runtime/agent.ts` passa
+`run.agent_id`. Fui conferir os três caminhos antes de reescrever meus comentários, e **o
+terceiro não foi**: `lib/mcp/auth.ts` `deriveActor()` continua devolvendo o id do RUN (do scope
+`agent_run:<uuid>`) ou, sem ele, o id do TOKEN — o caminho de um cliente MCP externo.
+
+**Consequência medida por leitura:** uma tool que emita `crm_lead_activities` chamada por MCP
+externo com `actor:ai_agent` tenta gravar em `actor_agent_id` (FK para `ai_agents(id)`) um id que
+não é de agente → `23503`, e a emissão falha baixo, em silêncio. É o mesmo defeito do BUG-01, na
+instância que sobrou. **Não consertei:** o scope `agent_run:<uuid>` não carrega o id do agente, e
+tirá-lo de lá exigiria mudar o que `mintEphemeralToken` grava — transversal, e o arquivo acabou
+de ser tocado pela base. **Para o Maestro.**
+
+Isso também me obrigou a **corrigir cinco textos meus que envelheceram mentindo** (o comentário
+de `lib/operacao/autoria.ts`, a migration 0101, o apêndice do `baseline.sql`, a linha do MANIFEST
+e o card do mapa vivo). Todos afirmavam "os três caminhos discordam", que deixou de ser verdade
+30 minutos depois de eu escrever. A decisão de não criar a FK continua certa; o **motivo** mudou,
+e motivo errado no repo é pior que motivo ausente — o próximo a ler decide com ele.
+
+---
+
+## Estado final pós-merge
+
+| Gate | Resultado |
+|---|---|
+| `npx tsc --noEmit` | exit 0 |
+| `npx eslint .` | 0 errors, 170 warnings — a linha de base do épico |
+| `npx vitest run` (unit) | **226 arquivos, 2019 testes passando**, exit 0 |
+| E2E em tela | `1 passed (1.9m)`, exit 0, rodado contra o SHA pós-merge com `next build` novo; capturas regeneradas em `evidence/ia-360-w4/` |
+
+Um quarto gate reprovou no primeiro try pós-merge e foi acerto meu:
+`tests/unit/evidencia-citada.test.ts` (veio na base) recusou o HANDOFF por citar capturas em
+`.superpowers/evidence/`, que é pasta de trabalho e não entra no `git ls-files` — num projeto
+aberto, prova citada e não entregue é afirmação sem lastro para quem clona. As três capturas
+foram para `evidence/ia-360-w4/` (versionado) e o spec passou a escrever direto lá, para a
+próxima rodada regenerar no lugar certo em vez de recriar o problema.
+
 ---
 
 ### Orquestração — quatro waves em paralelo (a partir de `99cd0fc`)

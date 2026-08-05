@@ -1,60 +1,95 @@
 /**
- * GATE DO PILAR 1 — capacidade que o humano liga, o agente tem que alcançar.
+ * GATE DO PILAR 1 — o papel exigido por uma capacidade é decisão, não descuido.
  *
  * O épico IA 360 promete "a IA tem mãos". Uma capacidade declarada no catálogo,
  * oferecida na tela e ligada pelo dono do negócio, mas recusada em tempo de
  * execução por papel insuficiente, é uma promessa quebrada — e quebrada do pior
  * jeito possível: o modelo recebe `{ error: "Role 'agent' insufficient" }` de
- * volta (`lib/ai/runtime/tools.ts` devolve o erro ao modelo em vez de estourar),
- * segue conversando, e NADA aparece na tela do humano dizendo que a ferramenta
- * que ele ligou não existe na prática.
+ * volta, segue conversando, e nada aparece na tela do humano dizendo que a
+ * ferramenta que ele ligou não existe na prática.
  *
  * ⚠️ O PAPEL DO AGENTE PUBLICADO É `agent`, LITERAL E FIXO, nos dois caminhos
  * que montam o contexto MCP de um agente:
- *   - `lib/ai/runtime/agent.ts` — `auth.role = "agent"`, `scopes: [... "role:agent"]`
+ *   - `lib/ai/runtime/agent.ts` — `auth.role = "agent"`, `scopes: [… "role:agent"]`
  *   - `lib/agent-engine/edge/crm/mcp-tools.ts` — `role: 'agent'`
  * e `lib/ai/runtime/mcp_token.ts` grava `"role:agent"` no token efêmero sem
  * parâmetro para variar. `ensureRole` compara por `ROLE_RANK`, então toda tool
- * com `requiresRole: "manager"` é inalcançável para QUALQUER agente publicado.
+ * com `requiresRole` acima de `agent` é inalcançável para QUALQUER agente
+ * publicado.
  *
- * Este teste é a medição dessa afirmação, não a opinião sobre ela.
+ * ⚠️ E A RÉGUA NÃO É "TUDO TEM QUE SER ALCANÇÁVEL". Algumas capacidades NÃO
+ * devem estar ao alcance da IA, e o que decide é uma medição, não uma opinião:
+ * **o papel que a ROTA HTTP equivalente exige**. Onde a rota pede `agent` e a
+ * tool pedia `manager`, era divergência — a IA e o humano operando por regras
+ * diferentes sobre a MESMA ação (as quatro tools de lead, corrigidas em
+ * `bddeeb6`). Onde a rota pede `manager`, restringir a IA é PARIDADE: nem um
+ * atendente humano configura aquilo pela tela.
+ *
+ * Este arquivo mede as duas coisas: que nada ficou fora do alcance por acidente,
+ * e que nada entrou no alcance por atalho.
  */
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
 import { describe, expect, it } from "vitest";
 
 import { allTools } from "@/lib/mcp/tools";
 import { catalogEntry } from "@/lib/mcp/tools/catalog";
 import { ROLE_RANK, type Role } from "@/lib/auth/types";
 
+const RAIZ = join(__dirname, "..", "..");
+
 /**
- * O papel que um agente publicado de fato recebe. Constante local de propósito:
- * se algum dia o mint passar a variar o papel, este número deixa de descrever a
- * realidade e o teste tem que ser reescrito com a medição nova — em vez de
- * importar um valor que mudaria em silêncio e faria o gate passar sozinho.
+ * O papel que um agente publicado de fato recebe. Constante local de propósito —
+ * ver o controle positivo no fim, que confere que ela ainda descreve o código.
  */
 const PAPEL_DO_AGENTE_PUBLICADO: Role = "agent";
 
 /**
- * DÍVIDA MEDIDA em `99cd0fc` e PAGA em seguida: quatro capacidades de escrita
- * (`crm_create_lead`, `crm_update_lead`, `crm_move_lead_stage`,
- * `crm_send_whatsapp_message`) exigiam `manager` e nenhum agente as alcançava.
+ * DÍVIDA MEDIDA em `99cd0fc` e PAGA em `bddeeb6`: `crm_create_lead`,
+ * `crm_update_lead`, `crm_move_lead_stage` e `crm_send_whatsapp_message`
+ * exigiam `manager` e nenhum agente as alcançava, enquanto as rotas HTTP
+ * equivalentes exigem `agent` — um atendente humano fazia pela tela o que a IA
+ * não conseguia fazer com o mesmo papel.
  *
- * O que decidiu o conserto não foi política de segurança — foi DIVERGÊNCIA. As
- * rotas HTTP equivalentes (`app/api/v1/leads/`, `.../[id]/`, `.../[id]/move/`,
- * `app/api/v1/messages/`) exigem `agent`, todas as quatro. Um atendente humano
- * com papel `agent` cria lead, move etapa e manda mensagem pela tela; a IA, com
- * o mesmo papel `agent`, não podia fazer nenhuma delas. Alinhar não afrouxa
- * nada: restaura a paridade que o produto já pratica.
- *
- * Ao consertar, REMOVA daqui. A segunda asserção cobra que esta lista não
- * envelheça: deixar um nome aqui depois de resolvido mentiria para quem vier.
+ * Vazia agora. A penúltima asserção cobra que ela não envelheça: deixar um nome
+ * aqui depois de resolvido mentiria para quem vier.
  */
 const INALCANCAVEIS_CONHECIDAS: ReadonlyArray<string> = [];
 
-function alcancavel(requiresRole: Role): boolean {
+/**
+ * As escritas que são TRABALHO DE ATENDENTE, e por isso exigem só `agent`.
+ *
+ * ⚠️ ESTA LISTA É O CONTRAPESO DA DÍVIDA ACIMA, e existe porque as duas falhas
+ * são simétricas. A dívida caça a tool restrita DEMAIS; esta caça a restrita DE
+ * MENOS — alguém baixando `requiresRole` para `agent` "porque senão não
+ * funciona", concedendo em silêncio poder de configuração a quem só devia
+ * atender. Sem ela, consertar uma inalcançável teria um caminho fácil e errado.
+ *
+ * Acrescentar um nome aqui é conceder poder. Faça olhando para a rota HTTP
+ * equivalente, e diga qual é.
+ */
+const ESCRITA_QUE_E_TRABALHO_DE_ATENDENTE: ReadonlyArray<string> = [
+  // `app/api/v1/leads/` — POST exige `agent`. Um atendente cria negócio pela tela.
+  "crm_create_lead",
+  // `app/api/v1/leads/[id]/` — PATCH exige `agent`.
+  "crm_update_lead",
+  // `app/api/v1/leads/[id]/move/` — exige `agent`. Mover card é o trabalho do dia.
+  "crm_move_lead_stage",
+  // `app/api/v1/messages/` — exige `agent`. Responder cliente é o trabalho do dia.
+  "crm_send_whatsapp_message",
+  // `app/api/v1/conversations/[id]/assign` — exige `agent`: é a fila.
+  "crm_assign_conversation",
+  // `app/api/v1/conversation-tags` é leitura `viewer`; marcar conversa é trabalho
+  // de atendente e o dano máximo é um filtro sujo, reversível na tela.
+  "crm_manage_tags",
+];
+
+function alcancavelPeloAgente(requiresRole: Role): boolean {
   return ROLE_RANK[PAPEL_DO_AGENTE_PUBLICADO] >= ROLE_RANK[requiresRole];
 }
 
-describe("catálogo de tools — o que o agente publicado consegue de fato usar", () => {
+describe("catálogo de tools — papel exigido e alcance real do agente", () => {
   it("tem pelo menos uma tool (guarda de vacuidade)", () => {
     // Sem isto, um catálogo vazio faria as asserções abaixo passarem por
     // ausência de dado — o falso verde mais barato que existe.
@@ -62,17 +97,12 @@ describe("catálogo de tools — o que o agente publicado consegue de fato usar"
   });
 
   it("nenhuma capacidade nasce inalcançável POR ACIDENTE", () => {
-    // A regra não é "toda tool tem que ser alcançável pelo agente" — algumas
-    // NÃO devem estar ao alcance dele. `crm_resume_ai_attendance` é o caso que
-    // originou esta distinção: `inbound-turn.ts` registra a regra dura de que
-    // só o humano/CRM libera um handoff, então um agente capaz de chamá-la se
-    // auto-liberaria. Restringir ali é acerto, não defeito.
-    //
-    // O que este gate caça é a restrição NÃO DECLARADA: a tool que ficou fora
-    // do alcance do agente por descuido de `requiresRole` e falha em silêncio
-    // (a ponte devolve o erro ao modelo, e o humano que ligou não fica sabendo).
+    // O que este gate caça é a restrição NÃO DECLARADA: a tool que ficou fora do
+    // alcance do agente por descuido de `requiresRole` e falha em silêncio (a
+    // ponte devolve o erro ao modelo, e o humano que ligou não fica sabendo).
+    // Restrição deliberada se DECLARA com `apenasHumano` — e aí não é acidente.
     const acidentais = allTools
-      .filter((t) => !alcancavel(t.requiresRole))
+      .filter((t) => !alcancavelPeloAgente(t.requiresRole))
       .filter((t) => !catalogEntry(t.name)?.apenasHumano)
       .map((t) => t.name)
       .sort();
@@ -85,9 +115,28 @@ describe("catálogo de tools — o que o agente publicado consegue de fato usar"
     // diz na tela que só gente opera, e o agente opera assim mesmo.
     const mentirosas = allTools
       .filter((t) => catalogEntry(t.name)?.apenasHumano)
-      .filter((t) => alcancavel(t.requiresRole))
+      .filter((t) => alcancavelPeloAgente(t.requiresRole))
       .map((t) => t.name);
     expect(mentirosas).toEqual([]);
+  });
+
+  it("escrita que muda a casa não entra no alcance do agente por atalho", () => {
+    const frouxas = allTools
+      .filter((t) => t.category === "write")
+      .filter((t) => !ESCRITA_QUE_E_TRABALHO_DE_ATENDENTE.includes(t.name))
+      .filter((t) => ROLE_RANK[t.requiresRole] < ROLE_RANK.manager)
+      .map((t) => `${t.name} exige apenas '${t.requiresRole}'`);
+    expect(frouxas).toEqual([]);
+  });
+
+  it("as duas listas não guardam nome que já saiu do catálogo", () => {
+    // Sem esta guarda, uma exceção sobreviveria à tool que a justificava e
+    // passaria a autorizar, em silêncio, a próxima que reusasse o nome.
+    const nomes = new Set(allTools.map((t) => t.name));
+    const orfas = [...ESCRITA_QUE_E_TRABALHO_DE_ATENDENTE, ...INALCANCAVEIS_CONHECIDAS].filter(
+      (n) => !nomes.has(n),
+    );
+    expect(orfas).toEqual([]);
   });
 
   it("dívida declarada não esconde capacidade já consertada", () => {
@@ -96,8 +145,27 @@ describe("catálogo de tools — o que o agente publicado consegue de fato usar"
       const t = porNome.get(nome);
       // Tool removida do catálogo também sai da dívida — senão a lista
       // sobreviveria à própria capacidade.
-      return t === undefined || alcancavel(t.requiresRole);
+      return t === undefined || alcancavelPeloAgente(t.requiresRole);
     });
     expect(jaResolvidas).toEqual([]);
+  });
+
+  /**
+   * CONTROLE POSITIVO — a constante lá em cima ainda descreve o código?
+   *
+   * ⚠️ SEM ISTO O TESTE PASSA SOZINHO DEPOIS DE UM CONSERTO NO MINT.
+   * `PAPEL_DO_AGENTE_PUBLICADO` é um literal escrito à mão: no dia em que alguém
+   * fizer o token efêmero mintar `role:manager`, tudo aqui continuaria verde
+   * descrevendo um mundo que deixou de existir — e as duas listas seguiriam
+   * classificando capacidades por uma régua que não vale mais. Ler o fonte é feio
+   * e é o único jeito de a afirmação envelhecer com barulho.
+   */
+  it("o mint do token efêmero ainda grava o papel que este teste assume", () => {
+    const fonte = readFileSync(join(RAIZ, "lib/ai/runtime/mcp_token.ts"), "utf8");
+    expect(fonte).toContain(`"role:${PAPEL_DO_AGENTE_PUBLICADO}"`);
+
+    const runtime = readFileSync(join(RAIZ, "lib/ai/runtime/agent.ts"), "utf8");
+    expect(runtime).toContain(`\`agent_run:\${run.id}\``);
+    expect(runtime).toContain(`"role:${PAPEL_DO_AGENTE_PUBLICADO}"`);
   });
 });
