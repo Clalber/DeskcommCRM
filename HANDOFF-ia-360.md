@@ -90,7 +90,7 @@ envelhecer — se a wave entregar as tools e ninguém tirar o pacote da dívida,
 **Entregue por:** DevVivo · branch `feat/ia-360-w2-reter` · worktree
 `/Users/rafaelmelgaco/DeskcommCRM-ia360-w2-reter` · base `99cd0fc`
 
-| Medida | Antes (`99cd0fc`) | Depois (`896f6098`) |
+| Medida | Antes (`99cd0fc`) | Depois (`02904498`) |
 |---|---|---|
 | Capacidades de retorno no catálogo | **0** | **6** |
 | Pacote `reter` | vazio (dívida declarada) | preenchido, fora da dívida |
@@ -119,7 +119,7 @@ tratamento para o radar (`lib/leads/radar-de-risco.ts`, extraído da rota) e par
 **Mapa vivo:** `docs/architecture/ia-360-retencao.architecture.json` (26 peças, 36 arestas) +
 linha no `README.md` do diretório.
 
-**Evidência observada — em `fd82319a`, árvore limpa** (o SHA da prova com modelo real):
+**Evidência observada — no código de `02904498`, árvore limpa** (o SHA da prova com modelo real):
 
 - `pnpm typecheck` limpo · `pnpm lint` 0 erros (170 avisos pré-existentes)
 - `pnpm test:unit` — **227 arquivos, 2008 testes verdes** (eram 224/1963 na base)
