@@ -2229,7 +2229,8 @@ O dono lê `crm_list_stages` e a descrição escrita **para o modelo**. Pior: as
 `apenasHumano` aparecem marcáveis, sem aviso — o dono liga achando que o agente vai usar, e **ela
 nunca dispara**, que é literalmente o defeito que o campo foi criado para impedir. O campo existe
 no dado e não chega à tela. **É a W1, mas o buraco é de agora** — enquanto ela não sai, ligar uma
-capacidade de configuração é uma promessa que o produto não cumpre e não avisa.
+capacidade de configuração é uma promessa que o produto não cumpre e não avisa. A tela como o dono
+a vê está em `evidence/ia-360-w4/qa-tela-de-escolha-de-capacidades.png`.
 
 ### A2 · Dois pacotes ocupam o teto inteiro do agente · CONFIRMADO
 
@@ -2262,7 +2263,9 @@ Sete linhas dizendo ao dono que foi ele quem mexeu, afogando a única que ele pr
 **Correção:** mudança feita por pessoa não gera selo (`lib/operacao/autoria.ts`). A ambiguidade
 resultante é inócua — sem selo passa a significar "foi uma pessoa" **ou** "é anterior à 0101", e
 nos dois casos a resposta à pergunta que importa é a mesma. Guardado em
-`tests/e2e/qa-selo-no-funil-usado.spec.ts`, que reprova se o ruído voltar.
+`tests/e2e/qa-selo-no-funil-usado.spec.ts`, que reprova se o ruído voltar. O estado final está em
+`evidence/ia-360-w4/qa-selo-no-funil-usado.png` — sete etapas mexidas por pessoa, silenciosas, e só
+a do assistente falando.
 
 ### A4 · O selo era um susto sem saída · CORRIGIDO
 
@@ -2292,3 +2295,246 @@ serve para ele? `crm_list_tags` de fato o impede de inventar marcador?
 execuções próximas faziam a segunda matar o token da primeira no meio da corrida — e o sintoma
 chegava como `Token revoked` numa chamada MCP, **parecendo defeito do produto**. Medido: quatro
 tokens em 35s, três revogados em cascata. Agora só revoga o que tem mais de 10 minutos.
+
+---
+
+## QA das telas descobertas — `/app/templates`, `/app/settings/templates`, `/app/audit`
+
+O Maestro apontou que 24 das 47 telas não aparecem em spec nenhum, e que os E2E do repo provam
+**encanamento**: login real, mas estado vindo de seed. Isso demonstra que a tela funciona quando
+alguém já pôs os dados lá — não que uma pessoa chega lá sozinha. Estas três são da W4. Abri as
+três criando o estado **pela interface**.
+
+Spec: `tests/e2e/qa-telas-descobertas-w4.spec.ts`.
+
+### T1 · `/app/templates` — SADIA, e provada criando pela tela
+
+O caminho do leigo funciona inteiro: a tela tem "Novo template", os campos são achados pelo
+rótulo que o usuário lê (não por `data-testid`), e depois de salvar **a resposta aparece na
+lista** — a prova é a lista, não o toast sumir. Evidência: a tela vazia
+(`evidence/ia-360-w4/qa-tela-templates.png`), o formulário preenchido
+(`evidence/ia-360-w4/qa-tela-templates-criando.png`) e a resposta já na lista
+(`evidence/ia-360-w4/qa-tela-templates-criada.png`).
+
+Tela sadia provada também é resultado.
+
+### T2 · `/app/settings/templates` — não é defeito, é redirect legítimo
+
+Redireciona para `/app/connections?aba=oficial&sub=templates`, e o destino exige `admin` — um
+manager cai num **403 honesto**. O arquivo existe de propósito, para link salvo não virar 404.
+
+**Reparo possível, registrado sem inflar:** o 403 diz "Você não tem acesso a essa área" sem dizer
+QUAL área nem por quê. Quem clicou num favorito de "templates" fica sem entender por que a tela de
+respostas prontas (que ele acessa) virou proibida. É UX, não bug.
+Evidência: `evidence/ia-360-w4/qa-tela-settings-templates.png`.
+
+### T3 · A rota de funis misturava organizações · CORRIGIDO
+
+**Não veio de ler código: veio de montar o cenário.** Para testar `/app/audit` eu precisava do id
+de um funil e pedi a `GET /api/v1/pipelines` com a sessão do manager da `e2e-test-org`. Ela
+devolveu como **primeiro item um funil da `e2e-segunda-org`**.
+
+Causa raiz: `listPipelinesHandler` **recebe** `ctx.organization_id` e **nunca o usa** no filtro.
+
+- Quem tem uma organização só não vê o defeito — a RLS já limita.
+- Quem é membro de **duas** recebe as duas misturadas, sem indicação de origem. É o modelo
+  multi-tenant do produto, não um canto.
+- A tool MCP já se defendia filtrando o **resultado** em JS (`lib/mcp/tools/pipelines.ts`, com o
+  comentário "defesa em profundidade — service-role bypassa RLS"). O remendo estava no **chamador**,
+  e o outro chamador não o tinha.
+- E essa lista alimenta a tela de **entradas automáticas de contatos**, onde o usuário escolhe para
+  qual funil os contatos vão.
+
+Correção na origem (`.eq("organization_id", ctx.organization_id)`), com teste em
+`app/api/v1/pipelines/route.test.ts`. **Sabotagem:** removi o filtro → `expected [ 'p-minha',
+'p-alheia' ] to deeply equal [ 'p-minha' ]`. Restaurado: `13 passed`.
+
+> Nota de mérito honesto: **eu li esse handler no início da wave** — está citado no marco 1 — e não
+> vi. Ler não é usar. O defeito apareceu na primeira vez que precisei do dado para outra coisa.
+
+### Um segundo defeito do meu instrumento, no mesmo cenário
+
+A sonda do `/app/audit` reportou "assistente criou etapa → HTTP 200" sobre uma chamada que
+**falhou**: o MCP devolve `200` com `isError` no corpo, e eu olhava só o status. O erro real era
+`"Funil não encontrado."` — consequência do T3. Corrigido no spec, com o porquê comentado: no MCP,
+HTTP 200 não é sucesso.
+
+### T4 · `/app/audit` — a promessa do meu selo, em apuração
+
+O `SeloDeAutoria` passou a dizer "ver o que mudou" apontando para esta tela, e eu nunca a tinha
+aberto. A tela **existe e carrega** (`h1 = "Audit Log"`, botão "Exportar CSV" —
+`evidence/ia-360-w4/qa-tela-audit.png`).
+
+**Medição limpa, depois do T3 corrigido:** a etapa FOI criada (`last_change_actor_kind = ai`) e o
+registro FOI gravado (`pipeline.stage_created`, ator `ai_agent`, nome correto, 16:17:56). E a tela
+continua **não mostrando**.
+
+**Causa raiz — a borda e o banco discordam sobre quem pode ler:**
+
+| camada | exige |
+|---|---|
+| `app/app/audit/page.tsx` | `manager` |
+| `app/api/v1/audit/route.ts` | `requireRole("manager")` |
+| policy `audit_log_select` (RLS) | **`fn_role_at_least(organization_id, 'admin')`** |
+
+O manager passa pelas duas portas da aplicação, a query roda com o client dele, e a **RLS devolve
+zero linhas**. A tela mostra vazio — **sem erro, sem explicação**. Ele conclui que não há registro.
+
+**E é o destino do meu selo.** O `SeloDeAutoria` diz "ver o que mudou" e aponta para cá: um dono
+com papel `manager` clica, chega numa tela vazia e fica pior do que estava — antes não sabia,
+agora "sabe" que não há nada. Beco que mente é pior que beco.
+
+**Não corrigi, e a razão é a mesma de sempre nesta wave:** as duas saídas mexem em permissão.
+Alinhar a rota para `admin` restringe (falha fechada, honesta); alinhar a RLS para `manager`
+**concede acesso ao log de auditoria**. Isso é decisão de produto, não minha — e o despacho me põe
+RBAC fora de escopo. **Para o Maestro.** Enquanto não for decidido, o link do selo leva um manager
+a uma tela vazia.
+
+---
+
+## O agente usando as mãos — com IA REAL
+
+O bloqueio de crédito foi resolvido: o Rafael forneceu chave OpenAI e o teste rodou com
+**`gpt-5.6-terra`**, pelo mesmo endpoint do botão "Executar teste" da tela. A chave entra por
+`QA_LLM_API_KEY` (ambiente) e é cadastrada **pela rota de credenciais**, que a cifra — nunca no
+arquivo, porque spec versionado é vazamento permanente.
+
+### O modelo escolheu certo nos quatro cenários
+
+| cenário | esperado | o modelo chamou | veredito |
+|---|---|---|---|
+| ler o funil | `list_pipelines` e/ou `list_stages` | `crm_list_pipelines → crm_list_stages` | certo |
+| não duplicar marcador | `list_tags` antes de aplicar | `crm_list_tags` | certo — **não** aplicou marcador sem consultar |
+| diagnosticar entrada parada | `list_webhook_sources` + eventos | `crm_list_webhook_sources` | certo — parou porque não havia fonte alguma, em vez de buscar eventos de nada |
+| criar etapa | tentar `create_stage` | `crm_list_pipelines → crm_list_stages` | **melhor que o esperado** |
+
+Todos `completed`, 4–8s cada. Relatório com as chamadas cruas e as respostas:
+`evidence/ia-360-w4/qa-turnos-do-agente.md`.
+
+### O quarto cenário respondeu uma pergunta que eu não tinha feito
+
+Pedi "cria uma etapa chamada Pós-venda". O modelo **consultou antes de escrever**, viu que
+«Pos-venda» já existia e respondeu:
+
+> "A etapa **"Pos-venda"** já existe no funil **Pedidos**. Não criei uma duplicata."
+
+Isso valida a aposta desta wave — dar LEITURA rica ao agente — de um jeito que eu não tinha
+previsto: a leitura o impediu de fazer besteira **antes** de qualquer barreira de permissão entrar
+em ação. É o mesmo mecanismo do `crm_list_tags` (não inventar marcador), aparecendo sozinho.
+
+### O que NÃO ficou provado
+
+**A barreira `apenasHumano` não foi exercitada.** Justamente porque o modelo se recusou a
+duplicar, ele nunca tentou escrever. Acrescentei um quinto cenário pedindo uma etapa que não
+existe — e os cenários 2 a 5 dessa rodada caíram com `401 unauthenticated`: a sessão do navegador
+expirou no meio da corrida (o spec loga como `admin` com MFA e a rodada é longa). O cenário 1
+passou, os demais não chegaram ao modelo.
+
+### A barreira, provada — rodando o cenário sozinho
+
+A corrida longa expirava a sessão; rodar **um cenário por vez** (`QA_CENARIO=5`) manteve a medição
+válida. Pedi uma etapa que não existia, para ele de fato tentar escrever:
+
+> **Perguntaram:** "Preciso de uma etapa nova chamada Retorno pos-cirurgico no fim do funil. Ela
+> não existe ainda, cria pra mim."
+>
+> **O agente respondeu:** "Não consegui criar a etapa: seu perfil atual é **agent**, e essa
+> alteração exige permissão de **manager**. Confirmei que **"Retorno pos-cirurgico"** ainda não
+> existe no funil **Pedidos**. Um gestor pode criá-la no fim do funil."
+
+**A barreira segurou, e o veredito é o do banco, não o da prosa:** `select count(*) from
+crm_stages where name ilike '%pos-cirurgico%'` → **0**. Ele tentou, foi recusado por papel, e nada
+foi escrito.
+
+Três coisas boas, medidas e não supostas: ele **tentou** (não desistiu por conta própria), a
+recusa **virou português** em vez de vazar `Role 'agent' insufficient (required: 'manager')` cru, e
+ele ainda **ofereceu o próximo passo** ("um gestor pode criá-la") — que é o que o invariante 5 pede.
+
+### E o defeito de qualidade que só aparece lendo a frase
+
+> "**seu** perfil atual é **agent**"
+
+**Isso é falso para quem lê.** O papel `agent` é do ASSISTENTE, não de quem está conversando. Um
+dono com papel `admin` lê isso e pensa "meu perfil é admin, do que ele está falando?". E num
+atendimento de verdade quem lê é **o cliente da clínica**, que não tem perfil nenhum no CRM — a
+frase vaza vocabulário interno (`agent`, `manager`) para fora da empresa.
+
+A recusa técnica atravessou até o texto final porque **nada a traduz no caminho**: `ensureRole`
+lança `Role 'agent' insufficient (required: 'manager')`, a ponte devolve isso ao modelo, e o modelo
+faz o melhor que pode com o que recebeu — reescreve em português e erra o sujeito, porque a
+mensagem que ele recebeu fala de "role" sem dizer de quem.
+
+### Corrigido, e provado com o mesmo modelo
+
+`lib/mcp/recusa-para-o-modelo.ts` (novo): a recusa por papel deixa de chegar ao modelo como
+mensagem técnica e passa a chegar como **instrução de produto**, na mesma família do veto
+instrutivo que o engine já usa nos gates de envio. `lib/ai/runtime/tools.ts` a usa no `catch` de
+`McpAuthError` — a mensagem original continua no log e na observabilidade, onde serve.
+
+**Dois textos, não um**, e a distinção importa para quem lê a resposta:
+
+| situação | o que o modelo recebe |
+|---|---|
+| `apenasHumano` (restrição deliberada) | "é operada por uma PESSOA do time com acesso de gestor… ofereça que alguém do time faça" |
+| sem a marca (o acidente do BUG-02) | "limitação da configuração… oriente a pessoa a falar com quem cuida do sistema" |
+
+Prometer "peça a um gestor" numa capacidade que ninguém deveria ter restringido mandaria a pessoa
+bater numa porta que não abre — seria o BUG-02 virando promessa falsa ao cliente.
+
+**A frase, medida com `gpt-5.6-terra`, mesmo cenário:**
+
+| | o que o usuário lê |
+|---|---|
+| antes | "Não consegui criar a etapa: **seu perfil atual é agent**, e essa alteração exige permissão de **manager**." |
+| depois | "A etapa **"Retorno pos-cirurgico"** ainda não existe no funil, mas não consigo criá-la por aqui. **Peça para alguém do time** adicioná-la no fim do funil." |
+
+Zero vocabulário interno, nenhuma afirmação falsa sobre o perfil de quem lê, e o próximo passo
+oferecido. A barreira continua segurando: `crm_stages` com o nome alvo → **0**.
+
+Guarda em `tests/unit/recusa-para-o-modelo.test.ts` (5 testes). **Sabotagem:** devolvi o jargão ao
+texto → `expected [ 'crm_create_stage: "agent"', …(23) ] to deeply equal []`, acusando cada termo
+em cada capacidade. Restaurado: `5 passed`.
+
+---
+
+## Os quatro cenários com a frase nova, e um vazamento que o contrato impede consertar
+
+Rodados **um por vez** (a corrida com os cinco juntos expira a sessão do admin com MFA), mesmo
+modelo `gpt-5.6-terra`:
+
+| cenário | ferramentas escolhidas | igual à rodada anterior? |
+|---|---|---|
+| ler o funil | `crm_list_pipelines → crm_list_stages` | sim |
+| não duplicar marcador | `crm_list_tags` | sim |
+| diagnosticar entrada parada | `crm_list_webhook_sources` | sim |
+| criar etapa que já existe | `crm_list_pipelines → crm_list_stages` | sim |
+
+Comportamento **estável**: a tradução da recusa mexe só no `catch` de `McpAuthError`, e os caminhos
+felizes não mudaram — que era o esperado, e agora está medido em vez de suposto.
+
+### O jargão vaza para o cliente por DUAS portas, e só uma era minha
+
+**Porta 1 — a `description`, e essa eu fechei.** O contrato do épico separa `description` (para o
+modelo) de `rotulo`/`explicacao` (para o humano), assumindo que o modelo não repassa a primeira.
+**Ele repassa:** `"entradas automáticas de contatos (webhook_sources)"` virou, na resposta ao
+usuário, *"nenhuma entrada automática de contatos **(webhook)** configurada"*. Tirei os nomes de
+tabela de todas as minhas `description`.
+
+**Porta 2 — o `name` da capacidade, e essa NÃO tem conserto por aqui.** Refiz o cenário depois da
+limpeza e o termo voltou:
+
+> *"Não há nenhuma entrada automática/**webhook** cadastrada na clínica — ativa ou desativada."*
+
+A fonte agora é o próprio identificador da ferramenta que ele chamou: `crm_list_webhook_sources`.
+O modelo lê o nome do que executou e o repete. E `name` é **contrato de wire** — a Decisão 3 do
+briefing proíbe renomear tool publicada, porque agentes em VPS de clientes e clientes MCP externos
+quebram.
+
+**O que sobra**, e é decisão de quem define o prompt de sistema, não minha: instruir o agente a
+nunca citar o nome interno de uma ferramenta ao usuário. É a mesma família da correção da recusa —
+o modelo repete o que lê, então o que ele lê tem que ser escrito pensando em quem vai ouvir.
+**Registrado para o Maestro.**
+
+> O gate `catalogo-tools-leigo-friendly` não pega nenhuma das duas: ele vigia `rotulo`,
+> `explicacao` e `oQueToca` — os textos que vão à TELA. O caminho que vai à CONVERSA
+> (`description` + `name`) nunca teve guarda.
