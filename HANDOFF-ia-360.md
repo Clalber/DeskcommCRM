@@ -146,8 +146,54 @@ Testes novos: `tests/unit/escalacao-retomada.test.ts` (14),
 apêndice idempotente no `baseline.sql` + linha no `MANIFEST.md` — os três juntos.
 Mais o par `agent_case_events.kind` ↔ `CaseEventKind` no invariante de vocabulário.
 
-**Pendente nesta wave:** o E2E em tela do ciclo completo (o critério que prova a
-wave). Em andamento — ver a seção de bugs abaixo para o que já foi medido.
+**O critério que prova a wave — E2E em tela, verde.**
+`tests/e2e/escalacao-ciclo.spec.ts`, uma corrida, o ciclo inteiro:
+chamado na fila → a pessoa decide escrevendo o que combinou → a conversa mostra
+"Automático pausado" e o botão de devolver → a devolução solta as **três** travas
+→ a volta aparece na linha do tempo → **a abertura do próximo turno do agente cita
+a decisão da pessoa**.
+
+O último passo não prende a redação do modelo (isso reprovaria por motivo falso e
+treinaria o time a ignorar vermelho). Ele lê o **bloco de abertura do turno pela
+função REAL do motor** (`latestCheckpoint` → `ritualBlocks`, num processo `tsx` à
+parte) e cobra que a decisão da pessoa esteja lá — é a diferença determinística
+entre o agente voltar cego e voltar sabendo. Trecho medido, com o acumulado
+anterior preservado:
+
+```
+## Resumo acumulado da conversa
+Cliente quer 200 unidades e pediu desconto por volume.
+
+Uma pessoa da equipe assumiu esta conversa e devolveu o atendimento para você.
+O que ela fez, e que o cliente já considera combinado:
+- No chamado "Desconto acima da alçada", resolveu: Aprovei 15% de desconto para
+  as 200 unidades, com entrega em 5 dias uteis.
+- E2E Agent anotou internamente: Cliente confirmou o CNPJ por telefone.
+Retome daqui: não peça de novo o que já foi combinado nem contradiga a decisão
+da pessoa.
+```
+
+Evidência visual em `.superpowers/evidence/ia-360-w3/` (5 arquivos; o diretório é
+gitignored por convenção do repo).
+
+**Sabotagem do E2E** — as duas que importam, cada uma com rebuild completo:
+
+| Sabotagem | O que reprovou |
+|---|---|
+| devolver o CONTROLE sem gravar o CONTEXTO | `se a decisão da pessoa não está na abertura do turno, o agente volta cego` |
+| voltar ao comportamento antigo da rota (só o silêncio) | `soltar só o silêncio deixa o agente morto` (`forcado: true` ≠ `false`) |
+
+**Living System Checklist — o ciclo como peça:**
+
+| Pergunta | Resposta |
+|---|---|
+| Quem me alimenta? | a decisão da pessoa (`agent_case_events`), a nota interna (`conversation_notes`) e o estado da conversa — nunca o input do modelo |
+| Quem eu alimento? | `lead_checkpoints` (lido pelo ritual de abertura de TODO turno), `crm_lead_activities`, `event_log ai.handoff_resolved` |
+| Que atividade/log eu emito? | `handoff_triggered` (ida) e `handoff_resolved` (volta) + `api_audit_log` (`ai.reactivated_by_agent`, `ai.case_noted_by_agent`, `ai.case_closed_by_agent`) |
+| Onde apareço na tela? | aviso "Automático pausado" e botão no cabeçalho da conversa; a volta na linha do tempo do negócio; o registro do agente no chamado |
+| Mecanismo anti-morte | `ai.handoff_resolved` é o único produtor do sinal que retoma acompanhamento pausado — por isso é AWAITED e a rota devolve 500 se falhar |
+| Continuidade IA↔humano | as duas direções: `buildHandoffSummary` na ida (já existia) e o checkpoint de retomada na volta (esta wave) |
+| Mapa vivo atualizado? | `docs/architecture/escalacao-ciclo-humano.architecture.json` — 30 peças, 38 arestas; as 7 peças novas entram com 3 a 8 arestas cada |
 
 ---
 
