@@ -881,6 +881,69 @@ silêncio de monitor é indistinguível de "está rodando".
 
 ---
 
+## Balanço — o que o épico entregou (SHA `34e3425` + merge final da W3)
+
+### Os três pilares
+
+**Pilar 1 — a IA tem mãos.** Catálogo de **16 → 45 capacidades**, com os dois pacotes que nasciam
+vazios preenchidos. O invariante 4 da doutrina ("nada morre sem próximo passo") era **impossível**
+de cumprir na linha de base — o agente não tinha uma única capacidade de agendar retorno. Agora
+tem, com uma ressalva declarada abaixo.
+
+| Pacote | Capacidades |
+|---|---|
+| Organizar a operação | 15 |
+| Atendimento · Funil · Escalação · Retenção | 6 cada |
+| Governança | 4 |
+| Aprender e evoluir | 2 |
+
+**Pilar 2 — o humano tem painel.** ToolPicker por jornada, com risco declarado e capacidade
+`apenasHumano` distinguida; aba de uso real, lendo o `api_audit_log` que existia desde a Spec 11 e
+**nenhuma tela lia**.
+
+**Pilar 3 — linguagem de gente.** Gate mecânico com lista de jargão proibido, coerência entre
+categoria técnica e risco anunciado, e rótulo único por capacidade. Sabotado em três direções.
+
+### Oito defeitos de raiz, quase todos pré-existentes na `main`
+
+Todos da mesma família: **falhavam em silêncio**.
+
+| # | Defeito | Achado por |
+|---|---|---|
+| 01 | `actor.id` era o run e a FK esperava o agente — atividade da IA morria com 23503 | W4, resolvido pela W2 |
+| 02 | 4 capacidades de escrita inalcançáveis pelo agente, com o erro devolvido ao modelo | W4 |
+| 03 | `force_human` nunca era limpo — "devolver ao bot" não devolvia nada | W3 |
+| 04 | a volta não tinha tipo na timeline: meia continuidade lida como continuidade | W3 |
+| 05 | o agente não tinha como registrar num chamado | W3 |
+| 06 | o gate confundia restrição deliberada com acidente | **meu**, revelado pela W3 |
+| 07 | cancelado indistinguível de disparado — a fila dizia "Concluída" para retorno não executado | W2 |
+| 08 | a rota de devolver não tinha porta em tela nenhuma; metade das passagens fora da timeline | W3 |
+
+### O que ficou aberto, com dono e causa mastigada
+
+1. **Duas capacidades de retorno esperando decisão de produto** — `crm_schedule_followup` e
+   `crm_cancel_followup` pedem `agent`, as rotas exigem `manager`. Gate vermelho de propósito.
+2. **`IA360-FLAKY`** — causa raiz fechada por três frentes: `node-handlers.ts:201` usa o relógio do
+   **processo**, `baseline:6497` compara com o do **banco**. Precedente em `lib/leads/risk-seed.ts`
+   com a cura ("ancorar no relógio do banco, nunca afrouxar a asserção").
+3. **`update.sh` cospe 307 erros** — 112 índices do dump sem `if not exists`. Install limpo.
+4. **A irmã do BUG-01** em `deriveActor` — sequenciada de propósito para depois da W2 entrar, para
+   não criar um terceiro caminho divergente sobre o que `actor.id` significa.
+5. **`organizar`: o agente lê tudo e muda nada** — as 6 escritas de configuração são `apenasHumano`
+   por paridade medida com as rotas. Mudar isso é decisão de modelo de permissão.
+
+### O que a orquestração ensinou
+
+O achado mais forte não foi técnico: **duas waves acharam o mesmo defeito de forma independente e
+resolveram diferente — e a que parecia "só um detalhe de campo" era a certa.** Se o conflito de
+merge não tivesse me obrigado a ler o diff da W2, o BUG-01 teria ficado "resolvido" com dois dos
+três caminhos ainda quebrados.
+
+E o gate de uma wave reprovou a entrega de outra que nunca falou com ela. É o que a rede de
+segurança existe para fazer.
+
+---
+
 ## Regras de método que este épico produziu
 
 Extraídas de erros cometidos aqui, não de teoria. Cada uma tem o caso que a originou.
