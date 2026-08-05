@@ -289,9 +289,48 @@ vira evidência de que **branches disparam**, inclusive a minha.
 concluir quando ela me era favorável. O erro não é a amostra — é ela mudar de força conforme o
 lado que sustenta.
 
-**Item com dono:** a W3 assumiu, e declarou que 3 corridas verdes no SHA final dela não fecham o
-assunto. Minha contribuição é o par medido acima, com os testes nomeados, mais as corridas
-adicionais neste SHA (reportadas ao Maestro fora deste documento, para não travar a wave).
+**Item com dono:** a W3 assumiu. Minha contribuição são as medições abaixo — **declaradas por
+SHA, nunca agregadas**, porque somar corridas de estados de código diferentes sob o rótulo "a
+branch" é o erro que a própria W3 retratou na série dela:
+
+| SHA | o que é | corridas | resultado |
+|---|---|---|---|
+| `4202acf` | pré-merge | 2 | 2 vermelhos, em testes **diferentes** (`followup-turn-bridge`, `followup-reactivity`) |
+| `dc20317` | pós-merge, estado final | 3 | **3 verdes** (`413 passed \| 1 skipped`, exit 0 nas três) |
+
+**O que isso NÃO prova:** que sumiu. Três corridas verdes não refutam um fenômeno intermitente —
+a W3 já declarou isso sobre as três dela, e vale igual para as minhas.
+
+### O segundo mecanismo, confirmado por leitura independente
+
+A W3 encontrou um mecanismo que **não depende de relógio**, e eu o confirmei no código sem partir
+do achado dela — `supabase/baseline.sql:6485`:
+
+```sql
+create or replace function fn_claim_due_followup_enrollments(p_limit int, p_lease_seconds int)
+...
+    select id from followup_enrollments
+    where status in ('active','waiting_reply') and next_eval_at <= now() ...
+    order by next_eval_at limit p_limit for update skip locked
+```
+
+**Não há `organization_id` na assinatura nem no corpo.** O claim varre `followup_enrollments`
+inteiro. Medidas que acrescento ao achado dela:
+
+- `DEFAULT_CLAIM_LIMIT = 20` e `CLAIM_LEASE_SECONDS = 120` (`lib/followup/engine.ts:29-30`);
+- `runFollowupTick` **engole** a falha do claim (`catch { return summary }`, linha 409): devolve
+  `claimed: 0`, que é indistinguível de "nada vencido" — os dois mecanismos produzem o MESMO
+  sintoma, como a W3 disse;
+- **não é vazamento entre tenants.** O lote é global, mas cada enrollment é processado com o
+  `orgId` dele (`loadFlowGraph`/`loadLeadFacts` filtram por organização). O defeito é outro:
+  **starvation**. Numa instalação com mais de uma organização, quem tiver mais de 20 follow-ups
+  vencidos monopoliza cada tick — e, como a ordem é por `next_eval_at` crescente, quem está
+  atrasado continua tendo os mais antigos. É starvation **persistente**, não transitória, e atinge
+  em silêncio o invariante 4 da doutrina ("nenhuma demanda sem próximo passo") nas organizações
+  menores.
+
+Hoje o impacto real é baixo porque o uso corrente é de um operador só; num SaaS multi-tenant, não
+seria. **Não é item desta wave** — é registro para quem for fechar o do follow-up.
 
 ---
 
