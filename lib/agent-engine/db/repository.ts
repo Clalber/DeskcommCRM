@@ -35,6 +35,7 @@ export type InboxKind =
   | 'next_action_ambiguous'
   | 'risk_backlog_seeded'
   | 'reactivation_expired'
+  | 'capabilities_missing'
   | 'other';
 
 export interface InboxItemRow {
