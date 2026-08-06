@@ -101,3 +101,40 @@ export function anunciarDestino(script: string, c: CredenciaisSupabase): void {
   const rotulo = local ? "LOCAL" : "⚠️  REMOTO";
   console.info(`[${script}] escrevendo em ${rotulo}: ${c.url} (origem: ${c.origem})`);
 }
+
+/**
+ * O ambiente efetivo para um script de teste/sonda: `process.env` por cima do
+ * `.env.local`.
+ *
+ * ═══ POR QUE ESTA FUNÇÃO EXISTE (e não só `credenciaisSupabaseDeTeste`) ═══
+ *
+ * As ~96 sondas e provas do repo não leem só as credenciais do Supabase: cada
+ * uma pega o que precisa (`WAHA_API_KEY`, `OPENAI_API_KEY`, `SUPABASE_DB_URL`…)
+ * de um `Record<string,string>` que elas montavam à mão lendo o arquivo. Trocar
+ * isso por um acessor tipado exigiria reescrever 96 arquivos com oito formatos
+ * diferentes — risco desproporcional ao problema.
+ *
+ * Esta função devolve **o mesmo shape** que aquele loader inline devolvia, com
+ * duas diferenças que são o conserto inteiro:
+ *
+ *   1. **`process.env` VENCE o arquivo.** É o que permite `set -a; . ./.env.e2e`
+ *      redirecionar qualquer sonda sem editá-la.
+ *   2. **A ausência do arquivo não é erro.** No worktree dedicado de e2e não
+ *      existe `.env.local`, e é essa ausência que impede a escrita acidental em
+ *      produção. O loader antigo estourava com `ENOENT` ali.
+ *
+ * Também popula `process.env` com o que veio do arquivo (sem sobrescrever), para
+ * os módulos que leem de lá — `lib/env.ts`, por exemplo.
+ */
+export function carregarEnvLocal(): Record<string, string> {
+  const doArquivo = lerArquivo(".env.local");
+  for (const [k, v] of Object.entries(doArquivo)) {
+    if (process.env[k] === undefined || process.env[k] === "") process.env[k] = v;
+  }
+  // `process.env` por cima: o que o shell definiu manda, o arquivo completa.
+  const efetivo: Record<string, string> = { ...doArquivo };
+  for (const [k, v] of Object.entries(process.env)) {
+    if (typeof v === "string" && v !== "") efetivo[k] = v;
+  }
+  return efetivo;
+}

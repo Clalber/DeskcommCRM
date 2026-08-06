@@ -27,15 +27,27 @@ import { describe, expect, it } from "vitest";
  * está olhando. O custo de escrever em produção não é reparável por code review
  * depois do fato.
  *
- * ⚠️ ESCOPO DECLARADO: este gate cobre `scripts/seed-e2e-*.ts` — o que a suíte
- * roda SOZINHA, sem ninguém olhando. As ~78 sondas de `tests/*.ts` e
- * `scripts/sonda-*`/`prova-*` seguem com o padrão antigo: são ferramentas que
- * alguém dispara à mão e acompanha. A dívida está no HANDOFF, não escondida aqui.
+ * ESCOPO: os seeds de E2E **e** as sondas/provas de `scripts/` e `tests/`. A
+ * dívida das ~96 sondas foi paga — todas passaram a usar `carregarEnvLocal()`,
+ * que faz `process.env` vencer e tolera a ausência do arquivo (o worktree
+ * dedicado de e2e não tem `.env.local`, e é essa ausência que protege).
+ *
+ * O anúncio de destino (`anunciarDestino`) continua exigido só dos SEEDS: eles
+ * rodam sem ninguém olhando, dentro da suíte. Uma sonda é disparada à mão, com
+ * a pessoa lendo a saída — exigir a linha de todas seria cerimônia sem ganho.
  */
 const SEEDS = readdirSync(join(process.cwd(), "scripts"))
   .filter((f) => f.startsWith("seed-e2e-") && f.endsWith(".ts"))
   .map((f) => join("scripts", f))
   .sort();
+
+/** Toda sonda/prova/seed que possa falar com um Supabase. */
+function varrer(dir: string): string[] {
+  return readdirSync(join(process.cwd(), dir))
+    .filter((f) => f.endsWith(".ts") || f.endsWith(".tsx"))
+    .map((f) => join(dir, f));
+}
+const SONDAS = [...varrer("scripts"), ...varrer("tests"), ...varrer("tests/e2e")].sort();
 
 /**
  * A forma que denuncia: ler o arquivo, em vez de perguntar ao ambiente.
@@ -80,5 +92,19 @@ describe("seeds de E2E não leem .env.local do disco", () => {
       fonte.includes("anunciarDestino("),
       `${seed} não chama anunciarDestino() — sem isso, ninguém vê que ele foi para a nuvem.`,
     ).toBe(true);
+  });
+
+  it("a varredura das sondas acha arquivos — controle da segunda bateria", () => {
+    expect(SONDAS.length).toBeGreaterThan(100);
+  });
+
+  it.each(SONDAS)("%s não lê .env.local do disco", (arquivo) => {
+    const fonte = readFileSync(arquivo, "utf8");
+    expect(
+      LE_DO_DISCO.test(fonte),
+      `${arquivo} lê .env.local do disco. Num checkout de trabalho isso aponta para PRODUÇÃO — ` +
+        "use `carregarEnvLocal()` de scripts/lib/env-de-teste.ts, que faz process.env vencer " +
+        "e tolera a ausência do arquivo.",
+    ).toBe(false);
   });
 });

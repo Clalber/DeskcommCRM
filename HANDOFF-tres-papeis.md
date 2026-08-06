@@ -410,7 +410,7 @@ Até lá, o que está provado é o **mecanismo** (a ferramenta e o nome somem do
 | 9 | Nenhum turno de produção observado com worker real | a projeção e o Operador estão provados por unit + payload real, não por execução ponta a ponta | passo 5, junto com a prova de tela |
 | 10 | ~~Botão `Testar` sem guardrail~~ | ✅ **feito** — avalia o texto e declara os 9 gates que não consegue avaliar | — |
 | 11 | ~~Jornada de usuário na tela nova~~ | ✅ **feito** — `agente-papeis-operador.spec.ts`, 7/7 | — |
-| 12 | **~78 sondas** ainda leem `.env.local` do disco (`tests/*.ts`, `scripts/sonda-*`, `scripts/prova-*`) | os **16 seeds** foram migrados e há gate; sondas são disparadas à mão, com alguém olhando — e no worktree sem `.env.local` falham alto | quando alguém tocar numa |
+| 12 | ~~Sondas lendo `.env.local` do disco~~ | ✅ **migradas** — 0 arquivos leem do disco; gate cobre `scripts/` + `tests/` + `tests/e2e/` (188 casos) | — |
 | 14 | Taxa **total** (com ferramentas EXECUTADAS) — o que calibraria o controle | exige MCP real contra dados de verdade: worker + banco | quando houver ambiente |
 | 15 | 3 nativas sem equivalente no catálogo (`save_lead_note`, `open_human_case`, `provide_case_update`) | expor equivalentes é decisão de produto, não de refactor | quando o catálogo crescer |
 | 13 | ~~Fixtures de e2e na produção~~ | ✅ **removidas** em 2026-08-06 — 2 orgs, 5 usuários, 57 contatos, 144 mensagens, 56 leads, 18 agentes | — |
