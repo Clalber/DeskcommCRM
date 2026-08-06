@@ -93,6 +93,34 @@ que nunca se corrige. Coberto por teste de regressão.
 **🔧 Cabeçalho do bloco de estado imprimia `lead_state`** — nome de tabela no prompt, vazamento
 gratuito pela porta 2 sem nem precisar de uma ferramenta. Corrigido.
 
+**🐛 Bug MEU que entrou e a sabotagem pegou — `a859a735`.**
+`traduzirErroCru` era aplicada a **toda** string do retorno de ferramenta. O detector considera
+"webhook" vazamento (com razão, na saída), e a base de conhecimento de qualquer empresa que venda
+integração fala webhook: o `content` do `search_knowledge` viraria *"não consegui concluir essa
+verificação"* linha após linha. **A projeção destruiria o RAG do tenant** para proteger contra um
+vazamento que o gate de saída já cobre.
+
+É a **mesma falha** da fala do cliente, numa irmã que não se parece por fora: as duas nascem de
+aplicar num texto de **terceiros** um filtro desenhado para texto do **sistema**. Procurei a classe
+depois de pegar a primeira instância e não achei esta.
+
+*Como o teste passava sem medir:* o detector pega UUID (categoria `erro_cru`), então os casos de
+evidência passavam pela **tradução** mesmo com a remoção de chave desligada — dois mecanismos
+redundantes, e eu atribuía o resultado ao errado. O sinal foi a sabotagem S2 derrubar 1 caso de 3.
+Depois da correção: **S2 derruba 3 de 3.**
+
+### Sabotagem do passo 3 — 8 defeitos, 8 reprovações no teste certo
+
+| sabotagem | resultado |
+|---|---|
+| allowlist vira spread (campo novo passa) | 2 failed ✅ |
+| `chaveDeIdentificador` desligada | **3 failed** ✅ (era 1 antes da correção) |
+| tradução devolve texto cru (falha aberta) | 1 failed ✅ |
+| interruptor arma sempre | 1 failed ✅ |
+| tradução volta a pisar na fala do cliente | 1 failed ✅ |
+| `chaveDeErro` aceita tudo (volta o bug do RAG) | 1 failed ✅ |
+| `chaveDeErro` rejeita tudo (desarma a defesa) | 2 failed ✅ |
+
 ---
 
 ## Deixado para trás (declarado, não escondido)
