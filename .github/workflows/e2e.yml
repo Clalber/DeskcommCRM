@@ -187,6 +187,9 @@ jobs:
           WAHA_WEBHOOK_BASE_URL: http://127.0.0.1:3001
           UPSTASH_REDIS_REST_URL: http://127.0.0.1:3998
           UPSTASH_REDIS_REST_TOKEN: ci-placeholder-nao-e-segredo
+          # CI = 1 IP para todos os specs; o teto de produção (60/5min) é irreal aqui.
+          # O teto por CONTA (5 falhas) NÃO muda — é ele que barra brute force.
+          AUTH_RATE_LIMIT_LOGIN_IP: "1000"
 
       - name: E2E — parte 2 de 2 (processo novo, contador de login zerado)
         run: |
@@ -197,7 +200,9 @@ jobs:
             qa-agente-usa-as-maos.spec.ts qa-selo-no-funil-usado.spec.ts \
             qa-telas-descobertas-w4.spec.ts retorno-anti-morte.spec.ts \
             followup-builder.spec.ts followup-queue.spec.ts \
-            distribuicao-atendimento.spec.ts
+            distribuicao-atendimento.spec.ts followup-journey.spec.ts \
+            webhooks.spec.ts \
+            capacidades-do-agente.spec.ts
         env:
           INTERNAL_SECRET: ci-placeholder-nao-e-segredo
           CPF_ENCRYPTION_KEY: ci-placeholder-nao-e-segredo
@@ -209,6 +214,9 @@ jobs:
           WAHA_WEBHOOK_BASE_URL: http://127.0.0.1:3001
           UPSTASH_REDIS_REST_URL: http://127.0.0.1:3998
           UPSTASH_REDIS_REST_TOKEN: ci-placeholder-nao-e-segredo
+          # CI = 1 IP para todos os specs; o teto de produção (60/5min) é irreal aqui.
+          # O teto por CONTA (5 falhas) NÃO muda — é ele que barra brute force.
+          AUTH_RATE_LIMIT_LOGIN_IP: "1000"
 
       - name: Declarar o que este job ainda NÃO cobre
         if: always()
@@ -216,7 +224,7 @@ jobs:
           {
             echo "## E2E — cobertura deste job"
             echo ""
-            echo "**Rodou (29 de 33 specs):** smoke, auth, error-pages, password-recovery,"
+            echo "**Rodou (32 de 33 specs):** smoke, auth, error-pages, password-recovery,"
             echo "signup-journey, rbac-roles, inbox-scope, reset-password-mfa,"
             echo "degradacao-silenciosa, vps-webhook-outbound-ssrf, kanban-owner-filter,"
             echo "queue-assign, risk-radar, invite-lifecycle, system-update,"
@@ -224,18 +232,10 @@ jobs:
             echo "escalacao-ciclo, navegacao, olhar-telas-do-epico, pipelines-gestao,"
             echo "qa-agente-usa-as-maos, qa-selo-no-funil-usado, qa-telas-descobertas-w4,"
             echo "retorno-anti-morte, followup-builder, followup-queue,"
-            echo "distribuicao-atendimento."
+            echo "distribuicao-atendimento, followup-journey, capacidades-do-agente, webhooks."
             echo ""
-            echo "**Não rodou (4):**"
-            echo "- precisa de WAHA: followup-journey, webhooks"
+            echo "**Não rodou (1):**"
             echo "- precisa de WAHA + Redis + Resend + Nuvemshop: vps-fresh-onboarding (P0)"
-            echo "- **capacidades-do-agente: fora porque REPROVA, e o vermelho está certo.**"
-            echo "  Ligar o pacote 'Atender' enche o teto de 20 capacidades, e aí a UI"
-            echo "  DESABILITA o checkbox da capacidade crítica que o próprio desenho"
-            echo "  manda o humano marcar à mão ('o pacote não liga por você'). O seed"
-            echo "  liga 3; o pacote traz >=17 automáticas. Não é dado sujo: é o catálogo"
-            echo "  ter crescido depois que a spec foi escrita — e ninguém soube porque"
-            echo "  ela nunca rodou no gate, que é a tese desta issue."
             echo ""
             echo "Expandir é trabalho de seguimento — issue #63."
           } >> "$GITHUB_STEP_SUMMARY"
