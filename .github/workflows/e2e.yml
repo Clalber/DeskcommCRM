@@ -187,6 +187,9 @@ jobs:
           WAHA_WEBHOOK_BASE_URL: http://127.0.0.1:3001
           UPSTASH_REDIS_REST_URL: http://127.0.0.1:3998
           UPSTASH_REDIS_REST_TOKEN: ci-placeholder-nao-e-segredo
+          # CI = 1 IP para todos os specs; o teto de produção (60/5min) é irreal aqui.
+          # O teto por CONTA (5 falhas) NÃO muda — é ele que barra brute force.
+          AUTH_RATE_LIMIT_LOGIN_IP: "1000"
 
       - name: E2E — parte 2 de 2 (processo novo, contador de login zerado)
         run: |
@@ -209,6 +212,9 @@ jobs:
           WAHA_WEBHOOK_BASE_URL: http://127.0.0.1:3001
           UPSTASH_REDIS_REST_URL: http://127.0.0.1:3998
           UPSTASH_REDIS_REST_TOKEN: ci-placeholder-nao-e-segredo
+          # CI = 1 IP para todos os specs; o teto de produção (60/5min) é irreal aqui.
+          # O teto por CONTA (5 falhas) NÃO muda — é ele que barra brute force.
+          AUTH_RATE_LIMIT_LOGIN_IP: "1000"
 
       - name: Declarar o que este job ainda NÃO cobre
         if: always()
