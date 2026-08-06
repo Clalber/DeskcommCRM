@@ -6797,7 +6797,12 @@ create policy tenant_isolation_agent_case_events_insert on agent_case_events
 -- job_queue_check (anônimo, gerado pelo Postgres) para o CHECK de coerência.
 alter table job_queue drop constraint if exists job_queue_kind_check;
 alter table job_queue add constraint job_queue_kind_check
-  check (kind in ('inbound_turn','followup_turn','watchdog','flywheel','case_reply_turn'));
+  -- 'operator_turn' (migration 0111, spec 16 §3.2) entra NESTE bloco, não num
+  -- novo no fim: reconstruir a mesma constraint em N blocos quebra o update.sh
+  -- de todo clone que já tenha uma linha de vocabulário posterior — os blocos
+  -- antigos rodam antes e falham em cadeia. Vigiado por
+  -- tests/unit/baseline-constraint-reconstruida.test.ts.
+  check (kind in ('inbound_turn','followup_turn','watchdog','flywheel','case_reply_turn','operator_turn'));
 alter table job_queue drop constraint if exists job_queue_turn_needs_contact;
 do $$
 declare c text;
@@ -6808,7 +6813,7 @@ begin
   if c is not null then execute format('alter table job_queue drop constraint %I', c); end if;
 end $$;
 alter table job_queue add constraint job_queue_turn_needs_contact
-  check ((kind in ('inbound_turn','followup_turn','case_reply_turn')) = (contact_id is not null));
+  check ((kind in ('inbound_turn','followup_turn','case_reply_turn','operator_turn')) = (contact_id is not null));
 
 alter table cron_jobs drop constraint if exists cron_jobs_job_kind_check;
 alter table cron_jobs add constraint cron_jobs_job_kind_check
@@ -9011,6 +9016,12 @@ alter table public.agent_inbox_items
     -- — os blocos antigos rodam antes e falham em cadeia. Um bloco por
     -- constraint, vigiado por tests/unit/baseline-constraint-reconstruida.test.ts.
     'message_send_stuck',
+    -- (migration 0111, spec 16 §3.2) O papel Operador declara promessa em aberto:
+    -- o assistente prometeu algo ao cliente e o cumprimento não foi registrado.
+    -- A invariante sagrada da spec é "nenhuma promessa deixa de ser cumprida", e
+    -- uma promessa sem dono precisa aparecer onde o humano olha — não no log do
+    -- worker. Entra NESTA lista pela mesma razão que a de cima.
+    'promise_unfulfilled',
     'other'
   ));
 
@@ -9130,5 +9141,26 @@ comment on column lead_checkpoints.declaracao is
   'Declaração do turno (spec 16 §5): {intencoes[], promessas[], nada_a_declarar}. '
   'NULL = o modelo não declarou; {"nada_a_declarar":true} = avaliou e não havia nada. '
   'Os dois estados são distintos por desenho.';
+
+notify pgrst, 'reload schema';
+
+-- ---- turno do OPERADOR: config por versão (migration 0111) ----
+-- Spec 16 §3.2. O papel que mexe no sistema e nunca fala com o lead; disparo
+-- imposto pelo runtime, por evento.
+--
+-- Os DOIS CHECKs de `job_queue` (kind + coerência kind⇔contato) NÃO estão aqui:
+-- eles vivem no bloco único lá em cima, já com 'operator_turn'. Reconstruí-los
+-- aqui criaria o segundo bloco que quebra o update.sh do clone.
+alter table ai_agent_versions
+  add column if not exists operator_enabled boolean not null default false;
+alter table ai_agent_versions
+  add column if not exists operator_model text;
+
+comment on column ai_agent_versions.operator_enabled is
+  'Spec 16 §3.2: o papel Operador roda após o turno do Conversador. false = o '
+  'registro básico segue por código determinístico (estado, follow-up prometido, '
+  'timeline); o que se perde é o julgamento sobre as capacidades do catálogo.';
+comment on column ai_agent_versions.operator_model is
+  'Modelo do papel Operador. NULL = herda o modelo do agente.';
 
 notify pgrst, 'reload schema';

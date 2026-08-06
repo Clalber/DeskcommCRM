@@ -1,0 +1,209 @@
+/**
+ * Handler do job `operator_turn` — o papel OPERADOR (spec 16 §3.2).
+ *
+ * O que mexe no sistema, e que **nunca fala com o lead**. Não é regra de prompt:
+ * ele não tem `send_message` no toolset. A separação é por AUSÊNCIA, e é a única
+ * forma que não depende de o modelo obedecer.
+ *
+ * ═══ POR QUE ELE NÃO É CHAMADO PELO CONVERSADOR ═══
+ *
+ * Porque isso devolveria o problema inteiro. Se o Operador só rodasse quando o
+ * Conversador lembrasse de acioná-lo, o turno em que ele "não achasse necessário"
+ * seria um lead parado no funil, em silêncio — e silêncio é justamente o modo de
+ * falha que ninguém vê. O disparo é do RUNTIME, no fim do turno, incondicional.
+ * Mesmo argumento que este codebase já usa para a chamada de fechamento.
+ *
+ * ═══ O CURTO-CIRCUITO, e por que ele é fiel em vez de econômico ═══
+ *
+ * Quando a declaração (spec 16 §5) diz `nada_a_declarar: true`, o Operador NÃO
+ * chama modelo: registra "nada a fazer" e encerra. Não é economia disfarçada de
+ * desenho — é a distinção do passo 2 valendo a pena. Quem avaliou o turno foi o
+ * Conversador, que estava lá; repetir a avaliação com menos contexto para chegar
+ * à mesma conclusão é gastar a chave do self-hoster para nada.
+ *
+ * Mas quando a declaração está AUSENTE (`null`), ele roda. Ausente significa que
+ * NINGUÉM avaliou — o fechamento veio incompleto —, e é exatamente aí que um
+ * turno pode ter deixado promessa sem dono. Os dois estados que o passo 2 tomou o
+ * cuidado de não colapsar decidem, aqui, se uma chamada de modelo acontece.
+ */
+import { z } from 'zod';
+import type pg from 'pg';
+
+import { withFields } from '../obs/logger';
+import type { JobRow } from '../queue/queue';
+import type { InboundTurnDeps } from './inbound-turn';
+import { latestCheckpoint } from './inbound-turn';
+import { declaracaoDoTurnoSchema, promessasEmAberto, type DeclaracaoDoTurno } from './declaracao';
+import { loadPublishedAgentConfigById } from './agent-config';
+import { insertInboxItem } from '../db/repository';
+
+/**
+ * O que o runtime enfileira ao fim do turno do Conversador. Só PONTEIROS: org e
+ * contato vêm da row do job (fonte confiável, regra dura nº 1), nunca daqui.
+ *
+ * `agent_id` viaja porque o Operador precisa saber QUAL agente atendeu para ler a
+ * config do papel (`operator_enabled`, `operator_model`) — e resolvê-lo de novo
+ * pelo router aqui poderia dar outro agente, já que o roteamento depende do sinal
+ * da mensagem, que não existe mais neste ponto.
+ */
+export const operatorTurnPayloadSchema = z
+  .object({
+    conversation_id: z.string().uuid(),
+    /** job do turno do Conversador que originou este — correlação no trace. */
+    origin_job_id: z.string().uuid(),
+    agent_id: z.string().uuid().nullable().default(null),
+  })
+  .passthrough();
+
+/** O que o Operador decidiu neste turno — vai a log e à timeline. */
+export type DesfechoDoOperador =
+  | { tipo: 'nada_a_fazer'; porque: 'declaracao_vazia' }
+  | { tipo: 'pulado'; porque: 'papel_desligado' | 'sem_agente' | 'sem_checkpoint' }
+  | { tipo: 'agiu'; promessas: number };
+
+/**
+ * Lê a declaração do último checkpoint do lead.
+ *
+ * `null` tem DOIS significados aqui e eles não se confundem: sem checkpoint
+ * nenhum (turno que morreu antes do fechamento) ou checkpoint sem declaração
+ * (modelo não declarou). Os dois levam o Operador a RODAR, não a pular — nos dois
+ * casos ninguém avaliou o turno, que é a condição em que ele mais importa.
+ */
+export async function lerDeclaracaoDoTurno(
+  db: pg.Pool,
+  tenantId: string,
+  leadId: string,
+): Promise<{ declaracao: DeclaracaoDoTurno | null; houveCheckpoint: boolean }> {
+  const checkpoint = await latestCheckpoint(db, tenantId, leadId);
+  if (checkpoint === null) return { declaracao: null, houveCheckpoint: false };
+  if (checkpoint.declaracao === null) return { declaracao: null, houveCheckpoint: true };
+  // O jsonb do banco não é confiável por vir do banco: foi escrito por um modelo.
+  // Shape quebrado é tratado como "não declarou" — a direção segura, porque leva
+  // o Operador a rodar em vez de pular.
+  const parsed = declaracaoDoTurnoSchema.safeParse(checkpoint.declaracao);
+  return { declaracao: parsed.success ? parsed.data : null, houveCheckpoint: true };
+}
+
+/**
+ * A decisão de RODAR OU NÃO, isolada em função pura para ser testável sem banco,
+ * sem modelo e sem fila. É a regra que decide se a chave do self-hoster é gasta.
+ */
+export function decidirSeRoda(input: {
+  papelLigado: boolean;
+  declaracao: DeclaracaoDoTurno | null;
+}):
+  // A união é DISCRIMINADA na origem em vez de `desfecho?: DesfechoDoOperador`:
+  // com o opcional, quem lê precisa de `?.` e o compilador aceita ler `porque`
+  // de um desfecho que não o tem. Aqui, `roda: false` GARANTE um desfecho de
+  // não-execução, e `roda: true` garante que não há desfecho a inspecionar.
+  | { roda: true }
+  | { roda: false; desfecho: Extract<DesfechoDoOperador, { tipo: 'nada_a_fazer' | 'pulado' }> } {
+  if (!input.papelLigado) {
+    return { roda: false, desfecho: { tipo: 'pulado', porque: 'papel_desligado' } };
+  }
+  // Declarou explicitamente que não havia nada: quem avaliou estava lá, com o
+  // contexto inteiro. Repetir a avaliação com menos contexto é gastar por nada.
+  if (input.declaracao !== null && input.declaracao.nada_a_declarar) {
+    return { roda: false, desfecho: { tipo: 'nada_a_fazer', porque: 'declaracao_vazia' } };
+  }
+  return { roda: true };
+}
+
+export function createOperatorTurnHandler(deps: InboundTurnDeps) {
+  return async function handleOperatorTurn(
+    job: JobRow,
+    pool: pg.Pool,
+    ctx: { workerId: string },
+  ): Promise<void> {
+    const tenantId = job.organization_id;
+    const leadId = job.contact_id;
+    if (leadId === null) {
+      throw new Error('operator_turn sem contact_id — o CHECK da fila deveria impedir');
+    }
+    const payload = operatorTurnPayloadSchema.parse(job.payload);
+    const log = withFields(deps.log, {
+      job_id: job.id,
+      tenant_id: tenantId,
+      lead_id: leadId,
+      origin_job_id: payload.origin_job_id,
+    });
+
+    const agentConfig =
+      payload.agent_id === null ? null : await loadPublishedAgentConfigById(pool, tenantId, payload.agent_id);
+    if (agentConfig === null) {
+      // Sem agente publicado não há config de papel para ler. Não é erro: é o
+      // turno que rodou no genérico. Registrar e sair é honesto.
+      log.info('operador pulado — turno sem agente publicado', { desfecho: 'sem_agente' });
+      return;
+    }
+
+    const { declaracao, houveCheckpoint } = await lerDeclaracaoDoTurno(pool, tenantId, leadId);
+    const decisao = decidirSeRoda({ papelLigado: agentConfig.operatorEnabled, declaracao });
+
+    if (!decisao.roda) {
+      // "Nada a fazer" é DECISÃO REGISTRADA, não silêncio (invariante 4 do
+      // sistema vivo). Um turno em que o Operador não agiu e ninguém soube é
+      // indistinguível de um turno em que ele falhou.
+      log.info('operador não agiu neste turno', {
+        desfecho: decisao.desfecho.tipo,
+        porque: decisao.desfecho.porque,
+        houve_checkpoint: houveCheckpoint,
+      });
+      return;
+    }
+
+    // As promessas do turno são as obrigações que alguém tem de quitar. Enquanto
+    // as ferramentas de operação não estão ligadas neste papel (spec 16, passo 4
+    // entrega o CANAL; a mão vem a seguir), o valor imediato é não deixá-las
+    // órfãs: promessa sem dono vira aviso na Central, onde o humano olha.
+    const promessas = promessasEmAberto(declaracao);
+    log.info('operador rodou', {
+      promessas: promessas.length,
+      intencoes: declaracao?.intencoes.length ?? 0,
+      declaracao_ausente: declaracao === null,
+      houve_checkpoint: houveCheckpoint,
+      model: agentConfig.operatorModel ?? agentConfig.model,
+    });
+
+    if (promessas.length > 0) {
+      await avisarPromessasEmAberto(pool, tenantId, payload.conversation_id, promessas.length, log);
+    }
+    void ctx;
+  };
+}
+
+/**
+ * Promessa declarada e não quitada vira item na Central.
+ *
+ * Best-effort de propósito, pelo mesmo motivo dos outros avisos deste engine: o
+ * aviso não pode derrubar o job que ele descreve. Mas o silêncio também não serve
+ * — log de worker em VPS não é superfície de nada, e este produto é instalado por
+ * quem nunca vai abrir um contêiner.
+ */
+async function avisarPromessasEmAberto(
+  db: pg.Pool,
+  tenantId: string,
+  conversationId: string,
+  quantas: number,
+  log: { warn: (msg: string, fields?: Record<string, unknown>) => void },
+): Promise<void> {
+  try {
+    await insertInboxItem(db, tenantId, {
+      kind: 'promise_unfulfilled',
+      severity: 'warn',
+      title:
+        quantas === 1
+          ? 'Uma promessa feita ao cliente ainda não foi cumprida'
+          : `${quantas} promessas ainda não foram cumpridas`,
+      body:
+        'O assistente prometeu algo a esta pessoa nesta conversa e o sistema ainda não registrou o ' +
+        'cumprimento. Abra a conversa para ver o que foi combinado.',
+      refKind: 'conversation',
+      refId: conversationId,
+    });
+  } catch (err) {
+    log.warn('aviso de promessa em aberto não foi gravado', {
+      error: (err instanceof Error ? err.message : String(err)).slice(0, 120),
+    });
+  }
+}

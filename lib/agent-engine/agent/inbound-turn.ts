@@ -51,7 +51,7 @@ import type { ProviderRegistry } from '../edge/llm/providers';
 import { MIRROR_WARN_ONLY, mirrorLeadStageToCrm } from '../edge/crm/move-lead-stage';
 import { insertInboxItem } from '../db/repository';
 import { buildNativeMediaParts } from './media-parts';
-import type { JobRow, Queryable } from '../queue/queue';
+import { enqueueJob, type JobRow, type Queryable } from '../queue/queue';
 import { applyLeadStateUpdate, getLeadState, type LeadStage, type LeadStateRow } from './lead-state';
 import { applySaveLeadNote, buildNotesIndexBlock, getLeadNoteBody } from './lead-notes';
 import { applyScheduleFollowup, type FollowupWindowKnobs } from './schedule-followup';
@@ -2061,6 +2061,38 @@ export async function runAgentTurn(
   // faria a seguir.
   const checkpointAnterior = await latestCheckpoint(pool, tenantId, leadId);
   await insertCheckpoint(pool, { tenantId, leadId, jobId: job.id, content });
+
+  // ── O TURNO DO OPERADOR (spec 16 §3.2) ─────────────────────────────────────
+  //
+  // Enfileirado AQUI, pelo RUNTIME, logo depois de o checkpoint existir — nunca
+  // por decisão do modelo. Um Conversador que "chama" o Operador devolveria o
+  // problema inteiro: voltaria a depender de o modelo lembrar, e o turno em que
+  // ele não achasse necessário seria um lead parado no funil, em silêncio.
+  //
+  // Depois do checkpoint porque a declaração É o insumo do Operador; enfileirar
+  // antes criaria uma corrida em que ele leria o checkpoint do turno ANTERIOR e
+  // agiria sobre um turno que não é o seu.
+  //
+  // Fire-and-forget: falha ao enfileirar NÃO derruba um turno que já respondeu
+  // ao cliente. O `sourceEventId` é o job do Conversador, então o retry da fila
+  // não gera um segundo Operador para o mesmo turno.
+  try {
+    const { deduped } = await enqueueJob(pool, tenantId, {
+      kind: 'operator_turn',
+      leadId,
+      sourceEventId: job.id,
+      payload: {
+        conversation_id: input.conversationId,
+        origin_job_id: job.id,
+        agent_id: agentConfig?.agentId ?? null,
+      },
+    });
+    runLog.info('turno do operador enfileirado', { deduped });
+  } catch (err) {
+    runLog.error('turno do operador NÃO foi enfileirado (o turno segue)', {
+      error: (err instanceof Error ? err.message : String(err)).slice(0, 120),
+    });
+  }
 
   const mudanca = diffCheckpoint(
     checkpointAnterior
