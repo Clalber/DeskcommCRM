@@ -7,10 +7,10 @@
  * serviço caiu" — e, tendo que escrever UMA frase, escreve a segunda, que é a
  * hipótese simpática para quem configurou.
  *
- * Foi o que aconteceu com o WhatsApp em produção: `WAHA_API_BASE_URL` apontava
- * para um endereço que o DNS não resolve, e durante semanas o app respondeu
- * "confirme que o container está no ar" — mandando o dono reiniciar, toda vez,
- * um container que nunca tinha caído (medido: `restarts=0`, `Up 5 days`).
+ * Foi o que aconteceu com o transporte de mensagens em produção: o endereço
+ * configurado não resolvia no DNS, e durante semanas o app respondeu "confirme
+ * que o container está no ar" — mandando o dono reiniciar, toda vez, um
+ * container que nunca tinha caído (medido: `restarts=0`, `Up 5 days`).
  * Endereço inexistente e serviço fora do ar pedem ações opostas: uma se conserta
  * na configuração, a outra no servidor. Uma frase só para as duas manda metade
  * das pessoas para o lugar errado, sempre.
@@ -117,8 +117,9 @@ export function classificarFalhaDeAlcance(erro: unknown): FalhaDeAlcance {
  * A frase para quem não programa — e ela aponta ONDE mexer, porque essa é a
  * única diferença que o leitor precisa da classificação.
  *
- * `servico` entra por extenso ("o WhatsApp (WAHA)") para a frase servir a
- * qualquer dependência sem virar template de placeholder.
+ * `servico` entra por extenso, já com artigo ("o banco de dados", "o cache"),
+ * para a frase servir a qualquer dependência sem virar template de placeholder —
+ * e para este módulo, que é de rede, não precisar conhecer nenhuma delas.
  */
 export function explicarFalhaDeAlcance(falha: FalhaDeAlcance, servico: string): string {
   switch (falha) {
