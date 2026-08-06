@@ -103,6 +103,8 @@ MFA obrigatório pra admin logo após o wizard (`MfaEnrollGate`).
 | J4.22 | **Mensagem de contato desconhecido chega pelo webhook do WAHA** | card nasce no funil de entrada (`is_default`), na primeira etapa aberta, com o NOME de quem escreveu — nunca `@c.us`/`@lid` (executado 2026-08-06 · `conversa-vira-lead.spec.ts`) |
 | J4.23 | Timeline do card recém-nascido | diz **"Entrou pelo WhatsApp"** — card que aparece sem explicação destrói a confiança no automatismo (executado 2026-08-06) |
 | J4.24 | Segunda mensagem do MESMO contato | **não** abre um segundo card: um lead por demanda, não um por mensagem (executado 2026-08-06) |
+| J4.26 | **Salvar o e-mail de um contato pela tela** | fica salvo, aparece na ficha e sobrevive ao reload. Era **500** até 2026-08-06: o handler escrevia em `email_normalized`, coluna GERADA, e o Postgres abortava o UPDATE inteiro (`contato-salva-email.spec.ts`) |
+| J4.27 | Anonimizar um contato (LGPD) | mesma causa da J4.26 na rota `/api/v1/lgpd/anonymize` — **a anonimização não acontecia**. Corrigido; guardado pelo invariante de colunas geradas, ainda **sem prova de tela** |
 | J4.25 | ⚠️ O funil de entrada de uma org nova é de **e-commerce** | `fn_seed_default_pipeline_for_org` semeia "Pedidos" com *Carrinho abandonado · Pago · Em separação…*. Numa clínica ou imobiliária, o lead nasce em **"Carrinho abandonado"**. Achado em 2026-08-06 ao provar J4.22; conserto é decisão de produto (spec 17 passo 4) |
 
 ## J5 — Time: convites e atuação de atendentes `[P0]` (convite) / `[P1]` (rotina)
