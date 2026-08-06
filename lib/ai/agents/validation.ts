@@ -9,6 +9,7 @@
  */
 import { z } from "zod";
 import { VALID_TOOL_IDS } from "@/lib/mcp/tools/catalog";
+import { TETO_TOOLS_POR_AGENTE } from "@/lib/mcp/tools/selecao-por-pacote";
 
 export const PROVIDERS = ["anthropic", "openai", "google"] as const;
 export type Provider = (typeof PROVIDERS)[number];
@@ -65,7 +66,9 @@ const versionShapeSchema = z
     credential_id: UUID,
     tool_ids: z
       .array(z.string().min(1).max(80))
-      .max(20)
+      // O mesmo teto que a tela mostra ("13 de 20") é o que o servidor recusa —
+      // ver `lib/mcp/tools/selecao-por-pacote.ts` para o porquê do número.
+      .max(TETO_TOOLS_POR_AGENTE)
       .default([])
       .refine(
         (ids) => ids.every((id) => (VALID_TOOL_IDS as readonly string[]).includes(id)),
@@ -84,6 +87,10 @@ const versionShapeSchema = z
       .default(["falar com humano", "atendente", "pessoa real"]),
     handoff_tool_enabled: z.boolean().default(true),
     cases_enabled: z.boolean().default(false),
+    // Onda 4 — quebra a resposta em bolhas curtas (splitIntoBubbles) espaçadas
+    // pelo pacing anti-ban. Defaults espelham a migration 0059.
+    split_messages: z.boolean().default(false),
+    split_max_chars: z.number().int().min(80).max(4000).default(600),
     followup: followupConfigSchema,
   })
   .strict();

@@ -34,6 +34,8 @@ import { TokenCounter } from "@/lib/ui/TokenCounter";
 import { Info } from "@/lib/ui/icons";
 import Link from "next/link";
 
+import { TETO_TOOLS_POR_AGENTE } from "@/lib/mcp/tools/selecao-por-pacote";
+
 import { ModelPicker, useModelMeta } from "./ModelPicker";
 import { CredentialPicker, findCredential } from "./CredentialPicker";
 import { ToolPicker } from "./ToolPicker";
@@ -48,17 +50,18 @@ import {
 } from "../_actions";
 
 import { versionCreateSchema, agentMcpCreateSchema } from "@/lib/ai/agents/validation";
+import type { SelectableChannel as ChannelSessionLite } from "@/lib/channels/selectable";
 import type { AgentRow } from "@/hooks/ai/useAgent";
 import type { AgentVersionRow } from "@/hooks/ai/useAgentVersions";
 import type { CredentialRow, Provider } from "@/hooks/ai/useCredentials";
 import { credentialStatus } from "@/hooks/ai/useCredentials";
 
-export interface ChannelSessionLite {
-  id: string;
-  display_name: string;
-  status: string;
-  phone_number: string | null;
-}
+/**
+ * O canal oferecido no seletor é exatamente o que `listSelectableChannels`
+ * devolve — alias, e não uma cópia da forma, para que a tela não possa divergir
+ * de quem monta a lista (é lá que mora o filtro de canal arquivado).
+ */
+export type { ChannelSessionLite };
 
 interface BaseProps {
   credentials: CredentialRow[];
@@ -99,6 +102,8 @@ interface FormState {
   handoff_keywords: string[];
   handoff_tool_enabled: boolean;
   cases_enabled: boolean;
+  split_messages: boolean;
+  split_max_chars: number;
   followup: FollowupValue;
 }
 
@@ -150,6 +155,8 @@ function buildState(args: {
     ],
     handoff_tool_enabled: version?.handoff_tool_enabled ?? true,
     cases_enabled: version?.cases_enabled ?? false,
+    split_messages: version?.split_messages ?? false,
+    split_max_chars: version?.split_max_chars ?? 600,
     followup: version?.followup ?? DEFAULT_FOLLOWUP,
   };
 }
@@ -171,6 +178,8 @@ function toVersionPayload(s: FormState) {
     handoff_keywords: s.handoff_keywords,
     handoff_tool_enabled: s.handoff_tool_enabled,
     cases_enabled: s.cases_enabled,
+    split_messages: s.split_messages,
+    split_max_chars: s.split_max_chars,
     followup: s.followup,
   };
 }
@@ -214,17 +223,23 @@ export function AgentForm(props: Props) {
   // ---------------------------------------------------------------------
   const validation = React.useMemo(() => {
     const errors: Record<string, string> = {};
-    if (form.name.trim().length === 0) errors.name = "Nome obrigatório.";
-    if (form.name.length > 120) errors.name = "Nome até 120 caracteres.";
+    // As mensagens abaixo aparecem embaixo do campo ANTES de a pessoa tentar
+    // salvar, então são escritas como INSTRUÇÃO ("dê um nome") e não como
+    // acusação ("nome obrigatório") — um formulário recém-aberto acusando o
+    // usuário de errar é a primeira coisa que ele vê nesta tela.
+    if (form.name.trim().length === 0) errors.name = "Dê um nome para este agente.";
+    if (form.name.length > 120) errors.name = "O nome pode ter até 120 caracteres.";
     if (form.system_prompt.trim().length < 10)
-      errors.system_prompt = "Prompt mínimo de 10 caracteres.";
+      errors.system_prompt = "Escreva as instruções do agente (pelo menos uma frase).";
     if (form.system_prompt.length > 20000)
-      errors.system_prompt = "Prompt máximo de 20.000 caracteres.";
-    if (!form.model) errors.model = "Selecione um modelo.";
-    if (!form.credential_id) errors.credential_id = "Selecione uma credencial.";
+      errors.system_prompt = "As instruções passaram de 20.000 caracteres.";
+    if (!form.model) errors.model = "Escolha o modelo de inteligência artificial.";
+    if (!form.credential_id)
+      errors.credential_id = "Escolha a chave de acesso da empresa de inteligência artificial.";
     if (!form.channel_session_id)
-      errors.channel_session_id = "Selecione um número de WhatsApp.";
-    if (form.tool_ids.length > 20) errors.tool_ids = "Máximo de 20 tools.";
+      errors.channel_session_id = "Escolha por qual número de WhatsApp ele atende.";
+    if (form.tool_ids.length > TETO_TOOLS_POR_AGENTE)
+      errors.tool_ids = `Máximo de ${TETO_TOOLS_POR_AGENTE} capacidades por agente.`;
 
     // Tenta o schema completo:
     if (Object.keys(errors).length === 0) {
@@ -245,10 +260,10 @@ export function AgentForm(props: Props) {
     if (!props.draft) return "Sem rascunho para publicar.";
     if (!isValid) return "Resolva os erros do formulário.";
     if (dirty) return "Salve o rascunho antes de publicar.";
-    if (!cred) return "Selecione uma credencial.";
+    if (!cred) return "Escolha a chave de acesso da empresa de inteligência artificial.";
     if (credSt !== "validated")
       return `Credencial ${form.provider} ${credSt === "invalid" ? "inválida" : "ainda não validada"}.`;
-    if (!channelSession) return "Selecione um número de WhatsApp.";
+    if (!channelSession) return "Escolha por qual número de WhatsApp ele atende.";
     if (channelSession.status !== "working" && channelSession.status !== "WORKING")
       return `Número WhatsApp não está conectado (status: ${channelSession.status}).`;
     return null;
@@ -346,7 +361,7 @@ export function AgentForm(props: Props) {
         <div>
           <div className="flex items-center gap-2">
             <h2 className="text-xl font-semibold tracking-tight">
-              {isEdit ? props.agent.name : "Novo agent"}
+              {isEdit ? props.agent.name : "Novo agente"}
             </h2>
             {statusBadge}
           </div>
@@ -366,7 +381,7 @@ export function AgentForm(props: Props) {
             </Button>
           ) : null}
           <Button onClick={handleSave} disabled={(!dirty && isEdit) || disabled || !isValid}>
-            {saving ? "Salvando…" : isEdit ? "Salvar rascunho" : "Criar agent"}
+            {saving ? "Salvando…" : isEdit ? "Salvar rascunho" : "Criar agente"}
           </Button>
           {isEdit ? (
             <span title={publishBlockReason ?? undefined}>
@@ -392,7 +407,7 @@ export function AgentForm(props: Props) {
         <div className="space-y-4">
           {/* Identification */}
           <Card className="space-y-3 p-4">
-            <h3 className="text-sm font-medium">Identificação</h3>
+            <h3 className="text-sm font-medium">Quem é este agente</h3>
             <div className="space-y-1">
               <Label htmlFor="name">Nome</Label>
               <Input
@@ -419,7 +434,7 @@ export function AgentForm(props: Props) {
               />
             </div>
             <div className="space-y-1">
-              <Label htmlFor="priority">Prioridade (0–1000)</Label>
+              <Label htmlFor="priority">Ordem de preferência (0 a 1000)</Label>
               <Input
                 id="priority"
                 type="number"
@@ -431,16 +446,17 @@ export function AgentForm(props: Props) {
                 disabled={disabled}
               />
               <p className="text-xs text-muted-foreground">
-                Maior prioridade = avaliado primeiro pelo dispatcher.
+                Quando mais de um agente puder atender a mesma conversa, o de número
+                maior tenta primeiro. Se você só tem um agente, pode deixar como está.
               </p>
             </div>
           </Card>
 
           {/* Provider + credential + model */}
           <Card className="space-y-3 p-4">
-            <h3 className="text-sm font-medium">Modelo & credencial</h3>
+            <h3 className="text-sm font-medium">A inteligência que ele usa</h3>
             <div className="space-y-1">
-              <Label htmlFor="provider">Provider</Label>
+              <Label htmlFor="provider">Empresa de inteligência artificial</Label>
               <Select
                 value={form.provider}
                 onValueChange={(v) => changeProvider(v as Provider)}
@@ -488,7 +504,7 @@ export function AgentForm(props: Props) {
 
           {/* WhatsApp session */}
           <Card className="space-y-3 p-4">
-            <h3 className="text-sm font-medium">Número de WhatsApp</h3>
+            <h3 className="text-sm font-medium">Por qual número ele atende</h3>
             {props.routerMembership && (
               <div className="flex items-start gap-2 rounded-md bg-accent-soft p-3 text-xs text-text-muted">
                 <Info className="mt-0.5 shrink-0" aria-hidden />
@@ -505,7 +521,7 @@ export function AgentForm(props: Props) {
               </div>
             )}
             <div className="space-y-1">
-              <Label htmlFor="channel_session_id">Sessão</Label>
+              <Label htmlFor="channel_session_id">Número conectado</Label>
               <Select
                 value={form.channel_session_id || undefined}
                 onValueChange={(v) => patch({ channel_session_id: v })}
@@ -536,10 +552,10 @@ export function AgentForm(props: Props) {
 
           {/* Limits */}
           <Card className="space-y-3 p-4">
-            <h3 className="text-sm font-medium">Limites</h3>
+            <h3 className="text-sm font-medium">Freios de segurança</h3>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
-                <Label htmlFor="max_steps">Max steps (1–25)</Label>
+                <Label htmlFor="max_steps">Ações por atendimento (1 a 25)</Label>
                 <Input
                   id="max_steps"
                   type="number"
@@ -551,7 +567,7 @@ export function AgentForm(props: Props) {
                 />
               </div>
               <div className="space-y-1">
-                <Label htmlFor="token_budget">Token budget</Label>
+                <Label htmlFor="token_budget">Volume de texto por atendimento</Label>
                 <Input
                   id="token_budget"
                   type="number"
@@ -564,7 +580,7 @@ export function AgentForm(props: Props) {
                 />
               </div>
               <div className="space-y-1">
-                <Label htmlFor="cost_budget_cents">Custo máx (cents)</Label>
+                <Label htmlFor="cost_budget_cents">Custo máximo por atendimento (centavos)</Label>
                 <Input
                   id="cost_budget_cents"
                   type="number"
@@ -576,7 +592,7 @@ export function AgentForm(props: Props) {
                 />
               </div>
               <div className="space-y-1">
-                <Label htmlFor="history_message_window">Histórico (msgs)</Label>
+                <Label htmlFor="history_message_window">Mensagens anteriores que ele lê</Label>
                 <Input
                   id="history_message_window"
                   type="number"
@@ -590,7 +606,7 @@ export function AgentForm(props: Props) {
                 />
               </div>
               <div className="col-span-2 space-y-1">
-                <Label htmlFor="history_token_window">Histórico (tokens)</Label>
+                <Label htmlFor="history_token_window">Tamanho máximo desse histórico</Label>
                 <Input
                   id="history_token_window"
                   type="number"
@@ -613,7 +629,7 @@ export function AgentForm(props: Props) {
           {/* Prompt */}
           <Card className="space-y-2 p-4">
             <div className="flex items-center justify-between">
-              <h3 className="text-sm font-medium">System prompt</h3>
+              <h3 className="text-sm font-medium">As instruções dele</h3>
               <TokenCounter
                 text={form.system_prompt}
                 contextWindow={modelMeta?.context_window ?? null}
@@ -635,9 +651,53 @@ export function AgentForm(props: Props) {
             ) : null}
           </Card>
 
-          {/* Tools */}
+          {/* Estilo de resposta (split de mensagens — Onda 4) */}
+          <Card className="space-y-3 p-4">
+            <h3 className="text-sm font-medium">Estilo de resposta</h3>
+            <div className="flex items-center gap-2">
+              <Switch
+                id="split_messages"
+                checked={form.split_messages}
+                onCheckedChange={(v) => patch({ split_messages: v })}
+                disabled={disabled}
+              />
+              <Label htmlFor="split_messages">
+                Responder em várias mensagens curtas (como uma pessoa digita)
+              </Label>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Em vez de um bloco único, a resposta sai em bolhas separadas, espaçadas pelo
+              mesmo ritmo anti-banimento do envio. O agente também é instruído a escrever
+              em parágrafos curtos.
+            </p>
+            {form.split_messages ? (
+              <div className="space-y-1">
+                <Label htmlFor="split_max_chars">Tamanho máximo por bolha (80–4000)</Label>
+                <Input
+                  id="split_max_chars"
+                  type="number"
+                  min={80}
+                  max={4000}
+                  step={20}
+                  value={form.split_max_chars}
+                  onChange={(e) => patch({ split_max_chars: Number(e.target.value) })}
+                  disabled={disabled}
+                  aria-invalid={!!validation.split_max_chars}
+                />
+                {validation.split_max_chars ? (
+                  <p className="text-xs text-destructive">{validation.split_max_chars}</p>
+                ) : null}
+              </div>
+            ) : null}
+          </Card>
+
+          {/* Capacidades */}
           <Card className="space-y-2 p-4">
-            <h3 className="text-sm font-medium">Tools (catálogo MCP)</h3>
+            <h3 className="text-sm font-medium">O que o agente pode fazer</h3>
+            <p className="text-xs text-muted-foreground">
+              Ligue por jornada de trabalho. O agente só consegue fazer o que estiver
+              ligado aqui — e o que estiver ligado, ele fará sozinho durante o atendimento.
+            </p>
             <ToolPicker
               value={form.tool_ids}
               onChange={(ids) => patch({ tool_ids: ids })}
@@ -650,7 +710,7 @@ export function AgentForm(props: Props) {
 
           {/* Triggers */}
           <Card className="space-y-2 p-4">
-            <h3 className="text-sm font-medium">Gatilhos</h3>
+            <h3 className="text-sm font-medium">Quando ele entra em ação</h3>
             <TriggerEditor
               value={form.trigger_config}
               onChange={(v) => patch({ trigger_config: v })}
@@ -660,7 +720,7 @@ export function AgentForm(props: Props) {
 
           {/* Handoff */}
           <Card className="space-y-3 p-4">
-            <h3 className="text-sm font-medium">Handoff humano</h3>
+            <h3 className="text-sm font-medium">Passar para uma pessoa</h3>
             <div className="flex items-center gap-2">
               <Switch
                 id="handoff_tool_enabled"
@@ -669,7 +729,7 @@ export function AgentForm(props: Props) {
                 disabled={disabled}
               />
               <Label htmlFor="handoff_tool_enabled">
-                Permitir handoff via tool (decisão do agent)
+                Deixar o agente chamar uma pessoa quando perceber que não é caso dele
               </Label>
             </div>
             <HandoffKeywordsInput
@@ -681,7 +741,7 @@ export function AgentForm(props: Props) {
 
           {/* Casos humanos */}
           <Card className="space-y-3 p-4">
-            <h3 className="text-sm font-medium">Casos humanos</h3>
+            <h3 className="text-sm font-medium">Pedir ajuda sem sair da conversa</h3>
             <div className="flex items-center gap-2">
               <Switch
                 id="cases_enabled"
@@ -690,18 +750,23 @@ export function AgentForm(props: Props) {
                 disabled={disabled}
               />
               <Label htmlFor="cases_enabled">
-                Abrir casos para um humano (a IA delega tarefas e continua na conversa)
+                Deixar o agente pedir uma tarefa a alguém e seguir conversando
               </Label>
             </div>
             <p className="text-xs text-muted-foreground">
-              Diferente do handoff: o agente não sai da conversa — ele abre um caso quando
-              esbarra num bloqueio (ex.: aprovar desconto) e retoma assim que o humano responde.
+              Diferente de passar a conversa: aqui o agente continua atendendo. Quando
+              esbarra em algo que só uma pessoa resolve — aprovar um desconto, por
+              exemplo — ele abre um pedido interno e retoma assim que for respondido.
             </p>
           </Card>
 
           {/* Follow-up */}
           <Card className="space-y-3 p-4">
             <h3 className="text-sm font-medium">Follow-up</h3>
+            <p className="text-xs text-muted-foreground">
+              Retomar sozinho quem parou de responder, para o interessado não sumir
+              sem ninguém perceber.
+            </p>
             <div className="flex items-center gap-2">
               <Switch
                 id="followup_enabled"
@@ -716,7 +781,7 @@ export function AgentForm(props: Props) {
               </Label>
             </div>
             <p className="text-xs text-muted-foreground">
-              Gatilhos de silêncio/etapa só enrollam um lead num fluxo abaixo se
+              Os fluxos abaixo só entram em ação para um cliente se
               este agente estiver publicado com follow-up habilitado.
             </p>
             <FollowupFlowPicker

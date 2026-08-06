@@ -16,8 +16,15 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 export const DUPLICATE_AGENT_COLUMNS =
   "id, organization_id, name, description, model, system_prompt, is_active, is_default, kind, priority, published_version_id, archived_at, config, guardrails, active_kb_version_id, created_at, updated_at";
 
+/**
+ * Uma das cópias da lista de colunas de `ai_agent_versions` vigiadas por
+ * `tests/unit/agent-version-columns-drift.test.ts` — antes desta extração ela
+ * vivia inline em `duplicate/route.ts`, e o teste aponta para cá desde então.
+ * Coluna nova entra aqui E em `versionPayloadFrom`: o SELECT trazer a coluna não
+ * basta, se o INSERT não a escreve a cópia nasce com o default do banco.
+ */
 export const DUPLICATE_VERSION_COLUMNS =
-  "id, organization_id, agent_id, version_number, system_prompt, provider, model, credential_id, tool_ids, trigger_config, channel_session_id, max_steps, token_budget, cost_budget_cents, history_message_window, history_token_window, handoff_keywords, handoff_tool_enabled, cases_enabled, followup, status, published_at, superseded_at, created_at, created_by";
+  "id, organization_id, agent_id, version_number, system_prompt, provider, model, credential_id, tool_ids, trigger_config, channel_session_id, max_steps, token_budget, cost_budget_cents, history_message_window, history_token_window, handoff_keywords, handoff_tool_enabled, cases_enabled, split_messages, split_max_chars, followup, status, published_at, superseded_at, created_at, created_by";
 
 export type DuplicateAgentError =
   | "not_found"
@@ -51,6 +58,8 @@ function versionPayloadFrom(src: Record<string, unknown>) {
     handoff_keywords: src.handoff_keywords,
     handoff_tool_enabled: src.handoff_tool_enabled,
     cases_enabled: src.cases_enabled,
+    split_messages: src.split_messages,
+    split_max_chars: src.split_max_chars,
     followup: src.followup,
   };
 }
