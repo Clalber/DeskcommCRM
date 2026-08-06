@@ -21,7 +21,7 @@
 | 3 | Projeção do contexto | ✅ **feito** (este commit) | 18 testes, 3 contra turnos REAIS |
 | 4 | Operador por evento | ✅ **feito** `35c88346` | 12 testes · 3 sabotagens com contagem prevista · `test:db` verde |
 | 5 | UI dos três papéis + `Testar` no caminho real | ✅ **feito** `9b26ad76`·`2b85047e`·`1b9649c6`·`1e19ef4a` | 29 testes · **e2e 7/7 pela tela** · 4 sabotagens no `Testar` |
-| 6 | Tirar tools de escrita do Conversador | 🟡 **parcial** `16386d0e` | 16 testes · 4 sabotagens · **RE-MEDIDO: não zera o vazamento** |
+| 6 | Tirar tools de escrita do Conversador | ✅ **feito** `16386d0e`+`91f31c52` | 21 testes · **medido: 30,0% → 10,0%** com ferramentas executadas |
 
 ---
 

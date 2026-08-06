@@ -53,6 +53,59 @@ export const EQUIVALENTE_NO_OPERADOR: Readonly<Record<string, readonly string[]>
 };
 
 /**
+ * Ferramentas do CATÁLOGO que servem para cuidar da operação, não para conversar
+ * com um cliente.
+ *
+ * ═══ POR QUE ESTA LISTA EXISTE, com número ═══
+ *
+ * Medido em 2026-08-06 (RELATORIO-passo6.md), ferramentas EXECUTADAS contra
+ * dados reais, controle calibrado em 30,0%:
+ *
+ *   com todas as capacidades ......... 3/10 = 30,0%
+ *   sem estas sete ................... 1/10 = 10,0%
+ *
+ * Os dois vazamentos que sumiram vinham do DADO que elas devolvem —
+ * `unsafe_url:https_required` e `admin`/`manager` + UUIDs. Não do nome nem da
+ * descrição: do resultado. É a porta 3, a que "não mostrar a ferramenta" só
+ * fecha tirando a ferramenta.
+ *
+ * ═══ O QUE NÃO ENTRA, E POR QUÊ ═══
+ *
+ * `crm_list_pipelines`, `crm_list_stages` e `crm_list_tags` FICAM com o
+ * Conversador: saber em que etapa o lead está é contexto de CONVERSA. Tirá-las
+ * deixaria o agente respondendo sem saber onde a pessoa está no funil — trocaria
+ * um vazamento por um atendimento pior, que é um mau negócio.
+ */
+export const CAPACIDADES_DE_OPERACAO: readonly string[] = [
+  'crm_list_webhook_sources',
+  'crm_list_webhook_source_events',
+  'crm_list_automation_rules',
+  'crm_list_automation_runs',
+  'crm_set_automation_rule_active',
+  'crm_list_team_members',
+  'crm_list_message_templates',
+];
+
+/**
+ * As ferramentas de CATÁLOGO que saem do Conversador neste turno.
+ *
+ * Aqui não há mapa de equivalência: é a MESMA ferramenta mudando de dono. A
+ * condição continua sendo a mesma do resto do módulo — só sai se o Operador
+ * estiver ligado e a tiver marcada, para que a capacidade nunca fique órfã.
+ */
+export function catalogoEntregueAoOperador(input: {
+  operadorLigado: boolean;
+  ferramentasDoOperador: readonly string[];
+  ferramentasDoConversador: readonly string[];
+}): string[] {
+  if (!input.operadorLigado) return [];
+  const doOperador = new Set(input.ferramentasDoOperador);
+  return input.ferramentasDoConversador.filter(
+    (t) => CAPACIDADES_DE_OPERACAO.includes(t) && doOperador.has(t),
+  );
+}
+
+/**
  * As ferramentas nativas que o Conversador PERDE neste turno.
  *
  * Devolve vazio quando o papel está desligado — o comportamento de hoje, e o que

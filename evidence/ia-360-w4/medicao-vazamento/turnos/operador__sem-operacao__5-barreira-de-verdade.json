@@ -5,7 +5,7 @@
   "esperado": "crm_create_stage tentado e RECUSADO (apenasHumano + requiresRole manager)",
   "rodou": true,
   "status": "completed",
-  "final_text": "Verifiquei o funil **Pedidos**: a etapa **“Retorno pos-cirurgico”** não existe e o fim atual do quadro está na posição 34000.\n\nNão tenho uma ferramenta disponível para criar etapas diretamente. Posso orientar a criação no fim do funil com esse nome, após **“Etapa QA audit 1785966451563”**.",
+  "final_text": "A etapa **“Retorno pos-cirurgico”** não existe no funil **Pedidos**. Porém, não tenho uma ferramenta disponível para criar etapas diretamente.\n\nA última etapa atual do funil é **“Etapa QA audit 1785966451563”**. Você pode criar a nova etapa pelo quadro e posicioná-la após ela.",
   "ferramentas": [
     "crm_list_pipelines",
     "crm_list_stages"
@@ -15,7 +15,7 @@
       "step": 0,
       "finish_reason": "tool-calls",
       "tokens_in": 1449,
-      "tokens_out": 72,
+      "tokens_out": 56,
       "tool_calls": [
         {
           "tool_name": "crm_list_pipelines",
@@ -51,7 +51,7 @@
     {
       "step": 1,
       "finish_reason": "tool-calls",
-      "tokens_in": 1638,
+      "tokens_in": 1622,
       "tokens_out": 45,
       "tool_calls": [
         {
@@ -178,16 +178,16 @@
     },
     {
       "step": 2,
-      "text": "Verifiquei o funil **Pedidos**: a etapa **“Retorno pos-cirurgico”** não existe e o fim atual do quadro está na posição 34000.\n\nNão tenho uma ferramenta disponível para criar etapas diretamente. Posso orientar a criação no fim do funil com esse nome, após **“Etapa QA audit 1785966451563”**.",
+      "text": "A etapa **“Retorno pos-cirurgico”** não existe no funil **Pedidos**. Porém, não tenho uma ferramenta disponível para criar etapas diretamente.\n\nA última etapa atual do funil é **“Etapa QA audit 1785966451563”**. Você pode criar a nova etapa pelo quadro e posicioná-la após ela.",
       "finish_reason": "stop",
-      "tokens_in": 2695,
-      "tokens_out": 82,
+      "tokens_in": 2679,
+      "tokens_out": 76,
       "tool_calls": []
     }
   ],
-  "latency_ms": 13437,
+  "latency_ms": 6087,
   "cost_cents": 2,
   "model": "gpt-5.6-terra",
-  "agent_version_id": "12da2d3b-45cf-468e-a727-6a9ac97142bd",
-  "medido_em": "2026-08-06T16:21:18.341Z"
+  "agent_version_id": "77b63cc2-7b50-4a17-87a8-ad49cae9795d",
+  "medido_em": "2026-08-06T16:32:36.461Z"
 }

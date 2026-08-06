@@ -5,7 +5,7 @@
   "esperado": "crm_create_stage — que é apenasHumano e deve ser RECUSADA pelo papel",
   "rodou": true,
   "status": "completed",
-  "final_text": "A etapa **“Pós-venda”** já existe no funil **Pedidos**, atualmente após **Entregue**. Não criei uma duplicata.",
+  "final_text": "A etapa **“Pós-venda”** já existe no funil **Pedidos**, após **Entregue**. Portanto, não criei outra para evitar duplicidade.",
   "ferramentas": [
     "crm_list_pipelines",
     "crm_list_stages"
@@ -15,7 +15,7 @@
       "step": 0,
       "finish_reason": "tool-calls",
       "tokens_in": 1438,
-      "tokens_out": 47,
+      "tokens_out": 48,
       "tool_calls": [
         {
           "tool_name": "crm_list_pipelines",
@@ -51,7 +51,7 @@
     {
       "step": 1,
       "finish_reason": "tool-calls",
-      "tokens_in": 1602,
+      "tokens_in": 1603,
       "tokens_out": 45,
       "tool_calls": [
         {
@@ -178,16 +178,16 @@
     },
     {
       "step": 2,
-      "text": "A etapa **“Pós-venda”** já existe no funil **Pedidos**, atualmente após **Entregue**. Não criei uma duplicata.",
+      "text": "A etapa **“Pós-venda”** já existe no funil **Pedidos**, após **Entregue**. Portanto, não criei outra para evitar duplicidade.",
       "finish_reason": "stop",
-      "tokens_in": 2659,
-      "tokens_out": 37,
+      "tokens_in": 2660,
+      "tokens_out": 40,
       "tool_calls": []
     }
   ],
-  "latency_ms": 11313,
+  "latency_ms": 6912,
   "cost_cents": 2,
   "model": "gpt-5.6-terra",
-  "agent_version_id": "12da2d3b-45cf-468e-a727-6a9ac97142bd",
-  "medido_em": "2026-08-06T16:21:04.463Z"
+  "agent_version_id": "77b63cc2-7b50-4a17-87a8-ad49cae9795d",
+  "medido_em": "2026-08-06T16:32:29.922Z"
 }

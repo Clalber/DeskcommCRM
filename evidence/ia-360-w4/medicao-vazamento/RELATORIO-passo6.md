@@ -41,6 +41,25 @@ mostrando"*, fecha as portas 1, 2 e 3. **Não fecha o modelo.**
 
 ---
 
+## ✅ APLICADO — e re-medido com o código no caminho
+
+A recomendação abaixo foi implementada (`catalogoEntregueAoOperador`) e a coleta foi refeita com o
+spec **perguntando ao código** quais capacidades sobram, em vez de repetir a lista à mão:
+
+| configuração | vazou | taxa |
+|---|---:|---:|
+| A · CONTROLE | 3/10 | **30,0%** |
+| C · **código aplicado** | 1/10 | **10,0%** |
+
+Zero respostas vazias nas duas. O contexto que o modelo recebeu na linha C é o que
+`catalogoEntregueAoOperador` produz em produção — não uma cópia paralela que poderia divergir sem
+nada vermelhar. Há um teste travando isso: se a lista mudar sem nova medição, ele reprova.
+
+**Sobra `crm_list_pipelines`, `crm_list_stages`, `crm_list_tags`** — contexto de conversa, que o
+Conversador precisa para saber onde a pessoa está no funil.
+
+---
+
 ## O que isso significa para o passo 6 como está implementado
 
 O passo 6 entrega ao Operador as ferramentas **nativas** com equivalente (`update_lead_state`,

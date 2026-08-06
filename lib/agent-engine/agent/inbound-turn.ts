@@ -74,7 +74,7 @@ import {
 import { loadPlaybook } from './playbook';
 import { DECLARACAO_INSTRUCTION, declaracaoDoTurnoSchema, type DeclaracaoDoTurno } from './declaracao';
 import { projetarContexto, projetarRetornoDeTool, turnoProjeta, type ContextoProjetado } from './projecao';
-import { capacidadesEntreguesAoOperador } from './entrega-de-capacidade';
+import { capacidadesEntreguesAoOperador, catalogoEntregueAoOperador } from './entrega-de-capacidade';
 import { composeSystemPrompt, loadOrgMemory, renderOrgMemory } from './org-memory';
 import { matchesHandoffKeyword } from './agent-config';
 import { resolveTurnAgent } from './resolve-turn-agent';
@@ -1850,7 +1850,22 @@ export async function runAgentTurn(
   let mcpCleanup: (() => Promise<void>) | null = null;
   if (agentConfig !== null && agentConfig.toolIds.length > 0) {
     try {
-      const mcp = await buildMcpTurnTools(deps.crmCfg, { organizationId: tenantId, jobId: job.id }, agentConfig, runLog);
+      // As de OPERAÇÃO saem antes de serem montadas, quando o Operador as tem.
+      // Medido: são elas que carregavam 2 dos 3 vazamentos (o DADO que devolvem),
+      // e tirá-las levou a taxa de 30% para 10% — ver RELATORIO-passo6.md.
+      const catalogoEntregue = catalogoEntregueAoOperador({
+        operadorLigado: agentConfig.operatorEnabled,
+        ferramentasDoOperador: agentConfig.operatorToolIds,
+        ferramentasDoConversador: agentConfig.toolIds,
+      });
+      const configDoTurno =
+        catalogoEntregue.length === 0
+          ? agentConfig
+          : { ...agentConfig, toolIds: agentConfig.toolIds.filter((t) => !catalogoEntregue.includes(t)) };
+      if (catalogoEntregue.length > 0) {
+        runLog.info('capacidades de catálogo entregues ao operador', { entregues: catalogoEntregue });
+      }
+      const mcp = await buildMcpTurnTools(deps.crmCfg, { organizationId: tenantId, jobId: job.id }, configDoTurno, runLog);
       if (mcp !== null) {
         mcpCleanup = mcp.cleanup;
         for (const [name, mcpTool] of Object.entries(mcp.tools)) {

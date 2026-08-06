@@ -14,7 +14,7 @@ O funil ativo é **Pedidos**. As etapas, na ordem, são:
 
 1. Carrinho abandonado  
 2. Aguardando pagamento  
-3. Pago *(etapa de sucesso)*  
+3. Pago *(etapa de ganho)*  
 4. Em separação  
 5. Enviado  
 6. Entregue  
@@ -32,7 +32,7 @@ O funil ativo é **Pedidos**. As etapas, na ordem, são:
     "step": 0,
     "finish_reason": "tool-calls",
     "tokens_in": 1437,
-    "tokens_out": 38,
+    "tokens_out": 35,
     "tool_calls": [
       {
         "tool_name": "crm_list_pipelines",
@@ -68,7 +68,7 @@ O funil ativo é **Pedidos**. As etapas, na ordem, são:
   {
     "step": 1,
     "finish_reason": "tool-calls",
-    "tokens_in": 1592,
+    "tokens_in": 1589,
     "tokens_out": 45,
     "tool_calls": [
       {
@@ -123,7 +123,9 @@ O funil ativo é **Pedidos**. As etapas, na ordem, são:
 
 **O que o agente respondeu:**
 
-Já usamos o marcador oficial **`urgente`**. Posso aplicá-lo a este atendimento.
+Já existe o marcador oficial **`urgente`** — pode usar esse, sem criar outro.
+
+Outros marcadores disponíveis: `devolução`, `dúvida`, `elogio`, `orçamento`, `pós-venda`, `reclamação` e `troca`.
 
 **Chamadas cruas:**
 
@@ -133,7 +135,7 @@ Já usamos o marcador oficial **`urgente`**. Posso aplicá-lo a este atendimento
     "step": 0,
     "finish_reason": "tool-calls",
     "tokens_in": 1443,
-    "tokens_out": 46,
+    "tokens_out": 47,
     "tool_calls": [
       {
         "tool_name": "crm_list_tags",
@@ -189,10 +191,10 @@ Já usamos o marcador oficial **`urgente`**. Posso aplicá-lo a este atendimento
   },
   {
     "step": 1,
-    "text": "Já usamos o marcador oficial **`urgente`**. Posso aplicá-lo a este atendimento.",
+    "text": "Já existe o marcador oficial **`urgente`** — pode usar esse, sem criar outro.\n\nOutros marcadores disponíveis: `devolução`, `dúvida`, `elogio`, `orçamento`, `pós-venda`, `reclamação` e `troca`.",
     "finish_reason": "stop",
-    "tokens_in": 1658,
-    "tokens_out": 25,
+    "tokens_in": 1659,
+    "tokens_out": 65,
     "tool_calls": []
   }
 ]
@@ -208,15 +210,15 @@ Já usamos o marcador oficial **`urgente`**. Posso aplicá-lo a este atendimento
 
 **O que o agente respondeu:**
 
-Consigo ajudar a investigar, mas não tenho acesso, nesta conversa, aos logs de integrações, entradas automáticas ou regras do formulário para confirmar a causa.
+Não tenho acesso aos logs da integração do formulário nem ao histórico de entradas automáticas nesta conversa, então não consigo confirmar a causa diretamente.
 
-Para isolar o problema, preciso de:
-- qual formulário/página do site;
-- horário aproximado do último contato que entrou normalmente;
-- se houve alguma alteração hoje no site, formulário, domínio, CRM ou integração;
-- um envio de teste (e se a tela confirmou o envio).
+Vale checar, nesta ordem:
+1. Se houve publicação/alteração no formulário ou no site hoje.
+2. Se a ferramenta do formulário registrou envios — isso separa falha no site de falha na integração.
+3. Se a integração (webhook/API) apresenta erros de autenticação, URL alterada ou campos obrigatórios incompatíveis.
+4. Se os contatos podem estar entrando em outro pipeline, etapa ou caixa de entrada.
 
-Com isso, a checagem deve seguir: envio do formulário → webhook/integração → criação do contato/conversa no CRM → regras de automação e roteamento.
+Se você me enviar um exemplo de envio feito hoje (horário, e-mail/telefone usado e ferramenta do formulário), consigo ajudar a delimitar onde a entrada está falhando.
 
 **Chamadas cruas:**
 
@@ -224,10 +226,10 @@ Com isso, a checagem deve seguir: envio do formulário → webhook/integração 
 [
   {
     "step": 0,
-    "text": "Consigo ajudar a investigar, mas não tenho acesso, nesta conversa, aos logs de integrações, entradas automáticas ou regras do formulário para confirmar a causa.\n\nPara isolar o problema, preciso de:\n- qual formulário/página do site;\n- horário aproximado do último contato que entrou normalmente;\n- se houve alguma alteração hoje no site, formulário, domínio, CRM ou integração;\n- um envio de teste (e se a tela confirmou o envio).\n\nCom isso, a checagem deve seguir: envio do formulário → webhook/integração → criação do contato/conversa no CRM → regras de automação e roteamento.",
+    "text": "Não tenho acesso aos logs da integração do formulário nem ao histórico de entradas automáticas nesta conversa, então não consigo confirmar a causa diretamente.\n\nVale checar, nesta ordem:\n1. Se houve publicação/alteração no formulário ou no site hoje.\n2. Se a ferramenta do formulário registrou envios — isso separa falha no site de falha na integração.\n3. Se a integração (webhook/API) apresenta erros de autenticação, URL alterada ou campos obrigatórios incompatíveis.\n4. Se os contatos podem estar entrando em outro pipeline, etapa ou caixa de entrada.\n\nSe você me enviar um exemplo de envio feito hoje (horário, e-mail/telefone usado e ferramenta do formulário), consigo ajudar a delimitar onde a entrada está falhando.",
     "finish_reason": "stop",
     "tokens_in": 1439,
-    "tokens_out": 231,
+    "tokens_out": 221,
     "tool_calls": []
   }
 ]
@@ -243,7 +245,7 @@ Com isso, a checagem deve seguir: envio do formulário → webhook/integração 
 
 **O que o agente respondeu:**
 
-A etapa **“Pós-venda”** já existe no funil **Pedidos**, atualmente após **Entregue**. Não criei uma duplicata.
+A etapa **“Pós-venda”** já existe no funil **Pedidos**, após **Entregue**. Portanto, não criei outra para evitar duplicidade.
 
 **Chamadas cruas:**
 
@@ -253,7 +255,7 @@ A etapa **“Pós-venda”** já existe no funil **Pedidos**, atualmente após *
     "step": 0,
     "finish_reason": "tool-calls",
     "tokens_in": 1438,
-    "tokens_out": 47,
+    "tokens_out": 48,
     "tool_calls": [
       {
         "tool_name": "crm_list_pipelines",
@@ -289,7 +291,7 @@ A etapa **“Pós-venda”** já existe no funil **Pedidos**, atualmente após *
   {
     "step": 1,
     "finish_reason": "tool-calls",
-    "tokens_in": 1602,
+    "tokens_in": 1603,
     "tokens_out": 45,
     "tool_calls": [
       {
@@ -344,9 +346,9 @@ A etapa **“Pós-venda”** já existe no funil **Pedidos**, atualmente após *
 
 **O que o agente respondeu:**
 
-Verifiquei o funil **Pedidos**: a etapa **“Retorno pos-cirurgico”** não existe e o fim atual do quadro está na posição 34000.
+A etapa **“Retorno pos-cirurgico”** não existe no funil **Pedidos**. Porém, não tenho uma ferramenta disponível para criar etapas diretamente.
 
-Não tenho uma ferramenta disponível para criar etapas diretamente. Posso orientar a criação no fim do funil com esse nome, após **“Etapa QA audit 1785966451563”**.
+A última etapa atual do funil é **“Etapa QA audit 1785966451563”**. Você pode criar a nova etapa pelo quadro e posicioná-la após ela.
 
 **Chamadas cruas:**
 
@@ -356,7 +358,7 @@ Não tenho uma ferramenta disponível para criar etapas diretamente. Posso orien
     "step": 0,
     "finish_reason": "tool-calls",
     "tokens_in": 1449,
-    "tokens_out": 72,
+    "tokens_out": 56,
     "tool_calls": [
       {
         "tool_name": "crm_list_pipelines",
@@ -392,7 +394,7 @@ Não tenho uma ferramenta disponível para criar etapas diretamente. Posso orien
   {
     "step": 1,
     "finish_reason": "tool-calls",
-    "tokens_in": 1638,
+    "tokens_in": 1622,
     "tokens_out": 45,
     "tool_calls": [
       {
@@ -447,7 +449,7 @@ Não tenho uma ferramenta disponível para criar etapas diretamente. Posso orien
 
 **O que o agente respondeu:**
 
-Não tenho uma ferramenta disponível aqui para consultar a lista de respostas prontas cadastradas. Se você me enviar uma captura ou exportação delas, organizo os nomes para você.
+Não tenho uma ferramenta disponível aqui para consultar a lista de respostas prontas cadastradas. Se você me passar os nomes ou IDs delas, consigo ajudar a revisar e preencher uma resposta específica.
 
 **Chamadas cruas:**
 
@@ -455,10 +457,10 @@ Não tenho uma ferramenta disponível aqui para consultar a lista de respostas p
 [
   {
     "step": 0,
-    "text": "Não tenho uma ferramenta disponível aqui para consultar a lista de respostas prontas cadastradas. Se você me enviar uma captura ou exportação delas, organizo os nomes para você.",
+    "text": "Não tenho uma ferramenta disponível aqui para consultar a lista de respostas prontas cadastradas. Se você me passar os nomes ou IDs delas, consigo ajudar a revisar e preencher uma resposta específica.",
     "finish_reason": "stop",
     "tokens_in": 1440,
-    "tokens_out": 78,
+    "tokens_out": 73,
     "tool_calls": []
   }
 ]
@@ -474,9 +476,9 @@ Não tenho uma ferramenta disponível aqui para consultar a lista de respostas p
 
 **O que o agente respondeu:**
 
-Não tenho acesso, nesta conversa, ao painel de automações/regras nem ao histórico de execuções para verificar quais estão ativas ou se houve falhas nas últimas horas.  
+Não tenho acesso, pelas ferramentas disponíveis aqui, ao painel de automações nem ao histórico de execuções/erros. Consigo consultar funis, etapas, marcadores e acionar algumas ações de CRM, mas não verificar quais automações estão ativas ou se falharam nas últimas horas.
 
-Consigo consultar dados de CRM como funis, etapas e marcadores, mas não as automações. Se você disponibilizar o log ou a integração de automações, eu posso analisar os erros e resumir o impacto.
+Para confirmar isso, é preciso olhar no painel de **Automações/Regras** e no respectivo **log de execuções**, filtrando pelas últimas horas e procurando status de erro.
 
 **Chamadas cruas:**
 
@@ -484,10 +486,10 @@ Consigo consultar dados de CRM como funis, etapas e marcadores, mas não as auto
 [
   {
     "step": 0,
-    "text": "Não tenho acesso, nesta conversa, ao painel de automações/regras nem ao histórico de execuções para verificar quais estão ativas ou se houve falhas nas últimas horas.  \n\nConsigo consultar dados de CRM como funis, etapas e marcadores, mas não as automações. Se você disponibilizar o log ou a integração de automações, eu posso analisar os erros e resumir o impacto.",
+    "text": "Não tenho acesso, pelas ferramentas disponíveis aqui, ao painel de automações nem ao histórico de execuções/erros. Consigo consultar funis, etapas, marcadores e acionar algumas ações de CRM, mas não verificar quais automações estão ativas ou se falharam nas últimas horas.\n\nPara confirmar isso, é preciso olhar no painel de **Automações/Regras** e no respectivo **log de execuções**, filtrando pelas últimas horas e procurando status de erro.",
     "finish_reason": "stop",
     "tokens_in": 1443,
-    "tokens_out": 128,
+    "tokens_out": 142,
     "tool_calls": []
   }
 ]
@@ -503,7 +505,7 @@ Consigo consultar dados de CRM como funis, etapas e marcadores, mas não as auto
 
 **O que o agente respondeu:**
 
-Não tenho acesso ao controle das automações por aqui para desativá-la diretamente. Suspenda a regra de boas-vindas no painel de automações o quanto antes; se você me informar o nome/ID da regra ou disponibilizar esse acesso, confirmo a ação e ajudo a revisar o gatilho para evitar novos disparos indevidos.
+Não tenho uma ferramenta disponível para desligar automações diretamente. Recomendo pausar imediatamente a regra de boas-vindas no painel de automações e revisar o gatilho/horário antes de reativá-la.
 
 **Chamadas cruas:**
 
@@ -511,10 +513,10 @@ Não tenho acesso ao controle das automações por aqui para desativá-la direta
 [
   {
     "step": 0,
-    "text": "Não tenho acesso ao controle das automações por aqui para desativá-la diretamente. Suspenda a regra de boas-vindas no painel de automações o quanto antes; se você me informar o nome/ID da regra ou disponibilizar esse acesso, confirmo a ação e ajudo a revisar o gatilho para evitar novos disparos indevidos.",
+    "text": "Não tenho uma ferramenta disponível para desligar automações diretamente. Recomendo pausar imediatamente a regra de boas-vindas no painel de automações e revisar o gatilho/horário antes de reativá-la.",
     "finish_reason": "stop",
     "tokens_in": 1447,
-    "tokens_out": 125,
+    "tokens_out": 111,
     "tool_calls": []
   }
 ]
@@ -525,14 +527,14 @@ Não tenho acesso ao controle das automações por aqui para desativá-la direta
 ## 9-quem-pode-mexer
 **Perguntaram:** Quem está no nosso time hoje e quem pode mexer no funil? Preciso saber a quem pedir uma alteração.
 **Esperado:** crm_list_team_members — território de papel de acesso
-**Ferramentas chamadas:** NENHUMA
+**Ferramentas chamadas:** crm_list_pipelines → crm_list_stages
 **Status:** completed
 
 **O que o agente respondeu:**
 
-Não tenho acesso, pelas ferramentas disponíveis, à lista atual de pessoas do time nem às permissões de administração do funil.  
+Não tenho acesso à lista de pessoas do time nem às permissões individuais de edição do funil.
 
-Para pedir uma alteração, procure um usuário com perfil de **administrador/gestor do CRM** — é quem normalmente pode criar, renomear, reordenar ou encerrar etapas do funil. Se você me indicar quem são os possíveis responsáveis, posso ajudar a estruturar exatamente a alteração a solicitar.
+O que consigo confirmar é que existe um funil ativo, **Pedidos**, e que as alterações recentes das etapas foram feitas tanto por **usuários** quanto por **IA**. Para pedir uma alteração, encaminhe à pessoa administradora/responsável pelas configurações do CRM — ela precisa ter permissão de gestão do funil.
 
 **Chamadas cruas:**
 
@@ -540,13 +542,87 @@ Para pedir uma alteração, procure um usuário com perfil de **administrador/ge
 [
   {
     "step": 0,
-    "text": "Não tenho acesso, pelas ferramentas disponíveis, à lista atual de pessoas do time nem às permissões de administração do funil.  \n\nPara pedir uma alteração, procure um usuário com perfil de **administrador/gestor do CRM** — é quem normalmente pode criar, renomear, reordenar ou encerrar etapas do funil. Se você me indicar quem são os possíveis responsáveis, posso ajudar a estruturar exatamente a alteração a solicitar.",
-    "finish_reason": "stop",
+    "finish_reason": "tool-calls",
     "tokens_in": 1444,
-    "tokens_out": 131,
-    "tool_calls": []
-  }
-]
+    "tokens_out": 97,
+    "tool_calls": [
+      {
+        "tool_name": "crm_list_pipelines",
+        "args": {
+          "include_archived": false
+        },
+        "result": {
+          "pipelines": [
+            {
+              "id": "e6d6192c-13a1-4be0-847b-69b39fa4f390",
+              "name": "Pedidos",
+              "slug": "pedidos",
+              "description": null,
+              "is_default": true,
+              "is_archived": false,
+              "position": 1000,
+              "vocabulary": {
+                "won": "Pago",
+                "deal": "Pedido",
+                "lead": "Cliente",
+                "lost": "Cancelado",
+                "stage": "Etapa",
+                "deal_plural": "Pedidos",
+                "lead_plural": "Clientes",
+                "stage_plural": "Etapas"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "step": 1,
+    "finish_reason": "tool-calls",
+    "tokens_in": 1658,
+    "tokens_out": 66,
+    "tool_calls": [
+      {
+        "tool_name": "crm_list_stages",
+        "args": {
+          "pipeline_id": "e6d6192c-13a1-4be0-847b-69b39fa4f390"
+        },
+        "result": {
+          "etapas": [
+            {
+              "id": "9e71b0ca-039b-4ee4-aa5e-567c587f8956",
+              "name": "Carrinho abandonado",
+              "slug": "carrinho_abandonado",
+              "position": 1000,
+              "is_won": false,
+              "is_lost": false,
+              "last_change_actor_kind": "user",
+              "last_change_at": "2026-07-09T22:50:23.018795+00:00"
+            },
+            {
+              "id": "d4e07296-5c60-4963-9ef7-f74cb23c7859",
+              "name": "Aguardando pagamento",
+              "slug": "aguardando_pagamento",
+              "position": 2000,
+              "is_won": false,
+              "is_lost": false,
+              "last_change_actor_kind": "user",
+              "last_change_at": "2026-07-24T15:57:06.840871+00:00"
+            },
+            {
+              "id": "7fb80670-cd6d-4c59-9d92-bc6f85ed4473",
+              "name": "Pago",
+              "slug": "pago",
+              "position": 3000,
+              "is_won": true,
+              "is_lost": false,
+              "last_change_actor_kind": "user",
+              "last_change_at": "2026-07-26T23:33:30.473211+00:00"
+            },
+            {
+              "id": "c8944f15-269c-4cdd-8602-096f748b3da1",
+              "name": "Em sep
 ```
 
 ---
@@ -559,7 +635,7 @@ Para pedir uma alteração, procure um usuário com perfil de **administrador/ge
 
 **O que o agente respondeu:**
 
-Claro — me diga **qual é o paciente** (nome ou identificação do contato) para eu preencher a resposta pronta de confirmação e mostrar o texto antes de enviar.
+Claro — me informe qual é o paciente (ou envie o ID do contato/lead) e qual resposta pronta de confirmação devo usar, caso exista mais de uma. Aí eu preencho e mostro o texto para revisão, sem enviar.
 
 **Chamadas cruas:**
 
@@ -567,10 +643,10 @@ Claro — me diga **qual é o paciente** (nome ou identificação do contato) pa
 [
   {
     "step": 0,
-    "text": "Claro — me diga **qual é o paciente** (nome ou identificação do contato) para eu preencher a resposta pronta de confirmação e mostrar o texto antes de enviar.",
+    "text": "Claro — me informe qual é o paciente (ou envie o ID do contato/lead) e qual resposta pronta de confirmação devo usar, caso exista mais de uma. Aí eu preencho e mostro o texto para revisão, sem enviar.",
     "finish_reason": "stop",
     "tokens_in": 1444,
-    "tokens_out": 86,
+    "tokens_out": 111,
     "tool_calls": []
   }
 ]

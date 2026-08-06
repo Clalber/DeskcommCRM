@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  CAPACIDADES_DE_OPERACAO,
   EQUIVALENTE_NO_OPERADOR,
   capacidadesEntreguesAoOperador,
+  catalogoEntregueAoOperador,
 } from "@/lib/agent-engine/agent/entrega-de-capacidade";
 import { AGENT_TOOL_DEFS, buildOpeningMessage } from "@/lib/agent-engine/agent/inbound-turn";
 import type { LeadContext } from "@/lib/agent-engine/edge/crm/get-lead-context";
@@ -157,6 +159,78 @@ describe("entrega de capacidade ao Operador", () => {
 
     it("send_message continua no prompt sempre — sem ela o turno não fala", () => {
       expect(abertura(["update_lead_state", "save_lead_note"])).toContain("send_message");
+    });
+  });
+
+  describe("as ferramentas de CATÁLOGO que carregavam o vazamento", () => {
+    // As sete da lista foram medidas: com elas 30,0%, sem elas 10,0%
+    // (RELATORIO-passo6.md, ferramentas executadas, controle calibrado).
+    const CONVERSADOR = [
+      "crm_list_pipelines",
+      "crm_list_stages",
+      "crm_list_tags",
+      "crm_list_webhook_sources",
+      "crm_list_automation_rules",
+      "crm_list_automation_runs",
+      "crm_list_team_members",
+      "crm_list_message_templates",
+    ];
+
+    it("papel desligado: nada sai, nem as de operação", () => {
+      expect(
+        catalogoEntregueAoOperador({
+          operadorLigado: false,
+          ferramentasDoOperador: CAPACIDADES_DE_OPERACAO,
+          ferramentasDoConversador: CONVERSADOR,
+        }),
+      ).toEqual([]);
+    });
+
+    it("ligado mas sem a ferramenta marcada: ela NÃO sai — a capacidade nunca fica órfã", () => {
+      expect(
+        catalogoEntregueAoOperador({
+          operadorLigado: true,
+          ferramentasDoOperador: [],
+          ferramentasDoConversador: CONVERSADOR,
+        }),
+      ).toEqual([]);
+    });
+
+    it("ligado e com elas marcadas: as SETE saem do Conversador", () => {
+      const saem = catalogoEntregueAoOperador({
+        operadorLigado: true,
+        ferramentasDoOperador: CAPACIDADES_DE_OPERACAO,
+        ferramentasDoConversador: CONVERSADOR,
+      });
+      // As duas que carregavam o dado que vazou.
+      expect(saem).toContain("crm_list_automation_runs");
+      expect(saem).toContain("crm_list_team_members");
+    });
+
+    it("o contexto de CONVERSA fica — tirar funil/etapa/marcador pioraria o atendimento", () => {
+      const saem = catalogoEntregueAoOperador({
+        operadorLigado: true,
+        ferramentasDoOperador: [...CAPACIDADES_DE_OPERACAO, "crm_list_pipelines", "crm_list_stages"],
+        ferramentasDoConversador: CONVERSADOR,
+      });
+      // Mesmo marcadas no Operador, estas não saem: trocar um vazamento por um
+      // agente que não sabe onde o lead está é um mau negócio.
+      expect(saem).not.toContain("crm_list_pipelines");
+      expect(saem).not.toContain("crm_list_stages");
+      expect(saem).not.toContain("crm_list_tags");
+    });
+
+    it("o toolset que sobra é EXATAMENTE o que foi medido em 10%", () => {
+      // O laço que fecha código e medição: a configuração C da re-medição tirou
+      // estas sete e mediu 1/10. Se a lista mudar sem nova medição, este caso
+      // vermelha e força re-medir em vez de presumir.
+      const saem = catalogoEntregueAoOperador({
+        operadorLigado: true,
+        ferramentasDoOperador: CAPACIDADES_DE_OPERACAO,
+        ferramentasDoConversador: CONVERSADOR,
+      });
+      const sobra = CONVERSADOR.filter((t) => !saem.includes(t));
+      expect(sobra.sort()).toEqual(["crm_list_pipelines", "crm_list_stages", "crm_list_tags"]);
     });
   });
 });

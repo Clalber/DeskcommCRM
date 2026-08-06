@@ -26,6 +26,7 @@ import * as path from "node:path";
 import { test, expect, type Page, type APIRequestContext } from "@playwright/test";
 
 import { generateTotp, msUntilNextTotpWindow } from "./utils/totp";
+import { catalogoEntregueAoOperador } from "@/lib/agent-engine/agent/entrega-de-capacidade";
 
 const APP_URL = `http://localhost:${process.env.E2E_PORT ?? "3001"}`;
 const CREDS_PATH = path.join(process.cwd(), ".e2e-creds.json");
@@ -98,18 +99,25 @@ const PROMPT_ATENDIMENTO = [
  * `crm_list_pipelines`/`stages`/`tags` FICAM: o Conversador precisa saber em que
  * etapa o lead está para conversar direito.
  */
-const CAPACIDADES_DE_OPERACAO = [
-  "crm_list_webhook_sources",
-  "crm_list_webhook_source_events",
-  "crm_list_automation_rules",
-  "crm_list_automation_runs",
-  "crm_set_automation_rule_active",
-  "crm_list_team_members",
-  "crm_list_message_templates",
-];
 const SEM_OPERACAO = process.env.QA_SEM_OPERACAO === "1";
+
+/**
+ * Quais capacidades sobram no Conversador — perguntado AO CÓDIGO, não copiado.
+ *
+ * Isto fecha o laço entre a medição e a implementação: o contexto que este spec
+ * manda ao modelo é o mesmo que `catalogoEntregueAoOperador` produz em produção.
+ * Uma lista copiada aqui mediria a minha cópia, e ela poderia divergir do que o
+ * turno real monta sem nada vermelhar.
+ */
 const CAPACIDADES_DO_TESTE = SEM_OPERACAO
-  ? CAPACIDADES.filter((t) => !CAPACIDADES_DE_OPERACAO.includes(t))
+  ? CAPACIDADES.filter(
+      (t) =>
+        !catalogoEntregueAoOperador({
+          operadorLigado: true,
+          ferramentasDoOperador: CAPACIDADES,
+          ferramentasDoConversador: CAPACIDADES,
+        }).includes(t),
+    )
   : CAPACIDADES;
 
 const PROMPT_KIND = process.env.QA_PROMPT === "atendimento" ? "atendimento" : "operador";

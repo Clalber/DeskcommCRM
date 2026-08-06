@@ -5,7 +5,7 @@
   "esperado": "crm_list_pipelines e/ou crm_list_stages",
   "rodou": true,
   "status": "completed",
-  "final_text": "O funil ativo é **Pedidos**. As etapas, na ordem, são:\n\n1. Carrinho abandonado  \n2. Aguardando pagamento  \n3. Pago *(etapa de sucesso)*  \n4. Em separação  \n5. Enviado  \n6. Entregue  \n7. Pós-venda  \n8. Cancelado *(etapa de perda)*  \n9. Etapa QA audit 1785946673207  \n10. Etapa QA audit 1785965730905  \n11. Etapa QA audit 1785966451563",
+  "final_text": "O funil ativo é **Pedidos**. As etapas, na ordem, são:\n\n1. Carrinho abandonado  \n2. Aguardando pagamento  \n3. Pago *(etapa de ganho)*  \n4. Em separação  \n5. Enviado  \n6. Entregue  \n7. Pós-venda  \n8. Cancelado *(etapa de perda)*  \n9. Etapa QA audit 1785946673207  \n10. Etapa QA audit 1785965730905  \n11. Etapa QA audit 1785966451563",
   "ferramentas": [
     "crm_list_pipelines",
     "crm_list_stages"
@@ -15,7 +15,7 @@
       "step": 0,
       "finish_reason": "tool-calls",
       "tokens_in": 1437,
-      "tokens_out": 38,
+      "tokens_out": 35,
       "tool_calls": [
         {
           "tool_name": "crm_list_pipelines",
@@ -51,7 +51,7 @@
     {
       "step": 1,
       "finish_reason": "tool-calls",
-      "tokens_in": 1592,
+      "tokens_in": 1589,
       "tokens_out": 45,
       "tool_calls": [
         {
@@ -178,16 +178,16 @@
     },
     {
       "step": 2,
-      "text": "O funil ativo é **Pedidos**. As etapas, na ordem, são:\n\n1. Carrinho abandonado  \n2. Aguardando pagamento  \n3. Pago *(etapa de sucesso)*  \n4. Em separação  \n5. Enviado  \n6. Entregue  \n7. Pós-venda  \n8. Cancelado *(etapa de perda)*  \n9. Etapa QA audit 1785946673207  \n10. Etapa QA audit 1785965730905  \n11. Etapa QA audit 1785966451563",
+      "text": "O funil ativo é **Pedidos**. As etapas, na ordem, são:\n\n1. Carrinho abandonado  \n2. Aguardando pagamento  \n3. Pago *(etapa de ganho)*  \n4. Em separação  \n5. Enviado  \n6. Entregue  \n7. Pós-venda  \n8. Cancelado *(etapa de perda)*  \n9. Etapa QA audit 1785946673207  \n10. Etapa QA audit 1785965730905  \n11. Etapa QA audit 1785966451563",
       "finish_reason": "stop",
-      "tokens_in": 2649,
+      "tokens_in": 2646,
       "tokens_out": 117,
       "tool_calls": []
     }
   ],
-  "latency_ms": 6098,
+  "latency_ms": 9490,
   "cost_cents": 2,
   "model": "gpt-5.6-terra",
-  "agent_version_id": "12da2d3b-45cf-468e-a727-6a9ac97142bd",
-  "medido_em": "2026-08-06T16:20:44.309Z"
+  "agent_version_id": "77b63cc2-7b50-4a17-87a8-ad49cae9795d",
+  "medido_em": "2026-08-06T16:32:12.640Z"
 }
