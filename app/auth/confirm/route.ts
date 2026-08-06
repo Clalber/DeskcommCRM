@@ -4,6 +4,7 @@ import type { EmailOtpType } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
 import { ensureTenantForUser } from "@/lib/auth/provision";
 import { audit } from "@/lib/audit";
+import { env } from "@/lib/env";
 
 /**
  * GET /auth/confirm — troca o token do e-mail (token_hash) por uma sessão.
@@ -25,7 +26,10 @@ export async function GET(request: NextRequest) {
   const type = url.searchParams.get("type") as EmailOtpType | null;
   const requestId = request.headers.get("x-request-id");
 
-  const redirectTo = (path: string) => NextResponse.redirect(new URL(path, url.origin));
+  // NUNCA usar url.origin aqui: é derivado do header Host, que o proxy/container
+  // pode entregar como o bind interno (ex.: 0.0.0.0:3000) em vez do domínio
+  // público — o link de recovery quebra silenciosamente para o usuário final.
+  const redirectTo = (path: string) => NextResponse.redirect(new URL(path, env.NEXT_PUBLIC_APP_URL));
 
   if (!tokenHash || !type) {
     return redirectTo("/login?error=link_invalido");
