@@ -17,7 +17,7 @@
 | 2 | Contrato da declaração | ✅ **feito** `e167b362` | 16 testes · 5 sabotagens · `test:db` verde |
 | 3 | Projeção do contexto | ✅ **feito** (este commit) | 18 testes, 3 contra turnos REAIS |
 | 4 | Operador por evento | ✅ **feito** `35c88346` | 12 testes · 3 sabotagens com contagem prevista · `test:db` verde |
-| 5 | UI dos três papéis + `Testar` no caminho real | ⬜ | — |
+| 5 | UI dos três papéis + `Testar` no caminho real | 🟡 **parcial** `9b26ad76`+`2b85047e` | 16 testes · 4 sabotagens com contagem prevista · **prova de tela BLOQUEADA, ver abaixo** |
 | 6 | Tirar tools de escrita do Conversador | ⬜ | — |
 
 ---
@@ -168,6 +168,49 @@ sem esta nota creditaria ao meu rigor o que foi mérito da catraca.
 
 ---
 
+## Passo 5 (parcial) — a mão do Operador e a tela · `9b26ad76`, `2b85047e`
+
+**Fatia 1 — o Operador ganha mão.** Lê `operator_tool_ids` (coluna **própria**, migration 0112),
+monta o toolset pela ponte MCP e roda turno de modelo com briefing e custo próprios
+(`purpose: 'operator_turn'` — sem isso "quanto custa ligar o papel?" não teria resposta).
+
+*Sem canal, estruturalmente:* `send_message` é nativa do engine e **não existe no catálogo**, então
+não há id que a ligue; `crm_send_whatsapp_message` está em `BLOCKED_TOOL_IDS`, agora **exportado
+para ser asserível** — garantia que nenhum teste consegue ler é garantia que ninguém percebe quando
+some.
+
+**Fatia 2 — a tela.** Navegação por papel dentro do mesmo form (um rascunho, um save). A régua é
+dizer a **consequência**: com o papel desligado, a tela explica o que *continua* acontecendo (o
+básico é registrado sozinho) **e** o que *para*. Sem a primeira frase o usuário conclui que desligar
+deixa o sistema cego, e liga por medo em vez de escolha.
+
+**Evidência:** 16 testes novos (8 de motor, 8 de componente) · suíte unit **1459 passed / 154
+arquivos** · `test:db` **verde** (69 arquivos, 467 passed) · typecheck limpo · lint 0 erros ·
+**4 sabotagens na tela, 4 reprovações, contagem prevista em cada uma**.
+
+### 🚨 BLOQUEIO: a prova de tela não pôde ser feita nesta máquina
+
+`.env.local` aponta `NEXT_PUBLIC_SUPABASE_URL` para **`…porysaiysiztn.supabase.co`** — a nuvem, não
+o Supabase local (que está de pé em `127.0.0.1:54321`). O `playwright.config.ts` sobe o app com
+`next start`, que carrega `.env.local`.
+
+**Consequência:** rodar `pnpm test:e2e` nesta máquina, hoje, cria agentes, versões e conversas de
+teste **no banco de produção**. Não rodei.
+
+Isto não é específico deste épico: vale para **qualquer** sessão que rode e2e nesta máquina agora.
+
+Saídas possíveis (decisão do Rafael, é config dele):
+1. `.env.e2e` apontando para o local, carregado pelo `webServer` do Playwright — conserta para todo
+   mundo e é o que a doutrina de QA Visual pressupõe;
+2. apontar `.env.local` para o local enquanto se testa (manual, esquecível — foi o que já mordeu
+   antes, ver `feedback_env_local_aponta_para_remoto`);
+3. rodar a prova numa VPS descartável.
+
+**Enquanto isso, o que está provado da tela é comportamento de componente, não jornada de usuário.**
+São coisas diferentes e a diferença está declarada.
+
+---
+
 ## Deixado para trás (declarado, não escondido)
 
 | # | o quê | por quê ficou | onde fecha |
@@ -181,6 +224,8 @@ sem esta nota creditaria ao meu rigor o que foi mérito da catraca.
 | 7 | Tudo medido só em `gpt-5.6-terra` | chave Anthropic da máquina sem crédito | — |
 | 8 | **O Operador ainda não tem MÃO** | o passo 4 entrega o CANAL (job, disparo, decisão, config); as ferramentas de escrita entram junto com a UI que as configura | passo 5 |
 | 9 | Nenhum turno de produção observado com worker real | a projeção e o Operador estão provados por unit + payload real, não por execução ponta a ponta | passo 5, junto com a prova de tela |
+| 10 | **Botão `Testar` ainda não exercita guardrail nenhum** | fatia 3 do passo 5, não iniciada — `runAgent` deprecated não importa `runBeforeSend` | passo 5, fatia 3 |
+| 11 | Jornada de usuário na tela nova (e2e) | bloqueada pelo `.env.local` apontando para a nuvem (ver 🚨 acima) | quando houver `.env.e2e` |
 
 ---
 
