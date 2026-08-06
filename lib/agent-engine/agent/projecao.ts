@@ -169,18 +169,38 @@ export function traduzirErroCru(texto: string): string {
  * Só é chamada quando `turnoProjeta` vale — num turno que opera, remover ids
  * quebraria a operação, e é o gate de saída que cobre.
  */
-export function projetarRetornoDeTool(valor: unknown): unknown {
-  if (typeof valor === 'string') return traduzirErroCru(valor);
-  if (Array.isArray(valor)) return valor.map(projetarRetornoDeTool);
+export function projetarRetornoDeTool(valor: unknown, chavePai?: string): unknown {
+  // A tradução só alcança texto que é ERRO — e a restrição custou um bug para ser
+  // entendida. Aplicá-la a toda string destruiria o `content` da base de
+  // conhecimento: o detector considera "webhook" vazamento (com razão, na saída),
+  // e a FAQ de qualquer empresa que venda integração fala "webhook". O RAG do
+  // tenant viraria "não consegui concluir essa verificação" linha após linha.
+  //
+  // É a MESMA falha que a de reescrever a fala do cliente, numa irmã que não se
+  // parece por fora: as duas nascem de aplicar num texto de terceiros um filtro
+  // desenhado para texto do sistema.
+  if (typeof valor === 'string') {
+    return chavePai !== undefined && chaveDeErro(chavePai) ? traduzirErroCru(valor) : valor;
+  }
+  if (Array.isArray(valor)) return valor.map((v) => projetarRetornoDeTool(v, chavePai));
   if (valor !== null && typeof valor === 'object') {
     const saida: Record<string, unknown> = {};
     for (const [chave, v] of Object.entries(valor as Record<string, unknown>)) {
       if (chaveDeIdentificador(chave)) continue;
-      saida[chave] = projetarRetornoDeTool(v);
+      saida[chave] = projetarRetornoDeTool(v, chave);
     }
     return saida;
   }
   return valor;
+}
+
+/**
+ * Onde a tradução pode agir. Lista fechada e curta de propósito: cada nome aqui é
+ * um campo que o SISTEMA preenche, nunca o tenant. Crescer esta lista é aumentar
+ * a superfície em que conteúdo legítimo pode ser reescrito — pense duas vezes.
+ */
+function chaveDeErro(chave: string): boolean {
+  return /^(erro|error|message|mensagem|code|codigo|reason|motivo|detail|detalhe)$/i.test(chave);
 }
 
 /**

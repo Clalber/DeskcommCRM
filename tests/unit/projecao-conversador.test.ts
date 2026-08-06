@@ -191,6 +191,27 @@ describe("projeção — o que o Conversador pode ver", () => {
       expect(json).toContain("texto");
     });
 
+    it("o CONTEÚDO da base de conhecimento sobrevive intacto, mesmo falando 'webhook'", () => {
+      // Regressão de um bug que entrou e foi pego pela sabotagem: a tradução
+      // era aplicada a TODA string. O detector considera "webhook" vazamento
+      // (com razão, na SAÍDA), e a FAQ de qualquer empresa que venda integração
+      // fala webhook — o RAG do tenant viraria "não consegui concluir essa
+      // verificação" linha após linha. Filtro de texto do sistema não pode
+      // pisar em texto de terceiro.
+      const trecho = "Para integrar, configure o webhook no painel e informe a URL de callback.";
+      const p = projetarRetornoDeTool({ ok: true, results: [{ content: trecho, similarity: 0.9 }] }) as {
+        results: Array<{ content: string }>;
+      };
+      expect(p.results[0]!.content).toBe(trecho);
+    });
+
+    it("mas o campo de ERRO continua sendo traduzido — a restrição não desarmou a defesa", () => {
+      const p = projetarRetornoDeTool({ execucoes: [{ erro: "unsafe_url:https_required" }] }) as {
+        execucoes: Array<{ erro: string }>;
+      };
+      expect(p.execucoes[0]!.erro).toContain("não usa conexão segura");
+    });
+
     it("a estrutura ok/error sobrevive — é por ela que o runtime ensina o modelo", () => {
       // Removê-la cegaria o loop de correção que esta base usa em toda tool.
       const p = projetarRetornoDeTool({ ok: false, error: { code: "no_knowledge_base", message: "siga sem ela." } }) as {
