@@ -7146,7 +7146,13 @@ end
 $seed$;
 
 
--- ---- ai_pricing backfill (migration 0068) ----
+-- ---- ai_pricing backfill (migration 0113, renumerada de 0068) ----
+-- O NNNN original colidia com `0068_skills_marketplace`. O arquivo foi renomeado
+-- (o timestamp `20260725150000` NAO mudou, entao a version do Supabase e a mesma e
+-- ninguem re-aplica). As strings `notes` abaixo continuam dizendo "backfill 0068"
+-- DE PROPOSITO: sao dado ja gravado nos bancos existentes, e reescrever dado para
+-- acompanhar renumeracao de arquivo criaria divergencia entre clone antigo e novo
+-- sem ganho nenhum. O guard `not exists` casa por `model`, nunca por `notes`.
 -- BUG: ai_pricing nascia VAZIA em toda instalação nova. Os seeds existem só na
 -- migration 0010, mas a cadeia fresh não sobe (as 10 primeiras são stubs
 -- `SELECT 1;`) e quem instala aplica este baseline, que semeia ai_models mas
