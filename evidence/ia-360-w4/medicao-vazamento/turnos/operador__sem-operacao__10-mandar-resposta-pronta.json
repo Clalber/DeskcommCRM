@@ -1,0 +1,25 @@
+{
+  "prompt_kind": "operador",
+  "cenario": "10-mandar-resposta-pronta",
+  "mensagem": "Pega a resposta pronta de confirmação de consulta, preenche com o nome do paciente e me mostra como vai ficar.",
+  "esperado": "crm_render_message_template",
+  "rodou": true,
+  "status": "completed",
+  "final_text": "Claro — me diga **qual é o paciente** (nome ou identificação do contato) para eu preencher a resposta pronta de confirmação e mostrar o texto antes de enviar.",
+  "ferramentas": [],
+  "tool_calls": [
+    {
+      "step": 0,
+      "text": "Claro — me diga **qual é o paciente** (nome ou identificação do contato) para eu preencher a resposta pronta de confirmação e mostrar o texto antes de enviar.",
+      "finish_reason": "stop",
+      "tokens_in": 1444,
+      "tokens_out": 86,
+      "tool_calls": []
+    }
+  ],
+  "latency_ms": 2087,
+  "cost_cents": 1,
+  "model": "gpt-5.6-terra",
+  "agent_version_id": "12da2d3b-45cf-468e-a727-6a9ac97142bd",
+  "medido_em": "2026-08-06T16:21:32.419Z"
+}

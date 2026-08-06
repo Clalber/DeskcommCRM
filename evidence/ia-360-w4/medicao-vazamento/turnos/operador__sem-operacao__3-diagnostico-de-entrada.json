@@ -1,0 +1,25 @@
+{
+  "prompt_kind": "operador",
+  "cenario": "3-diagnostico-de-entrada",
+  "mensagem": "O formulário do nosso site parou de trazer contatos hoje. Consegue descobrir o que houve?",
+  "esperado": "crm_list_webhook_sources + crm_list_webhook_source_events",
+  "rodou": true,
+  "status": "completed",
+  "final_text": "Consigo ajudar a investigar, mas não tenho acesso, nesta conversa, aos logs de integrações, entradas automáticas ou regras do formulário para confirmar a causa.\n\nPara isolar o problema, preciso de:\n- qual formulário/página do site;\n- horário aproximado do último contato que entrou normalmente;\n- se houve alguma alteração hoje no site, formulário, domínio, CRM ou integração;\n- um envio de teste (e se a tela confirmou o envio).\n\nCom isso, a checagem deve seguir: envio do formulário → webhook/integração → criação do contato/conversa no CRM → regras de automação e roteamento.",
+  "ferramentas": [],
+  "tool_calls": [
+    {
+      "step": 0,
+      "text": "Consigo ajudar a investigar, mas não tenho acesso, nesta conversa, aos logs de integrações, entradas automáticas ou regras do formulário para confirmar a causa.\n\nPara isolar o problema, preciso de:\n- qual formulário/página do site;\n- horário aproximado do último contato que entrou normalmente;\n- se houve alguma alteração hoje no site, formulário, domínio, CRM ou integração;\n- um envio de teste (e se a tela confirmou o envio).\n\nCom isso, a checagem deve seguir: envio do formulário → webhook/integração → criação do contato/conversa no CRM → regras de automação e roteamento.",
+      "finish_reason": "stop",
+      "tokens_in": 1439,
+      "tokens_out": 231,
+      "tool_calls": []
+    }
+  ],
+  "latency_ms": 3644,
+  "cost_cents": 1,
+  "model": "gpt-5.6-terra",
+  "agent_version_id": "12da2d3b-45cf-468e-a727-6a9ac97142bd",
+  "medido_em": "2026-08-06T16:20:52.743Z"
+}

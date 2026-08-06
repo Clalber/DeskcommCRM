@@ -22,7 +22,9 @@
 # Uso:
 #   pnpm e2e:env                      # (re)cria o .env.e2e
 #   pnpm e2e:build && pnpm test:e2e   # build embute NEXT_PUBLIC_*, ver e2e-build.sh
-set -euo pipefail
+set -uo pipefail
+set -e
+CHAVE_CPF=""; CHAVE_WAHA=""; CHAVE_AI=""
 
 cd "$(dirname "$0")/.."
 
@@ -30,6 +32,18 @@ if ! npx supabase status >/dev/null 2>&1; then
   echo "==> O Supabase local não está de pé. Rode 'npx supabase start' antes." >&2
   exit 1
 fi
+
+# Chaves de cifra de 32 bytes. Reaproveita as do .env.e2e atual quando ele já
+# existe: regenerá-las a cada chamada tornaria ilegível toda credencial que o
+# banco de teste já guardou.
+if [ -f .env.e2e ]; then
+  CHAVE_CPF="$(grep -E '^CPF_ENCRYPTION_KEY=' .env.e2e | cut -d= -f2-)"
+  CHAVE_WAHA="$(grep -E '^WAHA_BYO_ENCRYPTION_KEY=' .env.e2e | cut -d= -f2-)"
+  CHAVE_AI="$(grep -E '^AI_CRED_AES_KEY=' .env.e2e | cut -d= -f2-)"
+fi
+[ "${#CHAVE_CPF}" -ge 44 ] || CHAVE_CPF="$(openssl rand -base64 32)"
+[ "${#CHAVE_WAHA}" -ge 44 ] || CHAVE_WAHA="$(openssl rand -base64 32)"
+[ "${#CHAVE_AI}" -ge 44 ] || CHAVE_AI="$(openssl rand -base64 32)"
 
 ENVOUT="$(npx supabase status -o env 2>/dev/null)"
 ler() { printf '%s\n' "$ENVOUT" | grep "^$1=" | cut -d= -f2- | tr -d '"'; }
@@ -69,9 +83,14 @@ SUPABASE_DB_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres
 # Valores iguais aos do CI (.github/workflows/e2e.yml), para que local e CI
 # falhem pelos mesmos motivos.
 INTERNAL_SECRET=e2e-placeholder-nao-e-segredo
-CPF_ENCRYPTION_KEY=e2e-placeholder-nao-e-segredo
-WAHA_BYO_ENCRYPTION_KEY=e2e-placeholder-nao-e-segredo
-AI_CRED_AES_KEY=e2e-placeholder-nao-e-segredo
+# As três abaixo são chaves de CIFRA de verdade: o app exige 32 bytes e recusa
+# um rótulo. Medido — com o placeholder, criar credencial de IA devolvia 500
+# ("AI_CRED_AES_KEY deve ter exatamente 32 bytes (lido: 21)") e todo run do
+# agente morria em `credential_decrypt_failed`, o que aparecia como "o modelo
+# não respondeu". Geradas na hora: são de teste, não precisam sobreviver.
+CPF_ENCRYPTION_KEY=$CHAVE_CPF
+WAHA_BYO_ENCRYPTION_KEY=$CHAVE_WAHA
+AI_CRED_AES_KEY=$CHAVE_AI
 WAHA_API_BASE_URL=http://127.0.0.1:3999
 WAHA_API_KEY=e2e-placeholder-nao-e-segredo
 WAHA_WEBHOOK_BASE_URL=http://127.0.0.1:3001
