@@ -48,6 +48,7 @@ const AGENT: PublishedAgentConfig = {
   versionCreatedBy: null,
   operatorEnabled: false,
   operatorModel: null,
+  operatorToolIds: [],
   agentCreatedBy: null,
 };
 

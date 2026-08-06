@@ -30,6 +30,7 @@ function fakeConfig(agentId: string): PublishedAgentConfig {
     versionCreatedBy: null,
     operatorEnabled: false,
   operatorModel: null,
+  operatorToolIds: [],
   agentCreatedBy: null,
   };
 }

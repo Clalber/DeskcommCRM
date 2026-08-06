@@ -50,6 +50,13 @@ export interface PublishedAgentConfig {
   operatorEnabled: boolean;
   /** modelo do papel Operador. `null` = herda `model` (o do Conversador). */
   operatorModel: string | null;
+  /**
+   * Capacidades do papel Operador — INDEPENDENTES de `toolIds` (do Conversador).
+   * Vazio = o papel roda sem mão, que é estado legítimo e observável: ele ainda
+   * registra promessa em aberto. Herdar as do Conversador daria 20 capacidades a
+   * quem não escolheu nenhuma.
+   */
+  operatorToolIds: string[];
   /** criadores (p/ mint do token efêmero de audit — padrão do runtime nativo). */
   versionCreatedBy: string | null;
   agentCreatedBy: string | null;
@@ -77,6 +84,7 @@ interface Row {
   config: Record<string, unknown> | null;
   operator_enabled: boolean | null;
   operator_model: string | null;
+  operator_tool_ids: string[] | null;
   version_created_by: string | null;
   agent_created_by: string | null;
 }
@@ -102,6 +110,7 @@ const SELECT_AGENT_CONFIG_COLUMNS = `a.id as agent_id,
             a.config,
             v.operator_enabled,
             v.operator_model,
+            v.operator_tool_ids,
             v.created_by as version_created_by,
             a.created_by as agent_created_by`;
 
@@ -144,6 +153,9 @@ function mapAgentConfigRow(r: Row): PublishedAgentConfig {
     // modelo por causa de um schema desatualizado.
     operatorEnabled: r.operator_enabled ?? false,
     operatorModel: r.operator_model,
+    // `?? []` cobre o clone sem a 0112: sem coluna, o papel roda sem mão em vez
+    // de herdar a lista do Conversador — a direção segura é agir de menos.
+    operatorToolIds: r.operator_tool_ids ?? [],
     versionCreatedBy: r.version_created_by,
     agentCreatedBy: r.agent_created_by,
   };

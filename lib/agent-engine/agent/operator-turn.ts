@@ -36,6 +36,9 @@ import { latestCheckpoint } from './inbound-turn';
 import { declaracaoDoTurnoSchema, promessasEmAberto, type DeclaracaoDoTurno } from './declaracao';
 import { loadPublishedAgentConfigById } from './agent-config';
 import { insertInboxItem } from '../db/repository';
+import { buildMcpTurnTools } from '../edge/crm/mcp-tools';
+import { runModelCall } from '../edge/llm/run-model-call';
+import { avisarCapacidadesAusentes } from './inbound-turn';
 
 /**
  * O que o runtime enfileira ao fim do turno do Conversador. Só PONTEIROS: org e
@@ -54,6 +57,52 @@ export const operatorTurnPayloadSchema = z
     agent_id: z.string().uuid().nullable().default(null),
   })
   .passthrough();
+
+/**
+ * O system do papel. Fala de OPERAÇÃO com todas as letras — e pode, porque este
+ * texto nunca alcança um cliente: este papel não tem canal.
+ *
+ * É o inverso exato do prompt do Conversador, e a assimetria é o desenho inteiro
+ * da spec 16 em duas frases. Lá, vocabulário de sistema é o defeito (30% de
+ * vazamento medido); aqui, é o vocabulário de trabalho.
+ */
+export const SYSTEM_DO_OPERADOR =
+  'Você é o operador do sistema. Seu trabalho é deixar o CRM refletindo o que aconteceu na ' +
+  'conversa que acabou de ocorrer — mover o lead, registrar, abrir o que precisa ser aberto.\n\n' +
+  'VOCÊ NÃO FALA COM O CLIENTE. Você não tem como enviar mensagem, e não deve tentar: quem ' +
+  'conversa é outro. Se algo exigir falar com a pessoa, registre e siga.\n\n' +
+  'Use apenas o que a conversa sustenta. Não invente avanço, não registre o que ninguém disse. ' +
+  'Se não houver nada a fazer, não faça nada — um turno sem ação é uma resposta válida.';
+
+/** O briefing do turno: o que o Conversador declarou, em linguagem de negócio. */
+export function renderBriefingDoOperador(
+  declaracao: DeclaracaoDoTurno | null,
+  promessas: ReturnType<typeof promessasEmAberto>,
+): string {
+  if (declaracao === null) {
+    // Ausente ≠ vazia, de novo — e aqui a diferença vira instrução. Dizer ao
+    // modelo "não houve declaração" e pedir que ele olhe o estado é diferente de
+    // deixá-lo achar que o turno foi vazio.
+    return [
+      'O turno anterior NÃO deixou declaração do que aconteceu (fechamento incompleto).',
+      'Verifique o estado do lead e registre o que estiver claramente pendente.',
+      'Na dúvida, não faça nada.',
+    ].join('\n');
+  }
+  const linhas = ['Foi isto que aconteceu na conversa que acabou:'];
+  if (declaracao.intencoes.length > 0) {
+    linhas.push('', 'O que a pessoa quer:');
+    for (const i of declaracao.intencoes) linhas.push(`- ${i.o_que} (na conversa: "${i.evidencia}")`);
+  }
+  if (promessas.length > 0) {
+    linhas.push('', 'O que foi prometido a ela (precisa existir no sistema):');
+    for (const p of promessas) {
+      linhas.push(`- ${p.o_que}${p.prazo === null ? '' : ` — até ${p.prazo}`}`);
+    }
+  }
+  linhas.push('', 'Deixe o sistema refletindo isso. O que já estiver registrado, não repita.');
+  return linhas.join('\n');
+}
 
 /** O que o Operador decidiu neste turno — vai a log e à timeline. */
 export type DesfechoDoOperador =
@@ -152,18 +201,72 @@ export function createOperatorTurnHandler(deps: InboundTurnDeps) {
       return;
     }
 
-    // As promessas do turno são as obrigações que alguém tem de quitar. Enquanto
-    // as ferramentas de operação não estão ligadas neste papel (spec 16, passo 4
-    // entrega o CANAL; a mão vem a seguir), o valor imediato é não deixá-las
-    // órfãs: promessa sem dono vira aviso na Central, onde o humano olha.
     const promessas = promessasEmAberto(declaracao);
+
+    // A MÃO do papel: só as ferramentas DELE (`operator_tool_ids`), nunca as do
+    // Conversador. `send_message` não está aqui e não pode estar — é assim que
+    // "nunca fala com o lead" deixa de ser instrução de prompt e vira ausência.
+    //
+    // Sem ferramenta configurada o papel ainda tem valor e ainda roda: ele
+    // registra a promessa em aberto. Chamar o modelo para descobrir que ele não
+    // tem mão nenhuma seria gastar a chave do self-hoster para nada.
+    let mcp: Awaited<ReturnType<typeof buildMcpTurnTools>> = null;
+    if (agentConfig.operatorToolIds.length > 0) {
+      try {
+        mcp = await buildMcpTurnTools(
+          deps.crmCfg,
+          { organizationId: tenantId, jobId: job.id },
+          // A ponte lê `toolIds`; o papel guarda a lista dele em
+          // `operatorToolIds`. A troca acontece AQUI, num ponto só, para que
+          // nenhum caminho do Operador alcance a lista do Conversador por
+          // engano — que seria dar a ele a mão do outro.
+          { ...agentConfig, toolIds: agentConfig.operatorToolIds },
+          log,
+        );
+      } catch (err) {
+        // Mesma doutrina do turno do Conversador: capacidade que não montou não
+        // derruba o job, mas também não morre no log de um contêiner que
+        // ninguém abre — o aviso vai para a Central.
+        const detalhe = (err instanceof Error ? err.message : String(err)).slice(0, 200);
+        log.error('capacidades do operador não montadas — o papel segue sem elas', { error: detalhe });
+        await avisarCapacidadesAusentes(pool, tenantId, payload.conversation_id, detalhe, log);
+      }
+    }
+
     log.info('operador rodou', {
       promessas: promessas.length,
       intencoes: declaracao?.intencoes.length ?? 0,
       declaracao_ausente: declaracao === null,
       houve_checkpoint: houveCheckpoint,
       model: agentConfig.operatorModel ?? agentConfig.model,
+      tools: mcp?.toolIds ?? [],
     });
+
+    try {
+      if (mcp !== null) {
+        await runModelCall(
+          pool,
+          deps.llmCfg,
+          {
+            tenantId,
+            leadId,
+            jobId: job.id,
+            // Atribuição de custo própria: sem isto o gasto do Operador entraria
+            // como se fosse conversa, e "quanto custa ligar o papel?" — a
+            // pergunta que o dono do negócio vai fazer — não teria resposta.
+            purpose: 'operator_turn',
+            system: SYSTEM_DO_OPERADOR,
+            messages: [{ role: 'user', content: renderBriefingDoOperador(declaracao, promessas) }],
+            tools: mcp.tools,
+            maxSteps: agentConfig.maxSteps,
+            ...(agentConfig.operatorModel !== null ? { model: agentConfig.operatorModel } : {}),
+          },
+          { ...(deps.registry !== undefined ? { registry: deps.registry } : {}), log },
+        );
+      }
+    } finally {
+      await mcp?.cleanup();
+    }
 
     if (promessas.length > 0) {
       await avisarPromessasEmAberto(pool, tenantId, payload.conversation_id, promessas.length, log);

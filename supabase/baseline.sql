@@ -9156,6 +9156,19 @@ alter table ai_agent_versions
 alter table ai_agent_versions
   add column if not exists operator_model text;
 
+-- (migration 0112) Ferramentas do papel Operador — coluna PRÓPRIA, não reuso de
+-- `tool_ids`: se os dois papéis lessem a mesma lista, a seção "Operador" da tela
+-- estaria configurando o que o Conversador executa. Default vazio: o papel nasce
+-- sem mão, e herdar as do Conversador em silêncio daria 20 capacidades a quem
+-- não escolheu nenhuma.
+alter table ai_agent_versions
+  add column if not exists operator_tool_ids text[] not null default '{}'::text[];
+
+comment on column ai_agent_versions.operator_tool_ids is
+  'Spec 16 §6: capacidades do papel Operador, independentes de `tool_ids` (do '
+  'Conversador). Vazio = o papel roda mas não tem mão — estado legítimo: ele '
+  'ainda registra promessa em aberto na Central.';
+
 comment on column ai_agent_versions.operator_enabled is
   'Spec 16 §3.2: o papel Operador roda após o turno do Conversador. false = o '
   'registro básico segue por código determinístico (estado, follow-up prometido, '
