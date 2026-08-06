@@ -21,7 +21,7 @@
 | 3 | Projeção do contexto | ✅ **feito** (este commit) | 18 testes, 3 contra turnos REAIS |
 | 4 | Operador por evento | ✅ **feito** `35c88346` | 12 testes · 3 sabotagens com contagem prevista · `test:db` verde |
 | 5 | UI dos três papéis + `Testar` no caminho real | ✅ **feito** `9b26ad76`·`2b85047e`·`1b9649c6`·`1e19ef4a` | 29 testes · **e2e 7/7 pela tela** · 4 sabotagens no `Testar` |
-| 6 | Tirar tools de escrita do Conversador | 🟡 **parcial** `16386d0e` | 16 testes · 4 sabotagens · **3 nativas sem equivalente ficaram** |
+| 6 | Tirar tools de escrita do Conversador | 🟡 **parcial** `16386d0e` | 16 testes · 4 sabotagens · **RE-MEDIDO: não zera o vazamento** |
 
 ---
 
@@ -354,7 +354,37 @@ nunca acontecer, silenciosamente.
 
 **Zero mudança para quem não ligou o papel** — `operator_enabled` nasce `false`.
 
-### ⚠️ O sinal de sucesso do passo 6 ainda NÃO foi medido
+### 🔴 O sinal de sucesso do passo 6 foi medido — e NÃO se cumpriu
+
+Relatório: [`RELATORIO-passo6.md`](evidence/ia-360-w4/medicao-vazamento/RELATORIO-passo6.md).
+Mesmo modelo da linha de base (`gpt-5.6-terra`), 10 cenários × 3 configurações.
+
+| configuração | taxa |
+|---|---:|
+| A · CONTROLE (linha de base replicada) | **10,0%** |
+| B · passo 6 como entregue | **10,0%** |
+| C · cura completa (operação sai) | **10,0%** |
+
+**As três iguais, mesmo cenário vazando.** E em C — sem nenhuma ferramenta de webhook no contexto —
+o modelo **ainda disse `webhook`**: parte do vocabulário vem do MODELO, não do contexto. Ausência de
+ferramenta reduz superfície; não elimina vazamento.
+
+**O controle não reproduz os 30%**, e a causa está identificada: o instrumento não executa as
+ferramentas, então não exercita a porta 3 (dado retornado) — que era 2 dos 3 vazamentos originais.
+Ele mede a porta 1/2, e nela achou exatamente 1 de 10, coerente com o único vazamento por nome da
+linha de base. Calibração parcial e explicada, não aleatória.
+
+**O que isso confirma:** o prompt é a variável dominante (30% → 0% na linha de base foi troca de
+prompt, mesmas ferramentas). O valor do épico não é "zero por ausência" — é o dono do negócio
+**deixar de precisar** escrever "atenda E organize" no prompt do Conversador, porque agora existe um
+papel para isso. O gate segue como rede para o resíduo que vem do próprio modelo.
+
+> **O instrumento reportou `0,0%` nas três configurações na primeira execução** — parecia sucesso
+> perfeito. As 30 chamadas tinham voltado HTTP 400, os textos vieram vazios, e o detector não acha
+> nada em texto vazio. O erro estava capturado por linha; o resumo só imprimia a taxa. Corrigido:
+> o script recusa calcular taxa quando há turnos que não rodaram.
+
+### ⚠️ O que ainda não foi medido
 
 A spec define o sinal como *"o vazamento medido em 30% vai a zero por ausência, não por filtro"*.
 Isso exige **re-rodar a medição** (18 turnos, `gpt-5.6-terra`) com o Operador ligado e comparar. Não
@@ -381,7 +411,7 @@ Até lá, o que está provado é o **mecanismo** (a ferramenta e o nome somem do
 | 10 | ~~Botão `Testar` sem guardrail~~ | ✅ **feito** — avalia o texto e declara os 9 gates que não consegue avaliar | — |
 | 11 | ~~Jornada de usuário na tela nova~~ | ✅ **feito** — `agente-papeis-operador.spec.ts`, 7/7 | — |
 | 12 | **~78 sondas** ainda leem `.env.local` do disco (`tests/*.ts`, `scripts/sonda-*`, `scripts/prova-*`) | os **16 seeds** foram migrados e há gate; sondas são disparadas à mão, com alguém olhando — e no worktree sem `.env.local` falham alto | quando alguém tocar numa |
-| 14 | **Sinal do passo 6 não medido** — a taxa de 30% não foi re-medida com o Operador ligado | precisa de chave de LLM com crédito + turno real com worker | quando houver ambiente |
+| 14 | Taxa **total** (com ferramentas EXECUTADAS) — o que calibraria o controle | exige MCP real contra dados de verdade: worker + banco | quando houver ambiente |
 | 15 | 3 nativas sem equivalente no catálogo (`save_lead_note`, `open_human_case`, `provide_case_update`) | expor equivalentes é decisão de produto, não de refactor | quando o catálogo crescer |
 | 13 | Fixtures de e2e na produção (`e2e-test-org`, `e2e-tenant-b`, 4 usuários `@deskcomm.test`) | remover é apagar dado em produção — decisão do Rafael, não minha | aguardando decisão |
 
