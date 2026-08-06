@@ -73,6 +73,7 @@ import {
 } from './stage-classifier';
 import { loadPlaybook } from './playbook';
 import { DECLARACAO_INSTRUCTION, declaracaoDoTurnoSchema, type DeclaracaoDoTurno } from './declaracao';
+import { projetarContexto, projetarRetornoDeTool, turnoProjeta, type ContextoProjetado } from './projecao';
 import { composeSystemPrompt, loadOrgMemory, renderOrgMemory } from './org-memory';
 import { matchesHandoffKeyword } from './agent-config';
 import { resolveTurnAgent } from './resolve-turn-agent';
@@ -548,6 +549,13 @@ export function ritualBlocks(
   leadState: LeadStateRow | null,
   context: LeadContext,
   notesIndexBlock: string,
+  /**
+   * Projetar o contexto (spec 16 §4)? Default `false` para não mudar em silêncio
+   * o prompt de quem já chama isto (follow-up, resposta de caso) — cada chamador
+   * liga quando souber responder a pergunta que a projeção faz: "este turno
+   * consegue usar um id para alguma coisa?".
+   */
+  projeta = false,
 ): string[] {
   const checkpointBlock = previous
     ? JSON.stringify({
@@ -573,7 +581,13 @@ export function ritualBlocks(
     '## Resumo acumulado da conversa',
     summaryBlock,
     '',
-    '## Estado do funil (lead_state)',
+    // Era "## Estado do funil (lead_state)". O nome da tabela no cabeçalho era
+    // vazamento gratuito — o modelo o lê e o repete, que é a porta 2 medida, só
+    // que sem nem precisar de uma ferramenta para carregá-la. O CONTEÚDO deste
+    // bloco (stage: 'qualifying') continua sendo vocabulário interno e continua
+    // aqui: `update_lead_state` precisa dele para marcar o próximo estágio.
+    // Sai no passo 6 da spec 16, junto com a ferramenta. Dívida declarada.
+    '## Estado do funil',
     stateBlock,
     '',
     // Índice da memória durável do lead (F3-05): headlines + id, orçamento fixo. O
@@ -583,7 +597,12 @@ export function ritualBlocks(
     notesIndexBlock,
     '',
     '## Contexto do lead (contato + últimas mensagens)',
-    JSON.stringify(context),
+    // A projeção (spec 16 §4) fecha a terceira porta: sem ela, `lead_id`,
+    // `conversation_id` e `media_storage_path` chegam crus ao prompt — e UUID
+    // cru na tela do cliente foi MEDIDO. Ela só arma quando o turno não tem
+    // ferramenta de catálogo (ver `turnoProjeta`), porque é aí que esses ids
+    // não têm uso nenhum. Nos demais, quem cobre é o gate de saída.
+    JSON.stringify(projeta ? projetarContexto(context) : context),
   ];
 }
 
@@ -593,11 +612,12 @@ function buildOpeningMessage(
   leadState: LeadStateRow | null,
   context: LeadContext,
   notesIndexBlock: string,
+  projeta = false,
 ): string {
   return [
     'Novo turno de atendimento: o lead enviou uma mensagem (a última inbound do histórico abaixo).',
     '',
-    ...ritualBlocks(previous, leadState, context, notesIndexBlock),
+    ...ritualBlocks(previous, leadState, context, notesIndexBlock, projeta),
     '',
     'Responda ao lead usando a tool send_message — NUNCA escreva a resposta como texto direto',
     '(texto fora de tool é descartado pelo runtime). Use get_lead_context se precisar reler o contexto.',
@@ -625,6 +645,20 @@ export interface AgentTurnInput {
     context: LeadContext;
     /** índice da memória do lead (F3-05), já dentro do orçamento; vai no sufixo. */
     notesIndexBlock: string;
+    /**
+     * Projetar o contexto (spec 16 §4)? Decidido pelo turno, ver `turnoProjeta`.
+     *
+     * OPCIONAL no tipo, e a razão é externa ao desenho: `tests/invariants/**` é
+     * congelado por hook de governança, e torná-lo obrigatório forçaria a editar
+     * um invariante existente só para satisfazer o compilador — o que a catraca
+     * proíbe, com razão. `runAgentTurn` SEMPRE o passa; o opcional só existe para
+     * quem constrói um ritual à mão (testes).
+     *
+     * O custo está registrado: um chamador novo que esqueça o campo não projeta,
+     * em silêncio. A direção do esquecimento é a segura (comportamento de hoje,
+     * com o gate de saída cobrindo), mas é esquecimento mesmo assim.
+     */
+    projeta?: boolean;
   }) => string;
 }
 
@@ -1086,17 +1120,55 @@ export async function runAgentTurn(
     runLog.warn('skill_activations não gravadas', { error: (err instanceof Error ? err.message : String(err)).slice(0, 120) });
   }
 
+  /**
+   * Os ids de catálogo que de fato ENTRARAM neste turno — não os que a tela
+   * marcou. A diferença importa: quando a montagem falha, o turno segue sem elas,
+   * e é o turno REAL que decide se a projeção arma. Ler a config aqui faria a
+   * projeção ficar desligada num turno que, por acidente, não recebeu ferramenta
+   * nenhuma — justo o turno em que ela é gratuita.
+   *
+   * Declarado ANTES de `rawTools` de propósito: o `execute` de `get_lead_context`
+   * fecha sobre ele e o lê no momento da CHAMADA, quando as ferramentas de
+   * catálogo já foram montadas (o `push` acontece bem abaixo, antes do loop do
+   * modelo). Deixá-lo declarado depois funcionaria, mas esconderia a ordem de que
+   * a correção depende.
+   */
+  const mcpToolIdsDoTurno: string[] = [];
+
   const rawTools: ToolSet = {
     get_lead_context: tool({
       ...AGENT_TOOL_DEFS.get_lead_context,
-      execute: async (): Promise<LeadContextResult | { ok: false; error: { code: string; message: string } }> => {
+      execute: async (): Promise<
+        | LeadContextResult
+        // A variante PROJETADA é um tipo próprio, não um `LeadContext` disfarçado
+        // por cast: são payloads diferentes, e um `as` aqui faria o compilador
+        // parar de vigiar exatamente a fronteira que este código existe para
+        // manter. Note que `lgpd` não viaja nela — base legal e anonimização são
+        // dado de conformidade que o runtime usa nos gates, e que o modelo nunca
+        // precisou ler (no caminho não-projetado ele já ia junto; aqui para).
+        | { ok: true; context: ContextoProjetado; tokenCount: number }
+        | { ok: false; error: { code: string; message: string } }
+      > => {
         try {
-          return await getLeadContext(
+          const releitura = await getLeadContext(
             pool,
             deps.crmCfg,
             { tenantId, leadId, conversationId: input.conversationId },
             turnContextKnobs,
           );
+          // Sem esta linha a projeção da abertura seria decorativa: bastaria o
+          // modelo chamar esta ferramenta para receber o contexto CRU de volta,
+          // com `lead_id`, `conversation_id` e caminho de mídia. A releitura é a
+          // mesma superfície da abertura e tem de obedecer à mesma regra —
+          // proteger só a porta da frente é não ter protegido.
+          if (releitura.ok && turnoProjeta(mcpToolIdsDoTurno)) {
+            return {
+              ok: true,
+              context: projetarContexto(releitura.context),
+              tokenCount: releitura.tokenCount,
+            };
+          }
+          return releitura;
         } catch (err) {
           // bug de programação: ensina o modelo a encerrar E derruba o job no fim
           noteRunError(err instanceof Error ? err : new Error(String(err)));
@@ -1227,9 +1299,16 @@ export async function runAgentTurn(
           jobId: job.id,
         }, { log: runLog });
         if (out.ok && out.results.length > 0) {
+          // As citações são montadas AQUI, pelo código, a partir do resultado
+          // cru — é por isso que os ids podem sair do que vai ao modelo sem
+          // perder nada: quem precisa deles é esta linha, não o modelo.
           pendingCitations = citationsFromHits(out.results);
         }
-        return out;
+        // `chunk_id` e `knowledge_source_id` viajavam CRUS para o modelo em toda
+        // busca com RAG — dois UUIDs por resultado, sem uso nenhum do lado dele
+        // (nenhuma ferramenta os aceita como argumento). UUID cru na resposta ao
+        // cliente foi MEDIDO nesta base; esta era uma fonte silenciosa dele.
+        return turnoProjeta(mcpToolIdsDoTurno) ? projetarRetornoDeTool(out) : out;
       },
     }),
     send_message: tool({
@@ -1756,6 +1835,7 @@ export async function runAgentTurn(
         for (const [name, mcpTool] of Object.entries(mcp.tools)) {
           if (!(name in rawTools)) rawTools[name] = mcpTool;
         }
+        mcpToolIdsDoTurno.push(...mcp.toolIds);
         runLog.info('tools MCP da tela montadas no turno', { mcp_tool_ids: mcp.toolIds });
       }
     } catch (err) {
@@ -1833,11 +1913,21 @@ export async function runAgentTurn(
     }
   }
 
+  // Spec 16 §4: a projeção arma quando NENHUMA ferramenta de catálogo entrou —
+  // é exatamente o turno em que os ids do contexto não têm uso, e portanto o
+  // único em que removê-los não custa nada. Logado porque "por que o prompt
+  // deste turno é diferente do daquele?" precisa ter resposta no trace.
+  const projetaContexto = turnoProjeta(mcpToolIdsDoTurno);
+  runLog.info('projeção do contexto do turno', {
+    projeta: projetaContexto,
+    mcp_tools_no_turno: mcpToolIdsDoTurno.length,
+  });
   const openingBase = input.buildOpening({
     previous: effectivePrevious,
     leadState,
     context: effectiveContext,
     notesIndexBlock,
+    projeta: projetaContexto,
   });
   // Sufixos por-lead (situacionais, voláteis — depois do prefixo cacheável F2-17): corpos de
   // skill casadas (F3-09) + hint do classificador (F3-11) + instrução de split (F4-xx, quando
@@ -2122,8 +2212,8 @@ export function createInboundTurnHandler(deps: InboundTurnDeps) {
     await runAgentTurn(deps, job, pool, ctx, {
       channelSessionId: payload.channel_session_id,
       conversationId: payload.conversation_id,
-      buildOpening: ({ previous, leadState, context, notesIndexBlock }) =>
-        buildOpeningMessage(previous, leadState, context, notesIndexBlock),
+      buildOpening: ({ previous, leadState, context, notesIndexBlock, projeta }) =>
+        buildOpeningMessage(previous, leadState, context, notesIndexBlock, projeta),
     });
   };
 }
