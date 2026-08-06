@@ -241,6 +241,25 @@ recusa propagar a flag (`ERR_WORKER_INVALID_EXEC_ARGV`). O script prova as **dua
 de produção ausente do bundle **e** host local presente. Sem o controle positivo, "não achei
 produção" pode ser apenas um grep que não acha nada.
 
+### Os 16 seeds migrados · `3159e0db`
+
+Todos os `scripts/seed-e2e-*.ts` usam `credenciaisSupabaseDeTeste()` e **anunciam o destino**.
+Dois já tinham a precedência certa e só ganharam o anúncio (`capacidades` lia o arquivo como
+fallback, `invite` já usava `process.env` puro) — mas o `capacidades` estourava com `ENOENT` num
+worktree sem `.env.local`, justo onde a ausência é a proteção.
+
+**Gate:** `tests/unit/seed-nao-le-env-local-do-disco.test.ts`. Sem ele, o 17º seed nasce copiando o
+mais próximo. Escrever em produção não é reparável por code review depois do fato.
+
+> **A primeira regex do gate não media nada.** Era
+> `/readFileSync\s*\(\s*(?:path\.join\([^)]*)?…\.env\.local/`, e o `[^)]*` parava no `)` de
+> `process.cwd()` — no meio de `path.join(process.cwd(), ".env.local")`. A alternativa nunca casava.
+> Descoberto por **sabotagem**: reintroduzir a leitura num seed não vermelhou nada. A versão atual
+> procura o literal em vez de modelar a sintaxe — regex que entende estrutura erra calada.
+
+**Prova:** os 16 seeds **executados de verdade**, 16/16 anunciando `escrevendo em LOCAL`. Typecheck
+sozinho não bastava: ele já deixou passar um `env is not defined` nesta mesma série.
+
 ### O ganho estrutural do worktree
 
 Este worktree **não tem `.env.local`**. Um script que o leia do disco falha **alto** (`ENOENT`) em
@@ -267,7 +286,7 @@ do banco não batia com o do arquivo, justamente porque o seed ia para a nuvem).
 | 9 | Nenhum turno de produção observado com worker real | a projeção e o Operador estão provados por unit + payload real, não por execução ponta a ponta | passo 5, junto com a prova de tela |
 | 10 | **Botão `Testar` ainda não exercita guardrail nenhum** | fatia 3 do passo 5, não iniciada — `runAgent` deprecated não importa `runBeforeSend` | passo 5, fatia 3 |
 | 11 | Jornada de usuário na tela **nova** (papéis) | o `.env.e2e` destravou a infra; falta escrever o spec da aba do Operador | próxima sessão |
-| 12 | **~14 seeds e ~78 sondas ainda leem `.env.local` do disco** | só `seed-e2e-credentials` foi migrado (é o que a suíte chama sempre); no worktree sem `.env.local` eles falham alto | migrar os `seed-e2e-*` + teste que congela a dívida |
+| 12 | **~78 sondas** ainda leem `.env.local` do disco (`tests/*.ts`, `scripts/sonda-*`, `scripts/prova-*`) | os **16 seeds** foram migrados e há gate; sondas são disparadas à mão, com alguém olhando — e no worktree sem `.env.local` falham alto | quando alguém tocar numa |
 | 13 | Fixtures de e2e na produção (`e2e-test-org`, `e2e-tenant-b`, 4 usuários `@deskcomm.test`) | remover é apagar dado em produção — decisão do Rafael, não minha | aguardando decisão |
 
 ---
