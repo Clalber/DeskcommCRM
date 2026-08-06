@@ -74,6 +74,7 @@ import {
 import { loadPlaybook } from './playbook';
 import { DECLARACAO_INSTRUCTION, declaracaoDoTurnoSchema, type DeclaracaoDoTurno } from './declaracao';
 import { projetarContexto, projetarRetornoDeTool, turnoProjeta, type ContextoProjetado } from './projecao';
+import { capacidadesEntreguesAoOperador } from './entrega-de-capacidade';
 import { composeSystemPrompt, loadOrgMemory, renderOrgMemory } from './org-memory';
 import { matchesHandoffKeyword } from './agent-config';
 import { resolveTurnAgent } from './resolve-turn-agent';
@@ -607,13 +608,24 @@ export function ritualBlocks(
 }
 
 /** Abertura determinística do run inbound — o ritual em texto (pt-br). */
-function buildOpeningMessage(
+export function buildOpeningMessage(
   previous: LeadCheckpointRow | null,
   leadState: LeadStateRow | null,
   context: LeadContext,
   notesIndexBlock: string,
   projeta = false,
+  /**
+   * Ferramentas que saíram para o Operador (spec 16, passo 6). O prompt PRECISA
+   * deixar de citá-las — e esta é a parte que É a cura, não um acabamento.
+   *
+   * Remover a ferramenta e manter a instrução produziria o pior dos dois mundos:
+   * o modelo tentaria chamar o que não existe, gastaria passo com o erro, E o
+   * NOME continuaria no contexto — que é exatamente por onde o vazamento voltou
+   * quando limparam só a descrição (`crm_list_webhook_sources`, medido).
+   */
+  entregues: readonly string[] = [],
 ): string {
+  const entregue = (nome: string): boolean => entregues.includes(nome);
   return [
     'Novo turno de atendimento: o lead enviou uma mensagem (a última inbound do histórico abaixo).',
     '',
@@ -621,8 +633,15 @@ function buildOpeningMessage(
     '',
     'Responda ao lead usando a tool send_message — NUNCA escreva a resposta como texto direto',
     '(texto fora de tool é descartado pelo runtime). Use get_lead_context se precisar reler o contexto.',
-    'Houve avanço REAL no funil neste turno? Marque-o com update_lead_state (só o próximo estágio válido).',
-    'Aprendeu algo durável sobre o lead? Salve com save_lead_note (a headline entra no índice de memória).',
+    // Quando o avanço do funil vira trabalho do Operador, o Conversador não
+    // precisa saber que existe um funil. É a diferença entre "não fale disso" e
+    // "não há disso no seu contexto" — a segunda não depende de obediência.
+    ...(entregue('update_lead_state')
+      ? []
+      : ['Houve avanço REAL no funil neste turno? Marque-o com update_lead_state (só o próximo estágio válido).']),
+    ...(entregue('save_lead_note')
+      ? []
+      : ['Aprendeu algo durável sobre o lead? Salve com save_lead_note (a headline entra no índice de memória).']),
   ].join('\n');
 }
 
@@ -659,6 +678,8 @@ export interface AgentTurnInput {
      * com o gate de saída cobrindo), mas é esquecimento mesmo assim.
      */
     projeta?: boolean;
+    /** ferramentas que saíram para o Operador — o prompt não pode citá-las. */
+    entregues?: readonly string[];
   }) => string;
 }
 
@@ -1855,6 +1876,26 @@ export async function runAgentTurn(
     }
   }
 
+  // ── A CURA (spec 16, passo 6) ───────────────────────────────────────────────
+  //
+  // As ferramentas de escrita saem do Conversador quando o Operador as assumiu.
+  // O gate de vazamento é rede — barra na saída e ensina; isto é a cura: o
+  // modelo não pode repetir o nome de uma ferramenta que nunca viu, e foi pelo
+  // NOME que o vazamento voltou depois de a descrição ser limpa.
+  //
+  // A remoção é CONDICIONAL a o novo dono existir (ver entrega-de-capacidade):
+  // tirar de um lado sem garantir o outro não separa papéis, perde capacidade.
+  const entregues = capacidadesEntreguesAoOperador({
+    operadorLigado: agentConfig?.operatorEnabled ?? false,
+    ferramentasDoOperador: agentConfig?.operatorToolIds ?? [],
+  });
+  for (const nome of entregues) delete rawTools[nome];
+  if (entregues.length > 0) {
+    runLog.info('capacidades entregues ao operador — fora do turno do conversador', {
+      entregues,
+    });
+  }
+
   // Circuit breaker de tools (F2-15): estado no closure DESTA invocação — zera
   // entre runs por construção (mesma garantia de isolamento do resto do run).
   const tools = wrapToolsWithBreaker(rawTools, {
@@ -1928,6 +1969,7 @@ export async function runAgentTurn(
     context: effectiveContext,
     notesIndexBlock,
     projeta: projetaContexto,
+    entregues,
   });
   // Sufixos por-lead (situacionais, voláteis — depois do prefixo cacheável F2-17): corpos de
   // skill casadas (F3-09) + hint do classificador (F3-11) + instrução de split (F4-xx, quando
@@ -2244,8 +2286,8 @@ export function createInboundTurnHandler(deps: InboundTurnDeps) {
     await runAgentTurn(deps, job, pool, ctx, {
       channelSessionId: payload.channel_session_id,
       conversationId: payload.conversation_id,
-      buildOpening: ({ previous, leadState, context, notesIndexBlock, projeta }) =>
-        buildOpeningMessage(previous, leadState, context, notesIndexBlock, projeta),
+      buildOpening: ({ previous, leadState, context, notesIndexBlock, projeta, entregues }) =>
+        buildOpeningMessage(previous, leadState, context, notesIndexBlock, projeta, entregues),
     });
   };
 }
