@@ -21,7 +21,7 @@
 | 3 | Projeção do contexto | ✅ **feito** (este commit) | 18 testes, 3 contra turnos REAIS |
 | 4 | Operador por evento | ✅ **feito** `35c88346` | 12 testes · 3 sabotagens com contagem prevista · `test:db` verde |
 | 5 | UI dos três papéis + `Testar` no caminho real | ✅ **feito** `9b26ad76`·`2b85047e`·`1b9649c6`·`1e19ef4a` | 29 testes · **e2e 7/7 pela tela** · 4 sabotagens no `Testar` |
-| 6 | Tirar tools de escrita do Conversador | ⬜ | — |
+| 6 | Tirar tools de escrita do Conversador | 🟡 **parcial** `16386d0e` | 16 testes · 4 sabotagens · **3 nativas sem equivalente ficaram** |
 
 ---
 
@@ -323,6 +323,48 @@ do banco não batia com o do arquivo, justamente porque o seed ia para a nuvem).
 
 ---
 
+## Passo 6 — a cura · `16386d0e`
+
+O gate é **rede**: barra na saída e ensina. A **cura** é o Conversador nunca ter visto o
+vocabulário — o modelo não repete o nome de uma ferramenta que não está no contexto dele.
+
+**A regra que impede o buraco:** a capacidade só muda de dono **quando o novo dono existe**. A
+nativa sai do Conversador apenas se o Operador estiver ligado **E** tiver o equivalente marcado.
+Ligar o papel e esquecer de marcar `crm_move_lead_stage` tiraria o avanço do funil sem dar a
+ninguém — e o funil pararia em silêncio, que é o modo de falha que este épico combate.
+
+**A instrução sai do prompt junto.** Remover a ferramenta e manter a linha *"Marque-o com
+update_lead_state"* seria o pior dos dois mundos: o modelo chamaria o que não existe **e** o nome
+continuaria no contexto — a cura não teria acontecido. Há teste só para isso.
+
+### O que saiu, e o que ficou (medido contra o catálogo real)
+
+| nativa | destino | por quê |
+|---|---|---|
+| `update_lead_state` | ✅ sai | `crm_move_lead_stage` / `crm_update_lead` cobrem |
+| `schedule_followup` | ✅ sai | `crm_schedule_followup` cobre |
+| `save_lead_note` | ❌ fica | **sem equivalente no catálogo** |
+| `open_human_case` | ❌ fica | **sem equivalente no catálogo** |
+| `provide_case_update` | ❌ fica | **sem equivalente no catálogo** |
+| `request_human_handoff` | ❌ fica | existe no catálogo mas está em `BLOCKED_TOOL_IDS`; e é decisão da CONVERSA, com efeito imediato |
+
+A tabela de equivalência é verificada nos **dois** sentidos: toda nativa listada existe em
+`AGENT_TOOL_DEFS`, todo equivalente existe em `TOOL_CATALOG`. Um typo em qualquer lado faria o corte
+nunca acontecer, silenciosamente.
+
+**Zero mudança para quem não ligou o papel** — `operator_enabled` nasce `false`.
+
+### ⚠️ O sinal de sucesso do passo 6 ainda NÃO foi medido
+
+A spec define o sinal como *"o vazamento medido em 30% vai a zero por ausência, não por filtro"*.
+Isso exige **re-rodar a medição** (18 turnos, `gpt-5.6-terra`) com o Operador ligado e comparar. Não
+foi feito: a medição original precisa de chave de LLM com crédito e de um turno real com worker.
+
+Até lá, o que está provado é o **mecanismo** (a ferramenta e o nome somem do contexto), não o
+**efeito** (a taxa cair). São coisas diferentes, e a diferença está declarada.
+
+---
+
 ## Deixado para trás (declarado, não escondido)
 
 | # | o quê | por quê ficou | onde fecha |
@@ -339,6 +381,8 @@ do banco não batia com o do arquivo, justamente porque o seed ia para a nuvem).
 | 10 | ~~Botão `Testar` sem guardrail~~ | ✅ **feito** — avalia o texto e declara os 9 gates que não consegue avaliar | — |
 | 11 | ~~Jornada de usuário na tela nova~~ | ✅ **feito** — `agente-papeis-operador.spec.ts`, 7/7 | — |
 | 12 | **~78 sondas** ainda leem `.env.local` do disco (`tests/*.ts`, `scripts/sonda-*`, `scripts/prova-*`) | os **16 seeds** foram migrados e há gate; sondas são disparadas à mão, com alguém olhando — e no worktree sem `.env.local` falham alto | quando alguém tocar numa |
+| 14 | **Sinal do passo 6 não medido** — a taxa de 30% não foi re-medida com o Operador ligado | precisa de chave de LLM com crédito + turno real com worker | quando houver ambiente |
+| 15 | 3 nativas sem equivalente no catálogo (`save_lead_note`, `open_human_case`, `provide_case_update`) | expor equivalentes é decisão de produto, não de refactor | quando o catálogo crescer |
 | 13 | Fixtures de e2e na produção (`e2e-test-org`, `e2e-tenant-b`, 4 usuários `@deskcomm.test`) | remover é apagar dado em produção — decisão do Rafael, não minha | aguardando decisão |
 
 ---
