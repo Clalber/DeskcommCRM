@@ -49,22 +49,35 @@ afterAll(async () => {
 });
 
 describe("apagar uma ORGANIZAÇÃO", () => {
+  it("a tabela usada no caso abaixo DISPARA audit — sem isto o caso não mede nada", async () => {
+    // Controle positivo, e não é zelo: a primeira versão deste teste usava
+    // `contacts`, que NÃO tem o trigger de audit. Ele passava sem exercitar o
+    // caminho — e continuou passando quando eu SABOTEI o conserto, que foi como
+    // o furo apareceu. O trigger vive só nas tabelas de IA.
+    const { rows } = await pool.query<{ n: string }>(
+      `select count(*) as n from pg_trigger t join pg_class c on c.oid = t.tgrelid
+        where not t.tgisinternal and t.tgfoid = 'fn_audit_log_row'::regproc
+          and c.relname = 'ai_agents'`,
+    );
+    expect(Number(rows[0]!.n), "ai_agents precisa ter o trigger de audit").toBeGreaterThan(0);
+  });
+
   it("funciona mesmo com filhos que emitem audit — era o defeito 1", async () => {
-    // Contato e lead disparam o trigger de audit ao serem apagados pelo cascade.
-    // Antes da 0115, cada um tentava inserir em `api_audit_log` com o
-    // organization_id de uma org que já não existia → FK violation, transação
-    // inteira abortada.
-    const contato = "de1e7e00-0000-4000-8000-0000000000c1";
+    // `ai_agents` dispara o trigger de audit ao ser apagado pelo cascade. Antes
+    // da 0115, ele tentava inserir em `api_audit_log` com o organization_id de
+    // uma org que já não existia → FK violation, transação inteira abortada.
+    const agenteOrfao = "de1e7e00-0000-4000-8000-0000000000e1";
     await pool.query(
-      `insert into contacts (id, organization_id, name, phone_number)
-       values ($1, $2, 'Lead do delete', '+5511900000777') on conflict (id) do nothing`,
-      [contato, ORG],
+      `insert into ai_agents (id, organization_id, name, kind, system_prompt, model)
+       values ($1, $2, 'Agente do cascade', 'mcp_agent', 'oi', 'claude-sonnet-4-6')
+       on conflict (id) do nothing`,
+      [agenteOrfao, ORG],
     );
     const { rows: antes } = await pool.query<{ n: string }>(
-      "select count(*) as n from contacts where organization_id = $1",
+      "select count(*) as n from ai_agents where organization_id = $1",
       [ORG],
     );
-    expect(Number(antes[0]!.n), "controle: o filho existe antes do delete").toBeGreaterThan(0);
+    expect(Number(antes[0]!.n), "controle: o filho que audita existe antes do delete").toBeGreaterThan(0);
 
     // O delete DIRETO da organização — sem apagar filhos à mão antes.
     await expect(pool.query("delete from organizations where id = $1", [ORG])).resolves.toBeDefined();
