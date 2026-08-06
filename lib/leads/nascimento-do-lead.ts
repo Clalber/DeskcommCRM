@@ -41,6 +41,8 @@
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+import { logger } from "@/lib/logger";
+
 import { emitLeadActivity } from "./activity-emitter";
 
 /**
@@ -197,7 +199,11 @@ export async function garantirLeadDaConversa(
   if (!registro.ok) {
     // O lead existe e é o que importa; a linha da timeline falhou. Devolver erro
     // aqui faria o chamador achar que o card não nasceu — e ele nasceu.
-    console.warn("[nascimento-do-lead] atividade não registrada", registro.error?.slice(0, 120));
+    logger.warn("nascimento-do-lead: atividade não registrada", {
+      organization_id: organizationId,
+      lead_id: lead.id as string,
+      error: registro.error?.slice(0, 120),
+    });
   }
 
   return {

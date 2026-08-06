@@ -12,7 +12,7 @@
 
 | # | passo | estado |
 |---|---|---|
-| 1 | **conversa vira lead** | ✅ código + invariantes + sabotagem · ⏳ **falta prova de tela** (DoD 12) |
+| 1 | **conversa vira lead** | ✅ **completo** — código, invariantes, prova de tela e 5 sabotagens |
 | 2 | contato deixa de ser anônimo | ⏳ não começado |
 | 3 | escopo por pipeline | ⏳ não começado |
 | 4 | tradução de etapas com superfície | ⏳ não começado |
@@ -66,15 +66,41 @@
 | S2 | filtros `is_won`/`is_lost` da escolha de etapa | 2 | **2** | "sem_etapa" e "'Ganho' na posição 0" |
 | S3 | recusa por contato bloqueado | 1 | **1** | "quem pediu para sair não vira oportunidade" |
 | S4 | `.eq()` do **adaptador** virou no-op | ≥10 (≥2 no instrumento) | **12** (3 no instrumento) | — |
+| S5 | `funilDeEntrada` nunca acha o funil (**e2e**) | 3 | **3** | os três casos da prova de tela |
 
 S4 é o que responde "e se o adaptador mentir?": um filtro ignorado derruba 12 dos 18 casos, e 3
 deles são do teste do próprio adaptador.
+
+S5 é o controle da prova de tela: os 3 casos passam em ~2s cada, e verde rápido demais merece
+desconfiança. Com o nascimento desligado eles levam 22s, 30s e 22s — o tempo do timeout — e
+reprovam. O spec mede o card nascendo, não outra coisa que já estivesse na tela.
 
 ### Um instrumento morto no caminho, registrado
 
 A primeira rodada de S1 chamou `bash scripts/test-db.sh` direto — `vitest` não estava no PATH, o
 script morreu com 127, e o `grep` sobre a saída devolveu **vazio**. Vazio e "nenhum teste reprovou"
 têm a mesma cara. Só apareceu porque o exit code foi conferido separado da contagem.
+
+---
+
+## A prova de tela
+
+`tests/e2e/conversa-vira-lead.spec.ts` — **3/3 verdes**. A mensagem entra por
+`POST /api/v1/webhooks/waha/[token]`, a mesma rota que o WAHA chama, **sem header de assinatura**
+(que é como o WAHA Core real chega). Nenhum `insert` direto em `crm_leads`: insert à mão mente
+sobre a origem e provaria só que a tela desenha uma linha que alguém pôs no banco.
+
+| # | o que prova |
+|---|---|
+| 1 | card no quadro do funil de entrada, com o NOME de quem escreveu — e zero `@c.us`/`@lid` na tela |
+| 2 | a timeline diz **"Entrou pelo WhatsApp"** |
+| 3 | a segunda mensagem do mesmo contato **não** abre um segundo card |
+
+Evidência: [`evidence/spec-17/card-nascido-da-conversa.png`](evidence/spec-17/card-nascido-da-conversa.png).
+Registrada no CI (`e2e.yml`, parte 1) e no mapa de jornadas (J4.22–J4.25).
+
+Ambiente: Supabase local (`.env.e2e`, 127.0.0.1:54321) + `next build` + `next start`. **Sem
+`.env.local` nesta worktree** — nenhum risco de escrever na produção.
 
 ---
 
@@ -99,9 +125,8 @@ onboarding perguntando o nicho.
 
 | # | o quê | por quê | onde fecha |
 |---|---|---|---|
-| 1 | **Prova de tela do passo 1** — DoD 12 | o invariante prova a REGRA; falta ver o card aparecer no kanban vindo de mensagem real | antes de fechar o passo 1 |
-| 2 | O adaptador não reproduz **RLS** | conecta como `postgres`; isolamento é medido pelos invariantes de papel restrito | declarado no cabeçalho do arquivo |
-| 3 | Nenhum turno de produção observado ponta a ponta com o lead nascendo | exige WAHA + worker vivos | junto com a prova de tela |
-| 4 | Funil semeado é de e-commerce (acima) | decisão de produto | passo 4 |
-| 5 | `sem_funil_de_entrada` e `sem_etapa` só viram **log** | não há aviso na Central para quem configura | passo 4 (superfície) |
-| 6 | Lead nasce **sem dono** (`owner_kind` nulo) | atribuição tem regra própria (gov-loop) e misturar as duas aqui seria decidir por cima dela | a decidir no passo 3 |
+| 1 | O adaptador não reproduz **RLS** | conecta como `postgres`; isolamento é medido pelos invariantes de papel restrito | declarado no cabeçalho do arquivo |
+| 2 | Nenhum **turno do agente** observado com o lead já nascido | exige WAHA + worker vivos; a prova de tela cobre a ingestão, não o turno | passo 3 |
+| 3 | Funil semeado é de e-commerce (acima) | decisão de produto | passo 4 |
+| 4 | `sem_funil_de_entrada` e `sem_etapa` só viram **log** | não há aviso na Central para quem configura | passo 4 (superfície) |
+| 5 | Lead nasce **sem dono** (`owner_kind` nulo) | atribuição tem regra própria (gov-loop) e misturar as duas aqui seria decidir por cima dela | a decidir no passo 3 |
