@@ -257,6 +257,42 @@ describe("fn_atrito_metrics — abandono (Fase 2)", () => {
   });
 });
 
+describe("fn_atrito_jaccard — o detector de repergunta (Fase 3)", () => {
+  function jac(a: string, b: string): number {
+    return Number(lastLine(sql(`select public.fn_atrito_jaccard('${a}', '${b}');`)));
+  }
+
+  it("repergunta quase literal fica ACIMA do limiar 0.7", () => {
+    expect(jac("qual o prazo de entrega do pedido", "qual o prazo de entrega desse pedido"))
+      .toBeGreaterThanOrEqual(0.7);
+  });
+
+  it("pergunta DIFERENTE sobre o mesmo tema fica ABAIXO — falso positivo é o risco caro", () => {
+    // "horário aos sábados" × "aos domingos" mede 0.67 na calibração. Se esta
+    // asserção quebrar, o painel passa a acusar repergunta onde não houve, e
+    // alguém vai "consertar" um agente que está certo.
+    expect(jac("qual o horario de funcionamento aos sabados", "qual o horario de funcionamento aos domingos"))
+      .toBeLessThan(0.7);
+  });
+
+  it("assunto sem relação mede zero", () => {
+    expect(jac("qual o prazo de entrega", "voces aceitam cartao de credito")).toBe(0);
+  });
+
+  it("texto vazio não divide por zero", () => {
+    expect(jac("", "qualquer coisa")).toBe(0);
+    expect(jac("", "")).toBe(0);
+  });
+
+  it("a limitação declarada é REAL: reformulação com outro vocabulário escapa", () => {
+    // Isto NÃO é um defeito escondido — é o limite medido da camada lexical, e
+    // está escrito no cabeçalho da 0118 e na nota que a tela exibe. O teste
+    // existe para que ninguém "conserte" o número baixando o limiar sem antes
+    // recalibrar os falsos positivos.
+    expect(jac("qual o prazo de entrega", "quanto tempo demora pra chegar")).toBeLessThan(0.7);
+  });
+});
+
 describe("fn_atrito_metrics — isolamento entre organizações", () => {
   it("usuário da org A pedindo p_org da vizinha recebe ZERO, não os dados dela", () => {
     // A vizinha tem 1 demanda com followup_attempts=99 na MESMA janela. Se a

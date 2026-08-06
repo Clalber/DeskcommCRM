@@ -10,6 +10,8 @@ import {
   lerAbandonoHoras,
   taxaDeAbandono,
   taxaDeContorno,
+  taxaDeEsperaCalada,
+  taxaDeRepergunta,
   vetosPorExecucao,
   type AtritoRaw,
 } from "@/lib/metrics/atrito";
@@ -35,7 +37,10 @@ import {
 
 /** Fixture com números distintos por campo — troca de campo não passa batida. */
 const RAW: AtritoRaw = {
-  escopo: { demandas: 40, de: "2026-07-01T00:00:00Z", ate: "2026-08-01T00:00:00Z", abandono_horas: 72 },
+  escopo: {
+    demandas: 40, de: "2026-07-01T00:00:00Z", ate: "2026-08-01T00:00:00Z",
+    abandono_horas: 72, repeticao_min: 0.7, espera_horas: 4,
+  },
   cliente: {
     turnos_p50: 7,
     turnos_p90: 21,
@@ -45,6 +50,11 @@ const RAW: AtritoRaw = {
     descadastros: 3,
     abandonos: 9,
     conversas_com_fala_nossa: 60,
+    reperguntas: 7,
+    perguntas_com_resposta: 50,
+    esperas_caladas: 4,
+    esperas_medidas: 80,
+    espera_resposta_p90_s: 1800,
   },
   empresa: {
     intervencoes_por_demanda: 1.4,
@@ -203,6 +213,44 @@ describe("lerAbandonoHoras — régua vinda de jsonb livre", () => {
     expect(lerAbandonoHoras({ atrito: { abandono_horas: 0 } })).toBe(ABANDONO_HORAS_DEFAULT);
     expect(lerAbandonoHoras({ atrito: { abandono_horas: -5 } })).toBe(ABANDONO_HORAS_DEFAULT);
     expect(lerAbandonoHoras({ atrito: { abandono_horas: 99999 } })).toBe(ABANDONO_HORAS_DEFAULT);
+  });
+});
+
+describe("repetição e espera (Fase 3)", () => {
+  const pares = montarPares(RAW);
+
+  it("a repergunta é dano da AUTOMAÇÃO — responder não é resolver", () => {
+    const automacao = pares.find((p) => p.chave === "automacao")!;
+    expect(automacao.danos.map((d) => d.chave)).toContain("taxa_de_repergunta");
+  });
+
+  it("a taxa é sobre as perguntas QUE TIVERAM RESPOSTA, não sobre todas", () => {
+    // 7 de 50 = 14%. Só é possível reperguntar o que já foi respondido; usar
+    // todas as mensagens do cliente como denominador diluiria o sinal.
+    expect(taxaDeRepergunta(RAW.cliente)).toBeCloseTo(0.14, 6);
+  });
+
+  it("o rótulo declara que é PISO — a camada lexical subconta de propósito", () => {
+    // Limiar 0.7 foi calibrado para ZERO falso positivo, ao custo de perder
+    // reformulações. Publicar isso como total seria mentir para baixo.
+    const dano = pares
+      .find((p) => p.chave === "automacao")!
+      .danos.find((d) => d.chave === "taxa_de_repergunta")!;
+    expect(dano.nota).toMatch(/piso/i);
+    expect(dano.nota).toMatch(/escapa/i);
+  });
+
+  it("a espera calada é dano do CUSTO HUMANO e traz a régua no rótulo", () => {
+    const dano = pares
+      .find((p) => p.chave === "custo_humano")!
+      .danos.find((d) => d.chave === "taxa_de_espera_calada")!;
+    expect(dano.rotulo).toContain("4h");
+    expect(taxaDeEsperaCalada(RAW.cliente)).toBeCloseTo(0.05, 6);
+  });
+
+  it("org sem pergunta respondida não reporta '0% de repergunta'", () => {
+    expect(taxaDeRepergunta({ ...RAW.cliente, reperguntas: 0, perguntas_com_resposta: 0 })).toBeNull();
+    expect(taxaDeEsperaCalada({ ...RAW.cliente, esperas_caladas: 0, esperas_medidas: 0 })).toBeNull();
   });
 });
 

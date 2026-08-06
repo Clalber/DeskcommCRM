@@ -9143,39 +9143,65 @@ comment on column public.ai_invocations.agent_id is
   'existe e precisa aparecer nas telas de consumo — ver issue #160.';
 
 
--- ---- Índice de Atrito: fn_atrito_metrics + índices (migrations 0116, 0117) ----
+-- ---- Índice de Atrito: fn_atrito_metrics (migrations 0116, 0117, 0118) ----
 -- Spec 16; doutrina docs/doctrine/sistema-vivo/03-medida-do-proposito.md.
---
--- O sistema media won/lost/conversas/1a-resposta — atividade e conversão. Não
--- havia número para "menor atrito para os dois lados", que é o propósito
--- declarado. Um agente que insiste seis vezes converte mais e queima
--- relacionamento, e nos painéis aparecia como o melhor da org:
--- `agent_cases.followup_attempts` já contava a insistência e nenhuma tela lia.
---
--- 0117 acrescenta ABANDONO — o desfecho que ninguém reclama: falamos por
--- último, a pessoa não voltou, a demanda nunca foi encerrada. A régua é
--- parâmetro (p_abandono_horas, default 72) e viaja no payload para a tela
--- exibi-la junto do número.
---
--- SECURITY INVOKER de propósito: o escopo é a RLS das tabelas lidas, todas com
--- tenant_isolation por fn_user_org_ids(). Denominador das demandas =
--- agent_cases fechados na janela (escopo PARCIAL, rotulado na tela).
--- Idempotente: drop+create da função, create index if not exists.
+-- Mede o PROPÓSITO ("menor atrito para os dois lados"), que não tinha número.
+-- 0117: abandono + régua. 0118: repergunta (Jaccard SQL puro — sem extensão e
+-- sem chave de API, para funcionar no self-host) + espera não comunicada.
+-- SECURITY INVOKER: o escopo é a RLS das tabelas lidas. Idempotente.
 
-drop function if exists public.fn_atrito_metrics(uuid, timestamptz, timestamptz);
-
--- Predicado do abandono: última outbound > última inbound (a última palavra foi
--- nossa) + silêncio maior que a janela + sem desfecho. O índice parcial cobre a
--- varredura por janela.
 create index if not exists idx_conversations_org_silencio
   on public.conversations (organization_id, last_outbound_at)
   where last_outbound_at is not null;
+
+/**
+ * Jaccard de tokens entre dois textos. Tokens com 3+ caracteres (artigos e
+ * preposições curtas só somam ruído), sem acento-folding: reformulação real
+ * varia palavra, não acento.
+ */
+create or replace function public.fn_atrito_jaccard(a text, b text)
+returns float8
+language sql
+immutable
+set search_path = public
+as $$
+  with
+  ta as (
+    select distinct token from unnest(
+      string_to_array(lower(regexp_replace(coalesce(a, ''), '[^[:alnum:][:space:]]', ' ', 'g')), ' ')
+    ) as token
+    where length(token) >= 3
+  ),
+  tb as (
+    select distinct token from unnest(
+      string_to_array(lower(regexp_replace(coalesce(b, ''), '[^[:alnum:][:space:]]', ' ', 'g')), ' ')
+    ) as token
+    where length(token) >= 3
+  )
+  select case
+    when (select count(*) from ta) = 0 or (select count(*) from tb) = 0 then 0::float8
+    else (select count(*) from (select token from ta intersect select token from tb) i)::float8
+       / nullif((select count(*) from (select token from ta union select token from tb) u), 0)::float8
+  end;
+$$;
+
+revoke all     on function public.fn_atrito_jaccard(text, text) from public;
+revoke execute on function public.fn_atrito_jaccard(text, text) from anon;
+grant  execute on function public.fn_atrito_jaccard(text, text) to authenticated, service_role;
+
+-- Assinatura muda de 4 para 6 parâmetros — drop antes do create, senão vira
+-- overload e a versão de 4 args responde para sempre, em silêncio.
+drop function if exists public.fn_atrito_metrics(uuid, timestamptz, timestamptz, int);
 
 create or replace function public.fn_atrito_metrics(
   p_org uuid,
   p_from timestamptz,
   p_to timestamptz,
-  p_abandono_horas int default 72
+  p_abandono_horas int default 72,
+  -- Limiar CALIBRADO, não chutado (ver bloco "calibração" no cabeçalho): 0.7.
+  p_repeticao_min float8 default 0.7,
+  -- Acima disto, a espera do cliente conta como não comunicada.
+  p_espera_horas int default 4
 ) returns jsonb
 language sql stable
 set search_path = public
@@ -9201,19 +9227,15 @@ as $$
       from demandas d
   ),
   humano as (
-    select e.case_id,
-           count(*) as intervencoes,
-           min(e.created_at) as primeiro_toque
+    select e.case_id, count(*) as intervencoes, min(e.created_at) as primeiro_toque
       from public.agent_case_events e
       join demandas d on d.id = e.case_id
-     where e.organization_id = p_org
-       and e.actor_kind = 'human'
+     where e.organization_id = p_org and e.actor_kind = 'human'
      group by e.case_id
   ),
-  espera as (
+  espera_fila as (
     select extract(epoch from (h.primeiro_toque - d.opened_at)) as segundos
-      from demandas d
-      join humano h on h.case_id = d.id
+      from demandas d join humano h on h.case_id = d.id
      where h.primeiro_toque > d.opened_at
   ),
   retrabalho as (
@@ -9223,28 +9245,92 @@ as $$
      where e.organization_id = p_org
        and (e.kind = 'escalated' or e.human_action = 'escalate')
   ),
-  -- ABANDONO (Fase 2). Falamos por último, a pessoa não voltou dentro da
-  -- janela, e a conversa segue sem desfecho. Contado por ÚLTIMA FALA nossa
-  -- dentro do período — é um evento datável, não um estado de agora, senão o
-  -- número não seria comparável entre períodos.
   abandono as (
     select
       count(*) filter (
-        where cv.last_outbound_at >= p_from
-          and cv.last_outbound_at <  p_to
+        where cv.last_outbound_at >= p_from and cv.last_outbound_at < p_to
           and (cv.last_inbound_at is null or cv.last_outbound_at > cv.last_inbound_at)
           and cv.last_outbound_at < now() - make_interval(hours => p_abandono_horas)
           and cv.status not in ('resolved', 'closed')
       ) as abandonadas,
-      -- Denominador honesto: conversas em que O SISTEMA FALOU no período. Sem
-      -- ele, "12 abandonos" não diz se é 12 de 15 ou 12 de 1200.
       count(*) filter (
-        where cv.last_outbound_at >= p_from
-          and cv.last_outbound_at <  p_to
+        where cv.last_outbound_at >= p_from and cv.last_outbound_at < p_to
       ) as com_fala_nossa
       from public.conversations cv
-     where cv.organization_id = p_org
-       and cv.last_outbound_at is not null
+     where cv.organization_id = p_org and cv.last_outbound_at is not null
+  ),
+  -- FASE 3 — cada mensagem do cliente ao lado da ANTERIOR dele na mesma
+  -- conversa. `lag` mantém isto O(n): comparar todas com todas seria O(n²) e o
+  -- painel morreria numa org com volume real.
+  inbounds as (
+    select
+      m.conversation_id,
+      m.sent_at,
+      m.body,
+      lag(m.body)    over (partition by m.conversation_id order by m.sent_at) as body_anterior,
+      lag(m.sent_at) over (partition by m.conversation_id order by m.sent_at) as sent_at_anterior
+      from public.messages m
+     where m.organization_id = p_org
+       and m.direction = 'inbound'
+       and m.body is not null
+       and m.sent_at >= p_from
+       and m.sent_at <  p_to
+  ),
+  repeticao as (
+    select
+      count(*) filter (
+        where i.body_anterior is not null
+          -- Só conta como REPERGUNTA se nós respondemos no meio. Sem esta
+          -- condição, as três mensagens seguidas que a pessoa manda de uma vez
+          -- (que são complementares, não repetidas) inflariam o número.
+          and exists (
+            select 1 from public.messages o
+             where o.organization_id = p_org
+               and o.conversation_id = i.conversation_id
+               and o.direction = 'outbound'
+               and o.sent_at > i.sent_at_anterior
+               and o.sent_at < i.sent_at
+          )
+          and public.fn_atrito_jaccard(i.body, i.body_anterior) >= p_repeticao_min
+      ) as repetidas,
+      -- Denominador: perguntas que TIVERAM resposta nossa antes — as únicas em
+      -- que reperguntar é possível.
+      count(*) filter (
+        where i.body_anterior is not null
+          and exists (
+            select 1 from public.messages o
+             where o.organization_id = p_org
+               and o.conversation_id = i.conversation_id
+               and o.direction = 'outbound'
+               and o.sent_at > i.sent_at_anterior
+               and o.sent_at < i.sent_at
+          )
+      ) as com_resposta_no_meio
+      from inbounds i
+  ),
+  -- ESPERA NÃO COMUNICADA: a pessoa falou e ficou sem NENHUMA palavra nossa por
+  -- mais que a régua. Não depende de prazo prometido (que o sistema ainda não
+  -- conhece — cap. 6.6) e mede o que dói: o silêncio, não o atraso.
+  espera_calada as (
+    select
+      count(*) filter (where prox.espera_s > p_espera_horas * 3600) as caladas,
+      count(*)                                                       as com_resposta,
+      percentile_cont(0.9) within group (order by prox.espera_s)     as p90_s
+      from (
+        select extract(epoch from (
+                 (select min(o.sent_at) from public.messages o
+                   where o.organization_id = p_org
+                     and o.conversation_id = m.conversation_id
+                     and o.direction = 'outbound'
+                     and o.sent_at > m.sent_at)
+                 - m.sent_at)) as espera_s
+          from public.messages m
+         where m.organization_id = p_org
+           and m.direction = 'inbound'
+           and m.sent_at >= p_from
+           and m.sent_at <  p_to
+      ) prox
+     where prox.espera_s is not null
   ),
   envios as (
     select
@@ -9252,51 +9338,41 @@ as $$
       count(*) filter (where m.sent_via = 'user')            as por_humano_no_sistema,
       count(*) filter (where m.sent_via = 'external_device') as por_humano_fora
       from public.messages m
-     where m.organization_id = p_org
-       and m.direction = 'outbound'
-       and m.sent_at >= p_from
-       and m.sent_at <  p_to
+     where m.organization_id = p_org and m.direction = 'outbound'
+       and m.sent_at >= p_from and m.sent_at < p_to
   ),
   vetos as (
     select count(*) filter (where t.vetoed_gate is not null) as vetados,
            count(distinct t.job_id)                          as execucoes
       from public.before_send_traces t
      where t.organization_id = p_org
-       and t.created_at >= p_from
-       and t.created_at <  p_to
+       and t.created_at >= p_from and t.created_at < p_to
   ),
   descadastros as (
-    select count(*) as n
-      from public.contacts c
-     where c.organization_id = p_org
-       and c.blocked_at is not null
-       and c.blocked_at >= p_from
-       and c.blocked_at <  p_to
+    select count(*) as n from public.contacts c
+     where c.organization_id = p_org and c.blocked_at is not null
+       and c.blocked_at >= p_from and c.blocked_at < p_to
   ),
   pedidos_humano as (
-    select count(*) as n
-      from public.crm_lead_activities a
-     where a.organization_id = p_org
-       and a.type = 'handoff_triggered'
-       and a.performed_at >= p_from
-       and a.performed_at <  p_to
+    select count(*) as n from public.crm_lead_activities a
+     where a.organization_id = p_org and a.type = 'handoff_triggered'
+       and a.performed_at >= p_from and a.performed_at < p_to
   ),
   eficiencia as (
     select count(*) filter (where status = 'won')  as ganhos,
            count(*) filter (where status = 'lost') as perdidos
       from public.crm_leads
-     where organization_id = p_org
-       and status in ('won', 'lost')
-       and closed_at >= p_from
-       and closed_at <  p_to
+     where organization_id = p_org and status in ('won', 'lost')
+       and closed_at >= p_from and closed_at < p_to
   )
   select jsonb_build_object(
     'escopo', jsonb_build_object(
       'demandas', (select count(*) from demandas),
       'de',  p_from,
       'ate', p_to,
-      -- A régua viaja COM o número (cap. 3.4, regra 4).
-      'abandono_horas', p_abandono_horas
+      'abandono_horas',  p_abandono_horas,
+      'repeticao_min',   p_repeticao_min,
+      'espera_horas',    p_espera_horas
     ),
     'cliente', jsonb_build_object(
       'turnos_p50',        (select percentile_cont(0.5) within group (order by n) from turnos),
@@ -9306,14 +9382,18 @@ as $$
       'pedidos_de_humano', (select n from pedidos_humano),
       'descadastros',      (select n from descadastros),
       'abandonos',         (select abandonadas   from abandono),
-      'conversas_com_fala_nossa', (select com_fala_nossa from abandono)
+      'conversas_com_fala_nossa', (select com_fala_nossa from abandono),
+      'reperguntas',              (select repetidas            from repeticao),
+      'perguntas_com_resposta',   (select com_resposta_no_meio from repeticao),
+      'esperas_caladas',          (select caladas      from espera_calada),
+      'esperas_medidas',          (select com_resposta from espera_calada),
+      'espera_resposta_p90_s',    (select p90_s        from espera_calada)
     ),
     'empresa', jsonb_build_object(
       'intervencoes_por_demanda', (select avg(coalesce(h.intervencoes, 0))::float8
-                                     from demandas d
-                                     left join humano h on h.case_id = d.id),
-      'espera_humana_p50_s',      (select percentile_cont(0.5) within group (order by segundos) from espera),
-      'espera_humana_p90_s',      (select percentile_cont(0.9) within group (order by segundos) from espera),
+                                     from demandas d left join humano h on h.case_id = d.id),
+      'espera_humana_p50_s',      (select percentile_cont(0.5) within group (order by segundos) from espera_fila),
+      'espera_humana_p90_s',      (select percentile_cont(0.9) within group (order by segundos) from espera_fila),
       'retrabalho',               (select n from retrabalho),
       'vetos',                    (select vetados  from vetos),
       'execucoes_medidas',        (select execucoes from vetos),
@@ -9328,10 +9408,11 @@ as $$
   );
 $$;
 
-revoke all     on function public.fn_atrito_metrics(uuid, timestamptz, timestamptz, int) from public;
-revoke execute on function public.fn_atrito_metrics(uuid, timestamptz, timestamptz, int) from anon;
-grant  execute on function public.fn_atrito_metrics(uuid, timestamptz, timestamptz, int)
+revoke all     on function public.fn_atrito_metrics(uuid, timestamptz, timestamptz, int, float8, int) from public;
+revoke execute on function public.fn_atrito_metrics(uuid, timestamptz, timestamptz, int, float8, int) from anon;
+grant  execute on function public.fn_atrito_metrics(uuid, timestamptz, timestamptz, int, float8, int)
   to authenticated, service_role;
+
 
 
 

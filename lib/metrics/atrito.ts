@@ -19,7 +19,10 @@
 
 /** Shape cru devolvido por `fn_atrito_metrics` (migrations 0116 + 0117). */
 export interface AtritoRaw {
-  escopo: { demandas: number; de: string; ate: string; abandono_horas: number };
+  escopo: {
+    demandas: number; de: string; ate: string;
+    abandono_horas: number; repeticao_min: number; espera_horas: number;
+  };
   cliente: {
     turnos_p50: number | null;
     turnos_p90: number | null;
@@ -29,6 +32,11 @@ export interface AtritoRaw {
     descadastros: number;
     abandonos: number;
     conversas_com_fala_nossa: number;
+    reperguntas: number;
+    perguntas_com_resposta: number;
+    esperas_caladas: number;
+    esperas_medidas: number;
+    espera_resposta_p90_s: number | null;
   };
   empresa: {
     intervencoes_por_demanda: number | null;
@@ -125,6 +133,21 @@ export function taxaDeAbandono(c: AtritoRaw["cliente"]): number | null {
   return razao(c.abandonos, c.conversas_com_fala_nossa);
 }
 
+/**
+ * Das perguntas que TIVERAM resposta nossa, quantas a pessoa teve de refazer.
+ * É um PISO: a camada lexical só pega repergunta quase literal (limiar 0.7,
+ * calibrado para zero falso positivo). Reformulação com outro vocabulário
+ * escapa — ver o cabeçalho da migration 0118.
+ */
+export function taxaDeRepergunta(c: AtritoRaw["cliente"]): number | null {
+  return razao(c.reperguntas, c.perguntas_com_resposta);
+}
+
+/** Das falas do cliente que tiveram resposta, quantas esperaram calado demais. */
+export function taxaDeEsperaCalada(c: AtritoRaw["cliente"]): number | null {
+  return razao(c.esperas_caladas, c.esperas_medidas);
+}
+
 /** Vetos por execução medida — quanto o sistema precisou ser contido de si. */
 export function vetosPorExecucao(e: AtritoRaw["empresa"]): number | null {
   return razao(e.vetos, e.execucoes_medidas);
@@ -217,6 +240,15 @@ export function montarPares(raw: AtritoRaw): Par[] {
           unidade: "razao",
           nota: "O time respondeu pelo celular, contornando a ferramenta.",
         },
+        // O agente respondeu — e a pessoa teve de perguntar de novo. É o dano
+        // direto da automação: responder não é resolver.
+        {
+          chave: "taxa_de_repergunta",
+          rotulo: "Perguntas que a pessoa teve de repetir",
+          valor: taxaDeRepergunta(cliente),
+          unidade: "razao",
+          nota: `Piso: ${cliente.reperguntas} de ${cliente.perguntas_com_resposta}. Conta só a repergunta quase literal — reformulada com outras palavras escapa desta medida.`,
+        },
       ],
     },
     {
@@ -260,6 +292,15 @@ export function montarPares(raw: AtritoRaw): Par[] {
           rotulo: "Demandas que precisaram subir de nível",
           valor: empresa.retrabalho,
           unidade: "contagem",
+        },
+        // Espera COMUNICADA custa uma fração da espera calada. Esta mede a
+        // calada: a pessoa falou e ficou sem nenhuma palavra nossa.
+        {
+          chave: "taxa_de_espera_calada",
+          rotulo: `Esperas sem nenhuma resposta por mais de ${escopo.espera_horas}h`,
+          valor: taxaDeEsperaCalada(cliente),
+          unidade: "razao",
+          nota: `${cliente.esperas_caladas} de ${cliente.esperas_medidas} falas do cliente. Quem sabe que vai esperar, espera; quem não sabe, desiste.`,
         },
       ],
     },

@@ -62,6 +62,11 @@ const VAZIO: Omit<AtritoRaw, "escopo"> = {
     descadastros: 0,
     abandonos: 0,
     conversas_com_fala_nossa: 0,
+    reperguntas: 0,
+    perguntas_com_resposta: 0,
+    esperas_caladas: 0,
+    esperas_medidas: 0,
+    espera_resposta_p90_s: null,
   },
   empresa: {
     intervencoes_por_demanda: null,
@@ -138,6 +143,8 @@ export async function GET(req: NextRequest): Promise<Response> {
       de: from.toISOString(),
       ate: to.toISOString(),
       abandono_horas: abandonoHoras,
+      repeticao_min: 0.7,
+      espera_horas: 4,
     },
   }) as unknown as AtritoRaw;
 

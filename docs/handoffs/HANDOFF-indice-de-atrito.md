@@ -10,7 +10,7 @@
 | **Branch** | `feat/indice-de-atrito` (empilhada sobre `docs/doutrina-sistema-vivo-manual`) |
 | **Spec** | [`docs/specs/16-spec-indice-de-atrito.md`](../specs/16-spec-indice-de-atrito.md) |
 | **Doutrina** | [`docs/doctrine/sistema-vivo/03-medida-do-proposito.md`](../doctrine/sistema-vivo/03-medida-do-proposito.md) |
-| **Fase** | 2 de 4 — Fase 1 (deriváveis) e Fase 2 (abandono + régua) FECHADAS e provadas |
+| **Fase** | 3 de 4 — Fases 1, 2 e 3 FECHADAS e provadas na tela |
 | **Atualizado** | 2026-08-06 |
 
 ---
@@ -147,6 +147,60 @@ controle: `git checkout main` + rodar o teste sem nenhum código desta branch �
 `1 failed | 2 passed`. Meu diff não toca `workers/ai-response-worker.ts`.
 Merece issue própria.
 
+
+---
+
+## Fase 3 — repetição e espera calada (2026-08-06)
+
+| Peça | Prova |
+|---|---|
+| Migration **0118** — `fn_atrito_jaccard` + `p_repeticao_min` + `p_espera_horas` | `test:db` install+update; **uma só função**, 6 args |
+| "Perguntas que a pessoa teve de repetir" | tela: **27,3%**, rotulada como PISO |
+| "Esperas sem nenhuma resposta por mais de 4h" | tela: **6,5%** |
+| Cobertura do detector | 5 invariantes novos (20 no total) · 40 unitários |
+
+### A decisão técnica, e a medição que a produziu
+
+A spec §5.1 propunha embedding. **Duas medições mataram essa ideia:**
+
+1. `lib/ai/embed.ts` depende de `AI_GATEWAY_API_KEY`/OpenAI — env **opcional**.
+   Num self-host sem chave a métrica ficaria em ZERO **em silêncio**, e zero ali
+   lê como "o cliente nunca precisou repetir". Zero lisonjeiro na pior forma.
+2. `baseline.sql` cria **apenas `pgcrypto`** — `pg_trgm` não é garantida em quem
+   aplica só o baseline, que é o que o kit self-host faz.
+
+Solução: **Jaccard de tokens em SQL nativo**. Sem extensão, sem chave, sem custo
+por mensagem — a mesma técnica que o gate de spinning já usa neste repo.
+
+### O limiar foi CALIBRADO, não chutado
+
+Bateria de 15 pares pt-br em três classes:
+
+| limiar | reperguntas pegas | falsos positivos |
+|---|---|---|
+| 0.5 | 6/7 | **3** |
+| 0.6 *(meu palpite inicial)* | 5/7 | **2** |
+| **0.7** | **3/7** | **0** ← escolhido |
+| 0.8 | 2/7 | 0 |
+
+**As faixas se sobrepõem:** repergunta 0.33–0.80, pergunta-diferente-sobre-o-
+mesmo-tema 0.17–0.67 ("horário aos sábados" × "aos domingos" = 0.67). **Não
+existe limiar que separe as duas classes com Jaccard puro.**
+
+0.7 é onde o falso positivo zera. A assimetria de custo justifica: falso
+positivo levaria alguém a "consertar" um agente que está certo; falso negativo
+só subconta. Por isso o número é publicado como **PISO** e a tela o rotula
+assim, com a limitação visível ("escapa desta medida").
+
+Validado com dados reais: 3 reperguntas detectadas, **zero falsos positivos** —
+a plantada (0.83) e duas mensagens literalmente idênticas (1.00).
+
+### Dívida declarada da Fase 4
+
+Reformulação com outro vocabulário ("qual o prazo" → "quanto tempo demora") mede
+**0.00** e escapa. Quando houver embedding sem env opcional, esta camada vira o
+filtro barato da frente e o vetor decide o resto. Um invariante guarda esse
+limite para que ninguém "conserte" o número baixando o limiar sem recalibrar.
 
 ---
 
