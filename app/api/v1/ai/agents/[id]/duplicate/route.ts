@@ -64,7 +64,14 @@ export async function POST(_req: NextRequest, ctx: Ctx): Promise<Response> {
     resourceType: "ai_agent",
     resourceId: (result.agent as { id: string }).id,
     requestId,
-    metadata: { source_agent_id: id },
+    // `source_version_id` responde "cópia de QUAL versão?" — a nova (`result.version`)
+    // não responde isso. Foi perdido na reescrita que extraiu o helper e voltou aqui
+    // porque o audit é append-only: linha emitida pobre não se enriquece depois.
+    metadata: {
+      source_agent_id: id,
+      source_version_id: result.sourceVersionId,
+      source_version_copied: result.version !== null,
+    },
   });
 
   return ok({ agent: result.agent, version: result.version }, { status: 201, requestId });

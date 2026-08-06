@@ -33,7 +33,18 @@ export type DuplicateAgentError =
   | "version_insert_failed";
 
 export type DuplicateAgentResult =
-  | { ok: true; agent: Record<string, unknown>; version: Record<string, unknown> | null }
+  | {
+      ok: true;
+      agent: Record<string, unknown>;
+      version: Record<string, unknown> | null;
+      /**
+       * Versão de ORIGEM que foi clonada — não a nova. Existe para o audit poder
+       * responder "cópia de qual versão?", que `version` (a nova) não responde.
+       *
+       * `null` quando não havia versão a copiar (rag_bot legado).
+       */
+      sourceVersionId: string | null;
+    }
   | { ok: false; error: DuplicateAgentError; message?: string };
 
 /**
@@ -141,7 +152,13 @@ export async function duplicateAgentWithVersion(
     return { ok: false, error: "agent_insert_failed", message: agentErr?.message };
   }
 
-  if (!srcVersion) return { ok: true, agent: newAgent as Record<string, unknown>, version: null };
+  if (!srcVersion)
+    return {
+      ok: true,
+      agent: newAgent as Record<string, unknown>,
+      version: null,
+      sourceVersionId: null,
+    };
 
   const { data: newVersion, error: versionErr } = await admin
     .from("ai_agent_versions")
@@ -169,5 +186,6 @@ export async function duplicateAgentWithVersion(
     ok: true,
     agent: newAgent as Record<string, unknown>,
     version: newVersion as Record<string, unknown>,
+    sourceVersionId: (srcVersion as { id: string }).id,
   };
 }

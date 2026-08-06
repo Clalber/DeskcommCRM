@@ -250,6 +250,10 @@ export async function duplicateAgentAction(id: string): Promise<ActionResult<{ n
     resourceId: cloned.id,
     metadata: {
       source_agent_id: id,
+      // Mesma ação (`ai_agent.duplicated`) emitida de dois lugares: os dois metadata
+      // têm de ter a MESMA forma, senão quem lê o audit não sabe se o campo faltou
+      // porque não houve versão ou porque veio pelo outro caminho.
+      source_version_id: result.sourceVersionId,
       source_version_copied: result.version !== null,
     },
   });
