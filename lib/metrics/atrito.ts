@@ -17,9 +17,9 @@
  * envio — a frase tranquilizadora que a falta de medição não autoriza.
  */
 
-/** Shape cru devolvido por `fn_atrito_metrics` (migration 0115). */
+/** Shape cru devolvido por `fn_atrito_metrics` (migrations 0116 + 0117). */
 export interface AtritoRaw {
-  escopo: { demandas: number; de: string; ate: string };
+  escopo: { demandas: number; de: string; ate: string; abandono_horas: number };
   cliente: {
     turnos_p50: number | null;
     turnos_p90: number | null;
@@ -27,6 +27,8 @@ export interface AtritoRaw {
     insistencia_max: number | null;
     pedidos_de_humano: number;
     descadastros: number;
+    abandonos: number;
+    conversas_com_fala_nossa: number;
   };
   empresa: {
     intervencoes_por_demanda: number | null;
@@ -62,6 +64,32 @@ export interface Par {
   danos: Medida[];
 }
 
+/** Régua do abandono. Default conservador: 72h de silêncio no WhatsApp já é fim. */
+export const ABANDONO_HORAS_DEFAULT = 72;
+const ABANDONO_HORAS_MIN = 1;
+const ABANDONO_HORAS_MAX = 24 * 90;
+
+/**
+ * Leitura DEFENSIVA de settings->'atrito' (jsonb livre): valor fora da faixa,
+ * de tipo errado ou ausente cai no default. Régua inválida não pode derrubar o
+ * painel — e não pode virar `NaN` no rótulo que a tela exibe.
+ *
+ * ⚠️ O `typeof` vem ANTES do `Number()` de propósito. `Number(true)` é `1`, que
+ * é inteiro e cai dentro da faixa — um `true` no jsonb passaria como "abandono
+ * após 1h" e o painel acusaria abandono em massa, com aparência de dado. Pego
+ * por `tests/unit/atrito-par-eficiencia-dano.test.ts`, não por revisão.
+ * `Number([])` é `0` e `Number([5])` é `5` pelo mesmo caminho.
+ */
+export function lerAbandonoHoras(settings: unknown): number {
+  const s = settings as { atrito?: { abandono_horas?: unknown } } | null | undefined;
+  const cru = s?.atrito?.abandono_horas;
+  if (typeof cru !== "number" && typeof cru !== "string") return ABANDONO_HORAS_DEFAULT;
+  const bruto = Number(cru);
+  if (!Number.isFinite(bruto) || !Number.isInteger(bruto)) return ABANDONO_HORAS_DEFAULT;
+  if (bruto < ABANDONO_HORAS_MIN || bruto > ABANDONO_HORAS_MAX) return ABANDONO_HORAS_DEFAULT;
+  return bruto;
+}
+
 /** Divisão que devolve null em vez de mentir com 0. */
 export function razao(numerador: number, denominador: number): number | null {
   if (!Number.isFinite(numerador) || !Number.isFinite(denominador)) return null;
@@ -88,6 +116,15 @@ export function taxaDeContorno(e: AtritoRaw["empresa"]): number | null {
   return razao(e.envios_humano_fora, e.envios_humano_no_sistema + e.envios_humano_fora);
 }
 
+/**
+ * Das conversas em que O SISTEMA FALOU, quantas terminaram no silêncio.
+ * Denominador é "conversas em que falamos", não o total: 12 abandonos não diz
+ * nada sem saber se é 12 de 15 ou 12 de 1200.
+ */
+export function taxaDeAbandono(c: AtritoRaw["cliente"]): number | null {
+  return razao(c.abandonos, c.conversas_com_fala_nossa);
+}
+
 /** Vetos por execução medida — quanto o sistema precisou ser contido de si. */
 export function vetosPorExecucao(e: AtritoRaw["empresa"]): number | null {
   return razao(e.vetos, e.execucoes_medidas);
@@ -97,7 +134,7 @@ const ESCOPO_PARCIAL =
   "Escopo: demandas que passaram por caso humano — não o total de conversas.";
 
 export function montarPares(raw: AtritoRaw): Par[] {
-  const { cliente, empresa, eficiencia } = raw;
+  const { cliente, empresa, eficiencia, escopo } = raw;
 
   return [
     {
@@ -143,6 +180,17 @@ export function montarPares(raw: AtritoRaw): Par[] {
           unidade: "contagem",
           nota: "Atrito máximo: a pessoa pediu para sair.",
         },
+        // ABANDONO é irmão do descadastro e muito mais comum: em vez de pedir
+        // para sair, a pessoa simplesmente para de responder. Não gera ticket,
+        // não gera nota baixa, não aparece em lugar nenhum — e é a perda que
+        // mais acontece. A régua vem do payload para o rótulo não mentir.
+        {
+          chave: "taxa_de_abandono",
+          rotulo: `Conversas que morreram no silêncio (após ${escopo.abandono_horas}h)`,
+          valor: taxaDeAbandono(cliente),
+          unidade: "razao",
+          nota: `${cliente.abandonos} de ${cliente.conversas_com_fala_nossa} conversas em que falamos: a pessoa não respondeu e ninguém encerrou.`,
+        },
       ],
     },
     {
@@ -177,7 +225,7 @@ export function montarPares(raw: AtritoRaw): Par[] {
       eficiencia: {
         chave: "demandas",
         rotulo: "Demandas encerradas",
-        valor: raw.escopo.demandas,
+        valor: escopo.demandas,
         unidade: "contagem",
         nota: ESCOPO_PARCIAL,
       },

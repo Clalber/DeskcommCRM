@@ -45,6 +45,8 @@ const CASO_2 = "aeae3333-0000-4000-8000-000000000002";
 const CASO_VIZ = "aeae3333-0000-4000-8000-000000000003";
 const JOB_1 = "aeae4444-0000-4000-8000-000000000001";
 const JOB_2 = "aeae4444-0000-4000-8000-000000000002";
+const CONV_RESPONDIDA = "aeae2222-0000-4000-8000-000000000009";
+const CONTATO_RESP = "aeae1111-0000-4000-8000-000000000009";
 const LEAD_GANHO = "aeae5555-0000-4000-8000-000000000001";
 
 /** Janela FIXA — nada depende de now(), então a fixture não envelhece. */
@@ -52,11 +54,11 @@ const DE = "2026-03-01T00:00:00Z";
 const ATE = "2026-04-01T00:00:00Z";
 
 /** Chama a função como `authenticated` com os claims do usuário. */
-function atritoComo(userId: string, org: string): Record<string, Record<string, number | null>> {
+function atritoComo(userId: string, org: string, horas = 72): Record<string, Record<string, number | null>> {
   const out = sql(`
     set role authenticated;
     select set_config('request.jwt.claims', '{"sub":"${userId}"}', false);
-    select public.fn_atrito_metrics('${org}'::uuid, '${DE}'::timestamptz, '${ATE}'::timestamptz);
+    select public.fn_atrito_metrics('${org}'::uuid, '${DE}'::timestamptz, '${ATE}'::timestamptz, ${horas});
   `);
   return JSON.parse(lastLine(out));
 }
@@ -73,8 +75,8 @@ beforeAll(() => {
     delete from public.messages           where conversation_id in ('${CONV}', '${CONV_VIZ}');
     delete from public.crm_lead_activities where lead_id = '${LEAD_GANHO}';
     delete from public.crm_leads          where id = '${LEAD_GANHO}';
-    delete from public.conversations      where id in ('${CONV}', '${CONV_VIZ}');
-    delete from public.contacts           where id in ('${CONTATO_CASO}', '${CONTATO_BLOQ}', '${CONTATO_VIZ}');
+    delete from public.conversations      where id in ('${CONV}', '${CONV_VIZ}', '${CONV_RESPONDIDA}');
+    delete from public.contacts           where id in ('${CONTATO_CASO}', '${CONTATO_BLOQ}', '${CONTATO_VIZ}', '${CONTATO_RESP}');
   `);
   sql(`
     insert into public.organizations (id, slug, legal_name, display_name)
@@ -93,6 +95,20 @@ beforeAll(() => {
       values ('${CONV}', '${GOV_ORG}', '${CONTATO_CASO}', '${GOV_SESSION}', 'open');
     insert into public.conversations (id, organization_id, contact_id, channel_session_id, status)
       values ('${CONV_VIZ}', '${VIZINHA}', '${CONTATO_VIZ}', '${SESSION_VIZ}', 'open');
+
+    -- ABANDONO: falamos por último e a pessoa não voltou (CONV) × a pessoa
+    -- voltou depois da nossa fala (CONV_RESPONDIDA, controle negativo — sem ele
+    -- o teste não distingue "conta abandono" de "conta toda conversa").
+    update public.conversations
+       set last_outbound_at = '2026-03-20T12:00:00Z', last_inbound_at = '2026-03-20T10:00:00Z'
+     where id = '${CONV}';
+
+    insert into public.contacts (id, organization_id, display_name)
+      values ('${CONTATO_RESP}', '${GOV_ORG}', 'Contato Que Respondeu');
+    insert into public.conversations
+      (id, organization_id, contact_id, channel_session_id, status, last_outbound_at, last_inbound_at)
+      values ('${CONV_RESPONDIDA}', '${GOV_ORG}', '${CONTATO_RESP}', '${GOV_SESSION}', 'open',
+              '2026-03-21T10:00:00Z', '2026-03-22T10:00:00Z');
 
     -- DUAS demandas encerradas na janela. followup_attempts 4 e 0 → média 2, máx 4.
     insert into public.agent_cases
@@ -210,6 +226,37 @@ describe("fn_atrito_metrics — os números", () => {
   });
 });
 
+describe("fn_atrito_metrics — abandono (Fase 2)", () => {
+  it("conta a conversa em que falamos por último e a pessoa não voltou", () => {
+    const m = atritoComo(GOV_AGENT_A, GOV_ORG);
+    expect(Number(m.cliente!.abandonos)).toBe(1);
+  });
+
+  it("NÃO conta a conversa em que a pessoa respondeu depois da nossa fala", () => {
+    // Controle negativo: as DUAS conversas têm last_outbound_at na janela. Sem
+    // esta asserção, um predicado que contasse toda conversa com fala nossa
+    // daria 2 e o teste acima passaria por engano.
+    const m = atritoComo(GOV_AGENT_A, GOV_ORG);
+    expect(Number(m.cliente!.conversas_com_fala_nossa)).toBe(2);
+    expect(Number(m.cliente!.abandonos)).toBeLessThan(
+      Number(m.cliente!.conversas_com_fala_nossa),
+    );
+  });
+
+  it("a RÉGUA governa: janela larga o bastante não acusa abandono nenhum", () => {
+    // Mesma fixture, régua diferente. Se o número não mudar, p_abandono_horas
+    // está sendo ignorado e a configuração da tela seria decorativa.
+    const largo = atritoComo(GOV_AGENT_A, GOV_ORG, 24 * 365 * 50);
+    expect(Number(largo.cliente!.abandonos)).toBe(0);
+  });
+
+  it("a régua usada volta no payload, junto do número", () => {
+    // Cap. 3.4 regra 4: número sem régua não é comparável entre períodos.
+    const m = atritoComo(GOV_AGENT_A, GOV_ORG, 96);
+    expect(Number(m.escopo!.abandono_horas)).toBe(96);
+  });
+});
+
 describe("fn_atrito_metrics — isolamento entre organizações", () => {
   it("usuário da org A pedindo p_org da vizinha recebe ZERO, não os dados dela", () => {
     // A vizinha tem 1 demanda com followup_attempts=99 na MESMA janela. Se a
@@ -226,7 +273,7 @@ describe("fn_atrito_metrics — ausência é null, nunca zero", () => {
       set role authenticated;
       select set_config('request.jwt.claims', '{"sub":"${GOV_AGENT_A}"}', false);
       select public.fn_atrito_metrics('${GOV_ORG}'::uuid,
-        '2019-01-01T00:00:00Z'::timestamptz, '2019-02-01T00:00:00Z'::timestamptz);
+        '2019-01-01T00:00:00Z'::timestamptz, '2019-02-01T00:00:00Z'::timestamptz, 72);
     `);
     const m = JSON.parse(lastLine(out));
     expect(m.escopo.demandas).toBe(0);

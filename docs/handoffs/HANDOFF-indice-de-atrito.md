@@ -10,7 +10,7 @@
 | **Branch** | `feat/indice-de-atrito` (empilhada sobre `docs/doutrina-sistema-vivo-manual`) |
 | **Spec** | [`docs/specs/16-spec-indice-de-atrito.md`](../specs/16-spec-indice-de-atrito.md) |
 | **Doutrina** | [`docs/doctrine/sistema-vivo/03-medida-do-proposito.md`](../doctrine/sistema-vivo/03-medida-do-proposito.md) |
-| **Fase** | 1 de 4 (componentes deriváveis, sem mudança de schema no caminho quente) |
+| **Fase** | 2 de 4 — Fase 1 (deriváveis) e Fase 2 (abandono + régua) FECHADAS e provadas |
 | **Atualizado** | 2026-08-06 |
 
 ---
@@ -88,6 +88,68 @@ Reprovado na tela após a correção: `valorPiorCaso: "6"` visível ·
 
 ---
 
+## Fase 2 — abandono e a régua (2026-08-06)
+
+### O que entrou
+
+| Peça | Prova observada |
+|---|---|
+| Migration **0117** — `fn_atrito_metrics` ganha `p_abandono_horas` (default 72) + `abandonos` + `conversas_com_fala_nossa` | `test:db` verde; controle confirma **uma só função** de 4 args (o `drop` da de 3 funcionou) |
+| Dano "Conversas que morreram no silêncio (após Nh)" no par Conversão | 35 unitários · 15 invariantes |
+| `lerAbandonoHoras` — leitura defensiva de jsonb livre | 4 testes; **sabotagem 1/1** |
+| `PATCH /api/v1/metrics/atrito` — muda a régua (manager+) | **PATCH 200 na tela**, com efeito no número |
+| Controle da régua no cabeçalho do painel | **clicado de verdade** no Playwright |
+| Audit `metrics.atrito_regua_changed` | linha confirmada em `api_audit_log` |
+
+### A prova que vale — o ciclo completo, clicando
+
+```
+ANTES:  régua 72h  → abandono 50.0%
+        [digitou 120 no campo, clicou em Salvar]
+        REDE PATCH 200 → REDE GET 200
+DEPOIS: régua 120h → abandono 40.0%   (rótulo do dano acompanhou: "após 120h")
+```
+
+A escrita foi provada **pelo efeito no número**, não por uma mensagem "salvo" —
+que é exatamente o modo como o bug conhecido de `organizations` engana
+(client de sessão casa 0 linhas e o PostgREST devolve sucesso).
+
+Confirmado no banco, de forma independente: `settings->'atrito'` =
+`{"abandono_horas": 120}`; audit gravado; e o merge preservou `llm`, `routing`,
+`visibility_mode` e `canonical_conversation_tags` — nada foi sobrescrito.
+
+### Defeitos achados e corrigidos nesta fase
+
+| # | Defeito | Como apareceu | Correção |
+|---|---|---|---|
+| 1 | `Number(true) === 1` — um `true` no jsonb viraria "abandono após 1h" e o painel acusaria abandono em massa, com cara de dado | **Teste que eu mesmo escrevi reprovou** antes de qualquer prova de tela | `typeof` antes do `Number()`; sabotagem confirma 1/1 |
+| 2 | O `as unknown as AtritoRaw` da rota escondia um `escopo` sem `abandono_horas` — a tela diria "após undefined h" | Revisão do próprio cast | Campo explícito no fallback |
+| 3 | Controle da régua ficou no RODAPÉ, a três cards do número que governa | Prova de tela | Movido para o cabeçalho da seção |
+| 4 | 0117 sem linha no MANIFEST | **Gate `manifest-x-migrations` reprovou** | Linha adicionada |
+
+### Decisão de desenho — por que a régua NÃO foi para `channel_knobs`
+
+A spec §5.2 propunha `channel_knobs`. Ao abrir a superfície existente
+(`AntiBanSheet`), ela se chama **"Proteção de envio"** e trata de anti-ban:
+throttle, janela horária, warm-up. A janela de abandono não é proteção de
+envio — é **régua de medição**. Colocá-la lá seria a peça certa no lugar errado,
+e o operador procuraria por ela onde ela não está.
+
+Foi para `organizations.settings->'atrito'`, exibida e editável **junto do
+número que ela governa** — o que satisfaz o invariante 6 (ver + mudar + falha
+visível) e a regra 4 do cap. 3.4 ao mesmo tempo.
+
+### 🐛 Segundo achado PRÉ-EXISTENTE
+
+`tests/unit/ai-response-worker-model-routing.test.ts > "o defeito, explicitado:
+model como STRING nem emite requisição"` **falha na `main`**, medido com
+controle: `git checkout main` + rodar o teste sem nenhum código desta branch →
+`1 failed | 2 passed`. Meu diff não toca `workers/ai-response-worker.ts`.
+Merece issue própria.
+
+
+---
+
 ## Sabotagens — o que foi provado que os testes pegam
 
 Verde não prova nada; o que prova é o teste reprovar quando deveria. Cada
@@ -95,6 +157,8 @@ sabotagem teve **previsão de contagem antes de rodar**.
 
 | Sabotagem | Previsão | Resultado | O que isso prova |
 |---|---|---|---|
+| Predicado do abandono perde "falamos por último" | 2 reprovações | **2** ✅ (`expected 2 to be 1`) | O controle negativo distingue "abandono" de "toda conversa em que falamos" |
+| `lerAbandonoHoras` sem o guard de `typeof` | 1 reprovação | **1** ✅ | `true` no jsonb não vira régua de 1 hora |
 | Esvaziar `danos` de todos os pares | 6 reprovações | **6** ✅ | A regra 3.3 (eficiência nunca publicada sozinha) é gate real, não comentário |
 | `razao()` devolver `0` em vez de `null` | 3 reprovações | **3** ✅ | O zero-lisonjeiro é vigiado: org sem envio não reporta "0% de contorno" |
 | `fn_atrito_metrics` → `SECURITY DEFINER` | 1 reprovação | **1** ✅ (`expected 1 to be +0`) | **Vazamento entre inquilinos reproduzido**: a função entregou a demanda da org vizinha a um usuário da org A. O invariante o pega |

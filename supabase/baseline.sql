@@ -9143,42 +9143,39 @@ comment on column public.ai_invocations.agent_id is
   'existe e precisa aparecer nas telas de consumo — ver issue #160.';
 
 
--- ---- Índice de Atrito: fn_atrito_metrics + índices (migration 0116) ----
+-- ---- Índice de Atrito: fn_atrito_metrics + índices (migrations 0116, 0117) ----
 -- Spec 16; doutrina docs/doctrine/sistema-vivo/03-medida-do-proposito.md.
 --
--- O sistema media won/lost/conversas/1ª-resposta — atividade e conversão. Não
+-- O sistema media won/lost/conversas/1a-resposta — atividade e conversão. Não
 -- havia número para "menor atrito para os dois lados", que é o propósito
 -- declarado. Um agente que insiste seis vezes converte mais e queima
 -- relacionamento, e nos painéis aparecia como o melhor da org:
 -- `agent_cases.followup_attempts` já contava a insistência e nenhuma tela lia.
 --
--- SECURITY INVOKER de propósito (igual fn_attendant_metrics/0037): o escopo é a
--- RLS das seis tabelas lidas, todas com tenant_isolation por fn_user_org_ids().
--- Denominador = agent_cases fechados na janela (escopo PARCIAL e rotulado na
--- tela — cobre demandas que passaram por caso, não o total).
--- Idempotente: create index if not exists + create or replace function.
+-- 0117 acrescenta ABANDONO — o desfecho que ninguém reclama: falamos por
+-- último, a pessoa não voltou, a demanda nunca foi encerrada. A régua é
+-- parâmetro (p_abandono_horas, default 72) e viaja no payload para a tela
+-- exibi-la junto do número.
+--
+-- SECURITY INVOKER de propósito: o escopo é a RLS das tabelas lidas, todas com
+-- tenant_isolation por fn_user_org_ids(). Denominador das demandas =
+-- agent_cases fechados na janela (escopo PARCIAL, rotulado na tela).
+-- Idempotente: drop+create da função, create index if not exists.
 
-create index if not exists idx_agent_cases_org_closed
-  on public.agent_cases (organization_id, closed_at)
-  where closed_at is not null;
+drop function if exists public.fn_atrito_metrics(uuid, timestamptz, timestamptz);
 
-create index if not exists idx_messages_org_direction_sent
-  on public.messages (organization_id, direction, sent_at);
-
-create index if not exists idx_contacts_org_blocked_at
-  on public.contacts (organization_id, blocked_at)
-  where blocked_at is not null;
-
-create index if not exists idx_crm_lead_activities_org_type_performed
-  on public.crm_lead_activities (organization_id, type, performed_at);
-
-create index if not exists idx_before_send_traces_org_created
-  on public.before_send_traces (organization_id, created_at);
+-- Predicado do abandono: última outbound > última inbound (a última palavra foi
+-- nossa) + silêncio maior que a janela + sem desfecho. O índice parcial cobre a
+-- varredura por janela.
+create index if not exists idx_conversations_org_silencio
+  on public.conversations (organization_id, last_outbound_at)
+  where last_outbound_at is not null;
 
 create or replace function public.fn_atrito_metrics(
   p_org uuid,
   p_from timestamptz,
-  p_to timestamptz
+  p_to timestamptz,
+  p_abandono_horas int default 72
 ) returns jsonb
 language sql stable
 set search_path = public
@@ -9193,8 +9190,6 @@ as $$
        and c.closed_at >= p_from
        and c.closed_at <  p_to
   ),
-  -- Mensagens DENTRO da vida da demanda: a mesma conversa pode carregar mais de
-  -- uma demanda, e contar a conversa inteira inflaria demandas curtas.
   turnos as (
     select d.id,
            (select count(*)
@@ -9228,8 +9223,29 @@ as $$
      where e.organization_id = p_org
        and (e.kind = 'escalated' or e.human_action = 'escalate')
   ),
-  -- `external_device` = humano respondeu pelo CELULAR, fora do sistema. Conta
-  -- quantas vezes o operador contornou a própria ferramenta.
+  -- ABANDONO (Fase 2). Falamos por último, a pessoa não voltou dentro da
+  -- janela, e a conversa segue sem desfecho. Contado por ÚLTIMA FALA nossa
+  -- dentro do período — é um evento datável, não um estado de agora, senão o
+  -- número não seria comparável entre períodos.
+  abandono as (
+    select
+      count(*) filter (
+        where cv.last_outbound_at >= p_from
+          and cv.last_outbound_at <  p_to
+          and (cv.last_inbound_at is null or cv.last_outbound_at > cv.last_inbound_at)
+          and cv.last_outbound_at < now() - make_interval(hours => p_abandono_horas)
+          and cv.status not in ('resolved', 'closed')
+      ) as abandonadas,
+      -- Denominador honesto: conversas em que O SISTEMA FALOU no período. Sem
+      -- ele, "12 abandonos" não diz se é 12 de 15 ou 12 de 1200.
+      count(*) filter (
+        where cv.last_outbound_at >= p_from
+          and cv.last_outbound_at <  p_to
+      ) as com_fala_nossa
+      from public.conversations cv
+     where cv.organization_id = p_org
+       and cv.last_outbound_at is not null
+  ),
   envios as (
     select
       count(*) filter (where m.sent_via = 'ai')              as por_ia,
@@ -9278,7 +9294,9 @@ as $$
     'escopo', jsonb_build_object(
       'demandas', (select count(*) from demandas),
       'de',  p_from,
-      'ate', p_to
+      'ate', p_to,
+      -- A régua viaja COM o número (cap. 3.4, regra 4).
+      'abandono_horas', p_abandono_horas
     ),
     'cliente', jsonb_build_object(
       'turnos_p50',        (select percentile_cont(0.5) within group (order by n) from turnos),
@@ -9286,7 +9304,9 @@ as $$
       'insistencia_media', (select avg(followup_attempts)::float8 from demandas),
       'insistencia_max',   (select max(followup_attempts) from demandas),
       'pedidos_de_humano', (select n from pedidos_humano),
-      'descadastros',      (select n from descadastros)
+      'descadastros',      (select n from descadastros),
+      'abandonos',         (select abandonadas   from abandono),
+      'conversas_com_fala_nossa', (select com_fala_nossa from abandono)
     ),
     'empresa', jsonb_build_object(
       'intervencoes_por_demanda', (select avg(coalesce(h.intervencoes, 0))::float8
@@ -9308,10 +9328,11 @@ as $$
   );
 $$;
 
-revoke all     on function public.fn_atrito_metrics(uuid, timestamptz, timestamptz) from public;
-revoke execute on function public.fn_atrito_metrics(uuid, timestamptz, timestamptz) from anon;
-grant  execute on function public.fn_atrito_metrics(uuid, timestamptz, timestamptz)
+revoke all     on function public.fn_atrito_metrics(uuid, timestamptz, timestamptz, int) from public;
+revoke execute on function public.fn_atrito_metrics(uuid, timestamptz, timestamptz, int) from anon;
+grant  execute on function public.fn_atrito_metrics(uuid, timestamptz, timestamptz, int)
   to authenticated, service_role;
+
 
 
 notify pgrst, 'reload schema';

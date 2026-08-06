@@ -1,7 +1,11 @@
 "use client";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { useAtritoMetrics } from "@/hooks/metrics/useAtritoMetrics";
+import { useState } from "react";
+
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { useAtritoMetrics, useSalvarReguaAbandono } from "@/hooks/metrics/useAtritoMetrics";
 import { formatarMedida, type Medida, type Par } from "@/lib/metrics/atrito";
 
 /**
@@ -59,7 +63,64 @@ function ParCard({ par }: { par: Par }) {
   );
 }
 
-export function AtritoPanel() {
+/**
+ * A régua do abandono, VISÍVEL e editável ao lado do número que ela governa
+ * (invariante 6: ver + mudar + falha visível; e cap. 3.4 regra 4: a régua viaja
+ * com o número). Só manager+ edita — redefinir o que conta como perda é decisão
+ * de quem responde pelo resultado, não de quem opera.
+ */
+function ReguaAbandono({ horas, padrao, podeEditar }: { horas: number; padrao: number; podeEditar: boolean }) {
+  const [valor, setValor] = useState(String(horas));
+  const salvar = useSalvarReguaAbandono();
+  const n = Number(valor);
+  const valido = Number.isInteger(n) && n >= 1 && n <= 24 * 90;
+  const sujo = String(horas) !== valor.trim();
+
+  if (!podeEditar) {
+    return (
+      <p className="text-xs text-muted-foreground">
+        Uma conversa conta como perdida no silêncio após <strong>{horas}h</strong> sem resposta
+        {horas === padrao ? " (padrão do sistema)" : ""}.
+      </p>
+    );
+  }
+
+  return (
+    <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+      <span>Contar como perdida no silêncio após</span>
+      <Input
+        className="h-7 w-20 text-xs"
+        value={valor}
+        inputMode="numeric"
+        aria-label="Horas de silêncio até considerar a conversa perdida"
+        onChange={(e) => setValor(e.target.value)}
+      />
+      <span>horas sem resposta.</span>
+      {sujo ? (
+        <Button
+          size="sm"
+          variant="outline"
+          className="h-7"
+          disabled={!valido || salvar.isPending}
+          onClick={() => salvar.mutate(n)}
+        >
+          {salvar.isPending ? "Salvando…" : "Salvar"}
+        </Button>
+      ) : null}
+      {sujo && !valido ? (
+        <span className="text-destructive">Use um número inteiro entre 1 e 2160.</span>
+      ) : null}
+      {/* Falha VISÍVEL: sem isto, um erro de escrita deixaria a tela mostrando o
+          valor digitado como se tivesse sido salvo. */}
+      {salvar.isError ? (
+        <span className="text-destructive">Não foi possível salvar. Tente de novo.</span>
+      ) : null}
+      {horas === padrao && !sujo ? <span>(padrão do sistema)</span> : null}
+    </div>
+  );
+}
+
+export function AtritoPanel({ podeEditarRegua }: { podeEditarRegua: boolean }) {
   const { data, isLoading, isError } = useAtritoMetrics();
 
   if (isLoading) {
@@ -71,7 +132,7 @@ export function AtritoPanel() {
     return <p className="text-sm text-destructive">Erro ao carregar o índice de atrito.</p>;
   }
 
-  const { escopo, pares } = data.data;
+  const { escopo, pares, regua } = data.data;
   const temMedidaAusente = pares.some(
     (p) => p.eficiencia.valor === null || p.danos.some((d) => d.valor === null),
   );
@@ -92,6 +153,16 @@ export function AtritoPanel() {
             </>
           )}
         </p>
+        {/* A régua fica AQUI, no cabeçalho, e não no rodapé da seção: o rótulo
+            do dano interpola as horas ("após 72h") e quem lê o número precisa
+            enxergar de onde ele veio sem rolar a tela (cap. 3.4, regra 4). */}
+        <div className="mt-2">
+          <ReguaAbandono
+            horas={regua.abandono_horas}
+            padrao={regua.default}
+            podeEditar={podeEditarRegua}
+          />
+        </div>
       </div>
 
       <div className="flex flex-col gap-3">

@@ -1,11 +1,14 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  ABANDONO_HORAS_DEFAULT,
   formatarDuracao,
   formatarMedida,
   montarPares,
   razao,
   taxaDeAutomacao,
+  lerAbandonoHoras,
+  taxaDeAbandono,
   taxaDeContorno,
   vetosPorExecucao,
   type AtritoRaw,
@@ -32,7 +35,7 @@ import {
 
 /** Fixture com números distintos por campo — troca de campo não passa batida. */
 const RAW: AtritoRaw = {
-  escopo: { demandas: 40, de: "2026-07-01T00:00:00Z", ate: "2026-08-01T00:00:00Z" },
+  escopo: { demandas: 40, de: "2026-07-01T00:00:00Z", ate: "2026-08-01T00:00:00Z", abandono_horas: 72 },
   cliente: {
     turnos_p50: 7,
     turnos_p90: 21,
@@ -40,6 +43,8 @@ const RAW: AtritoRaw = {
     insistencia_max: 6,
     pedidos_de_humano: 11,
     descadastros: 3,
+    abandonos: 9,
+    conversas_com_fala_nossa: 60,
   },
   empresa: {
     intervencoes_por_demanda: 1.4,
@@ -130,6 +135,74 @@ describe("regra 3.3 — nenhuma eficiência é publicada sozinha", () => {
   it("a taxa de contorno é publicada — mede a ferramenta sendo evitada", () => {
     const automacao = pares.find((p) => p.chave === "automacao");
     expect(automacao?.danos.map((d) => d.chave)).toContain("taxa_de_contorno");
+  });
+});
+
+describe("abandono e a régua (Fase 2)", () => {
+  const pares = montarPares(RAW);
+  const conversao = pares.find((p) => p.chave === "conversao")!;
+
+  it("o abandono é publicado — é a perda que ninguém reclama", () => {
+    // Em vez de pedir para sair, a pessoa só para de responder. Não gera
+    // ticket, não gera nota baixa, e some de todo painel convencional.
+    expect(conversao.danos.map((d) => d.chave)).toContain("taxa_de_abandono");
+  });
+
+  it("a taxa é sobre as conversas EM QUE FALAMOS, não sobre o total", () => {
+    // 9 de 60 = 15%. Um denominador maior faria o abandono parecer pequeno.
+    expect(taxaDeAbandono(RAW.cliente)).toBeCloseTo(0.15, 6);
+  });
+
+  it("org onde o sistema nunca falou não reporta '0% de abandono'", () => {
+    expect(taxaDeAbandono({ ...RAW.cliente, abandonos: 0, conversas_com_fala_nossa: 0 })).toBeNull();
+  });
+
+  it("a RÉGUA aparece no rótulo — número sem régua não compara", () => {
+    // Doutrina §3.4 regra 4. Se o rótulo não trouxer as horas, ninguém sabe se
+    // o 15% de hoje e o de mês passado foram medidos com a mesma régua.
+    const dano = conversao.danos.find((d) => d.chave === "taxa_de_abandono")!;
+    expect(dano.rotulo).toContain("72h");
+
+    const outraRegua = montarPares({ ...RAW, escopo: { ...RAW.escopo, abandono_horas: 24 } });
+    const dano24 = outraRegua
+      .find((p) => p.chave === "conversao")!
+      .danos.find((d) => d.chave === "taxa_de_abandono")!;
+    expect(dano24.rotulo).toContain("24h");
+    expect(dano24.rotulo).not.toContain("72h");
+  });
+
+  it("a nota mostra os componentes crus, não só a razão", () => {
+    // Regra 2 do cap. 3.4: agregado nunca aparece sozinho.
+    const dano = conversao.danos.find((d) => d.chave === "taxa_de_abandono")!;
+    expect(dano.nota).toContain("9");
+    expect(dano.nota).toContain("60");
+  });
+});
+
+describe("lerAbandonoHoras — régua vinda de jsonb livre", () => {
+  it("ausente, nulo ou vazio cai no default", () => {
+    expect(lerAbandonoHoras(undefined)).toBe(ABANDONO_HORAS_DEFAULT);
+    expect(lerAbandonoHoras(null)).toBe(ABANDONO_HORAS_DEFAULT);
+    expect(lerAbandonoHoras({})).toBe(ABANDONO_HORAS_DEFAULT);
+    expect(lerAbandonoHoras({ atrito: {} })).toBe(ABANDONO_HORAS_DEFAULT);
+  });
+
+  it("valor válido é respeitado", () => {
+    expect(lerAbandonoHoras({ atrito: { abandono_horas: 48 } })).toBe(48);
+  });
+
+  it("lixo NÃO derruba o painel nem vira NaN no rótulo", () => {
+    // O rótulo interpola a régua: um NaN aqui apareceria como "após NaNh" na
+    // tela do usuário — pior que o default silencioso.
+    for (const lixo of ["abc", {}, [], true, 2.5, Number.NaN]) {
+      expect(lerAbandonoHoras({ atrito: { abandono_horas: lixo } })).toBe(ABANDONO_HORAS_DEFAULT);
+    }
+  });
+
+  it("valor fora da faixa cai no default", () => {
+    expect(lerAbandonoHoras({ atrito: { abandono_horas: 0 } })).toBe(ABANDONO_HORAS_DEFAULT);
+    expect(lerAbandonoHoras({ atrito: { abandono_horas: -5 } })).toBe(ABANDONO_HORAS_DEFAULT);
+    expect(lerAbandonoHoras({ atrito: { abandono_horas: 99999 } })).toBe(ABANDONO_HORAS_DEFAULT);
   });
 });
 

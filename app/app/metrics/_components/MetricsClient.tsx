@@ -83,7 +83,7 @@ export function MetricsClient({ canCompare, currentUserId }: Props) {
           inteiro, ao qual as métricas de área se subordinam (doutrina §3.6).
           Não filtra por atendente — atrito é propriedade do sistema, e quebrá-lo
           por pessoa convida a otimização local que degrada o todo. */}
-      <AtritoPanel />
+      <AtritoPanel podeEditarRegua={canCompare} />
 
       <Card>
         <CardHeader>
