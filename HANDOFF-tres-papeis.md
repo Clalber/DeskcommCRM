@@ -16,7 +16,7 @@
 | 1 | Gate de vazamento no `before-send` | ✅ **feito** (veio da main) | **30,0% / 0,0%** medidos, 18 turnos |
 | 2 | Contrato da declaração | ✅ **feito** `e167b362` | 16 testes · 5 sabotagens · `test:db` verde |
 | 3 | Projeção do contexto | ✅ **feito** (este commit) | 18 testes, 3 contra turnos REAIS |
-| 4 | Operador por evento | ⬜ | — |
+| 4 | Operador por evento | ✅ **feito** `35c88346` | 12 testes · 3 sabotagens com contagem prevista · `test:db` verde |
 | 5 | UI dos três papéis + `Testar` no caminho real | ⬜ | — |
 | 6 | Tirar tools de escrita do Conversador | ⬜ | — |
 
@@ -123,6 +123,51 @@ Depois da correção: **S2 derruba 3 de 3.**
 
 ---
 
+## Passo 4 — o Operador nasce · `35c88346`
+
+**O que mudou.** `job_queue` aceita `operator_turn`; o job é enfileirado pelo **runtime** ao fim do
+turno, logo depois de o checkpoint existir, com `sourceEventId` = job do Conversador (retry não gera
+um segundo Operador). Handler em `operator-turn.ts`, registrado no worker. `ai_agent_versions` ganhou
+`operator_enabled` (default **false**) e `operator_model` (null = herda).
+
+**Onde o passo 2 se paga.** O curto-circuito usa a distinção que construímos lá:
+
+| declaração | decisão | por quê |
+|---|---|---|
+| `nada_a_declarar: true` | **não chama modelo** | quem avaliou estava lá, com todo o contexto |
+| **ausente** (`null`) | **roda** | ninguém avaliou — é aí que promessa fica órfã |
+
+Há um teste afirmando que os dois estados levam a decisões **opostas**. Se alguém colapsar a
+distinção, ele vermelha.
+
+**Evidência:** 7 testes de decisão + 5 invariantes de schema · suíte **2630 passed / 272 arquivos** ·
+`test:db` **verde** (69 arquivos, 467 passed) · typecheck limpo · lint 0 erros / 189 warnings.
+
+### Sabotagem do passo 4 — com a contagem PREVISTA antes de rodar
+
+| sabotagem | previsão | resultado |
+|---|---|---|
+| ausente tratado como vazio | ≥2 | **2 failed** ✅ |
+| papel desligado passa a rodar | 2 | **2 failed** ✅ |
+| infere "vazio" por listas em vez da afirmação | 1 | **1 failed** ✅ |
+
+> Prever a contagem virou regra depois do passo 3, onde uma sabotagem derrubou 1 caso quando devia
+> derrubar 3 — e o verde dos outros 2 vinha de um mecanismo redundante que era, ele próprio, um bug.
+
+### Dois erros meus que as CATRACAS DO REPO pegaram — não eu
+
+1. **Segundo bloco de `job_queue_kind_check` no baseline.** Reconstruir a mesma constraint em N
+   blocos quebra o `update.sh` de todo clone com vocabulário posterior. Eu tinha aplicado essa
+   lição corretamente ao `agent_inbox_items` **minutos antes**, e a irmã passou batido — o padrão
+   pego numa ocorrência dá álibi às outras. Pego por `baseline-constraint-reconstruida.test.ts`.
+2. **Kind novo divergindo entre banco e TypeScript** — pego por
+   `vocabulario-banco-x-typescript.test.ts`.
+
+Os dois viraram verde **depois** de corrigidos, com run limpo. Registro aqui porque a saída limpa
+sem esta nota creditaria ao meu rigor o que foi mérito da catraca.
+
+---
+
 ## Deixado para trás (declarado, não escondido)
 
 | # | o quê | por quê ficou | onde fecha |
@@ -134,6 +179,8 @@ Depois da correção: **S2 derruba 3 de 3.**
 | 5 | 2ª camada do fail-safe de vazamento nunca exercitada | o modelo consertou de primeira na observação | — |
 | 6 | Inbound sem turno próprio: 5 mensagens → 4 jobs, nenhum `deduped` | fora do escopo da medição que o achou | a investigar |
 | 7 | Tudo medido só em `gpt-5.6-terra` | chave Anthropic da máquina sem crédito | — |
+| 8 | **O Operador ainda não tem MÃO** | o passo 4 entrega o CANAL (job, disparo, decisão, config); as ferramentas de escrita entram junto com a UI que as configura | passo 5 |
+| 9 | Nenhum turno de produção observado com worker real | a projeção e o Operador estão provados por unit + payload real, não por execução ponta a ponta | passo 5, junto com a prova de tela |
 
 ---
 
