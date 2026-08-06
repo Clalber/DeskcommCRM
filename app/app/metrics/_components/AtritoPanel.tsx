@@ -72,6 +72,9 @@ export function AtritoPanel() {
   }
 
   const { escopo, pares } = data.data;
+  const temMedidaAusente = pares.some(
+    (p) => p.eficiencia.valor === null || p.danos.some((d) => d.valor === null),
+  );
 
   return (
     <section className="flex flex-col gap-3">
@@ -97,9 +100,13 @@ export function AtritoPanel() {
         ))}
       </div>
 
-      <p className="text-xs text-muted-foreground">
-        &quot;—&quot; significa que não houve dado suficiente para medir, e não que o valor seja zero.
-      </p>
+      {/* A legenda só existe se houver o que legendar. Explicar um símbolo que
+          não está na tela é ruído, e ruído compete com o que importava. */}
+      {temMedidaAusente ? (
+        <p className="text-xs text-muted-foreground">
+          &quot;—&quot; significa que não houve dado suficiente para medir, e não que o valor seja zero.
+        </p>
+      ) : null}
     </section>
   );
 }

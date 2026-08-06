@@ -93,6 +93,40 @@ describe("regra 3.3 — nenhuma eficiência é publicada sozinha", () => {
     expect(conversao?.danos.map((d) => d.chave)).toContain("insistencia_media");
   });
 
+  it("a insistência do PIOR CASO é publicada junto da média", () => {
+    // Pego na prova de tela: o painel mostrava só a média (2.0) e a função já
+    // calculava o máximo (6). Numa base de 40 demandas, seis retornos num único
+    // cliente somem na média — e é exatamente esse caso que a spec existe para
+    // denunciar. Medir o dano e escondê-lo na exibição é o mesmo defeito, um
+    // andar acima.
+    const conversao = pares.find((p) => p.chave === "conversao");
+    const chaves = conversao?.danos.map((d) => d.chave) ?? [];
+    expect(chaves).toContain("insistencia_max");
+    // E a média não pode ser publicada SEM o máximo ao lado.
+    expect(chaves.indexOf("insistencia_max")).toBeGreaterThan(
+      chaves.indexOf("insistencia_media"),
+    );
+  });
+
+  it("p50 e p90 iguais são explicados como base pequena, não como fila homogênea", () => {
+    // Dois números idênticos lado a lado leem-se como bug. Pego na prova de
+    // tela: 35min e 35min sem nenhuma explicação.
+    const iguais = montarPares({
+      ...RAW,
+      empresa: { ...RAW.empresa, espera_humana_p50_s: 900, espera_humana_p90_s: 900 },
+    });
+    const p90 = iguais
+      .find((p) => p.chave === "custo_humano")
+      ?.danos.find((d) => d.chave === "espera_humana_p90_s");
+    expect(p90?.nota).toMatch(/poucas esperas/i);
+
+    // E quando diferem, a nota volta a ser a que explica o próprio p90.
+    const p90Diferente = pares
+      .find((p) => p.chave === "custo_humano")
+      ?.danos.find((d) => d.chave === "espera_humana_p90_s");
+    expect(p90Diferente?.nota).toMatch(/quem espera mais/i);
+  });
+
   it("a taxa de contorno é publicada — mede a ferramenta sendo evitada", () => {
     const automacao = pares.find((p) => p.chave === "automacao");
     expect(automacao?.danos.map((d) => d.chave)).toContain("taxa_de_contorno");

@@ -124,6 +124,18 @@ export function montarPares(raw: AtritoRaw): Par[] {
           unidade: "media",
           nota: "Quantas vezes o agente voltou ao cliente por conta própria.",
         },
+        // O MÁXIMO ao lado da média, e não no lugar dela. A spec 16 nasceu do
+        // agente que insiste seis vezes: numa base de 40 demandas, seis retornos
+        // num único cliente somem na média e é justamente esse caso que precisa
+        // aparecer. Publicar só a média reintroduziria o defeito pelo lado da
+        // exibição — o sistema mediria o dano e a tela o esconderia.
+        {
+          chave: "insistencia_max",
+          rotulo: "Insistência no pior caso",
+          valor: cliente.insistencia_max,
+          unidade: "contagem",
+          nota: "O cliente que mais recebeu retornos. A média esconde o exagero pontual.",
+        },
         {
           chave: "descadastros",
           rotulo: "Descadastros no período",
@@ -187,7 +199,13 @@ export function montarPares(raw: AtritoRaw): Par[] {
           rotulo: "Espera na fila humana (p90)",
           valor: empresa.espera_humana_p90_s,
           unidade: "segundos",
-          nota: "O p90 é a experiência de quem espera mais — a mediana a esconde.",
+          // Mediana e p90 iguais denunciam base pequena, não uma fila homogênea.
+          // Sem dizer isso, dois números idênticos lado a lado leem-se como bug.
+          nota:
+            empresa.espera_humana_p50_s !== null &&
+            empresa.espera_humana_p50_s === empresa.espera_humana_p90_s
+              ? "Igual à mediana: há poucas esperas medidas no período para os dois se separarem."
+              : "O p90 é a experiência de quem espera mais — a mediana a esconde.",
         },
         {
           chave: "retrabalho",
