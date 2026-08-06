@@ -734,7 +734,11 @@ async function handleSessionStatus(
 
   const update: Record<string, unknown> = { status, last_status_change_at: now };
   if (status === "WORKING" && session.warmup_started_at && !session.is_warmup_complete) {
-    update.is_warmup_complete = true;
+    // Só `warmup_completed_at`: `is_warmup_complete` é `GENERATED ALWAYS AS
+    // (warmup_completed_at IS NOT NULL)`, e atribuir a ela abortava o UPDATE
+    // INTEIRO — inclusive o `status`, que nada tem a ver com warm-up. Ou seja: a
+    // sessão que terminava o aquecimento parava de atualizar o próprio estado, e
+    // o espelho do canal congelava sem erro visível.
     update.warmup_completed_at = now;
   }
   await admin.from("channel_sessions").update(update).eq("id", session.id);

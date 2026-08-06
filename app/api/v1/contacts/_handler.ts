@@ -355,10 +355,14 @@ export async function patchContactHandler(
   const patch: Record<string, unknown> = {};
   if (input.name !== undefined) patch.name = input.name;
   if (input.display_name !== undefined) patch.display_name = input.display_name;
-  if (input.email !== undefined) {
-    patch.email = input.email;
-    patch.email_normalized = input.email ? input.email.trim().toLowerCase() : null;
-  }
+  // `email_normalized` NÃO entra no patch — é `GENERATED ALWAYS AS
+  // (lower(trim(email))) STORED` (baseline.sql:1349), e o Postgres RECUSA
+  // qualquer atribuição a coluna gerada (SQLSTATE 428C9), abortando o UPDATE
+  // inteiro. Efeito medido: salvar o email de um contato pela tela devolvia 500,
+  // e junto morriam todos os outros campos do mesmo PATCH.
+  //
+  // O banco deriva a coluna sozinho — era só não escrever nela.
+  if (input.email !== undefined) patch.email = input.email;
   if (input.phone_number !== undefined) patch.phone_number = input.phone_number;
   if (input.birthdate !== undefined) patch.birthdate = input.birthdate;
   if (input.tags !== undefined) patch.tags = input.tags;
