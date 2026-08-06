@@ -9118,3 +9118,17 @@ grant execute on function public.fn_user_role_in(uuid) to authenticated, service
 grant execute on function public.fn_role_at_least(uuid, text) to authenticated, service_role;
 
 notify pgrst, 'reload schema';
+
+-- ---- lead_checkpoints.declaracao: a fronteira FALAR/OPERAR (migration 0110) ----
+-- Spec 16 §5. NULLABLE de propósito: NULL = o modelo não declarou;
+-- {"nada_a_declarar":true} = avaliou e não havia nada. Colapsar os dois num
+-- default apagaria o esquecimento, que é o que o invariante 4 manda mostrar.
+alter table lead_checkpoints
+  add column if not exists declaracao jsonb;
+
+comment on column lead_checkpoints.declaracao is
+  'Declaração do turno (spec 16 §5): {intencoes[], promessas[], nada_a_declarar}. '
+  'NULL = o modelo não declarou; {"nada_a_declarar":true} = avaliou e não havia nada. '
+  'Os dois estados são distintos por desenho.';
+
+notify pgrst, 'reload schema';

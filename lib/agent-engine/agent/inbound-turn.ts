@@ -72,6 +72,7 @@ import {
   type StageClassifierKnobs,
 } from './stage-classifier';
 import { loadPlaybook } from './playbook';
+import { DECLARACAO_INSTRUCTION, declaracaoDoTurnoSchema, type DeclaracaoDoTurno } from './declaracao';
 import { composeSystemPrompt, loadOrgMemory, renderOrgMemory } from './org-memory';
 import { matchesHandoffKeyword } from './agent-config';
 import { resolveTurnAgent } from './resolve-turn-agent';
@@ -307,24 +308,56 @@ export const checkpointContentSchema = z.object({
   objections: z.array(z.string()).default([]),
   next_action: z.string().nullable().default(null),
   rolling_summary: z.string().default(''),
+  /**
+   * A declaração do turno (spec 16 §5) — a fronteira entre FALAR e OPERAR.
+   *
+   * `.optional()` SEM default, e a diferença importa: `undefined` significa que o
+   * modelo não declarou nada (fechamento incompleto — turno a investigar), e é
+   * estado distinto de `{nada_a_declarar: true}`, que é uma avaliação registrada.
+   * Um `.default({})` aqui apagaria essa distinção e faria "o modelo esqueceu"
+   * parecer "não havia nada" — ver o cabeçalho de `declaracao.ts`.
+   *
+   * Opcional também é o que mantém a retrocompatibilidade: checkpoint gravado
+   * antes desta versão, e clone self-host cujo modelo ainda não conhece o campo,
+   * seguem validando.
+   */
+  declaracao: declaracaoDoTurnoSchema.optional(),
 });
 export type CheckpointContent = z.infer<typeof checkpointContentSchema>;
 
-export interface LeadCheckpointRow extends CheckpointContent {
+/**
+ * A ROW como o Postgres a devolve. `declaracao` é `Omit`-ada e redeclarada porque
+ * o "não sei" tem representação DIFERENTE nas duas pontas: o modelo omite o campo
+ * (`undefined`), o banco guarda `null`. Herdar o `?:` do schema faria o tipo
+ * prometer `undefined` onde `select *` entrega `null` — e o `=== undefined` de
+ * quem lesse a row seria falso justamente no caso que ele quer pegar.
+ */
+export interface LeadCheckpointRow extends Omit<CheckpointContent, 'declaracao'> {
   id: string;
   seq: string;
   organization_id: string;
   contact_id: string;
   job_id: string | null;
   created_at: Date;
+  declaracao: DeclaracaoDoTurno | null;
 }
 
-/** Instrução FIXA do fechamento — o runtime a impõe; o teste a usa como marcador. */
+/**
+ * Instrução FIXA do fechamento — o runtime a impõe; o teste a usa como marcador.
+ *
+ * A declaração (spec 16 §5) viaja AQUI, na chamada que já acontece, e não numa
+ * tool: uma `declarar_intencao` dependeria de o modelo lembrar de chamá-la, e o
+ * turno em que ele esquecesse seria um lead parado em silêncio. É o mesmo
+ * argumento que este arquivo já usa para o checkpoint — e sai de graça, porque
+ * é a mesma chamada de modelo.
+ */
 export const CHECKPOINT_INSTRUCTION =
   'Feche o turno AGORA. Responda SOMENTE com um JSON válido no formato ' +
   '{"commitments": string[], "objections": string[], "next_action": string|null, "rolling_summary": string} ' +
   '— compromissos assumidos, objeções do lead, próxima ação e o resumo acumulado ' +
-  'da conversa até aqui (inclua o que o resumo anterior já dizia). Sem texto fora do JSON.';
+  'da conversa até aqui (inclua o que o resumo anterior já dizia). ' +
+  DECLARACAO_INSTRUCTION +
+  ' Sem texto fora do JSON.';
 
 /**
  * Bloco de sistema RESIDENTE das tools de caso (spec 15 §5.2) — entra no prefixo
@@ -461,8 +494,8 @@ async function insertCheckpoint(
   input: { tenantId: string; leadId: string; jobId: string; content: CheckpointContent },
 ): Promise<void> {
   await db.query(
-    `insert into lead_checkpoints (organization_id, contact_id, job_id, commitments, objections, next_action, rolling_summary)
-     values ($1, $2, $3, $4, $5, $6, $7)`,
+    `insert into lead_checkpoints (organization_id, contact_id, job_id, commitments, objections, next_action, rolling_summary, declaracao)
+     values ($1, $2, $3, $4, $5, $6, $7, $8)`,
     [
       input.tenantId,
       input.leadId,
@@ -471,6 +504,11 @@ async function insertCheckpoint(
       JSON.stringify(input.content.objections),
       input.content.next_action,
       input.content.rolling_summary,
+      // NULL (não `'{}'`) quando o modelo não declarou: a coluna preserva a
+      // distinção "não declarou" × "declarou que não havia nada" que o schema
+      // sustenta em memória. Gravar um objeto vazio aqui jogaria fora, no
+      // Postgres, a informação que o Zod tomou o cuidado de manter.
+      input.content.declaracao === undefined ? null : JSON.stringify(input.content.declaracao),
     ],
   );
 }
@@ -900,6 +938,10 @@ export async function runAgentTurn(
           objections: [],
           next_action: null,
           rolling_summary: '',
+          // Este `previous` é sintetizado a partir de histórico IMPORTADO — não
+          // houve turno nosso, logo ninguém declarou nada. `null` é o valor
+          // honesto; um objeto vazio afirmaria uma avaliação que não aconteceu.
+          declaracao: null,
         };
       effectivePrevious = { ...base, rolling_summary: renderCompactedSummary(compacted) };
       effectiveContext = {
