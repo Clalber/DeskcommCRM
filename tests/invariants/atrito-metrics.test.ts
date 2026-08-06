@@ -45,6 +45,9 @@ const CASO_2 = "aeae3333-0000-4000-8000-000000000002";
 const CASO_VIZ = "aeae3333-0000-4000-8000-000000000003";
 const JOB_1 = "aeae4444-0000-4000-8000-000000000001";
 const JOB_2 = "aeae4444-0000-4000-8000-000000000002";
+const DEM_1 = "aeae6666-0000-4000-8000-000000000001";
+const DEM_2 = "aeae6666-0000-4000-8000-000000000002";
+const DEM_VIZ = "aeae6666-0000-4000-8000-000000000003";
 const CONV_RESPONDIDA = "aeae2222-0000-4000-8000-000000000009";
 const CONTATO_RESP = "aeae1111-0000-4000-8000-000000000009";
 const LEAD_GANHO = "aeae5555-0000-4000-8000-000000000001";
@@ -68,6 +71,8 @@ beforeAll(() => {
   // Idempotência por LIMPEZA, não por ON CONFLICT: `agent_cases` tem unique
   // deferrable e o Postgres recusa usá-la como árbitro. Ordem inversa das FKs.
   sql(`
+    delete from public.demanda_conversas where demanda_id in ('${DEM_1}', '${DEM_2}', '${DEM_VIZ}');
+    delete from public.demandas where id in ('${DEM_1}', '${DEM_2}', '${DEM_VIZ}');
     delete from public.agent_case_events where case_id in ('${CASO_1}', '${CASO_2}', '${CASO_VIZ}');
     delete from public.agent_cases       where id in ('${CASO_1}', '${CASO_2}', '${CASO_VIZ}');
     delete from public.before_send_traces where job_id in ('${JOB_1}', '${JOB_2}');
@@ -127,6 +132,21 @@ beforeAll(() => {
     values
       ('${CASO_VIZ}', '${VIZINHA}', '${CONV_VIZ}', 'resolved', 'Caso Vizinho', 'r', 'b',
        99, '2026-03-05T10:00:00Z', '2026-03-06T10:00:00Z');
+
+    -- FASE 4: o denominador agora e a tabela demandas. Elas espelham os casos
+    -- (mesma abertura e fechamento) e apontam para eles por agent_case_id: e
+    -- assim que insistencia e toque humano continuam ligados.
+    insert into public.demandas
+      (id, organization_id, contact_id, agent_case_id, aberta_em, origem, estado, dono_kind, desfecho, fechada_em)
+    values
+      ('${DEM_1}', '${GOV_ORG}', '${CONTATO_CASO}', '${CASO_1}', '2026-03-05T10:00:00Z', 'handoff', 'resolvida', 'ia', 'resolvida', '2026-03-06T10:00:00Z'),
+      ('${DEM_2}', '${GOV_ORG}', '${CONTATO_CASO}', '${CASO_2}', '2026-03-08T10:00:00Z', 'handoff', 'resolvida', 'ia', 'resolvida', '2026-03-08T12:00:00Z'),
+      ('${DEM_VIZ}', '${VIZINHA}', '${CONTATO_VIZ}', '${CASO_VIZ}', '2026-03-05T10:00:00Z', 'handoff', 'resolvida', 'ia', 'resolvida', '2026-03-06T10:00:00Z');
+    insert into public.demanda_conversas (organization_id, demanda_id, conversation_id)
+    values
+      ('${GOV_ORG}', '${DEM_1}', '${CONV}'),
+      ('${GOV_ORG}', '${DEM_2}', '${CONV}'),
+      ('${VIZINHA}', '${DEM_VIZ}', '${CONV_VIZ}');
 
     -- Toque humano SÓ no caso 1: 2 eventos, primeiro 600s após a abertura.
     insert into public.agent_case_events (organization_id, case_id, kind, actor_kind, created_at)

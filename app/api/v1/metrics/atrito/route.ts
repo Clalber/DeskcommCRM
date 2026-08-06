@@ -78,6 +78,7 @@ const VAZIO: Omit<AtritoRaw, "escopo"> = {
     envios_por_ia: 0,
     envios_humano_no_sistema: 0,
     envios_humano_fora: 0,
+    demandas_sem_proximo_passo: 0,
   },
   eficiencia: { ganhos: 0, perdidos: 0 },
 };
@@ -145,6 +146,9 @@ export async function GET(req: NextRequest): Promise<Response> {
       abandono_horas: abandonoHoras,
       repeticao_min: 0.7,
       espera_horas: 4,
+      demandas_com_caso: 0,
+      demandas_abertas: 0,
+      denominador: "demandas",
     },
   }) as unknown as AtritoRaw;
 

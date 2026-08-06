@@ -22,6 +22,7 @@ export interface AtritoRaw {
   escopo: {
     demandas: number; de: string; ate: string;
     abandono_horas: number; repeticao_min: number; espera_horas: number;
+    demandas_com_caso: number; demandas_abertas: number; denominador: string;
   };
   cliente: {
     turnos_p50: number | null;
@@ -48,6 +49,7 @@ export interface AtritoRaw {
     envios_por_ia: number;
     envios_humano_no_sistema: number;
     envios_humano_fora: number;
+    demandas_sem_proximo_passo: number;
   };
   eficiencia: { ganhos: number; perdidos: number };
 }
@@ -153,8 +155,7 @@ export function vetosPorExecucao(e: AtritoRaw["empresa"]): number | null {
   return razao(e.vetos, e.execucoes_medidas);
 }
 
-const ESCOPO_PARCIAL =
-  "Escopo: demandas que passaram por caso humano — não o total de conversas.";
+const ESCOPO_PARCIAL = "Sobre as demandas encerradas no período.";
 
 export function montarPares(raw: AtritoRaw): Par[] {
   const { cliente, empresa, eficiencia, escopo } = raw;
@@ -182,7 +183,7 @@ export function montarPares(raw: AtritoRaw): Par[] {
           rotulo: "Insistência do agente (média de retornos)",
           valor: cliente.insistencia_media,
           unidade: "media",
-          nota: "Quantas vezes o agente voltou ao cliente por conta própria.",
+          nota: `Quantas vezes o agente voltou ao cliente por conta própria. Medido sobre as ${escopo.demandas_com_caso} demandas que passaram por atendimento humano.`,
         },
         // O MÁXIMO ao lado da média, e não no lugar dela. A spec 16 nasceu do
         // agente que insiste seis vezes: numa base de 40 demandas, seis retornos
@@ -286,6 +287,16 @@ export function montarPares(raw: AtritoRaw): Par[] {
             empresa.espera_humana_p50_s === empresa.espera_humana_p90_s
               ? "Igual à mediana: há poucas esperas medidas no período para os dois se separarem."
               : "O p90 é a experiência de quem espera mais — a mediana a esconde.",
+        },
+        // O INVARIANTE 4 como número: demanda aberta sem próximo passo é o
+        // vazamento que a doutrina inteira combate — e vazamento que ninguém vê
+        // é o pior tipo. Antes da entidade de demanda isto não era enumerável.
+        {
+          chave: "demandas_sem_proximo_passo",
+          rotulo: "Demandas abertas sem próximo passo",
+          valor: empresa.demandas_sem_proximo_passo,
+          unidade: "contagem",
+          nota: `De ${escopo.demandas_abertas} abertas agora. Cada uma é alguém esperando sem que nada esteja marcado para acontecer.`,
         },
         {
           chave: "retrabalho",

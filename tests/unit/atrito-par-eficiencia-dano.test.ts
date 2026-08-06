@@ -40,6 +40,7 @@ const RAW: AtritoRaw = {
   escopo: {
     demandas: 40, de: "2026-07-01T00:00:00Z", ate: "2026-08-01T00:00:00Z",
     abandono_horas: 72, repeticao_min: 0.7, espera_horas: 4,
+    demandas_com_caso: 25, demandas_abertas: 18, denominador: "demandas",
   },
   cliente: {
     turnos_p50: 7,
@@ -66,6 +67,7 @@ const RAW: AtritoRaw = {
     envios_por_ia: 600,
     envios_humano_no_sistema: 300,
     envios_humano_fora: 100,
+    demandas_sem_proximo_passo: 6,
   },
   eficiencia: { ganhos: 12, perdidos: 8 },
 };
@@ -213,6 +215,34 @@ describe("lerAbandonoHoras — régua vinda de jsonb livre", () => {
     expect(lerAbandonoHoras({ atrito: { abandono_horas: 0 } })).toBe(ABANDONO_HORAS_DEFAULT);
     expect(lerAbandonoHoras({ atrito: { abandono_horas: -5 } })).toBe(ABANDONO_HORAS_DEFAULT);
     expect(lerAbandonoHoras({ atrito: { abandono_horas: 99999 } })).toBe(ABANDONO_HORAS_DEFAULT);
+  });
+});
+
+describe("o invariante 4 vira número (Fase 4)", () => {
+  const pares = montarPares(RAW);
+
+  it("demandas abertas sem próximo passo é publicado", () => {
+    // Vazamento invisível é o que a doutrina inteira combate. Antes da entidade
+    // de demanda (0119) este número não era sequer enumerável.
+    const custo = pares.find((p) => p.chave === "custo_humano")!;
+    expect(custo.danos.map((d) => d.chave)).toContain("demandas_sem_proximo_passo");
+  });
+
+  it("a nota diz sobre QUANTAS abertas — 6 sozinho não significa nada", () => {
+    const d = pares
+      .find((p) => p.chave === "custo_humano")!
+      .danos.find((x) => x.chave === "demandas_sem_proximo_passo")!;
+    expect(d.valor).toBe(6);
+    expect(d.nota).toContain("18");
+  });
+
+  it("a insistência declara seu PRÓPRIO denominador, menor que o total", () => {
+    // Insistência só existe onde houve caso (25 das 40). Publicá-la sem dizer
+    // isso a faria parecer medida sobre todas as demandas.
+    const d = pares
+      .find((p) => p.chave === "conversao")!
+      .danos.find((x) => x.chave === "insistencia_media")!;
+    expect(d.nota).toContain("25");
   });
 });
 

@@ -149,7 +149,7 @@ export function AtritoPanel({ podeEditarRegua }: { podeEditarRegua: boolean }) {
             <>
               Base: {escopo.demandas}{" "}
               {escopo.demandas === 1 ? "demanda encerrada" : "demandas encerradas"} nos últimos 30
-              dias, entre as que passaram por atendimento humano.
+              dias, e {escopo.demandas_abertas} ainda abertas.
             </>
           )}
         </p>

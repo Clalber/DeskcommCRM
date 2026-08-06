@@ -9143,12 +9143,11 @@ comment on column public.ai_invocations.agent_id is
   'existe e precisa aparecer nas telas de consumo — ver issue #160.';
 
 
--- ---- Índice de Atrito: fn_atrito_metrics (migrations 0116, 0117, 0118) ----
--- Spec 16; doutrina docs/doctrine/sistema-vivo/03-medida-do-proposito.md.
--- Mede o PROPÓSITO ("menor atrito para os dois lados"), que não tinha número.
--- 0117: abandono + régua. 0118: repergunta (Jaccard SQL puro — sem extensão e
--- sem chave de API, para funcionar no self-host) + espera não comunicada.
--- SECURITY INVOKER: o escopo é a RLS das tabelas lidas. Idempotente.
+-- ---- Índice de Atrito + DEMANDAS (migrations 0116–0120) ----
+-- Spec 16 + doutrina cap. 5. `demandas` é a unidade do PROPÓSITO: contato é
+-- quem pede, conversa é por onde se fala, demanda é o que precisa acabar.
+-- O índice usa demandas como denominador (0120) e publica o invariante 4 como
+-- número (demandas abertas sem próximo passo). Idempotente.
 
 create index if not exists idx_conversations_org_silencio
   on public.conversations (organization_id, last_outbound_at)
@@ -9189,59 +9188,282 @@ revoke all     on function public.fn_atrito_jaccard(text, text) from public;
 revoke execute on function public.fn_atrito_jaccard(text, text) from anon;
 grant  execute on function public.fn_atrito_jaccard(text, text) to authenticated, service_role;
 
--- Assinatura muda de 4 para 6 parâmetros — drop antes do create, senão vira
--- overload e a versão de 4 args responde para sempre, em silêncio.
-drop function if exists public.fn_atrito_metrics(uuid, timestamptz, timestamptz, int);
+create table if not exists public.demandas (
+  id uuid primary key default gen_random_uuid(),
+  organization_id uuid not null references public.organizations(id) on delete cascade,
+
+  -- SOLICITANTE: quem tem o problema (não necessariamente quem escreveu).
+  contact_id uuid not null references public.contacts(id) on delete cascade,
+  -- Vínculo com o negócio, quando houver. Uma demanda de suporte não tem lead,
+  -- e isso é desfecho legítimo — não pendência.
+  lead_id uuid references public.crm_leads(id) on delete set null,
+
+  -- Ponteiro para o caso de escalada que originou a demanda, quando houve.
+  -- Sem ele, as métricas de toque humano (que vivem em `agent_case_events`)
+  -- perderiam a ligação com a demanda ao trocar o denominador do índice.
+  agent_case_id uuid references public.agent_cases(id) on delete set null,
+
+  aberta_em timestamptz not null default now(),
+  origem text not null default 'inbound'
+    check (origem in ('inbound', 'handoff', 'followup', 'manual', 'derivada')),
+  assunto text,
+
+  estado text not null default 'aberta'
+    check (estado in ('aberta', 'em_atendimento', 'aguardando_cliente', 'resolvida', 'encerrada')),
+
+  -- DONO NUNCA VAZIO (cap. 5 §5.3). Demanda sem dono é a definição operacional
+  -- de "vai morrer". Se ninguém assumiu, o dono é a automação — e isso é uma
+  -- decisão registrada, não um vazio que ninguém nota.
+  dono_kind text not null default 'ia' check (dono_kind in ('ia', 'humano')),
+  dono_user_id uuid references auth.users(id) on delete set null,
+
+  -- PRÓXIMO PASSO é CAMPO, não derivação (cap. 5 §5.3): derivado, ele
+  -- desapareceria nos casos em que a derivação falha — que são exatamente os
+  -- casos em que ele importa. É aqui que o invariante 4 vira verificável.
+  proximo_passo text,
+  proximo_passo_em timestamptz,
+  prazo_em timestamptz,
+
+  -- Desfecho ENUMERADO e terminal. Inclui os que não são vitória: o sistema não
+  -- pode ser o único a decidir que uma demanda acabou, senão fecharia por
+  -- conveniência (encerrar por inatividade melhora todo número sem melhorar
+  -- nada). `expirada_sem_resposta` é desfecho legítimo e RUIM — contável e
+  -- vigiado; organização onde ele é zero está mal instrumentada, não saudável.
+  desfecho text check (desfecho in (
+    'resolvida', 'convertida', 'nao_procede',
+    'encerrada_pelo_cliente', 'perdida', 'expirada_sem_resposta'
+  )),
+  fechada_em timestamptz,
+
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+
+  -- Desfecho e fechamento andam juntos: um sem o outro é linha meio-fechada,
+  -- que nenhuma consulta de "abertas" nem de "encerradas" pegaria.
+  constraint demandas_desfecho_coerente
+    check ((desfecho is null) = (fechada_em is null)),
+  -- Dono humano exige QUEM. `dono_kind='humano'` com user nulo seria dono vazio
+  -- com aparência de dono preenchido.
+  constraint demandas_dono_humano_tem_user
+    check (dono_kind <> 'humano' or dono_user_id is not null)
+);
+
+-- Uma demanda atravessa VÁRIOS canais e uma conversa carrega VÁRIAS demandas
+-- (cap. 5 §5.4). Resistir a este muitos-para-muitos é a fonte de metade dos
+-- problemas de modelagem neste domínio: um-para-um obriga a escolher entre
+-- perder o problema que muda de canal e perder o segundo problema da conversa.
+create table if not exists public.demanda_conversas (
+  organization_id uuid not null references public.organizations(id) on delete cascade,
+  demanda_id uuid not null references public.demandas(id) on delete cascade,
+  conversation_id uuid not null references public.conversations(id) on delete cascade,
+  vinculada_em timestamptz not null default now(),
+  primary key (demanda_id, conversation_id)
+);
+
+create index if not exists idx_demandas_org_abertas
+  on public.demandas (organization_id, aberta_em)
+  where fechada_em is null;
+create index if not exists idx_demandas_org_fechadas
+  on public.demandas (organization_id, fechada_em)
+  where fechada_em is not null;
+create index if not exists idx_demandas_caso
+  on public.demandas (organization_id, agent_case_id)
+  where agent_case_id is not null;
+create index if not exists idx_demandas_contato
+  on public.demandas (organization_id, contact_id);
+-- O invariante 4 em forma de índice: demanda aberta SEM próximo passo é o
+-- vazamento que a doutrina proíbe, e precisa ser barato de enumerar.
+create index if not exists idx_demandas_sem_proximo_passo
+  on public.demandas (organization_id, aberta_em)
+  where fechada_em is null and proximo_passo is null;
+create index if not exists idx_demanda_conversas_conv
+  on public.demanda_conversas (organization_id, conversation_id);
+
+alter table public.demandas enable row level security;
+alter table public.demanda_conversas enable row level security;
+
+drop policy if exists tenant_isolation_demandas_all on public.demandas;
+create policy tenant_isolation_demandas_all on public.demandas
+  for all
+  using (organization_id in (select * from public.fn_user_org_ids()))
+  with check (organization_id in (select * from public.fn_user_org_ids()));
+
+drop policy if exists tenant_isolation_demanda_conversas_all on public.demanda_conversas;
+create policy tenant_isolation_demanda_conversas_all on public.demanda_conversas
+  for all
+  using (organization_id in (select * from public.fn_user_org_ids()))
+  with check (organization_id in (select * from public.fn_user_org_ids()));
+
+-- ---------------------------------------------------------------------------
+-- Passo 2 de 4: derivar o passado por REGRA EXPLÍCITA, nunca por adivinhação.
+--
+-- A regra fica escrita porque histórico derivado por regra é honesto e
+-- histórico derivado por heurística contamina toda comparação futura — e
+-- ninguém vai lembrar disso daqui a seis meses, comparando dois trimestres.
+--
+--   R1. Todo `agent_cases` vira uma demanda (origem 'handoff'). O mapeamento de
+--       status é 1:1 e sem interpretação.
+--   R2. Toda conversa SEM agent_case vira uma demanda (origem 'derivada'),
+--       porque houve uma pessoa com um assunto ali. `assunto` fica NULO — não
+--       inventamos o que a conversa tratava.
+--
+-- Idempotente por `where not exists`: re-aplicar não duplica.
+-- ---------------------------------------------------------------------------
+
+-- R1 — a partir dos casos de escalada.
+insert into public.demandas
+  (organization_id, contact_id, lead_id, agent_case_id, aberta_em, origem, assunto,
+   estado, dono_kind, desfecho, fechada_em)
+select
+  c.organization_id,
+  cv.contact_id,
+  c.lead_id,
+  c.id,
+  c.opened_at,
+  'handoff',
+  c.title,
+  case c.status
+    when 'awaiting_human' then 'em_atendimento'
+    when 'awaiting_lead'  then 'aguardando_cliente'
+    when 'resolved'       then 'resolvida'
+    when 'escalated'      then 'em_atendimento'
+    when 'cancelled'      then 'encerrada'
+    else 'aberta'
+  end,
+  'ia',
+  case c.status
+    when 'resolved'  then 'resolvida'
+    when 'cancelled' then 'nao_procede'
+    else null
+  end,
+  case when c.status in ('resolved', 'cancelled') then c.closed_at else null end
+  from public.agent_cases c
+  join public.conversations cv on cv.id = c.conversation_id
+ where not exists (
+   select 1 from public.demandas d
+    where d.organization_id = c.organization_id
+      and d.contact_id = cv.contact_id
+      and d.origem = 'handoff'
+      and d.aberta_em = c.opened_at
+ );
+
+-- Vínculo N:N das demandas derivadas de caso.
+insert into public.demanda_conversas (organization_id, demanda_id, conversation_id)
+select d.organization_id, d.id, c.conversation_id
+  from public.demandas d
+  join public.agent_cases c on c.id = d.agent_case_id
+ where d.agent_case_id is not null
+   and not exists (
+     select 1 from public.demanda_conversas dc
+      where dc.demanda_id = d.id and dc.conversation_id = c.conversation_id
+   );
+
+-- R2 — conversas que nunca escalaram também são demandas.
+insert into public.demandas
+  (organization_id, contact_id, aberta_em, origem, estado, dono_kind, desfecho, fechada_em)
+select
+  cv.organization_id,
+  cv.contact_id,
+  cv.created_at,
+  'derivada',
+  case cv.status when 'resolved' then 'resolvida' when 'closed' then 'encerrada' else 'aberta' end,
+  'ia',
+  case when cv.status in ('resolved', 'closed') then 'resolvida' else null end,
+  case when cv.status in ('resolved', 'closed') then cv.status_changed_at else null end
+  from public.conversations cv
+ where not exists (
+   select 1 from public.agent_cases c where c.conversation_id = cv.id
+ )
+   and not exists (
+   select 1 from public.demandas d
+    where d.organization_id = cv.organization_id
+      and d.contact_id = cv.contact_id
+      and d.origem = 'derivada'
+      and d.aberta_em = cv.created_at
+ );
+
+insert into public.demanda_conversas (organization_id, demanda_id, conversation_id)
+select d.organization_id, d.id, cv.id
+  from public.demandas d
+  join public.conversations cv
+    on cv.organization_id = d.organization_id
+   and cv.contact_id = d.contact_id
+   and cv.created_at = d.aberta_em
+ where d.origem = 'derivada'
+   and not exists (
+     select 1 from public.demanda_conversas dc
+      where dc.demanda_id = d.id and dc.conversation_id = cv.id
+   );
+
+comment on table public.demandas is
+  'A unidade do PROPÓSITO (doutrina cap. 5): uma coisa a ser resolvida. '
+  'Contato é quem pede; conversa é por onde se fala; demanda é o que precisa '
+  'acabar. Dono nunca vazio; próximo passo é campo, não derivação.';
+
+
+drop function if exists public.fn_atrito_metrics(uuid, timestamptz, timestamptz, int, float8, int);
 
 create or replace function public.fn_atrito_metrics(
   p_org uuid,
   p_from timestamptz,
   p_to timestamptz,
   p_abandono_horas int default 72,
-  -- Limiar CALIBRADO, não chutado (ver bloco "calibração" no cabeçalho): 0.7.
   p_repeticao_min float8 default 0.7,
-  -- Acima disto, a espera do cliente conta como não comunicada.
   p_espera_horas int default 4
 ) returns jsonb
 language sql stable
 set search_path = public
 as $$
   with
-  demandas as (
-    select c.id, c.conversation_id, c.opened_at, c.closed_at, c.status,
-           c.followup_attempts
-      from public.agent_cases c
-     where c.organization_id = p_org
-       and c.closed_at is not null
-       and c.closed_at >= p_from
-       and c.closed_at <  p_to
+  -- DENOMINADOR DEFINITIVO: demandas encerradas na janela. Não mais os casos.
+  demandas_j as (
+    select d.id, d.agent_case_id, d.aberta_em, d.fechada_em, d.desfecho
+      from public.demandas d
+     where d.organization_id = p_org
+       and d.fechada_em is not null
+       and d.fechada_em >= p_from
+       and d.fechada_em <  p_to
   ),
+  -- Turnos: mensagens de TODAS as conversas da demanda (N:N), dentro da vida
+  -- dela. Uma demanda que atravessou dois canais soma os dois.
   turnos as (
     select d.id,
            (select count(*)
-              from public.messages m
-             where m.organization_id = p_org
-               and m.conversation_id = d.conversation_id
-               and m.sent_at >= d.opened_at
-               and m.sent_at <  d.closed_at) as n
-      from demandas d
+              from public.demanda_conversas dc
+              join public.messages m
+                on m.conversation_id = dc.conversation_id
+               and m.organization_id = p_org
+               and m.sent_at >= d.aberta_em
+               and m.sent_at <  d.fechada_em
+             where dc.demanda_id = d.id) as n
+      from demandas_j d
+  ),
+  -- Insistência: só existe onde houve caso. O payload declara o denominador
+  -- próprio (`demandas_com_caso`) para o número não ser lido como se fosse
+  -- sobre o total.
+  insistencia as (
+    select avg(c.followup_attempts)::float8 as media,
+           max(c.followup_attempts)         as maximo,
+           count(*)                         as base
+      from demandas_j d
+      join public.agent_cases c on c.id = d.agent_case_id
   ),
   humano as (
     select e.case_id, count(*) as intervencoes, min(e.created_at) as primeiro_toque
       from public.agent_case_events e
-      join demandas d on d.id = e.case_id
+      join demandas_j d on d.agent_case_id = e.case_id
      where e.organization_id = p_org and e.actor_kind = 'human'
      group by e.case_id
   ),
   espera_fila as (
-    select extract(epoch from (h.primeiro_toque - d.opened_at)) as segundos
-      from demandas d join humano h on h.case_id = d.id
-     where h.primeiro_toque > d.opened_at
+    select extract(epoch from (h.primeiro_toque - d.aberta_em)) as segundos
+      from demandas_j d join humano h on h.case_id = d.agent_case_id
+     where h.primeiro_toque > d.aberta_em
   ),
   retrabalho as (
     select count(distinct e.case_id) as n
       from public.agent_case_events e
-      join demandas d on d.id = e.case_id
+      join demandas_j d on d.agent_case_id = e.case_id
      where e.organization_id = p_org
        and (e.kind = 'escalated' or e.human_action = 'escalate')
   ),
@@ -9259,94 +9481,74 @@ as $$
       from public.conversations cv
      where cv.organization_id = p_org and cv.last_outbound_at is not null
   ),
-  -- FASE 3 — cada mensagem do cliente ao lado da ANTERIOR dele na mesma
-  -- conversa. `lag` mantém isto O(n): comparar todas com todas seria O(n²) e o
-  -- painel morreria numa org com volume real.
+  -- INVARIANTE 4, agora VERIFICÁVEL: demanda aberta sem próximo passo é o
+  -- vazamento que a doutrina proíbe. Antes da 0119 isto não era enumerável.
+  sem_proximo_passo as (
+    select count(*) as n
+      from public.demandas d
+     where d.organization_id = p_org
+       and d.fechada_em is null
+       and d.proximo_passo is null
+  ),
+  demandas_abertas as (
+    select count(*) as n from public.demandas d
+     where d.organization_id = p_org and d.fechada_em is null
+  ),
   inbounds as (
-    select
-      m.conversation_id,
-      m.sent_at,
-      m.body,
-      lag(m.body)    over (partition by m.conversation_id order by m.sent_at) as body_anterior,
-      lag(m.sent_at) over (partition by m.conversation_id order by m.sent_at) as sent_at_anterior
+    select m.conversation_id, m.sent_at, m.body,
+           lag(m.body)    over (partition by m.conversation_id order by m.sent_at) as body_anterior,
+           lag(m.sent_at) over (partition by m.conversation_id order by m.sent_at) as sent_at_anterior
       from public.messages m
-     where m.organization_id = p_org
-       and m.direction = 'inbound'
-       and m.body is not null
-       and m.sent_at >= p_from
-       and m.sent_at <  p_to
+     where m.organization_id = p_org and m.direction = 'inbound' and m.body is not null
+       and m.sent_at >= p_from and m.sent_at < p_to
   ),
   repeticao as (
     select
       count(*) filter (
         where i.body_anterior is not null
-          -- Só conta como REPERGUNTA se nós respondemos no meio. Sem esta
-          -- condição, as três mensagens seguidas que a pessoa manda de uma vez
-          -- (que são complementares, não repetidas) inflariam o número.
-          and exists (
-            select 1 from public.messages o
-             where o.organization_id = p_org
-               and o.conversation_id = i.conversation_id
-               and o.direction = 'outbound'
-               and o.sent_at > i.sent_at_anterior
-               and o.sent_at < i.sent_at
-          )
+          and exists (select 1 from public.messages o
+                       where o.organization_id = p_org and o.conversation_id = i.conversation_id
+                         and o.direction = 'outbound'
+                         and o.sent_at > i.sent_at_anterior and o.sent_at < i.sent_at)
           and public.fn_atrito_jaccard(i.body, i.body_anterior) >= p_repeticao_min
       ) as repetidas,
-      -- Denominador: perguntas que TIVERAM resposta nossa antes — as únicas em
-      -- que reperguntar é possível.
       count(*) filter (
         where i.body_anterior is not null
-          and exists (
-            select 1 from public.messages o
-             where o.organization_id = p_org
-               and o.conversation_id = i.conversation_id
-               and o.direction = 'outbound'
-               and o.sent_at > i.sent_at_anterior
-               and o.sent_at < i.sent_at
-          )
+          and exists (select 1 from public.messages o
+                       where o.organization_id = p_org and o.conversation_id = i.conversation_id
+                         and o.direction = 'outbound'
+                         and o.sent_at > i.sent_at_anterior and o.sent_at < i.sent_at)
       ) as com_resposta_no_meio
       from inbounds i
   ),
-  -- ESPERA NÃO COMUNICADA: a pessoa falou e ficou sem NENHUMA palavra nossa por
-  -- mais que a régua. Não depende de prazo prometido (que o sistema ainda não
-  -- conhece — cap. 6.6) e mede o que dói: o silêncio, não o atraso.
   espera_calada as (
-    select
-      count(*) filter (where prox.espera_s > p_espera_horas * 3600) as caladas,
-      count(*)                                                       as com_resposta,
-      percentile_cont(0.9) within group (order by prox.espera_s)     as p90_s
+    select count(*) filter (where prox.espera_s > p_espera_horas * 3600) as caladas,
+           count(*) as com_resposta,
+           percentile_cont(0.9) within group (order by prox.espera_s) as p90_s
       from (
         select extract(epoch from (
                  (select min(o.sent_at) from public.messages o
-                   where o.organization_id = p_org
-                     and o.conversation_id = m.conversation_id
-                     and o.direction = 'outbound'
-                     and o.sent_at > m.sent_at)
-                 - m.sent_at)) as espera_s
+                   where o.organization_id = p_org and o.conversation_id = m.conversation_id
+                     and o.direction = 'outbound' and o.sent_at > m.sent_at) - m.sent_at)) as espera_s
           from public.messages m
-         where m.organization_id = p_org
-           and m.direction = 'inbound'
-           and m.sent_at >= p_from
-           and m.sent_at <  p_to
+         where m.organization_id = p_org and m.direction = 'inbound'
+           and m.sent_at >= p_from and m.sent_at < p_to
       ) prox
      where prox.espera_s is not null
   ),
   envios as (
-    select
-      count(*) filter (where m.sent_via = 'ai')              as por_ia,
-      count(*) filter (where m.sent_via = 'user')            as por_humano_no_sistema,
-      count(*) filter (where m.sent_via = 'external_device') as por_humano_fora
+    select count(*) filter (where m.sent_via = 'ai')              as por_ia,
+           count(*) filter (where m.sent_via = 'user')            as por_humano_no_sistema,
+           count(*) filter (where m.sent_via = 'external_device') as por_humano_fora
       from public.messages m
      where m.organization_id = p_org and m.direction = 'outbound'
        and m.sent_at >= p_from and m.sent_at < p_to
   ),
   vetos as (
     select count(*) filter (where t.vetoed_gate is not null) as vetados,
-           count(distinct t.job_id)                          as execucoes
+           count(distinct t.job_id) as execucoes
       from public.before_send_traces t
-     where t.organization_id = p_org
-       and t.created_at >= p_from and t.created_at < p_to
+     where t.organization_id = p_org and t.created_at >= p_from and t.created_at < p_to
   ),
   descadastros as (
     select count(*) as n from public.contacts c
@@ -9367,18 +9569,22 @@ as $$
   )
   select jsonb_build_object(
     'escopo', jsonb_build_object(
-      'demandas', (select count(*) from demandas),
-      'de',  p_from,
-      'ate', p_to,
-      'abandono_horas',  p_abandono_horas,
-      'repeticao_min',   p_repeticao_min,
-      'espera_horas',    p_espera_horas
+      'demandas',            (select count(*) from demandas_j),
+      'demandas_com_caso',   (select base from insistencia),
+      'demandas_abertas',    (select n from demandas_abertas),
+      'de', p_from, 'ate', p_to,
+      'abandono_horas', p_abandono_horas,
+      'repeticao_min',  p_repeticao_min,
+      'espera_horas',   p_espera_horas,
+      -- Marca a régua do denominador: quem comparar dois períodos precisa saber
+      -- se foram medidos sobre casos ou sobre demandas.
+      'denominador', 'demandas'
     ),
     'cliente', jsonb_build_object(
       'turnos_p50',        (select percentile_cont(0.5) within group (order by n) from turnos),
       'turnos_p90',        (select percentile_cont(0.9) within group (order by n) from turnos),
-      'insistencia_media', (select avg(followup_attempts)::float8 from demandas),
-      'insistencia_max',   (select max(followup_attempts) from demandas),
+      'insistencia_media', (select media  from insistencia),
+      'insistencia_max',   (select maximo from insistencia),
       'pedidos_de_humano', (select n from pedidos_humano),
       'descadastros',      (select n from descadastros),
       'abandonos',         (select abandonadas   from abandono),
@@ -9391,7 +9597,7 @@ as $$
     ),
     'empresa', jsonb_build_object(
       'intervencoes_por_demanda', (select avg(coalesce(h.intervencoes, 0))::float8
-                                     from demandas d left join humano h on h.case_id = d.id),
+                                     from demandas_j d left join humano h on h.case_id = d.agent_case_id),
       'espera_humana_p50_s',      (select percentile_cont(0.5) within group (order by segundos) from espera_fila),
       'espera_humana_p90_s',      (select percentile_cont(0.9) within group (order by segundos) from espera_fila),
       'retrabalho',               (select n from retrabalho),
@@ -9399,7 +9605,10 @@ as $$
       'execucoes_medidas',        (select execucoes from vetos),
       'envios_por_ia',            (select por_ia                from envios),
       'envios_humano_no_sistema', (select por_humano_no_sistema from envios),
-      'envios_humano_fora',       (select por_humano_fora       from envios)
+      'envios_humano_fora',       (select por_humano_fora       from envios),
+      -- O invariante 4 vira NÚMERO na tela: demanda aberta sem próximo passo é
+      -- vazamento, e vazamento invisível é o que a doutrina inteira combate.
+      'demandas_sem_proximo_passo', (select n from sem_proximo_passo)
     ),
     'eficiencia', jsonb_build_object(
       'ganhos',   (select ganhos   from eficiencia),
@@ -9412,6 +9621,7 @@ revoke all     on function public.fn_atrito_metrics(uuid, timestamptz, timestamp
 revoke execute on function public.fn_atrito_metrics(uuid, timestamptz, timestamptz, int, float8, int) from anon;
 grant  execute on function public.fn_atrito_metrics(uuid, timestamptz, timestamptz, int, float8, int)
   to authenticated, service_role;
+
 
 
 

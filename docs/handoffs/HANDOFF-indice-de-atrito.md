@@ -10,7 +10,7 @@
 | **Branch** | `feat/indice-de-atrito` (empilhada sobre `docs/doutrina-sistema-vivo-manual`) |
 | **Spec** | [`docs/specs/16-spec-indice-de-atrito.md`](../specs/16-spec-indice-de-atrito.md) |
 | **Doutrina** | [`docs/doctrine/sistema-vivo/03-medida-do-proposito.md`](../doctrine/sistema-vivo/03-medida-do-proposito.md) |
-| **Fase** | 3 de 4 — Fases 1, 2 e 3 FECHADAS e provadas na tela |
+| **Fase** | 4 de 4 — banco e testes provados; **prova de tela da Fase 4 PENDENTE** |
 | **Atualizado** | 2026-08-06 |
 
 ---
@@ -201,6 +201,60 @@ Reformulação com outro vocabulário ("qual o prazo" → "quanto tempo demora")
 **0.00** e escapa. Quando houver embedding sem env opcional, esta camada vira o
 filtro barato da frente e o vetor decide o resto. Um invariante guarda esse
 limite para que ninguém "conserte" o número baixando o limiar sem recalibrar.
+
+---
+
+## Fase 4 — a demanda como entidade, e o denominador definitivo (2026-08-06)
+
+Esta fase não é "mais uma métrica": ela arrasta o **capítulo 5 da doutrina**.
+
+### 0119 — a entidade
+
+O propósito é resolver demandas, e a unidade do propósito não existia. Medido:
+`agent_cases` tinha 7 linhas e **zero com `lead_id`** — é caso de ESCALADA
+(nasce só de handoff, 1:1 com conversa, não conhece o negócio).
+
+`demandas` + `demanda_conversas` (N:N). Dono nunca vazio; próximo passo é
+**campo**, não derivação; desfecho enumerado incluindo `encerrada_pelo_cliente`
+e `expirada_sem_resposta`. Passo 1 do cap. 5 §5.6: **cria ao lado, nada é
+removido**. Passo 2: deriva o passado por **regra escrita** (R1 casos, R2
+conversas sem caso), nunca por heurística.
+
+Provado: 12 demandas derivadas (7 de caso, 5 de conversa), 12 vínculos N:N.
+Idempotente — testado com `drop`+re-apply E com re-apply sobre banco populado.
+
+### 0120 — o denominador
+
+O índice deixa de contar sobre casos (6) e passa a contar sobre demandas (5).
+Os números mudam e **não é regressão**: antes media-se a fatia difícil, agora o
+todo. Índice que só olha casos escalados superestima o atrito médio.
+
+Insistência, toque humano e retrabalho continuam vindo de `agent_cases` pelo
+ponteiro `demandas.agent_case_id`, e o payload declara `demandas_com_caso` como
+denominador PRÓPRIO deles — medir insistência sobre o total diluiria o sinal no
+lugar exato onde a spec 16 nasceu.
+
+### O ganho maior não era o denominador
+
+**O invariante 4 da doutrina virou NÚMERO.** "Nenhuma demanda sem próximo
+passo" era verificável em teoria desde que foi escrito; agora é medida na tela:
+`demandas_sem_proximo_passo` = **7 de 7 abertas** no banco de referência. Antes
+da 0119 isso não era sequer enumerável.
+
+### Gate que funcionou
+
+Ao trocar o denominador, **4 invariantes quebraram na hora** — a fixture criava
+casos e a função passou a contar demandas. Não foi acidente: foi o gate
+detectando a troca. Fixture atualizada, 20/20.
+
+### ⚠️ PENDENTE nesta fase
+
+- **Prova de tela da Fase 4** (o protocolo do repo exige, e ela não foi feita).
+- **Passo 3 do cap. 5**: criar demanda no ponto de entrada real. Hoje só existe
+  a derivação do passado — conversa nova ainda não abre demanda sozinha.
+- **Passo 4 do cap. 5**: migrar os demais consumidores (Radar de Risco, inbox).
+- Sem isso, `demandas` é uma entidade correta que **para de crescer** — e uma
+  peça que só recebe é ilha pelo invariante 1.
 
 ---
 
