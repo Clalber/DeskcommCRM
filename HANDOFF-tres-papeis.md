@@ -413,7 +413,9 @@ Até lá, o que está provado é o **mecanismo** (a ferramenta e o nome somem do
 | 12 | **~78 sondas** ainda leem `.env.local` do disco (`tests/*.ts`, `scripts/sonda-*`, `scripts/prova-*`) | os **16 seeds** foram migrados e há gate; sondas são disparadas à mão, com alguém olhando — e no worktree sem `.env.local` falham alto | quando alguém tocar numa |
 | 14 | Taxa **total** (com ferramentas EXECUTADAS) — o que calibraria o controle | exige MCP real contra dados de verdade: worker + banco | quando houver ambiente |
 | 15 | 3 nativas sem equivalente no catálogo (`save_lead_note`, `open_human_case`, `provide_case_update`) | expor equivalentes é decisão de produto, não de refactor | quando o catálogo crescer |
-| 13 | Fixtures de e2e na produção (`e2e-test-org`, `e2e-tenant-b`, 4 usuários `@deskcomm.test`) | remover é apagar dado em produção — decisão do Rafael, não minha | aguardando decisão |
+| 13 | ~~Fixtures de e2e na produção~~ | ✅ **removidas** em 2026-08-06 — 2 orgs, 5 usuários, 57 contatos, 144 mensagens, 56 leads, 18 agentes | — |
+| 16 | 🐛 **Não é possível deletar uma organização** | o trigger de audit insere em `api_audit_log` referenciando a org que o cascade acabou de apagar → FK violation | a investigar |
+| 17 | 🐛 **Não é possível deletar um agente que é dono de lead** | o `SET NULL` em `crm_leads.owner_agent_id` viola `crm_leads_owner_kind_coherence` (`owner_kind='ai'` sem agente) | a investigar |
 
 ---
 
