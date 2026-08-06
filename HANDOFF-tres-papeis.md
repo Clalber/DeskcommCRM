@@ -6,6 +6,9 @@
 > Contrato: [`docs/specs/16-spec-tres-papeis-do-agente.md`](docs/specs/16-spec-tres-papeis-do-agente.md)
 > Doutrina: [`docs/doctrine/separacao-fala-e-operacao.md`](docs/doctrine/separacao-fala-e-operacao.md)
 > Branch: `feat/tres-papeis-do-agente` · Base: `origin/main` = `0a85d251`
+> **Worktree dedicado:** `/Users/rafaelmelgaco/DeskcommCRM-tres-papeis` — a árvore principal foi
+> trocada por outra sessão duas vezes no meio do trabalho, e o worktree acabou com a disputa.
+> Ele **não tem `.env.local`**, e isso é uma proteção, não um detalhe (ver Passo 5 abaixo).
 
 ---
 
@@ -211,6 +214,44 @@ São coisas diferentes e a diferença está declarada.
 
 ---
 
+## 🔴 A suíte E2E escrevia no banco de PRODUÇÃO · `783ee85b`
+
+Descoberto ao destravar a prova de tela. **Não é específico deste épico.**
+
+`.env.local` de um checkout de trabalho aponta para a nuvem, e o Playwright sobe o app com
+`next start`, que o carrega. A suíte criava organizações, usuários e agentes de teste no banco real
+— passando verde. A org `e2e-test-org` está na produção **desde 2026-04-29**: não chegou lá por
+acidente de uma sessão, chegou porque *era o comportamento normal*.
+
+**Isolar o `webServer` não bastava** — e essa foi a descoberta que importa. Os scripts de seed leem
+`.env.local` **direto do disco**, ignorando `process.env`, e as specs os chamam sozinhas no meio do
+teste. O sintoma que denunciou: o factor TOTP em `.e2e-creds.json` não existia no banco local,
+porque tinha sido criado na nuvem. **93 arquivos** têm esse padrão.
+
+### As três camadas do conserto
+
+| # | camada | o que impede |
+|---|---|---|
+| 1 | `.env.e2e` + injeção no `webServer`, com guard que **recusa** se o arquivo faltar | o servidor falar com a nuvem |
+| 2 | `pnpm e2e:build` | as `NEXT_PUBLIC_*` de produção ficarem **dentro do bundle do browser** |
+| 3 | `scripts/lib/env-de-teste.ts` — `process.env` vence, e todo seed **anuncia o destino** | os seeds escaparem do isolamento |
+
+A camada 2 existe porque `node --env-file` **não serve**: o `next build` cria Workers e o Node
+recusa propagar a flag (`ERR_WORKER_INVALID_EXEC_ARGV`). O script prova as **duas** direções — host
+de produção ausente do bundle **e** host local presente. Sem o controle positivo, "não achei
+produção" pode ser apenas um grep que não acha nada.
+
+### O ganho estrutural do worktree
+
+Este worktree **não tem `.env.local`**. Um script que o leia do disco falha **alto** (`ENOENT`) em
+vez de escrever na nuvem. O isolamento deixa de depender de disciplina e passa a depender da
+ausência do arquivo — que é o tipo de garantia que não esquece.
+
+**Prova:** `agente-novo-e-uso` **5/5 passed** contra o banco LOCAL (era **0/5**, por MFA — o factor
+do banco não batia com o do arquivo, justamente porque o seed ia para a nuvem).
+
+---
+
 ## Deixado para trás (declarado, não escondido)
 
 | # | o quê | por quê ficou | onde fecha |
@@ -225,7 +266,9 @@ São coisas diferentes e a diferença está declarada.
 | 8 | **O Operador ainda não tem MÃO** | o passo 4 entrega o CANAL (job, disparo, decisão, config); as ferramentas de escrita entram junto com a UI que as configura | passo 5 |
 | 9 | Nenhum turno de produção observado com worker real | a projeção e o Operador estão provados por unit + payload real, não por execução ponta a ponta | passo 5, junto com a prova de tela |
 | 10 | **Botão `Testar` ainda não exercita guardrail nenhum** | fatia 3 do passo 5, não iniciada — `runAgent` deprecated não importa `runBeforeSend` | passo 5, fatia 3 |
-| 11 | Jornada de usuário na tela nova (e2e) | bloqueada pelo `.env.local` apontando para a nuvem (ver 🚨 acima) | quando houver `.env.e2e` |
+| 11 | Jornada de usuário na tela **nova** (papéis) | o `.env.e2e` destravou a infra; falta escrever o spec da aba do Operador | próxima sessão |
+| 12 | **~14 seeds e ~78 sondas ainda leem `.env.local` do disco** | só `seed-e2e-credentials` foi migrado (é o que a suíte chama sempre); no worktree sem `.env.local` eles falham alto | migrar os `seed-e2e-*` + teste que congela a dívida |
+| 13 | Fixtures de e2e na produção (`e2e-test-org`, `e2e-tenant-b`, 4 usuários `@deskcomm.test`) | remover é apagar dado em produção — decisão do Rafael, não minha | aguardando decisão |
 
 ---
 
