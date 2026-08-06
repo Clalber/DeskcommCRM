@@ -20,7 +20,7 @@
 | 2 | Contrato da declaração | ✅ **feito** `e167b362` | 16 testes · 5 sabotagens · `test:db` verde |
 | 3 | Projeção do contexto | ✅ **feito** (este commit) | 18 testes, 3 contra turnos REAIS |
 | 4 | Operador por evento | ✅ **feito** `35c88346` | 12 testes · 3 sabotagens com contagem prevista · `test:db` verde |
-| 5 | UI dos três papéis + `Testar` no caminho real | 🟡 **parcial** `9b26ad76`·`2b85047e`·`1b9649c6` | 23 testes · **e2e 7/7 pela tela** · falta só o botão `Testar` |
+| 5 | UI dos três papéis + `Testar` no caminho real | ✅ **feito** `9b26ad76`·`2b85047e`·`1b9649c6`·`1e19ef4a` | 29 testes · **e2e 7/7 pela tela** · 4 sabotagens no `Testar` |
 | 6 | Tirar tools de escrita do Conversador | ⬜ | — |
 
 ---
@@ -286,6 +286,32 @@ cada 5 min — o mesmo que protege a conta de um cliente real. A bateria caía n
 aparecia como *"campo de MFA não apareceu"*, parecendo defeito de produto onde havia limite de
 ambiente. Agora é **um** login numa página compartilhada: 7/7 em 1,8 min, contra 6/7 em 7,5 min.
 
+### O botão `Testar` para de mentir · `1e19ef4a`
+
+Ele mostrava uma resposta que **nenhum gate examinou** — a rota chama o runtime `@deprecated`, que
+não importa `runBeforeSend`, e a cadeia inteira está ausente do build do app Next.
+
+**O conserto não finge cobertura.** Seis dos dez gates dependem de estado que só existe no turno
+real (contadores de pacing, janela de cópias, carimbo da última inbound, ledger, base legal).
+Fabricar esse estado daria um veredito **inventado** — pior que veredito nenhum, porque tem
+aparência de prova. Então a avaliação cobre o que é decidível só com o texto (o gate de vocabulário
+interno, o mais caro pela medição) e **declara os outros nove na tela**, com o motivo de cada um.
+
+Os motivos são escritos para o **dono do negócio**: *"depende de quando o contato falou com você
+pela última vez"*, não *"depende do send_ledger"*. Há teste varrendo jargão nessa lista — repetir na
+tela de configuração o vocabulário que a spec 16 existe para matar seria irônico.
+
+A lista é **amarrada a `BEFORE_SEND_GATES`**: acrescentar um gate à cadeia vermelha o teste e força
+decidir de que lado ele cai. O caminho do stub também avalia — um caminho sem avaliação voltaria a
+ser o verde que não olhou para nada, só que mais difícil de notar.
+
+| sabotagem | previsão | resultado |
+|---|---|---|
+| `passou` vira sempre `true` | 1 | **1 failed** ✅ |
+| some a lista de não-avaliados | ≥3 | **3 failed** ✅ |
+| jargão entra no motivo mostrado ao usuário | 1 | **1 failed** ✅ |
+| um gate some da lista, como se fosse avaliado | 1 | **1 failed** ✅ |
+
 ### O ganho estrutural do worktree
 
 Este worktree **não tem `.env.local`**. Um script que o leia do disco falha **alto** (`ENOENT`) em
@@ -310,7 +336,7 @@ do banco não batia com o do arquivo, justamente porque o seed ia para a nuvem).
 | 7 | Tudo medido só em `gpt-5.6-terra` | chave Anthropic da máquina sem crédito | — |
 | 8 | **O Operador ainda não tem MÃO** | o passo 4 entrega o CANAL (job, disparo, decisão, config); as ferramentas de escrita entram junto com a UI que as configura | passo 5 |
 | 9 | Nenhum turno de produção observado com worker real | a projeção e o Operador estão provados por unit + payload real, não por execução ponta a ponta | passo 5, junto com a prova de tela |
-| 10 | **Botão `Testar` ainda não exercita guardrail nenhum** | fatia 3 do passo 5, não iniciada — `runAgent` deprecated não importa `runBeforeSend` | passo 5, fatia 3 |
+| 10 | ~~Botão `Testar` sem guardrail~~ | ✅ **feito** — avalia o texto e declara os 9 gates que não consegue avaliar | — |
 | 11 | ~~Jornada de usuário na tela nova~~ | ✅ **feito** — `agente-papeis-operador.spec.ts`, 7/7 | — |
 | 12 | **~78 sondas** ainda leem `.env.local` do disco (`tests/*.ts`, `scripts/sonda-*`, `scripts/prova-*`) | os **16 seeds** foram migrados e há gate; sondas são disparadas à mão, com alguém olhando — e no worktree sem `.env.local` falham alto | quando alguém tocar numa |
 | 13 | Fixtures de e2e na produção (`e2e-test-org`, `e2e-tenant-b`, 4 usuários `@deskcomm.test`) | remover é apagar dado em produção — decisão do Rafael, não minha | aguardando decisão |
