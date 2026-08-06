@@ -10,7 +10,7 @@
 | **Branch** | `feat/indice-de-atrito` (empilhada sobre `docs/doutrina-sistema-vivo-manual`) |
 | **Spec** | [`docs/specs/16-spec-indice-de-atrito.md`](../specs/16-spec-indice-de-atrito.md) |
 | **Doutrina** | [`docs/doctrine/sistema-vivo/03-medida-do-proposito.md`](../doctrine/sistema-vivo/03-medida-do-proposito.md) |
-| **Fase** | 4 de 4 — banco e testes provados; **prova de tela da Fase 4 PENDENTE** |
+| **Fase** | 4 de 4 — TODAS provadas, inclusive na tela |
 | **Atualizado** | 2026-08-06 |
 
 ---
@@ -247,9 +247,25 @@ Ao trocar o denominador, **4 invariantes quebraram na hora** — a fixture criav
 casos e a função passou a contar demandas. Não foi acidente: foi o gate
 detectando a troca. Fixture atualizada, 20/20.
 
+### Provado na tela
+
+Texto medido no painel, com login real:
+
+```
+Base: 5 demandas encerradas nos últimos 30 dias, e 7 ainda abertas.
+   → a ressalva "entre as que passaram por atendimento humano" SAIU
+
+Demandas abertas sem próximo passo
+De 7 abertas agora. Cada uma é alguém esperando sem que nada
+esteja marcado para acontecer.
+   → o invariante 4 da doutrina, na tela, como número
+```
+
+Zero erros de console. As métricas das Fases 1–3 seguem intactas
+(repergunta 27,3% como piso, espera calada 6,5%, abandono, pior caso).
+
 ### ⚠️ PENDENTE nesta fase
 
-- **Prova de tela da Fase 4** (o protocolo do repo exige, e ela não foi feita).
 - **Passo 3 do cap. 5**: criar demanda no ponto de entrada real. Hoje só existe
   a derivação do passado — conversa nova ainda não abre demanda sozinha.
 - **Passo 4 do cap. 5**: migrar os demais consumidores (Radar de Risco, inbox).
