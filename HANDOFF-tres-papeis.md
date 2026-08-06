@@ -20,7 +20,7 @@
 | 2 | Contrato da declaração | ✅ **feito** `e167b362` | 16 testes · 5 sabotagens · `test:db` verde |
 | 3 | Projeção do contexto | ✅ **feito** (este commit) | 18 testes, 3 contra turnos REAIS |
 | 4 | Operador por evento | ✅ **feito** `35c88346` | 12 testes · 3 sabotagens com contagem prevista · `test:db` verde |
-| 5 | UI dos três papéis + `Testar` no caminho real | 🟡 **parcial** `9b26ad76`+`2b85047e` | 16 testes · 4 sabotagens com contagem prevista · **prova de tela BLOQUEADA, ver abaixo** |
+| 5 | UI dos três papéis + `Testar` no caminho real | 🟡 **parcial** `9b26ad76`·`2b85047e`·`1b9649c6` | 23 testes · **e2e 7/7 pela tela** · falta só o botão `Testar` |
 | 6 | Tirar tools de escrita do Conversador | ⬜ | — |
 
 ---
@@ -260,6 +260,32 @@ mais próximo. Escrever em produção não é reparável por code review depois 
 **Prova:** os 16 seeds **executados de verdade**, 16/16 anunciando `escrevendo em LOCAL`. Typecheck
 sozinho não bastava: ele já deixou passar um `env is not defined` nesta mesma série.
 
+### A prova pela TELA · `1b9649c6`
+
+`tests/e2e/agente-papeis-operador.spec.ts` — **7/7 passed em 1,8 min** contra o Supabase local.
+
+O caso central é `salvar → RECARREGAR → conferir`. Teste de componente mede o componente; entre a
+escolha do usuário e o banco existem o formulário, a server action, o Zod, o `VERSION_COLUMNS` de
+**seis** arquivos e o `SELECT` que relê — cada um pode perder um campo sem quebrar unidade nenhuma.
+
+**Sabotagem que prova o teste:** removi `operator_enabled` do `SELECT` de **um** dos seis arquivos
+(`page.tsx`) — o defeito exato que já aconteceu com `cases_enabled` e que eu repeti nesta série. O
+spec reprovou, e a mensagem apontou o culpado:
+
+> *o papel voltou desligado depois do refresh — algum ponto do caminho não carrega
+> `operator_enabled` (ver agent-version-columns-drift.test.ts)*
+
+### Dois achados ao escrever o spec
+
+**🐛 `default_agent_id` do seed é um `rag_bot`**, e a tela de papéis é do `mcp_agent`. Apontar para
+ele fazia o spec falhar como se a aba não existisse. O spec passou a semear a **própria** precondição
+— depender de um `mcp_agent` que outra spec deixou é depender da ordem alfabética dos arquivos.
+
+**🐛 Um login por teste estourava o teto do produto.** 7 casos = 7 logins, contra um teto de 60/IP a
+cada 5 min — o mesmo que protege a conta de um cliente real. A bateria caía no 3º caso e a falha
+aparecia como *"campo de MFA não apareceu"*, parecendo defeito de produto onde havia limite de
+ambiente. Agora é **um** login numa página compartilhada: 7/7 em 1,8 min, contra 6/7 em 7,5 min.
+
 ### O ganho estrutural do worktree
 
 Este worktree **não tem `.env.local`**. Um script que o leia do disco falha **alto** (`ENOENT`) em
@@ -285,7 +311,7 @@ do banco não batia com o do arquivo, justamente porque o seed ia para a nuvem).
 | 8 | **O Operador ainda não tem MÃO** | o passo 4 entrega o CANAL (job, disparo, decisão, config); as ferramentas de escrita entram junto com a UI que as configura | passo 5 |
 | 9 | Nenhum turno de produção observado com worker real | a projeção e o Operador estão provados por unit + payload real, não por execução ponta a ponta | passo 5, junto com a prova de tela |
 | 10 | **Botão `Testar` ainda não exercita guardrail nenhum** | fatia 3 do passo 5, não iniciada — `runAgent` deprecated não importa `runBeforeSend` | passo 5, fatia 3 |
-| 11 | Jornada de usuário na tela **nova** (papéis) | o `.env.e2e` destravou a infra; falta escrever o spec da aba do Operador | próxima sessão |
+| 11 | ~~Jornada de usuário na tela nova~~ | ✅ **feito** — `agente-papeis-operador.spec.ts`, 7/7 | — |
 | 12 | **~78 sondas** ainda leem `.env.local` do disco (`tests/*.ts`, `scripts/sonda-*`, `scripts/prova-*`) | os **16 seeds** foram migrados e há gate; sondas são disparadas à mão, com alguém olhando — e no worktree sem `.env.local` falham alto | quando alguém tocar numa |
 | 13 | Fixtures de e2e na produção (`e2e-test-org`, `e2e-tenant-b`, 4 usuários `@deskcomm.test`) | remover é apagar dado em produção — decisão do Rafael, não minha | aguardando decisão |
 
