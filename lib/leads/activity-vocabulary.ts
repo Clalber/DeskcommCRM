@@ -18,6 +18,10 @@
  * aceita; quem escreve daqui é que fica preso ao vocabulário.
  */
 export type ActivityType =
+  // Spec 17: o lead nasceu da primeira mensagem. Sem esta linha na timeline, o
+  // card aparece no kanban sem que ninguém saiba de onde veio — e "apareceu
+  // sozinho" é como se perde a confiança num automatismo.
+  | "lead_created"
   | "stage_changed"
   | "note"
   | "ai_turn"
@@ -37,6 +41,7 @@ export type ActivityType =
   | "demand_closed";
 
 export const ACTIVITY_LABELS: Record<ActivityType, string> = {
+  lead_created: "Entrou pelo WhatsApp",
   stage_changed: "Mudou de estágio",
   note: "Anotação",
   ai_turn: "Atendimento da IA",

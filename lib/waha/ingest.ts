@@ -16,6 +16,7 @@ import type { createAdminClient } from "@/lib/supabase/admin";
 import { ackToStatus } from "@/lib/types/messaging";
 import { bareWaMessageId, chatIdFromWaMessageId } from "@/lib/waha/message-id";
 import { logger } from "@/lib/logger";
+import { garantirLeadDaConversa } from "@/lib/leads/nascimento-do-lead";
 
 type Admin = ReturnType<typeof createAdminClient>;
 
@@ -458,6 +459,44 @@ async function handleInbound(
     requestId,
     metadata: { conversation_id: conversationId, type: p.type, external_id: p.id },
   });
+
+  // ── A CONVERSA VIRA LEAD (spec 17) ──────────────────────────────────────────
+  //
+  // DEPOIS do STOP acima, de propósito: quem acabou de pedir para sair não vira
+  // oportunidade nova — a ordem aqui é o que garante isso, porque o bloqueio é
+  // gravado logo acima e a função relê o contato.
+  //
+  // ANTES do dispatcher abaixo, também de propósito: o turno do agente resolve o
+  // lead ativo do contato, e criar depois faria o primeiro turno rodar sem lead —
+  // exatamente o buraco que esta peça existe para fechar.
+  //
+  // Fire-and-forget: o CRM não pode derrubar a ingestão de uma mensagem de
+  // cliente. Falha vira log, e a mensagem entra do mesmo jeito.
+  try {
+    const nascimento = await garantirLeadDaConversa(admin, {
+      organizationId: session.organization_id,
+      contactId,
+      conversationId,
+      nomeDoContato: notifyNameOf(p),
+    });
+    // Os dois desfechos são registrados. Sem a linha do "não criou", o silêncio
+    // de "já existia" e o de "a organização não tem funil configurado" têm a
+    // mesma cara — e o segundo é falha de configuração que alguém precisa ver.
+    logger.info(
+      nascimento.criado ? "waha.ingest: lead criado da conversa" : "waha.ingest: lead nao criado",
+      {
+        organization_id: session.organization_id,
+        conversation_id: conversationId,
+        ...(nascimento.criado ? { lead_id: nascimento.leadId } : { motivo: nascimento.motivo }),
+      },
+    );
+  } catch (err) {
+    logger.error("waha.ingest: nascimento do lead falhou (a mensagem entra assim mesmo)", {
+      organization_id: session.organization_id,
+      conversation_id: conversationId,
+      error: err instanceof Error ? err.message.slice(0, 120) : "unknown",
+    });
+  }
 
   // Dispara o agent-dispatcher worker (fire-and-forget; falha não quebra o 200).
   if (insertedMessage?.id) {
