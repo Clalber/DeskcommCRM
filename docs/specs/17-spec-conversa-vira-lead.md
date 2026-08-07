@@ -98,6 +98,44 @@ aberto para ele. Cada recusa é registrada — silêncio não distingue "não de
 
 ---
 
+## 4b. O dado que o cliente diz na conversa — fila, não escrita direta
+
+> Decidido pelo Rafael em 2026-08-06, depois de a medição mostrar que não havia política nenhuma.
+
+**O Operador PROPÕE; um humano CONFIRMA.** A IA não grava dado de contato direto. O problema não é
+hipotético: `contactPatchSchema` aceita e-mail livre, o handler não lê o valor anterior antes de
+sobrescrever, e o audit grava só os NOMES dos campos alterados — um e-mail dito de brincadeira
+substituiria o correto e **o valor antigo não existiria em lugar nenhum**.
+
+Note a assimetria que ficaria sem esta decisão: o `pushName` do WhatsApp é CONGELADO pelo
+`coalesce` do upsert, e o e-mail dito ao robô seria sobrescrevível à vontade.
+
+### Base legal — aplicada, não inventada
+
+A regra **L-05** já existe no catálogo e já define o vocabulário: categorias `marketing` /
+`transactional` / `profiling`, campo `contacts.consent.<categoria>.granted_at`. E a exceção dela diz
+que comunicação **`transactional` originada pelo próprio cliente** é dispensada de verificação.
+
+Um dado que a pessoa digita espontaneamente num atendimento **que ela iniciou** é exatamente esse
+caso. Logo: escopo `transactional`, `granted_at` = o instante da confirmação humana, `source` =
+quem confirmou e de onde veio.
+
+**Nada disso é formato novo.** `lib/lgpd/export-collector.ts:197-215` já LÊ
+`{escopo: {granted, granted_at, source}}` de `contacts.consent` — o leitor existe há tempo e o
+escritor nunca foi escrito. Preencher o que já é lido é o oposto de criar um segundo lugar para a
+mesma verdade.
+
+### O que a confirmação fecha, de graça
+
+| exigência | como a fila resolve |
+|---|---|
+| **L-06** — audit com `from/to` em mutação de `contacts.email` (exceção: "Nenhuma") | a proposta guarda o valor anterior; a confirmação tem os dois lados |
+| **L-04** — anonimização é irreversível | proposta pendente sobre contato anonimizado é descartada, não aplicada |
+| invariante 3 (log visível) | a pendência aparece na Central, não só no banco |
+| invariante 7 (todo laço se fecha) | rejeitar é sinal: o que o humano recusa diz onde a IA erra |
+
+---
+
 ## 5. Escopo e regras do agente
 
 **Escopo:** o agente opera só nos funis marcados. Sem marcação, **nenhum** — falha fechada: um
