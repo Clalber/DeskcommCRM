@@ -181,15 +181,25 @@ export async function getLeadHandler(
   ctx: HandlerCtx,
   leadId: string,
 ): Promise<Record<string, unknown>> {
+  // ⚠️ `.eq("organization_id")` NÃO é redundante com a RLS — é o que segura o
+  // caminho do AGENTE. Esta função é chamada por dois lados com garantias
+  // opostas: pela rota HTTP com client de sessão (a RLS protege sozinha) e pelas
+  // ferramentas MCP com `createAdminClient()` (lib/mcp/server.ts:39), que
+  // **bypassa RLS**. Sem esta linha, o agente de uma organização LIA o negócio
+  // de outra — medido, não suposto: `tests/invariants/mcp-nao-alcanca-outro-tenant.test.ts`
+  // reprovava aqui antes deste filtro. É o anti-pattern 10 do CLAUDE.md.
   const { data, error } = await supabase
     .from("crm_leads")
     .select(LEAD_COLS)
+    .eq("organization_id", ctx.organization_id)
     .eq("id", leadId)
     .maybeSingle();
   if (error) {
     throw new ApiError(500, "internal_error", undefined, ctx.requestId, error.message);
   }
   if (!data) {
+    // 404, e não 403: dizer "existe, mas não é seu" confirmaria a existência de
+    // um recurso alheio a quem tentou adivinhar o id.
     throw new ApiError(404, "not_found", undefined, ctx.requestId, "Lead não encontrado.");
   }
   return data as Record<string, unknown>;
@@ -339,9 +349,15 @@ export async function updateLeadHandler(
   // contra isto, e uma lista fixa faria todo campo NOVO do patch cair contra
   // `undefined` e ser marcado como alterado em toda edicao — o mesmo defeito
   // que este select conserta, reaparecendo por outra porta em seis meses.
+  // ⚠️ Mesmo motivo do `getLeadHandler`: pelo MCP o client é service-role e a
+  // RLS não vale. Sem este filtro, o agente de uma organização REESCREVIA o
+  // negócio de outra — o teste de cross-tenant provou a escrita comparando o
+  // título depois. Pior: o audit era gravado sob `existing.organization_id`,
+  // ou seja, no log da VÍTIMA.
   const { data: existing, error: selErr } = await supabase
     .from("crm_leads")
     .select("*")
+    .eq("organization_id", ctx.organization_id)
     .eq("id", leadId)
     .maybeSingle();
 
@@ -372,9 +388,13 @@ export async function updateLeadHandler(
   }
   if (input.tags !== undefined) patch.tags = input.tags;
 
+  // O filtro entra AQUI TAMBÉM, e não só no SELECT acima: entre ler e escrever
+  // há uma janela, e defesa que depende de uma leitura anterior é defesa que
+  // some quando alguém reordena o código.
   const { data: updated, error: updErr } = await supabase
     .from("crm_leads")
     .update(patch)
+    .eq("organization_id", ctx.organization_id)
     .eq("id", leadId)
     .select(LEAD_COLS)
     .maybeSingle();
