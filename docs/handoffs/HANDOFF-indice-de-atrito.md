@@ -711,9 +711,85 @@ container → 1 → **1**.
 | 2 | Crases dentro de template literal na sonda | `tsc` reprovou — mesmo erro que já cometi com SQL em template literal |
 | 3 | **Duas imagens versionadas sem citação** no commit `3227bf81` | O gate `evidencia-citada` reprovou. O pre-commit não roda a suíte, então aquele commit deixou o CI vermelho e eu não vi |
 
+### Correção de um número que publiquei
+
+A mensagem do commit `c56416aa` diz **1819 unitários**. O real naquele SHA é
+**1818** — medido depois, com `git stash` e a árvore limpa em `c56416aa`.
+
+A causa não é aritmética: rodei a suíte com a árvore **ligeiramente diferente**
+da que foi commitada (antes do `rm` do protótipo e do stage final) e publiquei o
+número como se fosse do commit. Medir contra árvore em movimento é medir contra
+nada, e o erro passou porque o número vinha cercado de material medido com
+rigor. Régua para a próxima: número que sai num artefato público (commit, PR,
+handoff) é medido **depois** do stage, não antes.
+
+---
+
+## A `description` morta do catálogo — resolvida por remoção (2026-08-07)
+
+A dívida declarada duas seções acima virou trabalho. `lib/mcp/tools/catalogo/*.ts`
+declarava `description` em **51 capacidades**, o tipo a documentava como
+*"Texto tecnico entregue ao MODELO"*, os cabeçalhos de 7 arquivos repetiam
+*"`description` fala com o modelo"* — e **ninguém lia esse campo**.
+
+### Por que remover, e não sincronizar
+
+| caminho | por que não |
+|---|---|
+| fonte única (runtime passa a ler o catálogo) | mudaria o que **48 tools** dizem ao modelo. Risco alto, ganho zero |
+| gate de paridade com a dívida congelada | obriga manter dois textos sincronizados **para sempre**; a duplicata continua existindo para ser editada por engano |
+| **remover o campo** | mata a armadilha na raiz — não dá para editar o lugar errado se o lugar não existe |
+
+E a remoção **se auto-verifica**: tirei o campo do tipo e o `tsc` apontou cada
+leitura. Prova mais forte que qualquer grep.
+
+### O que o typecheck encontrou — a dívida não era teórica
+
+Um leitor, e o pior possível:
+`evidence/ia-360-w4/medicao-vazamento/remedir-com-operador.ts`, o script que
+mede vazamento de vocabulário do agente. A função dele se chama
+`descreverFerramentas` e o comentário diz **"A ferramenta como o modelo a vê:
+nome + descrição, que é o que pode vazar"** — e ele lia
+`TOOL_CATALOG.description`, exatamente o texto que o modelo **não** vê.
+
+**O que NÃO medi:** se isso muda o resultado daquela medição. O `name` da tool é
+idêntico nas duas fontes e é o vetor principal de vazamento, então o efeito pode
+ser nulo — mas não rodei. Corrigi a fonte (`allTools`) para a próxima rodada ler
+o que vai ao modelo, e deixei a ressalva escrita no próprio script. Não reabri a
+medição arquivada de outra branch.
+
+### O buraco que a remoção expôs
+
+`tests/unit/catalogo-servido.test.ts` testava a junção com **fixtures**
+(`description: "faz algo"`), nunca com o catálogo real. Ou seja: **nenhum gate
+garantia que uma capacidade servida tem descrição.** Esvaziar a `description` de
+um handler passaria calado — a tela mostraria a capacidade sem explicação e o
+modelo receberia uma ferramenta sem contrato, dois silêncios de uma vez.
+
+Caso novo: toda capacidade servida tem descrição não-vazia **e ela é idêntica à
+do handler**. A segunda metade é a que importa: se um dia reaparecer uma cópia no
+catálogo e a junção preferi-la, o gate reprova.
+
+| Sabotagem | Previsão | Resultado | |
+|---|---|---|---|
+| `description` de um handler vira `""` | 1 | **1** ✅ | primeira tentativa não sabotou nada: escrevi `description: "" \|\|`, e `"" \|\| "texto"` devolve o texto — instrumento quebrado, não gate fraco |
+| a junção passa a servir outro texto | 1 | **2** | reprovou o caso novo e mais um |
+
+### Saldo
+
+130 linhas removidas contra 63 acrescentadas em 9 arquivos. Os 7 cabeçalhos que
+afirmavam a falsidade foram reescritos com o que é verdade e **por que** o campo
+não existe mais — para ninguém "completar" o catálogo de volta. O
+`BRIEFING-ia-360.md`, que também declarava o campo como "vai para o MODELO",
+acompanhou.
+
+`typecheck 0` · `lint 0 errors` · **1819 unitários** (1818 no `c56416aa` + 1
+caso novo — desta vez medido com a árvore parada).
+
 ### Pendente
 
-- **A `description` morta do catálogo** — decisão de desenho (48 de 51 divergem).
+- Nada desta dívida. As pendências vivas são as do topo do arquivo
+  (`database.types.ts`, mapa de arquitetura) e as duas issues pré-existentes.
 
 ---
 
