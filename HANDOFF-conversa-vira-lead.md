@@ -180,9 +180,40 @@ impede o cliente já importado de virar um segundo contato ao escrever no WhatsA
   backfill leva `and is_anonymized = false` — sem isso, ele reverteria anonimizações (regra L-04,
   exceção "Nenhuma"). Tem caso de teste próprio.
 
+### As sabotagens da Fatia B — predição declarada antes de rodar
+
+| # | o que foi quebrado | previsto | medido |
+|---|---|---:|---:|
+| B1 | reencontro por `wa_lid` | 2 | **4** |
+| B2 | reencontro por telefone | 1 | **1** |
+| B3 | telefone SOBRESCREVE em vez de completar | 1 | **1** |
+| B4 | guarda `is_anonymized` do backfill | 1 | **0 → 1** |
+| B5 | âncora de dígitos do regex | 1 | **1** |
+| C1 | telefone volta na frente do lid no envio | 1 | **1** |
+| C2 | extrator aceita `@lid` como telefone | 1 | **1** |
+| C3 | extrator ignora a faixa E.164 | 1 | **1** |
+
+**B1 reprovou mais que o previsto, e o motivo importa:** eu tinha calculado que
+alguns casos "passariam por acidente" ao cair no INSERT. Não passam — o índice
+único `uniq_contacts_org_wa_lid` recusa o segundo INSERT com o mesmo lid, então
+a função estoura. O crédito era do índice, não do lookup; os dois trabalham.
+
+**B4 reprovou ZERO na primeira tentativa — e era o teste que estava errado.** Ele
+executava uma CÓPIA do `update` escrita dentro do próprio arquivo, então sabotar
+o `baseline.sql` não o afetava: eu testava a réplica, não o artefato que o
+self-hoster aplica. Agora o comando é EXTRAÍDO do baseline em tempo de teste
+(com guarda que estoura se achar zero ou mais de um).
+
+Corrigido isso, B4 **ainda** passava — e a segunda razão é outra: `Contato
+Anonimizado #<hex>` não casa com o regex ancorado em dígitos, ou seja, o regex
+sozinho já protegia e eu creditava a proteção à guarda. Foi preciso um caso que
+ISOLE a guarda (contato anonimizado com nome que CASA o regex) para que ela
+passe a ser vigiada de fato. Dois mecanismos redundantes, e o teste apontava
+para o errado.
+
 ### Medições
 
-`pnpm test:db` **75 arquivos / 508 testes** · `pnpm test:unit` 284 arquivos · typecheck e lint zerados.
+`pnpm test:db` **75 arquivos / 509 testes** · `pnpm test:unit` 284 arquivos · typecheck e lint zerados.
 19 casos novos entre `telefone-do-lid.test.ts` (banco) e `telefone-alternativo-do-payload.test.ts`
 (unit, com payloads TRANSCRITOS da produção — ninguém teria inventado o nome `remoteJidAlt`).
 

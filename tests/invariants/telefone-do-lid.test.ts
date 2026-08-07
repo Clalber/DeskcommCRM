@@ -1,5 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import pg from "pg";
+import * as fs from "node:fs";
+import * as path from "node:path";
 
 /**
  * O TELEFONE DO CONTATO @lid (migration 0122).
@@ -37,6 +39,32 @@ const pool = new pg.Pool({
   connectionString: `postgresql://postgres:postgres@127.0.0.1:${PORT}/postgres`,
   max: 3,
 });
+
+
+/**
+ * O backfill do rótulo legado, LIDO DO BASELINE — não copiado para cá.
+ *
+ * A primeira versão deste teste tinha o `update` escrito à mão dentro do caso.
+ * Ele passava, e continuou passando quando eu SABOTEI a guarda
+ * `and is_anonymized = false` no `baseline.sql`: o teste exercitava a própria
+ * cópia, não o artefato que o self-hoster aplica. Zero reprovações onde eu
+ * previa uma — foi assim que o furo apareceu.
+ *
+ * Agora o comando é extraído do arquivo. Mexer no baseline mexe no que este
+ * teste roda; divergir passa a ser impossível em vez de improvável.
+ */
+function backfillDoBaseline(): string {
+  const sql = fs.readFileSync(path.join(process.cwd(), "supabase/baseline.sql"), "utf8");
+  const alvo = /update public\.contacts\s+set display_name = null[\s\S]*?;/g;
+  const achados = sql.match(alvo);
+  if (!achados || achados.length !== 1) {
+    throw new Error(
+      `esperava EXATAMENTE 1 backfill de display_name no baseline, achei ${achados?.length ?? 0} — ` +
+        "o teste perdeu o alvo e mediria o vazio",
+    );
+  }
+  return achados[0]!;
+}
 
 const ORG = "11d7e100-0000-4000-8000-000000000001";
 
@@ -202,6 +230,33 @@ describe("completa o que falta, nunca sobrescreve", () => {
 });
 
 describe("o rótulo técnico legado", () => {
+  it("a guarda `is_anonymized` protege SOZINHA — medido, não presumido", async () => {
+    // ⚠️ Este caso existe porque a primeira versão do teste creditava a proteção
+    // ao mecanismo ERRADO. Ele usava `Contato Anonimizado #<hex>` (o que a rota
+    // de LGPD grava) e passava mesmo com `and is_anonymized = false` SABOTADO —
+    // porque esse nome não casa com o regex ancorado em dígitos. Zero
+    // reprovações onde eu previa uma.
+    //
+    // São DOIS mecanismos, e o regex sozinho já cobre o rótulo de hoje. A guarda
+    // é a segunda camada: ela vale para o clone cujo contato foi anonimizado com
+    // o nome técnico ainda no lugar (anonimização feita no banco, versão antiga,
+    // ou um rótulo de LGPD diferente amanhã).
+    //
+    // Para medir SÓ a guarda, o nome abaixo casa o regex E o contato está
+    // anonimizado: se a guarda cair, o `display_name` vai a null e a
+    // anonimização é revertida — violação de L-04, cuja exceção é "Nenhuma".
+    const { rows } = await pool.query<{ id: string }>(
+      `insert into contacts (organization_id, display_name, source, is_anonymized, anonymized_at)
+       values ($1, 'Contato 777777', 'whatsapp', true, now()) returning id`,
+      [ORG],
+    );
+    await pool.query(backfillDoBaseline());
+    expect(
+      (await ler(rows[0]!.id)).display_name,
+      "contato ANONIMIZADO não pode ser tocado pelo backfill, mesmo casando o regex",
+    ).toBe("Contato 777777");
+  });
+
   it("o backfill do baseline NÃO desfaz anonimização", async () => {
     // `Contato Anonimizado #<id>` também começa com "Contato " e é gravado
     // DELIBERADAMENTE pela rota de LGPD. Um backfill com `~ '^Contato '` sem a
@@ -220,11 +275,7 @@ describe("o rótulo técnico legado", () => {
     );
     const legado = r2[0]!.id;
 
-    // O UPDATE exatamente como está na migration/baseline.
-    await pool.query(
-      `update contacts set display_name = null, updated_at = now()
-        where display_name ~ '^Contato [0-9]+(@lid)?$' and is_anonymized = false`,
-    );
+    await pool.query(backfillDoBaseline());
 
     expect((await ler(legado)).display_name, "o rótulo técnico sai").toBeNull();
     expect(
@@ -242,10 +293,7 @@ describe("o rótulo técnico legado", () => {
        values ($1, 'Contato Comercial da Loja', 'manual') returning id`,
       [ORG],
     );
-    await pool.query(
-      `update contacts set display_name = null
-        where display_name ~ '^Contato [0-9]+(@lid)?$' and is_anonymized = false`,
-    );
+    await pool.query(backfillDoBaseline());
     expect((await ler(rows[0]!.id)).display_name).toBe("Contato Comercial da Loja");
   });
 });
