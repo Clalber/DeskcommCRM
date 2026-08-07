@@ -1,7 +1,11 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import pg from "pg";
 
-import { proporDadoDoContato, valorAceitavel } from "@/lib/contacts/proposta-de-dado";
+import {
+  proporDadoDoContato,
+  valorAceitavel,
+  vencePropostasDeDado,
+} from "@/lib/contacts/proposta-de-dado";
 
 import { pgComoSupabase } from "../pg-como-supabase";
 
@@ -248,5 +252,168 @@ describe("validação de forma — modesta de propósito", () => {
       );
       expect(valorAceitavel("email", v), `divergência em "${v}"`).toBe(rows[0]!.ok);
     }
+  });
+});
+
+describe("o VENCIMENTO — porque prazo que ninguém cobre é pior que prazo nenhum", () => {
+  /** Cria uma proposta já vencida, driblando o CHECK de prazo no futuro. */
+  async function propostaVencida(contactId: string, campo = "email"): Promise<string> {
+    const r = await proporDadoDoContato(db, {
+      organizationId: ORG,
+      contactId,
+      campo: campo as "email",
+      valor: campo === "email" ? `venceu.${Date.now()}@exemplo.com` : "Nome Vencido",
+    });
+    if (!r.criada) throw new Error(`setup falhou: ${JSON.stringify(r)}`);
+    // O CHECK `prazo_no_futuro` compara com `proposed_at` — empurrar os DOIS
+    // para trás mantém a linha coerente e simula uma proposta feita há dias.
+    await pool.query(
+      `update contact_field_proposals
+          set proposed_at = now() - interval '10 days', expires_at = now() - interval '3 days'
+        where id = $1`,
+      [r.id],
+    );
+    return r.id;
+  }
+
+  it("fecha a proposta que passou do prazo, e a decisão fica DATADA", async () => {
+    // Vencer É uma decisão — a do relógio, na ausência da humana. O CHECK
+    // `decisao_datada` exige a data, e é ela que responde "quando isso saiu da
+    // tela de alguém?".
+    const c = await criarContato();
+    const id = await propostaVencida(c);
+
+    const r = await vencePropostasDeDado(db, ORG, new Date());
+    expect(r.vencidas).toBe(1);
+
+    const { rows } = await pool.query<{ status: string; decided_at: string | null }>(
+      "select status, decided_at from contact_field_proposals where id = $1",
+      [id],
+    );
+    expect(rows[0]!.status).toBe("expired");
+    expect(rows[0]!.decided_at, "vencer sem data seria registro que não sabe quando").not.toBeNull();
+  });
+
+  it("NÃO toca proposta dentro do prazo", async () => {
+    // O contrário do defeito seria pior que ele: fechar cedo tira da tela algo
+    // que a pessoa ainda ia decidir.
+    const c = await criarContato();
+    const r0 = await proporDadoDoContato(db, {
+      organizationId: ORG,
+      contactId: c,
+      campo: "email",
+      valor: "no.prazo@exemplo.com",
+    });
+    expect(r0.criada).toBe(true);
+    if (!r0.criada) return;
+
+    await vencePropostasDeDado(db, ORG, new Date());
+    const { rows } = await pool.query<{ status: string }>(
+      "select status from contact_field_proposals where id = $1",
+      [r0.id],
+    );
+    expect(rows[0]!.status).toBe("pending");
+  });
+
+  it("o vencimento LIBERA o campo para uma proposta nova", async () => {
+    // O índice único é parcial (`where status='pending'`), então fechar a
+    // vencida devolve o caminho: o cliente pode dizer o e-mail de novo, e a
+    // segunda tentativa não fica presa pela primeira que ninguém decidiu.
+    const c = await criarContato();
+    await propostaVencida(c);
+    await vencePropostasDeDado(db, ORG, new Date());
+
+    const nova = await proporDadoDoContato(db, {
+      organizationId: ORG,
+      contactId: c,
+      campo: "email",
+      valor: "segunda.vez@exemplo.com",
+    });
+    expect(nova.criada, "depois de vencer, o campo volta a aceitar proposta").toBe(true);
+  });
+
+  it("abre UM aviso na Central para o lote, não um por proposta", async () => {
+    // Cinquenta avisos idênticos são o mesmo ruído que a fila existe para
+    // evitar. E o item é reusado se já houver um aberto — item que se duplica a
+    // cada tick é a praga que ele evitaria.
+    await pool.query("delete from agent_inbox_items where organization_id = $1", [ORG]);
+    const c1 = await criarContato();
+    const c2 = await criarContato();
+    await propostaVencida(c1);
+    await propostaVencida(c2);
+
+    const r = await vencePropostasDeDado(db, ORG, new Date());
+    expect(r.vencidas).toBe(2);
+    expect(r.itensDeCaixa, "um item para o lote").toBe(1);
+
+    const { rows } = await pool.query<{ n: string; kind: string; severity: string }>(
+      `select count(*) as n, min(kind) as kind, min(severity) as severity
+         from agent_inbox_items where organization_id = $1 and kind = 'contact_proposal_expired'`,
+      [ORG],
+    );
+    expect(rows[0]!.n).toBe("1");
+    // `info`, não `warn`: nada quebrou. Tratar isto como falha ensinaria a
+    // ignorar os avisos que SÃO falha.
+    expect(rows[0]!.severity).toBe("info");
+  });
+
+  it("um segundo lote NÃO duplica o aviso aberto", async () => {
+    const c3 = await criarContato();
+    await propostaVencida(c3);
+    await vencePropostasDeDado(db, ORG, new Date());
+
+    const { rows } = await pool.query<{ n: string }>(
+      `select count(*) as n from agent_inbox_items
+        where organization_id = $1 and kind = 'contact_proposal_expired' and status = 'open'`,
+      [ORG],
+    );
+    expect(rows[0]!.n, "o aviso aberto é reusado").toBe("1");
+  });
+
+  it("sem nada vencido, não abre aviso nenhum", async () => {
+    // Aviso que aparece sem motivo ensina a ignorar a Central.
+    await pool.query("delete from agent_inbox_items where organization_id = $1", [ORG]);
+    const r = await vencePropostasDeDado(db, ORG, new Date());
+    expect(r.vencidas).toBe(0);
+    expect(r.itensDeCaixa).toBe(0);
+  });
+
+  it("não vence proposta de OUTRA organização", async () => {
+    const { rows: o } = await pool.query<{ id: string }>(
+      `insert into organizations (id, slug, legal_name, display_name)
+       values (gen_random_uuid(), 'org-vizinha-vencimento', 'Vizinha', 'Vizinha') returning id`,
+    );
+    const outra = o[0]!.id;
+    const { rows: c } = await pool.query<{ id: string }>(
+      `insert into contacts (organization_id, display_name, source) values ($1, 'Do Vizinho', 'manual') returning id`,
+      [outra],
+    );
+    // ⚠️ Nasce com prazo NO FUTURO e só depois é empurrada para trás. O trigger
+    // `fn_carimba_proposta_de_dado` sobrescreve `proposed_at := now()` no
+    // INSERT (por desenho: instantes comparados entre si vêm do mesmo relógio),
+    // então um INSERT com prazo passado viola o CHECK antes de existir.
+    const { rows: p } = await pool.query<{ id: string }>(
+      `insert into contact_field_proposals
+         (organization_id, contact_id, campo, valor_proposto, expires_at)
+       values ($1, $2, 'email', 'vizinho@exemplo.com', now() + interval '7 days')
+       returning id`,
+      [outra, c[0]!.id],
+    );
+    await pool.query(
+      `update contact_field_proposals
+          set proposed_at = now() - interval '10 days', expires_at = now() - interval '3 days'
+        where id = $1`,
+      [p[0]!.id],
+    );
+
+    await vencePropostasDeDado(db, ORG, new Date());
+
+    const { rows: depois } = await pool.query<{ status: string }>(
+      "select status from contact_field_proposals where id = $1",
+      [p[0]!.id],
+    );
+    expect(depois[0]!.status, "o vencimento é por organização").toBe("pending");
+
+    await pool.query("delete from organizations where id = $1", [outra]);
   });
 });

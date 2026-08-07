@@ -38,6 +38,7 @@ export type InboxKind =
   | 'capabilities_missing'
   | 'message_send_stuck'
   | 'promise_unfulfilled'
+  | 'contact_proposal_expired'
   | 'other';
 
 export interface InboxItemRow {

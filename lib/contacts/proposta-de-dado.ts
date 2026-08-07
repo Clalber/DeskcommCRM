@@ -154,3 +154,99 @@ export async function proporDadoDoContato(
 
   return { criada: true, id: (criada as { id: string }).id, valorAnterior: atual };
 }
+
+// ---------------------------------------------------------------------------
+// O VENCIMENTO
+// ---------------------------------------------------------------------------
+
+export interface ResultadoDoVencimento {
+  vencidas: number;
+  itensDeCaixa: number;
+}
+
+/**
+ * Fecha as propostas que ninguém decidiu.
+ *
+ * **Vencer É uma decisão** — a do relógio, na ausência da humana. Sem isto, a
+ * pendência fica na ficha para sempre: um badge permanente que simula atenção e
+ * adia a decisão em vez de cobrá-la. Foi por isso que `expires_at` nasceu
+ * obrigatório na 0123, e uma coluna de prazo que ninguém cobre é pior que
+ * nenhuma — promete um limite que não existe.
+ *
+ * ⚠️ Devolve o número de vencidas, não `void`: quem chama precisa poder dizer
+ * "rodei e não havia nada" em vez de "rodei". As duas frases têm a mesma cara
+ * num log que só registra sucesso.
+ */
+export async function vencePropostasDeDado(
+  db: SupabaseClient,
+  organizationId: string,
+  agora: Date,
+): Promise<ResultadoDoVencimento> {
+  const r: ResultadoDoVencimento = { vencidas: 0, itensDeCaixa: 0 };
+
+  const { data, error } = await db
+    .from("contact_field_proposals")
+    .select("id, contact_id, campo")
+    .eq("organization_id", organizationId)
+    .eq("status", "pending")
+    .lt("expires_at", agora.toISOString());
+  if (error) throw new Error(`vencimento de proposta de dado: ${error.message}`);
+
+  const vencidas = (data ?? []) as Array<{ id: string; contact_id: string; campo: string }>;
+  if (vencidas.length === 0) return r;
+
+  for (const p of vencidas) {
+    const { error: upErr } = await db
+      .from("contact_field_proposals")
+      .update({ status: "expired", decided_at: agora.toISOString() })
+      .eq("id", p.id)
+      // Não atropela quem decidiu no MESMO instante: o `pending` no WHERE é a
+      // mesma trava que a rota de decisão usa, do outro lado da corrida.
+      .eq("status", "pending");
+    if (upErr) continue;
+    r.vencidas += 1;
+  }
+
+  if (r.vencidas > 0) {
+    // UM item para o lote, não um por proposta: cinquenta avisos idênticos são
+    // o mesmo ruído que a fila existe para evitar. E reusa o item aberto se já
+    // houver — item que se duplica a cada tick é a praga que ele evitaria.
+    const { data: jaAberto } = await db
+      .from("agent_inbox_items")
+      .select("id")
+      .eq("organization_id", organizationId)
+      .eq("kind", "contact_proposal_expired")
+      .eq("status", "open")
+      .maybeSingle();
+
+    if (!jaAberto) {
+      const n = r.vencidas;
+      const { data: item } = await db
+        .from("agent_inbox_items")
+        .insert({
+          organization_id: organizationId,
+          kind: "contact_proposal_expired",
+          severity: "info",
+          title:
+            n === 1
+              ? "Uma informação de cliente venceu sem alguém conferir"
+              : `${n} informações de clientes venceram sem alguém conferir`,
+          // Diz o que ACONTECEU e o que fazer. Não repete o valor: o aviso é
+          // lido por quem talvez não devesse ver o dado, e o dado continua na
+          // ficha de quem tem acesso a ela.
+          body:
+            `O assistente ouviu ${n === 1 ? "um dado" : "alguns dados"} na conversa com ` +
+            `${n === 1 ? "um cliente" : "clientes"} e ninguém confirmou a tempo. ` +
+            `${n === 1 ? "Ele saiu" : "Eles saíram"} da ficha para não parecer que já estava salvo. ` +
+            `Se a informação ainda importa, peça de novo ou preencha à mão.`,
+          ref_kind: "organization",
+          ref_id: organizationId,
+        })
+        .select("id")
+        .maybeSingle();
+      if (item) r.itensDeCaixa = 1;
+    }
+  }
+
+  return r;
+}

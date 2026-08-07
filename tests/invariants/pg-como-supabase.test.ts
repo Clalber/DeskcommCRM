@@ -81,6 +81,35 @@ describe("o adaptador FILTRA", () => {
   });
 });
 
+describe("o adaptador COMPARA — `lt`/`gt`, não só igualdade", () => {
+  // Nasceram por pressão do mesmo mecanismo que trouxe `update` e `rpc`: o
+  // `naoImplementado` estourou quando `vencePropostasDeDado` chamou `.lt`. Se
+  // tivesse devolvido vazio, os 7 casos de vencimento ficariam VERDES medindo
+  // nada — "nenhuma proposta vencida" é o resultado natural de uma lista vazia.
+  it("`lt` filtra por menor que, e não devolve a tabela inteira", async () => {
+    const { data } = await db
+      .from("crm_pipelines")
+      .select("name,position")
+      .eq("organization_id", ORG)
+      .eq("is_default", false)
+      .lt("position", 25)
+      .order("position", { ascending: true });
+    const nomes = (data as Array<{ name: string }>).map((x) => x.name).sort();
+    // position 10 e 20 entram; 30 fica de fora.
+    expect(nomes).toEqual(["Bravo", "Zulu"]);
+  });
+
+  it("`gt` é o espelho — e os dois convivem com `eq` na mesma consulta", async () => {
+    const { data } = await db
+      .from("crm_pipelines")
+      .select("name")
+      .eq("organization_id", ORG)
+      .eq("is_default", false)
+      .gt("position", 25);
+    expect((data as Array<{ name: string }>).map((x) => x.name)).toEqual(["Alfa"]);
+  });
+});
+
 describe("o adaptador ORDENA", () => {
   it("`.order(asc).limit(1)` traz o de menor valor, não o primeiro que o Postgres devolver", async () => {
     // Sem ordenação real o Postgres devolveria em ordem de heap — que aqui é a
@@ -134,6 +163,17 @@ describe("o adaptador distingue os desfechos que o PostgREST distingue", () => {
     expect(error).toBeNull();
     expect((data as { id: string; name: string }).name).toBe("Criado");
     expect((data as { id: string }).id).toMatch(/^[0-9a-f-]{36}$/);
+  });
+
+  it("`insert().select().maybeSingle()` também devolve a linha — a forma que o vencimento usa", async () => {
+    // Terceira ausência que o `naoImplementado` denunciou em vez de engolir.
+    const { data, error } = await db
+      .from("crm_pipelines")
+      .insert({ organization_id: ORG, name: "Talvez", slug: "talvez-adaptador", position: 98 })
+      .select("id,name")
+      .maybeSingle();
+    expect(error).toBeNull();
+    expect((data as { name: string }).name).toBe("Talvez");
   });
 
   it("violação de constraint vira `{error}`, NUNCA exceção — o chamador trata desfecho, não catch", async () => {

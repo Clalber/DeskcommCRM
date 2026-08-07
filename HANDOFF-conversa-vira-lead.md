@@ -13,7 +13,7 @@
 | # | passo | estado |
 |---|---|---|
 | 1 | **conversa vira lead** | ✅ **completo** — código, invariantes, prova de tela e 5 sabotagens |
-| 2 | contato deixa de ser anônimo | 🔄 **quase** — 3 bugs vivos, telefone do @lid, rótulo único e título do card. Falta só a mão do Operador (2 decisões pendentes com o Rafael) |
+| 2 | contato deixa de ser anônimo | ✅ **completo** — 3 bugs vivos, telefone do @lid, rótulo único, título do card e a fila de confirmação ponta a ponta |
 | 3 | escopo por pipeline | ⏳ não começado |
 | 4 | tradução de etapas com superfície | ⏳ não começado |
 | 5 | o laço (desfazer vira sinal) | ⏳ não começado |
@@ -273,7 +273,43 @@ lá" de "a LINHA não está lá". A cobertura foi para um unit que espia a chama
 | S2 | audit sem o par antes/depois | 3 | **4** |
 | S3 | `update` do adaptador vira no-op | ≥3 | **0 → 6** (filtro inválido devolveu "No test files found") |
 
-#### D2..D5 — o que falta construir
+#### D2..D6 — construído
+
+| # | peça | commit |
+|---|---|---|
+| D2 | tabela `contact_field_proposals` (0123) | `03d06e09` |
+| D3 | ferramenta de catálogo `crm_propose_contact_field` | `a299c792` |
+| D4+D5 | rota de decisão + a tela na ficha do contato | `0b69c542` |
+| D6 | o vencimento (0124 + cron agendado) | este |
+
+**A fila fecha o ciclo:** a IA ouve e propõe, a pessoa vê o trecho da conversa e decide, o dado entra
+no cadastro com base legal (`transactional`, L-05) e auditoria dos dois lados (L-06), e o que ninguém
+decide **vence** — porque prazo que ninguém cobre é pior que prazo nenhum: promete um limite que não
+existe e a pendência vira badge permanente, que simula atenção e adia a decisão.
+
+Prova de tela: [`evidence/spec-17/proposta-confirmada.png`](evidence/spec-17/proposta-confirmada.png)
+(`confirmar-dado-do-contato.spec.ts`, J4.28–J4.30).
+
+**O e2e passou pelo motivo errado na primeira versão**, e só a evidência pegou: `getByText(email)`
+casava com o TRECHO da conversa (que contém o próprio e-mail), então ficava verde sem o dado ter
+chegado à ficha. Descobri **olhando a imagem**, que mostrava o campo EMAIL vazio enquanto o teste
+dizia verde.
+
+**O vencimento tem cron PRÓPRIO, e não carona no `risk-watcher`.** A tentação era pendurar no que já
+varre organizações no mesmo tick — mas ele lista quem tem LEAD ABERTO, e uma organização pode ter
+proposta pendente sem nenhum negócio no funil. Nessas, a proposta nunca venceria, e "nada venceu"
+tem a mesma cara de "nada vencia ainda". O gate `cron-routes-scheduled` garante que a rota nasceu
+agendada: o comentário do `risk-watcher` conta o que aconteceu sem isso — uma rota com teste e doc
+que ninguém chamou, por meses.
+
+**O adaptador de teste cresceu por PRESSÃO, três vezes.** `update`, `rpc`, `lt`/`gt` e
+`insert().select().maybeSingle()` só existem porque o `naoImplementado` ESTOUROU quando o código real
+os chamou. Se ele tivesse devolvido vazio, 7 casos de vencimento ficariam verdes medindo nada —
+"nenhuma proposta vencida" é o resultado natural de uma lista vazia.
+
+#### O que ficou FORA da fatia D
+
+
 
 O desenho saiu do mapeamento e **copia a forma de `crm_lead_reactivations`**, que já é uma fila de
 proposta com prazo, decisão datada, decisor e idempotência por índice parcial:

@@ -65,7 +65,8 @@ function colunasSql(colunas: string): string {
 }
 
 class ConsultaPg<T> implements PromiseLike<RespostaFalsa<T[]>> {
-  private filtros: Array<[string, unknown]> = [];
+  /** [operador, coluna, valor] — o operador entra porque `.lt`/`.gt` existem. */
+  private filtros: Array<[string, string, unknown]> = [];
   private ordem: { coluna: string; asc: boolean } | null = null;
   private teto: number | null = null;
 
@@ -76,7 +77,22 @@ class ConsultaPg<T> implements PromiseLike<RespostaFalsa<T[]>> {
   ) {}
 
   eq(coluna: string, valor: unknown): this {
-    this.filtros.push([coluna, valor]);
+    this.filtros.push(["=", coluna, valor]);
+    return this;
+  }
+
+  /**
+   * `<` e `>` — nasceram porque `vencePropostasDeDado` os usa e o adaptador
+   * ESTOUROU ao ser chamado. Terceira vez que o `naoImplementado` paga o
+   * próprio custo: devolver vazio teria deixado 7 casos verdes medindo nada.
+   */
+  lt(coluna: string, valor: unknown): this {
+    this.filtros.push(["<", coluna, valor]);
+    return this;
+  }
+
+  gt(coluna: string, valor: unknown): this {
+    this.filtros.push([">", coluna, valor]);
     return this;
   }
 
@@ -100,9 +116,9 @@ class ConsultaPg<T> implements PromiseLike<RespostaFalsa<T[]>> {
 
   private montar(): { texto: string; valores: unknown[] } {
     const valores: unknown[] = [];
-    const onde = this.filtros.map(([c, v]) => {
+    const onde = this.filtros.map(([op, c, v]) => {
       valores.push(v);
-      return `"${c}" = $${valores.length}`;
+      return `"${c}" ${op} $${valores.length}`;
     });
     let texto = `select ${colunasSql(this.colunas)} from public."${this.tabela}"`;
     if (onde.length > 0) texto += ` where ${onde.join(" and ")}`;
@@ -193,6 +209,15 @@ class InsercaoPg<T> implements PromiseLike<RespostaFalsa<null>> {
     } catch (e) {
       return { data: null, error: erroDe(e) };
     }
+  }
+
+  /**
+   * Difere de `single` no que faz com o ERRO, não com o sucesso: quem usa
+   * `maybeSingle` num insert está dizendo "se não deu, sigo sem" — é o caso do
+   * item da Central, que não pode derrubar o vencimento das propostas.
+   */
+  async maybeSingle(): Promise<RespostaFalsa<T>> {
+    return this.single();
   }
 
   then<R1 = RespostaFalsa<null>, R2 = never>(

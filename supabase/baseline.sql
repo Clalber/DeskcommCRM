@@ -9028,6 +9028,12 @@ alter table public.agent_inbox_items
     -- uma promessa sem dono precisa aparecer onde o humano olha — não no log do
     -- worker. Entra NESTA lista pela mesma razão que a de cima.
     'promise_unfulfilled',
+    -- (migration 0124, spec 17 §4b) Dado que o assistente ouviu na conversa e
+    -- ninguém confirmou até o prazo. `info`, não `warn`: nada quebrou — uma
+    -- informação não foi aproveitada, e tratar isso como falha ensinaria a
+    -- ignorar os avisos que são falha de verdade. Entra NESTA lista pela mesma
+    -- razão das de cima (bloco único por constraint, #159).
+    'contact_proposal_expired',
     'other'
   ));
 
