@@ -216,7 +216,10 @@ export async function runModelCall(db: pg.Pool, cfg: LlmEdgeConfig, input: RunMo
   // `system` aceita SystemModelMessage (com providerOptions de cache) — igual
   // em v6 e v7 (smoke prova que o cacheControl continua virando cache_control).
   const result = await generateText({
-    model: factory(config.apiKey, model),
+    // `decisao.baseUrl` só é preenchido quando o painel apontou um endpoint
+    // (gateway OpenAI-compatível, ou modelo local). Providers canônicos
+    // ignoram o terceiro argumento e vão ao endpoint intrínseco.
+    model: factory(config.apiKey, model, decisao.baseUrl ?? undefined),
     system: prefix.system,
     messages: input.messages,
     tools: prefix.tools,

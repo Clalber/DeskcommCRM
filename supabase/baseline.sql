@@ -9395,4 +9395,57 @@ comment on table public.ai_purpose_bindings is
   'Migration 0126: qual provedor/credencial/modelo cada ponto do sistema que usa IA deve usar, por organização. O catálogo dos pontos vive em lib/ai/pontos/registro.ts e o par é vigiado por tests/unit/pontos-de-ia-completude.test.ts.';
 
 
+
+-- ---- provider vira vocabulário aberto + catálogo sincronizável (migration 0127) ----
+-- Os três CHECKs de provider travavam anthropic|openai|google, o que torna
+-- impossível cadastrar uma chave da OpenRouter (ou de qualquer provedor novo, ou
+-- de um modelo local) — o INSERT viola constraint antes de qualquer código rodar.
+-- Vocabulário ABERTO por doutrina: quem recusa provider desconhecido é o registry,
+-- com erro tipado, não uma constraint que faria o update.sh do clone quebrar.
+alter table public.ai_agent_versions       drop constraint if exists ai_agent_versions_provider_check;
+alter table public.ai_models               drop constraint if exists ai_models_provider_check;
+alter table public.ai_provider_credentials drop constraint if exists ai_provider_credentials_provider_check;
+
+-- Aberto não é livre: string vazia seria linha que nenhum registry resolve e
+-- nenhuma tela exibe.
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'ai_models_provider_nao_vazio') then
+    alter table public.ai_models add constraint ai_models_provider_nao_vazio check (length(btrim(provider)) > 0);
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'ai_provider_credentials_provider_nao_vazio') then
+    alter table public.ai_provider_credentials add constraint ai_provider_credentials_provider_nao_vazio check (length(btrim(provider)) > 0);
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'ai_agent_versions_provider_nao_vazio') then
+    alter table public.ai_agent_versions add constraint ai_agent_versions_provider_nao_vazio check (length(btrim(provider)) > 0);
+  end if;
+end $$;
+
+alter table public.ai_models add column if not exists source text not null default 'manual';
+alter table public.ai_models add column if not exists synced_at timestamptz;
+alter table public.ai_models add column if not exists supports_vision boolean not null default false;
+
+-- Deduplicar ANTES do índice único (o update.sh roda sem ON_ERROR_STOP: índice
+-- que falha é pulado em silêncio e o upsert do sincronizador volta a duplicar).
+delete from public.ai_models a
+ using public.ai_models b
+ where a.provider = b.provider
+   and a.model_id = b.model_id
+   and (
+     (a.input_price_per_million_cents is null and b.input_price_per_million_cents is not null)
+     or (
+       (a.input_price_per_million_cents is null) = (b.input_price_per_million_cents is null)
+       and a.id < b.id
+     )
+   );
+
+create unique index if not exists ai_models_provider_model_unique on public.ai_models (provider, model_id);
+create index if not exists ai_models_source_idx on public.ai_models (source) where deprecated_at is null;
+
+comment on column public.ai_models.source is
+  'Migration 0127: ''manual'' ou o nome do sincronizador (ex.: ''openrouter''). O sincronizador só mexe nas linhas da PRÓPRIA origem — apagar o que um humano cadastrou seria perder configuração sem aviso.';
+comment on column public.ai_models.synced_at is
+  'Migration 0127: quando a origem confirmou este modelo pela última vez. Modelo que some recebe deprecated_at, nunca DELETE: a linha ainda é referenciada pelo histórico de custo.';
+
+
 notify pgrst, 'reload schema';
