@@ -856,32 +856,49 @@ sucesso (é assim que o bug conhecido de `organizations` engana).
 Sabotagens: botão em toda demanda → 1 → **1**; salvar sem chamar o PATCH →
 1 → **2**; falha fechando o campo → 1 → **1**.
 
-### ⚠️ NÃO MEDIDO — a prova de tela do ciclo de escrita
+### ✅ O ciclo completo, provado na tela (21/21, exit 0)
 
-A sonda `tests/sonda-inbox-demandas-tela.ts` foi estendida com o ciclo completo
-(clicar → escrever → salvar → **conferir no banco** → conferir o audit) e
-**não chegou a rodar**: o Supabase local caiu no meio da sessão. Medido, não
-suposto — `curl` no kong devolveu `000` enquanto o app respondia `200`, e depois
-o próprio daemon do Docker parou de responder (`docker ps -a` sem retorno em
-90s).
+`tests/sonda-inbox-demandas-tela.ts` — clicar → escrever → salvar →
+**conferir no banco** → conferir o audit:
 
-Diagnóstico com controle: a sonda de layout, que rodara verde minutos antes,
-passou a falhar **no mesmo ponto** (o login). Não era a edição nova; era o
-ambiente.
-
-Não reiniciei o Docker Desktop porque isso derrubaria containers da máquina que
-eu não inventariei.
-
-**O que está provado do ciclo:** 8 casos de componente com `apiClient` espionado
-(a rota certa, o corpo certo, o relê do servidor, e a falha que não apaga o
-texto), com as três sabotagens acima. **O que falta:** que a rota responda 200
-contra o banco real, que a linha mude em `demandas`, e que o audit apareça. O
-código da sonda está escrito e versionado — basta o Supabase voltar:
-
-```bash
-npx supabase start
-E2E_PORT=3101 npx tsx tests/sonda-inbox-demandas-tela.ts   # espera 21/21
 ```
+CICLO: statusPatch          200
+       noBancoDepois        "Enviar o orçamento revisado
+                             Enviar a segunda via do boleto"   ← gravou
+       aindaSemPasso        0
+       naTelaDepois.sem_passo  0      ← a tela releu e o vazamento sumiu
+       audit                1         ← demanda.proximo_passo_definido
+```
+
+Evidência: [depois de marcar](passo4-inbox-proximo-passo.png). A confirmação vem
+do **banco**, não de uma mensagem de sucesso na tela — é assim que o bug conhecido
+de `organizations` engana (PostgREST devolve 200 tendo casado zero linhas).
+
+### O caminho até essa prova, porque ele foi todo em falso positivo
+
+**1. O Supabase local caiu no meio da sessão.** Medido, não suposto: `curl` no
+kong devolveu `000` enquanto o app respondia `200`, e depois o próprio daemon do
+Docker parou de responder. Controle que fechou o diagnóstico: a sonda de layout,
+verde minutos antes, passou a falhar **no mesmo ponto**. Era ambiente, não
+edição. Resolvido matando e subindo o Docker de novo — o Rafael confirmou por
+experiência que travado assim não tem outro jeito.
+
+**2. Uma asserção MINHA reprovou produto correto.** `noBancoDepois === PASSO`
+comparava uma string com o resultado de uma consulta que devolve **todas** as
+demandas da marca com próximo passo — a semeada já com passo, e a recém-marcada.
+Trocado por `includes`. O produto estava certo o tempo todo; a régua é que
+estava errada.
+
+**3. O login da sonda era INTERMITENTE — e o rastro dizia onde olhar.** Duas
+rodadas falharam com buckets `auth:login_fail:id:` de **hashes diferentes**
+(`f5e9836…` e `30ebfc5…`). Mesmo usuário daria o mesmo hash, então o que variava
+era o texto que chegava: `pressSequentially` perdia caracteres enquanto a página
+montava, e o servidor via um e-mail truncado. Não era rate limit — o audit
+mostrou `auth.login_failed`, nunca `auth.login_rate_limited`.
+
+Consertado com um `entrar()` que **confere o que digitou** antes de submeter, com
+até 3 tentativas e erro explícito se o campo não aceitar. Instrumento que erra às
+vezes é pior que um que erra sempre: leva a diagnosticar o produto.
 
 ---
 

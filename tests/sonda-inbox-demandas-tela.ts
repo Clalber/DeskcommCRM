@@ -60,6 +60,44 @@ function semear(): number {
   );
 }
 
+/**
+ * Login que CONFERE o que digitou antes de submeter.
+ *
+ * `page.fill()` não serve: o form usa react-hook-form, que escuta eventos de
+ * teclado e ignora o valor setado direto. E `pressSequentially` sozinho é
+ * intermitente — enquanto a página ainda monta, caracteres se perdem, o campo
+ * fica com um e-mail truncado, e o servidor responde `auth.login_failed`.
+ *
+ * Isso apareceu como falha ALEATÓRIA de login: duas rodadas falharam com
+ * buckets `auth:login_fail:id:` de hashes DIFERENTES — mesmo usuário daria o
+ * mesmo hash, então o que variava era o texto que chegou. Um instrumento que
+ * erra às vezes é pior que um que erra sempre: leva a diagnosticar o produto.
+ */
+async function entrar(p: import("@playwright/test").Page): Promise<void> {
+  await p.goto(`${BASE}/login`, { waitUntil: "domcontentloaded" });
+  const email = p.locator('input[type="email"]');
+  const senha = p.locator('input[type="password"]');
+  await email.waitFor({ state: "visible" });
+
+  for (let tentativa = 1; tentativa <= 3; tentativa += 1) {
+    await email.fill("");
+    await email.click();
+    await email.pressSequentially(c.users.manager.email, { delay: 12 });
+    await senha.fill("");
+    await senha.click();
+    await senha.pressSequentially(c.password, { delay: 12 });
+    const digitado = await email.inputValue();
+    const senhaOk = (await senha.inputValue()).length === c.password.length;
+    if (digitado === c.users.manager.email && senhaOk) break;
+    if (tentativa === 3) {
+      throw new Error(`campo não aceitou o texto: "${digitado}" (esperado "${c.users.manager.email}")`);
+    }
+  }
+
+  await p.click('button[type="submit"]');
+  await p.waitForURL(/\/app/, { timeout: 30000 });
+}
+
 async function main(): Promise<void> {
   const noBanco = semear();
   const b = await chromium.launch();
@@ -73,13 +111,7 @@ async function main(): Promise<void> {
     if (r.url().includes("/crm-summary")) statusSummary = r.status();
   });
 
-  await p.goto(`${BASE}/login`, { waitUntil: "domcontentloaded" });
-  await p.click('input[type="email"]');
-  await p.locator('input[type="email"]').pressSequentially(c.users.manager.email, { delay: 8 });
-  await p.click('input[type="password"]');
-  await p.locator('input[type="password"]').pressSequentially(c.password, { delay: 8 });
-  await p.click('button[type="submit"]');
-  await p.waitForURL(/\/app/, { timeout: 30000 });
+  await entrar(p);
 
   await p.goto(`${BASE}/app/inbox?id=${CONVERSA}`, { waitUntil: "networkidle" });
   await p.waitForTimeout(3000);
@@ -225,7 +257,11 @@ async function main(): Promise<void> {
     ["sob falha: NÃO afirma 'nenhuma demanda aberta'", falha.mente === false],
     ["sob falha: oferece tentar de novo", falha.oferece_retry === true],
     ["ciclo: o PATCH respondeu 200", statusPatch === 200],
-    ["ciclo: o BANCO gravou o próximo passo", noBancoDepois === PASSO],
+    // `includes`, não igualdade: a consulta devolve TODAS as demandas da marca
+    // que têm próximo passo — a semeada já com passo, e a que acabou de ser
+    // marcada. A primeira versão comparava com uma string só e reprovava um
+    // produto correto; era a asserção que estava errada, não o app.
+    ["ciclo: o BANCO gravou o próximo passo", noBancoDepois.includes(PASSO)],
     ["ciclo: sobrou 1 demanda sem passo (a outra já tinha)", aindaSemPasso === 0],
     ["ciclo: a tela releu e a demanda saiu do estado de vazamento", naTelaDepois.sem_passo === 0],
     ["ciclo: o texto novo aparece na tela", naTelaDepois.texto.includes(PASSO)],
