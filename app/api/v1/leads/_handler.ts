@@ -15,6 +15,7 @@ import { listaLegivel } from "@/lib/leads/activity-vocabulary";
 import { camposAlterados } from "@/lib/leads/campos-alterados";
 import { registraFalhaDeAtividade } from "@/lib/leads/activity-write-failure";
 import type { CreateLeadInput, UpdateLeadInput } from "@/lib/schemas";
+import { ehCorrecaoDeMovimentoDaIa } from "@/lib/leads/correcao-humana";
 
 type SB = SupabaseClient;
 
@@ -660,6 +661,77 @@ export async function moveLeadHandler(
       pipeline_id: lead.pipeline_id,
     },
   });
+  // ── O LAÇO (spec 17 passo 5) ──────────────────────────────────────────────
+  //
+  // Um humano mover um card que a IA moveu por último é o retorno que fecha o
+  // ciclo: sem isto o produto tem caminho e não tem aprendizado — a IA erra
+  // igual amanhã, e alguém corrige de novo, para sempre e em silêncio.
+  //
+  // Só para ator HUMANO: a IA reorganizando o próprio trabalho não é correção.
+  if (ctx.actor.type === "user") {
+    try {
+      const { data: historico } = await supabase
+        .from("crm_lead_activities")
+        .select("actor_kind, actor_agent_id, payload, performed_at")
+        .eq("organization_id", lead.organization_id)
+        .eq("lead_id", leadId)
+        .eq("type", "stage_changed")
+        .order("performed_at", { ascending: false })
+        .limit(5);
+
+      const anteriores = ((historico ?? []) as Array<{
+        actor_kind: string | null;
+        actor_agent_id: string | null;
+        payload: { from_stage_id?: string; to_stage_id?: string } | null;
+        performed_at: string;
+      }>)
+        // A atividade que ACABOU de ser emitida está aqui: descartá-la é o que
+        // impede o movimento de se comparar consigo mesmo e virar "correção".
+        .filter((h) => h.performed_at < new Date(Date.now() - 500).toISOString())
+        .map((h) => ({
+          actorKind: h.actor_kind,
+          fromStageId: h.payload?.from_stage_id ?? null,
+          toStageId: h.payload?.to_stage_id ?? null,
+          performedAt: h.performed_at,
+          agentId: h.actor_agent_id,
+        }));
+
+      const veredito = ehCorrecaoDeMovimentoDaIa({
+        anteriores,
+        deEtapa: lead.stage_id,
+        paraEtapa: input.to_stage_id,
+      });
+
+      if (veredito.ehCorrecao) {
+        await emitLeadActivity(supabase, {
+          organizationId: lead.organization_id,
+          leadId,
+          contactId: (lead as { contact_id: string | null }).contact_id,
+          type: "agent_move_corrected",
+          sourceModule: "crm",
+          sourceId: leadId,
+          actor: ctx.actor,
+          reason:
+            veredito.tipo === "devolucao"
+              ? "Uma pessoa devolveu o negócio para onde ele estava antes do assistente"
+              : "Uma pessoa levou o negócio para outra etapa, diferente da que o assistente escolheu",
+          payload: {
+            tipo: veredito.tipo,
+            // A etapa da IA é o dado do agregado: é ela que aparece em "o
+            // assistente está mandando gente para X cedo demais".
+            etapa_da_ia: veredito.etapaDaIa,
+            etapa_do_humano: veredito.etapaDoHumano,
+            agent_id: veredito.agentId,
+            pipeline_id: lead.pipeline_id,
+          },
+        });
+      }
+    } catch {
+      // O laço NUNCA derruba a movimentação: o card já moveu, e o dono não pode
+      // perder a operação porque a medição do aprendizado falhou.
+    }
+  }
+
   if (!atividade.ok) {
     // Falha BAIXO: o card já moveu e bloquear deixaria o negócio refém da
     // timeline. Mas falhar baixo é escolher não bloquear, não escolher não

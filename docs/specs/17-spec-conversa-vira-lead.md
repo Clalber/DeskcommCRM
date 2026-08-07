@@ -168,13 +168,34 @@ superfície boa e cobrança de completude.
 
 ## 7. Ordem de construção
 
-| # | passo | sinal de sucesso |
-|---|---|---|
-| 1 | **conversa vira lead** (elo que falta) | conversa nova ⇒ card no kanban ligado ao contato |
-| 2 | **contato deixa de ser anônimo** | zero `display_name` com `@lid`; telefone quando o payload traz |
-| 3 | **escopo por pipeline** | agente sem marcação não move nada |
-| 4 | **tradução de etapas com superfície** | as 36 etapas mapeadas, ou a falta visível |
-| 5 | **o laço** | desfazer movimentação do agente vira sinal |
+| # | passo | sinal de sucesso | estado |
+|---|---|---|---|
+| 1 | **conversa vira lead** (elo que falta) | conversa nova ⇒ card no kanban ligado ao contato | ✅ provado na tela |
+| 2 | **contato deixa de ser anônimo** | zero `display_name` com `@lid`; telefone quando o payload traz | ✅ provado na tela |
+| 3 | **escopo por pipeline** | agente sem marcação não move nada | ✅ código + tela; ⏳ prova de tela |
+| 4 | **tradução de etapas com superfície** | as 36 etapas mapeadas, ou a falta visível | ✅ a lacuna aparece onde custa |
+| 5 | **o laço** | desfazer movimentação do agente vira sinal | ✅ detectado, registrado e agregado |
+
+### O que cada passo virou, na prática
+
+**1.** O lead nasce no funil `is_default`, na primeira etapa aberta, com o contato vinculado — e
+com atividade na timeline dizendo de onde veio. Achado no caminho: toda organização nasce com um
+funil de **e-commerce** (`Pedidos`, com *Carrinho abandonado*), então numa clínica o lead nasce ali.
+
+**2.** O telefone **sempre chegou** em `_data.key.remoteJidAlt` (76 de 76 payloads `@lid`) e nunca
+foi lido. Gravá-lo exigiu `contacts.wa_lid`, porque preencher `phone_number` mudava a identidade
+gerada e duplicava o contato. E o canal de envio NÃO muda: conversa que veio por `@lid` continua
+saindo por `@lid`.
+
+**3.** `ai_agent_versions.pipeline_ids`, com backfill derivado do histórico real (sem ele, todo
+agente pararia de mexer em card no dia do deploy). O gate é uma função pura chamada onde se sabe
+que quem age é o agente — não nos handlers, que são compartilhados com pessoas e automações.
+
+**4.** A lacuna de tradução aparece **ao lado da marcação do funil**, no momento da decisão — e só
+para funil marcado, porque fora do escopo ela não custa nada.
+
+**5.** Um humano mover um card que a IA moveu por último vira atividade própria, com a etapa que a
+IA escolheu — o dado que responde "onde ele mais erra".
 
 **O passo 1 vem primeiro porque sem ele os outros não têm o que mover.**
 

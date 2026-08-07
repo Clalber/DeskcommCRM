@@ -14,9 +14,9 @@
 |---|---|---|
 | 1 | **conversa vira lead** | ✅ **completo** — código, invariantes, prova de tela e 5 sabotagens |
 | 2 | contato deixa de ser anônimo | ✅ **completo** — 3 bugs vivos, telefone do @lid, rótulo único, título do card e a fila de confirmação ponta a ponta |
-| 3 | escopo por pipeline | 🔄 **quase** — schema, gate, tela e testes. Falta o aviso na Central quando a IA é vetada, e a prova de tela |
-| 4 | tradução de etapas com superfície | ⏳ não começado |
-| 5 | o laço (desfazer vira sinal) | ⏳ não começado |
+| 3 | escopo por pipeline | ✅ schema, gate, tela, aviso na Central. ⏳ prova de tela |
+| 4 | tradução de etapas com superfície | ✅ a lacuna aparece ao lado da marcação, e só onde custa |
+| 5 | o laço (desfazer vira sinal) | ✅ detectado, registrado na timeline e agregado por etapa |
 
 ---
 
@@ -400,6 +400,65 @@ própria ausência de escopo, com aparência de controle.
 | S1 | escopo vazio passa a significar TODOS | 3+ | **3** |
 | S2 | some o aviso do funil de entrada | 1 | **1** |
 | S3 | vacuidade libera o desconhecido | 1 | **1** |
+
+---
+
+## Passos 4 e 5 — a superfície da lacuna e o laço
+
+### Passo 4 — a lacuna de tradução aparece ONDE CUSTA
+
+Medido: 6 de 36 etapas traduzidas, e **três dos quatro funis com ZERO**. Neles o assistente não sabe
+para onde mover, e a única forma de descobrir era entrar funil por funil na tela de configuração.
+
+**O passo 3 criou o lugar certo para essa cobrança.** Funil MARCADO sem tradução é promessa que não
+se cumpre — o dono marcou achando que o assistente ia organizá-lo. A lacuna passa a aparecer ao lado
+da marcação, no momento da decisão. E **só ali**: funil fora do escopo com a mesma lacuna fica
+quieto, porque ninguém prometeu nada sobre ele.
+
+Duas distinções que evitam alarme constante: **mudo ≠ incompleto** (com 3 de 5 ele percorre em
+parte; com 0 não move nada, nunca) e `won`/`lost` fora da conta (têm coluna própria — cobrá-las
+inflaria a lacuna com pendência que não existe, e uma barra que nunca chega a 100% se aprende a
+ignorar).
+
+### Passo 5 — o laço (invariante 7)
+
+Os passos 3 e 4 deram limite e visibilidade. Nenhum responde **o que muda quando o assistente
+erra** — sem isso o produto tem caminho e não tem ciclo: a IA erra igual amanhã e alguém corrige de
+novo, para sempre e em silêncio.
+
+Um humano mover um card que a IA moveu **por último** vira atividade própria
+(`agent_move_corrected`), com dois tipos que contam: **devolução** (voltou para onde estava — o
+sinal mais forte) e **redirecionamento** ("não era ali", que ignorar perderia metade do sinal).
+
+Metade dos casos de teste existe para o risco OPOSTO: se o movimento anterior foi de outro humano,
+mexer no card é trabalho normal de equipe. Contar isso como "a IA errou" inflaria o número com
+ruído — e indicador que sobe sem causa se aprende a ignorar.
+
+E o agregado responde "e daí?" (invariante 5): não "12 correções", mas "12 em Qualificando, 11 delas
+devoluções" — que diz que o assistente qualifica cedo demais, e o dono sabe o que ajustar.
+
+---
+
+## 🔧 BLOQUEIO DE INFRAESTRUTURA (não de código)
+
+**O daemon do Docker parou de responder no meio da sessão.** Sintomas medidos:
+
+- o container efêmero do `test:db` sobe e cai imediatamente;
+- `docker version` não retorna em 20s;
+- o Postgres local aceita conexão TCP (porta 54322 aberta) mas **não completa** conexão;
+- `curl` no Supabase local (54321) devolve HTTP 000.
+
+**Consequência:** `pnpm test:db` e toda prova de tela ficaram indisponíveis a partir daí. O que
+continua medido: `typecheck`, `lint` e `pnpm test:unit`.
+
+**O que fica pendente de medição quando o Docker voltar:**
+
+| # | o quê |
+|---|---|
+| 1 | `veto-de-escopo-aparece.test.ts` (invariante novo, nunca rodou) |
+| 2 | `escopo-de-funil-schema.test.ts` sob suíte completa |
+| 3 | Prova de tela dos passos 3, 4 e 5 |
+| 4 | `pnpm test:db` completo depois das migrations 0125 |
 
 ### Ainda em aberto no passo 3
 

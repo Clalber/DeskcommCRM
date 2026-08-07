@@ -23,6 +23,8 @@ export type ActivityType =
   // sozinho" é como se perde a confiança num automatismo.
   | "lead_created"
   | "stage_changed"
+  /** Um humano desfez ou redirecionou o que a IA tinha movido (spec 17 passo 5). */
+  | "agent_move_corrected"
   | "note"
   | "ai_turn"
   | "send_vetoed"
@@ -43,6 +45,7 @@ export type ActivityType =
 export const ACTIVITY_LABELS: Record<ActivityType, string> = {
   lead_created: "Entrou pelo WhatsApp",
   stage_changed: "Mudou de estágio",
+  agent_move_corrected: "Correção do que o assistente tinha feito",
   note: "Anotação",
   ai_turn: "Atendimento da IA",
   send_vetoed: "Envio bloqueado",
