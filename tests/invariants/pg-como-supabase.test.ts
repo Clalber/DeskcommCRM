@@ -239,6 +239,48 @@ describe("UPDATE — implementado depois, e por pressão do próprio adaptador",
     expect((data as { name: string }).name).toBe("Volta Depois");
   });
 
+  it("com `.select()`, o await direto devolve AS LINHAS — não null", async () => {
+    // ⚠️ Este caso nasceu de um furo que o CI pegou. O repo usa
+    // `update().eq(id).eq(campo).select("id")` + `if (linhas.length === 0)` como
+    // TRAVA otimista ("um humano mexeu no meio da operação"). Devolvendo `null`,
+    // toda escrita bem-sucedida virava conflito: o adaptador afirmava que a
+    // trava disparou quando o UPDATE tinha funcionado.
+    const { rows } = await pool.query<{ id: string }>(
+      `insert into crm_pipelines (organization_id, name, slug, position)
+       values ($1, 'Trava', 'trava-otimista', 97) returning id`,
+      [ORG],
+    );
+    const { data, error } = await db
+      .from("crm_pipelines")
+      .update({ name: "Travado" })
+      .eq("id", rows[0]!.id)
+      .eq("name", "Trava") // a trava: só atualiza se o valor ainda for o lido
+      .select("id");
+    expect(error).toBeNull();
+    expect(Array.isArray(data), "com select, o retorno é uma lista").toBe(true);
+    expect((data as unknown[]).length, "uma linha afetada").toBe(1);
+
+    // E quando a trava ATUA (o valor mudou no meio), a lista vem vazia — que é
+    // como o chamador detecta o conflito.
+    const { data: vazio } = await db
+      .from("crm_pipelines")
+      .update({ name: "Outro" })
+      .eq("id", rows[0]!.id)
+      .eq("name", "Trava") // já não é mais
+      .select("id");
+    expect((vazio as unknown[]).length, "a trava atuou: zero linhas").toBe(0);
+  });
+
+  it("SEM `.select()`, `data: null` continua certo — é o que o PostgREST devolve", async () => {
+    const { data, error } = await db
+      .from("crm_pipelines")
+      .update({ name: "Sem retorno" })
+      .eq("organization_id", ORG)
+      .eq("slug", "trava-otimista");
+    expect(error).toBeNull();
+    expect(data).toBeNull();
+  });
+
   it("filtro que não casa devolve `data: null` SEM erro", async () => {
     const { data, error } = await db
       .from("crm_pipelines")

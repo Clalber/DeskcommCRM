@@ -241,7 +241,7 @@ class InsercaoPg<T> implements PromiseLike<RespostaFalsa<null>> {
  * chamado (em vez de devolver vazio, que teria deixado o teste verde medindo
  * nada). O `naoImplementado` fez o trabalho dele.
  */
-class AtualizacaoPg<T> implements PromiseLike<RespostaFalsa<null>> {
+class AtualizacaoPg<T> implements PromiseLike<RespostaFalsa<unknown>> {
   private filtros: Array<[string, unknown]> = [];
   private colunasDeVolta: string | null = null;
 
@@ -300,15 +300,31 @@ class AtualizacaoPg<T> implements PromiseLike<RespostaFalsa<null>> {
     return r;
   }
 
-  then<R1 = RespostaFalsa<null>, R2 = never>(
-    aoResolver?: ((v: RespostaFalsa<null>) => R1 | PromiseLike<R1>) | null,
+  /**
+   * ⚠️ Com `.select()`, o `await` direto devolve AS LINHAS — não `null`.
+   *
+   * A primeira versão devolvia `{data: null}` sempre, e isso quebrava um padrão
+   * que o repo usa como TRAVA: `update().eq(id).eq(stage_id).select("id")` e
+   * depois `if (linhas.length === 0)` para detectar "um humano moveu o card no
+   * meio da operação". Com `null`, toda escrita bem-sucedida virava
+   * `conflito_humano` — o adaptador afirmava que a trava tinha disparado
+   * quando o UPDATE tinha funcionado.
+   *
+   * Sem `.select()`, `data: null` continua certo: é o que o PostgREST devolve.
+   */
+  then<R1 = RespostaFalsa<unknown>, R2 = never>(
+    aoResolver?: ((v: RespostaFalsa<unknown>) => R1 | PromiseLike<R1>) | null,
     aoRejeitar?: ((r: unknown) => R2 | PromiseLike<R2>) | null,
   ): PromiseLike<R1 | R2> {
     const { texto, valores } = this.montar();
+    const pediuRetorno = this.colunasDeVolta !== null;
     return this.pool
       .query(texto, valores)
-      .then(() => ({ data: null, error: null }) as RespostaFalsa<null>)
-      .catch((e: unknown) => ({ data: null, error: erroDe(e) }) as RespostaFalsa<null>)
+      .then(
+        (r) =>
+          ({ data: pediuRetorno ? r.rows : null, error: null }) as RespostaFalsa<unknown>,
+      )
+      .catch((e: unknown) => ({ data: null, error: erroDe(e) }) as RespostaFalsa<unknown>)
       .then(aoResolver, aoRejeitar);
   }
 }
