@@ -307,6 +307,19 @@ que ninguém chamou, por meses.
 os chamou. Se ele tivesse devolvido vazio, 7 casos de vencimento ficariam verdes medindo nada —
 "nenhuma proposta vencida" é o resultado natural de uma lista vazia.
 
+#### As sabotagens do vencimento — predição declarada antes de rodar
+
+| # | o que foi quebrado | previsto | medido |
+|---|---|---:|---:|
+| V1 | filtro de prazo (`expires_at < agora`) | 1 | **3** |
+| V2 | carimbo de `decided_at` ao vencer | 1 | **4** |
+| V3 | reuso do aviso aberto na Central | 2 | **1** |
+
+**Errei as duas primeiras para MENOS, e a razão é a mesma nas duas: cascateamento.** Sem o filtro de
+prazo, tudo vence e a contagem do lote quebra junto; sem o carimbo, o CHECK `decisao_datada` recusa
+o UPDATE e NADA vence, derrubando todos os casos que dependem de algo ter vencido. Prever a
+contagem serve justamente para isso — cada divergência ensinou onde os mecanismos se apoiam.
+
 #### O que ficou FORA da fatia D
 
 
