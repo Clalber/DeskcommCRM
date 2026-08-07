@@ -159,12 +159,12 @@ export async function garantirLeadDaConversa(
   //
   // O nome vem do CADASTRO, não do payload — e a correção é do próprio passo 1.
   // A versão anterior usava `notifyNameOf(p)` cru, então um contato conhecido
-  // que mandasse uma mensagem sem `pushName` (o WAHA manda assim em 2 de cada
+  // que mandasse uma mensagem sem nome no pacote (acontece em 2 de cada
   // 271 inbounds, e em TODO ack) abria um card chamado "Novo contato pelo
   // WhatsApp" — para alguém que o CRM conhece pelo nome.
   //
   // ⚠️ E o comentário que estava aqui MENTIA: dizia que "o chamador garante" que
-  // o nome não é identificador técnico. O chamador (lib/waha/ingest.ts) passava
+  // o nome não é identificador técnico. O chamador (a ingestão do canal) passava
   // o payload cru, sem guarda nenhuma. Typecheck e testes passavam com a
   // afirmação falsa gravada no código. Quem garante agora é `rotuloDoContato` —
   // a MESMA função que as telas usam, para que o título do card e o nome no
@@ -213,12 +213,16 @@ export async function garantirLeadDaConversa(
     leadId: lead.id as string,
     contactId,
     type: "lead_created",
-    sourceModule: "waha.ingest",
+    // `canal.ingest`, e não o nome da tecnologia: a doutrina de restrição de
+    // canal (invariante 1) proíbe feature nomear provider — quem sabe qual é o
+    // provider é `lib/channels/`. Aqui o que importa é o QUE originou (a
+    // ingestão de uma mensagem de canal), não POR ONDE ela entrou.
+    sourceModule: "canal.ingest",
     sourceId: conversationId,
     // `webhook_source` e não um "system" inventado: `actorParaAtividade` já
     // traduz esta variante para `kind: "system"` na timeline, e ela descreve o
     // que de fato aconteceu — a mensagem chegou por webhook, o produto agiu.
-    actor: { type: "webhook_source", id: "waha" },
+    actor: { type: "webhook_source", id: "canal-inbound" },
     reason: "primeira mensagem recebida no WhatsApp",
     payload: { conversation_id: conversationId },
   });

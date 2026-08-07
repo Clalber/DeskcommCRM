@@ -191,7 +191,7 @@ describe("o lead NASCE", () => {
     // `system` e não `ai`: quem criou foi o runtime, e afirmar autoria da IA sem
     // lastro é o que a 0071 existe para impedir.
     expect(at.actor_kind).toBe("system");
-    expect(at.source_module).toBe("waha.ingest");
+    expect(at.source_module).toBe("canal.ingest");
     expect(at.source_id, "a conversa que originou fica registrada").toBe(CONVERSA);
     expect(at.contact_id).toBe(contato);
     expect(at.reason).toBeTruthy();

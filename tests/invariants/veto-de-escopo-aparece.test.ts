@@ -53,7 +53,7 @@ async function criarFunil(nome: string, slug: string): Promise<{ id: string; pri
   );
   const { rows: s1 } = await pool.query<{ id: string }>(
     `insert into crm_stages (organization_id, pipeline_id, name, slug, position, agent_stage_hint)
-     values ($1, $2, 'Entrada', $3, 1, 'greeting') returning id`,
+     values ($1, $2, 'Entrada', $3, 1, 'new') returning id`,
     [ORG, p[0]!.id, `entrada-${slug}`],
   );
   await pool.query(
@@ -180,7 +180,7 @@ describe("migração", () => {
       [ORG],
     );
     const { rows: s } = await pool.query<{ id: string }>(
-      "select id from crm_stages where pipeline_id = $1 and agent_stage_hint = 'greeting'",
+      "select id from crm_stages where pipeline_id = $1 and agent_stage_hint = 'new'",
       [funilAlheio],
     );
     await pool.query(
