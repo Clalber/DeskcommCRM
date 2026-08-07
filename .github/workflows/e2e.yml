@@ -204,7 +204,8 @@ jobs:
             followup-builder.spec.ts followup-queue.spec.ts \
             distribuicao-atendimento.spec.ts followup-journey.spec.ts \
             webhooks.spec.ts \
-            capacidades-do-agente.spec.ts
+            capacidades-do-agente.spec.ts \
+            escopo-de-funil-do-agente.spec.ts
         env:
           INTERNAL_SECRET: ci-placeholder-nao-e-segredo
           CPF_ENCRYPTION_KEY: ci-placeholder-nao-e-segredo
