@@ -43,6 +43,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { logger } from "@/lib/logger";
 
+import { ehIdentificadorTecnico, rotuloDoContato, SEM_NOME } from "@/lib/contacts/rotulo-do-contato";
+
 import { emitLeadActivity } from "./activity-emitter";
 
 /**
@@ -130,7 +132,7 @@ export async function garantirLeadDaConversa(
   // lugar onde ninguém olharia.
   const { data: contato } = await db
     .from("contacts")
-    .select("is_blocked")
+    .select("is_blocked,display_name,name,phone_number")
     .eq("organization_id", organizationId)
     .eq("id", contactId)
     .maybeSingle();
@@ -153,9 +155,33 @@ export async function garantirLeadDaConversa(
   const destino = await funilDeEntrada(db, organizationId);
   if ("erro" in destino) return { criado: false, motivo: destino.erro };
 
-  // 4 · o card. `title` usa o nome do contato — e o chamador garante que ele não
-  // é identificador técnico (ver spec 17 §4: `Contato 543134@lid` chegava à tela).
-  const titulo = (dados.nomeDoContato ?? "").trim() || "Novo contato pelo WhatsApp";
+  // 4 · o card.
+  //
+  // O nome vem do CADASTRO, não do payload — e a correção é do próprio passo 1.
+  // A versão anterior usava `notifyNameOf(p)` cru, então um contato conhecido
+  // que mandasse uma mensagem sem `pushName` (o WAHA manda assim em 2 de cada
+  // 271 inbounds, e em TODO ack) abria um card chamado "Novo contato pelo
+  // WhatsApp" — para alguém que o CRM conhece pelo nome.
+  //
+  // ⚠️ E o comentário que estava aqui MENTIA: dizia que "o chamador garante" que
+  // o nome não é identificador técnico. O chamador (lib/waha/ingest.ts) passava
+  // o payload cru, sem guarda nenhuma. Typecheck e testes passavam com a
+  // afirmação falsa gravada no código. Quem garante agora é `rotuloDoContato` —
+  // a MESMA função que as telas usam, para que o título do card e o nome no
+  // inbox não possam divergir.
+  //
+  // O payload entra só como reforço: o upsert do contato roda ANTES deste ponto,
+  // então o cadastro já incorporou o `pushName` desta mensagem.
+  const doCadastro = rotuloDoContato(contato);
+  const doPayload = (dados.nomeDoContato ?? "").trim();
+  const titulo =
+    doCadastro !== SEM_NOME
+      ? doCadastro
+      : doPayload !== "" && !ehIdentificadorTecnico(doPayload)
+        ? doPayload
+        : // "Sem nome" serve para uma linha de lista; um card de kanban precisa
+          // dizer de onde veio, senão o quadro vira uma coluna de anônimos iguais.
+          "Novo contato pelo WhatsApp";
   const { data: lead, error } = await db
     .from("crm_leads")
     .insert({

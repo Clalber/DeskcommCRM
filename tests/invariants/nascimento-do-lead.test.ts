@@ -197,6 +197,48 @@ describe("o lead NASCE", () => {
     expect(at.reason).toBeTruthy();
   });
 
+  it("o título vem do CADASTRO, não do payload — contato conhecido não vira 'Novo contato'", async () => {
+    // O defeito era do próprio passo 1: `nomeDoContato` vinha de
+    // `notifyNameOf(p)` cru. O WAHA manda inbound SEM `pushName` (2 de 271
+    // medidos) e TODO ack vem assim — então um cliente que o CRM conhece pelo
+    // nome abria um card chamado "Novo contato pelo WhatsApp".
+    const contato = await criarContato(ORG_VIVA, "Conhecido Andrade");
+    const r = await garantirLeadDaConversa(db, {
+      organizationId: ORG_VIVA,
+      contactId: contato,
+      conversationId: CONVERSA,
+      nomeDoContato: null, // a mensagem veio sem nome
+    });
+    expect(r.criado).toBe(true);
+    if (!r.criado) return;
+    const { rows } = await pool.query<{ title: string }>("select title from crm_leads where id = $1", [
+      r.leadId,
+    ]);
+    expect(rows[0]!.title).toBe("Conhecido Andrade");
+  });
+
+  it("rótulo TÉCNICO no cadastro não vaza para o título do card", async () => {
+    // Ler o cadastro abriu esta porta: 3 contatos da produção têm
+    // `Contato 543134@lid` gravado. Sem a guarda, o kanban — que hoje está
+    // limpo — receberia o resíduo no primeiro card.
+    const contato = await criarContato(ORG_VIVA, "Contato 543134@lid");
+    await pool.query("update contacts set phone_number = '+5531955554444' where id = $1", [contato]);
+    const r = await garantirLeadDaConversa(db, {
+      organizationId: ORG_VIVA,
+      contactId: contato,
+      conversationId: CONVERSA,
+      nomeDoContato: "Contato 543134@lid",
+    });
+    expect(r.criado).toBe(true);
+    if (!r.criado) return;
+    const { rows } = await pool.query<{ title: string }>("select title from crm_leads where id = $1", [
+      r.leadId,
+    ]);
+    expect(rows[0]!.title).not.toMatch(/@lid|@c\.us/);
+    // Cai no telefone, que é informação útil — melhor que "Sem nome".
+    expect(rows[0]!.title).toBe("+5531955554444");
+  });
+
   it("sem nome do contato, o título ainda é legível — nunca identificador técnico", async () => {
     const contato = await criarContato(ORG_VIVA, null);
     const r = await garantirLeadDaConversa(db, {
