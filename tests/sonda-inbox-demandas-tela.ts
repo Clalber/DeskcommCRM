@@ -131,6 +131,52 @@ async function main(): Promise<void> {
   await p.screenshot({ path: "evidence/passo4-inbox-demandas.png", fullPage: false });
 
   // ---------------------------------------------------------------------------
+  // O CICLO COMPLETO: clicar, escrever, salvar — e confirmar NO BANCO.
+  //
+  // Sem esta fase a prova seria de exibição. O que fecha o invariante 4 não é a
+  // seção mostrar o vazamento: é a pessoa poder resolvê-lo sem sair da conversa.
+  // E a confirmação vem do banco, não de uma mensagem de sucesso na tela — é
+  // exatamente assim que o bug conhecido de `organizations` engana (o PostgREST
+  // devolve 200 tendo casado zero linhas).
+  // ---------------------------------------------------------------------------
+  const PASSO = "Enviar a segunda via do boleto";
+  let statusPatch = 0;
+  p.on("response", (r) => {
+    if (r.url().includes("/api/v1/demandas/")) statusPatch = r.status();
+  });
+  await p.locator('[data-testid="marcar-proximo-passo"]').first().click();
+  await p.locator('[data-testid="campo-proximo-passo"]').pressSequentially(PASSO, { delay: 8 });
+  await p.locator('[data-testid="salvar-proximo-passo"]').click();
+  await p.waitForTimeout(2500);
+
+  const noBancoDepois = psql(
+    `select coalesce(proximo_passo,'(nulo)') from public.demandas
+      where assunto = '${MARCA}' and proximo_passo is not null;`,
+  ).trim();
+  const aindaSemPasso = Number(
+    psql(
+      `select count(*) from public.demandas where assunto='${MARCA}' and proximo_passo is null;`,
+    ).trim(),
+  );
+  const naTelaDepois = (await p.evaluate(`(() => {
+    var sec = document.querySelector('[data-testid="inbox-demandas"]');
+    return {
+      sem_passo: sec.querySelectorAll('[data-testid="demanda-sem-proximo-passo"]').length,
+      texto: sec.innerText.replace(/\\s+/g, " ").trim()
+    };
+  })()`)) as { sem_passo: number; texto: string };
+  const audit = psql(
+    `select count(*) from public.api_audit_log
+      where action = 'demanda.proximo_passo_definido'
+        and created_at > now() - interval '2 minutes';`,
+  ).trim();
+  console.log(
+    "CICLO:",
+    JSON.stringify({ statusPatch, noBancoDepois, aindaSemPasso, naTelaDepois, audit }),
+  );
+  await p.screenshot({ path: "evidence/passo4-inbox-proximo-passo.png", fullPage: false });
+
+  // ---------------------------------------------------------------------------
   // O CAMINHO DA FALHA, na tela. `tests/sonda-painel-inbox.ts` já guarda isto
   // para as três seções antigas, mas não roda neste banco: sua fixture
   // ("Ana Souza LGPD E2E") não existe aqui — medido, 0 contatos. Em vez de
@@ -178,6 +224,12 @@ async function main(): Promise<void> {
     ["sob falha: CONFESSA que não conseguiu ler", falha.confessa === true],
     ["sob falha: NÃO afirma 'nenhuma demanda aberta'", falha.mente === false],
     ["sob falha: oferece tentar de novo", falha.oferece_retry === true],
+    ["ciclo: o PATCH respondeu 200", statusPatch === 200],
+    ["ciclo: o BANCO gravou o próximo passo", noBancoDepois === PASSO],
+    ["ciclo: sobrou 1 demanda sem passo (a outra já tinha)", aindaSemPasso === 0],
+    ["ciclo: a tela releu e a demanda saiu do estado de vazamento", naTelaDepois.sem_passo === 0],
+    ["ciclo: o texto novo aparece na tela", naTelaDepois.texto.includes(PASSO)],
+    ["ciclo: emitiu audit (invariante 3)", Number(audit) >= 1],
   ];
   let falhas = 0;
   for (const [nome, ok] of casos) {

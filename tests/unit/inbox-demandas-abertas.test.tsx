@@ -1,5 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 import { CRMSidePanel } from "@/components/inbox/CRMSidePanel";
@@ -92,11 +93,12 @@ const RESPOSTA = {
 };
 
 const get = vi.fn();
+const patch = vi.fn();
 vi.mock("@/lib/api/client", () => ({
   apiClient: {
     get: (...args: unknown[]) => get(...args),
     post: vi.fn(),
-    patch: vi.fn(),
+    patch: (...args: unknown[]) => patch(...args),
   },
 }));
 vi.mock("@/hooks/pipelines/useDefaultPipeline", () => ({
@@ -116,6 +118,8 @@ vi.mock("@/hooks/contacts/useUpdateContact", () => ({
 
 beforeEach(() => {
   get.mockReset();
+  patch.mockReset();
+  patch.mockResolvedValue({ data: { id: "d-1" } });
 });
 
 describe("painel do inbox — demandas abertas", () => {
@@ -165,6 +169,54 @@ describe("painel do inbox — demandas abertas", () => {
     // Some da tela seria pior que dizer: o atendente não distinguiria "não tem"
     // de "esta versão não mostra".
     expect(screen.queryByTestId("demanda-sem-proximo-passo")).toBeNull();
+  });
+
+  it("a demanda SEM próximo passo oferece a saída; a que TEM, não", async () => {
+    // O gate dos mapas de arquitetura denunciou que esta seção só recebia: o
+    // atendente via o vazamento e tinha de sair da tela. O botão é a segunda
+    // aresta — e ele não pode aparecer onde não há o que resolver, senão vira
+    // ruído em cima de trabalho já feito.
+    get.mockResolvedValue({ data: RESPOSTA });
+    renderPainel();
+    const sem = await screen.findByTestId("demanda-sem-proximo-passo");
+    const com = screen.getByTestId("demanda-com-proximo-passo");
+    expect(sem.querySelector('[data-testid="marcar-proximo-passo"]')).toBeTruthy();
+    expect(com.querySelector('[data-testid="marcar-proximo-passo"]')).toBeNull();
+  });
+
+  it("marcar o próximo passo GRAVA e relê do servidor", async () => {
+    get.mockResolvedValue({ data: RESPOSTA });
+    renderPainel();
+    const sem = await screen.findByTestId("demanda-sem-proximo-passo");
+
+    await userEvent.click(sem.querySelector('[data-testid="marcar-proximo-passo"]')!);
+    const campo = await screen.findByTestId("campo-proximo-passo");
+    await userEvent.type(campo, "Enviar a segunda via do boleto");
+    const chamadasAntes = get.mock.calls.length;
+    await userEvent.click(screen.getByTestId("salvar-proximo-passo"));
+
+    await waitFor(() => expect(patch).toHaveBeenCalledTimes(1));
+    const [rota, corpo] = patch.mock.calls[0] as [string, Record<string, unknown>];
+    expect(rota).toBe("/api/v1/demandas/d-1");
+    expect(corpo.proximo_passo).toBe("Enviar a segunda via do boleto");
+    // RELÊ do servidor em vez de apagar da lista no cliente: escrita que só
+    // some da tela é o defeito que este painel inteiro existe para não repetir.
+    await waitFor(() => expect(get.mock.calls.length).toBeGreaterThan(chamadasAntes));
+  });
+
+  it("falha ao salvar NÃO fecha o campo — o texto não pode evaporar", async () => {
+    get.mockResolvedValue({ data: RESPOSTA });
+    patch.mockRejectedValueOnce(new Error("500"));
+    renderPainel();
+    const sem = await screen.findByTestId("demanda-sem-proximo-passo");
+    await userEvent.click(sem.querySelector('[data-testid="marcar-proximo-passo"]')!);
+    await userEvent.type(await screen.findByTestId("campo-proximo-passo"), "Ligar amanhã");
+    await userEvent.click(screen.getByTestId("salvar-proximo-passo"));
+
+    await waitFor(() => expect(patch).toHaveBeenCalled());
+    // Fechar devolveria a tela ao estado de sucesso com nada gravado.
+    const campo = (await screen.findByTestId("campo-proximo-passo")) as HTMLInputElement;
+    expect(campo.value).toBe("Ligar amanhã");
   });
 
   it("a demanda vem ANTES do negócio — a unidade é ela (cap. 5)", async () => {

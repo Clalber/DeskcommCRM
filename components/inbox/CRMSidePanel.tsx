@@ -1,6 +1,6 @@
 "use client";
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Card } from "@/components/ui/card";
@@ -80,6 +80,94 @@ const ESTADO_LEGIVEL: Record<string, string> = {
 
 function horasDesde(iso: string): number {
   return Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 3_600_000));
+}
+
+/**
+ * Marcar o próximo passo, no lugar onde o atendente já está.
+ *
+ * Fica FECHADO por padrão: a lista costuma ter mais de uma demanda, e um campo
+ * de texto aberto em cada uma transformaria a seção de contexto em formulário.
+ * O botão é a promessa; o campo aparece quando alguém aceita.
+ *
+ * Sem data de propósito nesta superfície. Obrigar hora aqui faria o atendente
+ * inventar uma para se livrar do campo — e data inventada é pior que ausente,
+ * porque o Radar passa a cobrar no dia errado. A rota aceita
+ * `proximo_passo_em`; quem precisa de compromisso datado usa o retorno.
+ */
+function MarcarProximoPasso({ demandaId, onPronto }: { demandaId: string; onPronto: () => void }) {
+  const [aberto, setAberto] = useState(false);
+  const [texto, setTexto] = useState("");
+  const [salvando, setSalvando] = useState(false);
+
+  async function salvar() {
+    const passo = texto.trim();
+    if (passo.length < 3) return;
+    setSalvando(true);
+    try {
+      await apiClient.patch(`/api/v1/demandas/${demandaId}`, { proximo_passo: passo });
+      setAberto(false);
+      setTexto("");
+      onPronto();
+    } catch {
+      // Falha NÃO fecha o campo: fechar devolveria a tela ao estado de sucesso
+      // e o texto se perderia sem que ninguém tivesse gravado nada.
+      toast.error("Não consegui salvar o próximo passo. Tente de novo.");
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  if (!aberto) {
+    return (
+      <Button
+        size="sm"
+        variant="outline"
+        className="mt-1.5 h-7 text-xs"
+        data-testid="marcar-proximo-passo"
+        onClick={() => setAberto(true)}
+      >
+        Marcar próximo passo
+      </Button>
+    );
+  }
+
+  return (
+    <div className="mt-1.5 space-y-1.5">
+      <input
+        autoFocus
+        value={texto}
+        onChange={(e) => setTexto(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") void salvar();
+          if (e.key === "Escape") setAberto(false);
+        }}
+        maxLength={500}
+        placeholder="O que acontece a seguir?"
+        aria-label="Próximo passo desta demanda"
+        data-testid="campo-proximo-passo"
+        className="w-full rounded-md border border-input bg-background px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+      />
+      <div className="flex gap-1.5">
+        <Button
+          size="sm"
+          className="h-7 text-xs"
+          disabled={salvando || texto.trim().length < 3}
+          data-testid="salvar-proximo-passo"
+          onClick={() => void salvar()}
+        >
+          {salvando ? "Salvando…" : "Salvar"}
+        </Button>
+        <Button
+          size="sm"
+          variant="ghost"
+          className="h-7 text-xs"
+          onClick={() => setAberto(false)}
+        >
+          Cancelar
+        </Button>
+      </div>
+    </div>
+  );
 }
 
 function formatMoney(cents: number | null, currency: string | null): string {
@@ -212,6 +300,13 @@ export function CRMSidePanel({ conversation }: Props) {
       cancelled = true;
     };
   }, [contactId, tentativa]);
+
+  // Recarrega o resumo pelo MESMO caminho do "Tentar de novo": o efeito depende
+  // de `tentativa`, então a demanda recém-marcada volta do servidor em vez de
+  // ser apagada da lista no cliente. Sumir no otimismo esconderia uma escrita
+  // que falhou depois — e escrita que parece ter dado certo é o defeito que
+  // esta tela inteira combate.
+  const recarregar = useCallback(() => setTentativa((n) => n + 1), []);
 
   const tags = contact?.tags ?? [];
   const displayName =
@@ -350,6 +445,11 @@ export function CRMSidePanel({ conversation }: Props) {
                   <div className={cn("mt-0.5", semPasso ? "font-medium" : "text-muted-foreground")}>
                     {d.proximo_passo ?? "Sem próximo passo definido"}
                   </div>
+                  {/* A SAÍDA. Sem ela esta seção só denunciava: o atendente via o
+                      vazamento e tinha de sair da tela para resolver — peça que
+                      só recebe é ilha pelo invariante 1, e foi o gate dos mapas
+                      de arquitetura que apontou isso. */}
+                  {semPasso ? <MarcarProximoPasso demandaId={d.id} onPronto={recarregar} /> : null}
                 </li>
               );
             })}

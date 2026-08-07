@@ -788,8 +788,100 @@ caso novo — desta vez medido com a árvore parada).
 
 ### Pendente
 
-- Nada desta dívida. As pendências vivas são as do topo do arquivo
-  (`database.types.ts`, mapa de arquitetura) e as duas issues pré-existentes.
+- Nada desta dívida.
+
+---
+
+## Fechando as pendências — e o buraco que um gate novo denunciou (2026-08-07)
+
+### `lib/database.types.ts` regenerado
+
+Gerado do Supabase local e conferido **antes** de substituir: 9 tabelas entram
+(`demandas`, `demanda_conversas` entre elas), 38 funções entram
+(`fn_atrito_metrics`, `fn_atrito_jaccard`), e **nada some** — que era a única
+pergunta perigosa. As funções de extensão que aparecem (`citext`, `gtrgm_*`)
+seguem a convenção do arquivo, que já trazia `show_trgm` e `show_limit`.
+
+**Sem prettier, de propósito.** Formatar levava o diff de 935/74 para 5995/5147:
+o arquivo é gerado e a próxima geração desformata de novo, então o custo é
+recorrente e o ganho é zero (ninguém lê esse arquivo à mão).
+
+Anotação de passagem: o banco local tem `vector`, `uuid-ossp`, `pg_trgm` e
+`citext`; o `baseline.sql` tem **uma única** linha `CREATE EXTENSION`, e é
+`pgcrypto`. Não é defeito solto — `scripts/test-db.sh` tem um prelude que cria as
+demais antes de aplicar o baseline, com comentário explicando. É contrato
+conhecido, e fica registrado porque o grep ingênuo (case-sensitive) diz outra
+coisa.
+
+### O mapa de arquitetura, e o gate que faltava
+
+`docs/architecture/indice-de-atrito.architecture.json` — 24 peças, 31 arestas, 5
+faixas, com as **três não-ligações deliberadas** e o laço de retorno declarado.
+
+Mas os mapas **não passavam por gate nenhum**, e o item 13 do DoD pede "peça nova
+com ≥2 arestas". Sem verificação isso é honra. `tests/unit/mapas-de-arquitetura.test.ts`
+cobre os modos de falha silenciosos: aresta para id inexistente, node em lane
+inexistente, `mainPath` citando id morto, e peça órfã. Ele é **estrutural** — não
+julga se o mapa descreve a realidade do código, e isso está escrito no cabeçalho
+em vez de subentendido.
+
+`crm-vivo` entra com dívida CONGELADA (≤4 órfãos): o README declara que aquele
+mapa é planta, não fotografia. Só não pode piorar.
+
+### 🐛 O gate reprovou o MEU mapa — e o defeito era de produto
+
+```
+inbox com menos de 2 arestas — é ilha pelo invariante 1: expected 1 to be >= 2
+```
+
+Verdade: o painel do inbox **recebia** a lista de demandas sem próximo passo e
+não oferecia nenhuma forma de resolvê-las. O atendente via o vazamento e tinha
+de sair da tela — o mesmo defeito do invariante 5 que eu havia corrigido no
+Radar, repetido um andar adiante.
+
+O remédio não era afrouxar o gate:
+
+| Peça | O quê |
+|---|---|
+| `PATCH /api/v1/demandas/[id]` | piso **agent** — quem atende é quem sabe o que vem a seguir; exigir gerente empurraria o registro para "depois", que é o estado que isto vem eliminar |
+| `MarcarProximoPasso` no painel | fechado por padrão (a lista tem várias demandas; campo aberto em cada uma viraria formulário) |
+| Audit `demanda.proximo_passo_definido` | a única mutação que fecha o vazamento não podia ser a única sem rastro |
+
+Duas decisões de desenho que valem registro: o update filtra
+`fechada_em is null` — marcar próximo passo de demanda encerrada é reabrir pela
+porta dos fundos, sem desfecho e sem ninguém saber; e o `select` de volta separa
+"gravou" de "não achou", porque zero linhas no PostgREST é indistinguível de
+sucesso (é assim que o bug conhecido de `organizations` engana).
+
+Sabotagens: botão em toda demanda → 1 → **1**; salvar sem chamar o PATCH →
+1 → **2**; falha fechando o campo → 1 → **1**.
+
+### ⚠️ NÃO MEDIDO — a prova de tela do ciclo de escrita
+
+A sonda `tests/sonda-inbox-demandas-tela.ts` foi estendida com o ciclo completo
+(clicar → escrever → salvar → **conferir no banco** → conferir o audit) e
+**não chegou a rodar**: o Supabase local caiu no meio da sessão. Medido, não
+suposto — `curl` no kong devolveu `000` enquanto o app respondia `200`, e depois
+o próprio daemon do Docker parou de responder (`docker ps -a` sem retorno em
+90s).
+
+Diagnóstico com controle: a sonda de layout, que rodara verde minutos antes,
+passou a falhar **no mesmo ponto** (o login). Não era a edição nova; era o
+ambiente.
+
+Não reiniciei o Docker Desktop porque isso derrubaria containers da máquina que
+eu não inventariei.
+
+**O que está provado do ciclo:** 8 casos de componente com `apiClient` espionado
+(a rota certa, o corpo certo, o relê do servidor, e a falha que não apaga o
+texto), com as três sabotagens acima. **O que falta:** que a rota responda 200
+contra o banco real, que a linha mude em `demandas`, e que o audit apareça. O
+código da sonda está escrito e versionado — basta o Supabase voltar:
+
+```bash
+npx supabase start
+E2E_PORT=3101 npx tsx tests/sonda-inbox-demandas-tela.ts   # espera 21/21
+```
 
 ---
 
