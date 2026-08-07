@@ -110,6 +110,17 @@ const versionShapeSchema = z
         (ids) => ids.every((id) => (VALID_TOOL_IDS as readonly string[]).includes(id)),
         { message: "tool_id_invalid" },
       ),
+    /**
+     * Funis em que este agente pode ESCREVER (spec 17 passo 3). Vazio = NENHUM.
+     *
+     * ⚠️ Sem `.refine()` de existência, ao contrário de `operator_tool_ids` logo
+     * acima — e a diferença não é descuido. Aquele valida contra uma CONSTANTE
+     * em código, que o cliente também tem; funil é linha de tabela, e checar
+     * existência é consulta cross-row. Um schema compartilhado com o browser não
+     * pode fazer isso, então a validação de que o funil existe (e é desta
+     * organização) mora no servidor, junto do resto.
+     */
+    pipeline_ids: z.array(z.string().uuid()).default([]),
   })
   .strict();
 

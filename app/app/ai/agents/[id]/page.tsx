@@ -10,6 +10,7 @@ import type { CredentialRow } from "@/hooks/ai/useCredentials";
 
 import { AgentEditorClient } from "./_client";
 import { AgentTabs } from "./_components/AgentTabs";
+import type { FunilDaResposta } from "@/hooks/pipelines/usePipelines";
 
 export const dynamic = "force-dynamic";
 
@@ -17,7 +18,7 @@ const AGENT_COLUMNS =
   "id, organization_id, name, description, model, system_prompt, is_active, is_default, kind, priority, published_version_id, archived_at, config, guardrails, active_kb_version_id, created_at, updated_at";
 
 const VERSION_COLUMNS =
-  "id, organization_id, agent_id, version_number, system_prompt, provider, model, credential_id, tool_ids, trigger_config, channel_session_id, max_steps, token_budget, cost_budget_cents, history_message_window, history_token_window, handoff_keywords, handoff_tool_enabled, cases_enabled, split_messages, split_max_chars, followup, operator_enabled, operator_model, operator_tool_ids, status, published_at, superseded_at, created_at, created_by";
+  "id, organization_id, agent_id, version_number, system_prompt, provider, model, credential_id, tool_ids, trigger_config, channel_session_id, max_steps, token_budget, cost_budget_cents, history_message_window, history_token_window, handoff_keywords, handoff_tool_enabled, cases_enabled, split_messages, split_max_chars, followup, operator_enabled, operator_model, operator_tool_ids, status, published_at, superseded_at, created_at, created_by,pipeline_ids";
 
 const CREDENTIAL_COLUMNS =
   "id, organization_id, provider, label, api_key_last4, validated_at, validation_error, models_available, is_active, created_by, created_at, updated_at";
@@ -59,7 +60,7 @@ export default async function AgentEditorPage({
   }
 
   // mcp_agent: busca versions + lookups.
-  const [versionsRes, credentialsRes, channelSessions, routerMemberRes] = await Promise.all([
+  const [versionsRes, credentialsRes, channelSessions, routerMemberRes, funisRes] = await Promise.all([
     supabase
       .from("ai_agent_versions")
       .select(VERSION_COLUMNS)
@@ -78,9 +79,19 @@ export default async function AgentEditorPage({
       .eq("agent_id", id)
       .limit(1)
       .maybeSingle(),
+    // Os funis vêm com a página, não por fetch no cliente: a marcação usa
+    // "nenhum funil" para dizer algo importante, e uma lista que chega vazia no
+    // primeiro render diria isso por engano.
+    supabase
+      .from("crm_pipelines")
+      .select("id, name, slug, description, position, is_default")
+      .eq("organization_id", activeOrg.orgId)
+      .eq("is_archived", false)
+      .order("position"),
   ]);
 
   const versions = (versionsRes.data ?? []) as unknown as AgentVersionRow[];
+  const funis = (funisRes.data ?? []) as unknown as FunilDaResposta[];
   const credentials = (credentialsRes.data ?? []) as unknown as CredentialRow[];
   const routerMemberRow = routerMemberRes.data as { router_id: string; ai_routers: { name: string } | null } | null;
   const routerMembership = routerMemberRow
@@ -105,6 +116,7 @@ export default async function AgentEditorPage({
         versions={versions}
         credentials={credentials}
         channelSessions={channelSessions}
+        funis={funis}
         routerMembership={routerMembership}
         readOnly={readOnly}
       />
