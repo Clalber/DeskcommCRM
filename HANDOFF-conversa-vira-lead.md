@@ -13,7 +13,7 @@
 | # | passo | estado |
 |---|---|---|
 | 1 | **conversa vira lead** | ✅ **completo** — código, invariantes, prova de tela e 5 sabotagens |
-| 2 | contato deixa de ser anônimo | 🔄 **em curso** — 3 bugs vivos consertados, telefone do @lid ligado; falta o rótulo único e a mão do Operador |
+| 2 | contato deixa de ser anônimo | 🔄 **quase** — 3 bugs vivos, telefone do @lid, rótulo único e título do card. Falta só a mão do Operador (2 decisões pendentes com o Rafael) |
 | 3 | escopo por pipeline | ⏳ não começado |
 | 4 | tradução de etapas com superfície | ⏳ não começado |
 | 5 | o laço (desfazer vira sinal) | ⏳ não começado |
@@ -213,18 +213,48 @@ para o errado.
 
 ### Medições
 
-`pnpm test:db` **75 arquivos / 509 testes** · `pnpm test:unit` 284 arquivos · typecheck e lint zerados.
+`pnpm test:db` **75 arquivos / 511 testes** · `pnpm test:unit` **285 / 2935** · `pnpm test:unit` 284 arquivos · typecheck e lint zerados.
 19 casos novos entre `telefone-do-lid.test.ts` (banco) e `telefone-alternativo-do-payload.test.ts`
 (unit, com payloads TRANSCRITOS da produção — ninguém teria inventado o nome `remoteJidAlt`).
+
+### Fatia C — o rótulo do contato, e o título do card (`42d53ea6`, `41afbe6e`)
+
+Eram **seis** cópias da cadeia `display_name || name || phone_number || <literal>`, com **quatro**
+finais diferentes — e duas delas (ficha do contato, tabela de contatos) **nem usavam o telefone**:
+quem tinha número e não tinha nome aparecia como "Sem nome" numa tela e com o número em outra.
+
+`lib/contacts/rotulo-do-contato.ts` é a decisão única, com a regra que nenhuma das seis tinha:
+**identificador técnico não é nome de gente**. E o commit traz o **gate** junto — um caso varre
+`app/`, `lib/` e `components/` atrás da assinatura da cadeia, para que a sétima cópia reprove em
+vez de nascer com um quinto final.
+
+Isso destravou um defeito do passo 1: o título do card vinha do PAYLOAD. Como o WAHA manda inbound
+sem `pushName` (2 de 271) e TODO ack assim, um cliente conhecido abria card "Novo contato pelo
+WhatsApp". Agora vem do cadastro, pela mesma função das telas — título e inbox não podem divergir.
+
+E o comentário que estava naquela linha **mentia**: dizia que "o chamador garante" que o nome não é
+técnico, e o chamador passava o payload cru. Typecheck e testes verdes com a afirmação falsa
+versionada.
 
 ### Ainda em aberto no passo 2
 
 | # | o quê | por quê |
 |---|---|---|
-| 1 | **O rótulo do contato em 5 lugares**, com 4 finais diferentes (`—`, `Sem nome`, …) | centralizar é o que impede a 6ª política nascer; o nome entra até no system prompt do modelo |
-| 2 | **A mão do Operador** (salvar e-mail/nome dito na conversa) | depende da Fatia A, que acabou de sair; falta decidir a política de sobrescrita e a base legal (`consent` nunca é escrito hoje) |
-| 3 | O título do lead é **cópia congelada** | `nascimento-do-lead` lê o nome do PAYLOAD, não do cadastro; consertar exige o item 1 antes, senão o rótulo técnico vaza para o kanban |
-| 4 | Nenhum turno com WAHA real desde a 0122 | o telefone foi provado por payload gravado e por banco, não por mensagem nova ponta a ponta |
+| 1 | **A mão do Operador** (salvar e-mail/nome dito na conversa) | **2 decisões são do Rafael:** (a) política de sobrescrita — um e-mail dito de brincadeira substitui o correto, e o audit atual grava só os NOMES dos campos, não from/to, o que a regra L-06 exige; (b) base legal — nenhum código do repo escreve `consent.<finalidade>`, e `lgpd.consent_changed` está declarado e nunca é emitido |
+| 2 | Nenhum turno com WAHA real desde a 0122 | o telefone foi provado por payload gravado e por banco, não por mensagem nova ponta a ponta |
+| 3 | `GET /api/v1/contacts/<id-invalido>` devolve **500 com a mensagem crua do Postgres** | achado de brinde; não é carona deste passo |
+| 4 | A mesma rota tem **dois contratos**: POST devolve `{data:{contact}}`, GET devolve `{data}` | idem — uniformizar é mudança de contrato público |
+
+### Um erro meu, reincidente e registrado
+
+Na bateria de sabotagem da Fatia C escrevi um helper de shell com `git checkout <arquivo>` no fim e
+o chamei várias vezes. O checkout ficou **escondido dentro da função** e apagou uma alteração que eu
+tinha acabado de escrever e ainda não commitado. Já tenho memória sobre isto — reincidi porque a
+memória falava do comando, e o que me pegou foi o FORMATO (o comando dentro de um helper repetido).
+
+O sinal foi a sabotagem seguinte falhar ao aplicar e os testes reprovarem **com o código
+restaurado**. Lidas só as contagens, as reprovações do T1 teriam sido registradas como prova — e
+vieram do trabalho apagado, não da sabotagem. A memória foi reescrita com esse detalhe.
 
 ---
 
