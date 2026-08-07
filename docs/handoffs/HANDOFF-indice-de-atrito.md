@@ -264,13 +264,12 @@ esteja marcado para acontecer.
 Zero erros de console. As métricas das Fases 1–3 seguem intactas
 (repergunta 27,3% como piso, espera calada 6,5%, abandono, pior caso).
 
-### ⚠️ PENDENTE nesta fase
+### ⚠️ PENDENTE nesta fase — resolvido depois, ver abaixo
 
-- **Passo 3 do cap. 5**: criar demanda no ponto de entrada real. Hoje só existe
-  a derivação do passado — conversa nova ainda não abre demanda sozinha.
-- **Passo 4 do cap. 5**: migrar os demais consumidores (Radar de Risco, inbox).
-- Sem isso, `demandas` é uma entidade correta que **para de crescer** — e uma
-  peça que só recebe é ilha pelo invariante 1.
+- ~~**Passo 3 do cap. 5**: criar demanda no ponto de entrada real.~~ **FEITO** na
+  migration 0121 (commit `a1efbf17`) — trigger `fn_demanda_abre_no_inbound`.
+- ~~**Passo 4 do cap. 5**: migrar os consumidores.~~ **Radar de Risco** (tela) e
+  **capacidade da IA** migrados; ver as duas seções de passo 4 mais abaixo.
 
 ---
 
@@ -349,11 +348,139 @@ empurrado para agora (leads frios → 0), mantendo as 8 demandas sem próximo
 passo. Resultado: `estado_vazio_indevido: false` — a tela mostrou as 8 demandas
 em vez de "Nenhuma demanda em risco". Ambiente restaurado (65 linhas).
 
+---
+
+## Passo 4 do cap. 5 — a IA também enxerga (2026-08-07)
+
+O Radar deu a lista ao **humano**. Faltava o outro lado do invariante 2
+(continuidade IA↔humano nas duas direções), e ele importa mais aqui do que
+parece: quem pode agendar o retorno que falta, às três da manhã, é a IA.
+
+### O defeito era invisível por construção
+
+`crm_list_at_risk_leads` chama `carregaRadarDeRisco` e faz `return radar` — ou
+seja, **`sem_proximo_passo` já viajava no payload desde ontem**. E não servia
+para nada: o modelo só usa o que a `description` promete. Dado que chega e não
+é declarado é, para o agente, o equivalente exato de um campo que a tela recebe
+e não pinta.
+
+A `description` agora declara o campo, os subcampos e — o que fecha o laço — as
+duas saídas: `crm_schedule_followup` (por `contact_id`, que é o que a lista
+traz) ou `crm_close_demand`. Sem nomear a saída, o modelo enxerga o problema e
+não sabe o que fazer com ele.
+
+### O achado que valia mais que a tarefa
+
+`carregaRadarDeRisco` faz **7 leituras tenant-aware com service role** — e
+`service role bypassa RLS, então o `.eq("organization_id", …)` é a única
+defesa`. Medido nesta sessão:
+
+```
+Sabotagem: remover o filtro de org da leitura de `demandas`
+Previsão:  0 reprovações        Resultado: 0    ← o buraco
+```
+
+O teste que existia se chamava *"não vaza negócio de outra organização — **toda
+leitura** filtra a org do contexto"* e exercitava **uma** leitura (`crm_leads`),
+com o resolver devolvendo `[]` — o que fazia a função retornar cedo e as outras
+seis nem acontecerem. O nome prometia mais do que a asserção media, e a leitura
+que **eu mesmo adicionei ontem** entrou sob esse álibi. É o anti-pattern #10 da
+doutrina do repo, introduzido por mim e não pego por nada.
+
+### Duas camadas, porque uma não alcança a outra
+
+| Camada | Onde | O que só ela pega |
+|---|---|---|
+| Unitário | `tests/unit/mcp-retencao-tools.test.ts` | que o filtro é **emitido**, nas 7 leituras |
+| Sonda de código | `tests/sonda-radar-isolamento-orgs.ts` | que o filtro **separa** de verdade, com 2 inquilinos reais |
+
+A sonda não virou invariante de `test:db` por um motivo medido:
+`scripts/test-db.sh` sobe **só Postgres**, sem PostgREST — `carregaRadarDeRisco`
+fala por supabase-js e não roda lá. Um invariante em SQL só poderia reescrever o
+predicado, que é testar o teste. Por isso a prova chama a **função**, contra o
+Supabase local, com org A e org B.
+
+### Sabotagens — previsão antes de rodar
+
+| Sabotagem | Previsão | Resultado | |
+|---|---|---|---|
+| Filtro de org fora da leitura de `demandas` (unit) | 1 | **1** ✅ | a mensagem nomeia a tabela culpada |
+| Ignorar o array do join do PostgREST | 1 | **1** ✅ | o nome do contato sumiria da lista do agente |
+| `description` promete campo inexistente | 1 | **1** ✅ | promessa vazia ao modelo reprova |
+| **A ponte monta a description do CATÁLOGO** | 1 | **1** ✅ | a mais realista: é o erro que o cabeçalho errado induz |
+| Filtro de org fora (sonda, 2 orgs) | 5 | **7** ⚠️ | ver abaixo |
+
+**A quarta divergiu, e a causa ensina.** Previ 5 supondo um banco com só os meus
+4 registros; o banco local tem demandas de outras orgs, então o vazamento traz
+10 e derruba também o caso do nome. Ensaio em banco sujo — a previsão foi contra
+um ambiente imaginado.
+
+E a divergência expôs **uma asserção fraca minha**: *"A1 é o contato certo"*
+passava **sob vazamento**, porque `has()` num conjunto que vazou o mundo inteiro
+é sempre verdadeiro. Trocada por igualdade de conjunto (`size === 1 && has`).
+Refeito: previsão 7, resultado **7**, controle 8/8 com exit 0.
+
+### 🐛 Achado: a `description` do catálogo é código morto
+
+`lib/mcp/tools/catalogo/*.ts` declara `description` em **51 capacidades** e o
+cabeçalho do arquivo diz textualmente *"`description` fala com o modelo"*.
+Medido: **ninguém lê esse campo.**
+
+```
+lib/ai/runtime/tools.ts:57      description: def.description   ← do HANDLER
+lib/mcp/tools/catalogo-servido.ts:58  description: handler.description  ← do HANDLER
+catalogEntry(...) é usado para: rotulo, risco, apenasHumano, pacotes — nunca description
+```
+
+Quem editar a description do catálogo acreditando no cabeçalho **não muda nada**
+no comportamento do agente.
+
+**Um gate de paridade nasceria vermelho** — medido: das 51 capacidades, **48
+divergem** entre handler e catálogo (as do catálogo são versões resumidas). Não
+alinhei as 48: é fora do escopo e alto risco de mexer no que fala com o modelo
+em 48 lugares de uma vez.
+
+O que fiz em vez disso foi fechar o **call site** do meu próprio trabalho:
+`"a promessa chega ao MODELO — a ponte monta a descrição do handler"` exercita
+`pickToolsFromMcp` e exige `montada.description === crmListAtRiskLeads.description`.
+Sabotado com `catalogEntry(def.name)?.description ?? def.description` (o erro que
+o cabeçalho induz): previsão 1, resultado **1**.
+
+Dívida declarada: ou o campo do catálogo vira fonte única, ou sai do tipo, ou
+ganha gate de paridade com a dívida das 48 congelada (padrão "gate que nasce
+vermelho": congela o existente, reprova só o novo).
+
+### Provado na tela (2026-08-07)
+
+`/app/ai/agents/<mcp_agent>`, login real com `e2e-manager`, Supabase local
+(controle: o HTML de `/login` referencia `127.0.0.1:54321` **2×** e
+`*.supabase.co` **0×**).
+
+```
+presente:              true
+texto:  "Ver quem esfriou e quem ficou sem próximo passo · Só consulta · Radar de risco
+         Lista as oportunidades abertas que passaram do prazo sem movimento, das mais
+         críticas para as menos urgentes — e, junto, as pessoas que estão esperando
+         sem que nada esteja marcado para acontecer."
+largura: 404px   altura: 155px   dentro_da_viewport: true
+jargao:  []      scroll_horizontal: false      erros de console: nenhum
+```
+
+`tests/sonda-capacidade-radar-tela.ts` · evidência em
+`evidence/passo4-capacidade-radar.png` · 6/6, exit 0.
+
+**Duas armadilhas de ambiente, ambas diagnosticadas e não chutadas:** o
+`e2e-admin` tem MFA forçado (doutrina) e trava o login da sonda — usar o
+`manager`; e o primeiro agente que escolhi era `kind='rag_bot'`, que cai no
+**editor legado sem `ToolPicker`** (`page.tsx:53`). A sonda fixa um `mcp_agent`
+e o comentário explica por quê, para o próximo não perder o mesmo tempo.
+
 ### ⚠️ PENDENTE
 
-- **Demais consumidores**: inbox e a capacidade MCP de retenção seguem lendo
-  `crm_leads`. Enquanto isso durar, a conversa ainda é tratada como unidade em
-  parte do sistema — que é o que o passo 4 existe para terminar.
+- **Inbox** segue lendo `crm_leads`. Enquanto isso durar, a conversa ainda é
+  tratada como unidade em parte do sistema — que é o que o passo 4 existe para
+  terminar.
+- **A `description` morta do catálogo** (acima) — decisão de desenho pendente.
 
 ---
 

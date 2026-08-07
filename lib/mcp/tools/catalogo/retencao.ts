@@ -75,10 +75,13 @@ export const TOOLS_RETENCAO = declararTools([
     description:
       "Radar de risco: oportunidades ABERTAS que passaram da janela de esfriamento do próprio " +
       "estágio, classificadas em critico / em_risco / em_voo (em_voo = há retorno agendado). " +
-      "Ordenado por urgência. Aceita limit e min_hours.",
-    rotulo: "Ver quem esfriou e está sem resposta",
+      "Ordenado por urgência. Aceita limit e min_hours. Traz também `sem_proximo_passo`: " +
+      "demandas abertas sem nada marcado para acontecer, resolvíveis com crm_schedule_followup " +
+      "(por contact_id) ou crm_close_demand.",
+    rotulo: "Ver quem esfriou e quem ficou sem próximo passo",
     explicacao:
-      "Lista as oportunidades abertas que passaram do prazo sem movimento, das mais críticas para as menos urgentes.",
+      "Lista as oportunidades abertas que passaram do prazo sem movimento, das mais críticas para as menos " +
+      "urgentes — e, junto, as pessoas que estão esperando sem que nada esteja marcado para acontecer.",
     oQueToca: "Radar de risco",
     risco: "seguro",
     pacotes: ["reter"],
