@@ -274,6 +274,37 @@ Zero erros de console. As métricas das Fases 1–3 seguem intactas
 
 ---
 
+## O caso 5 — investigação concluída (2026-08-06)
+
+**Sintoma:** sabotar o guard de `direction` do trigger não reprovava o caso 5,
+embora o comportamento errado fosse real (medido no banco: com zero demanda
+aberta, um outbound passava a criar demanda, 0 → 1).
+
+**Causa raiz — e não era o teste:** o bloco da migration 0121 estava inserido
+**quatro vezes** no `baseline.sql`. Meu script de atualização usou
+`str.replace(marca, ...)` **sem `count=1`**, e a marca escolhida
+(`notify pgrst, 'reload schema';`) aparece 4× no arquivo. A sabotagem editava a
+primeira cópia; as três `create or replace` seguintes restauravam a função.
+
+**Delimitação medida:** só os dois objetos da 0121 estavam duplicados.
+`fn_atrito_metrics`, `fn_atrito_jaccard`, `demandas`, `demanda_conversas` e as
+políticas estavam 1× — os blocos anteriores foram inseridos por índice, não por
+marca repetida.
+
+**Um erro no próprio conserto:** a primeira tentativa cortou também 3
+ocorrências legítimas de `notify pgrst`. Peguei ao medir contra o commit
+anterior (`git show cda9bedd` já tinha 4) e refiz delimitando o bloco por
+início **e** fim, em vez de cortar por separador.
+
+**Prova final:** com uma única definição, remover o guard reprova com
+`expected 3 to be 2`. Previsão de 1 reprovação, resultado 1.
+
+**Lição, registrada no cabeçalho do invariante:** teste verde sob sabotagem pode
+denunciar o **artefato duplicado**, não o teste fraco. Antes de reescrever a
+asserção, conte quantas vezes o objeto sabotado existe.
+
+---
+
 ## Sabotagens — o que foi provado que os testes pegam
 
 Verde não prova nada; o que prova é o teste reprovar quando deveria. Cada

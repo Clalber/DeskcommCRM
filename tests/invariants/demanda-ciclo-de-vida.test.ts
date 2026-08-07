@@ -20,17 +20,19 @@ import { GOV_ORG, GOV_SESSION, lastLine, seedGov, sql } from "./gov-helpers";
  *      ao longo do tempo, que é o modelo da 0119;
  *   5. outbound NÃO abre                            → só o cliente traz demanda.
  *
- * ## ⚠️ LIMITE MEDIDO desta suíte (não presumido)
+ * ## Os 5 casos estão PROVADOS por sabotagem
  *
- * O caso 5 **não foi provado por sabotagem**. Removendo o guard de `direction`
- * da função, o comportamento errado é REAL — medido direto no banco: com zero
- * demanda aberta, um outbound passa a criar demanda (0 → 1). Mas a suíte
- * continuou verde, e a razão não foi determinada.
+ * O caso 5 ficou um tempo verde sob sabotagem, e a causa não era o teste: o
+ * bloco da migration 0121 tinha sido inserido QUATRO vezes no `baseline.sql`
+ * (um `str.replace` sem `count=1` sobre uma marca que aparece 4× no arquivo).
+ * A sabotagem editava a primeira cópia e as três `create or replace` seguintes
+ * restauravam a função. Corrigido em migration própria; com uma única
+ * definição, remover o guard de `direction` reprova o caso 5 com
+ * `expected 3 to be 2`.
  *
- * Portanto: os casos 1–4 estão guardados; o caso 5 **está escrito e não está
- * provado**. Quem mexer no guard de direção não deve confiar nesta suíte para
- * pegar a regressão — investigue por que a sabotagem não propaga antes de
- * tratar este teste como rede.
+ * Fica a lição embutida: teste verde sob sabotagem pode denunciar o ARTEFATO
+ * duplicado, não o teste fraco. Antes de reescrever a asserção, conte quantas
+ * vezes o objeto sabotado existe.
  */
 
 const CT = "aeaf1111-0000-4000-8000-000000000001";
