@@ -11,7 +11,17 @@
 | **Spec** | [`docs/specs/17-spec-indice-de-atrito.md`](../specs/17-spec-indice-de-atrito.md) |
 | **Doutrina** | [`docs/doctrine/sistema-vivo/03-medida-do-proposito.md`](../doctrine/sistema-vivo/03-medida-do-proposito.md) |
 | **Fase** | 4 de 4 — TODAS provadas, inclusive na tela |
-| **Atualizado** | 2026-08-06 |
+| **Gate de banco** | `pnpm test:db` **verde**: 73 arquivos · 503 passed · 1 skipped · `install ok` + `update ok` |
+| **Atualizado** | 2026-08-07 |
+
+> ⚠️ **Se o `test:db` falhar com ~10 testes, meça o TEMPO antes de investigar.**
+> Rodei duas vezes no mesmo commit: com a máquina saturada (Docker recém-reiniciado
+> + Supabase local no ar) deu **10 failed em 2632s**; com a máquina livre
+> (`npx supabase stop`), **0 failed em 136s** — 20× mais rápido. Nove das dez
+> falhas eram `Test timed out in 30000ms`, e as vítimas eram sorteadas
+> (`webhooks-inbound`, `automation-*`, `event-log-drain`, `rls-isolation`).
+> Chegaram a incluir o **controle positivo** do isolamento RLS, o que dá toda a
+> aparência de defeito grave de tenancy — e não era.
 
 ---
 
