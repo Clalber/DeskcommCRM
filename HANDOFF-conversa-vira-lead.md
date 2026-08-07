@@ -14,7 +14,7 @@
 |---|---|---|
 | 1 | **conversa vira lead** | ✅ **completo** — código, invariantes, prova de tela e 5 sabotagens |
 | 2 | contato deixa de ser anônimo | ✅ **completo** — 3 bugs vivos, telefone do @lid, rótulo único, título do card e a fila de confirmação ponta a ponta |
-| 3 | escopo por pipeline | ✅ schema, gate, tela, aviso na Central. ⏳ prova de tela |
+| 3 | escopo por pipeline | ✅ schema, gate, tela, aviso na Central e prova de tela |
 | 4 | tradução de etapas com superfície | ✅ a lacuna aparece ao lado da marcação, e só onde custa |
 | 5 | o laço (desfazer vira sinal) | ✅ detectado, registrado na timeline e agregado por etapa |
 
@@ -436,6 +436,33 @@ ruído — e indicador que sobe sem causa se aprende a ignorar.
 
 E o agregado responde "e daí?" (invariante 5): não "12 correções", mas "12 em Qualificando, 11 delas
 devoluções" — que diz que o assistente qualifica cedo demais, e o dono sabe o que ajustar.
+
+---
+
+## O épico, em uma tabela
+
+| passo | o que mudou para quem usa |
+|---|---|
+| 1 | quem escreve no WhatsApp **aparece no funil** — antes, conversa fora do CRM não era cobrada por ninguém |
+| 2 | o contato tem **telefone** (o dado sempre chegou e era descartado), e salvar e-mail pela tela **funciona** |
+| 3 | cada assistente só mexe **nos funis dele** — 5 agentes de negócios diferentes dividiam 4 funis |
+| 4 | funil que o assistente **não sabe percorrer** é sinalizado onde a decisão é tomada |
+| 5 | quando alguém **desfaz** o que a IA fez, isso vira sinal — o ciclo fecha |
+
+### Defeitos achados no caminho (não estavam na spec)
+
+| # | defeito | gravidade |
+|---|---|---|
+| 1 | **agente de uma organização lia e reescrevia negócio de outra** (3 furos) | 🔴 vazamento entre clientes |
+| 2 | salvar e-mail de contato pela tela devolvia 500 | 🔴 o item nº 1 do relato original |
+| 3 | **a anonimização LGPD não acontecia** | 🔴 direito do titular, com prazo legal |
+| 4 | fim do warm-up abortava o UPDATE e congelava o estado do canal | 🟠 |
+| 5 | consentimento se perdia ao gravar uma finalidade (apagava as outras) | 🟠 |
+| 6 | auditoria não registrava valor anterior (exigência com exceção "Nenhuma") | 🟠 |
+| 7 | nove configurações do agente editáveis em versão publicada, sem trilha | 🟠 |
+| 8 | organização e agente que já atendeu **não podiam ser apagados** | 🟠 |
+| 9 | `GET` com id inválido devolve 500 com a mensagem crua do Postgres | 🟡 declarado, não consertado |
+| 10 | a mesma rota tem dois contratos de resposta | 🟡 declarado, não consertado |
 
 ---
 
