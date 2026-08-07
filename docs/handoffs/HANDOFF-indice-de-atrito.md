@@ -326,11 +326,31 @@ passo e nenhum lead frio veria "Nenhuma demanda em risco" — escondendo
 exatamente o vazamento que o invariante 4 existe para denunciar. O vazio agora
 exige as DUAS listas vazias.
 
+### Provado na tela (2026-08-07)
+
+Login real, `/app/radar`, Supabase local:
+
+```
+secao_presente:        true
+titulo:                "8 demandas abertas sem próximo passo"   ← bate com o banco (8)
+itens_listados:        8
+primeiro_item:         "Cliente Radar E2E — aberta há 259h"
+antes_dos_counts:      true    (posição: antes dos contadores de risco)
+scroll_horizontal:     false
+erros de console:      nenhum
+```
+
+**E o caso do bug foi EXERCITADO, não presumido.** Na primeira medição havia 55
+leads frios, ou seja `total > 0` — o estado vazio nem seria alcançado, e o teste
+teria passado sem tocar no defeito que a correção existe para evitar.
+
+Refeito com backup e restauração: `last_activity_at` de todos os leads abertos
+empurrado para agora (leads frios → 0), mantendo as 8 demandas sem próximo
+passo. Resultado: `estado_vazio_indevido: false` — a tela mostrou as 8 demandas
+em vez de "Nenhuma demanda em risco". Ambiente restaurado (65 linhas).
+
 ### ⚠️ PENDENTE
 
-- **Prova de tela do Radar** — não feita nesta sessão (contexto). Os gates de
-  código passaram (typecheck, lint, 1490 unitários), mas isso não é prova de UX
-  pelo protocolo do repo.
 - **Demais consumidores**: inbox e a capacidade MCP de retenção seguem lendo
   `crm_leads`. Enquanto isso durar, a conversa ainda é tratada como unidade em
   parte do sistema — que é o que o passo 4 existe para terminar.
