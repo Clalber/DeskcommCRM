@@ -208,6 +208,110 @@ class InsercaoPg<T> implements PromiseLike<RespostaFalsa<null>> {
   }
 }
 
+
+/**
+ * UPDATE com filtros — a forma `.update(obj).eq(a,b).select(cols).maybeSingle()`.
+ *
+ * Nasceu porque `patchContactHandler` a usa, e o adaptador ESTOUROU ao ser
+ * chamado (em vez de devolver vazio, que teria deixado o teste verde medindo
+ * nada). O `naoImplementado` fez o trabalho dele.
+ */
+class AtualizacaoPg<T> implements PromiseLike<RespostaFalsa<null>> {
+  private filtros: Array<[string, unknown]> = [];
+  private colunasDeVolta: string | null = null;
+
+  constructor(
+    private readonly pool: pg.Pool,
+    private readonly tabela: string,
+    private readonly patch: Record<string, unknown>,
+  ) {}
+
+  eq(coluna: string, valor: unknown): this {
+    this.filtros.push([coluna, valor]);
+    return this;
+  }
+
+  select(colunas = "*"): this {
+    this.colunasDeVolta = colunas;
+    return this;
+  }
+
+  private montar(): { texto: string; valores: unknown[] } {
+    const valores: unknown[] = [];
+    const sets = Object.keys(this.patch).map((k) => {
+      const v = this.patch[k];
+      valores.push(v !== null && typeof v === "object" && !Array.isArray(v) ? JSON.stringify(v) : v);
+      return `"${k}" = $${valores.length}`;
+    });
+    const onde = this.filtros.map(([c, v]) => {
+      valores.push(v);
+      return `"${c}" = $${valores.length}`;
+    });
+    let texto = `update public."${this.tabela}" set ${sets.join(", ")}`;
+    if (onde.length > 0) texto += ` where ${onde.join(" and ")}`;
+    if (this.colunasDeVolta) texto += ` returning ${colunasSql(this.colunasDeVolta)}`;
+    return { texto, valores };
+  }
+
+  async maybeSingle(): Promise<RespostaFalsa<T>> {
+    const { texto, valores } = this.montar();
+    try {
+      const r = await this.pool.query(texto, valores);
+      if (r.rows.length > 1) {
+        return { data: null, error: { message: "multiple rows returned", code: "PGRST116" } };
+      }
+      return { data: (r.rows[0] ?? null) as T, error: null };
+    } catch (e) {
+      return { data: null, error: erroDe(e) };
+    }
+  }
+
+  async single(): Promise<RespostaFalsa<T>> {
+    const r = await this.maybeSingle();
+    if (r.error) return r;
+    if (r.data === null) {
+      return { data: null, error: { message: "no rows returned", code: "PGRST116" } };
+    }
+    return r;
+  }
+
+  then<R1 = RespostaFalsa<null>, R2 = never>(
+    aoResolver?: ((v: RespostaFalsa<null>) => R1 | PromiseLike<R1>) | null,
+    aoRejeitar?: ((r: unknown) => R2 | PromiseLike<R2>) | null,
+  ): PromiseLike<R1 | R2> {
+    const { texto, valores } = this.montar();
+    return this.pool
+      .query(texto, valores)
+      .then(() => ({ data: null, error: null }) as RespostaFalsa<null>)
+      .catch((e: unknown) => ({ data: null, error: erroDe(e) }) as RespostaFalsa<null>)
+      .then(aoResolver, aoRejeitar);
+  }
+}
+
+/**
+ * `rpc(nome, args)` — chamada de função por argumentos NOMEADOS, como o
+ * PostgREST faz. Sem isto, todo caminho que emite evento (`emit_event`) morre no
+ * meio do handler sob teste.
+ */
+async function chamarRpc(
+  pool: pg.Pool,
+  nome: string,
+  args: Record<string, unknown>,
+): Promise<RespostaFalsa<unknown>> {
+  const chaves = Object.keys(args);
+  const valores = chaves.map((k) => {
+    const v = args[k];
+    return v !== null && typeof v === "object" && !Array.isArray(v) ? JSON.stringify(v) : v;
+  });
+  const nomeados = chaves.map((k, i) => `${k} => $${i + 1}`).join(", ");
+  try {
+    const r = await pool.query(`select public."${nome}"(${nomeados}) as valor`, valores);
+    return { data: (r.rows[0] as { valor: unknown } | undefined)?.valor ?? null, error: null };
+  } catch (e) {
+    return { data: null, error: erroDe(e) };
+  }
+}
+
 /**
  * O cast para `SupabaseClient` é deliberado e está confinado a esta linha: o
  * tipo real tem dezenas de membros que este objeto não tem, e listá-los como
@@ -219,11 +323,11 @@ export function pgComoSupabase(pool: pg.Pool): SupabaseClient {
       return {
         select: (colunas = "*") => new ConsultaPg(pool, tabela, colunas),
         insert: (linha: Record<string, unknown>) => new InsercaoPg(pool, tabela, linha),
-        update: () => naoImplementado("update"),
+        update: (patch: Record<string, unknown>) => new AtualizacaoPg(pool, tabela, patch),
         delete: () => naoImplementado("delete"),
         upsert: () => naoImplementado("upsert"),
       };
     },
-    rpc: () => naoImplementado("rpc"),
+    rpc: (nome: string, args: Record<string, unknown> = {}) => chamarRpc(pool, nome, args),
   } as unknown as SupabaseClient;
 }

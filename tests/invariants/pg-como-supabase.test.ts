@@ -154,9 +154,93 @@ describe("o adaptador distingue os desfechos que o PostgREST distingue", () => {
   });
 });
 
+describe("UPDATE — implementado depois, e por pressão do próprio adaptador", () => {
+  // `update` não existia; `patchContactHandler` o chamou e o adaptador ESTOUROU
+  // em vez de devolver vazio. Foi o `naoImplementado` fazendo o trabalho dele:
+  // se tivesse devolvido `{data:null,error:null}`, os 7 casos de
+  // `contato-consent-e-auditoria.test.ts` teriam ficado VERDES medindo nada.
+  it("atualiza só as linhas do filtro", async () => {
+    const { rows } = await pool.query<{ id: string }>(
+      `insert into crm_pipelines (organization_id, name, slug, position)
+       values ($1, 'Antes', 'alvo-do-update', 5) returning id`,
+      [ORG],
+    );
+    const alvo = rows[0]!.id;
+    const { error } = await db.from("crm_pipelines").update({ name: "Depois" }).eq("id", alvo);
+    expect(error).toBeNull();
+
+    const { rows: depois } = await pool.query<{ name: string }>(
+      "select name from crm_pipelines where id = $1",
+      [alvo],
+    );
+    expect(depois[0]!.name).toBe("Depois");
+
+    // E não encostou nos vizinhos — sem o filtro, um UPDATE renomearia a org toda.
+    const { rows: vizinho } = await pool.query<{ n: string }>(
+      "select count(*) as n from crm_pipelines where organization_id = $1 and name = 'Depois'",
+      [ORG],
+    );
+    expect(vizinho[0]!.n).toBe("1");
+  });
+
+  it("`.select().maybeSingle()` devolve a linha ATUALIZADA, não a anterior", async () => {
+    const { rows } = await pool.query<{ id: string }>(
+      `insert into crm_pipelines (organization_id, name, slug, position)
+       values ($1, 'Volta Antes', 'alvo-do-returning', 6) returning id`,
+      [ORG],
+    );
+    const { data, error } = await db
+      .from("crm_pipelines")
+      .update({ name: "Volta Depois" })
+      .eq("id", rows[0]!.id)
+      .select("id,name")
+      .maybeSingle();
+    expect(error).toBeNull();
+    expect((data as { name: string }).name).toBe("Volta Depois");
+  });
+
+  it("filtro que não casa devolve `data: null` SEM erro", async () => {
+    const { data, error } = await db
+      .from("crm_pipelines")
+      .update({ name: "Ninguém" })
+      .eq("id", "ada57e00-0000-4000-8000-0000000000fe")
+      .select("id")
+      .maybeSingle();
+    expect(error).toBeNull();
+    expect(data).toBeNull();
+  });
+});
+
+describe("rpc — argumentos NOMEADOS, como o PostgREST", () => {
+  it("chama a função e devolve o valor", async () => {
+    // `emit_event` é o que o handler de contatos usa; sem rpc, ele morria no
+    // meio e o teste do audit media um caminho que nunca chegou ao fim.
+    const r = await (db.rpc as unknown as (n: string, a: Record<string, unknown>) => Promise<{ data: unknown; error: unknown }>)(
+      "emit_event",
+      {
+        p_event_type: "contact.updated",
+        p_entity_kind: "contact",
+        p_entity_id: "ada57e00-0000-4000-8000-0000000000fd",
+        p_payload: { fields: ["email"] },
+        p_metadata: { request_id: "req-adaptador" },
+        p_organization_id: ORG,
+      },
+    );
+    expect(r.error).toBeNull();
+  });
+
+  it("função inexistente vira `{error}`, não exceção", async () => {
+    const r = await (db.rpc as unknown as (n: string, a: Record<string, unknown>) => Promise<{ data: unknown; error: { message: string } | null }>)(
+      "fn_que_nao_existe_no_schema",
+      {},
+    );
+    expect(r.error?.message).toMatch(/does not exist|não existe/i);
+  });
+});
+
 describe("o que NÃO está implementado estoura", () => {
   it("método ausente lança em vez de devolver vazio — vazio silencioso é teste verde medindo nada", () => {
-    expect(() => db.from("crm_pipelines").update({} as never)).toThrow(/não está implementado/);
+    expect(() => db.from("crm_pipelines").delete()).toThrow(/não está implementado/);
     expect(() => db.from("crm_pipelines").select("id").neq("id", "x")).toThrow(/não está implementado/);
   });
 });
