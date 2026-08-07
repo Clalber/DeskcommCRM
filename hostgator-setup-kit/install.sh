@@ -265,7 +265,16 @@ v_db_url() {
   esac
   # Mesma família de projeto? (usuário do pooler é 'postgres.<ref>')
   local dbref="${1#*://}"; dbref="${dbref%%:*}"; dbref="${dbref#postgres.}"
-  case "${NEXT_PUBLIC_SUPABASE_URL:-}" in
+  # Só a NUVEM tem <ref> a comparar. E a decisão é pelo HOST, nunca pela string
+  # inteira: `case "$url" in *.supabase.co)` só casa quando a URL TERMINA nisso, e
+  # ela chega com barra final, caminho ou espaço colado — é o que o address bar do
+  # navegador entrega. Medido: com `https://<ref>.supabase.co/` a comparação era
+  # pulada e uma connection string de OUTRO projeto passava, o que instala o
+  # baseline.sql num banco e deixa o app falando com outro.
+  local sbhost="${NEXT_PUBLIC_SUPABASE_URL:-}"
+  sbhost="${sbhost#*://}"; sbhost="${sbhost%%/*}"
+  sbhost="${sbhost%%[[:space:]]*}"; sbhost="${sbhost%%:*}"
+  case "$sbhost" in
     *.supabase.co)
       if [ "$dbref" != "postgres" ] \
          && [ "$dbref" != "$(sb_ref "$NEXT_PUBLIC_SUPABASE_URL")" ]; then

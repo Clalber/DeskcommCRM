@@ -203,6 +203,24 @@ db_ok "NUVEM: projeto cruzado continua barrado antes do banco" reject \
 db_ok "NUVEM: mesmo projeto passa"                        pass \
   "https://abcdefghijklmnop.supabase.co" \
   "postgresql://postgres.abcdefghijklmnop:senha@aws-1-us-west-2.pooler.supabase.com:5432/postgres"
+# A URL da nuvem NÃO chega sempre terminando em '.supabase.co'. O address bar do
+# navegador entrega barra final; quem copia da documentação traz caminho; quem
+# cola com o mouse traz espaço. Decidir "é nuvem?" pela string inteira desliga a
+# comparação de projeto em silêncio nesses três casos — e o desfecho é o pior
+# possível: o baseline.sql vai para um banco e o app fala com outro, cada um de
+# um projeto. Estes três casos guardam a extração de HOST que impede isso.
+for _sufixo in "/" "/rest/v1" " "; do
+  db_ok "NUVEM com '${_sufixo}' na URL: projeto cruzado continua barrado" reject \
+    "https://abcdefghijklmnop.supabase.co${_sufixo}" \
+    "postgresql://postgres.zzzzzzzzzzzzzzzz:senha@aws-1-us-west-2.pooler.supabase.com:5432/postgres" \
+    "mesmo projeto"
+done
+unset _sufixo
+# E o outro lado da mesma extração: Supabase próprio com barra final continua
+# sendo Supabase próprio — a correção acima não pode reintroduzir a recusa do
+# dado certo que este PR veio tirar.
+db_ok "próprio com barra final segue sem comparar projeto" pass \
+  "https://db-crm.exemplo.com.br/" "postgresql://crmuser:senha@db-crm.exemplo.com.br:5432/postgres"
 # Quem responde a connection string ANTES da URL (ou pula a URL) não tem com o
 # que comparar — e não pode ser barrado por isso.
 db_ok "sem URL respondida ainda: não há o que comparar"   pass \
