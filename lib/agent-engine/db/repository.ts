@@ -36,6 +36,8 @@ export type InboxKind =
   | 'risk_backlog_seeded'
   | 'reactivation_expired'
   | 'capabilities_missing'
+  | 'message_send_stuck'
+  | 'promise_unfulfilled'
   | 'other';
 
 export interface InboxItemRow {

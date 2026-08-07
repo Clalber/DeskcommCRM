@@ -41,7 +41,12 @@ duas coisas:
 
 ```bash
 # 1) as labels do Traefik existem?
-docker inspect crm-app-1 --format '{{.Config.Labels}}' | grep -o 'traefik.enable:[^ ]*'
+#    O nome do contêiner é <pasta-do-projeto>-app-1, então pergunte ao compose
+#    em vez de chutar. Aqui um -f só basta: o `ps -q` resolve pelo nome do
+#    projeto + serviço, não pelo conteúdo do arquivo (medido: com um -f ou com
+#    os dois, devolve o MESMO contêiner). Quem precisa dos dois é o `up -d`.
+docker inspect "$(docker compose -f docker-compose.prod.yml ps -q app)" \
+  --format '{{.Config.Labels}}' | grep -o 'traefik.enable:[^ ]*'
 # esperado: traefik.enable:true   (vazio = roteamento quebrado)
 
 # 2) o domínio responde?

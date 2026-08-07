@@ -59,6 +59,9 @@ export type AuditAction =
   | "lead.tags_changed"
   | "message.sent"
   | "message.received"
+  // Uma rodada do cron `recover-stuck-messages` que de fato marcou mensagem
+  // como falha (rodada vazia não vira linha — varredura não é mutação).
+  | "message.recover_stuck_run"
   | "contact.blocked"
   | "ai.handoff_triggered"
   | "ai.reactivated_by_agent"

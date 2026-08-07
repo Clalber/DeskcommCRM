@@ -64,15 +64,21 @@ const DIVERGENCIAS_CONHECIDAS = {
 } as const;
 
 /**
- * Timestamps que já nasciam repetidos. Declarados pelo mesmo motivo das
- * divergências acima: renomear migration aplicada é reescrever história.
+ * Os quatro pares que já nasciam repetidos foram DESFEITOS (issue #143), então
+ * esta lista está vazia — e é para continuar assim.
+ *
+ * A versão anterior desta catraca os declarava com a razão "renomear migration
+ * aplicada é reescrever história". A razão estava errada por um fato que não
+ * tinha sido medido: o Supabase CLI usa o timestamp como PK de
+ * `supabase_migrations.schema_migrations`, então esses pares nunca chegaram a
+ * ficar registrados nos dois — `db push` colide na PK no segundo arquivo e
+ * `db reset` quebra. Não havia história a preservar; havia história que o CLI
+ * nunca conseguiu escrever, e todo fork esbarrava nela a cada merge.
+ *
+ * O que se preservou de fato: o CONTEÚDO (renomeamos só o prefixo) e a ORDEM
+ * (o CLI ordena alfabeticamente, e +1s mantém cada arquivo depois do irmão).
  */
-const TIMESTAMPS_REPETIDOS_CONHECIDOS = [
-  "20260717190000",
-  "20260718160000",
-  "20260721120000",
-  "20260722160000",
-];
+const TIMESTAMPS_REPETIDOS_CONHECIDOS: readonly string[] = [];
 
 /** Só os arquivos que carregam timestamp no nome — as legadas não têm. */
 function arquivosComTimestamp(): { timestamp: string; arquivo: string }[] {
@@ -140,9 +146,13 @@ describe("MANIFEST × arquivos de migration", () => {
     const duplicados = [...porNumero.entries()]
       .filter(([, fs]) => fs.length > 1)
       .map(([num, fs]) => `${num}: ${fs.join(", ")}`);
-    // A 0068 nasceu duplicada muito antes desta catraca e as duas foram
-    // aplicadas — declarada, não escondida.
-    expect(duplicados.filter((d) => !d.startsWith("0068:"))).toEqual([]);
+    // A exceção da 0068 saiu daqui em 2026-08-06: a colisão foi CONSERTADA
+    // (`0068_ai_pricing_backfill` → `0110_...`), não perdoada. Sem exceção nenhuma
+    // agora — número repetido reprova, ponto. Se voltar a aparecer dívida aqui, o
+    // caminho é renumerar como se fez, não readicionar filtro: o timestamp é a
+    // identidade que o Supabase usa, então renumerar o NNNN é barato e não
+    // re-aplica nada em quem já rodou.
+    expect(duplicados).toEqual([]);
   });
 
   // Regra SEPARADA da de número, e não um detalhe dela: número repetido quebra a

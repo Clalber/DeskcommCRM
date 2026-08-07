@@ -23,20 +23,15 @@
 import { createClient } from "@supabase/supabase-js";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { anunciarDestino, credenciaisSupabaseDeTeste } from "./lib/env-de-teste";
 
-const envFile = fs.readFileSync(path.join(process.cwd(), ".env.local"), "utf8");
-for (const line of envFile.split("\n")) {
-  const m = line.match(/^([A-Z0-9_]+)=(.*)$/);
-  if (m && !process.env[m[1]!]) {
-    process.env[m[1]!] = m[2]!.replace(/^"(.*)"$/, "$1");
-  }
-}
-
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-if (!SUPABASE_URL || !SERVICE_ROLE) {
-  throw new Error("Faltam NEXT_PUBLIC_SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY no .env.local");
-}
+// Este script JÁ respeitava `process.env` (o `.env.local` era só fallback), mas
+// estourava se o arquivo não existisse — que é exatamente o caso do worktree
+// dedicado de e2e, onde a ausência dele é a proteção. O helper trata os dois.
+const credenciais = credenciaisSupabaseDeTeste();
+anunciarDestino("seed-e2e-capacidades", credenciais);
+const SUPABASE_URL = credenciais.url;
+const SERVICE_ROLE = credenciais.serviceRole;
 
 const admin = createClient(SUPABASE_URL, SERVICE_ROLE, {
   auth: { autoRefreshToken: false, persistSession: false },
@@ -99,6 +94,27 @@ async function main(): Promise<void> {
     .maybeSingle();
 
   const TOOLS_LIGADAS = ["crm_get_lead", "crm_move_lead_stage", "crm_list_leads"];
+
+  // REPÕE TODAS AS VERSÕES DRAFT DESTE AGENTE, não só a de maior número.
+  //
+  // A tela SALVA criando draft novo. Depois de uma rodada do e2e o agente fica
+  // com vários drafts, e o seed — que buscava só o de `version_number` mais
+  // alto — repunha um enquanto a tela editava outro. Resultado: a segunda
+  // execução media o resto da primeira. Foi assim que a jornada do teto (issue
+  // #162) apareceu passando num banco onde o pacote já estava ligado de antes:
+  // as 3 capacidades do cenário eram na verdade 17.
+  {
+    const { error } = await admin
+      .from("ai_agent_versions")
+      .update({
+        tool_ids: TOOLS_LIGADAS,
+        created_at: new Date(Date.now() - 60 * 86_400_000).toISOString(),
+      })
+      .eq("organization_id", orgId)
+      .eq("agent_id", agentId)
+      .eq("status", "draft");
+    if (error) throw error;
+  }
 
   let versionId = versaoExistente?.id as string | undefined;
   if (versionId) {
