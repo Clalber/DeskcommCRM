@@ -213,22 +213,59 @@ export async function runModelCall(db: pg.Pool, cfg: LlmEdgeConfig, input: RunMo
   });
 
   const startedAt = Date.now();
-  // `system` aceita SystemModelMessage (com providerOptions de cache) — igual
-  // em v6 e v7 (smoke prova que o cacheControl continua virando cache_control).
-  const result = await generateText({
-    // `decisao.baseUrl` só é preenchido quando o painel apontou um endpoint
-    // (gateway OpenAI-compatível, ou modelo local). Providers canônicos
-    // ignoram o terceiro argumento e vão ao endpoint intrínseco.
-    model: factory(config.apiKey, model, decisao.baseUrl ?? undefined),
-    system: prefix.system,
-    messages: input.messages,
-    tools: prefix.tools,
-    stopWhen: input.maxSteps === undefined ? undefined : stepCountIs(input.maxSteps),
-    temperature,
-    topP,
-    topK,
-    maxOutputTokens,
-  });
+  let result: Awaited<ReturnType<typeof generateText>>;
+  try {
+    // `system` aceita SystemModelMessage (com providerOptions de cache) — igual
+    // em v6 e v7 (smoke prova que o cacheControl continua virando cache_control).
+    result = await generateText({
+      // `decisao.baseUrl` só é preenchido quando o painel apontou um endpoint
+      // (gateway OpenAI-compatível, ou modelo local). Providers canônicos
+      // ignoram o terceiro argumento e vão ao endpoint intrínseco.
+      model: factory(config.apiKey, model, decisao.baseUrl ?? undefined),
+      system: prefix.system,
+      messages: input.messages,
+      tools: prefix.tools,
+      stopWhen: input.maxSteps === undefined ? undefined : stepCountIs(input.maxSteps),
+      temperature,
+      topP,
+      topK,
+      maxOutputTokens,
+    });
+  } catch (err) {
+    // ─── A LINHA QUE FALTAVA ────────────────────────────────────────────────
+    //
+    // Até aqui o INSERT em llm_calls vivia só DEPOIS desta chamada, sem `try`
+    // em volta. Provedor recusou a chave, modelo não existe, conta sem saldo? A
+    // exceção subia e NADA ficava gravado. A tabela que deveria explicar era
+    // justamente a que ficava vazia no caso que precisa de explicação — e é a
+    // causa direta de "o agente não responde e não aparece erro em lugar
+    // nenhum".
+    //
+    // Grava e RELANÇA: quem chama continua decidindo o que fazer com a falha
+    // (o worker reagenda, o dry-run mostra na tela). Engolir aqui trocaria uma
+    // falha invisível por uma silenciosa, que é pior.
+    await registrarFalha(db, {
+      input,
+      purpose,
+      provider: config.provider,
+      model,
+      origem: decisao.origem,
+      latencyMs: Date.now() - startedAt,
+      erro: err,
+    }).catch(() => {
+      // O log da falha não pode causar uma segunda falha. Se o próprio INSERT
+      // de erro falhar, o erro ORIGINAL é o que interessa a quem chamou.
+    });
+    deps.log?.error('llm: chamada falhou', {
+      organization_id: input.tenantId,
+      purpose,
+      provider: config.provider,
+      model,
+      origem_da_escolha: decisao.origem,
+      ...normalizarErro(err),
+    });
+    throw err;
+  }
   const latencyMs = Date.now() - startedAt;
 
   const usage = {
@@ -242,8 +279,9 @@ export async function runModelCall(db: pg.Pool, cfg: LlmEdgeConfig, input: RunMo
   const { rows } = await db.query<{ id: string }>(
     `insert into llm_calls
        (organization_id, contact_id, job_id, variant_id, purpose, provider, model,
-        input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, cost_cents, latency_ms)
-     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+        input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, cost_cents, latency_ms,
+        status, origem_da_escolha)
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, 'ok', $14)
      returning id`,
     [
       input.tenantId,
@@ -259,6 +297,7 @@ export async function runModelCall(db: pg.Pool, cfg: LlmEdgeConfig, input: RunMo
       usage.cacheWriteTokens,
       cost,
       latencyMs,
+      decisao.origem,
     ],
   );
 
@@ -296,4 +335,95 @@ export async function runModelCall(db: pg.Pool, cfg: LlmEdgeConfig, input: RunMo
     origem: decisao.origem,
     avisos: decisao.avisos,
   };
+}
+
+/**
+ * Classifica o erro do provedor num vocabulário nosso.
+ *
+ * Existe porque provedores diferentes relatam o MESMO problema de formas
+ * diferentes: a mesma chave inválida vira `AI_APICallError` num, `401
+ * Unauthorized` noutro e `authentication_error` num terceiro. Sem normalizar, a
+ * tela de execuções mostraria três textos distintos e o operador não saberia
+ * que os três são a mesma conversa — "a chave está errada".
+ *
+ * Os baldes são escolhidos pela AÇÃO que cada um exige de quem instalou:
+ * trocar a chave, escolher outro modelo, esperar/pagar, ou aguardar o provedor.
+ */
+function normalizarErro(err: unknown): {
+  error_code: string;
+  error_message: string;
+  http_status: number | null;
+} {
+  const bruto = err instanceof Error ? err.message : String(err);
+  const status =
+    (err as { statusCode?: number; status?: number })?.statusCode ??
+    (err as { statusCode?: number; status?: number })?.status ??
+    null;
+
+  let codigo = 'erro_desconhecido';
+  if (status === 401 || status === 403 || /unauthor|invalid.*api.?key|authentication|incorrect api key/i.test(bruto)) {
+    codigo = 'credencial_recusada';
+  } else if (status === 404 || /model.*not.*found|does not exist/i.test(bruto)) {
+    codigo = 'modelo_inexistente';
+  } else if (status === 429 || /rate.?limit|quota|insufficient.*credit/i.test(bruto)) {
+    codigo = 'limite_ou_saldo';
+  } else if ((status !== null && status >= 500) || /timeout|ECONNREFUSED|fetch failed|network/i.test(bruto)) {
+    codigo = 'provedor_indisponivel';
+  } else if (/tool|function.?call/i.test(bruto)) {
+    codigo = 'modelo_sem_ferramentas';
+  }
+
+  return {
+    error_code: codigo,
+    // Truncada e sem prompt/resposta/chave: mensagem de erro de provedor às
+    // vezes ecoa o corpo da requisição, e conteúdo de mensagem é PII aqui.
+    error_message: bruto.slice(0, 500),
+    http_status: typeof status === 'number' ? status : null,
+  };
+}
+
+/**
+ * Grava a chamada que FALHOU, na MESMA tabela do sucesso.
+ *
+ * Mesma tabela de propósito: a tela de execuções conta a história de um ponto em
+ * ordem, e separar erros noutra tabela faria a leitura precisar de dois lugares
+ * — que é exatamente como um dos dois para de ser olhado.
+ *
+ * Tokens ficam em zero e o custo em NULL: a chamada não consumiu nada, e `null`
+ * é "não sei", nunca "de graça" — mesma doutrina da coluna `cost_cents`.
+ */
+async function registrarFalha(
+  db: pg.Pool,
+  d: {
+    input: RunModelCallInput;
+    purpose: string;
+    provider: string;
+    model: string;
+    origem: string;
+    latencyMs: number;
+    erro: unknown;
+  },
+): Promise<void> {
+  const { error_code, error_message, http_status } = normalizarErro(d.erro);
+  await db.query(
+    `insert into llm_calls
+       (organization_id, contact_id, job_id, variant_id, purpose, provider, model,
+        input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, cost_cents, latency_ms,
+        status, error_code, error_message, http_status, origem_da_escolha)
+     values ($1, $2, $3, $4, $5, $6, $7, 0, 0, 0, 0, null, $8, 'erro', $9, $10, $11, $12)`,
+    [
+      d.input.tenantId,
+      d.input.leadId ?? null,
+      d.input.jobId ?? null,
+      d.input.variantId ?? null,
+      d.purpose,
+      d.provider,
+      d.model,
+      d.latencyMs,
+      error_code,
+      error_message,
+      http_status,
+      d.origem,
+    ],
+  );
 }
