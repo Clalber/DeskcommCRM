@@ -305,6 +305,38 @@ asserção, conte quantas vezes o objeto sabotado existe.
 
 ---
 
+## Passo 4 do cap. 5 — primeiro consumidor migrado (2026-08-07)
+
+**Radar de Risco passa a conhecer `demandas`**, e de forma INCREMENTAL de
+propósito: a lógica de leads do módulo é compartilhada com a capacidade que a IA
+usa (`lib/mcp/tools/retencao.ts`), e a tela e o agente têm de dizer a mesma
+coisa sobre o mesmo negócio. Reescrevê-la arriscaria essa paridade sem
+necessidade; acrescentar não arrisca nada.
+
+O que entrou: `sem_proximo_passo` no payload do radar + seção na tela.
+
+**Por que isto e não outro consumidor:** o índice de atrito já publica a
+CONTAGEM do invariante 4 ("N demandas abertas sem próximo passo"). Contagem sem
+lugar para agir viola o invariante 5 — todo dado responde "e daí?". Esta lista é
+a resposta.
+
+**Um bug que eu teria introduzido:** a tela do Radar mostrava o estado vazio com
+`total === 0`. Com a seção nova, uma organização com 8 demandas sem próximo
+passo e nenhum lead frio veria "Nenhuma demanda em risco" — escondendo
+exatamente o vazamento que o invariante 4 existe para denunciar. O vazio agora
+exige as DUAS listas vazias.
+
+### ⚠️ PENDENTE
+
+- **Prova de tela do Radar** — não feita nesta sessão (contexto). Os gates de
+  código passaram (typecheck, lint, 1490 unitários), mas isso não é prova de UX
+  pelo protocolo do repo.
+- **Demais consumidores**: inbox e a capacidade MCP de retenção seguem lendo
+  `crm_leads`. Enquanto isso durar, a conversa ainda é tratada como unidade em
+  parte do sistema — que é o que o passo 4 existe para terminar.
+
+---
+
 ## Sabotagens — o que foi provado que os testes pegam
 
 Verde não prova nada; o que prova é o teste reprovar quando deveria. Cada
