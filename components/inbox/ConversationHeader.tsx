@@ -59,7 +59,18 @@ export function ConversationHeader({ conversation }: Props) {
     (silenciada || c?.force_human === true) && status !== "closed" && status !== "archived";
 
   return (
-    <div className="flex items-center justify-between gap-3 border-b border-border bg-background px-4 py-3">
+    // `flex-wrap` porque este header travava a LARGURA DA TELA INTEIRA. Ele
+    // media 707px de `min-content` — a identidade do contato encolhia bem
+    // (`min-w-0` + `truncate`), mas a barra de ações era `shrink-0` e não
+    // quebrava. Como a coluna do meio do inbox é `1fr`, que é
+    // `minmax(auto, 1fr)`, ela não podia ficar menor que esses 707px, e o
+    // painel de CRM era empurrado 311px para fora da viewport em 1280px.
+    //
+    // Reorganizar em vez de esconder: acima de ~1440px o header fica IDÊNTICO ao
+    // de antes (uma linha), e quando aperta a barra desce para a linha de baixo.
+    // Nenhuma ação some — um menu "mais" esconderia o "Lembrar" que a spec
+    // `canais-baseline` clica, e, pior, esconderia ação de quem atende.
+    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border bg-background px-4 py-3">
       <div className="min-w-0">
         <div className="flex items-center gap-2">
           <h2 className="truncate text-sm font-semibold">{displayName}</h2>
@@ -82,7 +93,10 @@ export function ConversationHeader({ conversation }: Props) {
         )}
       </div>
 
-      <div className="flex shrink-0 items-center gap-1.5">
+      {/* `shrink-0` saiu daqui: era ele que impunha o piso de largura. Agora a
+          barra pode encolher e quebrar internamente, e os botões continuam
+          todos visíveis e clicáveis — só que em duas linhas quando preciso. */}
+      <div className="flex min-w-0 flex-wrap items-center gap-1.5">
         {isOpen && (
           <Button
             size="sm"
@@ -146,8 +160,19 @@ export function ConversationHeader({ conversation }: Props) {
             Fechar
           </Button>
         )}
+        {/* `xl:hidden` porque a partir de 1280px o painel lateral de CRM entra
+            na tela — e ele já tem um "Ver contato", para o MESMO contato, a um
+            palmo de distância. Duas portas idênticas na mesma tela não são
+            redundância inofensiva: são a linha a mais que empurrava a barra de
+            ações para uma segunda fileira justo na largura mais apertada.
+            Medido: sem a duplicata, os botões voltam a caber em UMA linha em
+            1280px.
+
+            Abaixo de 1280 o painel não existe, e aí esta é a única porta para o
+            contato — por isso a condição é a mesma do painel, e não um valor
+            escolhido à parte. Não é esconder ação; é não repeti-la. */}
         {c?.id && (
-          <Button asChild size="sm" variant="ghost">
+          <Button asChild size="sm" variant="ghost" className="xl:hidden">
             <Link href={`/app/contacts/${c.id}`} className="flex items-center gap-1">
               Ver contato
               <ArrowRight size={12} weight="regular" aria-hidden />

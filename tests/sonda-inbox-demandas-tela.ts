@@ -21,7 +21,9 @@ import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { chromium } from "@playwright/test";
 
-const BASE = "http://127.0.0.1:3100";
+const BASE = process.env.E2E_PORT
+  ? `http://127.0.0.1:${process.env.E2E_PORT}`
+  : "http://127.0.0.1:3100";
 const CONVERSA = "8b9fcd5f-252d-4f6b-9538-f7c2c538807f";
 const CONTATO = "564d1c58-52a1-4610-bd43-2d88df13064c";
 const ORG = "ad365e5b-45e5-45d3-99fa-33b388501fec";

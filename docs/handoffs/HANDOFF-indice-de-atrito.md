@@ -523,6 +523,9 @@ SOB FALHA (rota interceptada com 500):
   oferece "Tentar de novo": true
 ```
 
+Evidência: [caminho feliz](passo4-inbox-demandas.png) ·
+[sob falha](passo4-inbox-demandas-falha.png).
+
 ### Sabotagens — previsão antes de rodar
 
 | Sabotagem | Previsão | Resultado | |
@@ -580,10 +583,137 @@ teste unitário, caso 3, com sabotagem do flag `erro` confirmada 1→1, e (b) na
 tela, na fase "SOB FALHA" da sonda nova. Mas a linha que escrevi naquele arquivo
 segue sem execução, e isso fica declarado.
 
+---
+
+## O inbox cabe na tela (2026-08-07)
+
+O achado da seção anterior virou trabalho. **Em 1280px o painel de CRM não
+existia na tela** — nem cortado, nem parcial: ausente. Ver
+[antes](inbox-antes-1280.png) e
+[depois](inbox-cabe-1280.png), mesma conversa, mesma largura.
+
+### A causa não era onde parecia
+
+O suspeito óbvio era o grid (`xl:grid-cols-[300px_1fr_320px]`, e o `xl` do
+Tailwind dispara justamente em 1280). Mas a medição apontou para outro lugar:
+
+```
+grid-template-columns resolvido, de 1280 a 1536:  "300px 706.953px 320px"
+                                        em 1920:  "300px 1012px    320px"
+```
+
+A coluna do meio **travava em 706,95px** — o `min-content` dela. `1fr` é
+`minmax(auto, 1fr)` e não encolhe abaixo do conteúdo. Medindo filho a filho:
+thread pedia 132px, composer 370px, e o **`ConversationHeader` pedia 707**,
+porque sua barra de ações era `shrink-0`. Um `shrink-0` numa barra de botões
+estava definindo a largura mínima da aplicação inteira.
+
+### Correção da minha própria afirmação
+
+No handoff anterior escrevi que o painel era "inalcançável". Errado: o `main`
+tem `overflow-x: auto` e `scrollWidth 1351 > clientWidth 1040` — havia scroll,
+no `main`, não no documento. Eu medira o do documento. Continua sendo defeito
+(rolar o inbox de lado para ver o CRM é ruim e ninguém descobre), mas menos
+grave do que afirmei.
+
+### Como escolhi: prototipagem medida, não palpite
+
+Cada `next build` custa ~2min. As variantes foram injetadas por CSS no browser
+já renderizado e medidas na hora (`tests/__proto-layout.ts`, descartado depois),
+em 5 larguras:
+
+| variante | fora da viewport | thread @1280 | ações perdidas |
+|---|---|---|---|
+| V0 atual | 311 / 225 / 151 / 55 / 0 | 707 (travado) | 0/5 |
+| V1 header reorganiza | **0 em todas** | 372 | 0/5 |
+| V2 V1 + `minmax(0,1fr)` | 0 em todas | 372 | 0/5 |
+| **V4 duas faixas** | **0 em todas** | **424** | 0/5 |
+| V5 V4 + gap menor | 0 em todas | 424 | 0/5 |
+
+Três decisões saíram daí, e nenhuma teria saído de raciocínio:
+
+1. **`minmax(0,1fr)` não entrou.** V2 mediu idêntico a V1 — consertado o header,
+   o `1fr` volta a encolher sozinho. Seria mudança sem efeito.
+2. **V1 sozinho é frágil.** 372px de thread contra um piso de 370 do composer é
+   2px de folga. Margem de 2px não é margem, é sorte. V4 (duas faixas: compacta
+   no `xl`, generosa no `2xl`) dá 424px — 54px de folga — e preserva as laterais
+   generosas onde há espaço.
+3. **V5 descartado.** Apertar o gap dos botões economizava 4-6px de altura; o
+   ganho não paga a densidade visual.
+
+### A lapidação que não era sobre caber
+
+Com o layout corrigido, sobraram dois incômodos que só aparecem olhando:
+
+**O placeholder passou a quebrar.** "Escreva uma mensagem… (Enter envia,
+Shift+Enter quebra linha)" não cabe numa coluna de 424px e quebrava em duas
+linhas dentro de um campo de uma linha só. Aqui a screenshot me enganou e a
+medição corrigiu: eu havia lido como "composer cortado", e `composer_cortado`
+media **0** em todas as variantes — era texto, não layout.
+
+O atalho saiu do placeholder e foi para o diálogo de atalhos (`?`) e para o
+`title`. Dois motivos, nesta ordem: **ele some assim que se digita a primeira
+letra** — isto é, some exatamente quando você ia quebrar linha. E o diálogo de
+atalhos, que é o lugar canônico, **não tinha o atalho mais usado do inbox**.
+`"(só o time vê)"` da nota interna ficou: não é atalho, é consequência, e quem
+escreve uma nota precisa saber que ela não vai para o cliente sem abrir diálogo
+nenhum.
+
+**"Ver contato" aparecia duas vezes na mesma tela** — no header e no card
+CONTATO do painel — e era justamente ele que sobrava na segunda linha. Medido:
+
+| | 1024 (sem painel) | 1280 | 1440 |
+|---|---|---|---|
+| com duplicata | 2 linhas, no header ✅ | 2 linhas, **duplicado** | 1 linha |
+| sem duplicata ≥ xl | 2 linhas, no header ✅ | **1 linha** | 1 linha |
+
+`xl:hidden` — a mesma largura em que o painel entra. Abaixo dela o painel não
+existe e o botão é a única porta, então continua lá. Não é esconder ação; é
+parar de repeti-la.
+
+### Resultado medido (`tests/sonda-inbox-cabe-na-tela.ts`, 10/10, exit 0)
+
+```
+    vp   fora  painel  thread  hdr_h   acoes  portas  rola(main/doc)
+  1280      0     296     424    107     0/4       1  false/false
+  1366      0     296     510    107     0/4       1  false/false
+  1440      0     296     584    107     0/4       1  false/false
+  1536      0     320     628     63     0/4       1  false/false
+  1920      0     320    1012     63     0/4       1  false/false
+```
+
+Contra o antes: `fora` era 311/225/151/55/0 e `thread` era 707 travado.
+[1280px](inbox-cabe-1280.png) ·
+[1920px, o controle de que nada regrediu no largo](inbox-cabe-1920.png).
+
+### Duas camadas de guarda, e a limitação declarada
+
+`min-content`, quebra de flex e resolução de grid são **cálculo de layout**, e o
+jsdom não tem engine de layout — um teste lá mediria zero em tudo e passaria
+feliz. Por isso:
+
+- `tests/sonda-inbox-cabe-na-tela.ts` — a medição de verdade, num browser, nas 5
+  larguras. **Não roda no CI.**
+- `tests/unit/inbox-header-nao-trava.test.tsx` — catraca que roda no CI. Olha
+  CLASSE, não pixel, e isso está escrito no cabeçalho dela: pega a regressão
+  específica (alguém devolver `shrink-0` "para os botões não quebrarem") e nada
+  além disso.
+
+Sabotagens: `shrink-0` de volta → previsão 1, **resultado 2** (minha sabotagem
+trocou o `className` inteiro, levando junto `flex-wrap`); `flex-wrap` fora do
+container → 1 → **1**.
+
+### Defeitos meus, achados no caminho
+
+| # | O quê | Como apareceu |
+|---|---|---|
+| 1 | Mock de `useResumeAi` — módulo que **não existe** (o real é `useResumeAiAttendance`) | O teste passava porque o hook verdadeiro rodava sob o provider: o mock não mockava nada e ninguém era avisado |
+| 2 | Crases dentro de template literal na sonda | `tsc` reprovou — mesmo erro que já cometi com SQL em template literal |
+| 3 | **Duas imagens versionadas sem citação** no commit `3227bf81` | O gate `evidencia-citada` reprovou. O pre-commit não roda a suíte, então aquele commit deixou o CI vermelho e eu não vi |
+
 ### Pendente
 
 - **A `description` morta do catálogo** — decisão de desenho (48 de 51 divergem).
-- **Issue do painel do inbox cortado** em 1280/1440px.
 
 ---
 
