@@ -5,7 +5,7 @@
 
 - **Branch:** `feat/provedores-de-ia` · **Worktree:** `~/DeskcommCRM-provedores`
 - **Base:** `9249e6f2` (`origin/main` em 2026-08-07)
-- **Última atualização:** 2026-08-07 — as quatro frentes implementadas; prova na tela em curso
+- **Última atualização:** 2026-08-07 — quatro frentes entregues; gates verdes; prova na tela PARCIAL (ver B3)
 
 ---
 
@@ -82,7 +82,8 @@ tudo que o catálogo e a validação de capacidade precisam vem na mesma respost
 | **0 — Registro de pontos** | ✅ concluída | `cb06cae6` |
 | **1a — Schema + resolvedor** | ✅ concluída | `ab37426c`, `52a7440e` |
 | **1b — Seam obedece ao painel** | ✅ concluída | `c2a78b31` |
-| **1c — Tela `/app/ai/providers`** | ✅ código pronto, prova na tela em curso | `3d012c9c` |
+| **1c — Tela `/app/ai/providers`** | ✅ entregue | `3d012c9c` |
+| **2b — Tela `/app/ai/runs`** | ✅ entregue | `85f4532e` |
 | **2 — Log registra falha** | ✅ concluída | `231c0cf1` |
 | **3 — OpenRouter + catálogo** | ✅ concluída | `2910c19f` |
 
@@ -245,6 +246,7 @@ quem instalou. Tokens em zero e custo em NULL na linha de erro.
 | # | O quê | Estado |
 |---|---|---|
 | B1 | Docker voltou (28.3.2) e o Supabase local subiu. `pnpm test:db` completo (364 invariantes) **ainda não rodou** nesta frente | parcial |
+| B3 | **Prova na tela PARCIAL.** Provado dirigindo o browser: login funciona, o app abre, a porta "Provedores" aparece na sidebar, e a tela responde. NÃO provado ainda: o fluxo completo de trocar o modelo de um ponto e ver a troca valer. O `supabase start` passou a falhar aplicando as migrations (cadeia fresh não sobe — conhecido) e a máquina está disputada com outras duas sessões (`t188-recon`, `t188-medidor`). O e2e está escrito em `tests/e2e/prova-painel-provedores.spec.ts` | aberto |
 | B2 | **Bug meu, achado pelo e2e e já corrigido:** `carregar()` do painel não tratava exceção e a tela ficava presa em "Carregando…" para sempre — a mesma falha muda que o painel veio acabar, recriada dentro dele | corrigido |
 
 ---
@@ -275,3 +277,30 @@ npx vitest run tests/unit/pontos-de-ia-completude.test.ts
 
 Próximo passo: **Frente 1**, começando pela migration de `ai_purpose_bindings` e
 pelo resolvedor no seam — a tela vem depois, sobre um resolvedor já provado.
+
+
+---
+
+## Gates, no fim desta sessão
+
+| Gate | Resultado |
+|---|---|
+| `tsc --noEmit` | **exit 0** (medido sem pipe) |
+| `vitest run` (suíte inteira) | **3046 testes, 294 arquivos, exit 0** |
+| `next build` | **exit 0** |
+| `eslint` (arquivos da frente) | exit 0 |
+| baseline `install` fresh (`ON_ERROR_STOP=1`) | **exit 0** |
+| baseline `update` (re-aplicar) | **exit 0** |
+| invariante `ai_purpose_bindings` | 8/8 |
+
+**Não rodado:** `pnpm test:db` completo (364 invariantes) e a suíte e2e inteira.
+
+## Duas falhas que a suíte pegou no fim, e que valem registro
+
+1. **`llm_calls_status_check` duplicado no baseline.** Um comando que rodou em
+   background completou depois que eu já havia refeito a edição à mão, e o
+   apêndice entrou duas vezes. Quem pegou foi `baseline-constraint-reconstruida`
+   — um invariante que já existia no repo exatamente para isso.
+2. **`navegacao-registry` reprovou a ordem do grupo de IA.** Duas telas novas
+   entraram e o teste travava a ordem em três. Atualizado com a razão escrita:
+   "Provedores" fecha a etapa de MONTAR, "Execuções" pertence a ACOMPANHAR.

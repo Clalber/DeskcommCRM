@@ -20,6 +20,7 @@ import {
   Kanban,
   Key,
   Lightbulb,
+  ListChecks,
   Lock,
   Plugs,
   PlugsConnected,

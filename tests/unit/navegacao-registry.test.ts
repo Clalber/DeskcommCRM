@@ -100,12 +100,18 @@ describe("sidebarGroups", () => {
     expect(ids).toContain("atendimento");
   });
 
-  it("a ordem dentro do grupo de IA é a do uso real: agentes, follow-ups, roteadores", () => {
+  it("a ordem dentro do grupo de IA é a do uso real: montar, depois acompanhar", () => {
+    // "Provedores" entra logo depois de Roteadores porque fecha a etapa de
+    // MONTAR (quem atende, com qual inteligência); "Execuções" fica por último
+    // porque pertence a ACOMPANHAR — só faz sentido depois de existir tráfego.
+    // A ordem é a da jornada, não a alfabética nem a de criação.
     const ia = sidebarGroups(true, null).find((g) => g.group.id === "ia");
     expect(ia?.items.map((i) => i.href)).toEqual([
       "/app/ai/agents",
       "/app/ai/followups",
       "/app/ai/routers",
+      "/app/ai/providers",
+      "/app/ai/runs",
     ]);
   });
 });

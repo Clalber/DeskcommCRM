@@ -24,6 +24,7 @@
  * carrega o sintoma em português de gente — é o que liga uma linha de
  * configuração a algo que a pessoa já viu acontecer no negócio dela.
  */
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
@@ -104,9 +105,10 @@ export function PainelDeProvedores() {
     try {
       const res = await fetch("/api/v1/ai/providers");
       const texto = await res.text();
-      let json: { data?: unknown; error?: { message?: string } } | null = null;
+      type Resposta = { data?: unknown; error?: { message?: string } };
+      let json: Resposta | null = null;
       try {
-        json = JSON.parse(texto) as typeof json;
+        json = JSON.parse(texto) as Resposta;
       } catch {
         // Corpo não-JSON quer dizer que a resposta nem chegou ao handler
         // (proxy, erro de runtime). O começo do corpo é o que há de mais
@@ -177,9 +179,9 @@ export function PainelDeProvedores() {
           <p className="text-sm">
             Você ainda não cadastrou nenhuma chave de provedor. Enquanto isso, tudo usa a chave
             que veio na instalação.{" "}
-            <a className="underline underline-offset-4" href="/app/ai/credentials">
+            <Link className="underline underline-offset-4" href="/app/ai/credentials">
               Cadastrar uma chave
-            </a>
+            </Link>
           </p>
         </Card>
       )}
@@ -348,9 +350,9 @@ function CartaoDoPonto({
       {ponto.mandadoPeloAgente && (
         <p className="mt-2 text-xs text-muted-foreground">
           Este ponto usa o modelo definido na versão publicada do agente.{" "}
-          <a className="underline underline-offset-4" href="/app/ai/agents">
+          <Link className="underline underline-offset-4" href="/app/ai/agents">
             Configurar no agente
-          </a>
+          </Link>
         </p>
       )}
 
