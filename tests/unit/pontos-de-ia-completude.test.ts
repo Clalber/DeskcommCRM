@@ -64,13 +64,18 @@ function purposesEmitidosNoCodigo(): Map<string, string[]> {
  * órfão no registro sem nenhum teste reclamar.
  */
 const FORA_DO_SEAM: Record<string, { arquivo: string; marcador: string }> = {
+  // O marcador mudou de `resolveLanguageModel` para `resolverModeloDoPonto`
+  // quando estes dois passaram a honrar o painel de provedores. O teste pegou a
+  // troca, que é o comportamento pretendido: o marcador existe para que apagar
+  // o chamador reprove aqui, e trocá-lo obriga a confirmar que o ponto continua
+  // vivo — não que ele continua sendo chamado do mesmo jeito.
   sentiment_classify: {
     arquivo: "workers/ai-sentiment-worker.ts",
-    marcador: "resolveLanguageModel",
+    marcador: "resolverModeloDoPonto",
   },
   bot_respond: {
     arquivo: "workers/ai-response-worker.ts",
-    marcador: "resolveLanguageModel",
+    marcador: "resolverModeloDoPonto",
   },
   embedding_indexar: { arquivo: "lib/ai/embed.ts", marcador: "embed(" },
   embedding_consultar: {

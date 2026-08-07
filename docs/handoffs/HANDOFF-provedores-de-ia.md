@@ -84,6 +84,7 @@ tudo que o catálogo e a validação de capacidade precisam vem na mesma respost
 | **1b — Seam obedece ao painel** | ✅ concluída | `c2a78b31` |
 | **1c — Tela `/app/ai/providers`** | ✅ entregue | `3d012c9c` |
 | **2b — Tela `/app/ai/runs`** | ✅ entregue | `85f4532e` |
+| **1d — Painel alcança a pilha antiga** | ✅ entregue | `23f7c64f` |
 | **2 — Log registra falha** | ✅ concluída | `231c0cf1` |
 | **3 — OpenRouter + catálogo** | ✅ concluída | `2910c19f` |
 
@@ -261,7 +262,9 @@ quem instalou. Tokens em zero e custo em NULL na linha de erro.
 | P4 | Sete variáveis de ambiente de modelo continuam válidas e competem com o binding | `lib/agent-engine/env.ts` | ✅ resolvido em `ab37426c` — precedência declarada e testada |
 | P5 | `psql-transporte.ts` duplica ~10 linhas do `gov-helpers.ts`. Não estendi o original porque `tests/invariants/**` é congelado por hook, e usar a variável de escape seria decidir sozinho uma questão do dono do repo | `tests/invariants/` | aguarda decisão do Rafael |
 | P6 | Resolvedor plugado no seam (`c2a78b31`) | `lib/agent-engine/edge/llm/` | ✅ resolvido |
-| P7 | `lib/ai/gateway.ts` e `lib/ai/runtime/agent.ts::buildModel` **ainda não delegam** ao resolvedor — as duas pilhas antigas seguem resolvendo por env. Afeta `sentiment_classify`, `bot_respond` e `teste_de_agente` | `lib/ai/` | aberto |
+| P7 | `sentiment_classify` e `bot_respond` agora honram o painel via `lib/ai/gateway-binding.ts` (`23f7c64f`) | `lib/ai/` | ✅ resolvido |
+| P10 | `teste_de_agente` (`lib/ai/runtime/agent.ts::buildModel`) **ainda não** honra o binding — é o ensaio na tela de agentes, e o registro o oferece como configurável | `lib/ai/runtime/` | aberto |
+| P11 | `gateway-binding.ts` duplica a instanciação de provider do `createDefaultRegistry`. Ponte consciente: unificar exige que os workers falem `pg.Pool` | `lib/ai/` | aberto |
 | P8 | A tela de execuções (`/app/ai/runs`) tem API pronta, **falta o componente** | `app/app/ai/` | aberto |
 | P9 | `ai_invocations` ainda não foi unificada em `llm_calls` (decisão 2 do Rafael) — a API de uso segue somando as duas | `app/api/v1/ai/usage` | aberto |
 
@@ -286,7 +289,7 @@ pelo resolvedor no seam — a tela vem depois, sobre um resolvedor já provado.
 | Gate | Resultado |
 |---|---|
 | `tsc --noEmit` | **exit 0** (medido sem pipe) |
-| `vitest run` (suíte inteira) | **3046 testes, 294 arquivos, exit 0** |
+| `vitest run` (suíte inteira) | **3053 testes, 295 arquivos, exit 0** |
 | `next build` | **exit 0** |
 | `eslint` (arquivos da frente) | exit 0 |
 | baseline `install` fresh (`ON_ERROR_STOP=1`) | **exit 0** |
@@ -304,3 +307,26 @@ pelo resolvedor no seam — a tela vem depois, sobre um resolvedor já provado.
 2. **`navegacao-registry` reprovou a ordem do grupo de IA.** Duas telas novas
    entraram e o teste travava a ordem em três. Atualizado com a razão escrita:
    "Provedores" fecha a etapa de MONTAR, "Execuções" pertence a ACOMPANHAR.
+
+
+## O furo mais grave da sessão, e como apareceu
+
+Ao revisar as próprias pendências percebi que a tela **oferecia**
+`sentiment_classify`, `bot_respond` e o ensaio de agente como configuráveis — e
+os três resolviam pela pilha antiga, ignorando o binding. Ou seja: o painel
+aceitava a escolha, dizia "salvo", e nada mudava.
+
+É a mesma classe de defeito que `pontos-de-ia-completude.test.ts` proíbe, e ele
+não pegou porque casa a **lista** com o código, não a **execução** com a
+configuração. Dois dos três estão corrigidos (`23f7c64f`); `teste_de_agente`
+segue aberto como P10.
+
+## Erros de método que custaram retrabalho
+
+1. **`git checkout` num arquivo NOVO não restaura nada.** Sabotei
+   `gateway-binding.ts` três vezes seguidas sem perceber que ele era untracked;
+   as sabotagens se acumularam e as medições B e C saíram contaminadas (3 falhas
+   onde deveriam ser 1). Refiz depois de commitar: 3, 1, 1 — o previsto. Agora o
+   laço de sabotagem confirma a restauração a cada passo.
+2. **Mesma lição, versão anterior:** `git checkout` para desfazer sabotagem
+   levou junto a Frente 2 inteira, ainda não commitada.
