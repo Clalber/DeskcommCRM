@@ -21,6 +21,7 @@ import {
   Key,
   Lightbulb,
   Lock,
+  Plugs,
   PlugsConnected,
   PuzzlePiece,
   Receipt,
@@ -228,6 +229,19 @@ export const NAV_DESTINATIONS: NavDestination[] = [
     group: "ia",
     section: "Montar o agente",
     minRole: "manager",
+  },
+  {
+    // O sistema chama modelo em 23 lugares e, até esta tela, a escolha vivia
+    // espalhada por três pilhas de código e sete variáveis de ambiente — não
+    // havia onde responder "quem usa IA aqui, e com qual chave?".
+    href: "/app/ai/providers",
+    label: "Provedores",
+    description: "Qual inteligência atende cada parte do sistema — e o que acontece se ela falhar.",
+    icon: Plugs,
+    group: "ia",
+    section: "Montar o agente",
+    minRole: "manager",
+    sidebar: true,
   },
   {
     href: "/app/ai/knowledge/sources",
