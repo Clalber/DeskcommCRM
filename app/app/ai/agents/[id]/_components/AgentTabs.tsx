@@ -5,6 +5,7 @@
 import * as React from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AgentForm, type ChannelSessionLite } from "./AgentForm";
+import type { CoberturaPorFunil } from "./FunisDoAgente";
 import type { FunilDaResposta } from "@/hooks/pipelines/usePipelines";
 import { TestPanel } from "./TestPanel";
 import { RunsTable } from "./RunsTable";
@@ -18,6 +19,7 @@ import type { CredentialRow } from "@/hooks/ai/useCredentials";
 interface Props {
   /** Funis da org, para a marcação de escopo do agente (spec 17 passo 3). */
   funis?: FunilDaResposta[];
+  cobertura?: CoberturaPorFunil;
   agent: AgentRow;
   draft: AgentVersionRow | null;
   published: AgentVersionRow | null;
@@ -60,6 +62,7 @@ export function AgentTabs(props: Props) {
           credentials={props.credentials}
           channelSessions={props.channelSessions}
           funis={props.funis}
+          cobertura={props.cobertura}
           routerMembership={props.routerMembership}
           readOnly={props.readOnly}
         />

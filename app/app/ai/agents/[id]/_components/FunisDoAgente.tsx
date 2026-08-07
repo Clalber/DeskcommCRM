@@ -24,14 +24,24 @@ import { Card } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import type { FunilDaResposta } from "@/hooks/pipelines/usePipelines";
 
+/** Quanto de cada funil o assistente sabe percorrer (spec 17 passo 4). */
+export interface CoberturaPorFunil {
+  [pipelineId: string]: { traduzidos: number; total: number; mudo: boolean };
+}
+
 interface Props {
   funis: FunilDaResposta[];
+  /**
+   * Opcional: quando ausente, a tela não fala de tradução nenhuma. É melhor
+   * calar do que exibir "0 de 5" para todo funil só porque o dado não chegou.
+   */
+  cobertura?: CoberturaPorFunil;
   value: string[];
   onChange: (ids: string[]) => void;
   disabled?: boolean;
 }
 
-export function FunisDoAgente({ funis, value, onChange, disabled = false }: Props) {
+export function FunisDoAgente({ funis, value, onChange, cobertura, disabled = false }: Props) {
   const marcados = new Set(value);
 
   function alternar(id: string, marcado: boolean): void {
@@ -47,6 +57,12 @@ export function FunisDoAgente({ funis, value, onChange, disabled = false }: Prop
   // ficar de fora, o assistente conversa e os cards se acumulam sem que ele
   // possa tocá-los.
   const entradaDeFora = Boolean(funilDeEntrada && !marcados.has(funilDeEntrada.id) && value.length > 0);
+
+  // Funis que o assistente cuida e não sabe percorrer: promessa que não se
+  // cumpre. O dono marcou achando que ele ia organizar, e ele não vai.
+  const mudosMarcados = funis
+    .filter((f) => marcados.has(f.id) && cobertura?.[f.id]?.mudo)
+    .map((f) => f.name);
 
   return (
     <Card className="space-y-3 p-4">
@@ -86,6 +102,17 @@ export function FunisDoAgente({ funis, value, onChange, disabled = false }: Prop
                     (é para cá que vão as conversas novas)
                   </span>
                 ) : null}
+                {/* A lacuna de tradução só aparece no funil MARCADO: fora do
+                    escopo ela não custa nada, e mostrá-la ali seria cobrar uma
+                    configuração que ninguém prometeu. */}
+                {marcados.has(f.id) && cobertura?.[f.id]?.mudo ? (
+                  <span
+                    data-testid={`funil-mudo-${f.id}`}
+                    className="ml-2 text-xs text-warning-fg"
+                  >
+                    — ele não sabe organizar este funil ainda
+                  </span>
+                ) : null}
               </Label>
             </div>
           ))}
@@ -96,6 +123,15 @@ export function FunisDoAgente({ funis, value, onChange, disabled = false }: Prop
         <p data-testid="agente-sem-funil" className="text-xs text-muted-foreground">
           Sem nenhum funil marcado, ele conversa com os clientes normalmente, mas não mexe em
           negócio nenhum — nem move, nem encerra, nem marca.
+        </p>
+      ) : null}
+
+      {mudosMarcados.length > 0 ? (
+        <p data-testid="agente-funis-mudos" className="text-xs text-warning-fg">
+          {mudosMarcados.length === 1
+            ? `Você marcou ${mudosMarcados[0]}, mas ninguém disse ao assistente o que cada etapa desse funil significa — ele vai atender e deixar os negócios parados onde estão.`
+            : `Você marcou ${mudosMarcados.length} funis em que ninguém disse ao assistente o que cada etapa significa — ele vai atender e deixar os negócios parados onde estão.`}{" "}
+          Isso se configura em Configurações › Funis.
         </p>
       ) : null}
 

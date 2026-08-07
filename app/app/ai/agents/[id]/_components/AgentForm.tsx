@@ -43,7 +43,7 @@ import { TriggerEditor, type TriggerValue } from "./TriggerEditor";
 import { HandoffKeywordsInput } from "./HandoffKeywordsInput";
 import { FollowupFlowPicker } from "./FollowupFlowPicker";
 import { PainelDoOperador } from "./PainelDoOperador";
-import { FunisDoAgente } from "./FunisDoAgente";
+import { FunisDoAgente, type CoberturaPorFunil } from "./FunisDoAgente";
 import { PublishConfirmDialog } from "./PublishConfirmDialog";
 import {
   saveAgentDraftAction,
@@ -94,6 +94,8 @@ type Props = (EditProps | CreateProps) & {
    * para dizer algo importante.
    */
   funis?: FunilDaResposta[];
+  /** Quanto de cada funil o assistente sabe percorrer (spec 17 passo 4). */
+  cobertura?: CoberturaPorFunil;
 };
 
 interface FormState {
@@ -495,6 +497,7 @@ export function AgentForm(props: Props) {
       {papel === "operacao" ? (
         <FunisDoAgente
           funis={funis}
+          cobertura={props.cobertura}
           value={form.pipeline_ids}
           onChange={(ids) => patch({ pipeline_ids: ids })}
           disabled={disabled}

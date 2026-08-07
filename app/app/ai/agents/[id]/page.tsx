@@ -11,6 +11,8 @@ import type { CredentialRow } from "@/hooks/ai/useCredentials";
 import { AgentEditorClient } from "./_client";
 import { AgentTabs } from "./_components/AgentTabs";
 import type { FunilDaResposta } from "@/hooks/pipelines/usePipelines";
+import { coberturaDoFunil, type EtapaDoMapa } from "@/lib/leads/agent-mapping";
+import type { CoberturaPorFunil } from "./_components/FunisDoAgente";
 
 export const dynamic = "force-dynamic";
 
@@ -92,6 +94,25 @@ export default async function AgentEditorPage({
 
   const versions = (versionsRes.data ?? []) as unknown as AgentVersionRow[];
   const funis = (funisRes.data ?? []) as unknown as FunilDaResposta[];
+
+  // Quanto de cada funil o assistente sabe percorrer (spec 17 passo 4). Vem
+  // junto com a página porque a lacuna precisa aparecer no MESMO lugar em que o
+  // dono marca o funil — descobrir isso entrando funil por funil na tela de
+  // tradução é o que fez 3 dos 4 funis da produção ficarem mudos sem ninguém ver.
+  const { data: etapasRes } = await supabase
+    .from("crm_stages")
+    .select("id, name, is_won, is_lost, agent_stage_hint, pipeline_id")
+    .eq("organization_id", activeOrg.orgId)
+    .eq("is_archived", false);
+  const etapasPorFunil = new Map<string, EtapaDoMapa[]>();
+  for (const e of (etapasRes ?? []) as Array<EtapaDoMapa & { pipeline_id: string }>) {
+    etapasPorFunil.set(e.pipeline_id, [...(etapasPorFunil.get(e.pipeline_id) ?? []), e]);
+  }
+  const cobertura: CoberturaPorFunil = {};
+  for (const f of funis) {
+    const c = coberturaDoFunil(etapasPorFunil.get(f.id) ?? []);
+    cobertura[f.id] = { traduzidos: c.traduzidos, total: c.total, mudo: c.mudo };
+  }
   const credentials = (credentialsRes.data ?? []) as unknown as CredentialRow[];
   const routerMemberRow = routerMemberRes.data as { router_id: string; ai_routers: { name: string } | null } | null;
   const routerMembership = routerMemberRow
@@ -117,6 +138,7 @@ export default async function AgentEditorPage({
         credentials={credentials}
         channelSessions={channelSessions}
         funis={funis}
+        cobertura={cobertura}
         routerMembership={routerMembership}
         readOnly={readOnly}
       />

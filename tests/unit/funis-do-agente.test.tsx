@@ -122,3 +122,44 @@ describe("linguagem", () => {
     expect(texto).toMatch(/move, edita ou encerra negócio/i);
   });
 });
+
+describe("a lacuna de tradução (passo 4)", () => {
+  const MUDO = { [ANDREA.id]: { traduzidos: 0, total: 5, mudo: true } };
+  const TRADUZIDO = { [ANDREA.id]: { traduzidos: 5, total: 5, mudo: false } };
+
+  it("funil MARCADO que o assistente não sabe percorrer é sinalizado", () => {
+    // Medido na produção: 3 dos 4 funis com ZERO tradução, e a única forma de
+    // descobrir isso era entrar funil por funil na tela de configuração.
+    render(
+      <FunisDoAgente funis={TODOS} value={[ANDREA.id]} onChange={() => {}} cobertura={MUDO} />,
+    );
+    expect(screen.getByTestId(`funil-mudo-${ANDREA.id}`)).toBeInTheDocument();
+    const bloco = screen.getByTestId("agente-funis-mudos");
+    expect(bloco.textContent).toContain("Comercial - Andrea");
+    // Diz a CONSEQUÊNCIA, não o nome da configuração que falta.
+    expect(bloco.textContent).toMatch(/deixar os negócios parados/i);
+  });
+
+  it("funil NÃO marcado com a mesma lacuna fica quieto", () => {
+    // Fora do escopo a lacuna não custa nada: ninguém prometeu que o assistente
+    // organizaria aquele funil. Mostrá-la ali seria cobrar configuração que não
+    // foi pedida — e é assim que um aviso vira ruído.
+    render(<FunisDoAgente funis={TODOS} value={[]} onChange={() => {}} cobertura={MUDO} />);
+    expect(screen.queryByTestId(`funil-mudo-${ANDREA.id}`)).toBeNull();
+    expect(screen.queryByTestId("agente-funis-mudos")).toBeNull();
+  });
+
+  it("funil marcado E traduzido não gera aviso nenhum", () => {
+    render(
+      <FunisDoAgente funis={TODOS} value={[ANDREA.id]} onChange={() => {}} cobertura={TRADUZIDO} />,
+    );
+    expect(screen.queryByTestId("agente-funis-mudos")).toBeNull();
+  });
+
+  it("sem dado de cobertura, a tela CALA sobre tradução", () => {
+    // Melhor calar que exibir "não sabe organizar" para todo funil só porque o
+    // dado não chegou — seria alarme falso na primeira renderização.
+    render(<FunisDoAgente funis={TODOS} value={[ANDREA.id]} onChange={() => {}} />);
+    expect(screen.queryByTestId("agente-funis-mudos")).toBeNull();
+  });
+});
