@@ -5,7 +5,7 @@
 
 - **Branch:** `feat/provedores-de-ia` · **Worktree:** `~/DeskcommCRM-provedores`
 - **Base:** `9249e6f2` (`origin/main` em 2026-08-07)
-- **Última atualização:** 2026-08-07 — fim da Frente 0
+- **Última atualização:** 2026-08-07 — Frente 1, parte 1 (schema + resolvedor) provada
 
 ---
 
@@ -80,7 +80,8 @@ tudo que o catálogo e a validação de capacidade precisam vem na mesma respost
 | Frente | Estado | Commit |
 |---|---|---|
 | **0 — Registro de pontos** | ✅ concluída | `cb06cae6` |
-| **1 — Painel de provedores** | ⏳ próxima | — |
+| **1a — Schema + resolvedor** | ✅ concluída | `ab37426c`, `52a7440e` |
+| **1b — Tela `/app/ai/providers`** | ⏳ próxima | — |
 | **2 — Log de runs** | ⬜ não iniciada | — |
 | **3 — OpenRouter + catálogo** | ⬜ não iniciada | — |
 
@@ -120,6 +121,84 @@ Zero é indistinguível de "está tudo em ordem".
 
 ---
 
+---
+
+## Frente 1a — Schema e resolvedor de precedência ✅
+
+**Entregue:**
+
+- `supabase/migrations/20260807120000_0126_ai_purpose_bindings.sql` + apêndice
+  idempotente no `baseline.sql` + linha no `MANIFEST.md` (a tripla).
+- `lib/ai/pontos/resolver.ts` — a ordem entre as quatro origens que podem
+  decidir o modelo de um ponto, com a **origem devolvida junto do valor**.
+- `tests/unit/pontos-de-ia-resolver.test.ts` (21 testes) e
+  `tests/invariants/ai-purpose-bindings.test.ts` (8 testes).
+
+**A precedência decidida** (do mais forte ao mais fraco):
+
+1. **Versão publicada do agente** — só para `agent_turn` e `operator_turn`. A
+   escolha ali já tem tela própria; duas telas mandando na mesma coisa é como
+   se cria a configuração que mente. O painel mostra os dois como leitura.
+2. **Binding do painel** — os outros 21 pontos.
+3. **Variável de ambiente** — os sete knobs herdados. Continuam valendo para
+   quem já os usa, mas perdem para quem clicou depois.
+4. **Padrão da organização** (`organizations.settings.llm`).
+
+**Prova do baseline** (Postgres 17 local, não Docker — ver bloqueio B1):
+
+| Etapa | Resultado |
+|---|---|
+| `install` fresh, `ON_ERROR_STOP=1` | exit **0** |
+| `update` (re-aplicar em banco populado) | exit **0** |
+| Tabela, RLS, policy, constraint única, 5 índices | presentes |
+
+**Prova de comportamento** (não só de existência), com controle positivo antes
+de cada medição:
+
+| O quê | Medido |
+|---|---|
+| Constraint única recusa 2º binding do mesmo ponto | ✅ pelo nome da constraint |
+| Mesmo ponto em organizações diferentes | ✅ aceito |
+| Cascade da credencial | 1 → 0 |
+| Cascade da organização | 1 → 0 |
+| Dedup auto-curativo do apêndice | 2 → 1, sobreviveu o mais recente, constraint recriada |
+| RLS: A vê só A, B vê só B | ✅ |
+| RLS: escrita cruzada | barrada **pela RLS** (mensagem casada), invasor não gravado |
+
+**Sabotagens do invariante** (previsão antes de rodar):
+
+| Sabotagem | Previsto | Medido |
+|---|---|---|
+| RLS desligada | 2 | 2 ✅ |
+| Constraint única removida | 1 | 1 ✅ |
+| `CASCADE` → `SET NULL` | 1 | **0 → corrigido → 1** |
+| Auto-cura apagada do baseline | 1 | 1 ✅ |
+
+### Três erros meus que viraram guarda no teste
+
+1. **`CASCADE`→`SET NULL` reprovava zero.** O teste contava
+   `where credential_id = CRED_A`; sob `SET NULL` a coluna vira nula e a
+   contagem também cai a zero — passava exatamente no cenário que existe para
+   proibir (binding órfão). Só apareceu porque a contagem foi **prevista** antes
+   de rodar. Agora conta a linha por organização.
+2. **Asserção contando o banco inteiro.** "Mesmo ponto em orgs diferentes"
+   falhou com 4 onde esperava 2 — resíduo de outra suíte. Banco de invariantes
+   nunca está limpo; a contagem agora é escopada ao cenário.
+3. **Fixture falha em silêncio.** Duas vezes a fixture quebrou (coluna `name`
+   inexistente; e-mail duplicado) e a medição seguiu contra tabela vazia,
+   devolvendo "não vazou" quando não havia nada para vazar. Por isso todo bloco
+   agora abre com controle positivo que aborta.
+
+---
+
+## Bloqueios
+
+| # | O quê | Estado |
+|---|---|---|
+| B1 | **Docker desta máquina não responde** (`docker info` pendura indefinidamente). Contornado com Postgres 17 via Homebrew + `TEST_DB_PSQL`; o CI segue usando o container. `pnpm test:db` completo (364 invariantes) **ainda não rodou** nesta frente | aberto |
+
+---
+
 ## Pendências e dívidas conhecidas
 
 | # | O quê | Onde | Estado |
@@ -127,7 +206,9 @@ Zero é indistinguível de "está tudo em ordem".
 | P1 | Visão de imagem devolve `""` em silêncio quando o modelo de chat da org não enxerga imagem | `workers/media-derive-worker.ts:142` | aberto — F1 dá a superfície, F2 dá o rastro |
 | P2 | `embedding_consultar`, `transcricao_de_audio`, `visao_de_imagem` e `contagem_de_tokens` não gravam telemetria nenhuma (`registraEm: "nenhum"`) | registro | endereçado na F2 |
 | P3 | `install.sh` monta o `.env` com lista fechada e trunca — env acrescentada à mão se perde ao re-rodar | `hostgator-setup-kit/install.sh` | precisa resolver ANTES da F3 mexer no instalador |
-| P4 | Sete variáveis de ambiente de modelo continuam válidas e competem com o binding | `lib/agent-engine/env.ts` | F1 precisa definir a precedência e documentá-la |
+| P4 | Sete variáveis de ambiente de modelo continuam válidas e competem com o binding | `lib/agent-engine/env.ts` | ✅ resolvido em `ab37426c` — precedência declarada e testada |
+| P5 | `psql-transporte.ts` duplica ~10 linhas do `gov-helpers.ts`. Não estendi o original porque `tests/invariants/**` é congelado por hook, e usar a variável de escape seria decidir sozinho uma questão do dono do repo | `tests/invariants/` | aguarda decisão do Rafael |
+| P6 | O resolvedor existe e é testado, mas **ainda não está plugado** no seam (`run-model-call.ts`) nem em `lib/ai/gateway.ts` — nenhum comportamento de produção mudou até aqui | `lib/agent-engine/edge/llm/` | próxima etapa da F1 |
 
 ---
 
