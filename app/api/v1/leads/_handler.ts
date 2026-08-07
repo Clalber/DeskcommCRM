@@ -135,9 +135,18 @@ export async function listLeadsHandler(
   q: ListLeadsQuery,
 ): Promise<ListLeadsResult> {
   const limit = Math.min(Math.max(q.limit ?? 50, 1), 100);
+  // ⚠️ O filtro de organização é a PRIMEIRA cláusula, e não uma opcional entre
+  // as de baixo. Pelo MCP o client é service-role e a RLS não vale: sem ele, a
+  // listagem entregava ao modelo os negócios de TODAS as organizações do banco.
+  //
+  // Foi o terceiro furo da mesma família neste arquivo, e o mais silencioso —
+  // ler não devolve erro, então nada quebrava; o agente só passava a "saber"
+  // coisas que não são da casa dele. Escopo de funil montado por cima de um
+  // caminho que vaza ORG seria porta trancada em casa sem parede.
   let query = supabase
     .from("crm_leads")
     .select(LEAD_COLS)
+    .eq("organization_id", ctx.organization_id)
     .order("created_at", { ascending: false })
     .order("id", { ascending: false })
     .limit(limit + 1);

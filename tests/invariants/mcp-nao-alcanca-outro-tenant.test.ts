@@ -85,7 +85,7 @@ async function semearOrg(id: string, slug: string): Promise<{ pipeline: string; 
 }
 
 beforeAll(async () => {
-  await semearOrg(ORG_A, "cross-a");
+  const a = await semearOrg(ORG_A, "cross-a");
   const b = await semearOrg(ORG_B, "cross-b");
   stageDaVitima = b.stage;
 
@@ -95,6 +95,14 @@ beforeAll(async () => {
     [ORG_B, b.pipeline, b.stage],
   );
   leadDaVitima = rows[0]!.id;
+
+  // A org do agente também tem um negócio — senão a listagem devolveria vazio
+  // por não haver nada, e "não vazou" passaria sem medir nada.
+  await pool.query(
+    `insert into crm_leads (organization_id, pipeline_id, stage_id, title)
+     values ($1, $2, $3, 'Negócio legítimo de A')`,
+    [ORG_A, a.pipeline, a.stage],
+  );
 });
 
 afterAll(async () => {
@@ -125,11 +133,31 @@ describe("o negócio da outra organização", () => {
     }
   });
 
+  it("a listagem RODA — sem isto, o caso abaixo passa com uma lista vazia por ERRO", async () => {
+    // ⚠️ Controle positivo, e ele já pegou um falso verde MEU: a primeira versão
+    // deste arquivo envolvia a chamada em `.catch(() => null)` e lia
+    // `?.data ?? []`. Qualquer exceção — inclusive um método que o adaptador não
+    // tem — virava lista vazia, e "não contém o lead da vítima" passava sem que
+    // a listagem tivesse rodado. Aqui ela roda SEM rede: se estourar, o teste
+    // morre dizendo isso, em vez de mentir verde.
+    const r = await listLeadsHandler(db, ctxDoAgenteDeA(), {} as never);
+    // ⚠️ O campo é `leads`, não `data` — e ler o nome errado era a SEGUNDA
+    // metade do falso verde: `?.data ?? []` devolvia lista vazia mesmo quando a
+    // listagem trazia o negócio da vítima. Duas camadas de mentira num caso só.
+    expect(Array.isArray(r.leads), "a listagem precisa devolver uma lista").toBe(true);
+
+    // E precisa haver O QUE listar na org do agente: uma lista vazia porque a
+    // org de A não tem nada também passaria sem medir.
+    const daPropriaOrg = r.leads.filter(
+      (x) => (x as { organization_id?: string }).organization_id === ORG_A,
+    );
+    expect(daPropriaOrg.length, "a org do agente precisa ter lead para a listagem significar algo").toBeGreaterThan(0);
+  });
+
   it("NÃO aparece em `crm_list_leads`", async () => {
-    const r = await listLeadsHandler(db, ctxDoAgenteDeA(), {} as never).catch(() => null);
-    const itens = ((r as { data?: unknown[] } | null)?.data ?? []) as Array<{ id: string }>;
+    const r = await listLeadsHandler(db, ctxDoAgenteDeA(), {} as never);
     expect(
-      itens.map((x) => x.id),
+      r.leads.map((x) => (x as { id: string }).id),
       "a lista do agente de A trouxe o negócio de B",
     ).not.toContain(leadDaVitima);
   });
