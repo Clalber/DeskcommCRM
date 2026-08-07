@@ -236,6 +236,57 @@ E o comentário que estava naquela linha **mentia**: dizia que "o chamador garan
 técnico, e o chamador passava o payload cru. Typecheck e testes verdes com a afirmação falsa
 versionada.
 
+### Fatia D — a fila de confirmação (spec 17 §4b)
+
+**Duas decisões do Rafael**, registradas na spec antes de codar: (a) o dado que o cliente diz vai
+para uma FILA, um humano confirma; (b) a base legal ficou a meu critério.
+
+**Escolhi aplicar, não inventar.** A regra **L-05** já nomeia as finalidades (`marketing` /
+`transactional` / `profiling`) e o campo `consent.<finalidade>.granted_at`, e sua exceção já cobre o
+transacional iniciado pelo próprio cliente. E o formato do jsonb também já existia:
+`export-collector.ts:197` **lê** `{escopo:{granted,granted_at,source}}` — o leitor estava lá e o
+escritor nunca foi escrito.
+
+#### D1 — o pré-requisito, que já era defeito (`84cd750e`)
+
+| regra | o que o código fazia | agora |
+|---|---|---|
+| **L-05** | `patch.consent = input.consent` — o objeto INTEIRO | merge por finalidade: gravar `transactional` deixou de apagar `marketing` |
+| **L-06** (exceção "Nenhuma") | audit gravava só os NOMES dos campos | `old_`/`new_` dos campos sensíveis, grafia do `team.role_changed`, que já tem guarda |
+
+Perda de consentimento não dá erro — é a base legal de um envio futuro sumindo em silêncio. E sem o
+valor anterior, um e-mail dito de brincadeira apaga o correto sem volta, que é o risco que a fila
+existe para conter.
+
+**O adaptador `pg-como-supabase` ganhou `update` e `rpc`** — e ganhou porque **ESTOUROU** ao ser
+chamado, em vez de devolver vazio. Se tivesse devolvido vazio, os 7 casos novos ficariam verdes
+medindo nada.
+
+**O `from/to` não é medido contra Postgres, e isso está declarado:** `audit()` cria o próprio client
+admin e o config de teste aponta para porta inalcançável de propósito. Descobri porque o controle
+positivo ("a tabela RECEBE a linha") reprovou junto com os outros — ele separou "o campo não está
+lá" de "a LINHA não está lá". A cobertura foi para um unit que espia a chamada.
+
+| # | sabotagem | previsto | medido |
+|---|---|---:|---:|
+| S1 | consent volta a substituir | 2 | **1** (o caso "atualiza" não isola o merge) |
+| S2 | audit sem o par antes/depois | 3 | **4** |
+| S3 | `update` do adaptador vira no-op | ≥3 | **0 → 6** (filtro inválido devolveu "No test files found") |
+
+#### D2..D5 — o que falta construir
+
+O desenho saiu do mapeamento e **copia a forma de `crm_lead_reactivations`**, que já é uma fila de
+proposta com prazo, decisão datada, decisor e idempotência por índice parcial:
+
+| # | peça | nota |
+|---|---|---|
+| D2 | tabela `contact_field_proposals` (migration **0123**) | índice único parcial `where status='pending'` É a idempotência — a décima proposta do mesmo e-mail bate 23505 no banco, não numa checagem racy |
+| D3 | ferramenta **de catálogo** `crm_propose_contact_field` | **não pode ser nativa:** o Operador tem ZERO tools nativas e só chama o modelo se `mcp !== null`; nativa não entraria na tela de configuração, no audit `mcp.tool_called` nem na telemetria |
+| D4 | rota de confirmar/rejeitar | grava chamando o **handler de contatos**, que já barra contato anonimizado com 403 — L-04 sai de graça |
+| D5 | a tela onde o humano confirma | + kind na Central só para o **vencimento** agregado |
+
+Também precisa entrar no cascade de `fn_lgpd_cascade_redact_contact`, no mesmo commit da criação.
+
 ### Ainda em aberto no passo 2
 
 | # | o quê | por quê |
