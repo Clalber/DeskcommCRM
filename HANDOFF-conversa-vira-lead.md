@@ -14,7 +14,7 @@
 |---|---|---|
 | 1 | **conversa vira lead** | ✅ **completo** — código, invariantes, prova de tela e 5 sabotagens |
 | 2 | contato deixa de ser anônimo | ✅ **completo** — 3 bugs vivos, telefone do @lid, rótulo único, título do card e a fila de confirmação ponta a ponta |
-| 3 | escopo por pipeline | ⏳ não começado |
+| 3 | escopo por pipeline | 🔄 **quase** — schema, gate, tela e testes. Falta o aviso na Central quando a IA é vetada, e a prova de tela |
 | 4 | tradução de etapas com superfície | ⏳ não começado |
 | 5 | o laço (desfazer vira sinal) | ⏳ não começado |
 
@@ -335,6 +335,80 @@ proposta com prazo, decisão datada, decisor e idempotência por índice parcial
 | D5 | a tela onde o humano confirma | + kind na Central só para o **vencimento** agregado |
 
 Também precisa entrar no cascade de `fn_lgpd_cascade_redact_contact`, no mesmo commit da criação.
+
+---
+
+## Passo 3 — o agente só escreve nos funis marcados
+
+### O que foi medido (produção, 2026-08-07)
+
+Uma **única organização** com **4 funis e 5 agentes de negócios diferentes** — um SDR de vendas,
+dois de suporte ao produto e uma atendente de clínica. Funis: `Pedidos` (padrão),
+`Comercial - Andrea`, `Comercial - Julia`, `Suporte - IA`. Qualquer um dos cinco alcançava qualquer
+um dos quatro.
+
+E não só "mover card": `crm_close_demand` dá o negócio por ganho/perdido (tira do radar e das
+cobranças) e `crm_manage_tags` marca o card alheio. Um escopo que cobrisse só a movimentação
+protegeria o menos importante.
+
+**Ainda não aconteceu:** a IA só tocou o funil padrão (4 registros) e nenhum negócio tem a IA como
+dono. Porta aberta que ninguém atravessou — a melhor hora para fechá-la, sem estado sujo para migrar.
+
+### 🔴 O que apareceu no caminho: vazamento ENTRE ORGANIZAÇÕES
+
+Mapeando os caminhos, achei três furos **piores** que o escopo de funil (`a687a97c`, `db0e70eb`):
+
+| ferramenta | o que fazia |
+|---|---|
+| ver negócio | **lia** o negócio de outro cliente |
+| editar negócio | **reescrevia** o negócio de outro cliente (o teste provou pelo título) |
+| listar negócios | entregava ao modelo os negócios de **todos** os clientes do banco |
+
+Anti-pattern 10 do CLAUDE.md: o MCP injeta service-role, que bypassa RLS, e os handlers não
+filtravam `organization_id`. Agravante na edição: o audit era gravado **no log da vítima**.
+
+**Ler o código não bastava** — contar menções de `organization_id` devolve 5 para um handler que
+não o usava em filtro nenhum. Só medir comportamento com dois tenants resolveu.
+
+**E meu próprio teste mentiu verde, em duas camadas:** `.catch(() => null)` transformava exceção em
+lista vazia, e eu lia `r.data` quando o campo é `r.leads`. "Não vazou" passava mesmo vazando.
+
+### O desenho
+
+| decisão | por quê |
+|---|---|
+| coluna em `ai_agent_versions` | a permissão sobe junto com o resto quando alguém PUBLICA; fora do ciclo rascunho→publicar, o alcance mudaria sem ninguém publicar nada |
+| nasce fechado por DUAS origens | `default '{}'` para o agente novo, `?? []` para o clone sem a migration |
+| **backfill derivado do histórico** | sem ele, no dia do deploy todo agente pararia de mexer em card, de uma vez. Medido: só 1 de 8 tem histórico |
+| gate numa função PURA, chamada onde se sabe que é o agente | os handlers são compartilhados com a rota HTTP e com as automações, onde o funil foi escolhido por um humano de propósito |
+| escrita não classificada é **recusada** | impede a ferramenta nº 22 de nascer fora do gate; com teste de vacuidade + controle positivo |
+| erro de consulta vira `indisponivel`, nunca "fora do escopo" | traduzir falha de banco em recusa de permissão ensinaria ao modelo que o card não é dele — e ele pararia de tentar para sempre |
+
+**Conserto obrigatório que veio junto:** `fn_ai_agent_version_content_immutable` parava no campo
+`followup` e ignorava as **nove** colunas posteriores — todas editáveis numa versão PUBLICADA, sem
+virar versão nova e sem trilha. Acrescentar uma PERMISSÃO àquela lista sem consertar isso seria a
+própria ausência de escopo, com aparência de controle.
+
+### As sabotagens
+
+| # | o que foi quebrado | previsto | medido |
+|---|---|---:|---:|
+| X1 | filtro de org no `getLeadHandler` | 1 | **1** |
+| X2 | filtro de org no UPDATE (mantendo o do SELECT) | 0 | **0** — declarado: é defesa em profundidade, não vigiada |
+| X3 | os dois filtros do update | 1 | **1** |
+| X4 | filtro de org na listagem | 1 | **1** |
+| S1 | escopo vazio passa a significar TODOS | 3+ | **3** |
+| S2 | some o aviso do funil de entrada | 1 | **1** |
+| S3 | vacuidade libera o desconhecido | 1 | **1** |
+
+### Ainda em aberto no passo 3
+
+| # | o quê | por quê |
+|---|---|---|
+| 1 | O aviso na Central quando a IA é vetada | `fora_do_escopo` **não** pode entrar em `MIRROR_WARN_ONLY`: seria 100% dos movimentos vetados em silêncio no dia 1, e o dono leria como "a IA quebrou" |
+| 2 | Prova de tela (DoD 12) | salvar → recarregar → conferir, e o spec do Operador **não roda em CI nenhum** hoje |
+| 3 | Escopo vale só para ESCRITA | declarado, não esquecido: a superfície de descoberta continua aberta (o modelo lê os negócios da org). Filtrar leitura é outro dia, atrás de medição do que quebra no contexto do turno |
+| 4 | Funil marcado que é ARQUIVADO | `uuid[]` não tem cascade; a tela não mostra arquivado, então a marcação pode mentir sobre quantos funis valem |
 
 ### Ainda em aberto no passo 2
 
