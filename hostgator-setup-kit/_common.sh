@@ -68,7 +68,7 @@ rede_reservada_do_proxy() { printf '%s_proxy' "$(nome_do_projeto_atual)"; }
 # instalação nova, ou alguém que rodou `docker network prune`. Aí a resposta é
 # criar, não morrer: o nome é nosso e sabemos a forma dele.
 # Ecoa: ok | criar | inexistente | driver_errado
-veredito_rede_do_proxy() {  # veredito_rede_do_proxy <driver encontrado> <rede> <bridge do projeto>
+veredito_rede_do_proxy() {  # veredito_rede_do_proxy <driver encontrado> <rede> <bridge do projeto> [attachable]
   local drv="${1:-}" rede="${2:-}" nossa="${3:-}"
   if [ -z "$drv" ]; then
     [ -n "$nossa" ] && [ "$rede" = "$nossa" ] && { printf 'criar'; return 0; }
