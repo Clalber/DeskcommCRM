@@ -13,7 +13,7 @@
 | # | passo | estado |
 |---|---|---|
 | 1 | **conversa vira lead** | ✅ **completo** — código, invariantes, prova de tela e 5 sabotagens |
-| 2 | contato deixa de ser anônimo | ⏳ não começado |
+| 2 | contato deixa de ser anônimo | 🔄 **em curso** — 3 bugs vivos consertados, telefone do @lid ligado; falta o rótulo único e a mão do Operador |
 | 3 | escopo por pipeline | ⏳ não começado |
 | 4 | tradução de etapas com superfície | ⏳ não começado |
 | 5 | o laço (desfazer vira sinal) | ⏳ não começado |
@@ -101,6 +101,99 @@ Registrada no CI (`e2e.yml`, parte 1) e no mapa de jornadas (J4.22–J4.25).
 
 Ambiente: Supabase local (`.env.e2e`, 127.0.0.1:54321) + `next build` + `next start`. **Sem
 `.env.local` nesta worktree** — nenhum risco de escrever na produção.
+
+---
+
+## Passo 2 — o contato deixa de ser anônimo
+
+O passo 2 **não era o que a spec dizia**, e as medições mudaram o trabalho três vezes.
+
+### O que a produção respondeu (31 contatos ativos, leitura em 2026-08-06)
+
+| medida | valor | o que isso derruba |
+|---|---:|---|
+| sem telefone | 22/31 · **71%** | todos com identidade `lid:` |
+| sem e-mail | 25/31 · 81% | |
+| `display_name` técnico | **3**/31 | e os três com `notify_name` VAZIO — **não há nome a recuperar** |
+| mensagens de cliente COM nome no payload | **269 de 271 · 99,3%** | o nome **não** é o problema |
+| payloads `@lid` que trazem o TELEFONE | **76 de 76 · 100%** | o telefone sempre chegou |
+
+### Fatia A — três bugs vivos, uma classe (`10a3560f`, `39a7f8f2`)
+
+O Postgres recusa atribuição a coluna `GENERATED ALWAYS … STORED` (428C9) e **aborta a instrução
+inteira**. Três instâncias, cada uma provada contra Postgres real com controle positivo:
+
+| onde | o que quebrava |
+|---|---|
+| `contacts/_handler.ts` | **salvar o e-mail de um contato pela tela → 500.** É o "não registra o número e email dele" do relato |
+| `lgpd/anonymize/route.ts` | **a anonimização LGPD não acontecia** — direito do titular, com prazo legal |
+| `waha/ingest.ts` | fim do warm-up abortava o UPDATE e levava junto o `status` do canal |
+
+O que entra de verdade é o **gate**: `colunas-geradas-nao-sao-escritas.test.ts` PERGUNTA ao Postgres
+quais colunas são geradas e varre `app/`, `lib/`, `scripts/`. O detector custou duas versões — a
+primeira acusou 11 falsos positivos (declaração de tipo, montagem de resposta HTTP), e gate que
+grita onde não há defeito é gate que alguém desliga.
+
+Prova de tela: [`evidence/spec-17/contato-com-email-salvo.png`](evidence/spec-17/contato-com-email-salvo.png)
+(`contato-salva-email.spec.ts`, J4.26–J4.27).
+
+### Fatia B — o telefone que sempre chegou (migration 0122)
+
+```
+"_data": { "key": {
+    "remoteJid":    "70192801575156@lid",
+    "remoteJidAlt": "558183647258@s.whatsapp.net",
+    "addressingMode": "lid" } }
+```
+
+A resposta estava em `webhook_events_log`, não na documentação. **Inbound 56/56 e outbound 20/20**
+trazem o número — e no outbound o `remoteJid` é o chat do destinatário, então o telefone é do
+cliente, não da loja (só o **nome** continua bloqueado ali, porque o `pushName` de `fromMe` é do
+operador).
+
+**Gravar o telefone, porém, quebrava o CRM.** `wa_identity` é gerada com o telefone na frente do
+lid: preencher `phone_number` num contato nascido `lid` muda a identidade de `lid:X` para `phone:+Y`,
+o `on conflict` deixa de casar e **nasce um contato duplicado** — o defeito que a 0027 matou. Daí
+`contacts.wa_lid`: correlação do WhatsApp que não depende do telefone, com índice único e dedup
+auto-curativa ANTES da constraint.
+
+**E o canal de envio não muda.** `resolveWahaChatId` preferia telefone; com o número gravado, toda
+conversa `@lid` viva passaria a sair por `@c.us` — que para contato em modo privacidade
+frequentemente não é endereçável. O sintoma seria pior que um erro: mensagem marcada como enviada e
+cliente sem resposta. O `lid` passou para a frente, e o **mesmo raciocínio estava numa quarta
+instância** (`session-reconciler.ts`), que reenvia o que ficou preso — divergir ali faria o redrive
+mandar para um endereço diferente do envio original.
+
+`fn_upsert_wa_contact` ganhou o 7º parâmetro e mudou de regra: antes só mexia em `display_name` no
+conflito, com `coalesce` — nome ruim congelava para sempre e nada descoberto depois entrava. Agora
+**completa o que falta e nunca sobrescreve**, e reencontra por lid *ou* por telefone (é isso que
+impede o cliente já importado de virar um segundo contato ao escrever no WhatsApp).
+
+### O que o mapeamento derrubou
+
+- **`Contato 543134@lid` é legado, não bug vivo.** Nenhum código no HEAD produz a string; o produtor
+  morreu no commit `c890b403`. São 3 linhas de resíduo — backfill, não conserto de emissor.
+- **O `pushName` não está na raiz do payload.** A hipótese de que o WAHA mandava o nome num campo que
+  o código ignorava era a "causa candidata nº 1" — e é falsa: o nome vem em `_data.pushName`, onde o
+  código já olha, em 341 de 343 payloads.
+- **O regex `^Contato ` colide com `Contato Anonimizado #…`**, que a rota LGPD grava de propósito. O
+  backfill leva `and is_anonymized = false` — sem isso, ele reverteria anonimizações (regra L-04,
+  exceção "Nenhuma"). Tem caso de teste próprio.
+
+### Medições
+
+`pnpm test:db` **75 arquivos / 508 testes** · `pnpm test:unit` 284 arquivos · typecheck e lint zerados.
+19 casos novos entre `telefone-do-lid.test.ts` (banco) e `telefone-alternativo-do-payload.test.ts`
+(unit, com payloads TRANSCRITOS da produção — ninguém teria inventado o nome `remoteJidAlt`).
+
+### Ainda em aberto no passo 2
+
+| # | o quê | por quê |
+|---|---|---|
+| 1 | **O rótulo do contato em 5 lugares**, com 4 finais diferentes (`—`, `Sem nome`, …) | centralizar é o que impede a 6ª política nascer; o nome entra até no system prompt do modelo |
+| 2 | **A mão do Operador** (salvar e-mail/nome dito na conversa) | depende da Fatia A, que acabou de sair; falta decidir a política de sobrescrita e a base legal (`consent` nunca é escrito hoje) |
+| 3 | O título do lead é **cópia congelada** | `nascimento-do-lead` lê o nome do PAYLOAD, não do cadastro; consertar exige o item 1 antes, senão o rótulo técnico vaza para o kanban |
+| 4 | Nenhum turno com WAHA real desde a 0122 | o telefone foi provado por payload gravado e por banco, não por mensagem nova ponta a ponta |
 
 ---
 

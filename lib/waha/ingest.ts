@@ -48,6 +48,24 @@ export interface WahaPayload {
     pushName?: string;
     /** NOWEB: o conteúdo real (imageMessage, stickerMessage, …) — fonte do tipo. */
     message?: Record<string, unknown>;
+    /**
+     * A chave do Baileys — e o achado que o passo 2 da spec 17 mediu.
+     *
+     * Quando o chat é `@lid`, o WhatsApp NÃO esconde o telefone: ele o manda em
+     * `remoteJidAlt` (chat 1:1) ou `participantAlt` (grupo). Medido em
+     * `webhook_events_log` da produção: **76 de 76** payloads @lid com `key`
+     * trazem o número. A leitura de que "@lid é opaco por privacidade" valia
+     * para o `from`, não para o payload inteiro.
+     */
+    key?: {
+      remoteJid?: string;
+      remoteJidAlt?: string;
+      participant?: string;
+      participantAlt?: string;
+      addressingMode?: string;
+      fromMe?: boolean;
+      id?: string;
+    };
   } & Record<string, unknown>;
 }
 
@@ -240,6 +258,32 @@ function notifyNameOf(p: WahaPayload): string | null {
 }
 
 /**
+ * O telefone REAL de quem escreveu, quando o chat chega como `@lid`.
+ *
+ * `from` vem opaco (`70192801575156@lid`), mas `_data.key.remoteJidAlt` traz
+ * `558183647258@s.whatsapp.net`. Em grupo, o equivalente é `participantAlt`.
+ *
+ * Devolve E.164 (`+55…`) ou null. **Só aceita o que parece telefone**: o campo é
+ * de fora, e um valor estranho aqui viraria `phone_number` — que é chave de
+ * reencontro de contato e endereço de envio. Na dúvida, nulo: contato sem
+ * telefone é incômodo, contato com telefone ERRADO manda mensagem para
+ * estranho.
+ */
+export function telefoneAlternativoDe(p: WahaPayload): string | null {
+  const bruto = p._data?.key?.remoteJidAlt ?? p._data?.key?.participantAlt ?? null;
+  if (!bruto) return null;
+  // Só sufixos de NÚMERO. `@lid` aqui significaria que o campo repetiu a
+  // identidade opaca, e `@g.us` é grupo — nenhum dos dois é telefone de pessoa.
+  if (!/@(s\.whatsapp\.net|c\.us)$/.test(bruto)) return null;
+  const digitos = bruto.replace(/@.*$/, "").replace(/\D/g, "");
+  // Faixa E.164: 8 a 15 dígitos. Fora disso não é número discável, e o CHECK
+  // `contacts_phone_e164_format` recusaria — falhar aqui é melhor que abortar a
+  // ingestão inteira da mensagem lá na frente.
+  if (digitos.length < 8 || digitos.length > 15) return null;
+  return `+${digitos}`;
+}
+
+/**
  * Upsert atômico de contato pela identidade canônica. Retorna null se a
  * identidade for de grupo ou a RPC falhar.
  */
@@ -249,6 +293,7 @@ async function upsertContact(
   parsed: ChatIdentity,
   chatId: string,
   notifyName: string | null,
+  telefoneAlt: string | null = null,
 ): Promise<string | null> {
   // ALLOWLIST, não denylist — e a diferença aqui não é estilo.
   //
@@ -272,7 +317,11 @@ async function upsertContact(
   const { data, error } = await admin.rpc("fn_upsert_wa_contact" as never, {
     p_org: orgId,
     p_kind: parsed.kind,
-    p_phone: parsed.kind === "phone" ? parsed.phone : null,
+    // O telefone vem de dois lugares e é UM parâmetro: do próprio chatId quando
+    // ele já é um número, ou de `_data.key.remoteJidAlt` quando o chat é `@lid`.
+    // Resolver aqui, e não no SQL, foi o que permitiu manter a assinatura da
+    // função (e portanto os grants e os invariantes de hardening) intacta.
+    p_phone: parsed.kind === "phone" ? parsed.phone : telefoneAlt,
     p_lid: parsed.kind === "lid" ? parsed.lid : null,
     p_chat_id: chatId,
     p_notify: notifyName,
@@ -384,7 +433,14 @@ async function handleInbound(
     return;
   }
 
-  const contactId = await upsertContact(admin, session.organization_id, parsed, chatId, notifyNameOf(p));
+  const contactId = await upsertContact(
+    admin,
+    session.organization_id,
+    parsed,
+    chatId,
+    notifyNameOf(p),
+    telefoneAlternativoDe(p),
+  );
   if (!contactId) return;
   const conversationId = await upsertConversation(admin, session.organization_id, contactId, session.id);
   if (!conversationId) return;
@@ -625,8 +681,21 @@ async function handleOutboundFromUserPhone(
 
   // fromMe: o pushName do payload é o do OPERADOR, não do destinatário —
   // repassá-lo batizaria o contato do cliente com o nome da loja (e o
-  // coalesce do fn_upsert_wa_contact congelaria o nome errado).
-  const contactId = await upsertContact(admin, session.organization_id, parsed, chatId, null);
+  // `coalesce` do fn_upsert_wa_contact congelaria o nome errado).
+  //
+  // O TELEFONE, ao contrário, vai: aqui `_data.key.remoteJid` é o chat do
+  // DESTINATÁRIO, então `remoteJidAlt` é o número do cliente, não o da loja.
+  // Medido na produção — inbound 56/56 e outbound 20/20 trazem o campo, e as
+  // amostras de outbound mostram o número do cliente. Nome e telefone vêm de
+  // lugares diferentes do mesmo payload, e só um deles inverte no envio.
+  const contactId = await upsertContact(
+    admin,
+    session.organization_id,
+    parsed,
+    chatId,
+    null,
+    telefoneAlternativoDe(p),
+  );
   if (!contactId) return;
   const conversationId = await upsertConversation(admin, session.organization_id, contactId, session.id);
   if (!conversationId) return;
