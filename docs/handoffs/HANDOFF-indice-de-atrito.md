@@ -475,12 +475,115 @@ jargao:  []      scroll_horizontal: false      erros de console: nenhum
 **editor legado sem `ToolPicker`** (`page.tsx:53`). A sonda fixa um `mcp_agent`
 e o comentário explica por quê, para o próximo não perder o mesmo tempo.
 
-### ⚠️ PENDENTE
+---
 
-- **Inbox** segue lendo `crm_leads`. Enquanto isso durar, a conversa ainda é
-  tratada como unidade em parte do sistema — que é o que o passo 4 existe para
-  terminar.
-- **A `description` morta do catálogo** (acima) — decisão de desenho pendente.
+## Passo 4 do cap. 5 — o inbox, e com ele o passo FECHA (2026-08-07)
+
+O painel lateral do inbox mostrava negócio, pedido e histórico: três listas
+sobre o que **já aconteceu**. Nenhuma responde à pergunta que a pessoa do outro
+lado está fazendo — *o que eu pedi e ainda não foi resolvido*. O caso concreto:
+o atendente encerra a conversa, a demanda segue aberta e sem próximo passo, e o
+vazamento só reaparece depois como número numa métrica que ele não abre.
+
+**Correção da afirmação anterior deste handoff:** eu havia escrito "o inbox
+segue lendo `crm_leads`" e procurado em `app/app/inbox/`. Lá não há nada — o
+inbox é só um redirect. A leitura vive em `app/api/v1/contacts/[id]/crm-summary`
+e o painel em `components/inbox/CRMSidePanel.tsx`. A afirmação estava certa em
+espírito e errada de endereço.
+
+### O desenho da rota, que eu segui em vez de contornar
+
+`crm-summary` usa **client de sessão** (RLS ativa), não service role — e tem uma
+regra explícita: *"um pedido, um veredito"*, as consultas falham juntas. Isso
+existe porque o defeito original era erro de permissão traduzido em `Sem leads.`
+A 4ª consulta entra no mesmo `Promise.all` e no mesmo `??` de falha. Se
+`demandas` falhar, a rota falha inteira — em vez de a seção nova dizer "nenhuma
+demanda aberta" em cima de um erro.
+
+### O risco real era a RLS, e por isso a prova de tela é a que vale
+
+A política de `demandas` chama `fn_user_org_ids()`. Se a leitura de sessão não
+passasse, o painel diria "Nenhuma demanda aberta." para sempre — o defeito que a
+rota veio curar, reintroduzido por mim numa seção nova. Um teste unitário com
+`apiClient` mockado **não pega isso**.
+
+`tests/sonda-inbox-demandas-tela.ts` — 15/15, exit 0, com 2 demandas semeadas no
+banco (uma sem próximo passo) e a contagem do banco como régua:
+
+```
+texto na tela:  "DEMANDAS ABERTAS
+                 Aberta · há 9h · Sem próximo passo definido      ← destacada
+                 Em atendimento · há 3h · Enviar o orçamento revisado"
+noBanco: 2      itens na tela: 1 sem passo + 1 com passo = 2      ← bate
+statusSummary: 200 · a RLS deixou ler · antes dos negócios: true
+scroll horizontal: false · erros de console: nenhum
+
+SOB FALHA (rota interceptada com 500):
+  confessa "Não consegui ler": true · mente "Nenhuma demanda": false
+  oferece "Tentar de novo": true
+```
+
+### Sabotagens — previsão antes de rodar
+
+| Sabotagem | Previsão | Resultado | |
+|---|---|---|---|
+| Todas as demandas com o mesmo `data-testid` | 1 | **2** | esqueci que o teste da frase também busca por testid |
+| A frase "Sem próximo passo definido" some (fica só a cor) | 1 | **1** ✅ | acessibilidade é vigiada |
+| A seção vai para depois dos negócios | 1 | **1** ✅ | ordem é afirmação de qual é a unidade |
+| O flag `erro` não é setado | 1 | **1** ✅ | falha volta a parecer ausência |
+| `setDemandas(null)` → `setDemandas([])` no catch | 1 | **0** ⚠️ | ver abaixo |
+
+**A última reprovou ZERO, e isso corrigiu meu modelo mental.** Eu creditava a
+proteção ao `setDemandas(null)`; o que realmente impede a mentira é o
+`setErro(true)`, que faz o `SemLista` mostrar "Não consegui ler"
+independentemente da lista estar `[]` ou `null`. O `null` é consistência com as
+irmãs, não a defesa. Mecanismo redundante identificado e crédito reatribuído — a
+sabotagem que vale para aquele caso é a do flag, e ela reprova 1.
+
+### 🐛 Achado PRÉ-EXISTENTE, medido com controle: o painel do inbox não cabe na tela
+
+| viewport | painel fica fora da viewport |
+|---|---|
+| 1280px | **311px** |
+| 1440px | **151px** |
+| 1920px | cabe (−24px) |
+
+`InboxLayout.tsx:164` usa `xl:grid-cols-[300px_1fr_320px]`, e o `xl` do Tailwind
+dispara em 1280 — a terceira coluna nasce no exato ponto em que não há espaço
+para ela. Pior: `scroll_horizontal` é **false**, então **não há como alcançar** o
+que ficou fora.
+
+**Controle que prova não ser meu:** a seção `CONTATO`, que existe desde antes
+desta branch, está exatamente tão fora quanto a minha (295px, mesma
+`left`/`right`). É o layout, não o conteúdo.
+
+Em 1280px — resolução de trabalho comum — o atendente não vê o painel de CRM
+nenhum. Vale issue própria, e é da mesma família do overflow de 390px já
+registrado.
+
+### Ambiente consertado de passagem
+
+`.e2e-creds.json` tinha o segredo TOTP do admin **divergente do banco**
+(`YVVB64YO…` no arquivo, `RYA6TA36…` em `auth.mfa_factors`) — outra rodada do
+seed rotacionou e o arquivo ficou para trás. Corrigido a partir do banco; o
+login de admin nas sondas voltou a funcionar.
+
+### ⚠️ NÃO MEDIDO — e a causa
+
+`tests/sonda-painel-inbox.ts` (a guarda antiga do painel, que estendi para
+incluir "Nenhuma demanda aberta." na lista de frases que não podem aparecer sob
+falha) **não roda neste banco**: sua fixture `Ana Souza LGPD E2E` não existe
+aqui — medido, **0 contatos**. A extensão está escrita e não foi executada.
+
+Isso não deixa buraco de cobertura: o mesmo comportamento está provado (a) no
+teste unitário, caso 3, com sabotagem do flag `erro` confirmada 1→1, e (b) na
+tela, na fase "SOB FALHA" da sonda nova. Mas a linha que escrevi naquele arquivo
+segue sem execução, e isso fica declarado.
+
+### Pendente
+
+- **A `description` morta do catálogo** — decisão de desenho (48 de 51 divergem).
+- **Issue do painel do inbox cortado** em 1280/1440px.
 
 ---
 
