@@ -379,6 +379,8 @@ export async function runAgent(input: RunAgentInput): Promise<RunAgentResult> {
       auth,
       toolIds: version.tool_ids ?? [],
       handoffToolEnabled: version.handoff_tool_enabled,
+      // `?? []` — o clone sem a coluna 0125 nasce FECHADO.
+      pipelineIds: (version as { pipeline_ids?: string[] }).pipeline_ids ?? [],
       handoffSignal,
     });
 
