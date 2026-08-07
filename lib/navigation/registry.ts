@@ -298,6 +298,20 @@ export const NAV_DESTINATIONS: NavDestination[] = [
     section: "Acompanhar o agente",
   },
   {
+    // A tela de Uso responde "quanto gastei". Esta responde a pergunta que não
+    // tinha lugar nenhum: "o agente parou de responder, o que aconteceu?".
+    // Antes da migration 0128 ela seria impossível de construir com honestidade
+    // — llm_calls só registrava sucesso.
+    href: "/app/ai/runs",
+    label: "Execuções",
+    description: "O que a IA fez — e, quando falhou, o que aconteceu e o que fazer.",
+    icon: ListChecks,
+    group: "ia",
+    section: "Acompanhar o agente",
+    minRole: "manager",
+    sidebar: true,
+  },
+  {
     href: "/app/ai/usage",
     label: "Uso e orçamento",
     description: "Quanto a IA consumiu e qual é o teto de gasto do mês.",

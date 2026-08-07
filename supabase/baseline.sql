@@ -9486,4 +9486,42 @@ comment on column public.llm_calls.origem_da_escolha is
   'Migration 0128: quem decidiu usar este modelo. Transforma o log de "o que aconteceu" em "por que aconteceu".';
 
 
+
+-- ---- llm_calls registra a FALHA, não só o sucesso (migration 0128) ----
+-- A tabela gravava uma linha por chamada de modelo e só quando dava certo: o
+-- INSERT vivia depois do generateText, sem try em volta. Provedor recusando a
+-- chave, modelo inexistente, conta sem saldo — a exceção subia e nada ficava
+-- gravado. A tabela que deveria explicar era justamente a que ficava vazia no
+-- caso que precisa de explicação, e é a causa direta de "o agente não responde
+-- e não aparece erro em lugar nenhum".
+alter table public.llm_calls add column if not exists status text not null default 'ok';
+alter table public.llm_calls add column if not exists error_code text;
+alter table public.llm_calls add column if not exists error_message text;
+alter table public.llm_calls add column if not exists http_status int;
+alter table public.llm_calls add column if not exists origem_da_escolha text;
+
+-- Corrigir os dados ANTES da constraint: o update.sh roda sem ON_ERROR_STOP, e
+-- um CHECK que falhasse seria pulado em silêncio, deixando o clone sem guarda.
+update public.llm_calls set status = 'ok' where status is null or status not in ('ok', 'erro');
+
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'llm_calls_status_check') then
+    alter table public.llm_calls add constraint llm_calls_status_check check (status in ('ok', 'erro'));
+  end if;
+end $$;
+
+create index if not exists llm_calls_erros_idx
+  on public.llm_calls (organization_id, created_at desc) where status = 'erro';
+create index if not exists llm_calls_purpose_idx
+  on public.llm_calls (organization_id, purpose, created_at desc);
+
+comment on column public.llm_calls.status is
+  'Migration 0128: ''ok'' | ''erro''. Antes desta migration a tabela só registrava sucesso.';
+comment on column public.llm_calls.error_message is
+  'Migration 0128: texto do provedor, truncado. NUNCA prompt, resposta ou chave — erro de provedor às vezes ecoa o corpo da requisição, e conteúdo de mensagem é PII neste repo.';
+comment on column public.llm_calls.origem_da_escolha is
+  'Migration 0128: quem decidiu usar este modelo — ''binding'' (painel), ''agente_publicado'', ''variavel_de_ambiente'' ou ''padrao_da_organizacao''. Transforma o log de "o que aconteceu" em "por que aconteceu".';
+
+
 notify pgrst, 'reload schema';
