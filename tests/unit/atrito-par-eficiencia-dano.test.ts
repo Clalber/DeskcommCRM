@@ -96,7 +96,7 @@ describe("regra 3.3 — nenhuma eficiência é publicada sozinha", () => {
     expect(new Set(chaves).size).toBe(chaves.length);
   });
 
-  it("cobre as quatro frentes da Fase 1 da spec 16", () => {
+  it("cobre as quatro frentes da Fase 1 da spec 17", () => {
     expect(pares.map((p) => p.chave).sort()).toEqual(
       ["automacao", "contencao", "conversao", "custo_humano"].sort(),
     );

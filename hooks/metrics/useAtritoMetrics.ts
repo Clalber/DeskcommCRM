@@ -29,7 +29,7 @@ export function useSalvarReguaAbandono() {
   });
 }
 
-/** Spec 16 — o Índice de Atrito. Mede o propósito, não a atividade. */
+/** Spec 17 — o Índice de Atrito. Mede o propósito, não a atividade. */
 export function useAtritoMetrics() {
   return useQuery({
     queryKey: ["metrics", "atrito"],

@@ -9,7 +9,7 @@ import { useAtritoMetrics, useSalvarReguaAbandono } from "@/hooks/metrics/useAtr
 import { formatarMedida, type Medida, type Par } from "@/lib/metrics/atrito";
 
 /**
- * Índice de Atrito (spec 16) — a medida do PROPÓSITO.
+ * Índice de Atrito (spec 17) — a medida do PROPÓSITO.
  *
  * Desenho imposto pela doutrina §3.3: eficiência e dano ficam no MESMO cartão,
  * lado a lado. Não é preferência estética — separados (abas, seções, telas), a

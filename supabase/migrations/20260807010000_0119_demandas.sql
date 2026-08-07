@@ -1,4 +1,4 @@
--- 0119 — A DEMANDA como entidade de primeira classe (doutrina cap. 5; spec 16 Fase 4).
+-- 0119 — A DEMANDA como entidade de primeira classe (doutrina cap. 5; spec 17 Fase 4).
 --
 -- ## O problema, medido
 --
@@ -13,7 +13,7 @@
 --     onde as demandas morrem sem ninguém ver.
 --
 -- Consequências que isto destrava:
---   1. O índice de atrito passa a ter denominador honesto (spec 16 Fase 4) —
+--   1. O índice de atrito passa a ter denominador honesto (spec 17 Fase 4) —
 --      até aqui era `agent_cases`, escopo parcial rotulado na tela.
 --   2. O invariante 4 ("nenhuma demanda sem próximo passo") passa a ser
 --      VERIFICÁVEL: dá para enumerar demandas abertas sem próximo passo.

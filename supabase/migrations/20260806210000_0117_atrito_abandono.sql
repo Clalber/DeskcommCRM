@@ -1,4 +1,4 @@
--- 0117 — Índice de Atrito, Fase 2: abandono (spec 16 §5.2).
+-- 0117 — Índice de Atrito, Fase 2: abandono (spec 17 §5.2).
 --
 -- ABANDONO é o desfecho que ninguém reclama: a última palavra foi do sistema,
 -- a pessoa não voltou, e a demanda nunca foi encerrada. Não gera ticket, não

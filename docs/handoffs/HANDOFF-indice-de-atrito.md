@@ -1,4 +1,4 @@
-# HANDOFF — Índice de Atrito (spec 16)
+# HANDOFF — Índice de Atrito (spec 17)
 
 > **Leia este arquivo no início de qualquer sessão que continue este trabalho.**
 > Alimente-o a cada avanço: o que foi feito, o que foi **provado** (com evidência
@@ -8,7 +8,7 @@
 | | |
 |---|---|
 | **Branch** | `feat/indice-de-atrito` (empilhada sobre `docs/doutrina-sistema-vivo-manual`) |
-| **Spec** | [`docs/specs/16-spec-indice-de-atrito.md`](../specs/16-spec-indice-de-atrito.md) |
+| **Spec** | [`docs/specs/17-spec-indice-de-atrito.md`](../specs/17-spec-indice-de-atrito.md) |
 | **Doutrina** | [`docs/doctrine/sistema-vivo/03-medida-do-proposito.md`](../doctrine/sistema-vivo/03-medida-do-proposito.md) |
 | **Fase** | 4 de 4 — TODAS provadas, inclusive na tela |
 | **Atualizado** | 2026-08-06 |
@@ -83,7 +83,7 @@ Reprovado na tela após a correção: `valorPiorCaso: "6"` visível ·
    contrato desatualizado.
 2. **Decisões de régua da Fase 2** (spec §5): definição de "primeira resposta
    útil", janela de abandono por canal, e o denominador definitivo.
-3. **Spec 16 §7 (Living System Checklist): "atualizei o mapa?" segue pendente** —
+3. **Spec 17 §7 (Living System Checklist): "atualizei o mapa?" segue pendente** —
    `docs/architecture/*.json` não reflete a peça nova.
 
 ---
@@ -232,7 +232,7 @@ todo. Índice que só olha casos escalados superestima o atrito médio.
 Insistência, toque humano e retrabalho continuam vindo de `agent_cases` pelo
 ponteiro `demandas.agent_case_id`, e o payload declara `demandas_com_caso` como
 denominador PRÓPRIO deles — medir insistência sobre o total diluiria o sinal no
-lugar exato onde a spec 16 nasceu.
+lugar exato onde a spec 17 nasceu.
 
 ### O ganho maior não era o denominador
 

@@ -1,4 +1,4 @@
-# Spec 16 — Índice de Atrito
+# Spec 17 — Índice de Atrito
 
 > Medir o propósito declarado. Doutrina: [`../doctrine/sistema-vivo/03-medida-do-proposito.md`](../doctrine/sistema-vivo/03-medida-do-proposito.md).
 

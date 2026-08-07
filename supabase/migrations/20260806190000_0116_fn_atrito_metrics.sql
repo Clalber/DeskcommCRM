@@ -1,4 +1,4 @@
--- 0116 — fn_atrito_metrics: a medida do PROPÓSITO (spec 16, doutrina cap. 3).
+-- 0116 — fn_atrito_metrics: a medida do PROPÓSITO (spec 17, doutrina cap. 3).
 --
 -- O sistema mede hoje won/lost/conversas/1ª-resposta — atividade e conversão.
 -- Nenhum número para "menor atrito para os dois lados", que é o propósito

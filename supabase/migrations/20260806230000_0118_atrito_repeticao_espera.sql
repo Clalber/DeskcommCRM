@@ -1,5 +1,5 @@
 -- 0118 — Índice de Atrito, Fase 3: repetição da mesma pergunta + espera não
--- comunicada (spec 16 §5.1 e §3.4).
+-- comunicada (spec 17 §5.1 e §3.4).
 --
 -- ## Por que SQL puro, e não embedding
 --

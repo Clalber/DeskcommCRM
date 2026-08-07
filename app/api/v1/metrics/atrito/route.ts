@@ -1,5 +1,5 @@
 /**
- * GET /api/v1/metrics/atrito — o Índice de Atrito (spec 16; doutrina
+ * GET /api/v1/metrics/atrito — o Índice de Atrito (spec 17; doutrina
  * `docs/doctrine/sistema-vivo/03-medida-do-proposito.md`).
  *
  * Mede o PROPÓSITO declarado ("menor atrito possível para os dois lados"), que

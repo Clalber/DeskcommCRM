@@ -1,4 +1,4 @@
--- 0120 — Índice de Atrito, Fase 4: o denominador definitivo (spec 16 §5.3).
+-- 0120 — Índice de Atrito, Fase 4: o denominador definitivo (spec 17 §5.3).
 --
 -- Até aqui o denominador era `agent_cases` — escopo PARCIAL, rotulado na tela
 -- como "entre as que passaram por atendimento humano". Era honesto, e era
@@ -21,7 +21,7 @@
 -- ponteiro `demandas.agent_case_id`, e o payload passa a declarar sobre quantas
 -- demandas cada um foi medido — porque medir insistência sobre o total de
 -- demandas (incluindo as que nunca tiveram caso) diluiria o sinal justamente
--- no lugar onde a spec 16 nasceu.
+-- no lugar onde a spec 17 nasceu.
 
 drop function if exists public.fn_atrito_metrics(uuid, timestamptz, timestamptz, int, float8, int);
 

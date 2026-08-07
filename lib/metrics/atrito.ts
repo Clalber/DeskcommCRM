@@ -1,5 +1,5 @@
 /**
- * Índice de Atrito — montagem dos pares eficiência/dano (spec 16; doutrina
+ * Índice de Atrito — montagem dos pares eficiência/dano (spec 17; doutrina
  * `docs/doctrine/sistema-vivo/03-medida-do-proposito.md` §3.3).
  *
  * A regra que este módulo EXISTE para materializar: toda medida que empurra o
@@ -185,7 +185,7 @@ export function montarPares(raw: AtritoRaw): Par[] {
           unidade: "media",
           nota: `Quantas vezes o agente voltou ao cliente por conta própria. Medido sobre as ${escopo.demandas_com_caso} demandas que passaram por atendimento humano.`,
         },
-        // O MÁXIMO ao lado da média, e não no lugar dela. A spec 16 nasceu do
+        // O MÁXIMO ao lado da média, e não no lugar dela. A spec 17 nasceu do
         // agente que insiste seis vezes: numa base de 40 demandas, seis retornos
         // num único cliente somem na média e é justamente esse caso que precisa
         // aparecer. Publicar só a média reintroduziria o defeito pelo lado da

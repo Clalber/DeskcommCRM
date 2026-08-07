@@ -3,7 +3,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { GOV_ORG, GOV_PIPELINE, GOV_SESSION, GOV_STAGE, GOV_AGENT_A, lastLine, seedGov, sql } from "./gov-helpers";
 
 /**
- * fn_atrito_metrics — a medida do PROPÓSITO (spec 16, migration 0116).
+ * fn_atrito_metrics — a medida do PROPÓSITO (spec 17, migration 0116).
  *
  * ## Por que isto vive num invariante de banco
  *
