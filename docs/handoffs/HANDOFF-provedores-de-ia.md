@@ -5,7 +5,7 @@
 
 - **Branch:** `feat/provedores-de-ia` · **Worktree:** `~/DeskcommCRM-provedores`
 - **Base:** `9249e6f2` (`origin/main` em 2026-08-07)
-- **Última atualização:** 2026-08-07 — Frente 1, parte 1 (schema + resolvedor) provada
+- **Última atualização:** 2026-08-07 — as quatro frentes implementadas; prova na tela em curso
 
 ---
 
@@ -81,9 +81,10 @@ tudo que o catálogo e a validação de capacidade precisam vem na mesma respost
 |---|---|---|
 | **0 — Registro de pontos** | ✅ concluída | `cb06cae6` |
 | **1a — Schema + resolvedor** | ✅ concluída | `ab37426c`, `52a7440e` |
-| **1b — Tela `/app/ai/providers`** | ⏳ próxima | — |
-| **2 — Log de runs** | ⬜ não iniciada | — |
-| **3 — OpenRouter + catálogo** | ⬜ não iniciada | — |
+| **1b — Seam obedece ao painel** | ✅ concluída | `c2a78b31` |
+| **1c — Tela `/app/ai/providers`** | ✅ código pronto, prova na tela em curso | `3d012c9c` |
+| **2 — Log registra falha** | ✅ concluída | `231c0cf1` |
+| **3 — OpenRouter + catálogo** | ✅ concluída | `2910c19f` |
 
 ---
 
@@ -191,11 +192,60 @@ de cada medição:
 
 ---
 
+---
+
+## Frentes 1b/1c, 2 e 3 — o que foi entregue
+
+### Frente 1b — o `purpose` passa a DECIDIR (`c2a78b31`)
+
+Toda chamada de modelo já viajava com um `purpose`, usado só para rotular custo.
+Agora o seam lê o binding do ponto e o aplica, com a credencial do provedor
+ESCOLHIDO viajando junto.
+
+**O alarme que quase passou batido:** os 2984 testes existentes passaram verde
+depois da mudança. Isso não era alívio — os testes usam um `pg.Pool` fingido que
+não responde à consulta de binding, então a leitura falha, o seam cai no padrão,
+e o comportamento observado é o de antes. Verde por ausência de cobertura.
+`tests/unit/seam-respeita-o-binding.test.ts` fecha o buraco medindo no argumento
+que chega à **fábrica de modelo** — o único lugar que não mente.
+
+### Frente 3 — OpenRouter (`2910c19f`)
+
+- Migration 0127 remove os três CHECKs de provider. **Provado no banco:**
+  `openrouter / meta-llama/llama-3.3-70b-instruct` entra; provider vazio é recusado.
+- Tradução exercitada contra a **origem real**: 400 modelos, 0 descartados, 0
+  duplicados, sanidades limpas. Conversão de preço confere com valores conhecidos
+  (`openai/o1-pro` → US$ 150/M; `llama-3.3-70b` → US$ 0,10/M).
+- Cron diário (04:15) no `scheduler` do compose.
+- Catraca nova: o painel **recusa** modelo sem ferramentas em "Responder o
+  cliente" e "Trabalhar o funil".
+
+**Três invariantes reprovaram, todos com razão, nenhum apagado:**
+`openrouter-alcance` dizia "o agente continua fora do alcance" e o próprio
+cabeçalho avisava que, no dia em que alcançasse, o aviso teria de mudar. A guarda
+**mudou de alvo**: antes protegia uma ausência, agora protege a proteção (recusa
++ recíproca + o `.env.example` acompanhando).
+
+### Frente 2 — a falha deixa rastro (`231c0cf1`)
+
+`llm_calls` só gravava sucesso: o INSERT vivia depois do `generateText`, sem
+`try`. Agora grava **e relança**. Códigos normalizados pela AÇÃO que exigem de
+quem instalou. Tokens em zero e custo em NULL na linha de erro.
+
+| Sabotagem | Previsto | Medido |
+|---|---|---|
+| não gravar a falha | 6 | **11** (subestimei: a classificação também depende da gravação) |
+| não truncar a mensagem | 1 | 1 ✅ |
+| colapsar a classificação | 5 | **3** (sabotei só os ramos de `status`; os de regex seguiram classificando) |
+
+---
+
 ## Bloqueios
 
 | # | O quê | Estado |
 |---|---|---|
-| B1 | **Docker desta máquina não responde** (`docker info` pendura indefinidamente). Contornado com Postgres 17 via Homebrew + `TEST_DB_PSQL`; o CI segue usando o container. `pnpm test:db` completo (364 invariantes) **ainda não rodou** nesta frente | aberto |
+| B1 | Docker voltou (28.3.2) e o Supabase local subiu. `pnpm test:db` completo (364 invariantes) **ainda não rodou** nesta frente | parcial |
+| B2 | **Bug meu, achado pelo e2e e já corrigido:** `carregar()` do painel não tratava exceção e a tela ficava presa em "Carregando…" para sempre — a mesma falha muda que o painel veio acabar, recriada dentro dele | corrigido |
 
 ---
 
@@ -208,7 +258,10 @@ de cada medição:
 | P3 | `install.sh` monta o `.env` com lista fechada e trunca — env acrescentada à mão se perde ao re-rodar | `hostgator-setup-kit/install.sh` | precisa resolver ANTES da F3 mexer no instalador |
 | P4 | Sete variáveis de ambiente de modelo continuam válidas e competem com o binding | `lib/agent-engine/env.ts` | ✅ resolvido em `ab37426c` — precedência declarada e testada |
 | P5 | `psql-transporte.ts` duplica ~10 linhas do `gov-helpers.ts`. Não estendi o original porque `tests/invariants/**` é congelado por hook, e usar a variável de escape seria decidir sozinho uma questão do dono do repo | `tests/invariants/` | aguarda decisão do Rafael |
-| P6 | O resolvedor existe e é testado, mas **ainda não está plugado** no seam (`run-model-call.ts`) nem em `lib/ai/gateway.ts` — nenhum comportamento de produção mudou até aqui | `lib/agent-engine/edge/llm/` | próxima etapa da F1 |
+| P6 | Resolvedor plugado no seam (`c2a78b31`) | `lib/agent-engine/edge/llm/` | ✅ resolvido |
+| P7 | `lib/ai/gateway.ts` e `lib/ai/runtime/agent.ts::buildModel` **ainda não delegam** ao resolvedor — as duas pilhas antigas seguem resolvendo por env. Afeta `sentiment_classify`, `bot_respond` e `teste_de_agente` | `lib/ai/` | aberto |
+| P8 | A tela de execuções (`/app/ai/runs`) tem API pronta, **falta o componente** | `app/app/ai/` | aberto |
+| P9 | `ai_invocations` ainda não foi unificada em `llm_calls` (decisão 2 do Rafael) — a API de uso segue somando as duas | `app/api/v1/ai/usage` | aberto |
 
 ---
 

@@ -96,14 +96,33 @@ export function PainelDeProvedores() {
   const [avancado, setAvancado] = useState<Record<string, boolean>>({});
 
   const carregar = useCallback(async () => {
-    const res = await fetch("/api/v1/ai/providers");
-    const json = await res.json();
-    if (!res.ok) {
-      setErro(json?.error?.message ?? "não consegui carregar a configuração");
-      return;
+    // O try/catch não é zelo genérico: sem ele, qualquer exceção (rede caindo,
+    // resposta que não é JSON, erro 500 com corpo HTML) deixava a tela presa em
+    // "Carregando…" PARA SEMPRE, sem nada explicando. Medido na primeira
+    // execução do e2e desta tela — que é a mesma falha muda que este painel
+    // veio acabar, recriada dentro dele.
+    try {
+      const res = await fetch("/api/v1/ai/providers");
+      const texto = await res.text();
+      let json: { data?: unknown; error?: { message?: string } } | null = null;
+      try {
+        json = JSON.parse(texto) as typeof json;
+      } catch {
+        // Corpo não-JSON quer dizer que a resposta nem chegou ao handler
+        // (proxy, erro de runtime). O começo do corpo é o que há de mais
+        // informativo, então ele vai para a tela em vez de sumir no console.
+        setErro(`resposta inesperada do servidor (${res.status}): ${texto.slice(0, 200)}`);
+        return;
+      }
+      if (!res.ok) {
+        setErro(json?.error?.message ?? `não consegui carregar a configuração (${res.status})`);
+        return;
+      }
+      setErro(null);
+      setDados(json?.data as Dados);
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "não consegui falar com o servidor");
     }
-    setErro(null);
-    setDados(json.data as Dados);
   }, []);
 
   useEffect(() => {
