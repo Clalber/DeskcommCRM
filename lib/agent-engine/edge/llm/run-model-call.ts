@@ -20,6 +20,7 @@ import type pg from 'pg';
 import { z } from 'zod';
 
 import type { Logger } from '../../obs/logger';
+import { decidirParaOSeam } from './binding-do-ponto';
 import { resolveOrgLlmConfig, type LlmEdgeConfig } from './credentials';
 import { costCents } from './pricing';
 import { createDefaultRegistry, type ProviderRegistry } from './providers';
@@ -140,14 +141,52 @@ async function assertBudget(db: pg.Pool, organizationId: string, budgetCents: nu
 
 export async function runModelCall(db: pg.Pool, cfg: LlmEdgeConfig, input: RunModelCallInput, deps: RunModelCallDeps = {}) {
   const registry = deps.registry ?? createDefaultRegistry();
-  const config = await resolveOrgLlmConfig(db, cfg, input.tenantId, input.llmOverride);
+  const purpose = input.purpose ?? 'agent_turn';
+
+  // A config da org é lida ANTES da decisão porque o resolvedor precisa dela
+  // como último degrau da precedência (o padrão, quando ninguém mais opinou).
+  const padrao = await resolveOrgLlmConfig(db, cfg, input.tenantId, input.llmOverride);
+
+  // O painel de provedores entra AQUI, e é o que faz `purpose` deixar de ser
+  // só um rótulo de custo e virar decisão. Sem binding configurado, `decisao`
+  // reproduz exatamente o comportamento anterior — a origem volta como
+  // 'variavel_de_ambiente' ou 'padrao_da_organizacao'.
+  const decisao = await decidirParaOSeam(db, {
+    organizationId: input.tenantId,
+    purpose,
+    modeloDoCallSite: input.model,
+    overrideDoAgente:
+      input.llmOverride === undefined
+        ? null
+        : {
+            provider: input.llmOverride.provider ?? padrao.provider,
+            credentialId: input.llmOverride.credentialId ?? null,
+            model: input.model,
+          },
+    padraoDaOrganizacao: { provider: padrao.provider, defaultModel: padrao.defaultModel },
+  }, deps.log ? { log: deps.log } : {});
+
+  // Só re-resolve a credencial quando o painel apontou para OUTRA que não a já
+  // carregada — decifrar duas vezes a mesma chave é custo puro no caminho
+  // quente, e cada decifragem é mais um instante com plaintext em memória.
+  const precisaOutraCredencial =
+    decisao.origem === 'binding' &&
+    (decisao.provider !== padrao.provider || decisao.credentialId !== null);
+
+  const config = precisaOutraCredencial
+    ? await resolveOrgLlmConfig(db, cfg, input.tenantId, {
+        provider: decisao.provider,
+        credentialId: decisao.credentialId,
+      })
+    : padrao;
 
   await assertBudget(db, input.tenantId, config.monthlyBudgetCents);
 
-  const model = input.model ?? config.defaultModel;
+  const model = decisao.modelId;
   if (model === null || model === undefined) {
     throw new Error(
-      'modelo LLM não definido — configure organizations.settings.llm.default_model ou passe input.model',
+      'modelo LLM não definido — configure o ponto no painel de provedores, ' +
+        'organizations.settings.llm.default_model, ou passe input.model',
     );
   }
   if (config.enabledModels.length > 0 && !config.enabledModels.includes(model)) {
@@ -208,7 +247,7 @@ export async function runModelCall(db: pg.Pool, cfg: LlmEdgeConfig, input: RunMo
       input.leadId ?? null,
       input.jobId ?? null,
       input.variantId ?? null,
-      input.purpose ?? 'agent_turn',
+      purpose,
       config.provider,
       model,
       usage.inputTokens,
@@ -225,11 +264,22 @@ export async function runModelCall(db: pg.Pool, cfg: LlmEdgeConfig, input: RunMo
     organization_id: input.tenantId,
     provider: config.provider,
     model,
-    purpose: input.purpose ?? 'agent_turn',
+    purpose,
+    // POR QUE este modelo, e não só QUAL: é a diferença entre um log que
+    // confirma o que aconteceu e um que explica uma configuração que não
+    // pegou. Vira coluna em llm_calls na frente de logs.
+    origem_da_escolha: decisao.origem,
     ...usage,
     cost_cents: cost,
     latency_ms: latencyMs,
   });
+  for (const aviso of decisao.avisos) {
+    deps.log?.warn('llm: configuração do ponto tem incoerência', {
+      organization_id: input.tenantId,
+      purpose,
+      aviso,
+    });
+  }
 
   return {
     result,
@@ -239,5 +289,8 @@ export async function runModelCall(db: pg.Pool, cfg: LlmEdgeConfig, input: RunMo
     usage,
     costCents: cost,
     latencyMs,
+    /** De onde veio a escolha — o painel lê isto para explicar cada ponto. */
+    origem: decisao.origem,
+    avisos: decisao.avisos,
   };
 }
