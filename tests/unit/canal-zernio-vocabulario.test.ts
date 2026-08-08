@@ -44,6 +44,16 @@ describe("capabilities do canal intermediado", () => {
     expect(capabilitiesOf(ZERNIO).requiresTemplates).not.toBe(porQr.requiresTemplates);
   });
 
+  it("freeformOutsideWindow=false está MEDIDO: a API aceita e a Meta recusa a entrega", () => {
+    // A API devolve 200 + wamid, e o webhook traz depois:
+    //   131047 "The 24-hour customer service window for this contact is closed."
+    // Declarar `true` aqui faria a cadeia before_send liberar um envio que a
+    // plataforma descarta em silêncio — o operador vê "enviado" e o cliente
+    // nunca recebe.
+    expect(capabilitiesOf(ZERNIO).freeformOutsideWindow).toBe(false);
+    expect(capabilitiesOf(ZERNIO).requiresTemplates).toBe(true);
+  });
+
   it("voiceNote é opus-only: o provider tem a flag mas NÃO converte", () => {
     // Ler o booleano do provider como "ele resolve para mim" é o erro que manda
     // mp3 e entrega anexo de música em vez de bolha de voz.

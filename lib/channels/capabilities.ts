@@ -50,6 +50,15 @@ export const CHANNEL_CAPABILITIES: Record<ChannelProvider, ChannelCapabilities> 
   //  - `groups: "limited"`. Existe API de grupos, mas só em plano de uso e só
   //    para números fora de coexistência. Capability é o que a instalação MÉDIA
   //    pode fazer; prometer "full" aqui quebraria em quem não paga o plano.
+  // `freeformOutsideWindow: false` está MEDIDO, não deduzido. A API aceita o
+  // envio livre (200 + wamid) e a Meta recusa a ENTREGA depois, pelo webhook:
+  //
+  //   131047 Re-engagement message — "The 24-hour customer service window for
+  //   this contact is closed. Send an approved template to re-open the
+  //   conversation, or wait for the contact to message you first."
+  //
+  // O detalhe que engana: mandar um template NÃO abre a janela. Só o cliente
+  // abre, respondendo. Quem ler o 200 como "enviado" acha que funciona.
   zernio: {
     freeformOutsideWindow: false,
     requiresTemplates: true,
