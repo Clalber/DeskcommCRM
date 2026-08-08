@@ -1140,16 +1140,23 @@ if [ -f .env ]; then
   # reescritas VAZIAS. Ou seja: a chave da OpenRouter que a pessoa configurou à
   # mão é APAGADA por uma linha que parecia estar só repassando o valor.
   #
-  # Carregar o .env atual primeiro faz `${X:-}` cair de volta no valor que já
-  # existia, que é o comportamento que "idempotente" promete no README. O `set
-  # -a` exporta tudo que vier do arquivo; `set +a` fecha logo em seguida para
-  # não vazar para o resto do script.
-  set -a
-  # shellcheck disable=SC1091
-  . ./.env 2>/dev/null || true
-  set +a
+  # NÃO recarregue o .env aqui. Havia um `set -a; . ./.env; set +a` neste ponto,
+  # justificado por "carregar o .env atual primeiro faz `${X:-}` cair de volta no
+  # valor que já existia" — e essa premissa é FALSA: `install.sh:674` já faz
+  # `load_env .env` antes da entrevista, e `_common.sh:266` faz `printf -v` +
+  # `export` incondicionalmente. O arquivo já está carregado e exportado aqui.
+  #
+  # O que a releitura fazia de fato era DESFAZER a entrevista: a pessoa corrigia
+  # um valor errado na tela e o `.` sobrescrevia com o antigo do disco. Medido na
+  # triagem; a preservação de variável alheia (o laço abaixo) continua
+  # funcionando sem estas linhas.
 
-  CONHECIDAS="$(grep -oE "^\s*envq [A-Z_][A-Z0-9_]*" "$0" | awk '{print $2}' | sort -u)"
+  # `$KIT_DIR/install.sh`, não `"$0"`: este bloco roda DEPOIS do `cd` da linha
+  # 662, e com `$0` relativo (o `bash install.sh` que o README:34 documenta) o
+  # grep procura o arquivo no diretório errado e morre com "No such file or
+  # directory" — matando a 2ª execução, que o README:126/:138 documentam como
+  # suportada. `KIT_DIR` (linha 16) é absoluto e imune ao `cd`.
+  CONHECIDAS="$(grep -oE "^\s*envq [A-Z_][A-Z0-9_]*" "$KIT_DIR/install.sh" | awk '{print $2}' | sort -u)"
   while IFS= read -r linha; do
     case "$linha" in
       ''|'#'*) continue;;

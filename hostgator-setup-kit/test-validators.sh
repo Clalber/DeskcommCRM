@@ -734,7 +734,17 @@ chegou_na_deteccao() {
 # proxy (o que se testa aqui), depois os 3 campos que o BASE_ENV deixa vazios de
 # propósito (APP_IMAGE, OPENAI_API_KEY, APP_NAME — todos com Enter), a tela de
 # conferência, a telemetria e o aviso de DNS ('c' = seguir assim mesmo).
-RESTO_DAS_PERGUNTAS=$'\n\n\n\n\nc\n'
+# As respostas que vêm DEPOIS da do proxy reverso, na ordem em que o install.sh
+# as consome. É uma fila posicional: pergunta nova no meio do script desloca
+# tudo daqui para baixo, e o sintoma NÃO aponta para cá — o cenário simplesmente
+# não chega onde esperava e reprova com outro nome (medido: a pergunta de qual
+# IA vai atender, em `install.sh:916`, derrubou o caso do TRAEFIK_NETWORK).
+#
+# O primeiro `\n` é o "Enter = padrão" de `escolher_provedor` (install.sh:916),
+# que roda depois da pergunta do proxy (:768) e antes da entrevista (:975).
+# Quem acrescentar pergunta interativa ao install.sh acrescenta a resposta aqui,
+# na mesma posição relativa.
+RESTO_DAS_PERGUNTAS=$'\n\n\n\n\n\nc\n'
 
 echo "integração: instalação NOVA numa VPS LIMPA (o caminho do Caddy)"
 # O caminho mais percorrido de todos — VPS crua, portas livres, o kit sobe o
@@ -1004,6 +1014,40 @@ np_ok /root/_-_crm       crm
 np_ok /root/_123         123
 np_ok /root/deskcomm.crm deskcommcrm
 np_ok /root/crm_cliente  crm_cliente
+
+echo "re-execução: o kit é chamado por caminho RELATIVO, como o README manda"
+# O harness acima sempre invoca `bash "$VPS_RAIZ/$script"` — ABSOLUTO. O README
+# documenta `bash install.sh` (:34) e a re-execução como suportada (:126, :138),
+# e é aí que mora a diferença: um `grep ... "$0"` DEPOIS do `cd` para o diretório
+# do projeto procura o script no lugar errado e morre em "No such file or
+# directory", matando a 2ª execução. Passou verde por anos porque a única sonda
+# que rodava o instalador usava caminho absoluto.
+#
+# Este caso não roda o install.sh inteiro: isola o mecanismo (o `cd` seguido da
+# leitura do próprio script), que é o que regride em silêncio.
+reexec_ok() {
+  local desc="$1" dir raiz achou linha
+  raiz="$(mktemp -d)"; dir="$raiz/deskcommcrm"; mkdir -p "$dir"
+  cp ./install.sh "$raiz/install.sh"
+  # A LINHA REAL do install.sh, extraída do arquivo — não uma reimplementação.
+  # Reimplementar o mecanismo aqui deixaria este caso VERDE com o install.sh
+  # sabotado (medido: previ 1 vermelho e observei 0 na primeira versão deste
+  # arquivo). O teste tem de executar o que o kit executa.
+  linha="$(grep -n 'CONHECIDAS=' "$raiz/install.sh" | head -1 | cut -d: -f2-)"
+  if [ -z "$linha" ]; then
+    printf '  ✗ %s — não achei a linha CONHECIDAS= no install.sh (o teste ficou cego)\n' "$desc"; fail=1; return
+  fi
+  achou="$(cd "$dir" && KIT_DIR="$raiz" bash -c "
+    set +e
+    $linha
+    printf '%s' \"\$CONHECIDAS\" | grep -c . 
+  " install.sh 2>/dev/null)"
+  rm -rf "$raiz"
+  if [ "${achou:-0}" -gt 0 ]; then printf '  ✓ %s (%s vars)\n' "$desc" "$achou"
+  else printf '  ✗ %s — o kit não se encontra depois do cd; a 2ª execução morre\n' "$desc"; fail=1; fi
+}
+reexec_neg
+reexec_ok "o bloco de variáveis conhecidas acha o kit depois do cd"
 
 echo "isolamento: a suíte não escreve no crontab da máquina"
 # Isto não é hipótese defensiva: os testes JÁ escreveram 10 linhas órfãs no
