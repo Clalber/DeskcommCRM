@@ -147,6 +147,40 @@ grant usage on schema auth, extensions, storage to anon, authenticated, service_
 grant select on auth.users to anon, authenticated, service_role;
 SQL
 
+echo "==> conferindo que o banco efêmero é o do PRODUTO (antes do baseline)"
+# A guarda tem de rodar AQUI e não na suíte de invariantes, e isto foi medido:
+# o próprio baseline traz o `ALTER DEFAULT PRIVILEGES … TO anon` na linha ~3960,
+# então DEPOIS de aplicá-lo a entrada em pg_default_acl existe de qualquer jeito e
+# uma asserção lá dentro passa sempre — verde por não medir nada. A diferença entre
+# o banco fiel e o fictício só é observável NESTE instante: antes do baseline.
+#
+# E a sonda é comportamento, não catálogo: cria uma definer de mentira e pergunta
+# se `anon` pode executá-la. Se as 4 linhas de `alter default privileges` acima
+# desaparecerem — perda silenciosa, que nenhum grep de símbolo acha e que qualquer
+# convergência no prelude sobrescreve sem conflito —, este passo derruba o run com
+# a razão escrita, em vez de a suíte inteira ficar verde medindo o universo errado.
+# `-q` é obrigatório: sem ele o stdout leva "CREATE FUNCTION"/"DROP FUNCTION"
+# junto do resultado e a comparação com "t" falha sempre — sonda que reprova o
+# banco certo é tão inútil quanto sonda que aprova o errado.
+fidelidade="$(docker exec -i "$CONTAINER" psql -U postgres -d postgres -v ON_ERROR_STOP=1 -q -tA -f - <<'SQL'
+create function public.fn_sonda_fidelidade_do_harness() returns int
+  language sql security definer as $fn$ select 1 $fn$;
+select has_function_privilege('anon', 'public.fn_sonda_fidelidade_do_harness()', 'EXECUTE');
+drop function public.fn_sonda_fidelidade_do_harness();
+SQL
+)"
+if [ "$fidelidade" != "t" ]; then
+  echo "FATAL: neste banco uma SECURITY DEFINER nova em public NÃO nasce executável por anon." >&2
+  echo "       Num projeto Supabase de verdade — o que install.sh manda o cliente criar — ela nasce," >&2
+  echo "       porque o bootstrap do Supabase grava um ALTER DEFAULT PRIVILEGES … TO anon em" >&2
+  echo "       pg_default_acl ANTES de qualquer SQL nosso. Sem reproduzir isso aqui, o gate" >&2
+  echo "       hardening-definer-varredura fica VERDE com 6 funções expostas à anon key em" >&2
+  echo "       produção (medido 2026-08-08, baseline 9249e6f2). Restaure as 4 linhas de" >&2
+  echo "       'alter default privileges … on functions' no prelude acima." >&2
+  exit 1
+fi
+echo "    ✓ definer nova nasce exposta a anon (armadilha do produto reproduzida)"
+
 echo "==> modo INSTALL: aplicando baseline.sql com ON_ERROR_STOP=1"
 psql_install < "$BASELINE"
 echo "    ✓ install ok"

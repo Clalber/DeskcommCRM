@@ -44,7 +44,7 @@ import { sql } from "./gov-helpers";
  * #189 mediu numa VPS de produção. `fn_decrypt_oauth` alcançável pela anon key,
  * que vai para o browser.
  *
- * ## A linha cuja perda seria silenciosa
+ * ## A linha cuja perda seria silenciosa — e por que a guarda dela NÃO está aqui
  *
  * O conserto de fundo tem duas metades, e a segunda não tem dono:
  *
@@ -52,11 +52,19 @@ import { sql } from "./gov-helpers";
  *   2. as 4 linhas de `alter default privileges` no prelude do
  *      `scripts/test-db.sh`, que fazem o banco efêmero ser o banco do produto.
  *
- * Se a (2) sumir, **nada fica vermelho**: a suíte inteira segue verde, medindo um
- * universo onde este defeito não pode existir. Nenhum `grep` de símbolo a
- * encontra, e uma convergência independente no prelude a sobrescreve sem gerar
- * conflito. Por isso o primeiro caso deste arquivo é uma guarda do HARNESS, não
- * do schema: ele reprova se o banco de teste voltar a ser fictício.
+ * Se a (2) sumir, **nada fica vermelho**: a suíte segue verde medindo um universo
+ * onde este defeito não pode existir. Nenhum `grep` de símbolo acha aquelas
+ * linhas, e uma convergência independente no prelude as sobrescreve sem conflito.
+ *
+ * A primeira versão deste arquivo tentava vigiar a (2) daqui, lendo
+ * `pg_default_acl`. **A sabotagem provou que era vácuo:** apaguei as 4 linhas do
+ * prelude e os 4 casos continuaram verdes, porque o próprio baseline traz o
+ * `ALTER DEFAULT PRIVILEGES … TO anon` na linha ~3960 — quando esta suíte roda, a
+ * entrada existe de qualquer jeito. A diferença entre banco fiel e banco fictício
+ * só é observável ANTES do baseline. Por isso a guarda da (2) vive em
+ * `scripts/test-db.sh`, num passo próprio entre o prelude e o install, e é uma
+ * sonda de comportamento: cria uma definer de mentira e pergunta se `anon` pode
+ * executá-la.
  *
  * ## Por que aqui e não em `tests/unit/`
  *
@@ -117,28 +125,6 @@ function derrubaSonda(): void {
 }
 
 describe("definer nova em public nasce exposta a anon, e a varredura cura", () => {
-  it("o banco de teste tem o default ACL do Supabase (guarda do HARNESS)", () => {
-    // A asserção mais importante do arquivo, e a que ninguém veria cair.
-    // Sem esta entrada em pg_default_acl, o Postgres efêmero não é o banco do
-    // produto e TODO o hardening-definer-varredura.test.ts passa a medir um
-    // universo onde a classe de defeito não existe — verde por não medir nada.
-    const acl = sql(`
-      select coalesce(array_to_string(d.defaclacl, ' '), '(vazio)')
-        from pg_default_acl d
-        join pg_namespace n on n.oid = d.defaclnamespace
-       where n.nspname = 'public' and d.defaclobjtype = 'f';
-    `);
-    expect(
-      acl,
-      "pg_default_acl de FUNCTIONS em public não concede EXECUTE a anon. O " +
-        "prelude de scripts/test-db.sh perdeu o `alter default privileges … " +
-        "grant all on functions to anon` que TODO projeto Supabase já tem. Sem " +
-        "ele o banco efêmero deixa de ser o do produto e a varredura de definer " +
-        "fica verde medindo o universo errado — foi assim que 6 funções ficaram " +
-        "executáveis pela anon key com o CI verde (PR #189).",
-    ).toMatch(/\banon=[a-zA-Z]*X/);
-  });
-
   it("definer criada AGORA nasce com EXECUTE para anon (o mecanismo, não o catálogo)", () => {
     // Catálogo pode mentir; criar a função e perguntar pelo privilégio não.
     // Este é o caso que prova que a armadilha está ARMADA neste banco: é o que
