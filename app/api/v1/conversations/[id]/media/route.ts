@@ -10,6 +10,7 @@ import { fail, ok } from "@/lib/api/wrappers";
 import { loadAuthUser, resolveActiveOrg } from "@/lib/auth/server";
 import { extFromMime, MAX_MEDIA_BYTES } from "@/lib/messaging/media/types";
 import { validateOutboundMedia } from "@/lib/messaging/media/upload-validation";
+import { transcodificarNotaDeVoz } from "@/lib/messaging/media/voice-transcode";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 
@@ -64,12 +65,23 @@ export async function POST(req: NextRequest, ctx: RouteCtx): Promise<Response> {
     return fail(verdict.code, verdict.message, status, { requestId });
   }
 
-  const storagePath = `${activeOrg.orgId}/${conversationId}/out-${randomUUID()}.${extFromMime(mime)}`;
-  const buffer = Buffer.from(await file.arrayBuffer());
+  const bruto = Buffer.from(await file.arrayBuffer());
+
+  // Nota de voz gravada no browser sai em `webm` (o Chrome não grava ogg), e o
+  // canal oficial recusa depois de aceitar — `131053 Media upload error`, que
+  // culpa a URL quando o problema é o container. Converter AQUI faz todo canal
+  // receber um arquivo válido, e o mesmo áudio poder ser reenviado depois sem
+  // repetir o trabalho. Falha devolve o original: o canal que converte sozinho
+  // continua funcionando como sempre.
+  const audio = await transcodificarNotaDeVoz({ buffer: bruto, mime });
+  const mimeFinal = audio.mime;
+  const buffer = audio.buffer;
+
+  const storagePath = `${activeOrg.orgId}/${conversationId}/out-${randomUUID()}.${extFromMime(mimeFinal)}`;
   const admin = createAdminClient();
   const { error: upErr } = await admin.storage
     .from("whatsapp-media")
-    .upload(storagePath, buffer, { contentType: mime, upsert: false });
+    .upload(storagePath, buffer, { contentType: mimeFinal, upsert: false });
   if (upErr) {
     console.error("[conversations.media] upload failed", upErr.message);
     return fail("internal_error", "Erro ao subir o arquivo.", 500, { requestId });
@@ -78,8 +90,11 @@ export async function POST(req: NextRequest, ctx: RouteCtx): Promise<Response> {
   return ok(
     {
       storage_path: storagePath,
-      media_mime: mime,
-      media_size_bytes: file.size,
+      // O mime e o tamanho do arquivo QUE FOI GUARDADO, não os que chegaram.
+      // Devolver o original seria mandar o canal buscar um `webm` que já não
+      // existe — o mesmo defeito, um passo adiante.
+      media_mime: mimeFinal,
+      media_size_bytes: buffer.length,
       kind: verdict.kind,
     },
     { requestId },
