@@ -9054,6 +9054,17 @@ on conflict (model) do update set
 -- mas o aviso ia só para o log do worker, que numa VPS ninguém abre. Este kind
 -- é o que faz o defeito aparecer na Central de avisos. Idempotente: a lista só
 -- cresce, nenhuma linha existente viola a constraint nova.
+--
+-- ESTE É O BLOCO ÚNICO desta constraint, e a migration 0139 não acrescenta
+-- outro DE PROPÓSITO. A 0129 reconstruiu a constraint na CADEIA DE MIGRATIONS
+-- com 15 valores enquanto esta lista já tinha 18, apagando lá (e só lá)
+-- 'contact_proposal_expired', 'promise_unfulfilled' e 'other'. Quem instala
+-- pelo kit nunca viu o defeito — recebe este arquivo, que está correto —, e é
+-- por isso que a 0139 é uma migration SEM apêndice: um segundo bloco aqui seria
+-- exatamente o padrão da issue #159 que `baseline-constraint-reconstruida.test.ts`
+-- proíbe. Quem acrescentar um `kind` mexe em DOIS lugares: esta lista e a última
+-- migration que reconstrói a constraint. `kind-check-migration-x-baseline.test.ts`
+-- reprova quando as duas divergem.
 
 alter table public.agent_inbox_items
   drop constraint if exists agent_inbox_items_kind_check;
