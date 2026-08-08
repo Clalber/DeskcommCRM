@@ -35,6 +35,7 @@ import type { InboundTurnDeps } from './inbound-turn';
 import { latestCheckpoint } from './inbound-turn';
 import { declaracaoDoTurnoSchema, promessasEmAberto, type DeclaracaoDoTurno } from './declaracao';
 import { loadPublishedAgentConfigById } from './agent-config';
+import { isLeadInHandoff } from './human-handoff';
 import { insertInboxItem } from '../db/repository';
 import { buildMcpTurnTools } from '../edge/crm/mcp-tools';
 import { runModelCall } from '../edge/llm/run-model-call';
@@ -176,6 +177,23 @@ export function createOperatorTurnHandler(deps: InboundTurnDeps) {
       lead_id: leadId,
       origin_job_id: payload.origin_job_id,
     });
+
+    // Um humano assumiu ENTRE o turno do Conversador e este job. O Operador é
+    // enfileirado no fim daquele turno e roda depois — inclusive depois de um
+    // handoff pedido NO MEIO dele (a tool `request_human_handoff`) ou pelo botão
+    // "assumir eu" da tela. Escrever no CRM aqui seria a IA operando por cima da
+    // pessoa que assumiu, e handoff não se revoga pelo agente.
+    //
+    // A guarda é AQUI, na EXECUÇÃO, e não no enfileiramento: o estado nasce
+    // durante o turno anterior e pode mudar depois dele, então só o instante da
+    // execução lê o estado que vale. Era o único dos quatro handlers de turno sem
+    // ela — `inbound-turn` e `followup-turn` a têm, e o formato aqui é o deles
+    // (registrar o motivo e sair). Persistir o desfecho de cada caminho é
+    // trabalho separado, e vale para os quatro do mesmo jeito.
+    if (await isLeadInHandoff(pool, tenantId, leadId)) {
+      log.info('operador pulado — um humano assumiu esta conversa', { desfecho: 'handoff_humano' });
+      return;
+    }
 
     const agentConfig =
       payload.agent_id === null ? null : await loadPublishedAgentConfigById(pool, tenantId, payload.agent_id);
