@@ -129,9 +129,11 @@ function reconstrucoesEm(arquivo: string, sql: string): Reconstrucao[] {
   const achados: Reconstrucao[] = [];
   const re = /add\s+constraint\s+([a-z0-9_]+)\s+check\s*\(\s*([a-z0-9_]+)\s+in\s*\(([^)]*)\)/gi;
   for (const m of limpo.matchAll(re)) {
-    const valores = new Set([...m[3].matchAll(/'([^']*)'/g)].map((v) => v[1]));
+    // Os `!` são pelo `noUncheckedIndexedAccess` do tsconfig: um grupo que casou
+    // sempre tem valor, mas o compilador não sabe disso a partir do regex.
+    const valores = new Set([...m[3]!.matchAll(/'([^']*)'/g)].map((v) => v[1]!));
     if (valores.size === 0) continue;
-    achados.push({ arquivo, constraint: m[1], coluna: m[2], valores });
+    achados.push({ arquivo, constraint: m[1]!, coluna: m[2]!, valores });
   }
   return achados;
 }

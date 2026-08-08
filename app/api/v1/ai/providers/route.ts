@@ -240,7 +240,14 @@ export async function PUT(req: NextRequest): Promise<Response> {
       },
       { onConflict: "organization_id,purpose" },
     )
-    .select("purpose, provider, model_id, credential_id, base_url, is_enabled")
+    // `id` entra no select por causa do audit: `resource_id` é uma coluna UUID, e
+    // o `purpose` (`stage_classifier`, `intent_router`…) é chave natural em text.
+    // Mandar o purpose ali fazia o INSERT do audit estourar com
+    // `invalid input syntax for type uuid` — e como o audit é fire-and-forget por
+    // doutrina (nunca derruba a mutação), a gravação seguia, a tela dizia "salvo",
+    // e a entrada de auditoria simplesmente não existia. Medido nos logs de uma
+    // corrida real da suíte e2e em 2026-08-08.
+    .select("id, purpose, provider, model_id, credential_id, base_url, is_enabled")
     .maybeSingle();
 
   if (error) return fail("save_failed", error.message, 500);
@@ -255,11 +262,14 @@ export async function PUT(req: NextRequest): Promise<Response> {
     organizationId: org.orgId,
     actorUserId: user.id,
     resourceType: "ai_purpose_binding",
-    resourceId: corpo.purpose,
+    resourceId: gravado.id,
     // O modelo entra no metadata, a credencial NÃO — só o id dela seria
     // inócuo, mas o hábito de mandar campo de credencial para o audit é o que
     // acaba vazando a chave quando alguém troca o campo de lugar.
     metadata: {
+      // O purpose vive aqui, e não em `resource_id`: quem lê a auditoria quer
+      // saber QUAL ponto mudou sem ter de resolver o uuid, e `metadata` é jsonb.
+      purpose: corpo.purpose,
       provider: corpo.provider,
       model_id: corpo.model_id,
       tem_endpoint_proprio: Boolean(corpo.base_url),
