@@ -80,13 +80,30 @@ export const zernioAdapter: ChannelAdapter = {
    */
   resolveRecipient(input: RecipientInput): string | null {
     if (input.isGroup) return null;
+
     const doIdentity = input.waIdentity?.startsWith("phone:")
       ? input.waIdentity.slice("phone:".length)
       : null;
     const bruto = doIdentity ?? input.phoneNumber ?? null;
-    if (!bruto) return null;
-    const digitos = toE164Digits(bruto);
-    return digitos.length > 0 ? digitos : null;
+    if (bruto) {
+      const digitos = toE164Digits(bruto);
+      if (digitos.length > 0) return digitos;
+    }
+
+    // Sem telefone, devolve o id opaco da plataforma em vez de `null`.
+    //
+    // Medido em produção: um contato do rollout novo chega com BSUID e o envio
+    // parava em `missing_phone_number` — mas para ESTE canal o telefone não
+    // endereça nada. Quem endereça é a thread; `to` só existe para o handler
+    // saber que há um destinatário conhecido, e um id de plataforma é um
+    // destinatário conhecido.
+    //
+    // Devolver `null` aqui é dizer "não há como falar com esta pessoa", e é
+    // falso: acabamos de receber uma mensagem dela.
+    const opaco = input.waIdentity?.includes(":")
+      ? input.waIdentity.slice(input.waIdentity.indexOf(":") + 1)
+      : null;
+    return opaco && opaco.length > 0 ? opaco : null;
   },
 
   /**

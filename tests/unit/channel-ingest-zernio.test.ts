@@ -197,6 +197,21 @@ describe("o que a ingestão GRAVA", () => {
     expect(ins.metadata).toEqual({ provider_attachments: [{ type: "image", url: "https://z/media/1" }] });
   });
 
+  it("grava o TELEFONE mesmo quando a âncora é o id opaco", async () => {
+    // O payload traz os dois. Descartar o telefone deixou o contato sem número:
+    // o envio parou em `missing_phone_number` e a tela não tinha o que mostrar
+    // ao atendente.
+    await ingestZernioInbound(admin, {
+      ...ENTRADA,
+      payload: evento({ sender: { phoneNumber: "+595991733685", businessScopedUserId: "PY.853", name: "M" } }),
+    });
+    const up = ops.find((o) => o.tabela === "contacts" && o.op === "update");
+    expect(up?.payload).toEqual({ phone_number: "+595991733685" });
+    // E a âncora segue sendo o BSUID: é a que sobrevive a trocar de número.
+    const rpc = ops.find((o) => o.op === "fn_upsert_wa_contact");
+    expect((rpc?.payload as Record<string, unknown>).p_lid).toBe("PY.853");
+  });
+
   it("reusa a RPC do canal por QR para o contato — a corrida já está resolvida lá", async () => {
     await ingestZernioInbound(admin, { ...ENTRADA, payload: evento() });
     const rpc = ops.find((o) => o.op === "fn_upsert_wa_contact");

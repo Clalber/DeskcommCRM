@@ -92,13 +92,27 @@ describe("resolveRecipient", () => {
     ).toBeNull();
   });
 
-  it("contato sem telefone devolve null em vez de string vazia", () => {
+  it("sem telefone devolve o id OPACO — dizer null é afirmar que não dá para falar com quem acabou de escrever", () => {
+    // Medido em produção: contato do rollout novo (BSUID, sem telefone) fazia o
+    // envio parar em `missing_phone_number`. Para este canal o telefone não
+    // endereça nada — quem endereça é a thread.
     expect(
       zernioAdapter.resolveRecipient({
         isGroup: false,
         groupChatId: null,
         phoneNumber: null,
-        waIdentity: "lid:12345",
+        waIdentity: "lid:PY.853283837822954",
+      }),
+    ).toBe("PY.853283837822954");
+  });
+
+  it("sem telefone E sem identidade devolve null — aí sim não há destinatário", () => {
+    expect(
+      zernioAdapter.resolveRecipient({
+        isGroup: false,
+        groupChatId: null,
+        phoneNumber: null,
+        waIdentity: null,
       }),
     ).toBeNull();
   });

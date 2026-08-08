@@ -113,7 +113,29 @@ async function upsertContact(
     p_notify: msg.identity.displayName ?? msg.identity.username ?? null,
   });
   if (error) return null;
-  return (data as string) ?? null;
+  const contactId = (data as string) ?? null;
+  if (!contactId) return null;
+
+  // O telefone entra MESMO quando a âncora é o id opaco.
+  //
+  // A âncora certa é o BSUID (sobrevive a trocar de número), mas o payload
+  // traz os DOIS — e a RPC só grava `phone_number` quando o `kind` é phone.
+  // Descartá-lo custou caro: o contato ficava sem número, o envio parava em
+  // `missing_phone_number`, e a tela não tinha o que mostrar ao atendente que
+  // precisa saber com quem está falando.
+  //
+  // `is null` no filtro: só preenche o que está vazio. Sobrescrever apagaria
+  // uma correção feita à mão na tela por um valor que a plataforma pode mandar
+  // diferente entre eventos.
+  if (msg.identity.phone) {
+    await admin
+      .from("contacts")
+      .update({ phone_number: msg.identity.phone })
+      .eq("id", contactId)
+      .is("phone_number", null);
+  }
+
+  return contactId;
 }
 
 async function upsertConversation(
