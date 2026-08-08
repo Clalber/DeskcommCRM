@@ -4,6 +4,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 import { CanalOficialClient } from "./CanalOficialClient";
+import { CanalParceiroClient } from "./CanalParceiroClient";
 import { ConnectionsClient } from "./ConnectionsClient";
 import { TemplatesClient } from "./TemplatesClient";
 
@@ -33,7 +34,8 @@ import { TemplatesClient } from "./TemplatesClient";
 export function ConexoesShell({ wahaConfigured }: { wahaConfigured: boolean }) {
   const router = useRouter();
   const params = useSearchParams();
-  const aba = params.get("aba") === "oficial" ? "oficial" : "numeros";
+  const abaParam = params.get("aba");
+  const aba = abaParam === "oficial" ? "oficial" : abaParam === "parceiro" ? "parceiro" : "numeros";
   const sub = params.get("sub") === "templates" ? "templates" : "conexao";
 
   const irPara = (proximaAba: string, proximaSub?: string): void => {
@@ -61,10 +63,19 @@ export function ConexoesShell({ wahaConfigured }: { wahaConfigured: boolean }) {
             ele reprova igual. */}
         <TabsTrigger value="numeros">Números por QR</TabsTrigger>
         <TabsTrigger value="oficial">API Oficial (Meta)</TabsTrigger>
+        {/* "Provedor parceiro" e não a marca: o rótulo da marca vem do servidor
+            (`lib/channels/connect`), porque a tela não pode nomear provider — e
+            porque no dia em que houver um segundo parceiro esta aba não muda.
+            Aqui fica o CONCEITO; lá dentro o cartão diz de quem se trata. */}
+        <TabsTrigger value="parceiro">Provedor parceiro</TabsTrigger>
       </TabsList>
 
       <TabsContent value="numeros" className="mt-0">
         <ConnectionsClient wahaConfigured={wahaConfigured} />
+      </TabsContent>
+
+      <TabsContent value="parceiro" className="mt-0">
+        <CanalParceiroClient />
       </TabsContent>
 
       <TabsContent value="oficial" className="mt-0">
