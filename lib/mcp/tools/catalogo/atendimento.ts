@@ -37,11 +37,16 @@ export const TOOLS_ATENDIMENTO = declararTools([
   {
     name: "crm_propose_contact_field",
     category: "write",
-    description:
-      "Registra email/nome/telefone que o cliente informou como PROPOSTA (contact_field_proposals, " +
-      "status='pending'). NADA é gravado no cadastro por conta desta chamada; uma pessoa confirma, e " +
-      "a proposta vence sozinha. Recusa se já houver proposta viva do mesmo campo, se o valor for " +
-      "igual ao gravado, ou se o contato foi anonimizado.",
+    // SEM `description` aqui, e não por esquecimento: o catálogo perdeu esse
+    // campo no `02d9acea` (eram 51 cópias que ninguém lia). Quem serve a
+    // descrição ao cliente MCP é `catalogo-servido.ts:58`, e ele lê
+    // `handler.description` — a de `lib/mcp/tools/contacts.ts:135`, que existe e
+    // continua valendo. O catálogo responde outra pergunta: o que o HUMANO lê na
+    // tela (`rotulo`, `explicacao`, `oQueToca`).
+    //
+    // Esta linha é o encontro de dois trabalhos que não se viram: a remoção do
+    // campo veio pela branch do Índice de Atrito e a ferramenta veio pelo #194.
+    // Nenhum dos dois gerou conflito de texto — o `tsc` é que reprovou no merge.
     rotulo: "Anotar dado que o cliente informou",
     explicacao:
       "Quando o cliente diz o e-mail, o nome ou o telefone dele na conversa, guarda essa informação para uma pessoa conferir antes de entrar na ficha.",
