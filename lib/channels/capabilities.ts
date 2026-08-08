@@ -15,6 +15,8 @@ export const CHANNEL_CAPABILITIES: Record<ChannelProvider, ChannelCapabilities> 
   waha: {
     freeformOutsideWindow: true,
     requiresTemplates: false,
+    // Não há WABA por trás: não existe definição aprovada para gerir.
+    canManageTemplates: false,
     banRisk: true,
     minIntervalMs: null,
     voiceNote: "server-convert",
@@ -25,6 +27,9 @@ export const CHANNEL_CAPABILITIES: Record<ChannelProvider, ChannelCapabilities> 
   meta_cloud: {
     freeformOutsideWindow: false,
     requiresTemplates: true,
+    // A Graph API cria e edita definições; o repo hoje só ESPELHA, e é essa
+    // lacuna que a capability torna visível em vez de deixar implícita.
+    canManageTemplates: true,
     banRisk: false,
     minIntervalMs: 6000,
     voiceNote: "opus-only",
@@ -48,6 +53,7 @@ export const CHANNEL_CAPABILITIES: Record<ChannelProvider, ChannelCapabilities> 
   zernio: {
     freeformOutsideWindow: false,
     requiresTemplates: true,
+    canManageTemplates: true,
     banRisk: false,
     minIntervalMs: 6000,
     voiceNote: "opus-only",

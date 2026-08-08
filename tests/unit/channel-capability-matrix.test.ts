@@ -31,6 +31,7 @@ void _todoProviderEstaNaLista;
 const CAPABILITIES = [
   "freeformOutsideWindow",
   "requiresTemplates",
+  "canManageTemplates",
   "banRisk",
   "minIntervalMs",
   "voiceNote",

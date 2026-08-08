@@ -28,6 +28,7 @@ describe("capabilities do canal intermediado", () => {
     expect(capabilitiesOf(ZERNIO)).toEqual({
       freeformOutsideWindow: false,
       requiresTemplates: true,
+      canManageTemplates: true,
       banRisk: false,
       minIntervalMs: 6000,
       voiceNote: "opus-only",

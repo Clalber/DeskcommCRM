@@ -15,6 +15,18 @@ export interface ChannelCapabilities {
   freeformOutsideWindow: boolean;
   /** A plataforma hospeda definições de mensagem que precisam de aprovação prévia. */
   requiresTemplates: boolean;
+  /**
+   * O canal permite CRIAR e EDITAR essas definições pela API — ou só lê as que
+   * já existem?
+   *
+   * Distinta de `requiresTemplates`, e a diferença não é sutil: um canal pode
+   * exigir template (e portanto travar o envio fora da janela) e ainda assim
+   * não deixar ninguém criar um sem entrar no painel da plataforma. Quem só lê
+   * precisa mandar o operador para fora do CRM; quem escreve não. É a pergunta
+   * que a tela faz para decidir se mostra o botão "criar", e sem ela a tela
+   * teria que perguntar QUAL canal é — que é o que o invariante 1 proíbe.
+   */
+  canManageTemplates: boolean;
   /** Há risco de banimento por volume/padrão → arma throttle, warm-up e cap. */
   banRisk: boolean;
   /** Intervalo mínimo imposto PELA PLATAFORMA entre msgs ao mesmo destinatário (ms). */
@@ -131,4 +143,57 @@ export interface ChannelAdapter {
    * quem chama cai no próprio `externalId`.
    */
   echoExternalIds?(input: { externalId: string; recipient: string }): string[];
+
+  /**
+   * Gestão das definições aprovadas — criar, editar, apagar.
+   *
+   * OPCIONAL pelo mesmo motivo dos dois métodos acima: nem todo canal expõe
+   * isso, e quem chama testa a presença em vez de perguntar QUAL provider é.
+   * A capability `canManageTemplates` é a resposta declarativa da mesma
+   * pergunta, para quem precisa decidir ANTES de ter um adapter em mãos (uma
+   * tela, por exemplo).
+   *
+   * O adapter continua burro: traduz formato e devolve o que a plataforma
+   * disse. Ele NÃO decide se um template é válido, não espelha no banco e não
+   * conhece `contract_hash` — isso é de quem sincroniza.
+   */
+  templates?: ChannelTemplateOps;
+}
+
+/** Definição aprovada, na forma NEUTRA — sem o vocabulário de nenhum provider. */
+export interface ChannelTemplate {
+  name: string;
+  language: string;
+  /** Vocabulário ABERTO: a plataforma cria estado novo sem avisar. */
+  status: string;
+  category: string | null;
+  /** Payload cru como a plataforma o devolveu — a entrada de quem deriva contrato. */
+  components: unknown[];
+  rejectedReason?: string | null;
+  parameterFormat?: string | null;
+}
+
+export interface ChannelTemplateDraft {
+  name: string;
+  language: string;
+  category: "AUTHENTICATION" | "MARKETING" | "UTILITY";
+  components: unknown[];
+  parameterFormat?: "POSITIONAL" | "NAMED";
+}
+
+export interface ChannelTemplateOps {
+  list(input: { sessionRef: string }): Promise<ChannelTemplate[]>;
+  create(input: { sessionRef: string; draft: ChannelTemplateDraft }): Promise<ChannelTemplate>;
+  /**
+   * Edição é PARCIAL e limitada pela plataforma: nome, idioma e categoria de um
+   * template já aprovado normalmente não mudam — o que se edita é o corpo, e a
+   * edição joga o template de volta para revisão. Quem chama não precisa saber
+   * disso; a plataforma recusa e o erro sobe com o código dela.
+   */
+  update(input: {
+    sessionRef: string;
+    name: string;
+    patch: Partial<Pick<ChannelTemplateDraft, "components" | "category">>;
+  }): Promise<ChannelTemplate>;
+  remove(input: { sessionRef: string; name: string; language?: string }): Promise<void>;
 }

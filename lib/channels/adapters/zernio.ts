@@ -36,6 +36,7 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 
 import { resolveZernioCreds, zernioCredsFromEnv } from "../zernio/credentials";
+import { zernioTemplateOps } from "../zernio/templates";
 import type { ChannelAdapter, OutboundEnvelope, RecipientInput } from "../types";
 
 /** Só dígitos. `+595 (99) 173-3685` → `595991733685`. */
@@ -150,6 +151,9 @@ export const zernioAdapter: ChannelAdapter = {
     // devolvem a mesma forma, então quem lê não precisa saber qual foi.
     return { externalId: json?.data?.messageId ?? null };
   },
+
+  /** Gestão das definições aprovadas — ver `../zernio/templates.ts`. */
+  templates: zernioTemplateOps,
 
   codes: {
     notConfigured: "zernio_not_configured",
