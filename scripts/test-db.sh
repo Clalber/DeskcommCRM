@@ -154,23 +154,36 @@ echo "==> conferindo que o banco efêmero é o do PRODUTO (antes do baseline)"
 # uma asserção lá dentro passa sempre — verde por não medir nada. A diferença entre
 # o banco fiel e o fictício só é observável NESTE instante: antes do baseline.
 #
-# E a sonda é comportamento, não catálogo: cria uma definer de mentira e pergunta
-# se `anon` pode executá-la. Se as 4 linhas de `alter default privileges` acima
-# desaparecerem — perda silenciosa, que nenhum grep de símbolo acha e que qualquer
-# convergência no prelude sobrescreve sem conflito —, este passo derruba o run com
-# a razão escrita, em vez de a suíte inteira ficar verde medindo o universo errado.
+# A sonda cria uma definer de mentira e mede o ACL dela. Se as 4 linhas de `alter
+# default privileges` acima desaparecerem — perda silenciosa, que nenhum grep de
+# símbolo acha e que qualquer convergência no prelude sobrescreve sem conflito —,
+# este passo derruba o run com a razão escrita, em vez de a suíte inteira ficar
+# verde medindo o universo errado.
+#
+# O QUE ELA MEDE, e por que não é `has_function_privilege`: a primeira versão
+# perguntava se `anon` PODE executar, e aprovava os dois mundos. Num Postgres cru
+# a função nasce com o grant a PUBLIC (`=X/postgres`), do qual `anon` herda — o
+# privilégio EFETIVO é `true` sem nenhum default ACL. É a mesma armadilha das duas
+# origens de EXECUTE que a doutrina descreve (CLAUDE.md, migrations item 9), aqui
+# do lado do instrumento. O que distingue os mundos é o grant DIRETO a `anon` no
+# `proacl`, que só existe se `pg_default_acl` tiver a entrada.
+#
 # `-q` é obrigatório: sem ele o stdout leva "CREATE FUNCTION"/"DROP FUNCTION"
 # junto do resultado e a comparação com "t" falha sempre — sonda que reprova o
 # banco certo é tão inútil quanto sonda que aprova o errado.
 fidelidade="$(docker exec -i "$CONTAINER" psql -U postgres -d postgres -v ON_ERROR_STOP=1 -q -tA -f - <<'SQL'
 create function public.fn_sonda_fidelidade_do_harness() returns int
   language sql security definer as $fn$ select 1 $fn$;
-select has_function_privilege('anon', 'public.fn_sonda_fidelidade_do_harness()', 'EXECUTE');
+select exists (
+  select 1 from pg_proc p, unnest(coalesce(p.proacl, '{}'::aclitem[])) a
+   where p.proname = 'fn_sonda_fidelidade_do_harness'
+     and split_part(a::text, '=', 1) = 'anon'
+);
 drop function public.fn_sonda_fidelidade_do_harness();
 SQL
 )"
 if [ "$fidelidade" != "t" ]; then
-  echo "FATAL: neste banco uma SECURITY DEFINER nova em public NÃO nasce executável por anon." >&2
+  echo "FATAL: neste banco uma SECURITY DEFINER nova em public NÃO nasce com grant DIRETO a anon." >&2
   echo "       Num projeto Supabase de verdade — o que install.sh manda o cliente criar — ela nasce," >&2
   echo "       porque o bootstrap do Supabase grava um ALTER DEFAULT PRIVILEGES … TO anon em" >&2
   echo "       pg_default_acl ANTES de qualquer SQL nosso. Sem reproduzir isso aqui, o gate" >&2
@@ -179,7 +192,7 @@ if [ "$fidelidade" != "t" ]; then
   echo "       'alter default privileges … on functions' no prelude acima." >&2
   exit 1
 fi
-echo "    ✓ definer nova nasce exposta a anon (armadilha do produto reproduzida)"
+echo "    ✓ definer nova nasce com grant direto a anon (armadilha do produto reproduzida)"
 
 echo "==> modo INSTALL: aplicando baseline.sql com ON_ERROR_STOP=1"
 psql_install < "$BASELINE"
