@@ -443,3 +443,40 @@ Vale registrar porque custaram horas e nenhuma era bug da feature:
 
 E `page.reload()` devolvia `net::ERR_ABORTED; maybe frame was detached` nesta
 máquina; `page.goto` no lugar resolveu.
+
+
+---
+
+## O CI pegou o que meu ambiente não pegava (PR #201)
+
+Os três checks obrigatórios passaram de primeira (`verify`, `invariants`,
+`build-and-size`). O `e2e` — que não segura merge — reprovou **1 de 51**, e era
+meu:
+
+```
+navegacao.spec.ts:163 › nenhum grupo fica fora da dobra, e em 900px o menu não rola
+```
+
+Eu tinha posto **as duas telas novas na sidebar**, e o menu passou da dobra em
+900px. É o mesmo eixo de `feedback_agrupar_cria_overflow`: agrupar o menu o faz
+crescer, e a conta só aparece quando alguém mede a altura.
+
+Por que não peguei aqui: rodei `navegacao-registry` e `navegacao-completude`
+(unitários, que checam o REGISTRO) e não o e2e de navegação, que é o único que
+mede pixel. Registro correto e layout estourado são coisas diferentes.
+
+**Correção:** as duas saíram da sidebar e seguem o padrão das outras nove telas
+do grupo IA — alcançáveis pelo hub "Ver tudo em IA". Das 12 telas do grupo, só 3
+estavam na sidebar; eu tinha aberto exceção para duas sem perceber que exceção
+tem custo de layout. Configurar provedor é tarefa de poucas vezes, e quem abre
+Execuções está diagnosticando (chega pelo hub ou pelo link do aviso na Central).
+
+O e2e da frente foi ajustado: a asserção de porta agora olha o hub, não a
+sidebar. `navegacao.spec.ts` verde localmente depois da correção.
+
+### E uma armadilha de ambiente que se repetiu
+
+O MFA voltou a falhar com "código inválido" — segredo TOTP dessincronizado por eu
+ter rodado o seed várias vezes na sessão. `seed-e2e-credentials.ts` de novo, e os
+segredos passam a bater (conferi banco × disco antes de concluir). É
+`feedback_seed_compartilhado_rotaciona_totp`, sem vizinho: eu era o vizinho.

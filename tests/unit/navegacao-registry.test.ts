@@ -100,18 +100,16 @@ describe("sidebarGroups", () => {
     expect(ids).toContain("atendimento");
   });
 
-  it("a ordem dentro do grupo de IA é a do uso real: montar, depois acompanhar", () => {
-    // "Provedores" entra logo depois de Roteadores porque fecha a etapa de
-    // MONTAR (quem atende, com qual inteligência); "Execuções" fica por último
-    // porque pertence a ACOMPANHAR — só faz sentido depois de existir tráfego.
-    // A ordem é a da jornada, não a alfabética nem a de criação.
+  it("a ordem dentro do grupo de IA é a do uso real: agentes, follow-ups, roteadores", () => {
+    // Provedores e Execuções NÃO entram aqui, e a razão é medida: pô-las na
+    // sidebar estourou a dobra em 900px (e2e `navegacao.spec.ts`). Elas seguem
+    // o padrão das outras nove telas do grupo — alcançáveis pelo hub "Ver tudo
+    // em IA", que é o desenho existente para tela de configuração.
     const ia = sidebarGroups(true, null).find((g) => g.group.id === "ia");
     expect(ia?.items.map((i) => i.href)).toEqual([
       "/app/ai/agents",
       "/app/ai/followups",
       "/app/ai/routers",
-      "/app/ai/providers",
-      "/app/ai/runs",
     ]);
   });
 });

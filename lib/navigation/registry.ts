@@ -242,7 +242,11 @@ export const NAV_DESTINATIONS: NavDestination[] = [
     group: "ia",
     section: "Montar o agente",
     minRole: "manager",
-    sidebar: true,
+    // SEM `sidebar: true`, como as outras nove telas deste grupo. Adicionar as
+    // duas telas novas à sidebar estourou a dobra em 900px — medido pelo e2e
+    // `navegacao.spec.ts`, que existe justamente porque agrupar o menu o faz
+    // crescer. Configurar provedor é tarefa de poucas vezes; o caminho é o hub
+    // "Ver tudo em IA", igual a Credenciais, Conhecimento, Memória e Skills.
   },
   {
     href: "/app/ai/knowledge/sources",
@@ -310,7 +314,8 @@ export const NAV_DESTINATIONS: NavDestination[] = [
     group: "ia",
     section: "Acompanhar o agente",
     minRole: "manager",
-    sidebar: true,
+    // Idem: fora da sidebar para o menu não passar da dobra. Quem vem para cá
+    // está diagnosticando, e chega pelo hub ou pelo link do aviso na Central.
   },
   {
     href: "/app/ai/usage",
