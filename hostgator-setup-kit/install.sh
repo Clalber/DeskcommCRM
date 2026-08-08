@@ -874,6 +874,77 @@ fi
 # das chaves batem contra ela (chave de outro projeto é erro comum e mudo).
 # Marca da instalação (APP_NAME) fica por último de propósito: é opcional, e
 # perguntar no meio das credenciais faria parecer obrigatória.
+# ── Qual IA vai atender ─────────────────────────────────────────────────────
+#
+# Antes daqui o instalador só sabia pedir a chave da Anthropic, e quem já tinha
+# conta em outro provedor descobria isso tarde: instalava, cadastrava a chave
+# "errada", e o agente não respondia. A OpenRouter mudou a conta dessa escolha —
+# uma chave só dá acesso a centenas de modelos de dezenas de fabricantes, o que
+# costuma ser o caminho mais simples para quem está começando.
+#
+# A pergunta vem ANTES das credenciais porque é ela que decide QUAL credencial
+# será pedida; perguntar depois obrigaria a voltar atrás.
+escolher_provedor() {
+  # Numa 2ª execução, o provedor já escolhido vira o default — quem re-roda o
+  # script para corrigir outra coisa não deve ter que reescolher isto.
+  local atual="${AI_PROVIDER:-}"
+  if [ -z "$atual" ]; then
+    if   [ -n "${OPENROUTER_API_KEY:-}" ]; then atual="openrouter"
+    elif [ -n "${ANTHROPIC_API_KEY:-}" ];  then atual="anthropic"
+    elif [ -n "${OPENAI_API_KEY:-}" ];     then atual="openai"
+    fi
+  fi
+
+  if [ "$NONINTERACTIVE" = 1 ]; then
+    AI_PROVIDER="${atual:-anthropic}"
+    return 0
+  fi
+
+  printf '\n\033[1mQual inteligência artificial vai atender seus clientes?\033[0m\n\n'
+  printf '  [1] OpenRouter  — uma chave, centenas de modelos de vários fabricantes.\n'
+  printf '                    O caminho mais simples para experimentar. (openrouter.ai/keys)\n'
+  printf '  [2] Anthropic   — o Claude. É o que melhor segue instruções longas e usa\n'
+  printf '                    as ferramentas do CRM. (console.anthropic.com)\n'
+  printf '  [3] OpenAI      — o GPT. (platform.openai.com/api-keys)\n'
+  printf '\n'
+  printf '  Dá para trocar depois, e por parte do sistema, em Agente de IA → Provedores.\n\n'
+
+  local padrao_num=2
+  case "$atual" in openrouter) padrao_num=1;; openai) padrao_num=3;; esac
+
+  while :; do
+    if ! read -r -p "Escolha (Enter = ${padrao_num}): " escolha; then escolha=""; fi
+    [ -z "$escolha" ] && escolha="$padrao_num"
+    case "$escolha" in
+      1) AI_PROVIDER="openrouter"; break;;
+      2) AI_PROVIDER="anthropic";  break;;
+      3) AI_PROVIDER="openai";     break;;
+      *) c_ylw "Digite 1, 2 ou 3.";;
+    esac
+  done
+}
+escolher_provedor
+
+# O campo da chave do provedor ESCOLHIDO — e só dele. Pedir as três faria a
+# pessoa achar que precisa das três.
+case "$AI_PROVIDER" in
+  openrouter) CAMPO_IA="OPENROUTER_API_KEY|Chave da OpenRouter — a IA que atende (openrouter.ai/keys)||v_openrouter|secret|";;
+  openai)     CAMPO_IA="OPENAI_API_KEY|Chave da OpenAI — a IA que atende (platform.openai.com/api-keys)||v_openai|secret|";;
+  *)          CAMPO_IA="ANTHROPIC_API_KEY|Chave da Anthropic — a IA que atende (console.anthropic.com)||v_anthropic|secret|";;
+esac
+
+# A chave da OpenAI é pedida À PARTE quando ela NÃO é o provedor de conversa,
+# porque dois pontos do sistema dependem dela mesmo assim: ouvir áudio (o
+# Whisper é da OpenAI) e indexar a base de conhecimento. Sem esta linha, quem
+# escolhe OpenRouter instala achando que está completo e descobre semanas depois
+# que o agente nunca ouviu um áudio — que é exatamente o defeito já visto em
+# produção, com a chave certa no .env e indo para o endpoint errado.
+if [ "$AI_PROVIDER" = "openai" ]; then
+  CAMPO_OPENAI_EXTRA=""
+else
+  CAMPO_OPENAI_EXTRA="OPENAI_API_KEY|Chave da OpenAI — só para ouvir áudios e usar a base de conhecimento (Enter pula)||v_openai|secret|opcional"
+fi
+
 FIELDS=(
   "DOMAIN|Domínio do CRM (ex: crm.suaempresa.com.br)||v_domain||"
   "ACME_EMAIL|Seu e-mail (avisos de SSL)||v_email||"
@@ -882,8 +953,8 @@ FIELDS=(
   "NEXT_PUBLIC_SUPABASE_ANON_KEY|Supabase anon key (Settings > API)||v_anon||"
   "SUPABASE_SERVICE_ROLE_KEY|Supabase service_role key (Settings > API)||v_service|secret|"
   "SUPABASE_DB_URL|Supabase connection string — Session pooler, modo URI (Settings > Database)||v_db_url|secret|"
-  "ANTHROPIC_API_KEY|Chave da Anthropic — a IA que atende (console.anthropic.com)||v_anthropic|secret|"
-  "OPENAI_API_KEY|Chave da OpenAI — ouvir áudios do WhatsApp e usar a base de conhecimento (Enter pula)||v_openai|secret|opcional"
+  "$CAMPO_IA"
+  ${CAMPO_OPENAI_EXTRA:+"$CAMPO_OPENAI_EXTRA"}
   "OWNER_EMAIL|E-mail do primeiro admin (dono)||v_email||"
   "OWNER_PASSWORD|Senha do primeiro admin (mínimo 8 caracteres)||v_password|secret|"
   "APP_NAME|Nome que aparece na interface (Enter para o padrão)|DeskcommCRM|||"
@@ -893,7 +964,9 @@ field_at() { IFS='|' read -r F_VAR F_PROMPT F_DEF F_VAL F_SEC F_OPT <<< "${FIELD
 
 if [ "$NONINTERACTIVE" = 0 ]; then
   c_dim "Dica: em qualquer pergunta, digite 'voltar' para refazer a anterior."
-  c_ylw "A chave da OpenAI é opcional, mas sem ela a IA não ouve áudio nem consulta a base de conhecimento."
+  if [ "$AI_PROVIDER" != "openai" ]; then
+    c_ylw "A chave da OpenAI é opcional, mas sem ela a IA não ouve áudio nem consulta a base de conhecimento."
+  fi
 fi
 
 i=0

@@ -5,7 +5,7 @@
 
 - **Branch:** `feat/provedores-de-ia` · **Worktree:** `~/DeskcommCRM-provedores`
 - **Base:** `9249e6f2` (`origin/main` em 2026-08-07)
-- **Última atualização:** 2026-08-07 — quatro frentes entregues; gates verdes; prova na tela PARCIAL (ver B3)
+- **Última atualização:** 2026-08-08 — quatro frentes entregues e **provadas na tela**; `test:db` completo verde
 
 ---
 
@@ -247,7 +247,7 @@ quem instalou. Tokens em zero e custo em NULL na linha de erro.
 | # | O quê | Estado |
 |---|---|---|
 | B1 | Docker voltou (28.3.2) e o Supabase local subiu. `pnpm test:db` completo (364 invariantes) **ainda não rodou** nesta frente | parcial |
-| B3 | **Prova na tela PARCIAL.** Provado dirigindo o browser: login funciona, o app abre, a porta "Provedores" aparece na sidebar, e a tela responde. NÃO provado ainda: o fluxo completo de trocar o modelo de um ponto e ver a troca valer. O `supabase start` passou a falhar aplicando as migrations (cadeia fresh não sobe — conhecido) e a máquina está disputada com outras duas sessões (`t188-recon`, `t188-medidor`). O e2e está escrito em `tests/e2e/prova-painel-provedores.spec.ts` | aberto |
+| B3 | ✅ **RESOLVIDO** — prova na tela completa, 7/7. Detalhes e as três causas de harness abaixo. Texto anterior: **Prova na tela PARCIAL.** Provado dirigindo o browser: login funciona, o app abre, a porta "Provedores" aparece na sidebar, e a tela responde. NÃO provado ainda: o fluxo completo de trocar o modelo de um ponto e ver a troca valer. O `supabase start` passou a falhar aplicando as migrations (cadeia fresh não sobe — conhecido) e a máquina está disputada com outras duas sessões (`t188-recon`, `t188-medidor`). O e2e está escrito em `tests/e2e/prova-painel-provedores.spec.ts` | aberto |
 | B2 | **Bug meu, achado pelo e2e e já corrigido:** `carregar()` do painel não tratava exceção e a tela ficava presa em "Carregando…" para sempre — a mesma falha muda que o painel veio acabar, recriada dentro dele | corrigido |
 
 ---
@@ -365,3 +365,70 @@ Provado com `.env` real em 3 re-execuções: as duas chaves sobrevivem, 1× cada
   migração de runtime, não um refactor; fazê-la no fim de uma sessão longa, sem
   poder provar na tela, seria trocar dívida declarada por risco silencioso.
 - **Prova na tela completa** — segue bloqueada pelo ambiente (ver B3).
+
+
+---
+
+## Prova na tela — completa (2026-08-08)
+
+Ambiente do zero: Supabase local pg17, `baseline.sql` em modo install (98 tabelas),
+`bootstrap-owner`, `seed-e2e-credentials`. Login como **admin com MFA**, pelo helper
+que o repo já tinha.
+
+| Teste (`tests/e2e/prova-painel-provedores.spec.ts`) | Resultado |
+|---|---|
+| F0/F1 — painel agrupado, 6 papéis, "23 lugares", sintoma de falha, origem | ✅ |
+| F1 — ponto fixo mostra a RAZÃO e **não** oferece seletor | ✅ |
+| F3 — OpenRouter oferecida, >50 modelos no seletor | ✅ |
+| F1 — **trocar o modelo GRAVA e a tela passa a mostrar o novo** | ✅ |
+| F1/F3 — ponto que cria o lead exige ferramentas | ✅ |
+| F2 — tela de execuções abre pelo resumo | ✅ |
+| Porta na navegação das duas telas | ✅ |
+
+Evidência em `evidence/provedores/*.png` (7 imagens). E a confirmação no banco,
+que é onde o runtime lê:
+
+```
+stage_classifier → openrouter / meta-llama/llama-3.3-70b-instruct (ativo: true)
+```
+
+### Frente 3 provada contra a origem real
+
+O sincronizador rodou contra `openrouter.ai/api/v1/models`:
+
+| | |
+|---|---|
+| modelos antes | 24 (semeados por migration) |
+| depois da 1ª sincronização | **424** (400 da OpenRouter) |
+| **manuais preservados** | **24** — a garantia de não pisar em curadoria alheia |
+| com ferramentas / com visão | 333 / 237 |
+| 2ª sincronização | 424 (não duplicou) |
+
+### `pnpm test:db` completo — o que nunca havia rodado
+
+```
+✓ install ok        ✓ update ok
+Test Files  72 passed (72)
+Tests  485 passed | 1 skipped (486)
+```
+
+### Três causas de HARNESS que apareceram como falha de produto
+
+Vale registrar porque custaram horas e nenhuma era bug da feature:
+
+1. **`next start` com `output: standalone`.** O Next avisa que não funciona, e o
+   servidor caía depois de ~2 testes — os seguintes falhavam com
+   `ERR_CONNECTION_REFUSED`, que lê como tela quebrada. O caminho certo é
+   `node .next/standalone/server.js` (com `.next/static` e `public` copiados ao
+   lado).
+2. **Servidor morto entre invocações.** Processo iniciado num comando que termina
+   morre com ele. O que funcionou foi deixar o Playwright subir o próprio
+   servidor e rodar **um teste por invocação**.
+3. **MFA e o papel do usuário.** A primeira versão logava como `manager` para
+   escapar do 2FA, e os testes de edição falhavam com "o seletor não existe" — a
+   tela mostra o painel a um manager mas **não os controles**, porque só admin
+   edita provedores. Trocar o papel para simplificar o teste teria provado uma
+   tela que ninguém usa para configurar nada.
+
+E `page.reload()` devolvia `net::ERR_ABORTED; maybe frame was detached` nesta
+máquina; `page.goto` no lugar resolveu.
