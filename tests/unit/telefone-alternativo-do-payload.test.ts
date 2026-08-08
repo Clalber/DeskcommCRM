@@ -78,6 +78,19 @@ describe("telefoneAlternativoDe", () => {
     ).toBeNull();
   });
 
+  it("entrada HOSTIL não trava o processo — ReDoS apontado pelo CodeQL", () => {
+    // A versão anterior usava `/@(s\.whatsapp\.net|c\.us)$/`, e o motor de
+    // regex tenta casar a partir de CADA `@` da string: um payload com milhares
+    // deles fazia o tempo explodir e travava a ingestão de mensagens de TODO
+    // mundo. O valor vem de webhook — é entrada de fora, não dado nosso.
+    const hostil = "@".repeat(50_000) + "x";
+    const inicio = Date.now();
+    expect(telefoneAlternativoDe({ _data: { key: { remoteJidAlt: hostil } } })).toBeNull();
+    // Linear: comparação de sufixo + teto de tamanho. Um segundo é folga
+    // enorme para 50k caracteres, e a versão com regex não terminava.
+    expect(Date.now() - inicio, "a checagem tem de ser linear").toBeLessThan(1000);
+  });
+
   it("aceita a variante @c.us, que o WEBJS usa no lugar de @s.whatsapp.net", () => {
     expect(telefoneAlternativoDe({ _data: { key: { remoteJidAlt: "5531988887777@c.us" } } })).toBe(
       "+5531988887777",

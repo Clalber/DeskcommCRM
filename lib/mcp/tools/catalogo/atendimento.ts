@@ -45,7 +45,18 @@ export const TOOLS_ATENDIMENTO = declararTools([
     // por conta dela — o peso mora na confirmação, que é humana. Marcar
     // `critico` aqui faria a tela pedir cerimônia para uma anotação.
     risco: "atencao",
-    pacotes: ["atender", "vender"],
+    // ⚠️ FORA de "atender", e a razão é o TETO — não o valor da capacidade.
+    //
+    // O pacote "Atender" já exigia 18 vagas e, com as 3 que um agente novo
+    // costuma ter, chega a 21 num teto de 20: ligá-lo já era impossível sem
+    // desligar algo antes (o e2e `capacidades-do-agente` mede exatamente isso).
+    // Acrescentar esta capacidade ali levaria a 22 — pioraria um defeito
+    // conhecido em troca de nada, porque o pacote continuaria não cabendo.
+    //
+    // Fica em "vender", que tem folga, e continua alcançável em qualquer jornada
+    // pelo modo avançado. Quando o teto ou o tamanho do pacote for revisto, esta
+    // linha é candidata natural a voltar.
+    pacotes: ["vender"],
   },
   {
     name: "crm_list_conversations",

@@ -272,10 +272,25 @@ function notifyNameOf(p: WahaPayload): string | null {
 export function telefoneAlternativoDe(p: WahaPayload): string | null {
   const bruto = p._data?.key?.remoteJidAlt ?? p._data?.key?.participantAlt ?? null;
   if (!bruto) return null;
-  // Só sufixos de NÚMERO. `@lid` aqui significaria que o campo repetiu a
-  // identidade opaca, e `@g.us` é grupo — nenhum dos dois é telefone de pessoa.
-  if (!/@(s\.whatsapp\.net|c\.us)$/.test(bruto)) return null;
-  const digitos = bruto.replace(/@.*$/, "").replace(/\D/g, "");
+  // ⚠️ `endsWith`/`indexOf` e NÃO regex — este valor vem de FORA (é campo de
+  // webhook) e a versão com `/@(s\.whatsapp\.net|c\.us)$/` foi apontada pelo
+  // CodeQL como ReDoS de severidade alta: o motor tenta casar a partir de CADA
+  // `@` da string, então um payload com milhares deles faz o tempo explodir e
+  // trava o processo que ingere as mensagens de todo mundo.
+  //
+  // Comparação de sufixo literal é linear e diz exatamente a mesma coisa. Um
+  // teto de tamanho vem antes, porque nem trabalho linear sobre entrada
+  // arbitrária é de graça.
+  //
+  // Só sufixos de NÚMERO: `@lid` significaria que o campo repetiu a identidade
+  // opaca, e `@g.us` é grupo — nenhum dos dois é telefone de pessoa.
+  if (bruto.length > 128) return null;
+  if (!bruto.endsWith("@s.whatsapp.net") && !bruto.endsWith("@c.us")) return null;
+  const semSufixo = bruto.slice(0, bruto.indexOf("@"));
+  let digitos = "";
+  for (const ch of semSufixo) {
+    if (ch >= "0" && ch <= "9") digitos += ch;
+  }
   // Faixa E.164: 8 a 15 dígitos. Fora disso não é número discável, e o CHECK
   // `contacts_phone_e164_format` recusaria — falhar aqui é melhor que abortar a
   // ingestão inteira da mensagem lá na frente.
