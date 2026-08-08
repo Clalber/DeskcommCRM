@@ -426,6 +426,12 @@ export const PONTOS_DE_IA: readonly PontoDeIa[] = [
     papel: "melhorar",
     exige: { tools: true },
     emissor: "lib/ai/runtime/agent.ts",
+    fixo: {
+      razao:
+        "Usa o modelo da versão do agente que você está ensaiando — e é exatamente isso que faz o ensaio valer. " +
+        "Se este ponto tivesse modelo próprio, você testaria uma configuração diferente da que vai publicar, e o " +
+        "ensaio deixaria de prever o comportamento real. Para trocar o modelo, troque na versão do agente.",
+    },
     sintomaDeFalha:
       "O ensaio do agente não devolve resposta, e você precisa publicar às cegas para descobrir se ficou bom.",
     registraEm: "ai_agent_runs",
