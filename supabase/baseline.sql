@@ -8428,7 +8428,7 @@ alter table public.channel_sessions alter column waha_session_name drop not null
 --  falhar ao re-aplicar, e deixaria a tabela sem constraint entre o drop e o add
 --  que funciona.)
 
--- ---- vocabulário do terceiro canal (migration 0116) ----
+-- ---- vocabulário do terceiro canal (migration 0131) ----
 -- Espelho idempotente da 0116. Racional completo no arquivo da migration; o que
 -- importa aqui é POR QUE os dois CHECKs são recriados em vez de criados com
 -- `exception when duplicate_object`: os blocos acima já os criaram na versão de
@@ -8464,7 +8464,7 @@ alter table public.channel_sessions
 comment on column public.channel_sessions.zernio_account_id is
   'Identificador da conta conectada NO INTERMEDIÁRIO (accountId), não o phone_number_id da Meta. É o que endereça envio e webhook. Espelhado em lib/channels/session-ref.ts.';
 
--- ---- o que falta para o terceiro canal ENVIAR (migration 0117) ----
+-- ---- o que falta para o terceiro canal ENVIAR (migration 0132) ----
 -- Espelho idempotente da 0117. Racional completo no arquivo da migration.
 --
 -- `provider_conversation_id`: os dois canais existentes DERIVAM o destinatário

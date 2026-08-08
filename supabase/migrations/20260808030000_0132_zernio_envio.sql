@@ -1,4 +1,4 @@
--- 0117 — o que falta para o terceiro canal ENVIAR.
+-- 0132 — o que falta para o terceiro canal ENVIAR.
 --
 -- Duas colunas, uma em cada tabela, por dois motivos distintos.
 --

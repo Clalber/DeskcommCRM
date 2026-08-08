@@ -1,4 +1,4 @@
--- 0116 — vocabulário do terceiro canal (BSP intermediário) em channel_sessions.
+-- 0131 — vocabulário do terceiro canal (BSP intermediário) em channel_sessions.
 --
 -- O VOCABULÁRIO antes do transporte, de propósito: o tipo TypeScript, a matriz
 -- de capabilities e a coluna de ref nascem juntos, e o adapter chega depois

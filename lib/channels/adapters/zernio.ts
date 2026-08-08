@@ -96,7 +96,19 @@ export const zernioAdapter: ChannelAdapter = {
    * configurada faria o handler gravar `queued` sem motivo.
    */
   isConfigured(): boolean {
-    return zernioCredsFromEnv() !== null || !!process.env.ZERNIO_API_KEY;
+    // SÓ `zernioCredsFromEnv()`, sem o `|| !!process.env.ZERNIO_API_KEY` que
+    // havia aqui. O par que precisa ficar fechado é
+    // `isConfigured() === true  ⟹  zernioCredsFromEnv() !== null`,
+    // porque `send()` devolve `{externalId: null}` SEM lançar quando a credencial
+    // falta (contrato de "canal não conectado"), e o handler só olha se houve
+    // throw: ele grava `status:'sent'` incondicionalmente.
+    //
+    // Com o `||`, um `.env` com só `ZERNIO_API_KEY` (e sem `ZERNIO_ACCOUNT_ID`)
+    // fazia a mensagem ser marcada como ENVIADA com zero chamadas de rede —
+    // medido na triagem, contra o canal oficial como controle, que cai em
+    // `queued`/`meta_not_configured` na mesma má configuração porque
+    // `meta-cloud.ts` mantém o par fechado.
+    return zernioCredsFromEnv() !== null;
   },
 
   async send(envelope: OutboundEnvelope): Promise<{ externalId: string | null }> {

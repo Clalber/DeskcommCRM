@@ -260,7 +260,7 @@ export async function sendMessageHandler(
     channel_session_id: string;
     is_group: boolean;
     group_chat_id: string | null;
-    /** Thread do provider, quando ele endereça por thread própria (migration 0117). */
+    /** Thread do provider, quando ele endereça por thread própria (migration 0132). */
     provider_conversation_id: string | null;
     contacts: { phone_number: string | null; wa_identity: string | null; is_blocked: boolean } | null;
     channel_sessions: (ChannelSessionRef & { status: string; archived_at?: string | null }) | null;
