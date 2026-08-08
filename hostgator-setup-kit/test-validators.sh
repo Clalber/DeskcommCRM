@@ -80,6 +80,54 @@ echo "e-mail"
 ok "aceita e-mail válido"     pass   v_email "voce@empresa.com.br"
 ok "rejeita sem @"            reject v_email "voce.empresa.com.br"          "inválido"
 
+echo "URL do Supabase: a da nuvem E a de um Supabase próprio"
+# O gate de formato exigia `.supabase.co` e matava quem roda Supabase
+# self-hosted com a frase "Ela termina em .supabase.co" — recusa do dado CERTO, e
+# sem saída nenhuma: não existe o que digitar que passe. Agora o formato só exige
+# https://, e a mensagem de recusa precisa ensinar os DOIS casos, senão ela
+# recria o mesmo beco em prosa.
+#
+# FRONTEIRA (o cabeçalho deste arquivo): aqui se mede só o `case` de formato. A
+# chamada a /auth/v1/health é dublada, porque prender esta suíte a DNS é trocar
+# um teste por um oráculo. O que aquela chamada prova de fato — e o que ela NÃO
+# prova — é medição de instalação real; ver o relatório da triagem.
+sburl_ok() {  # sburl_ok <descrição> <pass|reject> <url> [trecho esperado]...
+  local desc="$1" expect="$2" url="$3" out rc want
+  shift 3
+  out="$(bash -c '
+      INSTALL_SH_LIB=1 . ./install.sh
+      set +e
+      # Só o formato está sob teste: para o dublê, a rede responde 200 a todos.
+      curl() { printf 200; }
+      v_supabase_url "$1"' _ "$url" 2>&1)"; rc=$?
+  if [ "$expect" = pass ]; then
+    if [ $rc -eq 0 ]; then printf '  ✓ %s\n' "$desc"
+    else printf '  ✗ %s  (esperava aceitar, rejeitou: %s)\n' "$desc" "$(printf '%s' "$out" | head -1)"; fail=1; fi
+    return
+  fi
+  if [ $rc -eq 0 ]; then printf '  ✗ %s  (esperava rejeitar, aceitou)\n' "$desc"; fail=1; return; fi
+  for want in "$@"; do
+    if ! printf '%s' "$out" | grep -qi -- "$want"; then
+      printf '  ✗ %s  (rejeitou, mas a mensagem não fala de: %s)\n     disse: %s\n' \
+        "$desc" "$want" "$(printf '%s' "$out" | head -1)"; fail=1; return
+    fi
+  done
+  printf '  ✓ %s\n' "$desc"
+}
+sburl_ok "aceita a URL da nuvem"                pass   "https://abcdefghijklmnop.supabase.co"
+# ESTE é o caso que não existia: Supabase próprio, host que não tem .supabase.co.
+sburl_ok "aceita Supabase próprio (self-hosted)" pass  "https://db-crm.exemplo.com.br"
+sburl_ok "aceita host sem ponto (Supabase na rede interna)" pass "https://supabase-interno"
+# Sem https:// continua sendo recusa — é o que quebra o curl logo abaixo, e o
+# caso do `.supabase.co` colado sem esquema tem mensagem própria, mais específica.
+sburl_ok "rejeita .supabase.co colado sem esquema" reject "abcdefghijklmnop.supabase.co" "https://"
+sburl_ok "rejeita http:// (sem TLS)"               reject "http://db-crm.exemplo.com.br" "https://"
+# A mensagem tem de nomear os DOIS mundos. Uma recusa que só fala da nuvem
+# devolve o self-hoster ao beco de onde esta correção o tirou — o defeito
+# migraria do `case` para a prosa, onde não há catraca nenhuma.
+sburl_ok "a recusa ensina o caso da NUVEM"         reject "meu-supabase" "supabase.co"
+sburl_ok "a recusa ensina o caso do Supabase PRÓPRIO" reject "meu-supabase" "servidor"
+
 echo "chaves do Supabase (formato/papel/projeto)"
 ok "rejeita service_role no campo anon" reject v_anon    "$(mkjwt service_role abcdefghijklmnop)" "preciso da 'anon'"
 ok "rejeita anon no campo service_role" reject v_service "$(mkjwt anon abcdefghijklmnop)"         "preciso da 'service_role'"
@@ -91,6 +139,92 @@ ok "rejeita [YOUR-PASSWORD] não trocado" reject v_db_url "postgresql://postgres
 ok "rejeita Direct connection (IPv6)"    reject v_db_url "postgresql://postgres:senha@db.abcdefghijklmnop.supabase.co:5432/postgres"                                "Session pooler"
 ok "rejeita string de outro projeto"     reject v_db_url "postgresql://postgres.zzzzzzzzzzzzzzzz:senha@aws-1-us-west-2.pooler.supabase.com:5432/postgres"          "mesmo projeto"
 ok "rejeita o que não é URL de Postgres" reject v_db_url "aws-1-us-west-2.pooler.supabase.com"                                                                     "começa com postgresql"
+
+echo "connection string: Supabase PRÓPRIO não tem <ref> de projeto"
+# A comparação de projeto lê o `postgres.<ref>` do pooler DA NUVEM. Num Supabase
+# self-hosted não existe <ref> e a role pode ser qualquer uma, então a checagem
+# acusava "a string é do projeto 'crmuser', mas a URL é do projeto 'db-crm'" —
+# frase sobre duas coisas que não existem, e sem saída. Agora ela só roda quando
+# a URL é mesmo da nuvem.
+#
+# O caso da nuvem está aqui de novo (já existe acima) porque a asserção é OUTRA:
+# lá se mede a mensagem, aqui se mede que a recusa acontece ANTES de encostar no
+# banco. É essa fronteira que o `case` novo poderia ter movido sem ninguém ver.
+#
+# O que sobra barrando o dado errado no caminho self-hosted é SÓ o `select 1`, e
+# ele prova que o banco RESPONDE, não que é o banco certo: medido, uma string
+# apontando para o banco de outra pessoa passa. Isto está no relatório da
+# triagem como achado — não é um teste vermelho aqui de propósito.
+db_ok() {  # db_ok <descrição> <pass|reject> <NEXT_PUBLIC_SUPABASE_URL> <string> [trecho esperado]
+  local desc="$1" expect="$2" sburl="$3" conn="$4" want="${5-}" dir out rc tocou
+  dir="$(mktemp -d)"; mkdir -p "$dir/bin"
+  # O `select 1` roda via `docker run postgres:17-alpine`. O dublê não é
+  # conveniência: sem ele um caso de ACEITE baixaria imagem e abriria conexão de
+  # rede, que é justamente o que o cabeçalho deste arquivo promete não fazer.
+  # Ele deixa um rastro para a asserção de vacuidade logo abaixo.
+  printf '#!/usr/bin/env bash\ntouch "%s/tocou-no-banco"\nprintf 1\n' "$dir" > "$dir/bin/docker"
+  chmod +x "$dir/bin/docker"
+  out="$(env PATH="$dir/bin:$PATH" NEXT_PUBLIC_SUPABASE_URL="$sburl" bash -c '
+      INSTALL_SH_LIB=1 . ./install.sh
+      set +e
+      v_db_url "$1"' _ "$conn" 2>&1)"; rc=$?
+  tocou=nao; [ -e "$dir/tocou-no-banco" ] && tocou=sim
+  rm -rf "$dir"
+  if [ "$expect" = pass ]; then
+    if [ $rc -ne 0 ]; then
+      printf '  ✗ %s  (esperava aceitar, rejeitou: %s)\n' "$desc" "$(printf '%s' "$out" | head -1)"; fail=1
+    elif [ "$tocou" != sim ]; then
+      # Vacuidade: aceitar SEM chegar ao psql é outro defeito com a mesma cara de
+      # verde — seria um `return 0` antecipado, e a instalação seguiria com uma
+      # connection string que ninguém testou.
+      printf '  ✗ %s  (aceitou sem nunca tentar conectar — return 0 antecipado?)\n' "$desc"; fail=1
+    else printf '  ✓ %s\n' "$desc"; fi
+    return
+  fi
+  if [ $rc -eq 0 ]; then printf '  ✗ %s  (esperava rejeitar, aceitou)\n' "$desc"; fail=1; return; fi
+  if [ -n "$want" ] && ! printf '%s' "$out" | grep -qi -- "$want"; then
+    printf '  ✗ %s  (rejeitou, mas pelo motivo errado)\n     disse: %s\n' "$desc" "$(printf '%s' "$out" | head -1)"; fail=1; return
+  fi
+  if [ "$tocou" = sim ]; then
+    printf '  ✗ %s  (recusou só DEPOIS de tentar conectar — a guarda é de formulário)\n' "$desc"; fail=1; return
+  fi
+  printf '  ✓ %s\n' "$desc"
+}
+db_ok "próprio: role arbitrária deixa de virar 'projeto'" pass \
+  "https://db-crm.exemplo.com.br" "postgresql://crmuser:senha@db-crm.exemplo.com.br:5432/postgres"
+db_ok "próprio: role 'postgres' segue passando"           pass \
+  "https://db-crm.exemplo.com.br" "postgresql://postgres:senha@db-crm.exemplo.com.br:5432/postgres"
+# A regressão que importa: afrouxar o self-hosted não podia afrouxar a NUVEM,
+# onde o <ref> existe e apontar para o projeto errado é o erro clássico.
+db_ok "NUVEM: projeto cruzado continua barrado antes do banco" reject \
+  "https://abcdefghijklmnop.supabase.co" \
+  "postgresql://postgres.zzzzzzzzzzzzzzzz:senha@aws-1-us-west-2.pooler.supabase.com:5432/postgres" \
+  "mesmo projeto"
+db_ok "NUVEM: mesmo projeto passa"                        pass \
+  "https://abcdefghijklmnop.supabase.co" \
+  "postgresql://postgres.abcdefghijklmnop:senha@aws-1-us-west-2.pooler.supabase.com:5432/postgres"
+# A URL da nuvem NÃO chega sempre terminando em '.supabase.co'. O address bar do
+# navegador entrega barra final; quem copia da documentação traz caminho; quem
+# cola com o mouse traz espaço. Decidir "é nuvem?" pela string inteira desliga a
+# comparação de projeto em silêncio nesses três casos — e o desfecho é o pior
+# possível: o baseline.sql vai para um banco e o app fala com outro, cada um de
+# um projeto. Estes três casos guardam a extração de HOST que impede isso.
+for _sufixo in "/" "/rest/v1" " "; do
+  db_ok "NUVEM com '${_sufixo}' na URL: projeto cruzado continua barrado" reject \
+    "https://abcdefghijklmnop.supabase.co${_sufixo}" \
+    "postgresql://postgres.zzzzzzzzzzzzzzzz:senha@aws-1-us-west-2.pooler.supabase.com:5432/postgres" \
+    "mesmo projeto"
+done
+unset _sufixo
+# E o outro lado da mesma extração: Supabase próprio com barra final continua
+# sendo Supabase próprio — a correção acima não pode reintroduzir a recusa do
+# dado certo que este PR veio tirar.
+db_ok "próprio com barra final segue sem comparar projeto" pass \
+  "https://db-crm.exemplo.com.br/" "postgresql://crmuser:senha@db-crm.exemplo.com.br:5432/postgres"
+# Quem responde a connection string ANTES da URL (ou pula a URL) não tem com o
+# que comparar — e não pode ser barrado por isso.
+db_ok "sem URL respondida ainda: não há o que comparar"   pass \
+  "" "postgresql://postgres.zzzzzzzzzzzzzzzz:senha@aws-1-us-west-2.pooler.supabase.com:5432/postgres"
 
 echo "chaves de IA e senha"
 ok "rejeita chave Anthropic com prefixo errado" reject v_anthropic "sk-proj-abc123" "começa com 'sk-ant-'"
@@ -592,9 +726,15 @@ rt_ok "Traefik em 2 redes → a primeira"          coolify    coolify    "coolif
 rt_ok "modo host NÃO grava a pseudo-rede 'host'" crm_proxy  host       "host "           crm_proxy
 
 echo "proxy reverso: a rede externa existe e serve?"
-vr_ok() {  # vr_ok <descrição> <esperado> <driver encontrado> <rede> <bridge do projeto>
+vr_ok() {  # vr_ok <descrição> <esperado> <driver encontrado> <rede> <bridge do projeto> [attachable]
   local desc="$1" esperado="$2" real
-  real="$(veredito_rede_do_proxy "${3:-}" "${4:-}" "${5:-}")"
+  # O attachable só é passado quando o caso o declara, e isso NÃO é firula de
+  # assinatura: a chamada de 3 argumentos é o call site de antes do Swarm, e ela
+  # tem de continuar recusando overlay. Passar "" sempre apagaria essa medição em
+  # silêncio — a função trata ausente e vazio igual, então os dois casos ficariam
+  # verdes pelo mesmo caminho e o de compatibilidade deixaria de existir.
+  if [ $# -ge 6 ]; then real="$(veredito_rede_do_proxy "${3:-}" "${4:-}" "${5:-}" "$6")"
+  else                  real="$(veredito_rede_do_proxy "${3:-}" "${4:-}" "${5:-}")"; fi
   if [ "$real" = "$esperado" ]; then printf '  ✓ %s\n' "$desc"
   else printf '  ✗ %s  (deu %s, esperava %s)\n' "$desc" "$real" "$esperado"; fail=1; fi
 }
@@ -606,9 +746,83 @@ vr_ok "a bridge do PROJETO ainda não existe → cria" criar       ""      crm_p
 vr_ok "rede de outro que não existe → morre"      inexistente   ""      coolify    crm_proxy
 # TRAEFIK_NETWORK=host escrito à mão: existe, mas não aceita contêiner de bridge.
 vr_ok "driver host → morre"                       driver_errado host    host       crm_proxy
-vr_ok "driver overlay → morre"                    driver_errado overlay traefik    crm_proxy
+# Chamada com 3 argumentos DE PROPÓSITO: é o call site de antes do attachable.
+# Sem este caso, apagar o `att` de garantir_rede_do_proxy (deixando a função
+# intacta e o símbolo presente) não seria pego por teste nenhum.
+vr_ok "driver overlay, chamada de 3 args → morre" driver_errado overlay traefik    crm_proxy
 # Sem bridge do projeto conhecida (chamada defensiva), ausência volta a ser morte.
 vr_ok "sem rede nossa declarada → não inventa"    inexistente   ""      crm_proxy  ""
+
+# ── Overlay do Swarm ────────────────────────────────────────────────────────
+# Numa VPS com Docker Swarm o Traefik vive numa overlay, e a recusa por driver
+# matava a instalação com "ponha a bridge certa em TRAEFIK_NETWORK" — instrução
+# impossível de seguir, porque ali bridge do Traefik não existe. O que separa a
+# overlay que SERVE da que não serve é o --attachable: sem ele um contêiner de
+# compose comum não entra na rede e o `up -d` morre em "could not attach to
+# network". Por isso o veredito lê os DOIS campos, nunca só o driver.
+#
+# Os valores abaixo são o que `docker network inspect -f '{{.Attachable}}'`
+# imprime DE VERDADE (medido no docker 28.3.2): `true` ou `false`, minúsculo e
+# sem aspas, e VAZIO quando a rede não existe (aí o inspect sai != 0). Um teste
+# escrito com "True" ou "1" guardaria um formato que o Docker não emite.
+vr_ok "overlay attachable → serve como bridge"     ok            overlay traefik crm_proxy true
+vr_ok "overlay SEM attachable → morre"             driver_errado overlay traefik crm_proxy false
+# Vazio é a resposta de quem não sabe, não um "pode entrar". Tratar ausência de
+# resposta como permissão é exatamente o falhar-em-verde que este arquivo existe
+# para impedir.
+vr_ok "overlay com attachable vazio → morre"       driver_errado overlay traefik crm_proxy ""
+# O attachable NÃO pode virar critério único: a bridge default do Docker e as que
+# os painéis criam reportam Attachable=false (medido no docker 28.3.2, inclusive
+# na rede `bridge`). Exigi-lo de todo mundo quebraria toda instalação com Traefik
+# em bridge que hoje funciona — que é a maioria.
+vr_ok "bridge com attachable=false segue ok"       ok            bridge  coolify crm_proxy false
+# E o driver continua mandando: attachable=true numa rede `host` não muda que
+# contêiner de bridge não entra nela.
+vr_ok "host com attachable=true continua morrendo" driver_errado host    host    crm_proxy true
+
+echo "proxy reverso: o CALL SITE pergunta o attachable ao Docker"
+# Guardar a função não guarda a correção. Apagar o `att=` e o 4º argumento de
+# `garantir_rede_do_proxy` deixa `veredito_rede_do_proxy` intacta, o símbolo
+# presente e todo grep verde — e a VPS com Swarm volta a morrer, no update.sh
+# que o agent.sh roda sozinho a cada 5 minutos, sem ninguém lendo a tela. É o
+# call site que precisa de rede, e aqui o _common.sh roda de verdade contra um
+# `docker` dublê que responde como um Swarm responderia.
+rede_e2e() {  # rede_e2e <descrição> <segue|morre> <driver> <attachable>
+  local desc="$1" esperado="$2" drv="$3" att="$4" dir real perguntou kit="$PWD"
+  dir="$(mktemp -d)"; mkdir -p "$dir/bin"
+  cat > "$dir/bin/docker" <<STUB
+#!/usr/bin/env bash
+printf '%s\n' "\$*" >> "$dir/chamadas.log"
+if [ "\$1" = network ] && [ "\$2" = inspect ]; then
+  case "\$*" in
+    *Driver*)     printf '$drv\n'; exit 0 ;;
+    *Attachable*) printf '$att\n'; exit 0 ;;
+  esac
+fi
+exit 0
+STUB
+  chmod +x "$dir/bin/docker"
+  # O kit é capturado ANTES do cd: dentro do subshell o \$PWD já é o temporário,
+  # e o _common.sh não seria encontrado — o teste "morreria" por não achar o
+  # arquivo, indistinguível de uma recusa legítima.
+  if (cd "$dir" && env PATH="$dir/bin:$PATH" REVERSE_PROXY=traefik \
+        TRAEFIK_NETWORK=traefik PROJECT_DIR="$dir" \
+        bash -c '. "$1/_common.sh"; garantir_rede_do_proxy' _ "$kit") >/dev/null 2>&1
+  then real=segue; else real=morre; fi
+  # Vacuidade: "segue" só significa alguma coisa se o call site TIVER perguntado
+  # o attachable ao Docker. Sem esta checagem, um call site que parasse de
+  # perguntar — e um veredito que aceitasse overlay de olhos fechados — passaria
+  # com a mesma cara de aprovado.
+  perguntou=nao
+  grep -q 'Attachable' "$dir/chamadas.log" 2>/dev/null && perguntou=sim
+  rm -rf "$dir"
+  if [ "$perguntou" != sim ]; then
+    printf '  ✗ %s  (o call site não perguntou o attachable ao Docker)\n' "$desc"; fail=1
+  elif [ "$real" = "$esperado" ]; then printf '  ✓ %s\n' "$desc"
+  else printf '  ✗ %s  (deu %s, esperava %s)\n' "$desc" "$real" "$esperado"; fail=1; fi
+}
+rede_e2e "overlay attachable: install/update seguem" segue overlay true
+rede_e2e "overlay sem attachable: morre explicando"  morre overlay false
 
 echo "proxy reverso: quanta confiança a eleição merece"
 # A eleição por porta publicada traz a evidência (a coluna Ports diz ':80->'); a
