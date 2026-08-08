@@ -25,7 +25,7 @@ import {
   type LinhaDeBinding,
 } from "@/lib/ai/pontos/resolver";
 import { PAPEIS, PONTOS_DE_IA, PONTO_POR_ID } from "@/lib/ai/pontos/registro";
-import { PROVEDORES } from "@/lib/ai/pontos/provedores";
+import { PROVEDORES, ehProvedorSuportado } from "@/lib/ai/pontos/provedores";
 import { validarBinding } from "@/lib/ai/pontos/validar-binding";
 import { createClient } from "@/lib/supabase/server";
 
@@ -121,8 +121,18 @@ export async function GET(): Promise<Response> {
       exige: ponto.exige,
       sintomaDeFalha: ponto.sintomaDeFalha,
       fixo: ponto.fixo ?? null,
-      /** Escolha do agente publicado — a tela mostra como leitura, com link. */
-      mandadoPeloAgente: PONTOS_DO_AGENTE_PUBLICADO.has(ponto.id),
+      /**
+       * Escolha do agente publicado — a tela mostra como leitura, com link.
+       *
+       * Depende de EXISTIR versão publicada: é a mesma condição que o resolvedor
+       * usa (`resolver.ts` exige `agentePublicado !== null`). Sem o `&&`, uma
+       * instalação recém-feita — nenhum agente publicado ainda — abria o painel
+       * com os DOIS pontos que respondem o cliente sem seletor, dizendo que são
+       * governados por uma versão publicada que não existe e mandando
+       * configurar num lugar vazio. É a primeira tela da feature; travá-la no
+       * primeiro uso é o pior lugar para esse defeito estar.
+       */
+      mandadoPeloAgente: agentePublicado !== null && PONTOS_DO_AGENTE_PUBLICADO.has(ponto.id),
       efetivo: {
         provider: decisao.provider,
         modelId: decisao.modelId,
@@ -156,7 +166,19 @@ export async function GET(): Promise<Response> {
 
 const corpoDoPut = z.object({
   purpose: z.string().min(1),
-  provider: z.string().min(1),
+  // A migration 0127 removeu os CHECKs do banco dizendo que "a garantia de que
+  // a tela não oferece opção inválida passa a morar" na lista de provedores —
+  // mas a lista não era aplicada em NENHUM ponto de escrita. Um PUT direto (e a
+  // API é pública) gravava `provider: "foobar"`, a rota respondia 200, e todo
+  // uso daquele ponto morria em produção com provedor desconhecido. Metade da
+  // defesa transferida e nunca instalada.
+  provider: z
+    .string()
+    .min(1)
+    .refine(ehProvedorSuportado, {
+      message:
+        "provedor não suportado por esta instalação — escolha um da lista em Agente de IA → Provedores",
+    }),
   model_id: z.string().min(1),
   credential_id: z.string().uuid().nullable().optional(),
   base_url: z.string().url().nullable().optional(),

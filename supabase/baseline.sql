@@ -10070,6 +10070,20 @@ create index if not exists ai_purpose_bindings_lookup_idx
 create index if not exists ai_purpose_bindings_credential_idx
   on public.ai_purpose_bindings (credential_id) where credential_id is not null;
 
+-- (migration 0141) A FK da credencial nasceu `on delete cascade`, e isso fazia
+-- rotacionar uma chave — apagar a antiga, cadastrar a nova — APAGAR a linha
+-- inteira do binding, levando junto provider, model_id e base_url. A tela
+-- passava a dizer "Usando o padrão da organização", frase verdadeira sobre um
+-- estado que ninguém escolheu. `set null` desvincula sem apagar: NULL já
+-- significa "use a chave da instalação", que é como todo binding nasce.
+-- Reescrita incondicional (drop + add) para o clone que já tem o CASCADE.
+alter table public.ai_purpose_bindings
+  drop constraint if exists ai_purpose_bindings_credential_id_fkey;
+alter table public.ai_purpose_bindings
+  add constraint ai_purpose_bindings_credential_id_fkey
+  foreign key (credential_id) references public.ai_provider_credentials(id)
+  on delete set null;
+
 alter table public.ai_purpose_bindings enable row level security;
 
 drop policy if exists tenant_isolation_ai_purpose_bindings_all on public.ai_purpose_bindings;
