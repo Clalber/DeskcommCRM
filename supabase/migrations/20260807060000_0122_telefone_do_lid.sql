@@ -108,6 +108,7 @@ create or replace function public.fn_upsert_wa_contact(
 ) returns uuid language plpgsql security definer set search_path = public as $$
 declare
   v_id uuid;
+  v_conflito text;
   v_lid text := nullif(regexp_replace(coalesce(p_lid, ''), '@.*$', ''), '');
   v_phone text := nullif(p_phone, '');
 begin
@@ -148,6 +149,31 @@ begin
   --     A versão anterior só mexia em `display_name` no conflito, com
   --     `coalesce(existente, novo)`: um nome ruim gravado uma vez congelava para
   --     sempre, e telefone ou lid descobertos depois NUNCA entravam.
+  -- O telefone descoberto só sobe para a coluna ÚNICA se ainda não for de outro
+  -- contato vivo da org. Sem esta guarda o caso "contato @lid sem telefone + a
+  -- mesma pessoa já cadastrada por número" (import, pedido, formulário) estoura
+  -- `uniq_contacts_org_phone`; `lib/waha/ingest.ts:343` transforma a exceção em
+  -- `return null` e `:459` descarta a mensagem com o webhook respondendo 200 — a
+  -- mensagem do cliente some, e some de novo a cada mensagem seguinte daquele
+  -- contato. Medido na triagem; não acontece na `main`, é regressão desta
+  -- migration. A etapa 2 (busca por telefone) não protege: ela só roda quando a
+  -- etapa 1 NÃO achou.
+  --
+  -- Fundir os dois contatos seria o desfecho semanticamente certo — é a mesma
+  -- pessoa, e o `remoteJidAlt` é justamente quem afirma isso. Mas fusão é
+  -- IRREVERSÍVEL, e a regra do tempo da doutrina proíbe consumar irreversível no
+  -- tempo da máquina, dentro de um webhook. Aqui o dado não se perde: vai para
+  -- `source_metadata.telefone_em_conflito`, que não é único, e a decisão de
+  -- fundir fica para quem opera.
+  if v_id is not null and v_phone is not null and exists (
+    select 1 from public.contacts
+     where organization_id = p_org and phone_number = v_phone
+       and is_merged_into is null and id <> v_id
+  ) then
+    v_conflito := v_phone;
+    v_phone := null;
+  end if;
+
   if v_id is not null then
     update public.contacts set
       phone_number = coalesce(phone_number, v_phone),
@@ -155,7 +181,8 @@ begin
       source_metadata = source_metadata
         || case when v_lid is not null then jsonb_build_object('waha_lid', v_lid) else '{}'::jsonb end
         || case when p_chat_id is not null then jsonb_build_object('waha_chat_id', p_chat_id) else '{}'::jsonb end
-        || case when nullif(p_notify, '') is not null then jsonb_build_object('notify_name', p_notify) else '{}'::jsonb end,
+        || case when nullif(p_notify, '') is not null then jsonb_build_object('notify_name', p_notify) else '{}'::jsonb end
+        || case when v_conflito is not null then jsonb_build_object('telefone_em_conflito', v_conflito) else '{}'::jsonb end,
       updated_at = now()
     where id = v_id;
     return v_id;
