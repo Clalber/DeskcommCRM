@@ -437,6 +437,41 @@ ruído — e indicador que sobe sem causa se aprende a ignorar.
 E o agregado responde "e daí?" (invariante 5): não "12 correções", mas "12 em Qualificando, 11 delas
 devoluções" — que diz que o assistente qualifica cedo demais, e o dono sabe o que ajustar.
 
+### A prova de tela dos passos 3 e 4 (DoD 12) — feita em 2026-08-08
+
+`tests/e2e/escopo-de-funil-do-agente.spec.ts`, 2/2 verde, e **na lista do workflow** (`e2e.yml`
+linha 243) — prova nova fora do gate seria repetir o defeito que o spec do Operador registra.
+
+A marcação nasce fechada e a tela **explica** em vez de deixar em branco:
+[`evidence/spec-17/escopo-nasce-fechado.png`](evidence/spec-17/escopo-nasce-fechado.png). Depois de
+marcar, salvar e **recarregar**, ela sobrevive — e o funil marcado sem tradução mostra a cobrança do
+passo 4 ao lado do nome:
+[`evidence/spec-17/escopo-sobrevive-ao-reload.png`](evidence/spec-17/escopo-sobrevive-ao-reload.png).
+
+**O que as duas falhas do CI eram, e o que elas ensinaram.** Nenhuma era do produto:
+
+1. `getByRole("button", {name: /operação/i})` nunca resolve — o botão diz **"Organiza o sistema"**.
+   A tela fala a linguagem do dono do negócio; o rótulo não é o nome interno do papel.
+2. O spec logava como **manager**, e só admin edita agente (`readOnly` em `page.tsx`). O sintoma era
+   `check()` estourando num input que existe — lê como bug de UI e é permissão funcionando.
+
+E três defeitos de infraestrutura de teste, consertados na classe:
+
+| # | o quê | por que importava |
+|---|---|---|
+| 1 | `semearCredenciais()` reescreve o `.e2e-creds.json` INTEIRO | é chamado de DENTRO do login (TOTP rotacionado), então derrubava a fixture no meio da execução: o erro aparecia como "rode o seed antes" logo depois de um seed que imprimiu ✅. Afetava os 4 specs que usam o helper |
+| 2 | `seed-e2e-capacidades` mandava rodar o pré-requisito | dentro de uma execução do Playwright ninguém pode "rodar antes" coisa alguma — agora ele roda |
+| 3 | O seed repunha `tool_ids` e não `pipeline_ids` | mesmo defeito que o comentário do próprio arquivo documenta desde a issue #162: a 2ª execução media o resto da 1ª |
+
+**Sabotagem.** Removi `pipeline_ids` da cópia de leitura (`page.tsx`) e previ 1 reprovação no gate
+de colunas: medido **1 failed | 3 passed**. **Não medido:** a sabotagem do caso 2 do e2e (remoção de
+TODAS as cópias, que só a tela pega) — o login com MFA não fecha a janela de 30 s com a máquina a
+load 27, e o gate de colunas cobre apenas a remoção parcial.
+
+**De brinde:** o banco local estava desatualizado e o sintoma foi `PGRST204` num seed. Reaplicar
+`supabase/baseline.sql` em banco existente rodou com **0 erros** — que é o caminho `update.sh` do
+clone, provado sem querer.
+
 ---
 
 ## O épico, em uma tabela
@@ -478,21 +513,21 @@ devoluções" — que diz que o assistente qualifica cedo demais, e o dono sabe 
 **Consequência:** `pnpm test:db` e toda prova de tela ficaram indisponíveis a partir daí. O que
 continua medido: `typecheck`, `lint` e `pnpm test:unit`.
 
-**O que fica pendente de medição quando o Docker voltar:**
+**O que ficou pendente na época — e como fechou (2026-08-08, Docker de volta):**
 
-| # | o quê |
-|---|---|
-| 1 | `veto-de-escopo-aparece.test.ts` (invariante novo, nunca rodou) |
-| 2 | `escopo-de-funil-schema.test.ts` sob suíte completa |
-| 3 | Prova de tela dos passos 3, 4 e 5 |
-| 4 | `pnpm test:db` completo depois das migrations 0125 |
+| # | o quê | desfecho |
+|---|---|---|
+| 1 | `veto-de-escopo-aparece.test.ts` (invariante novo, nunca rodou) | ✅ verde na suíte |
+| 2 | `escopo-de-funil-schema.test.ts` sob suíte completa | ✅ verde na suíte |
+| 3 | Prova de tela dos passos 3, 4 e 5 | ✅ passos 3 e 4 (spec acima, 2 evidências). **Passo 5 segue sem tela** — a correção humana é medida por invariante, não por jornada |
+| 4 | `pnpm test:db` completo depois da 0125 | ✅ **81 arquivos, 574 passed \| 1 skipped**, exit 0, medido em `ac7f36d6` com árvore limpa |
 
 ### Ainda em aberto no passo 3
 
 | # | o quê | por quê |
 |---|---|---|
 | 1 | O aviso na Central quando a IA é vetada | `fora_do_escopo` **não** pode entrar em `MIRROR_WARN_ONLY`: seria 100% dos movimentos vetados em silêncio no dia 1, e o dono leria como "a IA quebrou" |
-| 2 | Prova de tela (DoD 12) | salvar → recarregar → conferir, e o spec do Operador **não roda em CI nenhum** hoje |
+| 2 | ~~Prova de tela (DoD 12)~~ | ✅ **fechado em 2026-08-08**: `escopo-de-funil-do-agente.spec.ts` faz salvar → recarregar → conferir, e entrou na lista do `e2e.yml`. (O spec do Operador, esse sim, continua fora de CI nenhum) |
 | 3 | Escopo vale só para ESCRITA | declarado, não esquecido: a superfície de descoberta continua aberta (o modelo lê os negócios da org). Filtrar leitura é outro dia, atrás de medição do que quebra no contexto do turno |
 | 4 | Funil marcado que é ARQUIVADO | `uuid[]` não tem cascade; a tela não mostra arquivado, então a marcação pode mentir sobre quantos funis valem |
 
