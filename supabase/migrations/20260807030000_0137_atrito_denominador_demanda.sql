@@ -4,7 +4,7 @@
 -- como "entre as que passaram por atendimento humano". Era honesto, e era
 -- provisório: media só as demandas que escalaram, e a maioria não escala.
 --
--- Com `demandas` (migration 0119) o denominador passa a ser o que o propósito
+-- Com `demandas` (migration 0136) o denominador passa a ser o que o propósito
 -- promete resolver. A tela deixa de precisar da ressalva de escopo.
 --
 -- ## O que muda de leitura, e por que isso É a melhoria

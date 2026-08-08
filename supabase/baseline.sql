@@ -9169,7 +9169,7 @@ comment on column public.ai_invocations.agent_id is
 -- ---- Índice de Atrito + DEMANDAS (migrations 0116–0120) ----
 -- Spec 17 + doutrina cap. 5. `demandas` é a unidade do PROPÓSITO: contato é
 -- quem pede, conversa é por onde se fala, demanda é o que precisa acabar.
--- O índice usa demandas como denominador (0120) e publica o invariante 4 como
+-- O índice usa demandas como denominador (0137) e publica o invariante 4 como
 -- número (demandas abertas sem próximo passo). Idempotente.
 
 create index if not exists idx_conversations_org_silencio
@@ -9649,7 +9649,7 @@ grant  execute on function public.fn_atrito_metrics(uuid, timestamptz, timestamp
 
 
 
--- ---- demanda nasce no ponto de entrada (migration 0121) ----
+-- ---- demanda nasce no ponto de entrada (migration 0138) ----
 -- Sem isto `demandas` só teria o passado derivado: peça que só recebe é ilha
 -- pelo invariante 1. Trigger SQL puro, sem I/O externo — a proibição da
 -- doutrina é HTTP dentro da transação, e `trg_messages_emit_event` já usa este

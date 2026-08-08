@@ -312,7 +312,7 @@ Zero erros de console. As métricas das Fases 1–3 seguem intactas
 ### ⚠️ PENDENTE nesta fase — resolvido depois, ver abaixo
 
 - ~~**Passo 3 do cap. 5**: criar demanda no ponto de entrada real.~~ **FEITO** na
-  migration 0121 (commit `a1efbf17`) — trigger `fn_demanda_abre_no_inbound`.
+  migration 0138 (commit `a1efbf17`) — trigger `fn_demanda_abre_no_inbound`.
 - ~~**Passo 4 do cap. 5**: migrar os consumidores.~~ **Radar de Risco** (tela) e
   **capacidade da IA** migrados; ver as duas seções de passo 4 mais abaixo.
 
@@ -324,7 +324,7 @@ Zero erros de console. As métricas das Fases 1–3 seguem intactas
 embora o comportamento errado fosse real (medido no banco: com zero demanda
 aberta, um outbound passava a criar demanda, 0 → 1).
 
-**Causa raiz — e não era o teste:** o bloco da migration 0121 estava inserido
+**Causa raiz — e não era o teste:** o bloco da migration 0138 estava inserido
 **quatro vezes** no `baseline.sql`. Meu script de atualização usou
 `str.replace(marca, ...)` **sem `count=1`**, e a marca escolhida
 (`notify pgrst, 'reload schema';`) aparece 4× no arquivo. A sabotagem editava a
@@ -975,7 +975,7 @@ A terceira é a mais importante: ela demonstra que promover a função a definer
 | 4 | `page.fill()` no login não logava ("Email inválido") | O form usa react-hook-form, que escuta eventos de teclado; `fill` seta o valor sem disparar o que ele espera | ✅ `pressSequentially` — **bug da sonda, não do app** |
 | 5 | `page.evaluate(() => …)` quebrava com `__name is not defined` | O esbuild do `tsx` injeta helpers que não existem no contexto da página | ✅ medição passada como **string** |
 | 6 | Migration nasceu como `0115`, número já tomado | A `0115` existe na branch `feat/tres-papeis-do-agente` | ✅ renumerada para `0116` — **pego pelo hook de pre-commit**, não por mim |
-| 7 | `0116` colidiu DE NOVO, agora com a `0116_definer_nova_nasce_exposta` do PR #189 | O #189 entrou na `main` primeiro; cada PR passava sozinho e o segundo derrubaria `manifest-x-migrations`, que roda no `verify` obrigatório | ✅ renumeradas para `0133`/`0134`/`0135` na triagem — a linha 6 acima fica como está, porque descreve o que aconteceu **naquele** momento |
+| 7 | `0116` colidiu DE NOVO, agora com a `0116_definer_nova_nasce_exposta` do PR #189 | O #189 entrou na `main` primeiro; cada PR passava sozinho e o segundo derrubaria `manifest-x-migrations`, que roda no `verify` obrigatório | ✅ renumeradas para `0133`–`0138` na triagem (as seis, para o NNNN voltar a acompanhar o timestamp: só a `0116` colidia, mas renumerar três de seis deixaria as mais antigas com os números mais altos) — a linha 6 acima fica como está, porque descreve o que aconteceu **naquele** momento |
 
 ### 🐛 Achado PRÉ-EXISTENTE (fora do escopo, não é regressão desta branch)
 

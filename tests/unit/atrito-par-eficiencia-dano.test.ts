@@ -223,7 +223,7 @@ describe("o invariante 4 vira número (Fase 4)", () => {
 
   it("demandas abertas sem próximo passo é publicado", () => {
     // Vazamento invisível é o que a doutrina inteira combate. Antes da entidade
-    // de demanda (0119) este número não era sequer enumerável.
+    // de demanda (0136) este número não era sequer enumerável.
     const custo = pares.find((p) => p.chave === "custo_humano")!;
     expect(custo.danos.map((d) => d.chave)).toContain("demandas_sem_proximo_passo");
   });

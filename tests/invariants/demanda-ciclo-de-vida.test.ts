@@ -3,7 +3,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { GOV_ORG, GOV_SESSION, lastLine, seedGov, sql } from "./gov-helpers";
 
 /**
- * A DEMANDA NASCE NA ENTRADA — passo 3 do cap. 5 (migration 0121).
+ * A DEMANDA NASCE NA ENTRADA — passo 3 do cap. 5 (migration 0138).
  *
  * Sem este trigger, `demandas` teria só o passado derivado pela 0119 e pararia
  * de crescer: peça que só recebe é ilha pelo invariante 1 da própria doutrina,
@@ -23,7 +23,7 @@ import { GOV_ORG, GOV_SESSION, lastLine, seedGov, sql } from "./gov-helpers";
  * ## Os 5 casos estão PROVADOS por sabotagem
  *
  * O caso 5 ficou um tempo verde sob sabotagem, e a causa não era o teste: o
- * bloco da migration 0121 tinha sido inserido QUATRO vezes no `baseline.sql`
+ * bloco da migration 0138 tinha sido inserido QUATRO vezes no `baseline.sql`
  * (um `str.replace` sem `count=1` sobre uma marca que aparece 4× no arquivo).
  * A sabotagem editava a primeira cópia e as três `create or replace` seguintes
  * restauravam a função. Corrigido em migration própria; com uma única
