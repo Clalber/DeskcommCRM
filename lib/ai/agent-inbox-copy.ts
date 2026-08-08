@@ -42,6 +42,8 @@ export const KIND_LABEL = {
   // "Promessa não cumprida" é a única frase que faz o dono do negócio agir: do
   // lado de lá existe uma pessoa que ouviu um compromisso e está aguardando.
   promise_unfulfilled: "O assistente prometeu algo a um cliente e ninguém cumpriu ainda",
+  contact_proposal_expired:
+    "Uma informação que o assistente ouviu de um cliente venceu sem ninguém conferir",
   other: "Aviso do assistente",
 } as const satisfies Record<InboxKind, string>;
 

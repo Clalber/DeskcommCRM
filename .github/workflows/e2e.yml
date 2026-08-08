@@ -218,6 +218,8 @@ jobs:
             rbac-roles.spec.ts inbox-scope.spec.ts reset-password-mfa.spec.ts \
             degradacao-silenciosa.spec.ts vps-webhook-outbound-ssrf.spec.ts \
             kanban-owner-filter.spec.ts queue-assign.spec.ts \
+            conversa-vira-lead.spec.ts contato-salva-email.spec.ts \
+            confirmar-dado-do-contato.spec.ts \
             risk-radar.spec.ts invite-lifecycle.spec.ts system-update.spec.ts
         env:
           # Só o que NÃO vem do `.env.e2e`: isto é ajuste de CI, não config do
@@ -237,7 +239,8 @@ jobs:
             followup-builder.spec.ts followup-queue.spec.ts \
             distribuicao-atendimento.spec.ts followup-journey.spec.ts \
             webhooks.spec.ts \
-            capacidades-do-agente.spec.ts
+            capacidades-do-agente.spec.ts \
+            escopo-de-funil-do-agente.spec.ts
         env:
           # Só o que NÃO vem do `.env.e2e`: isto é ajuste de CI, não config do
           # produto. CI = 1 IP para todos os specs, e o teto de produção
