@@ -104,6 +104,18 @@ function colunasDoSelect(select: string): string[] {
 }
 
 /** A linha como o PostgREST a devolveria: só o que o `select` pediu. */
+/**
+ * Colunas de DENTRO de um embed (`contacts:contact_id(phone_number, wa_lid)`).
+ * `colunasDoSelect` devolve só o primeiro nível e descarta o miolo do embed —
+ * então sem isto não há como aferir que uma coluna do embed foi pedida, e foi
+ * exatamente ali que a perda passou despercebida.
+ */
+function colunasDoEmbed(select: string, apelido: string): string[] {
+  const m = new RegExp(`${apelido}\\s*:[^(]*\\(([^)]*)\\)`).exec(select);
+  if (m === null) return [];
+  return m[1]!.split(",").map((c) => c.trim()).filter(Boolean);
+}
+
 function projetar(linha: Row, select: string): Row {
   const querem = new Set(colunasDoSelect(select));
   return Object.fromEntries(Object.entries(linha).filter(([k]) => querem.has(k)));
@@ -124,7 +136,7 @@ function conversaCompleta(forma: Forma = {}): Row {
     is_group: false,
     group_chat_id: null,
     provider_conversation_id: forma.providerConversationId ?? null,
-    contacts: { phone_number: "+595991733685", wa_identity: null, is_blocked: false },
+    contacts: { phone_number: "+595991733685", wa_identity: null, wa_lid: "999888", is_blocked: false },
     channel_sessions: {
       provider,
       waha_session_name: provider === "waha" ? "default" : null,
@@ -218,6 +230,32 @@ describe("o projetor do dublê é discriminante (guarda de vacuidade)", () => {
       "provider_conversation_id",
     );
     expect(projetar(linha, "id, group_chat_id")).not.toHaveProperty("provider_conversation_id");
+  });
+
+  /**
+   * O `wa_lid` no embed de contatos NÃO tinha guarda nenhuma — medido nesta
+   * árvore: removê-lo do `select` passa `pnpm typecheck` (a linha é consumida por
+   * `conv as unknown as Joined`, então o compilador não a vê) e passa a suíte unit
+   * INTEIRA: 2199 casos, exit 0.
+   *
+   * A linha 243 é disputada — o #200 acrescentou `provider_conversation_id` e o
+   * #194 acrescentou `wa_lid`, no mesmo ponto. O git obriga a escolher e escolher
+   * um lado não emite sinal. O `provider_conversation_id` já tinha o dele; este é
+   * o do outro lado.
+   *
+   * Afere que a coluna foi PEDIDA, não onde ela aparece: reordenar o `select`
+   * continua verde, apagar a coluna fica vermelho.
+   */
+  it("o embed de contatos pede `wa_lid` — sem ele o contato @lid perde a correlação", async () => {
+    vi.stubEnv("ZERNIO_ACCOUNT_ID", CONTA);
+    vi.stubEnv("ZERNIO_API_KEY", "sk_env");
+    vi.stubGlobal("fetch", respostaOk("wamid.LID"));
+    const { supabase, estado } = makeSupabase(conversaCompleta({ providerConversationId: THREAD }));
+    await sendMessageHandler(supabase, ctx, texto());
+    expect(estado.selects.length, "guarda de vacuidade: o handler consultou a conversa").toBeGreaterThan(0);
+    expect(estado.selects.every((sel) => colunasDoEmbed(sel, "contacts").includes("wa_lid"))).toBe(
+      true,
+    );
   });
 
   it("embed entra pelo APELIDO, como o PostgREST devolve", () => {
