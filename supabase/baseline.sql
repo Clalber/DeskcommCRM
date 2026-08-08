@@ -8494,6 +8494,27 @@ alter table public.channel_sessions
 comment on column public.channel_sessions.zernio_token_encrypted is
   'API key do intermediário, cifrada por fn_encrypt_oauth. Por SESSÃO (não por instalação) — mesma decisão da 0087 para o canal oficial.';
 
+-- ---- carimbo do lookup de telefone (migration 0119) ----
+-- Espelho idempotente da 0119. Racional completo no arquivo da migration.
+--
+-- O canal identifica quem escreve por id opaco, e a tradução para telefone é
+-- povoada por ATIVIDADE — hoje não sabe, semana que vem talvez. Sem carimbar a
+-- tentativa, a varredura reprocessaria sempre os mesmos primeiros N e os do fim
+-- da fila nunca seriam perguntados.
+--
+-- NULLABLE de propósito: NULL = nunca perguntado; com valor e telefone ainda
+-- nulo = o canal não sabia na ocasião. Um `not null default now()` colapsaria
+-- os dois e faria contato novo nascer como "já tentado".
+alter table public.contacts
+  add column if not exists phone_lookup_at timestamptz;
+
+comment on column public.contacts.phone_lookup_at is
+  'Última vez que se PERGUNTOU ao canal o telefone por trás da identidade opaca. NULL = nunca perguntado. Com valor e phone_number ainda null = o canal não sabia na ocasião.';
+
+create index if not exists idx_contacts_phone_lookup_pendente
+  on public.contacts (organization_id, phone_lookup_at nulls first)
+  where phone_number is null;
+
 comment on column public.channel_sessions.provider is
   'Canal desta sessão. Vocabulário espelhado em lib/channels/types.ts → ChannelProvider (cobrado por tests/invariants/vocabulario-banco-x-typescript.test.ts).';
 

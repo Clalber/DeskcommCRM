@@ -62,6 +62,22 @@ export const wahaAdapter: ChannelAdapter = {
     return client.getProfilePictureUrl(input.sessionRef, input.recipient);
   },
 
+  /**
+   * `lid:123…` → `+5959…`, quando a tabela de tradução do canal já souber.
+   *
+   * Só para identidade OPACA: `phone:` já traz o número, e perguntar seria
+   * gastar uma chamada para receber de volta o que já se tem.
+   */
+  async resolvePhoneForIdentity(input: {
+    sessionRef: string;
+    identity: string;
+  }): Promise<string | null> {
+    if (!input.identity.startsWith("lid:")) return null;
+    const client = getWahaClient();
+    if (!client) return null;
+    return client.resolvePhoneForLid(input.sessionRef, input.identity.slice("lid:".length));
+  },
+
   async send(envelope: OutboundEnvelope): Promise<{ externalId: string | null }> {
     const client = getWahaClient();
     // Sem env de WAHA o comportamento atual é NOOP, não erro: a UI mostra o

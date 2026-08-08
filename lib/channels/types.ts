@@ -145,6 +145,19 @@ export interface ChannelAdapter {
   echoExternalIds?(input: { externalId: string; recipient: string }): string[];
 
   /**
+   * O telefone por trás de um identificador opaco, quando o canal souber.
+   *
+   * OPCIONAL: nem todo canal tem identidade opaca, e nem todo que tem sabe
+   * traduzir. `null` significa "ainda não sei" — não "não existe" —, então quem
+   * chama pode tentar de novo depois sem tratar como erro.
+   *
+   * Existe porque um contato identificado só por id opaco fica sem número na
+   * tela, e o atendente não sabe para quem está falando. Quem pergunta não
+   * precisa saber QUAL canal traduz: testa a presença do método.
+   */
+  resolvePhoneForIdentity?(input: { sessionRef: string; identity: string }): Promise<string | null>;
+
+  /**
    * Gestão das definições aprovadas — criar, editar, apagar.
    *
    * OPCIONAL pelo mesmo motivo dos dois métodos acima: nem todo canal expõe
