@@ -418,6 +418,23 @@ Cada linha da tabela acima tem a imagem correspondente:
 | A troca de modelo valeu | `evidence/provedores/05-troca-valeu.png` |
 | Ponto que exige ferramentas | `evidence/provedores/06-exige-ferramentas.png` |
 | Tela de execuções | `evidence/provedores/07-execucoes.png` |
+| Instalação sem agente publicado, com os dois pontos principais destravados | `evidence/provedores/08-sem-agente-publicado-destravado.png` |
+
+A oitava é de 2026-08-08 e registra um conserto, não a feature: `mandadoPeloAgente`
+era incondicional, e numa instalação recém-feita — nenhuma versão de agente
+publicada, que é o estado de quem acabou de instalar — o painel mostrava
+`agent_turn` e `operator_turn` **sem seletor**, dizendo que são governados por
+uma versão publicada que não existe e mandando configurar num lugar vazio. A
+condição passou a ser a mesma do resolvedor (`agentePublicado !== null`), e a
+imagem mostra "Responder o cliente" e "Trabalhar o funil" com Provedor, Modelo,
+Chave e o botão Salvar.
+
+Na mesma execução apareceu, no log do servidor, o que nenhum gate via:
+`[audit] insert error invalid input syntax for type uuid: "stage_classifier"`.
+`api_audit_log.resource_id` é uuid e a rota mandava o `purpose` — o insert
+falhava com 22P02 e o audit, sendo fire-and-forget, engolia. Nenhuma troca de
+modelo era auditada. Corrigido no mesmo dia (o `resourceId` passa a ser o id da
+linha), com guarda em `tests/unit/provedores-x-registry.test.ts`.
 
 E a confirmação no banco, que é onde o runtime lê:
 
