@@ -8619,6 +8619,14 @@ create trigger trg_llm_calls_budget
   after insert on public.llm_calls
   for each row execute function public.fn_update_budget_consumption();
 
+-- ESTE RECOMPUTO NÃO É O QUE VALE, e não dá para consertá-lo aqui. Desde a 0130
+-- as linhas de `ai_invocations` são copiadas para `llm_calls`, então somar as
+-- duas tabelas inteiras conta a MESMA linha duas vezes; a correção precisa da
+-- coluna `legacy_invocation_id`, que só nasce lá embaixo, no bloco da 0130 —
+-- referenciá-la aqui derruba o install com `column c2.legacy_invocation_id does
+-- not exist` (medido). Quem dá a última palavra é o bloco da migration 0140,
+-- depois do backfill: ele ATRIBUI o gasto real do mês, contando cada linha uma
+-- vez só, e o valor deste bloco é sobrescrito.
 insert into public.ai_budgets (organization_id, current_month_consumed_cents)
 select o.id,
        coalesce((select sum(cost_cents) from public.llm_calls c
@@ -10237,6 +10245,38 @@ comment on table public.ai_invocations is
   'DEPRECIADA na migration 0130 — a telemetria de IA vive em llm_calls. Mantida como histórico '
   '(a doutrina do repo é depreciar, não deletar) e porque as linhas antigas são a prova do que foi '
   'gasto. Nada escreve mais aqui; leituras novas usam llm_calls.';
+
+-- ---- o orçamento do mês não conta o backfill como gasto novo (migration 0140) ----
+--
+-- Este bloco tem de vir DEPOIS do backfill da 0130, e é por isso que ele está
+-- aqui e não junto do trigger da 0095. `fn_update_budget_consumption` soma
+-- `NEW.cost_cents` sem olhar a data, e o backfill é um INSERT: cada linha
+-- migrada — inclusive as de meses passados — era somada ao consumo do mês
+-- corrente. Medido em pg17: gasto real do mês 1600, contador em 3000 depois de
+-- um `update.sh` e estabilizando em 2600, nunca em 1600. Numa organização sem
+-- gasto no mês, o contador saltava de 0 para o histórico inteiro — 200% do
+-- limite padrão no caso medido — e a IA do clone podia parar sem nenhuma
+-- chamada nova.
+--
+-- A correção é dar a ÚLTIMA PALAVRA a um recomputo que ATRIBUI (não incrementa)
+-- o gasto real do mês, contando cada linha uma vez só. Vale qualquer que tenha
+-- sido o estado deixado pelo trigger, e a re-aplicação chega no mesmo número.
+-- Racional completo em supabase/migrations/20260808050000_0140_*.sql.
+insert into public.ai_budgets (organization_id, current_month_consumed_cents)
+select o.id,
+       coalesce((select sum(c.cost_cents) from public.llm_calls c
+                 where c.organization_id = o.id
+                   and c.created_at >= date_trunc('month', now())), 0)
+     + coalesce((select sum(i.cost_cents) from public.ai_invocations i
+                 where i.organization_id = o.id
+                   and i.created_at >= date_trunc('month', now())
+                   and not exists (
+                     select 1 from public.llm_calls c2 where c2.legacy_invocation_id = i.id
+                   )), 0)
+from public.organizations o
+on conflict (organization_id) do update
+set current_month_consumed_cents = excluded.current_month_consumed_cents,
+    updated_at = now();
 -- ---- telefone do contato @lid (migration 0122) ----
 -- O kit self-host aplica SÓ este arquivo — no install (banco novo, ON_ERROR_STOP)
 -- e no update (banco existente, SEM a flag). Tudo abaixo é idempotente e
