@@ -238,15 +238,30 @@ async function avisarMidiaNaoLida(
       .maybeSingle();
     if (jaAberto) return;
 
-    await admin.from("agent_inbox_items").insert({
+    // `warn`, não `warning`: o CHECK de `agent_inbox_items.severity` aceita
+    // info|warn|critical. Com o valor errado o INSERT era recusado com 23514 —
+    // e o aviso NUNCA abria. A Central ficava vazia exatamente no caso que esta
+    // função existe para tornar visível.
+    const { error } = await admin.from("agent_inbox_items").insert({
       organization_id: organizationId,
       kind: "midia_nao_lida",
-      severity: "warning",
+      severity: "warn",
       title: `O agente não conseguiu ler ${tipo} que o cliente enviou`,
       body:
         `Motivo: ${motivo}. Enquanto isso, o agente responde avisando que não conseguiu abrir o arquivo. ` +
         `Para resolver, ajuste o modelo desse ponto em Agente de IA → Provedores, ou cadastre a chave necessária em Credenciais.`,
     });
+    // E o retorno é CONFERIDO. O supabase-js devolve `{ error }` em vez de
+    // lançar, então o `catch` abaixo era inalcançável para erro de banco: a
+    // recusa era engolida, o worker devolvia "ok" e nada era logado. Um aviso
+    // que falha em silêncio é pior que aviso nenhum — ele faz o próximo
+    // diagnóstico começar da premissa errada.
+    if (error) {
+      logger.warn("[media-derive] o banco recusou o aviso de mídia não lida", {
+        organization_id: organizationId,
+        error: error.message,
+      });
+    }
   } catch (err) {
     logger.warn("[media-derive] não consegui abrir o aviso de mídia não lida", {
       organization_id: organizationId,
