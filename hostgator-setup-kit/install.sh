@@ -1440,6 +1440,23 @@ begin
     insert into public.organizations (slug, display_name, legal_name, created_by)
     values ('minha-empresa','Minha Empresa','Minha Empresa', v_uid) returning id into v_org;
   end if;
+  -- O provedor que a pessoa ESCOLHEU passa a valer no banco. O trigger
+  -- fn_seed_org_llm_defaults semeia 'anthropic' fixo — o que estava certo
+  -- enquanto a Anthropic era a única chave que este script pedia. Desde que
+  -- ele pergunta qual IA vai atender, ignorar a resposta significava: quem
+  -- escolhe OpenRouter instala, cadastra a chave, e todo caminho que passa
+  -- pelo agent-engine resolve 'anthropic' — sem chave da Anthropic, erro de
+  -- "IA não configurada" em tudo, mandando cadastrar a chave que ele decidiu
+  -- não usar. Só o provider: o modelo padrão fica com o que o trigger semeou
+  -- até alguém escolher em Agente de IA -> Provedores, porque adivinhar um id
+  -- de modelo de outro provedor aqui seria inventar um valor não verificado.
+  if '${AI_PROVIDER}' not in ('', 'anthropic') then
+    update public.organizations
+       set settings = jsonb_set(
+             coalesce(settings, '{}'::jsonb), '{llm,provider}',
+             to_jsonb('${AI_PROVIDER}'::text), true)
+     where id = v_org;
+  end if;
   insert into public.user_organizations (user_id, organization_id, role, accepted_at)
   values (v_uid, v_org, 'admin', now())
   on conflict (user_id, organization_id) do update set role='admin', revoked_at=null;

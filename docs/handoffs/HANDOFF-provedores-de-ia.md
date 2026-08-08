@@ -353,8 +353,30 @@ re-execução o shell não as tem (chave opcional não é perguntada no fluxo), 
 são reescritas **vazias**. A `OPENROUTER_API_KEY` que a pessoa configurou à mão
 era apagada por uma linha que parecia só repassar o valor.
 
-Consertado recarregando o `.env` atual no ambiente antes de montar o novo.
-Provado com `.env` real em 3 re-execuções: as duas chaves sobrevivem, 1× cada.
+**Corrigido em 2026-08-08 — este parágrafo descrevia um mecanismo que já não
+existe.** Ele dizia: *"consertado recarregando o `.env` atual no ambiente antes
+de montar o novo; provado com `.env` real em 3 re-execuções"*. Esse `set -a; .
+./.env; set +a` foi **removido** do `install.sh` logo depois, porque ele
+DESFAZIA a entrevista: a pessoa corrigia um valor errado na tela e o `.`
+sobrescrevia com o antigo do disco. A justificativa que ele carregava também era
+falsa — `install.sh:674` já faz `load_env .env` e `_common.sh:266` já faz
+`printf -v` + `export`, antes da entrevista.
+
+O mecanismo que ficou é outro: o laço `PRESERVADAS` compara cada linha do `.env`
+atual contra a lista de variáveis conhecidas, extraída do PRÓPRIO script
+(`grep -oE "^\s*envq [A-Z_]+" "$KIT_DIR/install.sh"`) — e o `$KIT_DIR` no lugar
+de `"$0"` é o que faz isso funcionar depois do `cd`, que era o defeito da 2ª
+execução por caminho relativo.
+
+A alegação das "3 re-execuções" media o código antigo e **não vale mais**. O que
+vale hoje está no CI: `hostgator-setup-kit/test-validators.sh` passou a rodar no
+job `verify` (via `pnpm test:shell`), com um caso por provedor que afere, no
+`--yes`, que o `.env` sai inteiro e que a chave configurada à mão sobrevive.
+
+*Lição, e ela não é sobre o instalador:* código tem catraca, prosa não. Este
+parágrafo continuou afirmando uma prova por dois commits depois de o mecanismo
+ter sido trocado — e o handoff é o documento de retomada da frente, ou seja, o
+lugar onde a afirmação falsa custa mais.
 
 ### O que fica aberto, e por quê
 
