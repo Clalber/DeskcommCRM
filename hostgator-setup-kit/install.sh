@@ -1040,6 +1040,61 @@ umask 077
 # (`source .env && curl ...`). O Docker Compose remove as aspas ao carregar,
 # então o contêiner recebe exatamente o valor digitado.
 
+# ── Preserva o que o instalador NÃO conhece ────────────────────────────────
+#
+# O bloco abaixo fecha com `} > .env`, que é TRUNCANTE: ele reescreve o arquivo
+# inteiro a partir de uma lista fechada de chaves. Quem acrescentou qualquer
+# variável à mão — uma chave de provedor de IA que o kit ainda não pergunta, um
+# knob de modelo, um endpoint próprio — PERDIA tudo ao re-rodar o script. E o
+# README vende o install.sh como idempotente, então re-rodar é exatamente o que
+# se espera de quem quer corrigir um dado.
+#
+# O sintoma é dos piores: a instalação continua subindo, sem erro nenhum, e só
+# depois alguém descobre que o agente voltou ao provedor padrão.
+#
+# Aqui as chaves desconhecidas são lidas do .env atual e reemitidas no fim do
+# arquivo novo. Comparação por NOME da variável, contra a lista que este script
+# escreve — assim uma chave nova que o kit passe a conhecer deixa de ser
+# "alheia" sozinha, sem ninguém precisar manter uma segunda lista.
+PRESERVADAS=""
+if [ -f .env ]; then
+  # ── Antes de tudo: recarrega o .env atual no ambiente ────────────────────
+  #
+  # Este é o furo MAIOR, e ele é invisível: várias chaves da lista fechada são
+  # escritas como `envq X "${X:-}"` — o valor da variável de SHELL. Numa
+  # re-execução o shell não tem essas variáveis (o instalador só as coleta no
+  # fluxo interativo, e chave opcional não é perguntada), então elas são
+  # reescritas VAZIAS. Ou seja: a chave da OpenRouter que a pessoa configurou à
+  # mão é APAGADA por uma linha que parecia estar só repassando o valor.
+  #
+  # Carregar o .env atual primeiro faz `${X:-}` cair de volta no valor que já
+  # existia, que é o comportamento que "idempotente" promete no README. O `set
+  # -a` exporta tudo que vier do arquivo; `set +a` fecha logo em seguida para
+  # não vazar para o resto do script.
+  set -a
+  # shellcheck disable=SC1091
+  . ./.env 2>/dev/null || true
+  set +a
+
+  CONHECIDAS="$(grep -oE "^\s*envq [A-Z_][A-Z0-9_]*" "$0" | awk '{print $2}' | sort -u)"
+  while IFS= read -r linha; do
+    case "$linha" in
+      ''|'#'*) continue;;
+    esac
+    nome="${linha%%=*}"
+    case "$nome" in
+      *[!A-Za-z0-9_]*|'') continue;;
+    esac
+    if ! printf '%s\n' "$CONHECIDAS" | grep -qx "$nome"; then
+      PRESERVADAS="${PRESERVADAS}${linha}
+"
+    fi
+  done < .env
+  if [ -n "$PRESERVADAS" ]; then
+    c_ylw "→ preservando $(printf '%s' "$PRESERVADAS" | grep -c .) variável(is) que você acrescentou à mão"
+  fi
+fi
+
 {
   printf '# Gerado por install.sh — NÃO comitar. Contém segredos.\n'
   envq APP_IMAGE "$APP_IMAGE"
@@ -1115,6 +1170,12 @@ umask 077
   envq INTERNAL_AGENT_RUN_STUB "false"
   envq OWNER_EMAIL "$OWNER_EMAIL"
   envq OWNER_PASSWORD "$OWNER_PASSWORD"
+  # As variáveis que você acrescentou à mão, de volta — já no formato em que
+  # estavam, sem passar por envq (o valor original já vem com as aspas dele).
+  if [ -n "$PRESERVADAS" ]; then
+    printf '\n# ── Acrescentadas manualmente (preservadas pelo install.sh) ──\n'
+    printf '%s' "$PRESERVADAS"
+  fi
 } > .env
 chmod 600 .env
 # O .env definitivo existe: o rascunho cumpriu o papel e some — deixá-lo no

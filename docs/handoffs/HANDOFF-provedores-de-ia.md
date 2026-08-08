@@ -256,17 +256,17 @@ quem instalou. Tokens em zero e custo em NULL na linha de erro.
 
 | # | O quê | Onde | Estado |
 |---|---|---|---|
-| P1 | Visão de imagem devolve `""` em silêncio quando o modelo de chat da org não enxerga imagem | `workers/media-derive-worker.ts:142` | aberto — F1 dá a superfície, F2 dá o rastro |
-| P2 | `embedding_consultar`, `transcricao_de_audio`, `visao_de_imagem` e `contagem_de_tokens` não gravam telemetria nenhuma (`registraEm: "nenhum"`) | registro | endereçado na F2 |
-| P3 | `install.sh` monta o `.env` com lista fechada e trunca — env acrescentada à mão se perde ao re-rodar | `hostgator-setup-kit/install.sh` | precisa resolver ANTES da F3 mexer no instalador |
+| P1 | Visão/áudio ilegível devolvia `""` em silêncio | `workers/media-derive-worker.ts` | ✅ resolvido em `91109c06` (migration 0129) |
+| P2 | Pontos sem telemetria | registro | ✅ parcial: mídia agora avisa na Central; `contagem_de_tokens` e `embedding_consultar` seguem sem log próprio (são chamadas HTTP diretas, fora do seam) |
+| P3 | `install.sh` truncava o `.env` E apagava chave opcional não-coletada | `hostgator-setup-kit/install.sh` | ✅ resolvido |
 | P4 | Sete variáveis de ambiente de modelo continuam válidas e competem com o binding | `lib/agent-engine/env.ts` | ✅ resolvido em `ab37426c` — precedência declarada e testada |
 | P5 | `psql-transporte.ts` duplica ~10 linhas do `gov-helpers.ts`. Não estendi o original porque `tests/invariants/**` é congelado por hook, e usar a variável de escape seria decidir sozinho uma questão do dono do repo | `tests/invariants/` | aguarda decisão do Rafael |
 | P6 | Resolvedor plugado no seam (`c2a78b31`) | `lib/agent-engine/edge/llm/` | ✅ resolvido |
 | P7 | `sentiment_classify` e `bot_respond` agora honram o painel via `lib/ai/gateway-binding.ts` (`23f7c64f`) | `lib/ai/` | ✅ resolvido |
-| P10 | `teste_de_agente` (`lib/ai/runtime/agent.ts::buildModel`) **ainda não** honra o binding — é o ensaio na tela de agentes, e o registro o oferece como configurável | `lib/ai/runtime/` | aberto |
+| P10 | `teste_de_agente` marcado como **fixo** — o ensaio usa o modelo da versão que vai ser publicada, e é isso que o faz valer | `lib/ai/pontos/` | ✅ resolvido (com a razão invertida) |
 | P11 | `gateway-binding.ts` duplica a instanciação de provider do `createDefaultRegistry`. Ponte consciente: unificar exige que os workers falem `pg.Pool` | `lib/ai/` | aberto |
-| P8 | A tela de execuções (`/app/ai/runs`) tem API pronta, **falta o componente** | `app/app/ai/` | aberto |
-| P9 | `ai_invocations` ainda não foi unificada em `llm_calls` (decisão 2 do Rafael) — a API de uso segue somando as duas | `app/api/v1/ai/usage` | aberto |
+| P8 | Tela de execuções | `app/app/ai/runs` | ✅ resolvido em `85f4532e` |
+| P9 | `ai_invocations` unificada em `llm_calls` (migration 0130), backfill idempotente provado | `app/api/v1/ai/usage` | ✅ resolvido |
 
 ---
 
@@ -330,3 +330,38 @@ segue aberto como P10.
    laço de sabotagem confirma a restauração a cada passo.
 2. **Mesma lição, versão anterior:** `git checkout` para desfazer sabotagem
    levou junto a Frente 2 inteira, ainda não commitada.
+
+
+---
+
+## Fechamento das pendências (2026-08-07, fim da sessão)
+
+| # | Desfecho |
+|---|---|
+| P1 | ✅ `0129` — mídia ilegível vira marcador no texto derivado **e** aviso na Central |
+| P2 | ✅ parcial — falta log próprio de `contagem_de_tokens` e `embedding_consultar` |
+| P3 | ✅ dois furos no `install.sh`, não um |
+| P8, P9, P10 | ✅ |
+| P5, P11 | abertos por decisão, não por esquecimento — ver abaixo |
+
+### O `install.sh` tinha um furo PIOR que o registrado
+
+O handoff dizia "lista fechada trunca o `.env`". Verdade, e consertado. Mas ao
+testar apareceu o outro, invisível e mais grave: chaves que **estão** na lista
+são escritas como `envq X "${X:-}"` — o valor da variável de shell. Numa
+re-execução o shell não as tem (chave opcional não é perguntada no fluxo), então
+são reescritas **vazias**. A `OPENROUTER_API_KEY` que a pessoa configurou à mão
+era apagada por uma linha que parecia só repassar o valor.
+
+Consertado recarregando o `.env` atual no ambiente antes de montar o novo.
+Provado com `.env` real em 3 re-execuções: as duas chaves sobrevivem, 1× cada.
+
+### O que fica aberto, e por quê
+
+- **P5** (`psql-transporte.ts` duplica o `gov-helpers.ts`) — depende de relaxar a
+  catraca que congela `tests/invariants/**`, e essa decisão é do dono do repo.
+- **P11** (`gateway-binding.ts` duplica a instanciação de provider) — unificar
+  exige que os workers legados falem `pg.Pool` em vez de Supabase. É uma
+  migração de runtime, não um refactor; fazê-la no fim de uma sessão longa, sem
+  poder provar na tela, seria trocar dívida declarada por risco silencioso.
+- **Prova na tela completa** — segue bloqueada pelo ambiente (ver B3).
