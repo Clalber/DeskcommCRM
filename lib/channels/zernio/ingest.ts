@@ -60,7 +60,30 @@ export async function ingestZernioInbound(
   input: { organizationId: string; channelSessionId: string; payload: unknown },
 ): Promise<ZernioIngestResult> {
   const msg = parseZernioInbound(input.payload);
-  if (!msg) return { status: "ignored", reason: "nao_e_mensagem_recebida" };
+  if (!msg) return { status: "ignored", reason: "evento_sem_interesse" };
+
+  // Evento de DESFECHO: a mensagem já existe (ou nem é nossa). Só atualiza o
+  // status — inserir aqui criaria uma segunda linha para a mesma mensagem, uma
+  // por transição de estado.
+  if (msg.kind === "status") {
+    const { data } = await admin
+      .from("messages")
+      .update({
+        status: msg.status,
+        ...(msg.errorReason ? { error_message: msg.errorReason, error_code: "zernio_error" } : {}),
+      })
+      .eq("organization_id", input.organizationId)
+      .eq("external_id", msg.externalId)
+      // Não rebaixa: `read` chegando depois de `delivered` é progresso, mas um
+      // `delivered` atrasado depois de `read` voltaria o tique para trás. A
+      // ordem de entrega do webhook não é garantida.
+      .not("status", "in", "(read)")
+      .select("id");
+    const afetadas = (data ?? []).length;
+    return afetadas > 0
+      ? { status: "ingested", reason: `status_${msg.status}` }
+      : { status: "ignored", reason: "mensagem_desconhecida" };
+  }
 
   const identity = waIdentityFrom(msg.identity);
   if (!identity) {
@@ -202,8 +225,19 @@ async function insertMessage(
       contact_id: input.contactId,
       channel_session_id: input.channelSessionId,
       external_id: msg.externalId,
-      direction: "inbound",
-      status: "delivered",
+      // ─── Por que a SAÍDA também entra ──────────────────────────────────
+      //
+      // A primeira versão descartava tudo que era `outgoing`, para não duplicar
+      // os envios do próprio CRM. O efeito colateral custou caro: mensagem
+      // mandada do celular do operador, ou por outra plataforma ligada à mesma
+      // conta, NUNCA aparecia — e o histórico do cliente ficava pela metade sem
+      // nada avisando.
+      //
+      // A duplicação que se temia já estava resolvida por outro lado: o
+      // `unique (organization_id, external_id)` devolve 23505 no eco do nosso
+      // próprio envio, e o chamador lê isso como "duplicate", não como erro.
+      direction: msg.direction,
+      status: msg.direction === "outbound" ? (msg.status ?? "sent") : "delivered",
       type: temAnexo ? tipoDoAnexo(primeiro?.type) : "text",
       body: msg.text,
       // A URL do anexo NÃO é pública: é endpoint autenticado do provider, e a

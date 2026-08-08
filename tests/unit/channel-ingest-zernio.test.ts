@@ -57,7 +57,10 @@ function chain(tabela: string, op: string, payload?: unknown): Record<string, un
             if (tabela === "conversations" && op === "update" && casa && payload) {
               Object.assign(linhaConversa, payload as Record<string, unknown>);
             }
-            return ok({ data: null, error: null });
+            // Devolve as linhas AFETADAS, não `null` fixo: quem chama lê o
+            // tamanho para saber se a gravação valeu, e um dublê que sempre diz
+            // "nenhuma" faz um caminho correto parecer quebrado.
+            return ok({ data: casa ? [{ id: "row-1" }] : [], error: null });
           };
         }
         return (...args: unknown[]) => {
@@ -71,7 +74,7 @@ function chain(tabela: string, op: string, payload?: unknown): Record<string, un
               else if (prop === "eq" ? atual !== valor : atual === valor) casa = false;
             }
           }
-          if (prop === "update" || prop === "eq" || prop === "neq") {
+          if (["update", "eq", "neq", "not", "is"].includes(String(prop))) {
             ops.push({ tabela, op: `${op}.${String(prop)}`, payload: args[0] });
           }
           return proxy;
@@ -227,14 +230,82 @@ describe("o que a ingestão RECUSA", () => {
     expect(ops.some((o) => o.tabela === "messages")).toBe(false);
   };
 
-  it("eco do próprio envio — ingeri-lo duplicaria toda mensagem enviada", () =>
-    recusa(evento({ direction: "outgoing" }), "nao_e_mensagem_recebida"));
-
   it("outra plataforma na mesma conta", () =>
-    recusa(evento({ platform: "instagram" }), "nao_e_mensagem_recebida"));
+    recusa(evento({ platform: "instagram" }), "evento_sem_interesse"));
 
   it("sem identidade utilizável — criar contato anônimo faria a próxima mensagem virar um segundo contato", () =>
     recusa(evento({ sender: { whatsappUsername: "@x" } }), "sem_identidade_utilizavel"));
+});
+
+describe("envio feito FORA do CRM aparece no histórico", () => {
+  it("mensagem de saída entra como outbound", async () => {
+    // Mandada do celular do operador, ou por outra plataforma na mesma conta.
+    // Antes era descartada, e o histórico do cliente ficava pela metade.
+    const r = await ingestZernioInbound(admin, {
+      ...ENTRADA,
+      payload: {
+        ...evento({ direction: "outgoing" }),
+        event: "message.sent",
+        conversation: { participantId: "595991733685", participantName: "Cliente" },
+      },
+    });
+    expect(r.status).toBe("ingested");
+    const ins = ops.find((o) => o.tabela === "messages" && o.op === "insert")
+      ?.payload as Record<string, unknown>;
+    expect(ins.direction).toBe("outbound");
+    expect(ins.status).toBe("sent");
+  });
+
+  it("o eco do NOSSO envio vira duplicate, não linha repetida", async () => {
+    // A proteção contra duplicar já existia: unique (org, external_id).
+    insertErro = { code: "23505", message: "duplicate key" };
+    const r = await ingestZernioInbound(admin, {
+      ...ENTRADA,
+      payload: {
+        ...evento({ direction: "outgoing" }),
+        event: "message.sent",
+        conversation: { participantId: "595991733685" },
+      },
+    });
+    expect(r.status).toBe("duplicate");
+  });
+});
+
+describe("desfecho de entrega", () => {
+  const statusEvt = (event: string, extra: Record<string, unknown> = {}) => ({
+    ...evento({ direction: "outgoing" }),
+    event,
+    conversation: { participantId: "595991733685" },
+    ...extra,
+  });
+
+  it("delivered ATUALIZA, não insere — senão haveria uma linha por transição", async () => {
+    const r = await ingestZernioInbound(admin, { ...ENTRADA, payload: statusEvt("message.delivered") });
+    expect(r.reason).toBe("status_delivered");
+    expect(ops.some((o) => o.tabela === "messages" && o.op === "insert")).toBe(false);
+    const up = ops.find((o) => o.tabela === "messages" && o.op === "update");
+    expect(up?.payload).toMatchObject({ status: "delivered" });
+  });
+
+  it("failed grava o motivo — é o que o operador lê para saber o que fazer", async () => {
+    await ingestZernioInbound(admin, {
+      ...ENTRADA,
+      payload: statusEvt("message.failed", {
+        error: { code: 131047, title: "Re-engagement message", explanation: "Janela fechada." },
+      }),
+    });
+    const up = ops.find((o) => o.tabela === "messages" && o.op === "update");
+    expect(String((up?.payload as Record<string, unknown>).error_message)).toContain("131047");
+  });
+
+  it("NÃO rebaixa: um delivered atrasado não desfaz um read", async () => {
+    // A ordem de entrega do webhook não é garantida.
+    await ingestZernioInbound(admin, { ...ENTRADA, payload: statusEvt("message.delivered") });
+    const naoRebaixa = ops.find(
+      (o) => o.tabela === "messages" && o.op === "update.not" && o.payload === "status",
+    );
+    expect(naoRebaixa, "falta o guard que impede rebaixar de read para delivered").toBeTruthy();
+  });
 });
 
 describe("idempotência", () => {
