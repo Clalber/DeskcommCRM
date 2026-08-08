@@ -56,6 +56,12 @@ export type AuditAction =
   | "conversation.closed"
   | "conversation.tags_changed"
   | "contact.tags_changed"
+  // Fila de confirmação (spec 17 §4b): a IA PROPÕE, uma pessoa decide. As três
+  // entram porque a proposta é intenção auditável mesmo quando nunca vira
+  // escrita — e "ninguém confirmou" é informação, não ausência dela.
+  | "contact.field_proposed"
+  | "contact.field_confirmed"
+  | "contact.field_rejected"
   | "lead.tags_changed"
   | "message.sent"
   | "message.received"
@@ -127,6 +133,8 @@ export type AuditAction =
   | "ai.org_memory_published"
   | "ai.org_memory_entry_created"
   | "ai.org_memory_entry_updated"
+  /** Provedor/modelo de um ponto do sistema que usa IA foi trocado no painel. */
+  | "ai.purpose_binding_updated"
   | "ai_agent.run_started"
   | "ai_agent.run_completed"
   | "ai_agent.run_failed"

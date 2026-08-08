@@ -9022,12 +9022,24 @@ alter table public.agent_inbox_items
     -- — os blocos antigos rodam antes e falham em cadeia. Um bloco por
     -- constraint, vigiado por tests/unit/baseline-constraint-reconstruida.test.ts.
     'message_send_stuck',
+    -- (migration 0129) O cliente manda foto/áudio e o agente age como se nada
+    -- tivesse chegado. Acontece quando o modelo configurado não enxerga imagem,
+    -- ou quando falta a chave de transcrição — e antes disto a derivação
+    -- devolvia string vazia EM SILÊNCIO: nenhum erro, nenhum log, e o operador
+    -- concluindo que o agente ignorou o cliente de propósito.
+    'midia_nao_lida',
     -- (migration 0111, spec 16 §3.2) O papel Operador declara promessa em aberto:
     -- o assistente prometeu algo ao cliente e o cumprimento não foi registrado.
     -- A invariante sagrada da spec é "nenhuma promessa deixa de ser cumprida", e
     -- uma promessa sem dono precisa aparecer onde o humano olha — não no log do
     -- worker. Entra NESTA lista pela mesma razão que a de cima.
     'promise_unfulfilled',
+    -- (migration 0124, spec 17 §4b) Dado que o assistente ouviu na conversa e
+    -- ninguém confirmou até o prazo. `info`, não `warn`: nada quebrou — uma
+    -- informação não foi aproveitada, e tratar isso como falha ensinaria a
+    -- ignorar os avisos que são falha de verdade. Entra NESTA lista pela mesma
+    -- razão das de cima (bloco único por constraint, #159).
+    'contact_proposal_expired',
     'other'
   ));
 
@@ -9327,6 +9339,699 @@ comment on function public.fn_liberar_leads_do_agente() is
   'Sem isto o SET NULL da FK zera owner_agent_id e deixa owner_kind=''ai'', '
   'violando crm_leads_owner_kind_coherence — e um agente que já atendeu alguém '
   'não podia ser removido.';
+
+
+-- ---- ai_purpose_bindings: qual modelo cada ponto usa (migration 0126) ----
+-- Onde a escolha de modelo de cada ponto do sistema que usa IA passa a morar.
+-- Uma linha por (organização, ponto); ausência de linha = comportamento
+-- anterior preservado, então re-aplicar num clone não muda o funcionamento de
+-- nada. `provider` sem CHECK de propósito: é vocabulário aberto (os três CHECKs
+-- de provider que já existem são o que trava a entrada da OpenRouter, e um
+-- quarto repetiria o erro). `base_url` nasce para endpoint compatível com a API
+-- da OpenAI — OpenRouter hoje, modelo local depois.
+create table if not exists public.ai_purpose_bindings (
+  id uuid primary key default gen_random_uuid(),
+  organization_id uuid not null references public.organizations(id) on delete cascade,
+  purpose text not null,
+  provider text not null,
+  credential_id uuid references public.ai_provider_credentials(id) on delete cascade,
+  model_id text not null,
+  base_url text,
+  is_enabled boolean not null default true,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+-- Deduplicar ANTES da constraint: um clone que tenha rodado uma versão
+-- intermediária desta frente pode ter duas linhas para o mesmo ponto, e aí o
+-- update.sh (que roda SEM ON_ERROR_STOP) morreria aqui em silêncio. Fica a
+-- mais recente, que é a última escolha do operador.
+delete from public.ai_purpose_bindings a
+ using public.ai_purpose_bindings b
+ where a.organization_id = b.organization_id
+   and a.purpose = b.purpose
+   and (a.updated_at, a.id) < (b.updated_at, b.id);
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint
+     where conname = 'ai_purpose_bindings_org_purpose_unique'
+       and conrelid = 'public.ai_purpose_bindings'::regclass
+  ) then
+    alter table public.ai_purpose_bindings
+      add constraint ai_purpose_bindings_org_purpose_unique unique (organization_id, purpose);
+  end if;
+end $$;
+
+create index if not exists ai_purpose_bindings_org_idx
+  on public.ai_purpose_bindings (organization_id);
+create index if not exists ai_purpose_bindings_lookup_idx
+  on public.ai_purpose_bindings (organization_id, purpose) where is_enabled;
+create index if not exists ai_purpose_bindings_credential_idx
+  on public.ai_purpose_bindings (credential_id) where credential_id is not null;
+
+alter table public.ai_purpose_bindings enable row level security;
+
+drop policy if exists tenant_isolation_ai_purpose_bindings_all on public.ai_purpose_bindings;
+create policy tenant_isolation_ai_purpose_bindings_all on public.ai_purpose_bindings
+  using (organization_id in (select public.fn_user_org_ids()))
+  with check (organization_id in (select public.fn_user_org_ids()));
+
+drop trigger if exists ai_purpose_bindings_updated_at on public.ai_purpose_bindings;
+create trigger ai_purpose_bindings_updated_at
+  before update on public.ai_purpose_bindings
+  for each row execute function public.fn_set_updated_at();
+
+comment on table public.ai_purpose_bindings is
+  'Migration 0126: qual provedor/credencial/modelo cada ponto do sistema que usa IA deve usar, por organização. O catálogo dos pontos vive em lib/ai/pontos/registro.ts e o par é vigiado por tests/unit/pontos-de-ia-completude.test.ts.';
+
+
+
+-- ---- provider vira vocabulário aberto + catálogo sincronizável (migration 0127) ----
+-- Os três CHECKs de provider travavam anthropic|openai|google, o que torna
+-- impossível cadastrar uma chave da OpenRouter (ou de qualquer provedor novo, ou
+-- de um modelo local) — o INSERT viola constraint antes de qualquer código rodar.
+-- Vocabulário ABERTO por doutrina: quem recusa provider desconhecido é o registry,
+-- com erro tipado, não uma constraint que faria o update.sh do clone quebrar.
+alter table public.ai_agent_versions       drop constraint if exists ai_agent_versions_provider_check;
+alter table public.ai_models               drop constraint if exists ai_models_provider_check;
+alter table public.ai_provider_credentials drop constraint if exists ai_provider_credentials_provider_check;
+
+-- Aberto não é livre: string vazia seria linha que nenhum registry resolve e
+-- nenhuma tela exibe.
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'ai_models_provider_nao_vazio') then
+    alter table public.ai_models add constraint ai_models_provider_nao_vazio check (length(btrim(provider)) > 0);
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'ai_provider_credentials_provider_nao_vazio') then
+    alter table public.ai_provider_credentials add constraint ai_provider_credentials_provider_nao_vazio check (length(btrim(provider)) > 0);
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'ai_agent_versions_provider_nao_vazio') then
+    alter table public.ai_agent_versions add constraint ai_agent_versions_provider_nao_vazio check (length(btrim(provider)) > 0);
+  end if;
+end $$;
+
+alter table public.ai_models add column if not exists source text not null default 'manual';
+alter table public.ai_models add column if not exists synced_at timestamptz;
+alter table public.ai_models add column if not exists supports_vision boolean not null default false;
+
+-- Deduplicar ANTES do índice único (o update.sh roda sem ON_ERROR_STOP: índice
+-- que falha é pulado em silêncio e o upsert do sincronizador volta a duplicar).
+delete from public.ai_models a
+ using public.ai_models b
+ where a.provider = b.provider
+   and a.model_id = b.model_id
+   and (
+     (a.input_price_per_million_cents is null and b.input_price_per_million_cents is not null)
+     or (
+       (a.input_price_per_million_cents is null) = (b.input_price_per_million_cents is null)
+       and a.id < b.id
+     )
+   );
+
+create unique index if not exists ai_models_provider_model_unique on public.ai_models (provider, model_id);
+create index if not exists ai_models_source_idx on public.ai_models (source) where deprecated_at is null;
+
+comment on column public.ai_models.source is
+  'Migration 0127: ''manual'' ou o nome do sincronizador (ex.: ''openrouter''). O sincronizador só mexe nas linhas da PRÓPRIA origem — apagar o que um humano cadastrou seria perder configuração sem aviso.';
+comment on column public.ai_models.synced_at is
+  'Migration 0127: quando a origem confirmou este modelo pela última vez. Modelo que some recebe deprecated_at, nunca DELETE: a linha ainda é referenciada pelo histórico de custo.';
+
+
+
+-- ---- llm_calls registra a FALHA, não só o sucesso (migration 0128) ----
+-- A tabela gravava uma linha por chamada de modelo e só quando dava certo: o
+-- INSERT vivia depois do generateText, sem try em volta. Provedor recusando a
+-- chave, modelo inexistente, conta sem saldo — a exceção subia e nada ficava
+-- gravado. A tabela que deveria explicar era justamente a que ficava vazia no
+-- caso que precisa de explicação, e é a causa direta de "o agente não responde
+-- e não aparece erro em lugar nenhum".
+alter table public.llm_calls add column if not exists status text not null default 'ok';
+alter table public.llm_calls add column if not exists error_code text;
+alter table public.llm_calls add column if not exists error_message text;
+alter table public.llm_calls add column if not exists http_status int;
+alter table public.llm_calls add column if not exists origem_da_escolha text;
+
+-- Corrigir os dados ANTES da constraint: o update.sh roda sem ON_ERROR_STOP, e
+-- um CHECK que falhasse seria pulado em silêncio, deixando o clone sem guarda.
+update public.llm_calls set status = 'ok' where status is null or status not in ('ok', 'erro');
+
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'llm_calls_status_check') then
+    alter table public.llm_calls add constraint llm_calls_status_check check (status in ('ok', 'erro'));
+  end if;
+end $$;
+
+create index if not exists llm_calls_erros_idx
+  on public.llm_calls (organization_id, created_at desc) where status = 'erro';
+create index if not exists llm_calls_purpose_idx
+  on public.llm_calls (organization_id, purpose, created_at desc);
+
+comment on column public.llm_calls.status is
+  'Migration 0128: ''ok'' | ''erro''. Antes desta migration a tabela só registrava sucesso.';
+comment on column public.llm_calls.error_message is
+  'Migration 0128: texto do provedor, truncado. NUNCA prompt, resposta ou chave.';
+comment on column public.llm_calls.origem_da_escolha is
+  'Migration 0128: quem decidiu usar este modelo. Transforma o log de "o que aconteceu" em "por que aconteceu".';
+
+
+
+
+
+
+-- ---- uma tabela de telemetria de IA, não duas (migration 0130) ----
+-- `agent_id` NÃO existia em llm_calls, e sem ele a unificação jogaria fora a
+-- atribuição de custo por agente — junto com o filtro por agente da tela de uso,
+-- que é como o operador descobre qual agente está consumindo a conta. Perder uma
+-- capacidade em nome de unificar seria trocar um problema por outro.
+alter table public.llm_calls add column if not exists agent_id uuid
+  references public.ai_agents(id) on delete set null;
+create index if not exists llm_calls_agent_idx
+  on public.llm_calls (organization_id, agent_id, created_at desc) where agent_id is not null;
+
+alter table public.llm_calls add column if not exists legacy_invocation_id uuid;
+
+create unique index if not exists llm_calls_legacy_invocation_unique
+  on public.llm_calls (legacy_invocation_id) where legacy_invocation_id is not null;
+
+comment on column public.llm_calls.legacy_invocation_id is
+  'Migration 0130: id da linha de ai_invocations que originou esta. Existe para o backfill ser '
+  'idempotente — o update.sh re-aplica o baseline a cada atualização, e sem esta marca o custo '
+  'histórico cresceria sozinho a cada execução.';
+
+-- O backfill. `on conflict do nothing` sobre o índice único faz a re-execução
+-- ser inócua. `purpose` recebe o `invocation_kind` porque é o mesmo eixo com
+-- nomes diferentes; o vocabulário de ambos já está no registro de pontos.
+insert into public.llm_calls (
+  organization_id, agent_id, contact_id, job_id, purpose, provider, model,
+  input_tokens, output_tokens, cost_cents, latency_ms, created_at,
+  status, error_code, legacy_invocation_id
+)
+select
+  i.organization_id,
+  i.agent_id,
+  null,                       -- ai_invocations guarda conversation/message, não contato
+  null,
+  i.invocation_kind,
+  -- O provider não era guardado; deriva-se do prefixo do modelo, e quando não
+  -- dá para saber vai 'desconhecido' em vez de um chute que viraria estatística.
+  case
+    when i.model like 'anthropic/%' then 'anthropic'
+    when i.model like 'openai/%'    then 'openai'
+    when i.model like 'google/%'    then 'google'
+    when i.model like 'claude%'     then 'anthropic'
+    when i.model like 'gpt%'        then 'openai'
+    when i.model like 'gemini%'     then 'google'
+    else 'desconhecido'
+  end,
+  i.model,
+  i.prompt_tokens,
+  i.completion_tokens,
+  i.cost_cents,
+  i.latency_ms,
+  i.created_at,
+  case when i.error_payload is not null then 'erro' else 'ok' end,
+  case when i.error_payload is not null then 'erro_legado' else null end,
+  i.id
+from public.ai_invocations i
+where not exists (
+  select 1 from public.llm_calls c where c.legacy_invocation_id = i.id
+)
+on conflict do nothing;
+
+comment on table public.ai_invocations is
+  'DEPRECIADA na migration 0130 — a telemetria de IA vive em llm_calls. Mantida como histórico '
+  '(a doutrina do repo é depreciar, não deletar) e porque as linhas antigas são a prova do que foi '
+  'gasto. Nada escreve mais aqui; leituras novas usam llm_calls.';
+-- ---- telefone do contato @lid (migration 0122) ----
+-- O kit self-host aplica SÓ este arquivo — no install (banco novo, ON_ERROR_STOP)
+-- e no update (banco existente, SEM a flag). Tudo abaixo é idempotente e
+-- auto-curativo: a dedup por lid roda ANTES do índice único, senão o update.sh
+-- de um clone com contatos duplicados quebra no meio.
+--
+-- Racional medido em supabase/migrations/20260807060000_0122_telefone_do_lid.sql.
+-- Em uma linha: 76 de 76 payloads @lid trazem o telefone em
+-- `_data.key.remoteJidAlt` e ninguém lia; e gravar esse telefone mudava a
+-- `wa_identity` GERADA, quebrava o reencontro pelo `on conflict` e duplicava o
+-- contato — por isso a correlação passa a ter coluna própria (`wa_lid`).
+
+-- ---- 1 · wa_lid: a correlação que sobrevive ao telefone ----
+-- Gerada, e não escrita à mão, pelo mesmo motivo de `wa_identity`: valor
+-- derivado que alguém precisa lembrar de atualizar é valor que diverge. O
+-- `nullif` no fim evita que contato sem lid vire string vazia e colida no índice
+-- único com todos os outros contatos sem lid.
+alter table public.contacts
+  add column if not exists wa_lid text
+  generated always as (
+    nullif(regexp_replace(coalesce(source_metadata->>'waha_lid', ''), '@.*$', ''), '')
+  ) stored;
+
+-- ---- 2 · deduplicar ANTES da constraint (auto-curativo) ----
+-- Um clone pode ter dois contatos com o mesmo lid — nasceram antes da 0027, ou
+-- de uma janela em que o upsert ainda fazia check-then-act. Criar o índice único
+-- sem tratar isso quebraria o `update.sh` do clone, que é exatamente o que a
+-- doutrina de migrations proíbe.
+--
+-- O sobrevivente é o mais ANTIGO (é dele o histórico); os outros são marcados
+-- como fundidos e suas referências repontadas — mesma mecânica do bloco B1 da
+-- 0027, que já existe no baseline.
+with ranked as (
+  select id,
+         first_value(id) over (
+           partition by organization_id,
+             nullif(regexp_replace(coalesce(source_metadata->>'waha_lid', ''), '@.*$', ''), '')
+           order by created_at asc, id asc
+         ) as canonical_id
+    from public.contacts
+   where is_merged_into is null
+     and nullif(regexp_replace(coalesce(source_metadata->>'waha_lid', ''), '@.*$', ''), '') is not null
+)
+update public.contacts c
+   set is_merged_into = r.canonical_id, merged_at = now()
+  from ranked r
+ where c.id = r.id and r.id <> r.canonical_id;
+
+update public.conversations       t set contact_id = c.is_merged_into from public.contacts c where t.contact_id = c.id and c.is_merged_into is not null;
+update public.messages            t set contact_id = c.is_merged_into from public.contacts c where t.contact_id = c.id and c.is_merged_into is not null;
+update public.ai_agent_runs       t set contact_id = c.is_merged_into from public.contacts c where t.contact_id = c.id and c.is_merged_into is not null;
+update public.crm_lead_activities t set contact_id = c.is_merged_into from public.contacts c where t.contact_id = c.id and c.is_merged_into is not null;
+update public.crm_leads           t set contact_id = c.is_merged_into from public.contacts c where t.contact_id = c.id and c.is_merged_into is not null;
+update public.lgpd_requests       t set contact_id = c.is_merged_into from public.contacts c where t.contact_id = c.id and c.is_merged_into is not null;
+update public.orders              t set contact_id = c.is_merged_into from public.contacts c where t.contact_id = c.id and c.is_merged_into is not null;
+
+create unique index if not exists uniq_contacts_org_wa_lid
+  on public.contacts (organization_id, wa_lid)
+  where wa_lid is not null and is_merged_into is null;
+
+-- ---- 3 · o upsert passa a reencontrar por LID, e a completar o que falta ----
+-- A versão de 6 parâmetros tinha DOIS buracos, além do telefone:
+--   (a) no conflito só mexia em `display_name`, com `coalesce(existente, novo)` —
+--       um nome ruim gravado uma vez congelava para sempre e nenhum dado
+--       descoberto depois entrava;
+--   (b) casava só por `wa_identity`, então não reencontrava o contato cuja
+--       identidade mudou.
+--
+-- A regra nova é "completar, nunca sobrescrever": o que já está preenchido
+-- vence, o que está vazio é preenchido. Assim um telefone descoberto no 5º
+-- webhook entra, e um nome que o atendente corrigiu à mão não é desfeito pelo
+-- pushName do WhatsApp.
+create or replace function public.fn_upsert_wa_contact(
+  p_org uuid, p_kind text, p_phone text, p_lid text, p_chat_id text, p_notify text
+) returns uuid language plpgsql security definer set search_path = public as $$
+declare
+  v_id uuid;
+  v_conflito text;
+  v_lid text := nullif(regexp_replace(coalesce(p_lid, ''), '@.*$', ''), '');
+  v_phone text := nullif(p_phone, '');
+begin
+  -- ⚠️ A ASSINATURA NÃO MUDA, e não é economia de digitação.
+  --
+  -- A primeira versão desta migration acrescentava um 7º parâmetro
+  -- (`p_phone_alt`) para o telefone vindo de `_data.key.remoteJidAlt`. Isso
+  -- criava uma função nova aos olhos do Postgres, obrigava a dropar a de 6 e
+  -- forçava a edição de DOIS invariantes de hardening que citam a assinatura —
+  -- que o hook do repo (com razão) congela.
+  --
+  -- Quem sabe QUAL telefone usar é o chamador: `lib/waha/ingest.ts` já resolve o
+  -- chatId e agora também lê o `remoteJidAlt`. Ele manda um telefone só, em
+  -- `p_phone`. Menos superfície, mesma capacidade, e os grants existentes
+  -- continuam valendo — a catraca levou ao desenho menor.
+
+  -- 1 · pela correlação do WhatsApp, que NÃO depende do telefone.
+  --     `wa_identity` é gerada com o telefone na frente do lid: um contato @lid
+  --     que ganha número passa a valer `phone:+Y` e o `on conflict` antigo
+  --     deixava de reencontrá-lo — nascia um contato por mensagem.
+  if v_lid is not null then
+    select id into v_id from public.contacts
+     where organization_id = p_org and wa_lid = v_lid and is_merged_into is null
+     limit 1;
+  end if;
+
+  -- 2 · pelo telefone — é aqui que a pessoa que já existia por número (import,
+  --     formulário, pedido) deixa de virar um segundo contato ao escrever no
+  --     WhatsApp. Sem este passo, descobrir o telefone criaria o gêmeo em vez de
+  --     evitá-lo.
+  if v_id is null and v_phone is not null then
+    select id into v_id from public.contacts
+     where organization_id = p_org and phone_number = v_phone and is_merged_into is null
+     limit 1;
+  end if;
+
+  -- 3 · COMPLETA o que falta, nunca sobrescreve.
+  --     A versão anterior só mexia em `display_name` no conflito, com
+  --     `coalesce(existente, novo)`: um nome ruim gravado uma vez congelava para
+  --     sempre, e telefone ou lid descobertos depois NUNCA entravam.
+  -- O telefone descoberto só sobe para a coluna ÚNICA se ainda não for de outro
+  -- contato vivo da org. Sem esta guarda o caso "contato @lid sem telefone + a
+  -- mesma pessoa já cadastrada por número" (import, pedido, formulário) estoura
+  -- `uniq_contacts_org_phone`; `lib/waha/ingest.ts:343` transforma a exceção em
+  -- `return null` e `:459` descarta a mensagem com o webhook respondendo 200 — a
+  -- mensagem do cliente some, e some de novo a cada mensagem seguinte daquele
+  -- contato. Medido na triagem; não acontece na `main`, é regressão desta
+  -- migration. A etapa 2 (busca por telefone) não protege: ela só roda quando a
+  -- etapa 1 NÃO achou.
+  --
+  -- Fundir os dois contatos seria o desfecho semanticamente certo — é a mesma
+  -- pessoa, e o `remoteJidAlt` é justamente quem afirma isso. Mas fusão é
+  -- IRREVERSÍVEL, e a regra do tempo da doutrina proíbe consumar irreversível no
+  -- tempo da máquina, dentro de um webhook. Aqui o dado não se perde: vai para
+  -- `source_metadata.telefone_em_conflito`, que não é único, e a decisão de
+  -- fundir fica para quem opera.
+  if v_id is not null and v_phone is not null and exists (
+    select 1 from public.contacts
+     where organization_id = p_org and phone_number = v_phone
+       and is_merged_into is null and id <> v_id
+  ) then
+    v_conflito := v_phone;
+    v_phone := null;
+  end if;
+
+  if v_id is not null then
+    update public.contacts set
+      phone_number = coalesce(phone_number, v_phone),
+      display_name = coalesce(display_name, nullif(p_notify, '')),
+      source_metadata = source_metadata
+        || case when v_lid is not null then jsonb_build_object('waha_lid', v_lid) else '{}'::jsonb end
+        || case when p_chat_id is not null then jsonb_build_object('waha_chat_id', p_chat_id) else '{}'::jsonb end
+        || case when nullif(p_notify, '') is not null then jsonb_build_object('notify_name', p_notify) else '{}'::jsonb end
+        || case when v_conflito is not null then jsonb_build_object('telefone_em_conflito', v_conflito) else '{}'::jsonb end,
+      updated_at = now()
+    where id = v_id;
+    return v_id;
+  end if;
+
+  insert into public.contacts (organization_id, phone_number, source, consent, tags, source_metadata, display_name)
+  values (p_org, v_phone, 'whatsapp', '{}'::jsonb, '{}'::text[],
+    case when v_lid is not null
+      then jsonb_build_object('waha_lid', v_lid, 'waha_chat_id', p_chat_id, 'notify_name', nullif(p_notify, ''))
+      else jsonb_build_object('waha_chat_id', p_chat_id, 'notify_name', nullif(p_notify, '')) end,
+    nullif(p_notify, ''))
+  returning id into v_id;
+  return v_id;
+end; $$;
+
+-- Os grants da assinatura de 6 já existem desde a 0027 e continuam valendo — por
+-- isso não há `drop function` aqui, e por isso os invariantes de hardening não
+-- precisaram ser tocados.
+
+-- ---- 4 · o rótulo técnico legado sai ----
+-- Medido na produção: 3 linhas com `Contato 543134@lid` e `Contato 900928` —
+-- duas formas, porque duas versões do código antigo os escreveram. Nenhum código
+-- vivo produz isso hoje (o produtor morreu no commit c890b403); é resíduo, e o
+-- passo seguinte da spec 17 vai LER o nome do contato para o título do card, o
+-- que faria o resíduo vazar para o kanban.
+--
+-- ⚠️ `and is_anonymized = false` NÃO é zelo: `Contato Anonimizado #<id>` também
+-- começa com "Contato " e é gravado deliberadamente pela rota de LGPD. Sem esta
+-- guarda, o backfill REVERTERIA anonimizações — violação direta da regra L-04,
+-- cuja exceção é "Nenhuma".
+--
+-- Vira NULL, e não um rótulo novo: quem decide o que mostrar quando não há nome
+-- é a tela. Gravar texto de exibição no banco foi o que criou este problema.
+update public.contacts
+   set display_name = null, updated_at = now()
+ where display_name ~ '^Contato [0-9]+(@lid)?$'
+   and is_anonymized = false;
+
+
+-- ---- fila de confirmação de dado do contato (migration 0123) ----
+-- O Operador PROPÕE, um humano CONFIRMA — o dado que o cliente diz na conversa
+-- não é gravado direto (spec 17 §4b). Forma copiada de `crm_lead_reactivations`,
+-- que já é uma fila de proposta com prazo, decisão datada e idempotência por
+-- índice parcial; a chave aqui é o CONTATO + campo, porque a proposta é sobre a
+-- pessoa. Racional completo na migration.
+--
+-- Idempotente e auto-curativo: `create table if not exists`, constraints com
+-- `drop ... if exists` antes, `create or replace function`.
+
+create table if not exists public.contact_field_proposals (
+  id uuid primary key default gen_random_uuid(),
+  organization_id uuid not null references public.organizations(id) on delete cascade,
+  contact_id uuid not null references public.contacts(id) on delete cascade,
+
+  -- QUAL campo. Vocabulário FECHADO por CHECK: o que entra aqui vira escrita em
+  -- `contacts`, e campo livre deixaria a IA propor qualquer coluna.
+  campo text not null,
+
+  -- O valor proposto e o que existia quando a proposta nasceu. O segundo é o
+  -- `from` que a regra L-06 exige — e existe ANTES da confirmação justamente
+  -- para que a decisão seja tomada com os dois lados à vista.
+  valor_proposto text not null,
+  valor_anterior text,
+
+  -- DE ONDE veio, para quem decide poder conferir em vez de acreditar.
+  -- `trecho` é o que a pessoa escreveu; sem ele a confirmação é um ato de fé.
+  conversation_id uuid references public.conversations(id) on delete set null,
+  message_id uuid references public.messages(id) on delete set null,
+  trecho text,
+  proposed_by_agent_id uuid references public.ai_agents(id) on delete set null,
+
+  status text not null default 'pending',
+
+  -- Carimbados pelo BANCO, nunca pelo processo — mesma razão da 0081: instantes
+  -- comparados entre si vêm do mesmo relógio.
+  proposed_at timestamptz not null default now(),
+  expires_at timestamptz not null,
+  decided_at timestamptz,
+  decided_by_user_id uuid references auth.users(id) on delete set null,
+  -- Por que foi recusada. É o LAÇO DE RETORNO (invariante 7): proposta que o
+  -- humano rejeita diz onde a IA erra, e sem o motivo o sinal é só um número.
+  motivo_recusa text,
+  updated_at timestamptz not null default now()
+);
+
+comment on table public.contact_field_proposals is
+  'Dado do contato que a IA ouviu na conversa e propôs — aguardando confirmação humana (spec 17 §4b). SEMPRE com prazo: proposta que ninguém decide vira badge permanente, que simula atenção e adia a decisão. No vencimento sai da tela e vira item de caixa.';
+
+alter table public.contact_field_proposals
+  drop constraint if exists contact_field_proposals_campo_check;
+alter table public.contact_field_proposals
+  add constraint contact_field_proposals_campo_check check (
+    campo = any (array['email', 'name', 'phone_number']::text[])
+  );
+
+alter table public.contact_field_proposals
+  drop constraint if exists contact_field_proposals_status_check;
+alter table public.contact_field_proposals
+  add constraint contact_field_proposals_status_check check (
+    status = any (array['pending', 'accepted', 'dismissed', 'expired']::text[])
+  );
+
+-- Prazo no futuro: proposta que nasce vencida vira item de caixa no primeiro
+-- tick e ninguém entende de onde veio.
+alter table public.contact_field_proposals
+  drop constraint if exists contact_field_proposals_prazo_no_futuro;
+alter table public.contact_field_proposals
+  add constraint contact_field_proposals_prazo_no_futuro check (expires_at > proposed_at);
+
+-- Decisão e decisor andam juntos. Status decidido sem `decided_at` é registro
+-- que não sabe dizer quando aconteceu — e é essa a pergunta que a auditoria faz.
+alter table public.contact_field_proposals
+  drop constraint if exists contact_field_proposals_decisao_datada;
+alter table public.contact_field_proposals
+  add constraint contact_field_proposals_decisao_datada check (
+    (status = 'pending' and decided_at is null)
+    or (status <> 'pending' and decided_at is not null)
+  );
+
+-- ⚠️ ESTE ÍNDICE É A IDEMPOTÊNCIA — não é otimização.
+--
+-- A IA vai ouvir o mesmo e-mail em dez mensagens seguidas. Sem ele, dez
+-- propostas idênticas viram dez linhas e a tela do humano vira uma coluna de
+-- repetições. `where not exists` no código NÃO substitui: é check-then-act, e
+-- dois turnos concorrentes passam pela janela — o mesmo defeito que a 0027 veio
+-- matar nos contatos.
+--
+-- PARCIAL: propostas decididas ficam como histórico e não bloqueiam a próxima. O
+-- cliente pode corrigir o e-mail que ele mesmo deu errado, e impedir isso
+-- deixaria a correção sem caminho.
+create unique index if not exists uq_contact_field_proposals_uma_viva
+  on public.contact_field_proposals (organization_id, contact_id, campo)
+  where status = 'pending';
+
+-- O worker de vencimento varre por aqui.
+create index if not exists idx_contact_field_proposals_vencendo
+  on public.contact_field_proposals (organization_id, expires_at)
+  where status = 'pending';
+
+alter table public.contact_field_proposals enable row level security;
+
+drop policy if exists tenant_isolation_contact_field_proposals_all on public.contact_field_proposals;
+create policy tenant_isolation_contact_field_proposals_all on public.contact_field_proposals
+  for all
+  using (organization_id in (select public.fn_user_org_ids()))
+  with check (organization_id in (select public.fn_user_org_ids()));
+
+revoke all on public.contact_field_proposals from anon;
+
+-- `proposed_at` e `updated_at` vêm do banco.
+create or replace function public.fn_carimba_proposta_de_dado()
+  returns trigger
+  language plpgsql
+  set search_path to 'public', 'pg_temp'
+as $$
+begin
+  if tg_op = 'INSERT' then
+    new.proposed_at := now();
+  end if;
+  new.updated_at := now();
+  return new;
+end$$;
+
+revoke all on function public.fn_carimba_proposta_de_dado() from public, anon;
+
+drop trigger if exists trg_contact_field_proposals_carimbo on public.contact_field_proposals;
+create trigger trg_contact_field_proposals_carimbo
+  before insert or update on public.contact_field_proposals
+  for each row
+  execute function public.fn_carimba_proposta_de_dado();
+
+-- ---- LGPD: anonimizar o contato apaga as propostas dele ----
+--
+-- Sem isto, anonimizar um contato deixaria o e-mail dele VIVO dentro de uma
+-- proposta pendente — PII sobrevivendo ao direito de esquecimento numa tabela
+-- que ninguém lembraria de olhar.
+--
+-- ⚠️ TRIGGER NO ESTADO, não chamada dentro do cascade — e a escolha importa.
+-- Há mais de um caminho que anonimiza: `fn_lgpd_cascade_redact_contact` (o
+-- cascade completo) e `/api/v1/lgpd/anonymize` (a rota direta), e amanhã pode
+-- haver um DBA fazendo à mão. Pendurar a limpeza em UM deles deixaria os outros
+-- vazando; pendurar no FATO (`is_anonymized` virou true) cobre todos, inclusive
+-- os que ainda não existem. É também a diferença entre editar uma função de 180
+-- linhas vinda de dump — com o risco que isso traz — e acrescentar 10.
+--
+-- As propostas são APAGADAS, não redigidas: diferente da timeline, aqui não há
+-- histórico a preservar (proposta não decidida nunca virou fato) e o conteúdo é
+-- integralmente dado pessoal.
+create or replace function public.fn_apaga_propostas_de_contato_anonimizado()
+  returns trigger
+  language plpgsql
+  security definer
+  set search_path to 'public', 'pg_temp'
+as $$
+begin
+  delete from public.contact_field_proposals where contact_id = new.id;
+  return new;
+end$$;
+
+revoke all on function public.fn_apaga_propostas_de_contato_anonimizado() from public;
+revoke execute on function public.fn_apaga_propostas_de_contato_anonimizado() from anon;
+revoke execute on function public.fn_apaga_propostas_de_contato_anonimizado() from authenticated;
+
+drop trigger if exists trg_contacts_anonimizado_limpa_propostas on public.contacts;
+create trigger trg_contacts_anonimizado_limpa_propostas
+  after update of is_anonymized on public.contacts
+  for each row
+  when (new.is_anonymized = true and coalesce(old.is_anonymized, false) = false)
+  execute function public.fn_apaga_propostas_de_contato_anonimizado();
+
+
+-- ---- escopo de funil do agente (migration 0125) ----
+-- O agente só ESCREVE nos funis marcados; vazio = NENHUM (falha fechada).
+-- Medido: uma organização com 4 funis e 5 agentes de negócios diferentes, todos
+-- alcançando todos. A coluna vive na VERSÃO para a permissão subir junto com o
+-- resto quando alguém publica — escopo fora do ciclo rascunho→publicar muda o
+-- alcance do agente sem ninguém ter publicado nada.
+--
+-- Traz junto o conserto do trigger de imutabilidade, que parava no `followup` e
+-- ignorava as NOVE colunas posteriores: sem isso, um escopo de PERMISSÃO seria
+-- editável numa versão publicada sem virar versão nova — a própria ausência de
+-- escopo, com aparência de controle. Racional completo na migration.
+
+alter table public.ai_agent_versions
+  add column if not exists pipeline_ids uuid[] not null default '{}'::uuid[];
+
+comment on column public.ai_agent_versions.pipeline_ids is
+  'Funis em que ESTE agente pode escrever (mover, editar, encerrar, taguear). Vazio = NENHUM: falha fechada. Escopo de ESCRITA; leitura não é filtrada por aqui (declarado na spec 17 §5).';
+
+-- ---- backfill: o que JÁ funcionava continua funcionando ----
+--
+-- "Agente novo nasce fechado" e "agente existente vira fechado retroativamente"
+-- são coisas MUITO diferentes. Sem este bloco, no dia do deploy todo agente em
+-- produção pararia de mexer em card — de uma vez, e em silêncio.
+--
+-- O escopo inicial é DERIVADO do que cada agente realmente fez: os funis onde
+-- ele já registrou atividade. Isso respeita o que funcionava E fecha os funis
+-- que ele nunca tocou, que é o objetivo.
+--
+-- Medido antes de escrever: na produção deste projeto, apenas 1 dos 8 agentes
+-- tem histórico (o SDR, no funil "Pedidos"). Os outros 7 nascem fechados sem
+-- quebrar nada, porque nunca moveram card nenhum.
+--
+-- Só para versões PUBLICADAS/rascunho que ainda estão vazias — re-aplicar não
+-- reabre escopo que alguém tenha fechado à mão depois.
+update public.ai_agent_versions v
+   set pipeline_ids = sub.funis
+  from (
+    select a.actor_agent_id as agent_id,
+           array_agg(distinct l.pipeline_id) as funis
+      from public.crm_lead_activities a
+      join public.crm_leads l on l.id = a.lead_id
+     where a.actor_agent_id is not null
+     group by a.actor_agent_id
+  ) sub
+ where v.agent_id = sub.agent_id
+   and v.pipeline_ids = '{}'::uuid[];
+
+-- ---- o trigger de imutabilidade para de ignorar metade da configuração ----
+--
+-- ⚠️ CONSERTO OBRIGATÓRIO NO MESMO ARQUIVO, e não uma limpeza de brinde.
+--
+-- `fn_ai_agent_version_content_immutable` parava no campo `followup` e não
+-- conhecia NENHUMA das nove colunas acrescentadas depois dele. Numa versão já
+-- PUBLICADA era possível trocar o modelo do Operador, as ferramentas dele, o
+-- corte de mensagens — sem virar versão nova e sem deixar trilha.
+--
+-- Acrescentar `pipeline_ids` sem consertar isso seria pior que não acrescentar:
+-- um escopo de PERMISSÃO editável em produção sem publicar nada é a própria
+-- ausência de escopo, com aparência de controle.
+create or replace function fn_ai_agent_version_content_immutable() returns trigger
+language plpgsql as $fn$
+begin
+  if old.status <> 'draft' and (
+       new.system_prompt          is distinct from old.system_prompt
+    or new.provider               is distinct from old.provider
+    or new.model                  is distinct from old.model
+    or new.credential_id          is distinct from old.credential_id
+    or new.tool_ids               is distinct from old.tool_ids
+    or new.trigger_config         is distinct from old.trigger_config
+    or new.channel_session_id     is distinct from old.channel_session_id
+    or new.max_steps              is distinct from old.max_steps
+    or new.token_budget           is distinct from old.token_budget
+    or new.cost_budget_cents      is distinct from old.cost_budget_cents
+    or new.history_message_window is distinct from old.history_message_window
+    or new.history_token_window   is distinct from old.history_token_window
+    or new.handoff_keywords       is distinct from old.handoff_keywords
+    or new.handoff_tool_enabled   is distinct from old.handoff_tool_enabled
+    or new.followup               is distinct from old.followup
+    -- ↓ as nove que o trigger nunca cobriu, mais a desta migration
+    or new.multimodal_input       is distinct from old.multimodal_input
+    or new.video_frames_enabled   is distinct from old.video_frames_enabled
+    or new.split_messages         is distinct from old.split_messages
+    or new.split_max_chars        is distinct from old.split_max_chars
+    or new.cases_enabled          is distinct from old.cases_enabled
+    or new.operator_enabled       is distinct from old.operator_enabled
+    or new.operator_model         is distinct from old.operator_model
+    or new.operator_tool_ids      is distinct from old.operator_tool_ids
+    or new.pipeline_ids           is distinct from old.pipeline_ids
+    or new.version_number         is distinct from old.version_number
+    or new.agent_id               is distinct from old.agent_id
+    or new.organization_id        is distinct from old.organization_id
+  ) then
+    raise exception 'ai_agent_versions % é imutável (status=%): mudança de conteúdo = versão draft nova; rollback = revert (clona + publica)',
+      old.id, old.status;
+  end if;
+  return new;
+end;
+$fn$;
+
+drop trigger if exists trg_ai_agent_versions_content_immutable on public.ai_agent_versions;
+create trigger trg_ai_agent_versions_content_immutable
+  before update on public.ai_agent_versions
+  for each row execute function fn_ai_agent_version_content_immutable();
 
 notify pgrst, 'reload schema';
 
