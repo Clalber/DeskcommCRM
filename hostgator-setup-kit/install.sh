@@ -314,6 +314,26 @@ v_anthropic() {
   esac
 }
 
+# A OpenRouter entrou na lista de provedores (opção [1] da pergunta de qual IA
+# vai atender) sem que este validador existisse. `ask_one` despacha o validador
+# pelo NOME — `"$validator" "$input"` —, então um nome inexistente vira exit 127
+# e o laço repete a pergunta para sempre: a pessoa que escolhe [1] não consegue
+# terminar a instalação. E no caminho `--yes` a mesma ausência vira
+# "OPENROUTER_API_KEY inválido" seguido de "Corrija o .env e rode de novo" —
+# instrução impossível de cumprir, porque o .env está certo.
+v_openrouter() {
+  case "$1" in sk-or-*) ;; *) echo "A chave da OpenRouter começa com 'sk-or-'. Pegue em openrouter.ai/keys."; return 1;; esac
+  local code
+  code="$(curl -s -o /dev/null -w '%{http_code}' -m 20 https://openrouter.ai/api/v1/key \
+    -H "Authorization: Bearer $1" 2>/dev/null || echo 000)"
+  case "$code" in
+    2*) return 0;;
+    000) c_ylw "  ⚠ não consegui checar a chave online; sigo com ela."; return 0;;
+    401) echo "A OpenRouter recusou essa chave (401). Confira se está ativa e se copiou inteira."; return 1;;
+    *)   c_ylw "  ⚠ a OpenRouter respondeu ${code} ao testar a chave; sigo com ela."; return 0;;
+  esac
+}
+
 v_openai() {
   [ -z "$1" ] && return 0   # opcional
   case "$1" in sk-*) ;; *) echo "A chave da OpenAI começa com 'sk-'. Pegue em platform.openai.com > API keys (ou deixe em branco)."; return 1;; esac
@@ -1222,7 +1242,15 @@ fi
   printf '# imagem pública para trocar o texto por logo na sidebar. Ver lib/branding.ts.\n'
   envq APP_NAME "$APP_NAME"
   envq APP_LOGO_URL "${APP_LOGO_URL:-}"
-  envq ANTHROPIC_API_KEY "$ANTHROPIC_API_KEY"
+  printf '# Qual provedor você escolheu na instalação. É o que faz a 2ª execução do\n'
+  printf '# install.sh já vir com a sua escolha como padrão, em vez de re-adivinhar\n'
+  printf '# pelas chaves presentes. A app não lê esta variável.\n'
+  envq AI_PROVIDER "${AI_PROVIDER:-anthropic}"
+  # `${ANTHROPIC_API_KEY:-}`, não `$ANTHROPIC_API_KEY`: quem escolhe OpenRouter
+  # ou OpenAI nunca passa pelo campo da Anthropic, e sob `set -u` (linha 12) a
+  # variável não associada derrubava o script AQUI — no meio da escrita do
+  # .env, deixando o arquivo pela metade e a instalação sem como continuar.
+  envq ANTHROPIC_API_KEY "${ANTHROPIC_API_KEY:-}"
   envq AI_GATEWAY_API_KEY "${AI_GATEWAY_API_KEY:-}"
   printf '# OpenRouter: alternativa ao AI Gateway para o chat da IA. A ordem de\n'
   printf '# resolução é AI_GATEWAY_API_KEY > OPENROUTER_API_KEY > provider direto,\n'
