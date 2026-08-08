@@ -211,10 +211,18 @@ Checks **obrigatórios** na branch protection da `main` (verificado na configura
 - **`verify`** (`ci.yml`) — typecheck + lint + test:unit.
 - **`invariants`** (`ci.yml`) — `pnpm test:db`: sobe `pgvector/pgvector:pg17`, aplica `supabase/baseline.sql` em modo install (`ON_ERROR_STOP=1`) e update (idempotência), e roda os testes de invariante, incluindo o de isolamento RLS entre 2 organizações.
 - **`build-and-size`** (`perf.yml`) — `pnpm build` em Node 22.
+- **`e2e`** (`e2e.yml`) — sobe Supabase local, aplica o `baseline.sql` e roda **32 das 33 specs** Playwright. A que fica de fora é `vps-fresh-onboarding` (precisa de WAHA + Redis + Resend + Nuvemshop) — e ela é a **P0** da doutrina de QA Visual, ou seja: o `e2e` verde **não** prova a jornada de instalação fresca, que é o produto que se vende. O próprio job declara isso no summary.
 
-Check **não-obrigatório** (roda, mas não segura merge):
+Todos os quatro são **obrigatórios** — medido em 2026-08-08 na branch protection:
 
-- **`e2e`** (`e2e.yml`) — sobe Supabase local, aplica o `baseline.sql` e roda **28 das 32 specs** Playwright. As 4 de fora: `followup-journey` e `webhooks` (precisam de WAHA), `vps-fresh-onboarding` (WAHA + Redis + Resend + Nuvemshop — é a P0 da doutrina de QA Visual) e `capacidades-do-agente`, que está fora porque **reprova de verdade**: ligar o pacote "Atender" enche o teto de 20 capacidades e a UI desabilita o checkbox da capacidade crítica que o próprio desenho manda marcar à mão. O `e2e` **ainda não é obrigatório** — o conjunto de specs mudou em 2026-08-05, então as execuções verdes anteriores eram de outro conjunto e não servem de prova de estabilidade deste (issue #63).
+```console
+$ gh api repos/melgarafael/DeskcommCRM/branches/main/protection --jq '.required_status_checks.contexts|join(", ")'
+verify, build-and-size, invariants, e2e
+```
+
+O `e2e` entrou para a lista depois de este arquivo ter sido escrito. A versão anterior dizia que ele
+"ainda não é obrigatório", e uma triagem que lesse isso mediria contra a régua errada — que é o modo
+de falha nº 1 do procedimento de triagem. Reconfira na fonte antes de confiar em qualquer lista aqui.
 
 Ao mexer em schema, RLS, RBAC, atribuição, escopo, roteamento, follow-up, webhooks ou automações: rode `pnpm test:db` **localmente** antes de abrir PR. É o único caminho que exercita o `baseline.sql` que o self-hoster realmente aplica.
 
