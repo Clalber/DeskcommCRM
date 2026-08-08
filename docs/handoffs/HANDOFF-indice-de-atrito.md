@@ -12,6 +12,7 @@
 | **Doutrina** | [`docs/doctrine/sistema-vivo/03-medida-do-proposito.md`](../doctrine/sistema-vivo/03-medida-do-proposito.md) |
 | **Fase** | 4 de 4 — TODAS provadas, inclusive na tela |
 | **Gate de banco** | `pnpm test:db` **verde**: 73 arquivos · 503 passed · 1 skipped · `install ok` + `update ok` |
+| **E2E** | **20 passed / 0 failed** nas 8 specs da parte 1 do CI que tocam este trabalho (inclui `inbox-scope`, `risk-radar`, `queue-assign`, `rbac-roles`) |
 | **Atualizado** | 2026-08-07 |
 
 > ⚠️ **Se o `test:db` falhar com ~10 testes, meça o TEMPO antes de investigar.**
@@ -22,6 +23,40 @@
 > (`webhooks-inbound`, `automation-*`, `event-log-drain`, `rls-isolation`).
 > Chegaram a incluir o **controle positivo** do isolamento RLS, o que dá toda a
 > aparência de defeito grave de tenancy — e não era.
+
+> ⚠️ **Reconstruir o ambiente local de e2e — a receita, e as três armadilhas.**
+> O caminho é o do `.github/workflows/e2e.yml`, não o `npx supabase start` puro
+> (a cadeia de `migrations/` **não sobe** em banco novo):
+>
+> ```bash
+> mv supabase/migrations /tmp/mig-off && mkdir -p supabase/migrations
+> npx supabase start --ignore-health-check     # o container de storage não fica healthy
+> rmdir supabase/migrations && mv /tmp/mig-off supabase/migrations
+> # extensões (o baseline USA os tipos e não os cria), depois o baseline, depois:
+> npx tsx scripts/seed-e2e-credentials.ts
+> npx tsx scripts/seed-e2e-escalacao.ts
+> npx tsx --env-file=.env.local scripts/seed-e2e-capacidades-ausentes.ts
+> npx tsx scripts/seed-e2e-followup-agent.ts
+> npx tsx scripts/seed-e2e-queue.ts            # NÃO está na lista do CI, e o
+>                                              # queue-assign.spec exige
+> ```
+>
+> 1. **`seed-e2e-escalacao.ts` lê o `.env.local` por conta própria.** Se ele
+>    apontar para a nuvem, o seed escreve fixture no banco REMOTO. Aponte o
+>    `.env.local` para `127.0.0.1:54321` antes — e confira que nenhuma linha
+>    **não-comentada** ainda tem `supabase.co`.
+> 2. **Rodar `seed-e2e-credentials.ts` duas vezes dessincroniza o TOTP:** o
+>    arquivo fica com um segredo e `auth.mfa_factors` com outro, e o
+>    `rbac-roles.spec` falha no MFA parecendo bug de autenticação. Conserto:
+>    copiar `select secret from auth.mfa_factors` para o `.e2e-creds.json`.
+> 3. **`npx playwright install chromium`** — o config usa `chrome-headless-shell`,
+>    um binário diferente do que `chromium.launch()` das sondas usa. Sem ele, as
+>    9 specs falham todas com "Executable doesn't exist", que não se parece com
+>    problema de browser à primeira vista.
+>
+> Duas falhas que apareceram e sumiram na repetição (`inbox-scope` deep-link e
+> `queue-assign`) eram **flaky**, não regressão: passaram na segunda execução com
+> o mesmo binário e o mesmo commit.
 
 ---
 
