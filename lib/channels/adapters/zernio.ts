@@ -35,7 +35,7 @@
  */
 import { createAdminClient } from "@/lib/supabase/admin";
 
-import { resolveZernioCreds, zernioCredsFromEnv } from "../zernio/credentials";
+import { resolveZernioCreds } from "../zernio/credentials";
 import { zernioTemplateOps } from "../zernio/templates";
 import type { ChannelAdapter, OutboundEnvelope, RecipientInput } from "../types";
 
@@ -90,19 +90,39 @@ export const zernioAdapter: ChannelAdapter = {
   },
 
   /**
-   * Síncrono de propósito, como no canal oficial: responde "dá para tentar?"
-   * sem tocar o banco. A credencial gravada na SESSÃO é resolvida de novo
-   * dentro de `send`, que é async — devolver `false` aqui com sessão
-   * configurada faria o handler gravar `queued` sem motivo.
+   * SEMPRE `true`, e isso não é preguiça: para este canal a pergunta não tem
+   * resposta síncrona honesta.
+   *
+   * A credencial vive na SESSÃO (cifrada no banco), não no ambiente — foi a
+   * decisão da 0118, para que duas organizações possam ter contas diferentes na
+   * mesma instalação. `isConfigured` é síncrono e não pode consultar o banco,
+   * então olhar só o env responde "não configurado" para toda instalação que
+   * conectou pela tela.
+   *
+   * Medido em produção: o handler gravava `queued` com
+   * `queued_reason: zernio_not_configured` e NUNCA chamava `send` — a mensagem
+   * ficava parada no inbox, sem erro, com o canal conectado e funcionando.
+   *
+   * O custo de responder `true` é que `send` precisa ser quem desiste — e ele
+   * LANÇA em vez de devolver `{externalId: null}`, para o handler gravar
+   * `failed` com motivo em vez de um `sent` sem id, que diria "enviado" para
+   * algo que nunca saiu.
    */
   isConfigured(): boolean {
-    return zernioCredsFromEnv() !== null || !!process.env.ZERNIO_API_KEY;
+    return true;
   },
 
   async send(envelope: OutboundEnvelope): Promise<{ externalId: string | null }> {
     const admin = createAdminClient();
     const creds = await resolveZernioCreds(admin, envelope.sessionRef);
-    if (!creds) return { externalId: null };
+    // LANÇA, não devolve null: com `isConfigured` sempre true, quem desiste é
+    // este ponto — e `{externalId: null}` faria o handler gravar `sent` sem id,
+    // dizendo "enviado" para algo que nunca saiu.
+    if (!creds) {
+      throw new Error(
+        "zernio_not_configured: nenhuma credencial para esta conta (nem na sessão, nem no ambiente).",
+      );
+    }
 
     // Sem thread conhecida não há envio livre. Falhar aqui, com mensagem que
     // nomeia o motivo, é melhor que montar uma URL com `undefined` e receber um

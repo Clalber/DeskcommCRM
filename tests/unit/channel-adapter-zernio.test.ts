@@ -172,17 +172,28 @@ describe("send — endereça pela THREAD, não pelo telefone", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("sem credencial é noop, não erro — canal não conectado", async () => {
+  it("sem credencial LANÇA — um `sent` sem id diria enviado para o que nunca saiu", async () => {
     credsRef.current = null;
-    const r = await zernioAdapter.send({
-      sessionRef: "x",
-      to: "y",
-      providerConversationId: THREAD,
-      kind: "text",
-      body: "z",
-    });
-    expect(r.externalId).toBeNull();
+    await expect(
+      zernioAdapter.send({
+        sessionRef: "x",
+        to: "y",
+        providerConversationId: THREAD,
+        kind: "text",
+        body: "z",
+      }),
+    ).rejects.toThrow(/zernio_not_configured/);
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("isConfigured é SEMPRE true — a credencial vive na sessão, e isto é síncrono", async () => {
+    // Medido em produção: olhar só o env respondia "não configurado" para toda
+    // instalação que conectou pela tela, e o handler gravava `queued` sem nunca
+    // chamar `send`. A mensagem ficava parada, sem erro, com o canal ligado.
+    credsRef.current = null;
+    expect(zernioAdapter.isConfigured()).toBe(true);
+    credsRef.current = CREDS;
+    expect(zernioAdapter.isConfigured()).toBe(true);
   });
 });
 
