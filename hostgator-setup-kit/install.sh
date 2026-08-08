@@ -188,8 +188,12 @@ v_email() {
 v_supabase_url() {
   case "$1" in
     https://*.supabase.co) ;;
+    # Supabase SELF-HOSTED (ex.: https://db-crm.exemplo.com.br). A prova é a
+    # chamada a /auth/v1/health logo abaixo, que vale para qualquer host — o
+    # que se dispensa aqui é só a suposição de que todo Supabase é o da nuvem.
+    https://*) ;;
     *supabase.co*) echo "Cole a URL completa, começando com https:// — ex.: https://abcdefgh.supabase.co"; return 1;;
-    *) echo "Essa não é a URL do projeto Supabase. Ela termina em .supabase.co e fica em Settings > API > Project URL."; return 1;;
+    *) echo "A URL precisa começar com https://. Na nuvem ela fica em Settings > API > Project URL (termina em .supabase.co); num Supabase próprio, é o endereço do seu servidor."; return 1;;
   esac
   local code
   code="$(curl -s -o /dev/null -w '%{http_code}' -m 15 "$1/auth/v1/health" 2>/dev/null || echo 000)"
@@ -261,11 +265,23 @@ v_db_url() {
   esac
   # Mesma família de projeto? (usuário do pooler é 'postgres.<ref>')
   local dbref="${1#*://}"; dbref="${dbref%%:*}"; dbref="${dbref#postgres.}"
-  if [ -n "${NEXT_PUBLIC_SUPABASE_URL:-}" ] && [ "$dbref" != "postgres" ] \
-     && [ "$dbref" != "$(sb_ref "$NEXT_PUBLIC_SUPABASE_URL")" ]; then
-    echo "Essa connection string é do projeto '${dbref}', mas a URL que você deu é do projeto '$(sb_ref "$NEXT_PUBLIC_SUPABASE_URL")'. Precisam ser o mesmo projeto."
-    return 1
-  fi
+  # Só a NUVEM tem <ref> a comparar. E a decisão é pelo HOST, nunca pela string
+  # inteira: `case "$url" in *.supabase.co)` só casa quando a URL TERMINA nisso, e
+  # ela chega com barra final, caminho ou espaço colado — é o que o address bar do
+  # navegador entrega. Medido: com `https://<ref>.supabase.co/` a comparação era
+  # pulada e uma connection string de OUTRO projeto passava, o que instala o
+  # baseline.sql num banco e deixa o app falando com outro.
+  local sbhost="${NEXT_PUBLIC_SUPABASE_URL:-}"
+  sbhost="${sbhost#*://}"; sbhost="${sbhost%%/*}"
+  sbhost="${sbhost%%[[:space:]]*}"; sbhost="${sbhost%%:*}"
+  case "$sbhost" in
+    *.supabase.co)
+      if [ "$dbref" != "postgres" ] \
+         && [ "$dbref" != "$(sb_ref "$NEXT_PUBLIC_SUPABASE_URL")" ]; then
+        echo "Essa connection string é do projeto '${dbref}', mas a URL que você deu é do projeto '$(sb_ref "$NEXT_PUBLIC_SUPABASE_URL")'. Precisam ser o mesmo projeto."
+        return 1
+      fi;;
+  esac
   local out
   if out="$(docker run --rm postgres:17-alpine psql "$1" -tAc 'select 1' 2>&1)"; then
     return 0

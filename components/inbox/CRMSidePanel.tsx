@@ -18,6 +18,7 @@ import { ContactTagsEditor } from "./ContactTagsEditor";
 import { useDefaultPipeline } from "@/hooks/pipelines/useDefaultPipeline";
 import { NewLeadDialog } from "@/components/kanban/NewLeadDialog";
 import { cn } from "@/lib/utils";
+import { rotuloDoContato } from "@/lib/contacts/rotulo-do-contato";
 
 interface Props {
   conversation: ConversationWithContact | null;
@@ -171,11 +172,7 @@ export function CRMSidePanel({ conversation }: Props) {
   }, [contactId, tentativa]);
 
   const tags = contact?.tags ?? [];
-  const displayName =
-    contact?.display_name?.trim() ||
-    contact?.name?.trim() ||
-    contact?.phone_number ||
-    "—";
+  const displayName = rotuloDoContato(contact);
 
   // `erro` PRIMEIRO, e não é detalhe: as três listas voltam a `null` quando a
   // leitura falha, e este derivado lê `null` como "ainda não chegou". Sem esta
