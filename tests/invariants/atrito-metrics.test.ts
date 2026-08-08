@@ -3,7 +3,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { GOV_ORG, GOV_PIPELINE, GOV_SESSION, GOV_STAGE, GOV_AGENT_A, lastLine, seedGov, sql } from "./gov-helpers";
 
 /**
- * fn_atrito_metrics — a medida do PROPÓSITO (spec 17, migration 0116).
+ * fn_atrito_metrics — a medida do PROPÓSITO (spec 17, migration 0133).
  *
  * ## Por que isto vive num invariante de banco
  *
@@ -306,7 +306,7 @@ describe("fn_atrito_jaccard — o detector de repergunta (Fase 3)", () => {
 
   it("a limitação declarada é REAL: reformulação com outro vocabulário escapa", () => {
     // Isto NÃO é um defeito escondido — é o limite medido da camada lexical, e
-    // está escrito no cabeçalho da 0118 e na nota que a tela exibe. O teste
+    // está escrito no cabeçalho da 0135 e na nota que a tela exibe. O teste
     // existe para que ninguém "conserte" o número baixando o limiar sem antes
     // recalibrar os falsos positivos.
     expect(jac("qual o prazo de entrega", "quanto tempo demora pra chegar")).toBeLessThan(0.7);

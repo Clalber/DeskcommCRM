@@ -17,7 +17,7 @@
  * envio — a frase tranquilizadora que a falta de medição não autoriza.
  */
 
-/** Shape cru devolvido por `fn_atrito_metrics` (migrations 0116 + 0117). */
+/** Shape cru devolvido por `fn_atrito_metrics` (migrations 0133 + 0134). */
 export interface AtritoRaw {
   escopo: {
     demandas: number; de: string; ate: string;
@@ -139,7 +139,7 @@ export function taxaDeAbandono(c: AtritoRaw["cliente"]): number | null {
  * Das perguntas que TIVERAM resposta nossa, quantas a pessoa teve de refazer.
  * É um PISO: a camada lexical só pega repergunta quase literal (limiar 0.7,
  * calibrado para zero falso positivo). Reformulação com outro vocabulário
- * escapa — ver o cabeçalho da migration 0118.
+ * escapa — ver o cabeçalho da migration 0135.
  */
 export function taxaDeRepergunta(c: AtritoRaw["cliente"]): number | null {
   return razao(c.reperguntas, c.perguntas_com_resposta);

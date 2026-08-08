@@ -79,7 +79,7 @@ tela lia a coluna.
 
 | Peça | Arquivo | Prova observada |
 |---|---|---|
-| Migration 0116 | `supabase/migrations/20260806190000_0116_fn_atrito_metrics.sql` | `pnpm test:db` verde — baseline aplicado em **install** e **update** |
+| Migration 0133 | `supabase/migrations/20260806190000_0133_fn_atrito_metrics.sql` | `pnpm test:db` verde — baseline aplicado em **install** e **update** |
 | Apêndice do baseline | `supabase/baseline.sql` (fim do arquivo) | idem — é o que o self-hoster aplica |
 | Linha no MANIFEST | `supabase/migrations/MANIFEST.md` | — |
 | Módulo de pares | `lib/metrics/atrito.ts` | 26 testes unitários verdes |
@@ -139,7 +139,7 @@ Reprovado na tela após a correção: `valorPiorCaso: "6"` visível ·
 
 | Peça | Prova observada |
 |---|---|
-| Migration **0117** — `fn_atrito_metrics` ganha `p_abandono_horas` (default 72) + `abandonos` + `conversas_com_fala_nossa` | `test:db` verde; controle confirma **uma só função** de 4 args (o `drop` da de 3 funcionou) |
+| Migration **0134** — `fn_atrito_metrics` ganha `p_abandono_horas` (default 72) + `abandonos` + `conversas_com_fala_nossa` | `test:db` verde; controle confirma **uma só função** de 4 args (o `drop` da de 3 funcionou) |
 | Dano "Conversas que morreram no silêncio (após Nh)" no par Conversão | 35 unitários · 15 invariantes |
 | `lerAbandonoHoras` — leitura defensiva de jsonb livre | 4 testes; **sabotagem 1/1** |
 | `PATCH /api/v1/metrics/atrito` — muda a régua (manager+) | **PATCH 200 na tela**, com efeito no número |
@@ -170,7 +170,7 @@ Confirmado no banco, de forma independente: `settings->'atrito'` =
 | 1 | `Number(true) === 1` — um `true` no jsonb viraria "abandono após 1h" e o painel acusaria abandono em massa, com cara de dado | **Teste que eu mesmo escrevi reprovou** antes de qualquer prova de tela | `typeof` antes do `Number()`; sabotagem confirma 1/1 |
 | 2 | O `as unknown as AtritoRaw` da rota escondia um `escopo` sem `abandono_horas` — a tela diria "após undefined h" | Revisão do próprio cast | Campo explícito no fallback |
 | 3 | Controle da régua ficou no RODAPÉ, a três cards do número que governa | Prova de tela | Movido para o cabeçalho da seção |
-| 4 | 0117 sem linha no MANIFEST | **Gate `manifest-x-migrations` reprovou** | Linha adicionada |
+| 4 | 0134 (então `0117`) sem linha no MANIFEST | **Gate `manifest-x-migrations` reprovou** | Linha adicionada |
 
 ### Decisão de desenho — por que a régua NÃO foi para `channel_knobs`
 
@@ -199,7 +199,7 @@ Merece issue própria.
 
 | Peça | Prova |
 |---|---|
-| Migration **0118** — `fn_atrito_jaccard` + `p_repeticao_min` + `p_espera_horas` | `test:db` install+update; **uma só função**, 6 args |
+| Migration **0135** — `fn_atrito_jaccard` + `p_repeticao_min` + `p_espera_horas` | `test:db` install+update; **uma só função**, 6 args |
 | "Perguntas que a pessoa teve de repetir" | tela: **27,3%**, rotulada como PISO |
 | "Esperas sem nenhuma resposta por mais de 4h" | tela: **6,5%** |
 | Cobertura do detector | 5 invariantes novos (20 no total) · 40 unitários |
@@ -975,6 +975,7 @@ A terceira é a mais importante: ela demonstra que promover a função a definer
 | 4 | `page.fill()` no login não logava ("Email inválido") | O form usa react-hook-form, que escuta eventos de teclado; `fill` seta o valor sem disparar o que ele espera | ✅ `pressSequentially` — **bug da sonda, não do app** |
 | 5 | `page.evaluate(() => …)` quebrava com `__name is not defined` | O esbuild do `tsx` injeta helpers que não existem no contexto da página | ✅ medição passada como **string** |
 | 6 | Migration nasceu como `0115`, número já tomado | A `0115` existe na branch `feat/tres-papeis-do-agente` | ✅ renumerada para `0116` — **pego pelo hook de pre-commit**, não por mim |
+| 7 | `0116` colidiu DE NOVO, agora com a `0116_definer_nova_nasce_exposta` do PR #189 | O #189 entrou na `main` primeiro; cada PR passava sozinho e o segundo derrubaria `manifest-x-migrations`, que roda no `verify` obrigatório | ✅ renumeradas para `0133`/`0134`/`0135` na triagem — a linha 6 acima fica como está, porque descreve o que aconteceu **naquele** momento |
 
 ### 🐛 Achado PRÉ-EXISTENTE (fora do escopo, não é regressão desta branch)
 
@@ -1042,7 +1043,7 @@ existe, porque ninguém a reporta espontaneamente.
 # 1. Supabase local de pé + migration aplicada
 npx supabase status
 psql -h 127.0.0.1 -p 54322 -U postgres -d postgres \
-  -f supabase/migrations/20260806190000_0116_fn_atrito_metrics.sql
+  -f supabase/migrations/20260806190000_0133_fn_atrito_metrics.sql
 
 # 2. App apontando para o LOCAL (nunca para a nuvem do .env.local)
 NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:54321 \
