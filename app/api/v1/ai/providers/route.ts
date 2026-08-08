@@ -262,7 +262,7 @@ export async function PUT(req: NextRequest): Promise<Response> {
       },
       { onConflict: "organization_id,purpose" },
     )
-    .select("purpose, provider, model_id, credential_id, base_url, is_enabled")
+    .select("id, purpose, provider, model_id, credential_id, base_url, is_enabled")
     .maybeSingle();
 
   if (error) return fail("save_failed", error.message, 500);
@@ -277,11 +277,19 @@ export async function PUT(req: NextRequest): Promise<Response> {
     organizationId: org.orgId,
     actorUserId: user.id,
     resourceType: "ai_purpose_binding",
-    resourceId: corpo.purpose,
+    // O ID DA LINHA, não o `purpose`. `api_audit_log.resource_id` é **uuid**, e
+    // `purpose` é texto (`stage_classifier`): o INSERT falhava com 22P02
+    // (`invalid input syntax for type uuid`) e — como o audit é
+    // fire-and-forget — o erro ia só para o log do servidor. Resultado: NENHUMA
+    // troca de modelo era auditada, num painel cujo efeito é justamente mudar
+    // para onde o dinheiro e os dados do cliente vão. Achado dirigindo a tela;
+    // nenhum gate via, porque nada assertava a linha de auditoria.
+    resourceId: (gravado as { id?: string }).id ?? null,
     // O modelo entra no metadata, a credencial NÃO — só o id dela seria
     // inócuo, mas o hábito de mandar campo de credencial para o audit é o que
     // acaba vazando a chave quando alguém troca o campo de lugar.
     metadata: {
+      purpose: corpo.purpose,
       provider: corpo.provider,
       model_id: corpo.model_id,
       tem_endpoint_proprio: Boolean(corpo.base_url),

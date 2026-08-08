@@ -177,3 +177,38 @@ describe("lista de provedores × os pontos de ESCRITA", () => {
     ).toEqual([]);
   });
 });
+
+/**
+ * A MUTAÇÃO DO PAINEL PRECISA DEIXAR LINHA DE AUDITORIA.
+ *
+ * `api_audit_log.resource_id` é **uuid**. A rota mandava `corpo.purpose`
+ * (`"stage_classifier"`), o INSERT falhava com 22P02 e — como o audit é
+ * fire-and-forget — o erro ia só para o log do servidor:
+ *
+ *     [audit] insert error invalid input syntax for type uuid: "stage_classifier"
+ *
+ * Ou seja: NENHUMA troca de modelo era auditada, num painel cujo efeito é mudar
+ * para onde vão o dinheiro e os dados do cliente. Achado dirigindo a tela — o
+ * DoD 5 do repo exige audit em toda mutação e nada assertava a linha.
+ */
+describe("PUT /api/v1/ai/providers — auditoria", () => {
+  it("o resourceId é o id da linha, não o purpose", async () => {
+    const { readFileSync } = await import("node:fs");
+    const fonte = readFileSync("app/api/v1/ai/providers/route.ts", "utf8");
+    const bloco = fonte.slice(fonte.indexOf("ai.purpose_binding_updated"));
+
+    expect(
+      bloco,
+      "resourceId voltou a receber o purpose — `resource_id` é uuid e o insert do audit morre com 22P02",
+    ).not.toMatch(/resourceId:\s*corpo\.purpose/);
+    expect(bloco).toMatch(/resourceId:\s*\(gravado as \{ id\?: string \}\)\.id/);
+    // E o purpose continua registrado — no metadata, onde texto é aceito.
+    expect(bloco).toMatch(/purpose:\s*corpo\.purpose/);
+  });
+
+  it("o upsert traz o id de volta (senão o resourceId seria sempre null)", async () => {
+    const { readFileSync } = await import("node:fs");
+    const fonte = readFileSync("app/api/v1/ai/providers/route.ts", "utf8");
+    expect(fonte).toMatch(/\.select\("id, purpose, provider, model_id/);
+  });
+});
