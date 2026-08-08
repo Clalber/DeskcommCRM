@@ -135,15 +135,25 @@ async function upsertConversation(
 
   // A thread do provider, que é o motivo deste módulo existir.
   //
-  // Gravada SEMPRE, não só quando está vazia: o provider pode abrir uma thread
-  // nova para o mesmo contato (foi o que aconteceu de verdade ao reconectar o
-  // canal por QR, e partiu o histórico de 12 contatos). Guardar a mais recente
-  // é o que mantém a resposta indo para a conversa em que a pessoa escreveu.
+  // Gravada SEMPRE, sem condição. A primeira versão tinha um
+  // `.neq("provider_conversation_id", ...)` para "só escrever se mudou" — e
+  // isso QUEBROU exatamente o que este módulo existe para fazer:
+  //
+  //   em SQL, `NULL <> 'valor'` é NULL, não TRUE.
+  //
+  // Conversa recém-criada tem a coluna NULL, então o `neq` nunca a alcançava e
+  // o update não pegava linha nenhuma. Medido em produção: o webhook respondia
+  // `{"status":"ingested"}` e a coluna ficava `null` — a mensagem aparecia no
+  // inbox e responder era impossível.
+  //
+  // O teste com dublê não pegou porque o fake tratava `.neq()` como no-op:
+  // afirmava que o `update` foi CHAMADO com o payload certo, que era verdade, e
+  // não que ele tivesse casado alguma linha. Escrever sempre é uma escrita a
+  // mais por mensagem e zero condições sutis para errar.
   await admin
     .from("conversations")
     .update({ provider_conversation_id: input.providerConversationId })
-    .eq("id", conversationId)
-    .neq("provider_conversation_id", input.providerConversationId);
+    .eq("id", conversationId);
 
   return conversationId;
 }

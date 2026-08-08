@@ -15,6 +15,22 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
  */
 
 const ops: { tabela: string; op: string; payload?: unknown }[] = [];
+
+/**
+ * O estado da linha que o dublê representa, para que os filtros MORDAM.
+ *
+ * A primeira versão deste fake tratava `.eq()`/`.neq()` como no-op e só
+ * registrava a chamada. Isso deixou passar um defeito real: o update da thread
+ * tinha um `.neq("provider_conversation_id", …)` que, numa conversa nova (coluna
+ * NULL), nunca casa — porque em SQL `NULL <> 'valor'` é NULL, não TRUE. O teste
+ * afirmava que o update foi CHAMADO com o payload certo, e não que ele tivesse
+ * alcançado alguma linha. Em produção o webhook respondia "ingested" e a coluna
+ * ficava nula.
+ *
+ * Agora o dublê aplica os filtros contra este estado e registra o que a linha
+ * FICOU. Um teste só vale o que o dublê se recusa a fingir.
+ */
+let linhaConversa: Record<string, unknown> = { provider_conversation_id: null };
 let rpcResposta: Record<string, unknown> = {
   fn_upsert_wa_contact: "contact-1",
   fn_upsert_wa_conversation: "conv-1",
@@ -23,6 +39,7 @@ let insertErro: { code?: string; message: string } | null = null;
 
 /** Imita o builder do PostgREST: encadeável, resolve no `maybeSingle`. */
 function chain(tabela: string, op: string, payload?: unknown): Record<string, unknown> {
+  let casa = true;
   const proxy: Record<string, unknown> = new Proxy(
     {},
     {
@@ -32,9 +49,28 @@ function chain(tabela: string, op: string, payload?: unknown): Record<string, un
             insertErro ? { data: null, error: insertErro } : { data: { id: "msg-1" }, error: null };
         }
         if (prop === "then") {
-          return (ok: (v: unknown) => unknown) => ok({ data: null, error: null });
+          // O efeito acontece AQUI, no await — depois de TODOS os filtros da
+          // cadeia terem sido aplicados. Fazê-lo a cada elo (como a primeira
+          // versão fazia) grava antes de o `.neq()` sequer ser avaliado, e o
+          // dublê volta a mentir exatamente sobre o que precisa vigiar.
+          return (ok: (v: unknown) => unknown) => {
+            if (tabela === "conversations" && op === "update" && casa && payload) {
+              Object.assign(linhaConversa, payload as Record<string, unknown>);
+            }
+            return ok({ data: null, error: null });
+          };
         }
         return (...args: unknown[]) => {
+          if (prop === "eq" || prop === "neq") {
+            const [coluna, valor] = args as [string, unknown];
+            const atual = tabela === "conversations" ? linhaConversa[coluna] : undefined;
+            if (coluna === "provider_conversation_id") {
+              // A semântica de SQL, não a intuição: comparação com NULL é NULL,
+              // e NULL não é TRUE — a linha NÃO casa.
+              if (atual === null || atual === undefined) casa = false;
+              else if (prop === "eq" ? atual !== valor : atual === valor) casa = false;
+            }
+          }
           if (prop === "update" || prop === "eq" || prop === "neq") {
             ops.push({ tabela, op: `${op}.${String(prop)}`, payload: args[0] });
           }
@@ -85,6 +121,7 @@ const ENTRADA = { organizationId: "org-1", channelSessionId: "sess-1" };
 
 beforeEach(() => {
   ops.length = 0;
+  linhaConversa = { provider_conversation_id: null };
   insertErro = null;
   rpcResposta = { fn_upsert_wa_contact: "contact-1", fn_upsert_wa_conversation: "conv-1" };
 });
@@ -114,8 +151,26 @@ describe("o que a ingestão GRAVA", () => {
   it("grava a thread do provider — é o motivo deste módulo existir", async () => {
     const r = await ingestZernioInbound(admin, { ...ENTRADA, payload: evento() });
     expect(r.status).toBe("ingested");
-    const update = ops.find((o) => o.tabela === "conversations" && o.op === "update");
-    expect(update?.payload).toEqual({ provider_conversation_id: "6a76a2dc4b8fe115e5f6c300" });
+    // O que importa não é a CHAMADA, é a linha ter ficado com o valor. Foi
+    // exatamente essa diferença que deixou o defeito passar para produção.
+    expect(linhaConversa.provider_conversation_id).toBe("6a76a2dc4b8fe115e5f6c300");
+  });
+
+  it("grava a thread mesmo quando a coluna está NULL — o caso de TODA conversa nova", async () => {
+    // O defeito que foi a produção: `NULL <> 'valor'` é NULL, e um filtro
+    // condicional nunca alcançava a linha recém-criada.
+    linhaConversa = { provider_conversation_id: null };
+    await ingestZernioInbound(admin, { ...ENTRADA, payload: evento() });
+    expect(linhaConversa.provider_conversation_id).toBe("6a76a2dc4b8fe115e5f6c300");
+  });
+
+  it("atualiza a thread quando o provider abre uma NOVA para o mesmo contato", async () => {
+    // Aconteceu de verdade no canal por QR: reconectar abriu threads novas e
+    // partiu o histórico de 12 contatos. Guardar a mais recente é o que mantém
+    // a resposta indo para onde a pessoa escreveu.
+    linhaConversa = { provider_conversation_id: "thread-antiga" };
+    await ingestZernioInbound(admin, { ...ENTRADA, payload: evento() });
+    expect(linhaConversa.provider_conversation_id).toBe("6a76a2dc4b8fe115e5f6c300");
   });
 
   it("a mensagem entra como inbound com o wamid como external_id", async () => {
