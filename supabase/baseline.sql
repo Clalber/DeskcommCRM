@@ -8421,17 +8421,78 @@ alter table public.channel_sessions
 
 alter table public.channel_sessions alter column waha_session_name drop not null;
 
-do $$ begin
-  alter table public.channel_sessions add constraint channel_sessions_provider_check
-    check (provider = any (array['waha'::text, 'meta_cloud'::text]));
-exception when duplicate_object then null; end $$;
+-- (constraints channel_sessions_provider_check e channel_sessions_provider_ref_check:
+--  definidas uma vez só, no fim deste arquivo, com o vocabulário FINAL — regra de
+--  `tests/unit/baseline-constraint-reconstruida.test.ts`. Reconstruí-las aqui com a
+--  lista de dois providers faria o `update.sh` de um clone que já tem o terceiro
+--  falhar ao re-aplicar, e deixaria a tabela sem constraint entre o drop e o add
+--  que funciona.)
 
-do $$ begin
-  alter table public.channel_sessions add constraint channel_sessions_provider_ref_check check (
+-- ---- vocabulário do terceiro canal (migration 0131) ----
+-- Espelho idempotente da 0116. Racional completo no arquivo da migration; o que
+-- importa aqui é POR QUE os dois CHECKs são recriados em vez de criados com
+-- `exception when duplicate_object`: os blocos acima já os criaram na versão de
+-- DOIS providers, e num clone que roda `update.sh` eles JÁ EXISTEM. O
+-- `duplicate_object` engoliria a versão nova em silêncio e o banco ficaria
+-- recusando a sessão do canal novo com o script tendo passado verde — a
+-- falha-em-verde que a doutrina do self-host proíbe.
+--
+-- Ordem importa: a coluna nasce ANTES do CHECK que a referencia, e nullable,
+-- então nenhuma linha existente a viola. Toda linha pré-existente tem provider
+-- 'waha' ou 'meta_cloud' e já satisfaz o ramo correspondente — nada a
+-- deduplicar antes das constraints.
+alter table public.channel_sessions
+  add column if not exists zernio_account_id text;
+
+alter table public.channel_sessions
+  drop constraint if exists channel_sessions_provider_check;
+
+alter table public.channel_sessions
+  add constraint channel_sessions_provider_check
+  check (provider = any (array['waha'::text, 'meta_cloud'::text, 'zernio'::text]));
+
+alter table public.channel_sessions
+  drop constraint if exists channel_sessions_provider_ref_check;
+
+alter table public.channel_sessions
+  add constraint channel_sessions_provider_ref_check check (
     (provider = 'waha'       and waha_session_name    is not null) or
-    (provider = 'meta_cloud' and meta_phone_number_id is not null)
+    (provider = 'meta_cloud' and meta_phone_number_id is not null) or
+    (provider = 'zernio'     and zernio_account_id    is not null)
   );
-exception when duplicate_object then null; end $$;
+
+comment on column public.channel_sessions.zernio_account_id is
+  'Identificador da conta conectada NO INTERMEDIÁRIO (accountId), não o phone_number_id da Meta. É o que endereça envio e webhook. Espelhado em lib/channels/session-ref.ts.';
+
+-- ---- o que falta para o terceiro canal ENVIAR (migration 0132) ----
+-- Espelho idempotente da 0117. Racional completo no arquivo da migration.
+--
+-- `provider_conversation_id`: os dois canais existentes DERIVAM o destinatário
+-- do contato (chatId ou E.164). Este não — quem endereça é um id de 24 hex que
+-- o intermediário inventa e devolve pelo webhook. Sem guardá-lo não há como
+-- responder dentro da janela de 24h, porque o endpoint que aceita telefone
+-- exige template. Nome genérico: é o mesmo conceito para qualquer provider que
+-- enderece por thread própria, e carimbar nome de provider numa tabela que hoje
+-- não tem nenhum seria dívida gratuita.
+--
+-- As duas colunas nascem NULLABLE e sem constraint nova: nenhuma linha
+-- existente as viola, então não há dado a corrigir antes — o `update.sh` de um
+-- clone com dados aplica isto sem tocar em nada.
+alter table public.conversations
+  add column if not exists provider_conversation_id text;
+
+comment on column public.conversations.provider_conversation_id is
+  'Id que o PROVIDER dá a esta thread, quando ele endereça por thread própria em vez de por telefone. Chega pelo webhook de mensagem recebida. NULL = provider endereça por telefone (WAHA, oficial) ou ainda não houve primeiro contato.';
+
+create index if not exists idx_conversations_provider_conversation_id
+  on public.conversations (organization_id, provider_conversation_id)
+  where provider_conversation_id is not null;
+
+alter table public.channel_sessions
+  add column if not exists zernio_token_encrypted bytea;
+
+comment on column public.channel_sessions.zernio_token_encrypted is
+  'API key do intermediário, cifrada por fn_encrypt_oauth. Por SESSÃO (não por instalação) — mesma decisão da 0087 para o canal oficial.';
 
 comment on column public.channel_sessions.provider is
   'Canal desta sessão. Vocabulário espelhado em lib/channels/types.ts → ChannelProvider (cobrado por tests/invariants/vocabulario-banco-x-typescript.test.ts).';
@@ -8766,6 +8827,8 @@ comment on column public.webhook_sources.last_change_actor_kind is
 comment on column public.automation_rules.last_change_actor_kind is
   'Espécie de quem ligou/desligou/editou esta regra por último: user | ai | system. NULL = anterior à 0101.';
 
+
+
 notify pgrst, 'reload schema';
 
 -- ---- uso das capacidades do agente (migration 0103) ----
@@ -9022,6 +9085,12 @@ alter table public.agent_inbox_items
     -- — os blocos antigos rodam antes e falham em cadeia. Um bloco por
     -- constraint, vigiado por tests/unit/baseline-constraint-reconstruida.test.ts.
     'message_send_stuck',
+    -- (migration 0129) O cliente manda foto/áudio e o agente age como se nada
+    -- tivesse chegado. Acontece quando o modelo configurado não enxerga imagem,
+    -- ou quando falta a chave de transcrição — e antes disto a derivação
+    -- devolvia string vazia EM SILÊNCIO: nenhum erro, nenhum log, e o operador
+    -- concluindo que o agente ignorou o cliente de propósito.
+    'midia_nao_lida',
     -- (migration 0111, spec 16 §3.2) O papel Operador declara promessa em aberto:
     -- o assistente prometeu algo ao cliente e o cumprimento não foi registrado.
     -- A invariante sagrada da spec é "nenhuma promessa deixa de ser cumprida", e
@@ -9037,6 +9106,8 @@ alter table public.agent_inbox_items
     'other'
   ));
 
+
+
 notify pgrst, 'reload schema';
 
 -- ---- channel_sessions.archived_at (migration 0106) ----
@@ -9049,6 +9120,8 @@ alter table public.channel_sessions
 create index if not exists channel_sessions_org_active_idx
   on public.channel_sessions (organization_id, created_at)
   where archived_at is null;
+
+
 
 notify pgrst, 'reload schema';
 
@@ -9158,6 +9231,599 @@ comment on column public.ai_invocations.agent_id is
   'Agente que originou a invocação. NULL = invocação de IA sem agente dono '
   '(ex.: classificador de sentimento numa org sem agente publicado). O custo '
   'existe e precisa aparecer nas telas de consumo — ver issue #160.';
+
+
+-- ---- Índice de Atrito + DEMANDAS (migrations 0116–0120) ----
+-- Spec 17 + doutrina cap. 5. `demandas` é a unidade do PROPÓSITO: contato é
+-- quem pede, conversa é por onde se fala, demanda é o que precisa acabar.
+-- O índice usa demandas como denominador (0137) e publica o invariante 4 como
+-- número (demandas abertas sem próximo passo). Idempotente.
+
+create index if not exists idx_conversations_org_silencio
+  on public.conversations (organization_id, last_outbound_at)
+  where last_outbound_at is not null;
+
+/**
+ * Jaccard de tokens entre dois textos. Tokens com 3+ caracteres (artigos e
+ * preposições curtas só somam ruído), sem acento-folding: reformulação real
+ * varia palavra, não acento.
+ */
+create or replace function public.fn_atrito_jaccard(a text, b text)
+returns float8
+language sql
+immutable
+set search_path = public
+as $$
+  with
+  ta as (
+    select distinct token from unnest(
+      string_to_array(lower(regexp_replace(coalesce(a, ''), '[^[:alnum:][:space:]]', ' ', 'g')), ' ')
+    ) as token
+    where length(token) >= 3
+  ),
+  tb as (
+    select distinct token from unnest(
+      string_to_array(lower(regexp_replace(coalesce(b, ''), '[^[:alnum:][:space:]]', ' ', 'g')), ' ')
+    ) as token
+    where length(token) >= 3
+  )
+  select case
+    when (select count(*) from ta) = 0 or (select count(*) from tb) = 0 then 0::float8
+    else (select count(*) from (select token from ta intersect select token from tb) i)::float8
+       / nullif((select count(*) from (select token from ta union select token from tb) u), 0)::float8
+  end;
+$$;
+
+revoke all     on function public.fn_atrito_jaccard(text, text) from public;
+revoke execute on function public.fn_atrito_jaccard(text, text) from anon;
+grant  execute on function public.fn_atrito_jaccard(text, text) to authenticated, service_role;
+
+create table if not exists public.demandas (
+  id uuid primary key default gen_random_uuid(),
+  organization_id uuid not null references public.organizations(id) on delete cascade,
+
+  -- SOLICITANTE: quem tem o problema (não necessariamente quem escreveu).
+  contact_id uuid not null references public.contacts(id) on delete cascade,
+  -- Vínculo com o negócio, quando houver. Uma demanda de suporte não tem lead,
+  -- e isso é desfecho legítimo — não pendência.
+  lead_id uuid references public.crm_leads(id) on delete set null,
+
+  -- Ponteiro para o caso de escalada que originou a demanda, quando houve.
+  -- Sem ele, as métricas de toque humano (que vivem em `agent_case_events`)
+  -- perderiam a ligação com a demanda ao trocar o denominador do índice.
+  agent_case_id uuid references public.agent_cases(id) on delete set null,
+
+  aberta_em timestamptz not null default now(),
+  origem text not null default 'inbound'
+    check (origem in ('inbound', 'handoff', 'followup', 'manual', 'derivada')),
+  assunto text,
+
+  estado text not null default 'aberta'
+    check (estado in ('aberta', 'em_atendimento', 'aguardando_cliente', 'resolvida', 'encerrada')),
+
+  -- DONO NUNCA VAZIO (cap. 5 §5.3). Demanda sem dono é a definição operacional
+  -- de "vai morrer". Se ninguém assumiu, o dono é a automação — e isso é uma
+  -- decisão registrada, não um vazio que ninguém nota.
+  dono_kind text not null default 'ia' check (dono_kind in ('ia', 'humano')),
+  dono_user_id uuid references auth.users(id) on delete set null,
+
+  -- PRÓXIMO PASSO é CAMPO, não derivação (cap. 5 §5.3): derivado, ele
+  -- desapareceria nos casos em que a derivação falha — que são exatamente os
+  -- casos em que ele importa. É aqui que o invariante 4 vira verificável.
+  proximo_passo text,
+  proximo_passo_em timestamptz,
+  prazo_em timestamptz,
+
+  -- Desfecho ENUMERADO e terminal. Inclui os que não são vitória: o sistema não
+  -- pode ser o único a decidir que uma demanda acabou, senão fecharia por
+  -- conveniência (encerrar por inatividade melhora todo número sem melhorar
+  -- nada). `expirada_sem_resposta` é desfecho legítimo e RUIM — contável e
+  -- vigiado; organização onde ele é zero está mal instrumentada, não saudável.
+  desfecho text check (desfecho in (
+    'resolvida', 'convertida', 'nao_procede',
+    'encerrada_pelo_cliente', 'perdida', 'expirada_sem_resposta'
+  )),
+  fechada_em timestamptz,
+
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+
+  -- Desfecho e fechamento andam juntos: um sem o outro é linha meio-fechada,
+  -- que nenhuma consulta de "abertas" nem de "encerradas" pegaria.
+  constraint demandas_desfecho_coerente
+    check ((desfecho is null) = (fechada_em is null)),
+  -- Dono humano exige QUEM. `dono_kind='humano'` com user nulo seria dono vazio
+  -- com aparência de dono preenchido.
+  constraint demandas_dono_humano_tem_user
+    check (dono_kind <> 'humano' or dono_user_id is not null)
+);
+
+-- Uma demanda atravessa VÁRIOS canais e uma conversa carrega VÁRIAS demandas
+-- (cap. 5 §5.4). Resistir a este muitos-para-muitos é a fonte de metade dos
+-- problemas de modelagem neste domínio: um-para-um obriga a escolher entre
+-- perder o problema que muda de canal e perder o segundo problema da conversa.
+create table if not exists public.demanda_conversas (
+  organization_id uuid not null references public.organizations(id) on delete cascade,
+  demanda_id uuid not null references public.demandas(id) on delete cascade,
+  conversation_id uuid not null references public.conversations(id) on delete cascade,
+  vinculada_em timestamptz not null default now(),
+  primary key (demanda_id, conversation_id)
+);
+
+create index if not exists idx_demandas_org_abertas
+  on public.demandas (organization_id, aberta_em)
+  where fechada_em is null;
+create index if not exists idx_demandas_org_fechadas
+  on public.demandas (organization_id, fechada_em)
+  where fechada_em is not null;
+create index if not exists idx_demandas_caso
+  on public.demandas (organization_id, agent_case_id)
+  where agent_case_id is not null;
+create index if not exists idx_demandas_contato
+  on public.demandas (organization_id, contact_id);
+-- O invariante 4 em forma de índice: demanda aberta SEM próximo passo é o
+-- vazamento que a doutrina proíbe, e precisa ser barato de enumerar.
+create index if not exists idx_demandas_sem_proximo_passo
+  on public.demandas (organization_id, aberta_em)
+  where fechada_em is null and proximo_passo is null;
+create index if not exists idx_demanda_conversas_conv
+  on public.demanda_conversas (organization_id, conversation_id);
+
+alter table public.demandas enable row level security;
+alter table public.demanda_conversas enable row level security;
+
+drop policy if exists tenant_isolation_demandas_all on public.demandas;
+create policy tenant_isolation_demandas_all on public.demandas
+  for all
+  using (organization_id in (select * from public.fn_user_org_ids()))
+  with check (organization_id in (select * from public.fn_user_org_ids()));
+
+drop policy if exists tenant_isolation_demanda_conversas_all on public.demanda_conversas;
+create policy tenant_isolation_demanda_conversas_all on public.demanda_conversas
+  for all
+  using (organization_id in (select * from public.fn_user_org_ids()))
+  with check (organization_id in (select * from public.fn_user_org_ids()));
+
+-- ---------------------------------------------------------------------------
+-- Passo 2 de 4: derivar o passado por REGRA EXPLÍCITA, nunca por adivinhação.
+--
+-- A regra fica escrita porque histórico derivado por regra é honesto e
+-- histórico derivado por heurística contamina toda comparação futura — e
+-- ninguém vai lembrar disso daqui a seis meses, comparando dois trimestres.
+--
+--   R1. Todo `agent_cases` vira uma demanda (origem 'handoff'). O mapeamento de
+--       status é 1:1 e sem interpretação.
+--   R2. Toda conversa SEM agent_case vira uma demanda (origem 'derivada'),
+--       porque houve uma pessoa com um assunto ali. `assunto` fica NULO — não
+--       inventamos o que a conversa tratava.
+--
+-- Idempotente por `where not exists`: re-aplicar não duplica.
+-- ---------------------------------------------------------------------------
+
+-- R1 — a partir dos casos de escalada.
+insert into public.demandas
+  (organization_id, contact_id, lead_id, agent_case_id, aberta_em, origem, assunto,
+   estado, dono_kind, desfecho, fechada_em)
+select
+  c.organization_id,
+  cv.contact_id,
+  c.lead_id,
+  c.id,
+  c.opened_at,
+  'handoff',
+  c.title,
+  case c.status
+    when 'awaiting_human' then 'em_atendimento'
+    when 'awaiting_lead'  then 'aguardando_cliente'
+    when 'resolved'       then 'resolvida'
+    when 'escalated'      then 'em_atendimento'
+    when 'cancelled'      then 'encerrada'
+    else 'aberta'
+  end,
+  'ia',
+  case c.status
+    when 'resolved'  then 'resolvida'
+    when 'cancelled' then 'nao_procede'
+    else null
+  end,
+  case when c.status in ('resolved', 'cancelled') then c.closed_at else null end
+  from public.agent_cases c
+  join public.conversations cv on cv.id = c.conversation_id
+ where not exists (
+   select 1 from public.demandas d
+    where d.organization_id = c.organization_id
+      and d.contact_id = cv.contact_id
+      and d.origem = 'handoff'
+      and d.aberta_em = c.opened_at
+ );
+
+-- Vínculo N:N das demandas derivadas de caso.
+insert into public.demanda_conversas (organization_id, demanda_id, conversation_id)
+select d.organization_id, d.id, c.conversation_id
+  from public.demandas d
+  join public.agent_cases c on c.id = d.agent_case_id
+ where d.agent_case_id is not null
+   and not exists (
+     select 1 from public.demanda_conversas dc
+      where dc.demanda_id = d.id and dc.conversation_id = c.conversation_id
+   );
+
+-- R2 — conversas que nunca escalaram também são demandas.
+insert into public.demandas
+  (organization_id, contact_id, aberta_em, origem, estado, dono_kind, desfecho, fechada_em)
+select
+  cv.organization_id,
+  cv.contact_id,
+  cv.created_at,
+  'derivada',
+  case cv.status when 'resolved' then 'resolvida' when 'closed' then 'encerrada' else 'aberta' end,
+  'ia',
+  case when cv.status in ('resolved', 'closed') then 'resolvida' else null end,
+  case when cv.status in ('resolved', 'closed') then cv.status_changed_at else null end
+  from public.conversations cv
+ where not exists (
+   select 1 from public.agent_cases c where c.conversation_id = cv.id
+ )
+   and not exists (
+   select 1 from public.demandas d
+    where d.organization_id = cv.organization_id
+      and d.contact_id = cv.contact_id
+      and d.origem = 'derivada'
+      and d.aberta_em = cv.created_at
+ );
+
+insert into public.demanda_conversas (organization_id, demanda_id, conversation_id)
+select d.organization_id, d.id, cv.id
+  from public.demandas d
+  join public.conversations cv
+    on cv.organization_id = d.organization_id
+   and cv.contact_id = d.contact_id
+   and cv.created_at = d.aberta_em
+ where d.origem = 'derivada'
+   and not exists (
+     select 1 from public.demanda_conversas dc
+      where dc.demanda_id = d.id and dc.conversation_id = cv.id
+   );
+
+comment on table public.demandas is
+  'A unidade do PROPÓSITO (doutrina cap. 5): uma coisa a ser resolvida. '
+  'Contato é quem pede; conversa é por onde se fala; demanda é o que precisa '
+  'acabar. Dono nunca vazio; próximo passo é campo, não derivação.';
+
+
+drop function if exists public.fn_atrito_metrics(uuid, timestamptz, timestamptz, int, float8, int);
+
+create or replace function public.fn_atrito_metrics(
+  p_org uuid,
+  p_from timestamptz,
+  p_to timestamptz,
+  p_abandono_horas int default 72,
+  p_repeticao_min float8 default 0.7,
+  p_espera_horas int default 4
+) returns jsonb
+language sql stable
+set search_path = public
+as $$
+  with
+  -- DENOMINADOR DEFINITIVO: demandas encerradas na janela. Não mais os casos.
+  demandas_j as (
+    select d.id, d.agent_case_id, d.aberta_em, d.fechada_em, d.desfecho
+      from public.demandas d
+     where d.organization_id = p_org
+       and d.fechada_em is not null
+       and d.fechada_em >= p_from
+       and d.fechada_em <  p_to
+  ),
+  -- Turnos: mensagens de TODAS as conversas da demanda (N:N), dentro da vida
+  -- dela. Uma demanda que atravessou dois canais soma os dois.
+  turnos as (
+    select d.id,
+           (select count(*)
+              from public.demanda_conversas dc
+              join public.messages m
+                on m.conversation_id = dc.conversation_id
+               and m.organization_id = p_org
+               and m.sent_at >= d.aberta_em
+               and m.sent_at <  d.fechada_em
+             where dc.demanda_id = d.id) as n
+      from demandas_j d
+  ),
+  -- Insistência: só existe onde houve caso. O payload declara o denominador
+  -- próprio (`demandas_com_caso`) para o número não ser lido como se fosse
+  -- sobre o total.
+  insistencia as (
+    select avg(c.followup_attempts)::float8 as media,
+           max(c.followup_attempts)         as maximo,
+           count(*)                         as base
+      from demandas_j d
+      join public.agent_cases c on c.id = d.agent_case_id
+  ),
+  humano as (
+    select e.case_id, count(*) as intervencoes, min(e.created_at) as primeiro_toque
+      from public.agent_case_events e
+      join demandas_j d on d.agent_case_id = e.case_id
+     where e.organization_id = p_org and e.actor_kind = 'human'
+     group by e.case_id
+  ),
+  espera_fila as (
+    select extract(epoch from (h.primeiro_toque - d.aberta_em)) as segundos
+      from demandas_j d join humano h on h.case_id = d.agent_case_id
+     where h.primeiro_toque > d.aberta_em
+  ),
+  retrabalho as (
+    select count(distinct e.case_id) as n
+      from public.agent_case_events e
+      join demandas_j d on d.agent_case_id = e.case_id
+     where e.organization_id = p_org
+       and (e.kind = 'escalated' or e.human_action = 'escalate')
+  ),
+  abandono as (
+    select
+      count(*) filter (
+        where cv.last_outbound_at >= p_from and cv.last_outbound_at < p_to
+          and (cv.last_inbound_at is null or cv.last_outbound_at > cv.last_inbound_at)
+          and cv.last_outbound_at < now() - make_interval(hours => p_abandono_horas)
+          and cv.status not in ('resolved', 'closed')
+      ) as abandonadas,
+      count(*) filter (
+        where cv.last_outbound_at >= p_from and cv.last_outbound_at < p_to
+      ) as com_fala_nossa
+      from public.conversations cv
+     where cv.organization_id = p_org and cv.last_outbound_at is not null
+  ),
+  -- INVARIANTE 4, agora VERIFICÁVEL: demanda aberta sem próximo passo é o
+  -- vazamento que a doutrina proíbe. Antes da 0119 isto não era enumerável.
+  sem_proximo_passo as (
+    select count(*) as n
+      from public.demandas d
+     where d.organization_id = p_org
+       and d.fechada_em is null
+       and d.proximo_passo is null
+  ),
+  demandas_abertas as (
+    select count(*) as n from public.demandas d
+     where d.organization_id = p_org and d.fechada_em is null
+  ),
+  inbounds as (
+    select m.conversation_id, m.sent_at, m.body,
+           lag(m.body)    over (partition by m.conversation_id order by m.sent_at) as body_anterior,
+           lag(m.sent_at) over (partition by m.conversation_id order by m.sent_at) as sent_at_anterior
+      from public.messages m
+     where m.organization_id = p_org and m.direction = 'inbound' and m.body is not null
+       and m.sent_at >= p_from and m.sent_at < p_to
+  ),
+  repeticao as (
+    select
+      count(*) filter (
+        where i.body_anterior is not null
+          and exists (select 1 from public.messages o
+                       where o.organization_id = p_org and o.conversation_id = i.conversation_id
+                         and o.direction = 'outbound'
+                         and o.sent_at > i.sent_at_anterior and o.sent_at < i.sent_at)
+          and public.fn_atrito_jaccard(i.body, i.body_anterior) >= p_repeticao_min
+      ) as repetidas,
+      count(*) filter (
+        where i.body_anterior is not null
+          and exists (select 1 from public.messages o
+                       where o.organization_id = p_org and o.conversation_id = i.conversation_id
+                         and o.direction = 'outbound'
+                         and o.sent_at > i.sent_at_anterior and o.sent_at < i.sent_at)
+      ) as com_resposta_no_meio
+      from inbounds i
+  ),
+  espera_calada as (
+    select count(*) filter (where prox.espera_s > p_espera_horas * 3600) as caladas,
+           count(*) as com_resposta,
+           percentile_cont(0.9) within group (order by prox.espera_s) as p90_s
+      from (
+        select extract(epoch from (
+                 (select min(o.sent_at) from public.messages o
+                   where o.organization_id = p_org and o.conversation_id = m.conversation_id
+                     and o.direction = 'outbound' and o.sent_at > m.sent_at) - m.sent_at)) as espera_s
+          from public.messages m
+         where m.organization_id = p_org and m.direction = 'inbound'
+           and m.sent_at >= p_from and m.sent_at < p_to
+      ) prox
+     where prox.espera_s is not null
+  ),
+  envios as (
+    select count(*) filter (where m.sent_via = 'ai')              as por_ia,
+           count(*) filter (where m.sent_via = 'user')            as por_humano_no_sistema,
+           count(*) filter (where m.sent_via = 'external_device') as por_humano_fora
+      from public.messages m
+     where m.organization_id = p_org and m.direction = 'outbound'
+       and m.sent_at >= p_from and m.sent_at < p_to
+  ),
+  vetos as (
+    select count(*) filter (where t.vetoed_gate is not null) as vetados,
+           count(distinct t.job_id) as execucoes
+      from public.before_send_traces t
+     where t.organization_id = p_org and t.created_at >= p_from and t.created_at < p_to
+  ),
+  descadastros as (
+    select count(*) as n from public.contacts c
+     where c.organization_id = p_org and c.blocked_at is not null
+       and c.blocked_at >= p_from and c.blocked_at < p_to
+  ),
+  pedidos_humano as (
+    select count(*) as n from public.crm_lead_activities a
+     where a.organization_id = p_org and a.type = 'handoff_triggered'
+       and a.performed_at >= p_from and a.performed_at < p_to
+  ),
+  eficiencia as (
+    select count(*) filter (where status = 'won')  as ganhos,
+           count(*) filter (where status = 'lost') as perdidos
+      from public.crm_leads
+     where organization_id = p_org and status in ('won', 'lost')
+       and closed_at >= p_from and closed_at < p_to
+  )
+  select jsonb_build_object(
+    'escopo', jsonb_build_object(
+      'demandas',            (select count(*) from demandas_j),
+      'demandas_com_caso',   (select base from insistencia),
+      'demandas_abertas',    (select n from demandas_abertas),
+      'de', p_from, 'ate', p_to,
+      'abandono_horas', p_abandono_horas,
+      'repeticao_min',  p_repeticao_min,
+      'espera_horas',   p_espera_horas,
+      -- Marca a régua do denominador: quem comparar dois períodos precisa saber
+      -- se foram medidos sobre casos ou sobre demandas.
+      'denominador', 'demandas'
+    ),
+    'cliente', jsonb_build_object(
+      'turnos_p50',        (select percentile_cont(0.5) within group (order by n) from turnos),
+      'turnos_p90',        (select percentile_cont(0.9) within group (order by n) from turnos),
+      'insistencia_media', (select media  from insistencia),
+      'insistencia_max',   (select maximo from insistencia),
+      'pedidos_de_humano', (select n from pedidos_humano),
+      'descadastros',      (select n from descadastros),
+      'abandonos',         (select abandonadas   from abandono),
+      'conversas_com_fala_nossa', (select com_fala_nossa from abandono),
+      'reperguntas',              (select repetidas            from repeticao),
+      'perguntas_com_resposta',   (select com_resposta_no_meio from repeticao),
+      'esperas_caladas',          (select caladas      from espera_calada),
+      'esperas_medidas',          (select com_resposta from espera_calada),
+      'espera_resposta_p90_s',    (select p90_s        from espera_calada)
+    ),
+    'empresa', jsonb_build_object(
+      'intervencoes_por_demanda', (select avg(coalesce(h.intervencoes, 0))::float8
+                                     from demandas_j d left join humano h on h.case_id = d.agent_case_id),
+      'espera_humana_p50_s',      (select percentile_cont(0.5) within group (order by segundos) from espera_fila),
+      'espera_humana_p90_s',      (select percentile_cont(0.9) within group (order by segundos) from espera_fila),
+      'retrabalho',               (select n from retrabalho),
+      'vetos',                    (select vetados  from vetos),
+      'execucoes_medidas',        (select execucoes from vetos),
+      'envios_por_ia',            (select por_ia                from envios),
+      'envios_humano_no_sistema', (select por_humano_no_sistema from envios),
+      'envios_humano_fora',       (select por_humano_fora       from envios),
+      -- O invariante 4 vira NÚMERO na tela: demanda aberta sem próximo passo é
+      -- vazamento, e vazamento invisível é o que a doutrina inteira combate.
+      'demandas_sem_proximo_passo', (select n from sem_proximo_passo)
+    ),
+    'eficiencia', jsonb_build_object(
+      'ganhos',   (select ganhos   from eficiencia),
+      'perdidos', (select perdidos from eficiencia)
+    )
+  );
+$$;
+
+revoke all     on function public.fn_atrito_metrics(uuid, timestamptz, timestamptz, int, float8, int) from public;
+revoke execute on function public.fn_atrito_metrics(uuid, timestamptz, timestamptz, int, float8, int) from anon;
+grant  execute on function public.fn_atrito_metrics(uuid, timestamptz, timestamptz, int, float8, int)
+  to authenticated, service_role;
+
+
+
+
+
+-- ---- demanda nasce no ponto de entrada (migration 0138) ----
+-- Sem isto `demandas` só teria o passado derivado: peça que só recebe é ilha
+-- pelo invariante 1. Trigger SQL puro, sem I/O externo — a proibição da
+-- doutrina é HTTP dentro da transação, e `trg_messages_emit_event` já usa este
+-- mesmo mecanismo nesta mesma tabela.
+
+create or replace function public.fn_demanda_abre_no_inbound()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_demanda uuid;
+begin
+  if new.direction <> 'inbound' then
+    return new;
+  end if;
+
+  select d.id into v_demanda
+    from public.demandas d
+   where d.organization_id = new.organization_id
+     and d.contact_id = new.contact_id
+     and d.fechada_em is null
+   order by d.aberta_em desc
+   limit 1;
+
+  if v_demanda is null then
+    insert into public.demandas
+      (organization_id, contact_id, aberta_em, origem, estado, dono_kind)
+    values
+      (new.organization_id, new.contact_id, new.sent_at, 'inbound', 'aberta', 'ia')
+    returning id into v_demanda;
+  end if;
+
+  -- O vínculo é por conversa: a mesma demanda acumula os canais por onde a
+  -- pessoa falou (cap. 5 §5.4). `on conflict do nothing` porque a chave é o par.
+  insert into public.demanda_conversas (organization_id, demanda_id, conversation_id)
+  values (new.organization_id, v_demanda, new.conversation_id)
+  on conflict do nothing;
+
+  return new;
+end;
+$$;
+
+-- SECURITY DEFINER porque o trigger roda no INSERT do webhook (service role) e
+-- também no de sessão; sem definer, a RLS de `demandas` recusaria a escrita em
+-- um dos caminhos e a demanda sumiria justamente na entrada real. O
+-- organization_id vem SEMPRE de `new`, nunca de parâmetro — não há superfície
+-- para escolher org alheia.
+revoke all     on function public.fn_demanda_abre_no_inbound() from public;
+revoke execute on function public.fn_demanda_abre_no_inbound() from anon, authenticated;
+
+drop trigger if exists trg_demanda_abre_no_inbound on public.messages;
+create trigger trg_demanda_abre_no_inbound
+  after insert on public.messages
+  for each row execute function public.fn_demanda_abre_no_inbound();
+
+-- ---------------------------------------------------------------------------
+-- Fechamento. Sem ele a demanda nunca termina e o denominador do índice (que
+-- conta FECHADAS) ficaria vazio para sempre — a métrica morreria em silêncio no
+-- exato momento em que a entidade passou a crescer.
+-- ---------------------------------------------------------------------------
+
+create or replace function public.fn_demanda_fecha_com_conversa()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if new.status not in ('resolved', 'closed') or old.status = new.status then
+    return new;
+  end if;
+
+  update public.demandas d
+     set estado = 'resolvida',
+         desfecho = 'resolvida',
+         fechada_em = now(),
+         updated_at = now()
+   where d.organization_id = new.organization_id
+     and d.fechada_em is null
+     and exists (
+       select 1 from public.demanda_conversas dc
+        where dc.demanda_id = d.id and dc.conversation_id = new.id
+     )
+     -- Só fecha se TODAS as conversas da demanda estiverem encerradas: uma
+     -- demanda que atravessou dois canais não acabou porque um deles fechou.
+     and not exists (
+       select 1
+         from public.demanda_conversas dc2
+         join public.conversations c2 on c2.id = dc2.conversation_id
+        where dc2.demanda_id = d.id
+          and c2.id <> new.id
+          and c2.status not in ('resolved', 'closed')
+     );
+
+  return new;
+end;
+$$;
+
+revoke all     on function public.fn_demanda_fecha_com_conversa() from public;
+revoke execute on function public.fn_demanda_fecha_com_conversa() from anon, authenticated;
+
+drop trigger if exists trg_demanda_fecha_com_conversa on public.conversations;
+create trigger trg_demanda_fecha_com_conversa
+  after update of status on public.conversations
+  for each row execute function public.fn_demanda_fecha_com_conversa();
 
 
 notify pgrst, 'reload schema';
@@ -9335,6 +10001,231 @@ comment on function public.fn_liberar_leads_do_agente() is
   'não podia ser removido.';
 
 
+-- ---- ai_purpose_bindings: qual modelo cada ponto usa (migration 0126) ----
+-- Onde a escolha de modelo de cada ponto do sistema que usa IA passa a morar.
+-- Uma linha por (organização, ponto); ausência de linha = comportamento
+-- anterior preservado, então re-aplicar num clone não muda o funcionamento de
+-- nada. `provider` sem CHECK de propósito: é vocabulário aberto (os três CHECKs
+-- de provider que já existem são o que trava a entrada da OpenRouter, e um
+-- quarto repetiria o erro). `base_url` nasce para endpoint compatível com a API
+-- da OpenAI — OpenRouter hoje, modelo local depois.
+create table if not exists public.ai_purpose_bindings (
+  id uuid primary key default gen_random_uuid(),
+  organization_id uuid not null references public.organizations(id) on delete cascade,
+  purpose text not null,
+  provider text not null,
+  credential_id uuid references public.ai_provider_credentials(id) on delete cascade,
+  model_id text not null,
+  base_url text,
+  is_enabled boolean not null default true,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+-- Deduplicar ANTES da constraint: um clone que tenha rodado uma versão
+-- intermediária desta frente pode ter duas linhas para o mesmo ponto, e aí o
+-- update.sh (que roda SEM ON_ERROR_STOP) morreria aqui em silêncio. Fica a
+-- mais recente, que é a última escolha do operador.
+delete from public.ai_purpose_bindings a
+ using public.ai_purpose_bindings b
+ where a.organization_id = b.organization_id
+   and a.purpose = b.purpose
+   and (a.updated_at, a.id) < (b.updated_at, b.id);
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint
+     where conname = 'ai_purpose_bindings_org_purpose_unique'
+       and conrelid = 'public.ai_purpose_bindings'::regclass
+  ) then
+    alter table public.ai_purpose_bindings
+      add constraint ai_purpose_bindings_org_purpose_unique unique (organization_id, purpose);
+  end if;
+end $$;
+
+create index if not exists ai_purpose_bindings_org_idx
+  on public.ai_purpose_bindings (organization_id);
+create index if not exists ai_purpose_bindings_lookup_idx
+  on public.ai_purpose_bindings (organization_id, purpose) where is_enabled;
+create index if not exists ai_purpose_bindings_credential_idx
+  on public.ai_purpose_bindings (credential_id) where credential_id is not null;
+
+alter table public.ai_purpose_bindings enable row level security;
+
+drop policy if exists tenant_isolation_ai_purpose_bindings_all on public.ai_purpose_bindings;
+create policy tenant_isolation_ai_purpose_bindings_all on public.ai_purpose_bindings
+  using (organization_id in (select public.fn_user_org_ids()))
+  with check (organization_id in (select public.fn_user_org_ids()));
+
+drop trigger if exists ai_purpose_bindings_updated_at on public.ai_purpose_bindings;
+create trigger ai_purpose_bindings_updated_at
+  before update on public.ai_purpose_bindings
+  for each row execute function public.fn_set_updated_at();
+
+comment on table public.ai_purpose_bindings is
+  'Migration 0126: qual provedor/credencial/modelo cada ponto do sistema que usa IA deve usar, por organização. O catálogo dos pontos vive em lib/ai/pontos/registro.ts e o par é vigiado por tests/unit/pontos-de-ia-completude.test.ts.';
+
+
+
+-- ---- provider vira vocabulário aberto + catálogo sincronizável (migration 0127) ----
+-- Os três CHECKs de provider travavam anthropic|openai|google, o que torna
+-- impossível cadastrar uma chave da OpenRouter (ou de qualquer provedor novo, ou
+-- de um modelo local) — o INSERT viola constraint antes de qualquer código rodar.
+-- Vocabulário ABERTO por doutrina: quem recusa provider desconhecido é o registry,
+-- com erro tipado, não uma constraint que faria o update.sh do clone quebrar.
+alter table public.ai_agent_versions       drop constraint if exists ai_agent_versions_provider_check;
+alter table public.ai_models               drop constraint if exists ai_models_provider_check;
+alter table public.ai_provider_credentials drop constraint if exists ai_provider_credentials_provider_check;
+
+-- Aberto não é livre: string vazia seria linha que nenhum registry resolve e
+-- nenhuma tela exibe.
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'ai_models_provider_nao_vazio') then
+    alter table public.ai_models add constraint ai_models_provider_nao_vazio check (length(btrim(provider)) > 0);
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'ai_provider_credentials_provider_nao_vazio') then
+    alter table public.ai_provider_credentials add constraint ai_provider_credentials_provider_nao_vazio check (length(btrim(provider)) > 0);
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'ai_agent_versions_provider_nao_vazio') then
+    alter table public.ai_agent_versions add constraint ai_agent_versions_provider_nao_vazio check (length(btrim(provider)) > 0);
+  end if;
+end $$;
+
+alter table public.ai_models add column if not exists source text not null default 'manual';
+alter table public.ai_models add column if not exists synced_at timestamptz;
+alter table public.ai_models add column if not exists supports_vision boolean not null default false;
+
+-- Deduplicar ANTES do índice único (o update.sh roda sem ON_ERROR_STOP: índice
+-- que falha é pulado em silêncio e o upsert do sincronizador volta a duplicar).
+delete from public.ai_models a
+ using public.ai_models b
+ where a.provider = b.provider
+   and a.model_id = b.model_id
+   and (
+     (a.input_price_per_million_cents is null and b.input_price_per_million_cents is not null)
+     or (
+       (a.input_price_per_million_cents is null) = (b.input_price_per_million_cents is null)
+       and a.id < b.id
+     )
+   );
+
+create unique index if not exists ai_models_provider_model_unique on public.ai_models (provider, model_id);
+create index if not exists ai_models_source_idx on public.ai_models (source) where deprecated_at is null;
+
+comment on column public.ai_models.source is
+  'Migration 0127: ''manual'' ou o nome do sincronizador (ex.: ''openrouter''). O sincronizador só mexe nas linhas da PRÓPRIA origem — apagar o que um humano cadastrou seria perder configuração sem aviso.';
+comment on column public.ai_models.synced_at is
+  'Migration 0127: quando a origem confirmou este modelo pela última vez. Modelo que some recebe deprecated_at, nunca DELETE: a linha ainda é referenciada pelo histórico de custo.';
+
+
+
+-- ---- llm_calls registra a FALHA, não só o sucesso (migration 0128) ----
+-- A tabela gravava uma linha por chamada de modelo e só quando dava certo: o
+-- INSERT vivia depois do generateText, sem try em volta. Provedor recusando a
+-- chave, modelo inexistente, conta sem saldo — a exceção subia e nada ficava
+-- gravado. A tabela que deveria explicar era justamente a que ficava vazia no
+-- caso que precisa de explicação, e é a causa direta de "o agente não responde
+-- e não aparece erro em lugar nenhum".
+alter table public.llm_calls add column if not exists status text not null default 'ok';
+alter table public.llm_calls add column if not exists error_code text;
+alter table public.llm_calls add column if not exists error_message text;
+alter table public.llm_calls add column if not exists http_status int;
+alter table public.llm_calls add column if not exists origem_da_escolha text;
+
+-- Corrigir os dados ANTES da constraint: o update.sh roda sem ON_ERROR_STOP, e
+-- um CHECK que falhasse seria pulado em silêncio, deixando o clone sem guarda.
+update public.llm_calls set status = 'ok' where status is null or status not in ('ok', 'erro');
+
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'llm_calls_status_check') then
+    alter table public.llm_calls add constraint llm_calls_status_check check (status in ('ok', 'erro'));
+  end if;
+end $$;
+
+create index if not exists llm_calls_erros_idx
+  on public.llm_calls (organization_id, created_at desc) where status = 'erro';
+create index if not exists llm_calls_purpose_idx
+  on public.llm_calls (organization_id, purpose, created_at desc);
+
+comment on column public.llm_calls.status is
+  'Migration 0128: ''ok'' | ''erro''. Antes desta migration a tabela só registrava sucesso.';
+comment on column public.llm_calls.error_message is
+  'Migration 0128: texto do provedor, truncado. NUNCA prompt, resposta ou chave.';
+comment on column public.llm_calls.origem_da_escolha is
+  'Migration 0128: quem decidiu usar este modelo. Transforma o log de "o que aconteceu" em "por que aconteceu".';
+
+
+
+
+
+
+-- ---- uma tabela de telemetria de IA, não duas (migration 0130) ----
+-- `agent_id` NÃO existia em llm_calls, e sem ele a unificação jogaria fora a
+-- atribuição de custo por agente — junto com o filtro por agente da tela de uso,
+-- que é como o operador descobre qual agente está consumindo a conta. Perder uma
+-- capacidade em nome de unificar seria trocar um problema por outro.
+alter table public.llm_calls add column if not exists agent_id uuid
+  references public.ai_agents(id) on delete set null;
+create index if not exists llm_calls_agent_idx
+  on public.llm_calls (organization_id, agent_id, created_at desc) where agent_id is not null;
+
+alter table public.llm_calls add column if not exists legacy_invocation_id uuid;
+
+create unique index if not exists llm_calls_legacy_invocation_unique
+  on public.llm_calls (legacy_invocation_id) where legacy_invocation_id is not null;
+
+comment on column public.llm_calls.legacy_invocation_id is
+  'Migration 0130: id da linha de ai_invocations que originou esta. Existe para o backfill ser '
+  'idempotente — o update.sh re-aplica o baseline a cada atualização, e sem esta marca o custo '
+  'histórico cresceria sozinho a cada execução.';
+
+-- O backfill. `on conflict do nothing` sobre o índice único faz a re-execução
+-- ser inócua. `purpose` recebe o `invocation_kind` porque é o mesmo eixo com
+-- nomes diferentes; o vocabulário de ambos já está no registro de pontos.
+insert into public.llm_calls (
+  organization_id, agent_id, contact_id, job_id, purpose, provider, model,
+  input_tokens, output_tokens, cost_cents, latency_ms, created_at,
+  status, error_code, legacy_invocation_id
+)
+select
+  i.organization_id,
+  i.agent_id,
+  null,                       -- ai_invocations guarda conversation/message, não contato
+  null,
+  i.invocation_kind,
+  -- O provider não era guardado; deriva-se do prefixo do modelo, e quando não
+  -- dá para saber vai 'desconhecido' em vez de um chute que viraria estatística.
+  case
+    when i.model like 'anthropic/%' then 'anthropic'
+    when i.model like 'openai/%'    then 'openai'
+    when i.model like 'google/%'    then 'google'
+    when i.model like 'claude%'     then 'anthropic'
+    when i.model like 'gpt%'        then 'openai'
+    when i.model like 'gemini%'     then 'google'
+    else 'desconhecido'
+  end,
+  i.model,
+  i.prompt_tokens,
+  i.completion_tokens,
+  i.cost_cents,
+  i.latency_ms,
+  i.created_at,
+  case when i.error_payload is not null then 'erro' else 'ok' end,
+  case when i.error_payload is not null then 'erro_legado' else null end,
+  i.id
+from public.ai_invocations i
+where not exists (
+  select 1 from public.llm_calls c where c.legacy_invocation_id = i.id
+)
+on conflict do nothing;
+
+comment on table public.ai_invocations is
+  'DEPRECIADA na migration 0130 — a telemetria de IA vive em llm_calls. Mantida como histórico '
+  '(a doutrina do repo é depreciar, não deletar) e porque as linhas antigas são a prova do que foi '
+  'gasto. Nada escreve mais aqui; leituras novas usam llm_calls.';
 -- ---- telefone do contato @lid (migration 0122) ----
 -- O kit self-host aplica SÓ este arquivo — no install (banco novo, ON_ERROR_STOP)
 -- e no update (banco existente, SEM a flag). Tudo abaixo é idempotente e
@@ -9412,6 +10303,7 @@ create or replace function public.fn_upsert_wa_contact(
 ) returns uuid language plpgsql security definer set search_path = public as $$
 declare
   v_id uuid;
+  v_conflito text;
   v_lid text := nullif(regexp_replace(coalesce(p_lid, ''), '@.*$', ''), '');
   v_phone text := nullif(p_phone, '');
 begin
@@ -9452,6 +10344,31 @@ begin
   --     A versão anterior só mexia em `display_name` no conflito, com
   --     `coalesce(existente, novo)`: um nome ruim gravado uma vez congelava para
   --     sempre, e telefone ou lid descobertos depois NUNCA entravam.
+  -- O telefone descoberto só sobe para a coluna ÚNICA se ainda não for de outro
+  -- contato vivo da org. Sem esta guarda o caso "contato @lid sem telefone + a
+  -- mesma pessoa já cadastrada por número" (import, pedido, formulário) estoura
+  -- `uniq_contacts_org_phone`; `lib/waha/ingest.ts:343` transforma a exceção em
+  -- `return null` e `:459` descarta a mensagem com o webhook respondendo 200 — a
+  -- mensagem do cliente some, e some de novo a cada mensagem seguinte daquele
+  -- contato. Medido na triagem; não acontece na `main`, é regressão desta
+  -- migration. A etapa 2 (busca por telefone) não protege: ela só roda quando a
+  -- etapa 1 NÃO achou.
+  --
+  -- Fundir os dois contatos seria o desfecho semanticamente certo — é a mesma
+  -- pessoa, e o `remoteJidAlt` é justamente quem afirma isso. Mas fusão é
+  -- IRREVERSÍVEL, e a regra do tempo da doutrina proíbe consumar irreversível no
+  -- tempo da máquina, dentro de um webhook. Aqui o dado não se perde: vai para
+  -- `source_metadata.telefone_em_conflito`, que não é único, e a decisão de
+  -- fundir fica para quem opera.
+  if v_id is not null and v_phone is not null and exists (
+    select 1 from public.contacts
+     where organization_id = p_org and phone_number = v_phone
+       and is_merged_into is null and id <> v_id
+  ) then
+    v_conflito := v_phone;
+    v_phone := null;
+  end if;
+
   if v_id is not null then
     update public.contacts set
       phone_number = coalesce(phone_number, v_phone),
@@ -9459,7 +10376,8 @@ begin
       source_metadata = source_metadata
         || case when v_lid is not null then jsonb_build_object('waha_lid', v_lid) else '{}'::jsonb end
         || case when p_chat_id is not null then jsonb_build_object('waha_chat_id', p_chat_id) else '{}'::jsonb end
-        || case when nullif(p_notify, '') is not null then jsonb_build_object('notify_name', p_notify) else '{}'::jsonb end,
+        || case when nullif(p_notify, '') is not null then jsonb_build_object('notify_name', p_notify) else '{}'::jsonb end
+        || case when v_conflito is not null then jsonb_build_object('telefone_em_conflito', v_conflito) else '{}'::jsonb end,
       updated_at = now()
     where id = v_id;
     return v_id;
@@ -9774,5 +10692,81 @@ drop trigger if exists trg_ai_agent_versions_content_immutable on public.ai_agen
 create trigger trg_ai_agent_versions_content_immutable
   before update on public.ai_agent_versions
   for each row execute function fn_ai_agent_version_content_immutable();
+
+notify pgrst, 'reload schema';
+
+-- ---- VARREDURA anon: função nova nasce exposta em quem ATUALIZA (migration 0116) ----
+--
+-- ⚠️ ESTE BLOCO É, DE PROPÓSITO, O ÚLTIMO DO ARQUIVO. Apêndice novo entra ANTES
+-- dele — quem o empurrar para o meio desarma a cura para tudo que vier depois.
+-- Vigiado por `tests/unit/varredura-anon-e-o-ultimo-bloco.test.ts`.
+--
+-- A 0108 revogou anon numa LISTA de 8 funções, medida num banco instalado do
+-- ZERO. Quem ATUALIZA tem outro estado: o `ALTER DEFAULT PRIVILEGES ... GRANT
+-- ALL ON FUNCTIONS TO anon` do corpo deste arquivo grava uma entrada em
+-- `pg_default_acl` que fica no catálogo PARA SEMPRE, e a partir daí toda função
+-- criada em `public` nasce com EXECUTE para anon — inclusive as deste apêndice.
+--
+-- Medido numa VPS real (2026-08-07), comparando com o que um install fresco
+-- produz: 6 definer expostas a anon e 5 a authenticated, entre elas
+-- `fn_decrypt_oauth` — alcançável pela anon key, que vai para o browser.
+--
+-- Lista conserta o estoque e reabre no próximo `create function`. Esta varredura
+-- é auto-curativa e roda DEPOIS de tudo que cria função, então cura no mesmo run
+-- em que o defeito nasceria. Desfazer o ALTER DEFAULT PRIVILEGES não serve: ele
+-- vem do `pg_dump` do Supabase e é reescrito a cada re-aplicação.
+--
+-- As duas origens de EXECUTE (a mesma lição da 0108): grant DIRETO a anon, que
+-- `revoke from public` não remove; e grant a PUBLIC, do qual anon HERDA, que
+-- `revoke from anon` não remove. O privilégio EFETIVO de authenticated e
+-- service_role é medido ANTES e devolvido depois — tira anon sem tirar leitura.
+do $$
+declare
+  f record;
+  tinha_auth boolean;
+  tinha_service boolean;
+begin
+  if to_regrole('anon') is null then
+    return;
+  end if;
+
+  for f in
+    select p.oid, p.oid::regprocedure as assinatura
+      from pg_proc p
+      join pg_namespace n on n.oid = p.pronamespace
+     where n.nspname = 'public'
+       and p.prosecdef
+  loop
+    tinha_auth := to_regrole('authenticated') is not null
+                  and has_function_privilege('authenticated', f.oid, 'EXECUTE');
+    tinha_service := to_regrole('service_role') is not null
+                     and has_function_privilege('service_role', f.oid, 'EXECUTE');
+
+    execute format('revoke execute on function %s from public, anon', f.assinatura);
+
+    if tinha_auth then
+      execute format('grant execute on function %s to authenticated', f.assinatura);
+    end if;
+    if tinha_service then
+      execute format('grant execute on function %s to service_role', f.assinatura);
+    end if;
+  end loop;
+end $$;
+
+-- regra 2 (authenticated): as 5 que o update abriu e o install não abre. Aqui não
+-- cabe varredura — `authenticated` PRECISA de EXECUTE nos helpers de RLS e em
+-- `retrieve_top_k_chunks` (num install fresco ele tem). É julgamento por função,
+-- e o alvo de cada linha é o valor que um install fresco produz, medido.
+revoke execute on function public.fn_audit_log_row() from authenticated;
+revoke execute on function public.fn_decrypt_oauth(bytea) from authenticated;
+revoke execute on function public.fn_encrypt_oauth(text) from authenticated;
+revoke execute on function public.fn_lgpd_cascade_redact_contact(uuid, uuid, uuid) from authenticated;
+revoke execute on function public.fn_update_budget_consumption() from authenticated;
+
+grant execute on function public.fn_audit_log_row() to service_role;
+grant execute on function public.fn_decrypt_oauth(bytea) to service_role;
+grant execute on function public.fn_encrypt_oauth(text) to service_role;
+grant execute on function public.fn_lgpd_cascade_redact_contact(uuid, uuid, uuid) to service_role;
+grant execute on function public.fn_update_budget_consumption() to service_role;
 
 notify pgrst, 'reload schema';
