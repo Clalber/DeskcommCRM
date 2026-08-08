@@ -20,12 +20,20 @@ import { CRMSidePanel } from "./CRMSidePanel";
 import { InboxKeyboardShortcuts } from "./InboxKeyboardShortcuts";
 import { ShortcutsHelpDialog } from "./ShortcutsHelpDialog";
 
-function tabToFilter(tab: InboxFiltersValue["tab"]): Partial<ConversationsFilters> {
+/**
+ * O QUE CADA ABA SIGNIFICA. Exportada porque é a definição em si — o defeito
+ * que este mapa já teve (Minhas mostrando tudo que o atendente fechou) não
+ * aparece em nenhuma tela até alguém reclamar, então vale prender por teste.
+ */
+export function tabToFilter(tab: InboxFiltersValue["tab"]): Partial<ConversationsFilters> {
   switch (tab) {
     case "unassigned":
       return { assigned_to: "unassigned", status: "open" };
     case "mine":
-      return { assigned_to: "me" };
+      // Sem `exclude_finished` a aba mostra tudo que o atendente JÁ atendeu —
+      // `Fechar` muda o status mas não solta o dono (de propósito: quem atendeu
+      // é histórico). O lugar de "minhas fechadas" é a aba Fechadas.
+      return { assigned_to: "me", exclude_finished: true };
     case "closed":
       return { status: "closed" };
     case "ai":
