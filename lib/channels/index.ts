@@ -9,6 +9,16 @@ import type { ChannelAdapter, ChannelProvider } from "./types";
 const ADAPTERS: Record<ChannelProvider, ChannelAdapter | null> = {
   waha: wahaAdapter,
   meta_cloud: metaCloudAdapter,
+  // Ainda sem transporte: o vocabulário do canal (tipo, capabilities, coluna de
+  // ref, CHECK do banco) entra antes do adapter de propósito, para o schema
+  // nascer junto e não virar migration de correção depois.
+  //
+  // `null` e não um adapter que devolve `{externalId: null}`: o `getAdapter`
+  // lança, e é o que se quer. Um adapter mudo aceitaria o envio, gravaria
+  // `queued` e ficaria esperando um transporte que não existe — a mensagem
+  // some sem ninguém saber. Falhar alto é o desfecho honesto enquanto falta a
+  // metade que envia.
+  zernio: null,
 };
 
 /**

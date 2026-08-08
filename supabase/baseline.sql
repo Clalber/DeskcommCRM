@@ -8421,17 +8421,48 @@ alter table public.channel_sessions
 
 alter table public.channel_sessions alter column waha_session_name drop not null;
 
-do $$ begin
-  alter table public.channel_sessions add constraint channel_sessions_provider_check
-    check (provider = any (array['waha'::text, 'meta_cloud'::text]));
-exception when duplicate_object then null; end $$;
+-- (constraints channel_sessions_provider_check e channel_sessions_provider_ref_check:
+--  definidas uma vez só, no fim deste arquivo, com o vocabulário FINAL — regra de
+--  `tests/unit/baseline-constraint-reconstruida.test.ts`. Reconstruí-las aqui com a
+--  lista de dois providers faria o `update.sh` de um clone que já tem o terceiro
+--  falhar ao re-aplicar, e deixaria a tabela sem constraint entre o drop e o add
+--  que funciona.)
 
-do $$ begin
-  alter table public.channel_sessions add constraint channel_sessions_provider_ref_check check (
+-- ---- vocabulário do terceiro canal (migration 0116) ----
+-- Espelho idempotente da 0116. Racional completo no arquivo da migration; o que
+-- importa aqui é POR QUE os dois CHECKs são recriados em vez de criados com
+-- `exception when duplicate_object`: os blocos acima já os criaram na versão de
+-- DOIS providers, e num clone que roda `update.sh` eles JÁ EXISTEM. O
+-- `duplicate_object` engoliria a versão nova em silêncio e o banco ficaria
+-- recusando a sessão do canal novo com o script tendo passado verde — a
+-- falha-em-verde que a doutrina do self-host proíbe.
+--
+-- Ordem importa: a coluna nasce ANTES do CHECK que a referencia, e nullable,
+-- então nenhuma linha existente a viola. Toda linha pré-existente tem provider
+-- 'waha' ou 'meta_cloud' e já satisfaz o ramo correspondente — nada a
+-- deduplicar antes das constraints.
+alter table public.channel_sessions
+  add column if not exists zernio_account_id text;
+
+alter table public.channel_sessions
+  drop constraint if exists channel_sessions_provider_check;
+
+alter table public.channel_sessions
+  add constraint channel_sessions_provider_check
+  check (provider = any (array['waha'::text, 'meta_cloud'::text, 'zernio'::text]));
+
+alter table public.channel_sessions
+  drop constraint if exists channel_sessions_provider_ref_check;
+
+alter table public.channel_sessions
+  add constraint channel_sessions_provider_ref_check check (
     (provider = 'waha'       and waha_session_name    is not null) or
-    (provider = 'meta_cloud' and meta_phone_number_id is not null)
+    (provider = 'meta_cloud' and meta_phone_number_id is not null) or
+    (provider = 'zernio'     and zernio_account_id    is not null)
   );
-exception when duplicate_object then null; end $$;
+
+comment on column public.channel_sessions.zernio_account_id is
+  'Identificador da conta conectada NO INTERMEDIÁRIO (accountId), não o phone_number_id da Meta. É o que endereça envio e webhook. Espelhado em lib/channels/session-ref.ts.';
 
 comment on column public.channel_sessions.provider is
   'Canal desta sessão. Vocabulário espelhado em lib/channels/types.ts → ChannelProvider (cobrado por tests/invariants/vocabulario-banco-x-typescript.test.ts).';

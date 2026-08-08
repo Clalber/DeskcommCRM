@@ -8,7 +8,7 @@ import type { OutboundMedia } from "@/lib/waha/media-send";
 
 export type { OutboundMedia };
 
-export type ChannelProvider = "waha" | "meta_cloud";
+export type ChannelProvider = "waha" | "meta_cloud" | "zernio";
 
 export interface ChannelCapabilities {
   /** Pode enviar texto livre a qualquer momento? false = exige template fora da janela. */
