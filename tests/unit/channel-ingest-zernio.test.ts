@@ -36,6 +36,8 @@ let rpcResposta: Record<string, unknown> = {
   fn_upsert_wa_conversation: "conv-1",
 };
 let insertErro: { code?: string; message: string } | null = null;
+/** Conversa que o provider já associou a esta thread — o caminho curto. */
+let conversaExistente: { id: string; contact_id: string } | null = null;
 
 /** Imita o builder do PostgREST: encadeável, resolve no `maybeSingle`. */
 function chain(tabela: string, op: string, payload?: unknown): Record<string, unknown> {
@@ -45,6 +47,12 @@ function chain(tabela: string, op: string, payload?: unknown): Record<string, un
     {
       get(_t, prop) {
         if (prop === "maybeSingle" || prop === "single") {
+          // A busca pela THREAD é um `select` em conversations; o insert de
+          // mensagem também termina em maybeSingle. Separar por tabela+op é o
+          // que impede o dublê de responder a pergunta errada.
+          if (tabela === "conversations" && op === "select") {
+            return async () => ({ data: conversaExistente, error: null });
+          }
           return async () =>
             insertErro ? { data: null, error: insertErro } : { data: { id: "msg-1" }, error: null };
         }
@@ -93,6 +101,7 @@ const admin = {
     return v === null ? { data: null, error: { message: "falhou" } } : { data: v, error: null };
   },
   from: (tabela: string) => ({
+    select: () => chain(tabela, "select"),
     insert: (payload: unknown) => chain(tabela, "insert", payload),
     update: (payload: unknown) => chain(tabela, "update", payload),
   }),
@@ -125,6 +134,7 @@ const ENTRADA = { organizationId: "org-1", channelSessionId: "sess-1" };
 beforeEach(() => {
   ops.length = 0;
   linhaConversa = { provider_conversation_id: null };
+  conversaExistente = null;
   insertErro = null;
   rpcResposta = { fn_upsert_wa_contact: "contact-1", fn_upsert_wa_conversation: "conv-1" };
 });
@@ -163,6 +173,7 @@ describe("o que a ingestão GRAVA", () => {
     // O defeito que foi a produção: `NULL <> 'valor'` é NULL, e um filtro
     // condicional nunca alcançava a linha recém-criada.
     linhaConversa = { provider_conversation_id: null };
+  conversaExistente = null;
     await ingestZernioInbound(admin, { ...ENTRADA, payload: evento() });
     expect(linhaConversa.provider_conversation_id).toBe("6a76a2dc4b8fe115e5f6c300");
   });
@@ -235,6 +246,37 @@ describe("o que a ingestão RECUSA", () => {
 
   it("sem identidade utilizável — criar contato anônimo faria a próxima mensagem virar um segundo contato", () =>
     recusa(evento({ sender: { whatsappUsername: "@x" } }), "sem_identidade_utilizavel"));
+});
+
+describe("a THREAD é a prova de identidade", () => {
+  it("conversa já associada à thread REUSA o contato — não cria um segundo", async () => {
+    // O defeito que apareceu em produção: a entrada traz o BSUID (âncora
+    // preferida) e a saída só traz o telefone do participante. Resolver pela
+    // âncora criava DOIS contatos e DUAS conversas para a mesma pessoa, ambas
+    // apontando para a mesma thread do provider.
+    conversaExistente = { id: "conv-existente", contact_id: "contato-existente" };
+    const r = await ingestZernioInbound(admin, { ...ENTRADA, payload: evento() });
+
+    expect(r.conversationId).toBe("conv-existente");
+    // E NÃO cria contato nem conversa novos.
+    expect(ops.some((o) => o.op === "fn_upsert_wa_contact")).toBe(false);
+    expect(ops.some((o) => o.op === "fn_upsert_wa_conversation")).toBe(false);
+  });
+
+  it("a mensagem entra na conversa achada pela thread", async () => {
+    conversaExistente = { id: "conv-existente", contact_id: "contato-existente" };
+    await ingestZernioInbound(admin, { ...ENTRADA, payload: evento() });
+    const ins = ops.find((o) => o.tabela === "messages" && o.op === "insert")
+      ?.payload as Record<string, unknown>;
+    expect(ins.conversation_id).toBe("conv-existente");
+    expect(ins.contact_id).toBe("contato-existente");
+  });
+
+  it("sem conversa para a thread, cai no caminho normal e CRIA", async () => {
+    conversaExistente = null;
+    await ingestZernioInbound(admin, { ...ENTRADA, payload: evento() });
+    expect(ops.some((o) => o.op === "fn_upsert_wa_contact")).toBe(true);
+  });
 });
 
 describe("envio feito FORA do CRM aparece no histórico", () => {

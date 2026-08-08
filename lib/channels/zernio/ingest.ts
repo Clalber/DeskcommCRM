@@ -85,6 +85,41 @@ export async function ingestZernioInbound(
       : { status: "ignored", reason: "mensagem_desconhecida" };
   }
 
+  // ─── A THREAD é a prova de identidade, e vem ANTES da âncora ─────────────
+  //
+  // O provider dá um id próprio à conversa. Se já existe uma com esse id, é a
+  // MESMA pessoa — ele acabou de dizer isso. Perguntar de novo "quem é?" pela
+  // âncora abre espaço para divergência, e ela apareceu em produção:
+  //
+  //   contato A: phone:+595982857447        ← criado pelo evento de SAÍDA
+  //   contato B: lid:PY.1383674957068636    ← criado pelo evento de ENTRADA
+  //
+  // Mesma pessoa, dois contatos, duas conversas — porque a entrada traz o BSUID
+  // (âncora preferida) e a saída só traz o telefone do participante. Resolver
+  // pela thread primeiro fecha isso na origem, e de quebra deixa a ingestão
+  // imune a qualquer identidade nova que o provider invente depois.
+  const existente = await conversaPelaThread(admin, input.organizationId, msg.conversationId);
+  if (existente) {
+    const inseridaNaExistente = await insertMessage(admin, {
+      organizationId: input.organizationId,
+      conversationId: existente.id,
+      contactId: existente.contact_id,
+      channelSessionId: input.channelSessionId,
+      msg,
+    });
+    // O telefone pode chegar agora e faltar no contato — vale gravar.
+    if (msg.identity.phone) {
+      await admin
+        .from("contacts")
+        .update({ phone_number: msg.identity.phone })
+        .eq("id", existente.contact_id)
+        .is("phone_number", null);
+    }
+    return inseridaNaExistente === "duplicate"
+      ? { status: "duplicate", conversationId: existente.id }
+      : { status: "ingested", conversationId: existente.id, messageId: inseridaNaExistente };
+  }
+
   const identity = waIdentityFrom(msg.identity);
   if (!identity) {
     // Evento sem âncora utilizável. Recusar é o certo: criar contato anônimo
@@ -113,6 +148,22 @@ export async function ingestZernioInbound(
 
   if (inserted === "duplicate") return { status: "duplicate", conversationId };
   return { status: "ingested", conversationId, messageId: inserted };
+}
+
+/** A conversa que o provider já associou a esta thread, se houver. */
+async function conversaPelaThread(
+  admin: SupabaseClient,
+  organizationId: string,
+  providerConversationId: string,
+): Promise<{ id: string; contact_id: string } | null> {
+  const { data } = await admin
+    .from("conversations")
+    .select("id, contact_id")
+    .eq("organization_id", organizationId)
+    .eq("provider_conversation_id", providerConversationId)
+    .maybeSingle();
+  const row = data as { id: string; contact_id: string | null } | null;
+  return row?.contact_id ? { id: row.id, contact_id: row.contact_id } : null;
 }
 
 async function upsertContact(
