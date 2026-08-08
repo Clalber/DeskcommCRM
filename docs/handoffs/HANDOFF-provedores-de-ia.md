@@ -385,8 +385,19 @@ que o repo já tinha.
 | F2 — tela de execuções abre pelo resumo | ✅ |
 | Porta na navegação das duas telas | ✅ |
 
-Evidência em `evidence/provedores/*.png` (7 imagens). E a confirmação no banco,
-que é onde o runtime lê:
+Cada linha da tabela acima tem a imagem correspondente:
+
+| Tela | Imagem |
+|---|---|
+| Painel aberto, agrupado por papel | `evidence/provedores/01-painel-agrupado.png` |
+| Configuração avançada, ponto a ponto | `evidence/provedores/02-configuracao-avancada.png` |
+| Ponto fixo com a razão escrita | `evidence/provedores/03-ponto-fixo-com-razao.png` |
+| Modelos da OpenRouter no seletor | `evidence/provedores/04-modelos-openrouter.png` |
+| A troca de modelo valeu | `evidence/provedores/05-troca-valeu.png` |
+| Ponto que exige ferramentas | `evidence/provedores/06-exige-ferramentas.png` |
+| Tela de execuções | `evidence/provedores/07-execucoes.png` |
+
+E a confirmação no banco, que é onde o runtime lê:
 
 ```
 stage_classifier → openrouter / meta-llama/llama-3.3-70b-instruct (ativo: true)
