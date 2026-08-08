@@ -52,6 +52,25 @@ export interface OutboundEnvelope {
   kind: OutboundKind;
   body?: string;
   media?: OutboundMedia;
+  /**
+   * Id que o PROVIDER dá a esta thread, quando ele endereça por thread própria
+   * em vez de por telefone (`conversations.provider_conversation_id`).
+   *
+   * OPCIONAL porque a maioria dos canais não precisa: quem deriva o
+   * destinatário do contato (chatId, E.164) ignora este campo, e os adapters
+   * existentes não mudam uma linha por causa dele.
+   *
+   * Existe porque `resolveRecipient` recebe o CONTATO, e há provider cujo
+   * endereço não sai do contato: é um id que ele mesmo inventa e entrega pelo
+   * webhook. Sem carregá-lo aqui, o adapter teria que ir ao banco buscá-lo — e
+   * adapter que consulta banco deixa de ser tradutor de formato, que é a única
+   * coisa que `docs/doctrine/restricao-de-canal.md` permite que ele seja.
+   *
+   * `undefined` = não há id conhecido para esta thread. Não é erro: é o estado
+   * normal antes do primeiro contato, e o adapter que precisa dele decide o que
+   * fazer (tipicamente, abrir a conversa com template).
+   */
+  providerConversationId?: string | null;
 }
 
 /**

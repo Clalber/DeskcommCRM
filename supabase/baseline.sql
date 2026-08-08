@@ -8464,6 +8464,36 @@ alter table public.channel_sessions
 comment on column public.channel_sessions.zernio_account_id is
   'Identificador da conta conectada NO INTERMEDIÁRIO (accountId), não o phone_number_id da Meta. É o que endereça envio e webhook. Espelhado em lib/channels/session-ref.ts.';
 
+-- ---- o que falta para o terceiro canal ENVIAR (migration 0117) ----
+-- Espelho idempotente da 0117. Racional completo no arquivo da migration.
+--
+-- `provider_conversation_id`: os dois canais existentes DERIVAM o destinatário
+-- do contato (chatId ou E.164). Este não — quem endereça é um id de 24 hex que
+-- o intermediário inventa e devolve pelo webhook. Sem guardá-lo não há como
+-- responder dentro da janela de 24h, porque o endpoint que aceita telefone
+-- exige template. Nome genérico: é o mesmo conceito para qualquer provider que
+-- enderece por thread própria, e carimbar nome de provider numa tabela que hoje
+-- não tem nenhum seria dívida gratuita.
+--
+-- As duas colunas nascem NULLABLE e sem constraint nova: nenhuma linha
+-- existente as viola, então não há dado a corrigir antes — o `update.sh` de um
+-- clone com dados aplica isto sem tocar em nada.
+alter table public.conversations
+  add column if not exists provider_conversation_id text;
+
+comment on column public.conversations.provider_conversation_id is
+  'Id que o PROVIDER dá a esta thread, quando ele endereça por thread própria em vez de por telefone. Chega pelo webhook de mensagem recebida. NULL = provider endereça por telefone (WAHA, oficial) ou ainda não houve primeiro contato.';
+
+create index if not exists idx_conversations_provider_conversation_id
+  on public.conversations (organization_id, provider_conversation_id)
+  where provider_conversation_id is not null;
+
+alter table public.channel_sessions
+  add column if not exists zernio_token_encrypted bytea;
+
+comment on column public.channel_sessions.zernio_token_encrypted is
+  'API key do intermediário, cifrada por fn_encrypt_oauth. Por SESSÃO (não por instalação) — mesma decisão da 0087 para o canal oficial.';
+
 comment on column public.channel_sessions.provider is
   'Canal desta sessão. Vocabulário espelhado em lib/channels/types.ts → ChannelProvider (cobrado por tests/invariants/vocabulario-banco-x-typescript.test.ts).';
 

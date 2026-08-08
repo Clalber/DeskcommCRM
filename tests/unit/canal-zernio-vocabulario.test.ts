@@ -4,14 +4,13 @@ import { readFileSync } from "node:fs";
 /**
  * O vocabulário do terceiro canal — o que entra ANTES do transporte.
  *
- * O adapter ainda não existe. Isso é decisão, não pendência: o tipo, a matriz
- * de capabilities, a coluna de ref e os CHECKs do banco nascem juntos, e o
- * transporte chega depois encontrando o schema pronto. O caminho inverso obriga
- * a uma migration de correção sobre dados que já existem.
+ * O tipo, a matriz de capabilities, a coluna de ref e os CHECKs do banco
+ * nasceram JUNTOS e antes do transporte — o caminho inverso obriga a uma
+ * migration de correção sobre dados que já existem, e é onde clone quebra.
  *
- * O que se prova aqui é justamente que essa meia-instalação é HONESTA: o canal
- * é conhecido pelo sistema inteiro, e tentar enviar por ele falha ALTO em vez
- * de aceitar a mensagem e deixá-la parada esperando um transporte que não há.
+ * Aqui se prova o vocabulário e o ENCANAMENTO até o adapter. O transporte em si
+ * (formato do corpo, autenticação, respostas da API) está em
+ * `channel-adapter-zernio.test.ts`, contra o contrato medido na API real.
  */
 import {
   CHANNEL_CAPABILITIES,
@@ -19,6 +18,7 @@ import {
   capabilitiesOf,
 } from "@/lib/channels/capabilities";
 import { getAdapter } from "@/lib/channels";
+import type { OutboundEnvelope } from "@/lib/channels";
 import { CHANNEL_SESSION_REF_COLUMNS, resolveSessionRef } from "@/lib/channels/session-ref";
 
 const ZERNIO = CHANNEL_PROVIDER_ZERNIO;
@@ -69,22 +69,37 @@ describe("identificador da sessão", () => {
   });
 });
 
-describe("sem transporte, falha ALTO", () => {
-  it("pedir o adapter lança em vez de devolver um dublê mudo", () => {
-    // Um adapter que aceitasse e devolvesse `{externalId: null}` faria o
-    // handler gravar `queued` — mensagem parada, sem erro, esperando um
-    // transporte que não existe. Ninguém descobre até o cliente reclamar.
-    expect(() => getAdapter(ZERNIO)).toThrow(/zernio/);
+describe("o canal tem transporte", () => {
+  it("getAdapter devolve o adapter do canal, não o de outro", () => {
+    // Cair no canal por QR por default seria pior que lançar: enviar pelo canal
+    // errado é pior que não enviar.
+    expect(getAdapter(ZERNIO).provider).toBe(ZERNIO);
   });
 
-  it("e NÃO cai no canal por QR por default — enviar pelo canal errado é pior que não enviar", () => {
-    let caiuNoOutro = false;
-    try {
-      caiuNoOutro = getAdapter(ZERNIO).provider === "waha";
-    } catch {
-      caiuNoOutro = false;
-    }
-    expect(caiuNoOutro).toBe(false);
+  it("os códigos de erro nomeiam o canal — o operador precisa saber qual falhou", () => {
+    expect(getAdapter(ZERNIO).codes.sendFailed).toContain("zernio");
+  });
+});
+
+describe("o envelope carrega a thread do provider", () => {
+  it("OutboundEnvelope aceita providerConversationId e é OPCIONAL", () => {
+    // Opcional é o ponto: os dois adapters existentes derivam o destinatário do
+    // contato e não mudam uma linha por causa deste campo.
+    const semThread: OutboundEnvelope = { sessionRef: "s", to: "t", kind: "text", body: "x" };
+    const comThread: OutboundEnvelope = { ...semThread, providerConversationId: "6a35" };
+    expect(semThread.providerConversationId).toBeUndefined();
+    expect(comThread.providerConversationId).toBe("6a35");
+  });
+
+  it("o handler LÊ a coluna e a PASSA ao adapter — o elo que some sem barulho", () => {
+    const fonte = readFileSync("app/api/v1/messages/_handler.ts", "utf8");
+    // Ler sem passar, ou passar sem ler, deixa o envio livre quebrado só neste
+    // canal — e só quando alguém tentar responder dentro da janela.
+    expect(fonte, "falta a coluna no select da conversa").toMatch(
+      /group_chat_id,\s*provider_conversation_id/,
+    );
+    const passagens = [...fonte.matchAll(/providerConversationId:\s*c\.provider_conversation_id/g)];
+    expect(passagens.length, "os DOIS call sites (texto e mídia) precisam passar").toBe(2);
   });
 });
 
