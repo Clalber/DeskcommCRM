@@ -43,7 +43,15 @@ function chain(tabela: string, op: string, payload?: unknown): Record<string, un
                 : { data: [{ id: "x" }], error: null },
             );
         }
-        if (prop === "maybeSingle") return async () => ({ data: sessao, error: null });
+        if (prop === "maybeSingle") {
+          // A sessão chega EMBUTIDA na conversa do contato — é assim que o
+          // vínculo certo se resolve. A primeira versão do cron sorteava uma
+          // sessão qualquer da org e, com dois canais, pegava a errada.
+          return async () => ({
+            data: sessao ? { channel_sessions: sessao } : null,
+            error: null,
+          });
+        }
         return (...args: unknown[]) => {
           if (["eq", "is", "not", "or"].includes(String(prop))) {
             filtros.push([`${String(prop)}:${String(args[0])}`, args[1]]);
@@ -97,7 +105,7 @@ const filtrosDo = (op: string) =>
 beforeEach(() => {
   ops.length = 0;
   contatos = [{ id: "c1", organization_id: "org", wa_identity: "lid:123" }];
-  sessao = { provider: "waha", waha_session_name: "sess" };
+  sessao = { provider: "waha", waha_session_name: "sess", status: "WORKING", archived_at: null };
   phoneResolvido = "+595991733685";
   lookupLanca = false;
 });
@@ -174,6 +182,26 @@ describe("escopo da varredura", () => {
     sessao = null;
     const r = await chamar();
     expect(await r.json()).toMatchObject({ data: { sem_canal: 1 } });
+  });
+
+  it("usa a sessão DA CONVERSA do contato, não uma qualquer da org", async () => {
+    // Medido em produção: com dois canais ligados, sortear "a primeira sessão
+    // WORKING" pegou a errada e os 40 do lote caíram em "sem canal" — eles são
+    // de um canal, a sorteada era do outro, que nem sabe traduzir.
+    await chamar();
+    const busca = ops.find((o) => o.tabela === "conversations");
+    expect(busca, "não buscou pela conversa do contato").toBeTruthy();
+    expect(busca!.filtros.map(([k]) => k)).toContain("eq:contact_id");
+  });
+
+  it("canal ARQUIVADO não é perguntado — não responde e gastaria a chamada", async () => {
+    sessao = { provider: "waha", waha_session_name: "s", status: "WORKING", archived_at: "2026-01-01" };
+    expect(await (await chamar()).json()).toMatchObject({ data: { sem_canal: 1 } });
+  });
+
+  it("canal fora do ar tampouco", async () => {
+    sessao = { provider: "waha", waha_session_name: "s", status: "STOPPED", archived_at: null };
+    expect(await (await chamar()).json()).toMatchObject({ data: { sem_canal: 1 } });
   });
 });
 

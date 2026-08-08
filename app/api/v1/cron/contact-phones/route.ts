@@ -124,21 +124,36 @@ async function handle(req: NextRequest): Promise<Response> {
       return (afetadas ?? []).length > 0;
     };
 
-    // A sessão que atende este contato. Sem ela não há a quem perguntar.
-    // As COLUNAS do ref vêm do seam, não escritas aqui: cada canal guarda o
-    // seu identificador numa coluna própria, e nomeá-la faria este cron saber
-    // com quem fala — o que o invariante 1 da doutrina proíbe, e o
-    // `lint:channels` reprovou na primeira versão deste arquivo.
-    const { data: sessao } = await admin
-      .from("channel_sessions")
-      .select(CHANNEL_SESSION_REF_COLUMNS)
+    // A sessão DESTE contato — pela conversa dele, não uma qualquer da org.
+    //
+    // Medido em produção: com dois canais ligados, pegar "a primeira sessão
+    // WORKING da organização" escolheu a errada e os 40 contatos do lote caíram
+    // em "sem canal". Eles são de um canal; a sessão sorteada era do outro, que
+    // nem sabe traduzir identidade opaca. O vínculo certo está na conversa.
+    //
+    // As COLUNAS do ref vêm do seam, não escritas aqui: cada canal guarda o seu
+    // identificador numa coluna própria, e nomeá-la faria este cron saber com
+    // quem fala — o que o invariante 1 da doutrina proíbe, e o `lint:channels`
+    // reprovou na primeira versão deste arquivo.
+    const { data: conversa } = await admin
+      .from("conversations")
+      .select(`channel_sessions:channel_session_id (${CHANNEL_SESSION_REF_COLUMNS}, status, archived_at)`)
       .eq("organization_id", c.organization_id)
-      .is("archived_at", null)
-      .eq("status", "WORKING")
+      .eq("contact_id", c.id)
+      .order("last_message_at", { ascending: false, nullsFirst: false })
       .limit(1)
       .maybeSingle();
 
-    const s = sessao as unknown as ChannelSessionRef | null;
+    const sessaoDaConversa = (conversa as { channel_sessions?: unknown } | null)?.channel_sessions as
+      | (ChannelSessionRef & { status: string | null; archived_at: string | null })
+      | null
+      | undefined;
+
+    // Canal arquivado ou fora do ar não responde — carimba e tenta depois.
+    const s =
+      sessaoDaConversa && !sessaoDaConversa.archived_at && sessaoDaConversa.status === "WORKING"
+        ? (sessaoDaConversa as ChannelSessionRef)
+        : null;
     const sessionRef = s ? resolveSessionRef(s) : null;
     if (!s || !sessionRef) {
       await carimbar(null);
