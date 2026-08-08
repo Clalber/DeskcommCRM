@@ -25,6 +25,52 @@ jobs:
   e2e:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    # ─────────────────────────────────────────────────────────────────────────
+    # A COBERTURA DEIXA DE SER PROSA DIGITADA À MÃO.
+    #
+    # Antes, as listas viviam nos dois `run:` e a declaração do que NÃO é coberto
+    # era um `echo` escrito à mão. As duas fontes divergiram em silêncio: o texto
+    # dizia "32 de 33 specs" quando o disco tinha 39 e o job rodava 36 — e as
+    # ausentes eram justamente as novas, incluindo `agente-papeis-operador`, a
+    # prova de tela do épico dos três papéis, que nunca rodou em job nenhum.
+    #
+    # Cobertura parcial silenciosa se lê como cobertura total. Agora há UMA fonte
+    # por lista, o summary CONTA em vez de afirmar, e
+    # `tests/unit/e2e-cobertura-completa.test.ts` reprova o build quando um arquivo
+    # de spec não está em nenhuma das três listas.
+    #
+    # FORA_DO_CI exige motivo escrito no próprio nome do bloco abaixo — spec fora
+    # do gate sem razão declarada é a dívida voltando pela porta de serviço.
+    # ─────────────────────────────────────────────────────────────────────────
+    env:
+      SPECS_PARTE_1: >-
+        smoke.spec.ts auth.spec.ts error-pages.spec.ts
+        password-recovery.spec.ts signup-journey.spec.ts
+        rbac-roles.spec.ts inbox-scope.spec.ts reset-password-mfa.spec.ts
+        degradacao-silenciosa.spec.ts vps-webhook-outbound-ssrf.spec.ts
+        kanban-owner-filter.spec.ts queue-assign.spec.ts
+        conversa-vira-lead.spec.ts contato-salva-email.spec.ts
+        confirmar-dado-do-contato.spec.ts
+        risk-radar.spec.ts invite-lifecycle.spec.ts system-update.spec.ts
+      SPECS_PARTE_2: >-
+        agente-novo-e-uso.spec.ts agente-organiza-operacao.spec.ts
+        central-de-avisos-capacidades.spec.ts escalacao-ciclo.spec.ts
+        navegacao.spec.ts olhar-telas-do-epico.spec.ts pipelines-gestao.spec.ts
+        qa-agente-usa-as-maos.spec.ts qa-selo-no-funil-usado.spec.ts
+        qa-telas-descobertas-w4.spec.ts retorno-anti-morte.spec.ts
+        followup-builder.spec.ts followup-queue.spec.ts
+        distribuicao-atendimento.spec.ts followup-journey.spec.ts
+        webhooks.spec.ts
+        capacidades-do-agente.spec.ts
+        escopo-de-funil-do-agente.spec.ts
+        agente-papeis-operador.spec.ts
+        prova-painel-provedores.spec.ts
+      # Medido em 2026-08-08: 8 referências a WAHA/Resend/Nuvemshop/Redis. É a P0
+      # da doutrina de QA Visual e continua fora por dependência de infra, não por
+      # esquecimento. Único item aqui — e o gate exige que continue sendo por
+      # motivo escrito.
+      FORA_DO_CI: >-
+        vps-fresh-onboarding.spec.ts
     steps:
       - uses: actions/checkout@v7
 
@@ -211,16 +257,7 @@ jobs:
       # fazem o segundo ser recusado como replay. Foi o que derrubava a
       # `reset-password-mfa` (issue #80): ela passa sozinha e falha em paralelo.
       - name: E2E — parte 1 de 2
-        run: |
-          pnpm exec playwright test --workers=1 \
-            smoke.spec.ts auth.spec.ts error-pages.spec.ts \
-            password-recovery.spec.ts signup-journey.spec.ts \
-            rbac-roles.spec.ts inbox-scope.spec.ts reset-password-mfa.spec.ts \
-            degradacao-silenciosa.spec.ts vps-webhook-outbound-ssrf.spec.ts \
-            kanban-owner-filter.spec.ts queue-assign.spec.ts \
-            conversa-vira-lead.spec.ts contato-salva-email.spec.ts \
-            confirmar-dado-do-contato.spec.ts \
-            risk-radar.spec.ts invite-lifecycle.spec.ts system-update.spec.ts
+        run: pnpm exec playwright test --workers=1 $SPECS_PARTE_1
         env:
           # Só o que NÃO vem do `.env.e2e`: isto é ajuste de CI, não config do
           # produto. CI = 1 IP para todos os specs, e o teto de produção
@@ -229,18 +266,7 @@ jobs:
           AUTH_RATE_LIMIT_LOGIN_IP: "1000"
 
       - name: E2E — parte 2 de 2 (processo novo, contador de login zerado)
-        run: |
-          pnpm exec playwright test --workers=1 \
-            agente-novo-e-uso.spec.ts agente-organiza-operacao.spec.ts \
-            central-de-avisos-capacidades.spec.ts escalacao-ciclo.spec.ts \
-            navegacao.spec.ts olhar-telas-do-epico.spec.ts pipelines-gestao.spec.ts \
-            qa-agente-usa-as-maos.spec.ts qa-selo-no-funil-usado.spec.ts \
-            qa-telas-descobertas-w4.spec.ts retorno-anti-morte.spec.ts \
-            followup-builder.spec.ts followup-queue.spec.ts \
-            distribuicao-atendimento.spec.ts followup-journey.spec.ts \
-            webhooks.spec.ts \
-            capacidades-do-agente.spec.ts \
-            escopo-de-funil-do-agente.spec.ts
+        run: pnpm exec playwright test --workers=1 $SPECS_PARTE_2
         env:
           # Só o que NÃO vem do `.env.e2e`: isto é ajuste de CI, não config do
           # produto. CI = 1 IP para todos os specs, e o teto de produção
@@ -251,23 +277,22 @@ jobs:
       - name: Declarar o que este job ainda NÃO cobre
         if: always()
         run: |
+          # CONTA, não afirma. A versão anterior deste passo era prosa digitada à
+          # mão e dizia "32 de 33" com 39 arquivos no disco — a única coisa que
+          # existia para declarar a lacuna estava, ela mesma, desatualizada.
+          NO_DISCO=$(ls tests/e2e/*.spec.ts | wc -l | tr -d ' ')
+          RODOU=$(echo $SPECS_PARTE_1 $SPECS_PARTE_2 | wc -w | tr -d ' ')
+          FORA=$(echo $FORA_DO_CI | wc -w | tr -d ' ')
           {
             echo "## E2E — cobertura deste job"
             echo ""
-            echo "**Rodou (32 de 33 specs):** smoke, auth, error-pages, password-recovery,"
-            echo "signup-journey, rbac-roles, inbox-scope, reset-password-mfa,"
-            echo "degradacao-silenciosa, vps-webhook-outbound-ssrf, kanban-owner-filter,"
-            echo "queue-assign, risk-radar, invite-lifecycle, system-update,"
-            echo "agente-novo-e-uso, agente-organiza-operacao, central-de-avisos-capacidades,"
-            echo "escalacao-ciclo, navegacao, olhar-telas-do-epico, pipelines-gestao,"
-            echo "qa-agente-usa-as-maos, qa-selo-no-funil-usado, qa-telas-descobertas-w4,"
-            echo "retorno-anti-morte, followup-builder, followup-queue,"
-            echo "distribuicao-atendimento, followup-journey, capacidades-do-agente, webhooks."
+            echo "**Rodou: ${RODOU} de ${NO_DISCO} specs.**"
             echo ""
-            echo "**Não rodou (1):**"
-            echo "- precisa de WAHA + Redis + Resend + Nuvemshop: vps-fresh-onboarding (P0)"
+            echo "**Não rodou (${FORA}):**"
+            for s in $FORA_DO_CI; do echo "- \`${s}\` — precisa de WAHA + Redis + Resend + Nuvemshop (P0 da doutrina de QA Visual)"; done
             echo ""
-            echo "Expandir é trabalho de seguimento — issue #63."
+            echo "A soma é conferida mecanicamente por \`tests/unit/e2e-cobertura-completa.test.ts\`:"
+            echo "spec no disco que não esteja em nenhuma das três listas reprova o build."
           } >> "$GITHUB_STEP_SUMMARY"
 
       - uses: actions/upload-artifact@v7
