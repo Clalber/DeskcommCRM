@@ -64,13 +64,22 @@ jobs:
         capacidades-do-agente.spec.ts
         escopo-de-funil-do-agente.spec.ts
         agente-papeis-operador.spec.ts
-        prova-painel-provedores.spec.ts
-      # Medido em 2026-08-08: 8 referências a WAHA/Resend/Nuvemshop/Redis. É a P0
-      # da doutrina de QA Visual e continua fora por dependência de infra, não por
-      # esquecimento. Único item aqui — e o gate exige que continue sendo por
-      # motivo escrito.
+      # Cada item aqui tem o motivo MEDIDO, não presumido — e o gate cobra que a
+      # lista exista e some com as outras duas.
+      #
+      # `vps-fresh-onboarding`: 8 referências a WAHA/Resend/Nuvemshop/Redis. É a P0
+      # da doutrina de QA Visual e fica fora por dependência de infra.
+      #
+      # `prova-painel-provedores`: o caso F3 exige mais de 50 modelos da OpenRouter
+      # no seletor, e o catálogo `ai_models` chega ao CI com 2 linhas — o
+      # `baseline.sql` não semeia catálogo e não existe seed que o popule (medido em
+      # 2026-08-08: 2 inserts em ai_models no baseline; nesta máquina há 400 modelos
+      # openrouter, vindos de um sync que alguém rodou à mão). A spec passa onde o
+      # dado por acaso existe. Entra no CI quando houver seed de catálogo — e aí é
+      # uma spec a mais, não uma spec consertada.
       FORA_DO_CI: >-
         vps-fresh-onboarding.spec.ts
+        prova-painel-provedores.spec.ts
     steps:
       - uses: actions/checkout@v7
 
