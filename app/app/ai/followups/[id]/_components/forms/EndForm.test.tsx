@@ -23,14 +23,23 @@ beforeAll(() => {
 
 /**
  * `delay: null` mata a espera que o user-event insere entre cada evento de
- * ponteiro. Com o default, abrir este Select levou 16,6s numa máquina carregada
- * e estourou o teto de 15s do vitest — reprovação por lentidão, sem defeito
- * nenhum, que é o jeito mais rápido de ensinar o time a ignorar o gate.
+ * ponteiro. Com o default, abrir este Select levou 16,6s e estourou o teto de
+ * 15s do vitest — reprovação por lentidão, sem defeito nenhum, que é o jeito
+ * mais rápido de ensinar o time a ignorar o gate.
  */
 const usuario = () => userEvent.setup({ delay: null });
 
+/**
+ * Teto próprio, como o `vitest.config.ts` prevê para quem legitimamente precisa
+ * de mais. Radix Select em jsdom é caro, e o custo varia demais com a carga da
+ * máquina: medido no MESMO commit, 1,8s com a máquina livre e 15,7s com seis
+ * worktrees compilando junto. 30s é o dobro do pior caso observado; abaixo
+ * disso o gate reprovaria por contenção, que é ruído, não defeito.
+ */
+const TETO_MS = 30_000;
+
 describe("EndForm — seletor de resultado", () => {
-  it("oferece Convertido/Esgotado/Personalizado e grava o wire da escolha", async () => {
+  it("oferece Convertido/Esgotado/Personalizado e grava o wire da escolha", { timeout: TETO_MS }, async () => {
     const gravados: Array<{ outcome: string }> = [];
     const user = usuario();
     render(
