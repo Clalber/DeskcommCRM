@@ -59,7 +59,7 @@ arquivo alheio? Pede ao dono pelo canal, não edita.
 |---|---|---|
 | **A · Contrato + Ramificação** | Arquiteto | `lib/followup/graph-schema.ts`, `validate-publish.ts`, `graph-mappers.ts`, `edge-condition-options.ts`, `node-handlers.ts` *(só o case `condition`)*, `nodes/NodeCard.tsx`, `nodes/ConditionNode.tsx`, `nodes/ClassifyNode.tsx`, `EdgeConfigPanel.tsx`, `FlowCanvas.tsx`, `NodeConfigPanel.tsx` *(só o `ConditionForm`/`ClassifyForm`)* |
 | **B · Motor (tempo neural + starvation)** | DevVivo | `lib/followup/engine.ts`, `turn-bridge.ts`, `node-handlers.ts` *(só o case `wait`)*, `lib/agent-engine/agent/followup-flow-classify.ts`, `followup-turn.ts`, função SQL do claim |
-| **C · Gatilhos do sistema** | MaestroConexoes | `lib/followup/api-schemas.ts` *(bloco trigger)*, `silence-sweep.ts`, `reactivity.ts`, novos `gatilho-*.ts`, `TriggerConfigControl.tsx`, `app/api/v1/ai/followup-flows/[id]/publish/route.ts`, `app/api/v1/cron/followup-flow-worker/route.ts` |
+| **C · Gatilhos do sistema** | DevGatilhos | `lib/followup/api-schemas.ts` *(bloco trigger)*, `silence-sweep.ts`, `reactivity.ts`, novos `gatilho-*.ts`, `TriggerConfigControl.tsx`, `app/api/v1/ai/followup-flows/[id]/publish/route.ts`, `app/api/v1/cron/followup-flow-worker/route.ts` |
 | **D · Fila viva + dossiê** | Maestro | `app/app/ai/followups/_components/QueueTab.tsx`, novos componentes de dossiê, `app/api/v1/ai/followups/enrollments/**`, `hooks/followup/useFollowupQueue.ts`, `lib/followup/outcome-stats.ts` |
 | **E · Linguagem humana** | QAVivo | `lib/followup/vocabulario.ts` *(novo, dono exclusivo)*, `NodeConfigPanel.tsx` *(demais formulários)*, seletor de template, `nodes/nodeVisuals.ts` |
 
@@ -95,7 +95,7 @@ E quebra o arquivo em um arquivo por formulário **na Wave 0**, antes de A encos
 
 | Item | Dono | Estado |
 |---|---|---|
-| `W1-GATILHOS` · produtores de `stage_change`, caso aberto e proposta feita + UI do gatilho | MaestroConexoes | despachado |
+| `W1-GATILHOS` · produtores de `stage_change`, caso aberto e proposta feita + UI do gatilho | DevGatilhos | despachado |
 | `W1-FILA` · dossiê do enrollment, timeline de eventos, pausar/adiar/pular | Maestro | despachado |
 | `W1-MOTOR` · `decide_timing` vivo, plano de atrasos por enrollment, clamp provado + starvation | DevVivo | despachado |
 
@@ -137,6 +137,40 @@ reprovações espera — reprovar menos que o previsto denuncia mecanismo redund
   para o maestro. `pnpm install` em cada um.
 - **Reconhecimento** — os 7 achados da seção 1, medidos em `d59f8292` antes de tocar
   em qualquer linha.
+- **Despacho** — 5 itens abertos no plano do Lina (`FV-W0-CONTRATO`, `FV-W0-VOCAB`,
+  `FV-W1-MOTOR`, `FV-W1-GATILHOS`, `FV-W1-FILA`) e repassados com briefing anexado ao
+  payload (`lina handoff --context`), não pelo corpo da mensagem — o canal corrompe
+  `$`, crase e apóstrofo em silêncio.
+- **Troca de dono na frente C** — os dois despachos ao MaestroConexoes foram *roteados*
+  sem confirmação de entrega, e ele não deu claim. Não concluí "terminal morto" pelo
+  sinal indireto: **conferi o artefato** (plano sem claim, worktree sem arquivo tocado).
+  Rafael informou que ele está em outra frente. Terminal `DevGatilhos` (DEVELOPER)
+  criado e a frente repassada a ele.
+- **Monitor armado** — vigia o **artefato**, não o proxy: commit novo em qualquer
+  `fv/*`, terminal em `Blocked`/`Dead`, e frente em silêncio há mais de 25 min. As três
+  bordas juntas, porque monitor que só observa o caminho feliz fica calado num
+  travamento e o silêncio parece progresso.
+  - Limitação medida: `lina history` recusa leitura cross-espaço aqui
+    (`leitura cross negada`), então não consigo ler a tela dos colegas. O git é a
+    fonte de verdade do monitor — o que é melhor de qualquer forma: branch e SHA são
+    fato, estado de terminal é proxy.
+
+#### Ambiente de prova (montado pelo maestro, pronto antes da 1ª entrega)
+
+- **Banco**: Supabase local `pg17` já de pé (`supabase_db_deskcomm-crm`), que é o alvo
+  que a doutrina exige (o `baseline.sql` usa `GRANT MAINTAIN`, privilégio pg17+).
+- **Isolamento de produção**: os worktrees `fv-*` nasceram do git limpos, **sem
+  `.env.local`** — que é exatamente a configuração segura. Esta base já teve
+  `pnpm test:e2e` escrevendo organizações e usuários **no banco real**, porque 93
+  scripts liam `.env.local` do disco ignorando `process.env`. O repo já tem o conserto
+  (`pnpm e2e:env` + `pnpm e2e:build`, que ainda prova que o host de produção não
+  sobreviveu no bundle do browser); estou usando essa receita, não uma minha.
+- **Porta**: `E2E_PORT=3101`. Há um `next` vivo de **outra sessão** no worktree
+  `DeskcommCRM-qa-main`; porta própria para não colidir, e não matei processo nenhum —
+  `pkill` amplo nesta máquina mata o trabalho alheio.
+- **Ressalva declarada**: o Supabase local é **compartilhado** entre sessões. Não vou
+  resetá-lo. As specs semeiam a própria org por rodada; se um vizinho rodar o seed no
+  meio, o sintoma típico é "MFA falhou" — que é vizinho, não bug de MFA.
 
 #### Bugs encontrados
 
