@@ -10781,6 +10781,94 @@ comment on column followup_enrollments.timing_plan is
 
 notify pgrst, 'reload schema';
 
+-- ---- o tick do follow-up para de servir uma organização de cada vez (migration 0146) ----
+--
+-- O claim levava os 20 vencidos MAIS ANTIGOS globalmente. Quem acumulou fila
+-- tem, por construção, os mais antigos — então uma organização atrasada ocupa o
+-- lote inteiro. Medido em pg17 descartável, teto 20: com 25 vencidos na grande e
+-- 1 na pequena, o tick 1 leva 20 da grande e ZERO da pequena; com 300 na grande,
+-- a pequena só é atendida no TICK 16 (≈16 min, com o cron de minuto em minuto).
+-- Não é inanição eterna — o lease empurra o ponteiro e ela entra em teto(K/20)
+-- ticks — mas o atraso não tem limite superior e cresce com a fila do vizinho.
+--
+-- Passa a ser rodízio: o mais antigo de CADA organização, depois o segundo de
+-- cada. Com UMA organização o resultado é idêntico ao de antes (os 20 mais
+-- antigos, na mesma ordem), então a instalação de operador único não muda.
+--
+-- O `limit p_limit` dentro do lateral faz o custo depender do número de
+-- organizações com fila, não do tamanho da fila. E `for update skip locked` vira
+-- CTE própria porque o Postgres não o aceita junto de window function.
+--
+-- Só isso NÃO preserva "dois workers nunca pegam a mesma linha": as duas conexões
+-- materializam a MESMA lista de candidatos antes de qualquer lock existir, e a
+-- segunda, ao esperar o lock da primeira, reavalia apenas o WHERE do UPDATE
+-- (READ COMMITTED). Medido: interseção de 5 em 5 no invariante de concorrência.
+-- Por isso a condição de lease está REPETIDA no WHERE do UPDATE — é ela que faz
+-- a segunda conexão enxergar o lease recém-gravado e desistir da linha.
+
+create index if not exists idx_followup_enrollments_due_por_org
+  on followup_enrollments (organization_id, next_eval_at)
+  where status in ('active','waiting_reply');
+
+create or replace function fn_claim_due_followup_enrollments(p_limit int, p_lease_seconds int)
+returns setof followup_enrollments
+language sql
+security definer
+set search_path = public
+as $$
+  with orgs as (
+    -- Sem a condição de claim aqui de propósito: o lateral abaixo a aplica, e uma
+    -- organização cujos vencidos estão todos com lease apenas devolve zero linhas.
+    select distinct organization_id
+      from followup_enrollments
+     where status in ('active','waiting_reply')
+       and next_eval_at <= now()
+  ),
+  fila as (
+    select f.id, f.next_eval_at, f.posicao_na_org
+      from orgs
+      cross join lateral (
+        select d.id,
+               d.next_eval_at,
+               row_number() over (order by d.next_eval_at) as posicao_na_org
+          from followup_enrollments d
+         where d.organization_id = orgs.organization_id
+           and d.status in ('active','waiting_reply')
+           and d.next_eval_at <= now()
+           and (d.claimed_until is null or d.claimed_until < now())
+         order by d.next_eval_at
+         limit p_limit
+      ) f
+  ),
+  escolhidos as (
+    -- O rodízio: posição 1 de todas as organizações, depois a 2 de todas, etc.
+    -- Empate na mesma posição vai para quem esperou mais.
+    select id from fila order by posicao_na_org, next_eval_at limit p_limit
+  ),
+  travados as (
+    select e.id from followup_enrollments e
+     where e.id in (select id from escolhidos)
+     for update skip locked
+  )
+  update followup_enrollments e
+     set claimed_until = now() + make_interval(secs => p_lease_seconds),
+         updated_at = now()
+   where e.id in (select id from travados)
+     -- A condição de lease É REPETIDA AQUI, e não é redundante com a CTE `fila`.
+     -- Sem ela, duas conexões simultâneas reclamam as MESMAS linhas: a segunda
+     -- espera o lock da primeira, e quando ele sai o Postgres (READ COMMITTED)
+     -- reavalia só o WHERE do UPDATE — que não olhava `claimed_until` — e grava
+     -- por cima. O `skip locked` da CTE não salva: as duas materializam a mesma
+     -- lista antes de qualquer lock existir. Medido: interseção de 5 em 5 no
+     -- invariante de concorrência (followup-schema.test.ts).
+     and (e.claimed_until is null or e.claimed_until < now())
+  returning e.*;
+$$;
+
+revoke execute on function fn_claim_due_followup_enrollments(int, int) from public, anon, authenticated;
+
+notify pgrst, 'reload schema';
+
 -- ---- VARREDURA anon: função nova nasce exposta em quem ATUALIZA (migration 0116) ----
 --
 -- ⚠️ ESTE BLOCO É, DE PROPÓSITO, O ÚLTIMO DO ARQUIVO. Apêndice novo entra ANTES

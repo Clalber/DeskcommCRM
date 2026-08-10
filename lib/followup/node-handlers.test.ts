@@ -226,6 +226,34 @@ describe("processNode — wait (smart): o instante vem do plano de tempo do enro
     expect(result).toEqual({ kind: "wait", next_eval_at: new Date(NOW.getTime() + 1_800_000) });
   });
 
+  // "Quem decide o intervalo é o nó" só é invariante se valer também na leitura:
+  // `timing_plan` é jsonb num banco que o self-hoster administra, e uma linha
+  // adulterada (ou um bug futuro que grave sem clampar) prenderia o lead muito
+  // além do que a tela configurou, em silêncio.
+  it("plano com valor ACIMA do máximo do nó é grampeado na leitura", () => {
+    const result = processNode({
+      node,
+      edges: [],
+      enrollment: comPlano(30 * 86_400_000), // 30 dias, contra um máximo de 30min
+      lead: lead(),
+      clock,
+      waitElapsed: false,
+    });
+    expect(result).toEqual({ kind: "wait", next_eval_at: new Date(NOW.getTime() + 1_800_000) });
+  });
+
+  it("plano com valor ABAIXO do mínimo do nó é grampeado na leitura", () => {
+    const result = processNode({
+      node,
+      edges: [],
+      enrollment: comPlano(1_000), // 1s, contra um mínimo de 10min
+      lead: lead(),
+      clock,
+      waitElapsed: false,
+    });
+    expect(result).toEqual({ kind: "wait", next_eval_at: new Date(NOW.getTime() + 600_000) });
+  });
+
   it("plano corrompido (jsonb de clone com lixo): máximo, sem lançar", () => {
     const result = processNode({
       node,

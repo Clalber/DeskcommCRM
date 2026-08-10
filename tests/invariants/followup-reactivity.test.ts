@@ -1,6 +1,7 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import pg from "pg";
 
+import { isolarFixtureDeFollowup } from "./followup-isolamento";
 import { runFollowupTick, type FollowupJobRequest, type TickDeps, type AdminClient } from "@/lib/followup/engine";
 import { completeTurnForEnrollment, createPgAdminClient } from "@/lib/followup/turn-bridge";
 import {
@@ -349,6 +350,14 @@ const SIMPLE_GRAPH: FlowGraph = {
 beforeAll(() => {
   flowGraphSchema.parse(CLASSIFY_GRAPH);
   flowGraphSchema.parse(SIMPLE_GRAPH);
+});
+
+// Este arquivo roda `runFollowupTick` e cada `it` cria o próprio enrollment
+// (`nextOrgId()`), então limpar entre eles não tira nada de ninguém — e impede
+// que o tick daqui reclame enrollment devido de outro arquivo. Ver
+// ./followup-isolamento.ts.
+beforeEach(async () => {
+  await isolarFixtureDeFollowup(pool);
 });
 
 // ---- 1. STOP cancela tudo ----

@@ -4,7 +4,7 @@
  * this node + these facts, what happens next" so it's testable without Postgres.
  */
 import type { FlowEdge, FlowNode } from "./graph-schema";
-import { esperaPlanejadaDe, type EsperaAdaptativa } from "./timing-plan";
+import { clampEspera, esperaPlanejadaDe, type EsperaAdaptativa } from "./timing-plan";
 
 export type EnrollmentStatus =
   | "active"
@@ -269,11 +269,20 @@ export function processNode(input: {
         // Adaptativo: o instante vem do plano decidido no acionamento. Sem plano
         // legível para ESTE nó (enrollment anterior à feature, fluxo v1, jsonb
         // corrompido), cai no máximo — que era o comportamento único até aqui.
+        //
+        // O clamp é REFEITO aqui, contra o nó, mesmo a ponte já tendo clampado ao
+        // gravar: "quem decide o intervalo é o nó" só é invariante se valer na
+        // LEITURA. `timing_plan` é jsonb num banco que o self-hoster administra —
+        // uma linha editada à mão, ou um bug futuro que grave sem clampar,
+        // prenderia o lead muito além do que o operador configurou na tela, e
+        // ninguém veria. Custa uma comparação por espera.
         const planejada = node.config.mode === "smart" ? esperaPlanejadaDe(enrollment.timing_plan, node.id) : null;
         const durationMs =
           node.config.mode === "fixed"
             ? node.config.duration_ms
-            : (planejada?.escolhido_ms ?? node.config.max_ms);
+            : planejada === null
+              ? node.config.max_ms
+              : clampEspera(planejada.escolhido_ms, node.config.min_ms, node.config.max_ms).escolhido_ms;
         return { kind: "wait", next_eval_at: new Date(clock().getTime() + durationMs) };
       }
       const edge = selectEdge(edges, node.id, { type: "always" });

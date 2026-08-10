@@ -4,6 +4,10 @@ import pg from "pg";
 import { runFollowupTick, type FollowupJobRequest, type TickDeps } from "@/lib/followup/engine";
 import { completeTurnForEnrollment, createPgAdminClient } from "@/lib/followup/turn-bridge";
 import { flowGraphSchema, type FlowGraph } from "@/lib/followup/graph-schema";
+// O schema do OUTRO lado da fila. Importado só aqui, e só no teste: agent-engine
+// nunca importa followup/* (a dependência é numa direção só) — mas provar que as
+// duas metades do contrato casam exige ver as duas no mesmo lugar.
+import { followupTurnPayloadSchema } from "@/lib/agent-engine/agent/followup-turn";
 
 import { isolarFixtureDeFollowup } from "./followup-isolamento";
 
@@ -329,6 +333,15 @@ describe("plano de tempo — acionamento decide, espera obedece", () => {
         guidance: "não insistir de madrugada",
       },
     ]);
+
+    // CONTRATO entre as duas pontas. O engine emite este payload e quem o lê é o
+    // handler do worker, do outro lado da fila — e as duas metades só casam por
+    // convenção: o schema tem `.passthrough()` e `waits` é opcional, então um
+    // nome de campo divergente passa pela validação e só explode no worker, em
+    // produção. Aqui o payload REAL do engine atravessa o schema REAL do handler.
+    const aceito = followupTurnPayloadSchema.parse(planJob!.payload);
+    expect(aceito.purpose).toBe("plan_timing");
+    expect(aceito.waits).toEqual(planJob!.payload.waits);
     expect((await getEnrollment(enrollmentId)).current_node_id).toBe("t1"); // ainda no trigger
 
     // 2. O turno volta com a proposta; a ponte clampa contra o grafo e grava.
@@ -350,6 +363,18 @@ describe("plano de tempo — acionamento decide, espera obedece", () => {
     // 3. A ESPERA. É aqui que a versão anterior falhava: ela agendava max_ms
     //    (30min) qualquer que fosse o plano — a tela oferecia adaptativo e o
     //    motor esperava sempre o teto.
+    //
+    //    O empurrão de `next_eval_at` para o passado não é conveniência: a ponte
+    //    grava o instante com o relógio do PROCESSO e o claim compara com o
+    //    `now()` do POSTGRES. Os dois relógios não são o mesmo, e quando o do
+    //    processo está à frente por alguns milissegundos o enrollment não é
+    //    devido, o tick não o reclama, e `next_eval_at` fica valendo o instante
+    //    do passo anterior — o teste falharia por corrida de relógio, sem nada a
+    //    ver com o plano. Em produção isso é invisível (o tick seguinte vem em
+    //    um minuto); aqui os dois passos são consecutivos.
+    await pool.query(`update followup_enrollments set next_eval_at = now() - interval '1 second' where id = $1`, [
+      enrollmentId,
+    ]);
     const antes = Date.now();
     await runFollowupTick(makeTickDeps(jobs), { limit: 5 });
     const esperando = await getEnrollment(enrollmentId);
