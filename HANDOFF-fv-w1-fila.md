@@ -29,11 +29,25 @@ tabelas daqui saem e viram import, sem tocar em nenhum consumidor.
 
 ### 2. O tempo que a IA escolheu
 
-`lib/followup/plano-de-tempo.ts` lê o `timing_plan` contra o contrato fechado da
-0144. Para cada espera: quanto escolheu, por quê, e `clampado` em destaque —
-informação sobre a CONFIGURAÇÃO, não sobre a execução. Sem plano, bloco nenhum.
+`lib/followup/plano-de-tempo.ts` lê o `timing_plan` produzido pelo motor (0144).
+Para cada espera: quanto escolheu, por quê, `clampado` em destaque — e **quanto
+a IA pediu antes do corte**.
 
-Leitura desconfiada: espera sem os três números que a tela promete é descartada.
+**Dois consertos depois de integrar com o motor** (o contrato que chegou no meu
+briefing era mais pobre que o real):
+
+- **`proposto_ms` existia e eu estava descartando.** O produtor guarda o valor
+  original justamente para o dossiê poder dizer "a IA pediu 3 dias, seu limite
+  era 12h" — e o comentário dele diz isso com todas as letras. Sem essa linha,
+  "bateu no seu limite" informa que houve corte e não informa de QUANTO, que é o
+  número que decide se o operador vai mexer no nó. Guardar o dado e não mostrá-lo
+  seria o mesmo defeito que este dossiê existe para consertar, uma camada acima.
+- **A leitura passou a usar o schema DO MOTOR, não um paralelo meu.**
+  `esperaPlanejadaDe` faz `safeParse` do plano inteiro e, se falhar, ignora o
+  plano todo (a espera cai no máximo). Minha leitura tolerante teria produzido a
+  pior tela possível: "a IA escolheu 4 horas" sobre um plano que o motor está
+  descartando. Quando um lado recusa, os dois recusam — e há teste que compara
+  os dois sobre a MESMA entrada, em vez de afirmar o comportamento de um só.
 
 ### 3. A intervenção
 
@@ -63,6 +77,43 @@ que já custou o `paused_handoff` na Task 5.2. **Virou lista positiva.**
 > de merge, se houver, é visível e trivial. **Medido:** devolvendo a denylist, o
 > invariante reprova exatamente 1 caso (o do turno stale) e o CONTROLE POSITIVO
 > segue verde — a mudança é o que faz a pausa sobreviver.
+
+### O defeito que a integração pegou — e o teste que passava por sorte
+
+**Eu recriei o índice do "vivo" copiando as colunas da DDL ORIGINAL.** A 0145
+precisava mexer só no PREDICADO (acrescentar `paused_manual`), mas copiou
+`(pointer_id, contact_id)` do `create table` quando o que estava EM VIGOR era
+`(organization_id, contact_id)` — posto por uma migration anterior, com backfill
+cancelando os excedentes. Efeito: a garantia "um follow-up vivo por CONTATO na
+organização" voltaria a ser "um por FLUXO", **sem conflito de merge, sem erro de
+aplicação e sem sintoma imediato**.
+
+A integração corrigiu o baseline; **a migration continuava errada** (a tripla
+tinha dois lados discordando), e é o que este commit conserta.
+
+E o pior: **o invariante que deveria pegar isso passava por sorte.** Ele criava
+o segundo enrollment no MESMO fluxo, então violava os DOIS predicados e ficava
+verde com qualquer um. Agora o segundo nasce em outro fluxo, e só o predicado
+certo o recusa. Medido por sabotagem: devolvendo as colunas erradas ao baseline,
+**1 vermelho — o previsto**; com a versão antiga do teste, seria 0.
+
+Lição para a wave: `drop index` + `create index` de um índice que já foi
+recriado antes é reescrita silenciosa. A definição a copiar é a que está em
+vigor, nunca a da DDL original.
+
+### O que a INTEGRAÇÃO cobrou (e o build pegou)
+
+O merge de `feat/followup-vivo` trouxe o **grafo v2** do Arquiteto: uma aresta
+pode ter `{type:'branch', branch_id}`, e o `branch_id` é um id OPACO — o nome do
+ramo mora no NÓ, de propósito (replicá-lo na aresta faria as duas cópias
+divergirem no primeiro rename).
+
+Minha `rotuloDaAresta` só conhecia os tipos v1, e o **typecheck do `next build`
+foi quem pegou** — não os testes, porque nenhum caso meu tinha ramo nomeado. A
+tradução passa a receber o nó de origem e delega a `nodeBranches` (a lista de
+ramos é do contrato do grafo; uma segunda travessia aqui divergiria dela). Sem
+origem, ou com id que o nó não declara mais, aparece **o id** — nome inventado
+mandaria o operador pelo caminho errado na hora de escolher por onde pular.
 
 ---
 
@@ -126,20 +177,34 @@ verde** — afirmo que o invariante novo (`followup-intervencao`, 6 casos) passo
    (`hooks/followup/useFollowupQueue.ts → FollowupEnrollmentStatus`) deveria
    entrar em `tests/invariants/vocabulario-banco-x-typescript.test.ts`. O hook de
    pre-commit congela `tests/invariants/**` e a exceção que ele prevê é outra
-   (flip de `test.fails`) — **não driblei**. O texto pronto está no apêndice
-   deste documento. Sem ele a entrega funciona; o que se perde é a guarda contra
-   a próxima divergência banco↔tela.
+   (flip de `test.fails`) — **não driblei**. **AUTORIZADO** pelo
+   `@Assistente e Testes`, com a edição roteada ao `@QAVivo` (um dono por
+   arquivo). Prova entregue junto: previ 2 vermelhos na sabotagem e deram
+   exatamente 2 — o par novo mais um pré-existente de `channel_sessions.provider`
+   que é artefato do banco de dev. Texto pronto no apêndice deste documento.
 
-2. **`timing_plan` criado com `if not exists` na 0145** — a coluna é do contrato
-   da 0144 (DevVivo). Criei aqui de propósito: o consumidor não pode depender da
-   ORDEM em que as duas migrations chegam ao banco de um clone; coluna faltando
-   vira `42703` e derruba a rota inteira. No Supabase local a coluna **já existia**
-   quando apliquei (ele chegou primeiro) e a migration passou idempotente.
+   *Correção de fato registrada:* o roteamento veio com o motivo de que o QAVivo
+   já teria mexido neste invariante na wave. `git log --oneline
+   4f89a0da..feat/followup-vivo -- tests/invariants/vocabulario-banco-x-typescript.test.ts`
+   devolve **0 commits** — o que ele criou foi `lib/followup/vocabulario.ts`. O
+   roteamento continua bom; só o motivo estava trocado.
 
-3. **A spec e2e não exercita o bloco do plano de tempo** — nenhum enrollment de
-   teste tem `timing_plan` (o motor adaptativo é da wave dele). A leitura está
-   coberta por unitário; quando o DevVivo integrar, um cenário com plano fecha
-   o caso J9 que falta.
+2. **`timing_plan` criado com `if not exists` na 0145 — e o motivo é pior do que
+   eu sabia.** A coluna é do contrato da 0144. O `@Assistente e Testes` conferiu
+   e achou o que eu não tinha visto: os arquivos ordenam `20260810120000_0145`,
+   depois `20260810121000_0144`, depois `0146` — **o timestamp e o número de
+   sequência discordam**, então um clone que aplique por nome de arquivo roda a
+   0145 ANTES da 0144. A defesa não é só justificada: é necessária. (O alerta de
+   repo que isso revela — "aplicar em ordem" virou ambíguo — é dele e vale além
+   desta wave.)
+
+3. **J9 FECHADO.** `feat/followup-vivo` foi mergeado para dentro de `fv/fila`, e
+   a spec ganhou o cenário com plano REAL: o modelo "pede" 3 dias, o nó permite
+   12h, e a tela mostra as duas coisas. O plano não é escrito à mão — vem de
+   `completeTurnForEnrollment`, a MESMA função que o worker chama depois da
+   resposta do modelo (o seam já usado por `followup-journey.spec.ts`). Um
+   `INSERT` provaria que a tela desenha um jsonb inventado, não que ela lê o que
+   o motor grava.
 
 ---
 

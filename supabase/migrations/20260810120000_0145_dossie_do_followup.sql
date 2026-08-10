@@ -24,9 +24,10 @@
 --
 --   3. o índice de unicidade do "vivo" passa a contar a pausa manual. Sem isso,
 --      um enrollment pausado deixaria de ocupar a vaga do par
---      (pointer_id, contact_id) e um segundo enrollment nasceria vivo ao lado —
---      dois follow-ups do mesmo fluxo para a mesma pessoa no instante em que o
---      primeiro fosse retomado.
+--      (organization_id, contact_id) e um segundo nasceria vivo ao lado — dois
+--      follow-ups sobre a mesma pessoa no instante em que o primeiro fosse
+--      retomado. As COLUNAS do índice não são as da DDL original; ver o aviso
+--      no bloco 3.
 --
 -- Nenhuma linha existente viola o que se cria aqui: o CHECK novo só ACRESCENTA
 -- um valor ao conjunto aceito, e o predicado novo do índice cobre exatamente as
@@ -102,9 +103,19 @@ exception when duplicate_object then null; end $$;
 -- 3 · pausado continua ocupando a vaga do "vivo"
 -- ---------------------------------------------------------------------------
 
+-- ⚠️ AS COLUNAS SÃO (organization_id, contact_id), NÃO (pointer_id, contact_id).
+--
+-- A DDL original deste índice (o `create table` lá em cima) usa `pointer_id`, e
+-- uma migration posterior o RECRIOU por organização — "um follow-up vivo por
+-- CONTATO na organização", com backfill cancelando os excedentes. Quem precisa
+-- mexer só no PREDICADO (como aqui, para incluir `paused_manual`) tem de copiar
+-- a definição EM VIGOR, nunca a original: recriar a partir da linha errada
+-- reverte a garantia sem conflito de merge, sem erro de aplicação e sem sintoma
+-- imediato — o mesmo contato voltaria a poder ter um follow-up vivo em cada
+-- fluxo. Foi o que este arquivo fez antes desta correção; pego na integração.
 drop index if exists idx_followup_enrollments_one_live;
 create unique index if not exists idx_followup_enrollments_one_live
-  on public.followup_enrollments (pointer_id, contact_id)
+  on public.followup_enrollments (organization_id, contact_id)
   where status in ('active','waiting_reply','paused_handoff','paused_manual');
 
 -- ---------------------------------------------------------------------------
