@@ -32,10 +32,17 @@
 -- com fila, não do tamanho da fila.
 --
 -- `for update skip locked` sai da subquery e vira uma CTE própria porque o
--- Postgres não aceita `FOR UPDATE` junto de window function. A propriedade que
--- ele garante — dois workers nunca reclamam a mesma linha, e nenhum espera pelo
--- outro — é preservada: quem trava é o mesmo `select ... for update skip locked`
--- sobre `followup_enrollments`, só que sobre o conjunto já escolhido.
+-- Postgres não aceita `FOR UPDATE` junto de window function.
+--
+-- E isso, sozinho, NÃO preserva a propriedade de que dois workers nunca reclamam
+-- a mesma linha — eu supus que preservava, e o invariante de concorrência
+-- (`followup-schema.test.ts`) me desmentiu com interseção de 5 em 5. Mover o lock
+-- para uma CTE separa dois instantes que antes eram um só: as duas conexões
+-- materializam a MESMA lista de candidatos antes de qualquer lock existir, e o
+-- `skip locked` só decide quem trava primeiro. A segunda então espera o lock, e
+-- quando ele sai o Postgres (READ COMMITTED) reavalia apenas o WHERE do UPDATE.
+-- É por isso que a condição de lease está repetida lá embaixo: é ela que faz a
+-- segunda conexão enxergar o lease recém-gravado e desistir da linha.
 
 create index if not exists idx_followup_enrollments_due_por_org
   on followup_enrollments (organization_id, next_eval_at)
@@ -85,6 +92,14 @@ as $$
      set claimed_until = now() + make_interval(secs => p_lease_seconds),
          updated_at = now()
    where e.id in (select id from travados)
+     -- A condição de lease É REPETIDA AQUI, e não é redundante com a CTE `fila`.
+     -- Sem ela, duas conexões simultâneas reclamam as MESMAS linhas: a segunda
+     -- espera o lock da primeira, e quando ele sai o Postgres (READ COMMITTED)
+     -- reavalia só o WHERE do UPDATE — que não olhava `claimed_until` — e grava
+     -- por cima. O `skip locked` da CTE não salva: as duas materializam a mesma
+     -- lista antes de qualquer lock existir. Medido: interseção de 5 em 5 no
+     -- invariante de concorrência (followup-schema.test.ts).
+     and (e.claimed_until is null or e.claimed_until < now())
   returning e.*;
 $$;
 

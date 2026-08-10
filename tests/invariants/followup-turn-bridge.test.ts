@@ -363,6 +363,18 @@ describe("plano de tempo — acionamento decide, espera obedece", () => {
     // 3. A ESPERA. É aqui que a versão anterior falhava: ela agendava max_ms
     //    (30min) qualquer que fosse o plano — a tela oferecia adaptativo e o
     //    motor esperava sempre o teto.
+    //
+    //    O empurrão de `next_eval_at` para o passado não é conveniência: a ponte
+    //    grava o instante com o relógio do PROCESSO e o claim compara com o
+    //    `now()` do POSTGRES. Os dois relógios não são o mesmo, e quando o do
+    //    processo está à frente por alguns milissegundos o enrollment não é
+    //    devido, o tick não o reclama, e `next_eval_at` fica valendo o instante
+    //    do passo anterior — o teste falharia por corrida de relógio, sem nada a
+    //    ver com o plano. Em produção isso é invisível (o tick seguinte vem em
+    //    um minuto); aqui os dois passos são consecutivos.
+    await pool.query(`update followup_enrollments set next_eval_at = now() - interval '1 second' where id = $1`, [
+      enrollmentId,
+    ]);
     const antes = Date.now();
     await runFollowupTick(makeTickDeps(jobs), { limit: 5 });
     const esperando = await getEnrollment(enrollmentId);

@@ -10797,9 +10797,14 @@ notify pgrst, 'reload schema';
 --
 -- O `limit p_limit` dentro do lateral faz o custo depender do número de
 -- organizações com fila, não do tamanho da fila. E `for update skip locked` vira
--- CTE própria porque o Postgres não o aceita junto de window function — a
--- propriedade (dois workers nunca pegam a mesma linha, nenhum espera pelo outro)
--- é a mesma, aplicada ao conjunto já escolhido.
+-- CTE própria porque o Postgres não o aceita junto de window function.
+--
+-- Só isso NÃO preserva "dois workers nunca pegam a mesma linha": as duas conexões
+-- materializam a MESMA lista de candidatos antes de qualquer lock existir, e a
+-- segunda, ao esperar o lock da primeira, reavalia apenas o WHERE do UPDATE
+-- (READ COMMITTED). Medido: interseção de 5 em 5 no invariante de concorrência.
+-- Por isso a condição de lease está REPETIDA no WHERE do UPDATE — é ela que faz
+-- a segunda conexão enxergar o lease recém-gravado e desistir da linha.
 
 create index if not exists idx_followup_enrollments_due_por_org
   on followup_enrollments (organization_id, next_eval_at)
@@ -10812,6 +10817,8 @@ security definer
 set search_path = public
 as $$
   with orgs as (
+    -- Sem a condição de claim aqui de propósito: o lateral abaixo a aplica, e uma
+    -- organização cujos vencidos estão todos com lease apenas devolve zero linhas.
     select distinct organization_id
       from followup_enrollments
      where status in ('active','waiting_reply')
@@ -10834,6 +10841,8 @@ as $$
       ) f
   ),
   escolhidos as (
+    -- O rodízio: posição 1 de todas as organizações, depois a 2 de todas, etc.
+    -- Empate na mesma posição vai para quem esperou mais.
     select id from fila order by posicao_na_org, next_eval_at limit p_limit
   ),
   travados as (
@@ -10845,6 +10854,14 @@ as $$
      set claimed_until = now() + make_interval(secs => p_lease_seconds),
          updated_at = now()
    where e.id in (select id from travados)
+     -- A condição de lease É REPETIDA AQUI, e não é redundante com a CTE `fila`.
+     -- Sem ela, duas conexões simultâneas reclamam as MESMAS linhas: a segunda
+     -- espera o lock da primeira, e quando ele sai o Postgres (READ COMMITTED)
+     -- reavalia só o WHERE do UPDATE — que não olhava `claimed_until` — e grava
+     -- por cima. O `skip locked` da CTE não salva: as duas materializam a mesma
+     -- lista antes de qualquer lock existir. Medido: interseção de 5 em 5 no
+     -- invariante de concorrência (followup-schema.test.ts).
+     and (e.claimed_until is null or e.claimed_until < now())
   returning e.*;
 $$;
 
