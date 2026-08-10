@@ -109,6 +109,10 @@ export function describeNodeConfig(type: NodeType, config: FlowNode["config"]): 
     }
     case "condition": {
       const c = config as ConfigOf<"condition">;
+      // No modo uma-saída-por-regra o combinador NÃO é consultado (a regra não
+      // vota, ela roteia). Continuar anunciando "E"/"OU" ali seria o card
+      // afirmando uma coisa que o motor ignora — e o usuário acredita no card.
+      if (c.branching === "per_check") return `${c.checks.length} regras · uma saída por regra`;
       return `${c.checks.length} condição(ões) · ${c.combinator === "and" ? "E" : "OU"}`;
     }
     case "ai_classify": {

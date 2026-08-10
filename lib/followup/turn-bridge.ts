@@ -16,7 +16,7 @@ import type pg from "pg";
 
 import type { AdminClient, EnrollmentPatch } from "./engine";
 import { flowGraphSchema } from "./graph-schema";
-import { selectEdge, type EnrollmentRow } from "./node-handlers";
+import { classEdgeMatch, selectEdge, type EnrollmentRow } from "./node-handlers";
 import { coletarEsperasAdaptativas, montarTimingPlan, type PropostaDeEspera } from "./timing-plan";
 
 /** Superset de AdminClient: a ponte precisa do snapshot COMPLETO do enrollment
@@ -126,7 +126,7 @@ export async function completeTurnForEnrollment(
     if (node.type !== "ai_classify") {
       throw new Error(`completeTurnForEnrollment: resultado 'classified' mas o nó "${node.id}" não é 'ai_classify'`);
     }
-    const edge = selectEdge(graph.edges, node.id, { type: "class_match", value: result.class });
+    const edge = selectEdge(graph.edges, node.id, classEdgeMatch(node, result.class));
     if (!edge) {
       throw new Error(`ai_classify node "${node.id}" sem aresta pra classe "${result.class}" (fallback 'always' também ausente)`);
     }

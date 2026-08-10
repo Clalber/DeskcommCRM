@@ -159,6 +159,50 @@ describe("completeTurnForEnrollment — 'classified' (ai_classify)", () => {
     );
   });
 
+  /**
+   * Nó já migrado para ramos nomeados: a aresta referencia o id ESTÁVEL do ramo,
+   * não o texto da classe. Resolver por texto aqui não acha aresta nenhuma e cai
+   * no fallback — o lead classificado como "quente" iria para o mesmo lugar de
+   * quem não foi classificado, sem erro nenhum aparecer. Renomear a classe passa
+   * a ser seguro exatamente porque a aresta não depende do nome.
+   */
+  it("nó com ramos nomeados: a classe conhecida vai pelo RAMO dela, não pelo fallback", async () => {
+    const grafoV2: FlowGraph = {
+      nodes: [
+        {
+          id: "ac1",
+          type: "ai_classify",
+          label: "Classify",
+          position: { x: 0, y: 0 },
+          config: {
+            classes: ["quente", "frio"],
+            branches: [
+              { id: "br_quente", label: "quente" },
+              { id: "br_frio", label: "frio" },
+            ],
+            grace_timeout_ms: 900_000,
+            target: "last_reply",
+          },
+        },
+        { id: "no-quente", type: "end", label: "Quente", position: { x: 0, y: 0 }, config: { outcome: "converted" } },
+        { id: "escape", type: "end", label: "Escape", position: { x: 0, y: 0 }, config: { outcome: "exhausted" } },
+      ],
+      edges: [
+        { id: "e-quente", source: "ac1", target: "no-quente", priority: 5, condition: { type: "branch", branch_id: "br_quente" } },
+        { id: "e-escape", source: "ac1", target: "escape", priority: 0, condition: { type: "always" } },
+      ],
+    };
+    const { db, updateEnrollment } = fakeDb({ enrollment: enrollment({ current_node_id: "ac1" }), graph: grafoV2 });
+
+    await completeTurnForEnrollment(db, "org-1", "enr-1", "ac1", { kind: "classified", class: "quente" }, clock);
+
+    expect(updateEnrollment).toHaveBeenCalledWith(
+      "enr-1",
+      "org-1",
+      expect.objectContaining({ current_node_id: "no-quente" }),
+    );
+  });
+
   it("routes an unknown class through the 'always' fallback edge", async () => {
     const { db, updateEnrollment } = fakeDb({ enrollment: enrollment({ current_node_id: "ac1" }), graph: CLASSIFY_GRAPH });
 

@@ -248,8 +248,13 @@ test.describe("gatilho de etapa do funil", () => {
       await expect
         .poll(
           async () => {
-            const r = await page.request.get(`/api/v1/leads/${negocio.id}`);
-            return ((await r.json()) as { data: { stage_id: string } }).data.stage_id;
+            // O board, e não `GET /api/v1/leads/:id` — essa rota NÃO existe
+            // (o arquivo só expõe PATCH/DELETE), e pedi-la devolvia corpo
+            // vazio: o erro que aparecia era "Unexpected end of JSON input",
+            // que fala do parser e esconde que a rota não está lá.
+            const r = await page.request.get(`/api/v1/pipelines/${funil.id}/board`);
+            const { data } = (await r.json()) as { data: { leads: Array<{ id: string; stage_id: string }> } };
+            return data.leads.find((l) => l.id === negocio.id)?.stage_id ?? null;
           },
           { timeout: 60_000, message: "o card tem que ter mudado de etapa no banco" },
         )
