@@ -7,6 +7,7 @@ import { runFollowupTick, type FollowupJobRequest, type TickDeps, type AdminClie
 import { completeTurnForEnrollment, createPgAdminClient } from "@/lib/followup/turn-bridge";
 import {
   applyReactivityEvent,
+  LIVE_STATUSES,
   RESUME_GRACE_MS,
   type LiveEnrollmentRef,
   type ReactivityAdminClient,
@@ -52,7 +53,11 @@ afterAll(async () => {
 
 // ---- pg-backed ReactivityAdminClient (test-only; prod usa createSupabaseReactivityClient) ----
 
-const LIVE_STATUSES = ["active", "waiting_reply", "paused_handoff"];
+// A lista de estados vivos vem de PRODUÇÃO, e isso não é higiene: com uma cópia
+// aqui, este arquivo não conseguia pegar defeito nela. Medido — apliquei o
+// conserto em `reactivity.ts` e a catraca abaixo NÃO disparou, porque o adapter
+// deste teste consultava a réplica. Réplica que erra igual à original concorda
+// com ela, e concordância entre cópias parece confirmação.
 
 function reactivityDb(): ReactivityAdminClient {
   return {
@@ -396,6 +401,134 @@ describe("applyReactivityEvent — STOP/opt-out (message.received + is_blocked)"
 
     const afterDone = await getEnrollment(done);
     expect(afterDone.status).toBe("completed"); // terminal intocado pelo STOP
+  });
+
+  /**
+   * O caso gêmeo de `paused_manual` (migration 0145). `LIVE_STATUSES` é escrita à
+   * mão, e estado novo não entra nela sozinho: dos SEIS consumidores que listam
+   * estados vivos, cinco acompanharam a 0145 e este — o único que fala em nome do
+   * opt-out do lead — não. O comentário do STOP promete "cancela TUDO que está
+   * vivo, sem exceção de política", e TUDO deixou de ser verdade quando o estado
+   * novo entrou: comentário que descreve alcance envelhece junto com a lista.
+   *
+   * O QUE CUSTA, medido em consequência e não em susto: a mensagem NÃO vaza —
+   * `stopGate` (before-send) relê `is_blocked` direto da fonte no turno e o sink
+   * veta em definitivo no 403. O que sobra é sujeira de estado: o enrollment não
+   * vira `opted_out` e OCUPA a vaga única do contato
+   * (`idx_followup_enrollments_one_live`), então um follow-up legítimo futuro
+   * morre com 23505 sem ninguém entender por quê — "esse contato nunca mais entra
+   * em follow-up e não sabemos a razão". Mais turnos enfileirados só para serem
+   * vetados, e a métrica de outcome sem contar este opt-out.
+   */
+  /**
+   * CONTROLE POSITIVO da catraca abaixo, e ele é um `it` NORMAL de propósito.
+   *
+   * `it.fails` é satisfeito por QUALQUER falha — typo, import quebrado, fixture
+   * impossível. Numa árvore sem a 0145 o CHECK de `followup_enrollments` recusa
+   * `paused_manual`, o seed estoura 23514, a catraca fica VERDE por não
+   * conseguir nem montar o cenário, e ninguém vira essa pedra nunca: catraca
+   * verde pelo motivo errado é pior que caso ausente, porque parece cobertura.
+   *
+   * Pôr a asserção DENTRO da catraca não resolveria — a falha dela também
+   * satisfaria o `.fails`. Separado e alto, este caso reprova de verdade e a
+   * mensagem aponta para migration ausente em vez de defeito de reactivity.
+   */
+  it("controle positivo: a fixture consegue mesmo criar um enrollment paused_manual", async () => {
+    const org = nextOrgId();
+    await seedOrg(org);
+    const contactId = await seedContact(org);
+    const flow = await seedFlow(org, SIMPLE_GRAPH);
+    const id = await seedEnrollment({
+      org,
+      pointerId: flow.pointerId,
+      versionId: flow.versionId,
+      contactId,
+      currentNodeId: "w1",
+      status: "paused_manual",
+      nextEvalAt: null,
+    });
+
+    const row = await getEnrollment(id);
+    expect(row.status).toBe("paused_manual");
+  });
+
+  /**
+   * SEGUNDO controle positivo, e fecha o resíduo que o @MaestroConexoes apontou:
+   * `it.fails` também é satisfeito por EXCEÇÃO. Se `applyReactivityEvent` passar
+   * a estourar por regressão alheia, a catraca abaixo fica verde satisfeita pelo
+   * throw — pelo motivo errado, de novo, um nível acima da fixture.
+   *
+   * Este caso é `it` normal: exercita o MESMO caminho e só exige que ele
+   * complete. Regressão que derrube `applyReactivityEvent` reprova ALTO aqui,
+   * com a mensagem apontando para a exceção, enquanto a catraca seguiria muda.
+   */
+  it("controle positivo: aplicar o evento de STOP com enrollment pausado não estoura", async () => {
+    const org = nextOrgId();
+    await seedOrg(org);
+    const contactId = await seedContact(org, { isBlocked: true });
+    const flow = await seedFlow(org, SIMPLE_GRAPH);
+    await seedEnrollment({
+      org,
+      pointerId: flow.pointerId,
+      versionId: flow.versionId,
+      contactId,
+      currentNodeId: "w1",
+      status: "paused_manual",
+      nextEvalAt: null,
+    });
+
+    const row = eventRow({ organization_id: org, event_type: "message.received", payload: { contact_id: contactId } });
+    const summary = await applyReactivityEvent(reactivityDb(), () => new Date(), row);
+    expect(summary.matched).toBe(true); // completou; o QUANTO é a catraca abaixo
+  });
+
+  // ACOPLADO À MIGRATION 0145: o `seedEnrollment` abaixo grava
+  // `status: "paused_manual"`, e na `main` o CHECK de `followup_enrollments`
+  // ainda RECUSA esse valor (0054: active, waiting_reply, paused_handoff,
+  // completed, cancelled, dead). Este caso só roda em árvore que carrega a 0145 —
+  // medido: 1 arquivo de migration 0145 e 7 ocorrências no baseline desta base.
+  // Cherry-pick isolado para uma árvore sem ela vira 23514 no seed, e o vermelho
+  // vai parecer defeito de reactivity em vez de migration ausente.
+  //
+  // `it.fails` = CATRACA, não teste desligado. Ele EXECUTA e exige que o defeito
+  // ainda esteja lá; no dia em que `LIVE_STATUSES` ganhar `paused_manual` este
+  // caso REPROVA por ter passado, e quem consertar é obrigado a vir tirar o
+  // `.fails`. O conserto é acrescentar o estado à lista em
+  // `lib/followup/reactivity.ts` — decisão de comportamento, do dono do arquivo.
+  it.fails("STOP alcança também o enrollment PAUSADO MANUALMENTE — opt-out não abre exceção de estado", async () => {
+    const org = nextOrgId();
+    await seedOrg(org);
+    const contactId = await seedContact(org, { isBlocked: true });
+    const flow = await seedFlow(org, SIMPLE_GRAPH);
+    await seedEnrollment({
+      org,
+      pointerId: flow.pointerId,
+      versionId: flow.versionId,
+      contactId,
+      currentNodeId: "w1",
+      status: "paused_manual",
+      nextEvalAt: null,
+    });
+
+    const row = eventRow({ organization_id: org, event_type: "message.received", payload: { contact_id: contactId } });
+    const summary = await applyReactivityEvent(reactivityDb(), () => new Date(), row);
+
+    // UMA asserção só, e é deliberado — `it.fails` é satisfeito pela PRIMEIRA
+    // que falha, então toda asserção extra aqui seria letra morta enquanto o
+    // defeito existir, e estrearia junto no dia do conserto. Se uma delas
+    // quebrasse por outro motivo, o caso seguiria falhando, o `.fails` seguiria
+    // satisfeito, e a catraca não reprovaria: sobreviveria ao próprio conserto.
+    //
+    // O estado final do enrollment cancelado é congelado pelo caso irmão
+    // "cancela o enrollment VIVO do contato (outcome='opted_out') e ignora os já
+    // terminais" — citado pelo TÍTULO, e não por "logo acima", porque a garantia
+    // desta catraca depende dele e um `git grep` precisa achá-lo se ele se mudar.
+    // Os dois passam pelo mesmo `cancelAll`, que não tem ramo por status.
+    //
+    // DÍVIDA DECLARADA: se aquele caso for removido, movido ou pulado, as três
+    // propriedades ficam órfãs e ESTA catraca continua com cara de saudável.
+    // Prosa não reprova — quem mexer no irmão está mexendo em dois lugares.
+    expect(summary.reacted).toBe(1);
   });
 
   it("re-drenar o MESMO event_log row é idempotente — sem efeito duplicado", async () => {

@@ -60,7 +60,7 @@ import type { EnrollmentOutcome, EnrollmentStatus } from "./node-handlers";
 /** Grace pós-resume (spec §4: "grace configurável, default 30min, knob"). */
 export const RESUME_GRACE_MS = 30 * 60_000;
 
-const LIVE_STATUSES: readonly EnrollmentStatus[] = ["active", "waiting_reply", "paused_handoff"];
+export const LIVE_STATUSES: readonly EnrollmentStatus[] = ["active", "waiting_reply", "paused_handoff"];
 
 export interface LiveEnrollmentRef {
   id: string;
