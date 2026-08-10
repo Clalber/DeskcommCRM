@@ -108,12 +108,23 @@ Ao mergear a integração, o `pnpm typecheck` veio VERMELHO por um arquivo que n
 da fila como `{ id, next_fire_at }` e a asserção estrutural lê `node_or_reason`.
 Uma linha; corrigida, com aviso ao dono.
 
-**O que isso revela é maior que o erro:** o `e2e` não roda no gate de tipos, e
-`pnpm test:e2e` não faz typecheck — então uma spec com tipo incompleto só
-reprova quando alguém roda `pnpm typecheck`, que é o check OBRIGATÓRIO da main.
-Quer dizer: qualquer spec nova entra na árvore podendo derrubar o `verify` de
-quem mergear depois, e o autor não vê. Vale para as cinco specs que esta wave
-criou.
+**⚠️ A PRIMEIRA VERSÃO DESTE PARÁGRAFO ESTAVA ERRADA, e a correção importa
+mais que o erro.** Eu havia escrito que "o e2e não roda no gate de tipos". Falso:
+`@DevVivo` mediu e eu confirmei — o `tsconfig.json` inclui `**/*.ts` e exclui
+apenas `node_modules/.next/dist/scripts`, então `tests/e2e` está DENTRO. Medido
+aqui com `npx tsc --noEmit --listFilesOnly | grep -c "/tests/e2e/"`: **46
+arquivos**. O typecheck sempre cobriu essa spec.
+
+**O buraco é outro, e mais interessante:** quem escreve spec de Playwright
+recebe feedback do PLAYWRIGHT, e o `playwright.config.ts` não invoca `tsc` — ele
+transpila sem checar tipos. O autor vê verde local, o tipo incompleto nunca
+aparece para ele, e o erro nasce no gate, para OUTRA pessoa. Não é "o gate não
+cobre"; é "o loop de quem escreve não cobre, e o gate cobre tarde".
+
+A diferença muda o conserto: não adianta acrescentar `e2e` a algum gate — ele já
+está lá. O que falta é o autor rodar `pnpm typecheck` antes de empurrar. Deixar
+o diagnóstico errado escrito faria alguém "consertar" uma cobertura que nunca
+faltou.
 
 ### E o que só a TELA pegou
 
