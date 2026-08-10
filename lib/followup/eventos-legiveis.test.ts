@@ -154,6 +154,17 @@ describe("rotuloDaAresta", () => {
         condition: { type: "cond_result", value: false },
       }),
     ).toBe("quando a condição é falsa");
+    // v1 e v2 leem a MESMA classe com a MESMA frase — é o risco que centralizar
+    // o dicionário mata: o mesmo fluxo lido de dois jeitos conforme a versão.
+    expect(
+      rotuloDaAresta({
+        id: "e",
+        source: "a",
+        target: "b",
+        priority: 0,
+        condition: { type: "class_match", value: "quente" },
+      }),
+    ).toBe("quando a IA classifica a resposta como “quente”");
   });
 });
 
@@ -188,17 +199,50 @@ describe("rotuloDaAresta — o ramo nomeado do grafo v2", () => {
     condition: { type: "branch" as const, branch_id: branchId },
   });
 
-  it("usa o NOME que a pessoa deu ao ramo, que só existe no nó", () => {
-    expect(rotuloDaAresta(aresta("b-quente"), classify)).toBe("quando a resposta é “quente”");
+  it("usa o NOME que a pessoa deu ao ramo, que só existe no nó — e diz que quem julgou foi a IA", () => {
+    expect(rotuloDaAresta(aresta("b-quente"), classify)).toBe(
+      "quando a IA classifica a resposta como “quente”",
+    );
   });
 
-  it("sem o nó de origem, mostra o id — nunca um nome inventado", () => {
-    // Nome errado aqui mandaria o operador pelo caminho errado ao pular um passo.
-    expect(rotuloDaAresta(aresta("b-quente"))).toBe("pelo ramo b-quente");
+  it("sem o nó de origem, NÃO ecoa o branch_id — ele é identificador interno", () => {
+    // A distinguibilidade entre duas opções vem do rótulo do DESTINO, que a
+    // lista de saídas do dossiê mostra ao lado da frase.
+    expect(rotuloDaAresta(aresta("b-quente"))).toBe("por um caminho sem nome");
   });
 
-  it("ramo que o nó não declara mais também cai no id", () => {
-    expect(rotuloDaAresta(aresta("b-sumiu"), classify)).toBe("pelo ramo b-sumiu");
+  it("ramo que o nó não declara mais também não vira id na tela", () => {
+    expect(rotuloDaAresta(aresta("b-sumiu"), classify)).toBe("por um caminho sem nome");
+  });
+
+  it("regra do negócio não se lê como resposta de ninguém", () => {
+    const condicao: FlowNode = {
+      id: "c1",
+      type: "condition",
+      label: "Confere o negócio",
+      position: { x: 0, y: 0 },
+      config: {
+        branching: "per_check",
+        combinator: "and",
+        checks: [
+          { id: "r-quente", label: "Lead quente", field: "tag", op: "eq", value: "quente" },
+          { id: "r-passos", field: "steps_taken", op: "gte", value: 3 },
+        ],
+      },
+    };
+    const paraRamo = (id: string) => ({
+      id: "e",
+      source: "c1",
+      target: "x",
+      priority: 0,
+      condition: { type: "branch" as const, branch_id: id },
+    });
+
+    expect(rotuloDaAresta(paraRamo("r-quente"), condicao)).toBe("quando vale a regra “Lead quente”");
+    // Regra sem nome vira a condição POR EXTENSO — `regra-2` na tela é o que o
+    // vocabulário existe para impedir.
+    expect(rotuloDaAresta(paraRamo("r-passos"), condicao)).not.toContain("r-passos");
+    expect(rotuloDaAresta(paraRamo("r-passos"), condicao)).toMatch(/^quando /);
   });
 
   it("os ramos reservados do contrato viram frase sem depender do nó", () => {
