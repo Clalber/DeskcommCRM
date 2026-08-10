@@ -79,7 +79,20 @@ async function handle(req: NextRequest): Promise<Response> {
   // heartbeat de cron (1.175 de 1.236 em ~9h), afogando as ações reais na tela
   // de auditoria. Liveness de worker é assunto de log/monitoramento, não de
   // trilha de auditoria.
-  if (summary.claimed || summary.advanced || summary.scheduled || summary.failed || summary.dead) {
+  //
+  // `claim_falhou` entra na condição porque é o ÚNICO caso em que todos os
+  // contadores são zero e ainda assim algo aconteceu: o claim não chegou ao
+  // banco. Sem esta cláusula o tick que falhou é idêntico, na trilha, ao tick de
+  // uma instalação sem nada a fazer — e o campo, criado justamente para
+  // distinguir os dois, não teria consumidor nenhum.
+  if (
+    summary.claim_falhou ||
+    summary.claimed ||
+    summary.advanced ||
+    summary.scheduled ||
+    summary.failed ||
+    summary.dead
+  ) {
     void audit({
       action: "followup.worker_run",
       organizationId: null,
