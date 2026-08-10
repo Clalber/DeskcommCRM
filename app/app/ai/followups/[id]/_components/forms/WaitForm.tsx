@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { waitConfigSchema } from "@/lib/followup/graph-schema";
+import { MODOS_DE_ESPERA, opcoes } from "@/lib/followup/vocabulario";
 
 import { msToMin, minToMs, type ConfigOf } from "./shared";
 
@@ -60,7 +61,7 @@ export function WaitForm({
   return (
     <div className="space-y-3">
       <div className="space-y-2">
-        <Label htmlFor="wait-mode">Modo</Label>
+        <Label htmlFor="wait-mode">Como calcular a espera</Label>
         <Select
           value={mode}
           onValueChange={(v) => {
@@ -73,8 +74,11 @@ export function WaitForm({
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="fixed">Fixo</SelectItem>
-            <SelectItem value="smart">Adaptativo (min–max)</SelectItem>
+            {opcoes(MODOS_DE_ESPERA).map(({ valor, rotulo }) => (
+              <SelectItem key={valor} value={valor}>
+                {rotulo}
+              </SelectItem>
+            ))}
           </SelectContent>
         </Select>
       </div>

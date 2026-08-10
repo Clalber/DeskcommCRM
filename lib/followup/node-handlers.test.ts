@@ -173,7 +173,7 @@ describe("processNode — wait (fixed)", () => {
   });
 });
 
-describe("processNode — wait (smart, onda 5 clamp: treated as fixed at max_ms)", () => {
+describe("processNode — wait (smart): o instante vem do plano de tempo do enrollment", () => {
   const node: FlowNode = {
     id: "w2",
     type: "wait",
@@ -182,8 +182,105 @@ describe("processNode — wait (smart, onda 5 clamp: treated as fixed at max_ms)
     config: { mode: "smart", min_ms: 600_000, max_ms: 1_800_000 },
   };
 
-  it("first entry uses max_ms as the duration", () => {
+  function comPlano(escolhidoMs: number, nodeId = "w2"): EnrollmentRow {
+    return enrollment({
+      timing_plan: {
+        decidido_em: NOW.toISOString(),
+        modelo: "anthropic/claude-sonnet-4-6",
+        esperas: {
+          [nodeId]: {
+            escolhido_ms: escolhidoMs,
+            min_ms: 600_000,
+            max_ms: 1_800_000,
+            proposto_ms: escolhidoMs,
+            clampado: false,
+            motivo: "lead respondeu rápido nas últimas trocas",
+          },
+        },
+      },
+    });
+  }
+
+  // ESTE é o caso que reprova a versão anterior: com plano, ela ainda esperava
+  // max_ms (1_800_000) — a tela oferecia o modo adaptativo e o motor ignorava.
+  it("com plano: espera o instante planejado, NÃO o máximo", () => {
+    const result = processNode({
+      node,
+      edges: [],
+      enrollment: comPlano(900_000),
+      lead: lead(),
+      clock,
+      waitElapsed: false,
+    });
+    expect(result).toEqual({ kind: "wait", next_eval_at: new Date(NOW.getTime() + 900_000) });
+  });
+
+  it("com plano no MÍNIMO: espera o mínimo (prova que o plano manda, e não um teto qualquer)", () => {
+    const result = processNode({
+      node,
+      edges: [],
+      enrollment: comPlano(600_000),
+      lead: lead(),
+      clock,
+      waitElapsed: false,
+    });
+    expect(result).toEqual({ kind: "wait", next_eval_at: new Date(NOW.getTime() + 600_000) });
+  });
+
+  it("plano de OUTRO nó: este nó não se serve dele — cai no máximo", () => {
+    const result = processNode({
+      node,
+      edges: [],
+      enrollment: comPlano(900_000, "outro-no"),
+      lead: lead(),
+      clock,
+      waitElapsed: false,
+    });
+    expect(result).toEqual({ kind: "wait", next_eval_at: new Date(NOW.getTime() + 1_800_000) });
+  });
+
+  it("sem plano (enrollment de antes da feature): máximo — compatibilidade v1", () => {
     const result = processNode({ node, edges: [], enrollment: enrollment(), lead: lead(), clock, waitElapsed: false });
+    expect(result).toEqual({ kind: "wait", next_eval_at: new Date(NOW.getTime() + 1_800_000) });
+  });
+
+  // "Quem decide o intervalo é o nó" só é invariante se valer também na leitura:
+  // `timing_plan` é jsonb num banco que o self-hoster administra, e uma linha
+  // adulterada (ou um bug futuro que grave sem clampar) prenderia o lead muito
+  // além do que a tela configurou, em silêncio.
+  it("plano com valor ACIMA do máximo do nó é grampeado na leitura", () => {
+    const result = processNode({
+      node,
+      edges: [],
+      enrollment: comPlano(30 * 86_400_000), // 30 dias, contra um máximo de 30min
+      lead: lead(),
+      clock,
+      waitElapsed: false,
+    });
+    expect(result).toEqual({ kind: "wait", next_eval_at: new Date(NOW.getTime() + 1_800_000) });
+  });
+
+  it("plano com valor ABAIXO do mínimo do nó é grampeado na leitura", () => {
+    const result = processNode({
+      node,
+      edges: [],
+      enrollment: comPlano(1_000), // 1s, contra um mínimo de 10min
+      lead: lead(),
+      clock,
+      waitElapsed: false,
+    });
+    expect(result).toEqual({ kind: "wait", next_eval_at: new Date(NOW.getTime() + 600_000) });
+  });
+
+  it("plano corrompido (jsonb de clone com lixo): máximo, sem lançar", () => {
+    const result = processNode({
+      node,
+      edges: [],
+      enrollment: enrollment({ timing_plan: { esperas: "isto não é um objeto" } }),
+      lead: lead(),
+      clock,
+      waitElapsed: false,
+    });
     expect(result).toEqual({ kind: "wait", next_eval_at: new Date(NOW.getTime() + 1_800_000) });
   });
 });

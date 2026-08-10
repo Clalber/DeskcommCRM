@@ -30,8 +30,28 @@ Somam-se dois defeitos **já catalogados** pelo time no plano do Lina, ambos de
 follow-up, ambos em escopo aqui:
 
 - **`IA360-STARVATION`** — o claim é global com teto 20 e ordenado por `next_eval_at`
-  crescente; org grande monopoliza cada tick e as pequenas nunca rodam. `runFollowupTick`
-  engole a falha do claim e devolve `claimed=0`, indistinguível de "nada vencido".
+  crescente; org grande domina os primeiros ticks.
+
+  > **CORRIGIDO PELA MEDIÇÃO (DevVivo, 2026-08-10).** O item do plano dizia
+  > *"STARVATION PERSISTENTE … as menores nunca rodam"*. **Não é permanente.**
+  > Medido em pg17 com 300 vencidos na org grande e 1 na pequena: a pequena é
+  > atendida no **tick 16**, não nunca. Confirmei o mecanismo na fonte —
+  > `fn_claim_due_followup_enrollments` faz `set claimed_until = now() + lease` e
+  > o `where` exclui `claimed_until >= now()`, então o lote reclamado sai do
+  > conjunto de candidatos e o ponteiro avança: `ceil(K/limit)` ticks.
+  > A caracterização original veio de **leitura**, não de medição, e estava errada.
+  > Continua sendo defeito e o conserto entrou: atraso proporcional **sem teto
+  > superior** é 15 min com 300 vencidos e horas com 10 mil, e o tenant pequeno
+  > paga por um vizinho grande sem nunca saber.
+
+- **O silêncio do claim** — `runFollowupTick` devolvia `claimed=0` indistinguível de
+  "nada vencido".
+
+  > **REFINADO PELA MEDIÇÃO (DevVivo).** O sinal **já existia** na base: `claim_falhou`
+  > + `logger.error`, commit `f66f0ddb`, com teste. O que faltava era **consumidor** —
+  > a rota de cron só auditava tick com contador não-zero, e claim falhado tem todos
+  > zerados. É o anti-pattern nº 3 do `CLAUDE.md` (evento sem consumer), não emissor
+  > ausente.
 - **`IA360-FLAKY`** — invariante de follow-up instável no `test:db` pinta o CI de
   vermelho aleatoriamente. Dois testes DIFERENTES caindo no mesmo SHA: assinatura de
   interferência de estado, não de defeito de código.
@@ -65,6 +85,15 @@ arquivo alheio? Pede ao dono pelo canal, não edita.
 
 **Ponto de atrito conhecido:** `NodeConfigPanel.tsx` é tocado por A e E. Mitigação —
 E quebra o arquivo em um arquivo por formulário **na Wave 0**, antes de A encostar nele.
+
+**Arquivos que mudaram de dono durante a missão** (apontado pelo DevGatilhos — sem
+esta linha, quem retomar as frentes descobre no conflito):
+
+| Arquivo | Dono original | Passou para | Por quê |
+|---|---|---|---|
+| `lib/leads/agent-stage-sync.ts` | ninguém (fora da tabela) | **C · Gatilhos** | decisão do maestro: o conserto do B4 pertence ao emissor, e quem o achou tinha o contexto |
+| `lib/followup/turn-bridge.ts` | B · Motor | **compartilhado** com D · Fila | a fila precisa da lista positiva de status para introduzir pausa manual; o motor combina em vez de reverter |
+| `tests/invariants/vocabulario-banco-x-typescript.test.ts` | — | **D e E juntos** | os dois o modificam; combinar antes de escrever |
 
 **Faixas de migration reservadas** (evita colisão de numeração):
 
@@ -210,12 +239,51 @@ Received:   360.02346666666665
 ```
 
 **O motor agendou o teto exato.** A orientação não muda nada e nada na tela deixa
-o usuário perceber. Evidência visual versionada em `evidence/followup-vivo/`.
+o usuário perceber. Evidência visual versionada, uma imagem para cada metade da
+contradição:
+
+- `evidence/followup-vivo/tempo-adaptativo-01-a-promessa-da-tela.png` — o painel
+  com a janela de 10 a 360 min e a orientação escrita, que é o que o operador vê.
+- `evidence/followup-vivo/tempo-adaptativo-02-o-que-o-motor-agendou.png` — a Fila
+  mostrando o disparo no teto, que é o que o motor fez.
+
+> Citadas aqui pelo caminho, e não pela pasta, porque
+> `tests/unit/evidencia-citada.test.ts` reprova imagem versionada que nenhum
+> documento nomeia — e reprovava: a frase anterior apontava só para o diretório,
+> o que deixou o `verify` vermelho até a W2-LINGUAGEM topar com ele.
+>
+> O rótulo do modo mudou depois desta prova: **"Adaptativo (min–max)"** virou
+> **"A IA escolhe a hora"** (W2-LINGUAGEM), e a spec acompanhou. As imagens são
+> anteriores à troca.
 
 O teste **nasce vermelho de propósito** — é a metade RED do ciclo e vira o
 critério de aceite da frente MOTOR. Continua valendo depois: se alguém voltar a
 cair no teto por atalho, inclusive como fallback silencioso quando o modelo não
 responde, ele reprova. Cair no teto sem dizer é o defeito, não degradação.
+
+#### A prova em tela da W2-LINGUAGEM — o painel deixou de falar em código
+
+`tests/e2e/followup-linguagem.spec.ts`, porta 3105, verde em 29,2s. Percorre o
+painel dos seis tipos de nó e afirma que **nenhum valor de wire aparece no texto
+renderizado** e **nenhum campo de texto contém UUID**. A lista do proibido é
+derivada do schema (`tests/support/enums-do-grafo.ts`), não escrita à mão.
+
+Uma captura por tipo de nó, que é a unidade da afirmação — se um painel voltar a
+falar em código, é numa destas que se vê:
+
+- `evidence/followup-vivo/linguagem-painel-trigger.png`
+- `evidence/followup-vivo/linguagem-painel-wait.png` — "Como calcular a espera",
+  onde antes se lia "Modo" e "Adaptativo (min–max)".
+- `evidence/followup-vivo/linguagem-painel-condition.png` — o seletor que
+  mostrava `lead_stage` e `eq`, agora com a frase inteira da condição embaixo.
+- `evidence/followup-vivo/linguagem-painel-ai_classify.png` — o antigo "Grace".
+- `evidence/followup-vivo/linguagem-painel-action.png` — onde estavam os dois
+  campos de UUID de template.
+- `evidence/followup-vivo/linguagem-painel-end.png`
+
+Verde de varredura só vale se ela souber ficar vermelha: injetando na lista de
+proibidos uma palavra que ESTÁ na tela ("Rótulo"), a spec reprovou uma vez e
+nomeou os seis painéis. Previsto 1, medido 1.
 
 #### Bugs de harness achados no caminho (todos fora do escopo pedido)
 
@@ -243,6 +311,124 @@ tinha digitado). A primeira medição foi feita contra uma árvore que podia est
 sendo escrita naquele instante, e eu não declarei o SHA nem o `git status` junto
 com o número. A explicação interessante era "ele errou"; a chata — o meu
 instrumento — é a que sobreviveu.
+
+#### A causa real da máquina travada: MEMÓRIA, não CPU
+
+Medido: **swap 22.528 MB usados contra 452 MB livres**, numa máquina de **18 GB de
+RAM**, com **8.226.181 pageouts**. A máquina estava em *thrashing*.
+
+Isso reinterpreta tudo o que parecia contenção de CPU: um `next build` parado em
+**estado `S` a 0% de CPU não disputa processador — está bloqueado esperando disco
+de swap**. Dois builds simultâneos nesta máquina não terminam nenhum dos dois.
+(Primeiro visto pelo QAVivo, que reportou 568 MB livres antes de eu medir.)
+
+Regra que entrou em vigor: **um `next build` por vez na máquina inteira**, com o
+maestro como dono do token. Vale para `test:db` e Playwright, que sobem container e
+browser. **Não** vale para commit, `typecheck` e `lint`.
+
+**Ação do maestro em worktree alheio, registrada de propósito:** matei o `next build`
+do `fv-fila` (pids 65417/65480) depois de **duas medições com 12 min de intervalo**,
+ambas 0% de CPU e estado `S`, 59 min de vida, zero linhas novas de saída — morto, não
+lento. Confirmei o dono por `lsof -p PID -a -d cwd` antes, matei só os dois pelo pid,
+reconferi depois. Swap livre subiu de 452 MB para 1.942 MB. Build morto não deixa
+artefato aproveitável (o meu, no mesmo estado, tinha `.next` sem `BUILD_ID`), então o
+dono perdeu espera, não trabalho. Comunicado a ele com a medição e com a opção de
+vetar a prática.
+
+#### O canal mente sobre entrega — e isso escondeu uma frente parada
+
+O `lina handoff` da `W2-LINGUAGEM` respondeu **"ok: enviada"** e **não foi entregue**.
+O QAVivo passou horas sem tarefa, e eu o li como parado. Regra: **confirmação de envio
+não é prova de entrega; o artefato (claim no plano, commit no git) é o único sinal
+confiável.** O inverso, apontado pelo DevGatilhos, é o que mais importa: *"o colega
+não respondeu" não se lê como "o colega parou" — olhe a árvore dele antes de cobrar.*
+Aconteceu duas vezes comigo no mesmo dia: cobrei o DevVivo por 21 arquivos sem commit
+e a mensagem chegou depois de 5 commits dele; cobrei o QAVivo por estar parado quando
+ele nunca tinha recebido a tarefa. Nos dois casos o git tinha a resposta.
+
+#### Crédito ao método, não ao caráter
+
+Elogiei o DevGatilhos por ter escrito no código a ressalva sobre o `agent-stage-sync`
+e por ter recusado o atalho de ler `crm_lead_activities`. Ele corrigiu o registro para
+baixo, e a correção fica: o cabeçalho ele escreveu **no instante em que mediu**, antes
+de eu corrigir o briefing — não foi resposta a pedido meu; e recusar o atalho **não lhe
+custou nada**, porque o atalho era pior para ele também (dois enrollments no dia em que
+o emissor fosse consertado). Creditar a virtude o que veio de estrutura desliga o
+alarme: sugere que o bom resultado dependeu de alguém ser cuidadoso, quando dependeu de
+o caminho errado ser obviamente pior.
+
+#### A máquina virou o gargalo — e o que isso ensinou
+
+`load average` chegou a **78 em 11 CPUs**. Os consumidores reais **não eram os
+builds**: Docker (VM do Supabase) 123%, o app do Lina 115%, Chrome 117% somado,
+WindowServer 41%. Um `next build` da integração ficou **48 minutos a 0% de CPU em
+estado `S`** — bloqueado, não lento; nenhuma linha nova de saída por mais de uma
+hora; `.next` sem `BUILD_ID`, ou seja, artefato inutilizável. Morto e reiniciado
+com o cache do Turbopack quente.
+
+Três regras saíram disso:
+
+1. **O critério de serialização não é "isso é uma medição?", é "isso consome a
+   máquina?"** (formulação do DevGatilhos, melhor que a minha original). Build não
+   contamina resultado, mas é o maior produtor da carga que faz a medição dos
+   outros reprovar por teto.
+2. **Identifique o processo pelo DONO, nunca pelo nome.** `pgrep -f "next build" |
+   head -1` devolvia o processo de *outra frente* — cheguei a reportar tempo de
+   build errado por isso. O certo é `lsof -p PID -a -d cwd`. Para matar: confirme o
+   dono, mate só o seu pelo pid, e **reconfira depois** que sobrou o que devia.
+   `pkill` amplo nesta máquina já matou trabalho de terceiro.
+3. **`0% de CPU` com estado `S` é travamento, `R` seria disputa.** A distinção diz
+   se você espera ou mata. E uma amostra só não decide: tire três.
+
+#### O exit code que mentiu, de novo
+
+O harness notificou **"completed (exit code 0)"** para o build que eu tinha acabado
+de matar. Esse zero era o exit do **último comando da cadeia**, não do build; o
+real estava no log: `build exit=143` (SIGTERM). É a mesma classe do
+`cmd | tail` que o DevGatilhos apanhou de manhã e que virou regra do time — e o
+maestro quase caiu nela três horas depois de escrevê-la. **Sempre leia o exit da
+etapa que interessa, gravado por ela mesma, nunca o exit agregado.**
+
+#### Doutrina de medição que esta missão descobriu na prática
+
+Três terminais bateram no **mesmo** muro sem saber, e o custo de cada um
+redescobrir sozinho foi o que mais atrasou o dia. Fica escrito:
+
+1. **`user-event` com delay default leva ~16s para abrir um `Select` do Radix sob
+   carga** e estoura o teto de 15s do vitest. Reprovação por lentidão, sem defeito
+   nenhum. Conserto: `userEvent.setup({ delay: null })`, e teto próprio no teste
+   quando ainda faltar — com justificativa **medida no mesmo commit em dois
+   estados de máquina** (QAVivo mediu 1,8s livre × 15,7s com seis worktrees
+   compilando; 30s é o dobro do pior caso observado).
+2. **Nunca validar por pipe.** `cmd | tail` devolve o exit do `tail`: DevGatilhos
+   recebeu "exit 0" de um run com 14 falhas, e o pipe comeu justamente as linhas
+   que diziam quais. Redirecione para arquivo, capture `$?` na hora, leia depois.
+3. **Quem mede tempo não tolera vizinho — e o vizinho pode ser você.** DevGatilhos
+   rodava `test:unit`, a suíte de invariantes e o `next build` ao mesmo tempo:
+   fabricou a lentidão que reprovou o próprio teste. A contagem dele não era
+   comparável nem com a dele mesmo.
+4. **Mas nem toda medição é sensível a carga.** `typecheck` e `lint` são
+   invariantes: `tsc` erra ou não erra, ficar lento não muda o resultado. Só
+   serialize o que tem teto de tempo (vitest, Playwright). Serializar tudo custa
+   caro à toa.
+5. **Controle no SHA pai.** O Arquiteto rodou `test:unit` em `4f89a0da` e mostrou
+   os **mesmos 6 arquivos** falhando sem a mudança dele, nenhum citando follow-up.
+   É o que separa "a máquina está lenta" de desculpa.
+6. **Número viaja com o alvo.** Toda contagem sai com SHA curto, `git status` e —
+   como esta missão aprendeu — **o que mais estava rodando na máquina**. Duas
+   vezes hoje o maestro mediu contra árvore em movimento: uma contra o worktree de
+   um colega mid-edit (quase virou acusação de commit vermelho, não reproduziu), e
+   uma contra a própria árvore no meio de um conflito de merge (o typecheck acusou
+   marcadores de conflito).
+
+#### Regra de branch que nasceu de um atrito real
+
+**Branch já consumida pela integração não se reescreve.** `fv/vocabulario` foi
+emendada três vezes (`05933159` → `053faadc` → `f2cfa4e1`) depois de eu já ter
+mergeado as duas primeiras. Cada reescrita apaga da branch o commit que a
+integração consumiu e força um conflito `add/add` no mesmo arquivo. A partir do
+primeiro merge do maestro: correção vira **commit novo por cima**, nunca `amend`
+nem `rebase`.
 
 #### Pendências abertas
 

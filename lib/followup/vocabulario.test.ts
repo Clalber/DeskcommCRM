@@ -20,9 +20,12 @@ import { join } from "node:path";
 import * as ts from "typescript";
 import { describe, expect, it } from "vitest";
 
+import { enumsDoFollowup } from "@/tests/support/enums-do-grafo";
+
 import { triggerConfigSchema } from "./api-schemas";
 import { conditionLabel } from "./edge-condition-options";
 import {
+  RESERVED_BRANCH_IDS,
   actionConfigSchema,
   aiClassifyConfigSchema,
   conditionConfigSchema,
@@ -38,6 +41,8 @@ import {
   GATILHOS,
   MODOS_DA_ACAO,
   MODOS_DE_ESPERA,
+  MODOS_DE_RAMIFICACAO,
+  RAMOS_RESERVADOS,
   RESULTADOS_DO_FIM,
   SITUACOES_DO_ACOMPANHAMENTO,
   comparador,
@@ -89,6 +94,7 @@ const RESULTADOS_NO_SCHEMA = valoresDoEnum(zod(endConfigSchema).shape.outcome);
 const MODOS_DE_ESPERA_NO_SCHEMA = discriminantes(waitConfigSchema, "mode");
 const MODOS_DA_ACAO_NO_SCHEMA = discriminantes(actionConfigSchema, "mode");
 const GATILHOS_NO_SCHEMA = discriminantes(triggerConfigSchema, "kind");
+const RAMIFICACAO_NO_SCHEMA = valoresDoEnum(zod(conditionConfigSchema).shape.branching);
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
 // ─── derivação: uniões de tipo puro em node-handlers.ts ──────────────────
@@ -172,6 +178,8 @@ describe("todo valor de wire tem tradução", () => {
     ["tipos de gatilho", GATILHOS_NO_SCHEMA, Object.keys(GATILHOS)],
     ["situações do acompanhamento", SITUACOES_NO_TIPO, Object.keys(SITUACOES_DO_ACOMPANHAMENTO)],
     ["desfechos", DESFECHOS_NO_TIPO, Object.keys(DESFECHOS)],
+    ["modos de ramificação", RAMIFICACAO_NO_SCHEMA, Object.keys(MODOS_DE_RAMIFICACAO)],
+    ["ramos reservados", [...RESERVED_BRANCH_IDS], Object.keys(RAMOS_RESERVADOS)],
   ];
 
   it.each(casos)("%s: o dicionário cobre exatamente o que o wire define", (_nome, noWire, traduzidos) => {
@@ -200,6 +208,51 @@ describe("todo valor de wire tem tradução", () => {
         expect(comparador(campo, op).oferecido).toBe(true);
       }
     }
+  });
+});
+
+describe("vocabulário NOVO não entra escondido", () => {
+  /**
+   * O caso que motivou este bloco: o contrato v2 acrescentou `branching`
+   * (`combined`/`per_check`) ao nó de condição, e a suíte continuou verde
+   * porque ela conferia os valores das listas que EU tinha enumerado. Aqui a
+   * pergunta é outra — existe algum `z.enum` no grafo que nenhum mapa do
+   * dicionário cobre? — e ela não depende de eu lembrar da lista.
+   */
+  const TODOS_OS_MAPAS: Array<Record<string, unknown>> = [
+    CAMPOS_DA_CONDICAO,
+    COMBINADORES,
+    ALVOS_DA_CLASSIFICACAO,
+    RESULTADOS_DO_FIM,
+    MODOS_DE_ESPERA,
+    MODOS_DA_ACAO,
+    MODOS_DE_RAMIFICACAO,
+    RAMOS_RESERVADOS,
+    GATILHOS,
+    SITUACOES_DO_ACOMPANHAMENTO,
+    DESFECHOS,
+    Object.fromEntries(OPERADORES_NO_SCHEMA.map((op) => [op, true])),
+  ];
+
+  const descobertos = enumsDoFollowup();
+
+  it("a varredura encontra os enums que sabemos existir", () => {
+    // Controle: um walker quebrado devolve [] e faria o teste seguinte passar
+    // sem ter olhado para nada.
+    const todosOsValores = new Set(descobertos.flatMap((e) => e.valores));
+    for (const conhecido of ["lead_stage", "eq", "and", "last_reply", "converted", "per_check"]) {
+      expect(todosOsValores, `a varredura não achou '${conhecido}' — walker cego`).toContain(conhecido);
+    }
+  });
+
+  it("todo enum do grafo é coberto por algum mapa do dicionário", () => {
+    const descobertas = descobertos.filter(
+      (e) => !TODOS_OS_MAPAS.some((mapa) => e.valores.every((v) => v in mapa)),
+    );
+    expect(
+      descobertas.map((e) => `${e.caminho} = [${e.valores.join(", ")}]`),
+      "vocabulário de wire sem tradução — traduza ou explique por que não é de tela",
+    ).toEqual([]);
   });
 });
 

@@ -749,13 +749,17 @@ test.describe("followup flow builder — controle de gatilho na PublishBar (Task
       await expect(panel).toBeVisible();
       await page.screenshot({ path: "e2e-artifacts/followup-8.5-01-trigger-panel-manual.png", fullPage: true });
 
-      // Só Manual e Silêncio são oferecidos — stage_change/conversation_end não têm motor de enrollment.
+      // Só o que tem motor de enrollment é oferecido. Eram 2 até a frente de
+      // gatilhos entregar o produtor de `stage_change`
+      // (`lib/followup/gatilho-etapa.ts`); `conversation_end` continua fora,
+      // porque continua sem produtor — e o publish o recusa.
       const kindSelect = panel.getByRole("combobox");
       await kindSelect.click();
-      await expect(page.getByRole("option")).toHaveCount(2);
+      await expect(page.getByRole("option")).toHaveCount(3);
       await expect(page.getByRole("option", { name: "Manual", exact: true })).toBeVisible();
       await expect(page.getByRole("option", { name: "Silêncio", exact: true })).toBeVisible();
-      await expect(page.getByRole("option", { name: /stage_change|conversation_end/i })).toHaveCount(0);
+      await expect(page.getByRole("option", { name: "Etapa do funil", exact: true })).toBeVisible();
+      await expect(page.getByRole("option", { name: /conversation_end|fim do atendimento/i })).toHaveCount(0);
 
       await page.getByRole("option", { name: "Silêncio", exact: true }).click();
       await expect(panel.getByLabel("Minutos de silêncio")).toBeVisible();

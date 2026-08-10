@@ -87,19 +87,40 @@ async function login(page: Page, email: string): Promise<void> {
   await page.waitForURL(/\/app\//);
 }
 
-/** Arrasta do handle de saída de um nó até o de entrada de outro (mesmo gesto do builder spec). */
+/**
+ * Arrasta do handle de saída de um nó até o de entrada de outro.
+ *
+ * Repete até a aresta existir (ou estourar `TENTATIVAS`), e a repetição não é
+ * preguiça: o React Flow só registra a conexão se a sequência de `pointermove`
+ * chegar dentro da janela que ele considera um gesto. Numa máquina carregada um
+ * dos eventos intermediários atrasa, o gesto é descartado, e o teste falha com
+ * "2 arestas em vez de 3" — que fala sobre o agendador do sistema operacional,
+ * não sobre o produto. Medido aqui: 1 dos 3 arrastes se perdeu com dois builds
+ * concorrendo. O que o teste quer provar é o tempo da espera, não a fidelidade
+ * do arrasto; então a conexão vira precondição robusta em vez de asserção frágil.
+ */
 async function connectHandles(page: Page, sourceNodeId: string, targetNodeId: string): Promise<void> {
+  const TENTATIVAS = 4;
   const source = page.locator(`.react-flow__node[data-id="${sourceNodeId}"] .react-flow__handle.source`);
   const target = page.locator(`.react-flow__node[data-id="${targetNodeId}"] .react-flow__handle.target`);
-  const sBox = await source.boundingBox();
-  const tBox = await target.boundingBox();
-  if (!sBox || !tBox) throw new Error(`handle não encontrado: ${sourceNodeId} -> ${targetNodeId}`);
-  await page.mouse.move(sBox.x + sBox.width / 2, sBox.y + sBox.height / 2);
-  await page.mouse.down();
-  await page.mouse.move(sBox.x + sBox.width / 2 + 5, sBox.y + sBox.height / 2 + 5, { steps: 3 });
-  await page.mouse.move(tBox.x + tBox.width / 2, tBox.y + tBox.height / 2, { steps: 12 });
-  await page.mouse.up();
-  await page.waitForTimeout(200);
+  const antes = await page.locator(".react-flow__edge").count();
+
+  for (let tentativa = 1; tentativa <= TENTATIVAS; tentativa++) {
+    const sBox = await source.boundingBox();
+    const tBox = await target.boundingBox();
+    if (!sBox || !tBox) throw new Error(`handle não encontrado: ${sourceNodeId} -> ${targetNodeId}`);
+    await page.mouse.move(sBox.x + sBox.width / 2, sBox.y + sBox.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(sBox.x + sBox.width / 2 + 5, sBox.y + sBox.height / 2 + 5, { steps: 3 });
+    await page.mouse.move(tBox.x + tBox.width / 2, tBox.y + tBox.height / 2, { steps: 12 });
+    await page.mouse.up();
+    await page.waitForTimeout(300);
+    if ((await page.locator(".react-flow__edge").count()) > antes) return;
+  }
+  throw new Error(
+    `a aresta ${sourceNodeId} -> ${targetNodeId} não nasceu em ${TENTATIVAS} tentativas — ` +
+      `isto não é lentidão, é o gesto não estar chegando ao React Flow`,
+  );
 }
 
 /**
@@ -174,7 +195,7 @@ test.describe("nó de espera — o modo Adaptativo tem de decidir de verdade", (
     await expect(painel).toBeVisible({ timeout: PRAZO_SOB_CARGA });
 
     await painel.locator("#wait-mode").click();
-    await page.getByRole("option", { name: "Adaptativo (min–max)" }).click();
+    await page.getByRole("option", { name: "A IA escolhe a hora" }).click();
 
     await painel.locator("#wait-min").fill(String(MIN_MINUTOS));
     await painel.locator("#wait-max").fill(String(MAX_MINUTOS));
@@ -241,13 +262,32 @@ test.describe("nó de espera — o modo Adaptativo tem de decidir de verdade", (
     const filaRes = await page.request.get(`/api/v1/ai/followups/queue?pointer_id=${flowId}`);
     expect(filaRes.ok(), `ler fila: ${filaRes.status()}`).toBe(true);
     const { data: fila } = (await filaRes.json()) as {
-      data: Array<{ id: string; next_fire_at: string | null }>;
+      // `node_or_reason` faltava só nesta anotação local — a rota devolve o campo
+      // (`app/api/v1/ai/followups/queue/route.ts`), e a asserção estrutural
+      // abaixo já o usava. Nenhuma asserção mudou; só o tipo passou a descrever
+      // o que a resposta tem.
+      data: Array<{ id: string; next_fire_at: string | null; node_or_reason: string }>;
     };
     const minha = fila.find((r) => r.id === matricula.id);
     expect(minha, "o enrollment recém-criado não apareceu na fila").toBeTruthy();
     expect(minha!.next_fire_at, "enrollment sem próximo disparo — a espera nem foi armada").toBeTruthy();
 
     const atrasoMinutos = (Date.parse(minha!.next_fire_at!) - marcoZero) / 60_000;
+
+    // ─── 8a. a asserção ESTRUTURAL, e ela é a que não passa por acidente ───
+    //
+    // "o próximo disparo é curto" sozinho é necessário e NÃO suficiente: seria
+    // verdade também se o fluxo tivesse quebrado de outro jeito. O que distingue
+    // o conserto de um acaso é ONDE o enrollment está. Com o defeito, ele avança
+    // do gatilho para a espera e crava `agora + max_ms` (medido: nó `wait-*`,
+    // 360,0 min). Com o conserto, ele FICA no gatilho enquanto pede o plano de
+    // tempo do fluxo inteiro, e só depois entra na espera com o instante decidido.
+    expect(
+      minha!.node_or_reason,
+      `O enrollment deveria estar parado no GATILHO pedindo o plano de tempo, e está em ` +
+        `"${minha!.node_or_reason}". Se já avançou para o nó de espera antes de existir plano, ` +
+        `o modo Adaptativo voltou a ser "fixo no máximo".`,
+    ).toMatch(/^trigger/);
 
     // ─── 8. A ASSERÇÃO ───────────────────────────────────────────────────
     // Configurado: [10 min, 360 min] + orientação pedindo pressa.
