@@ -197,6 +197,56 @@ no próprio arquivo, para não enganar quem o ler depois.
 | **"Proposta feita" não precisa de tabela.** | DevGatilhos, aprovado pelo Maestro | `crm_stages.agent_stage_hint` aceita `negotiating` (CHECK, migration `0084`), definido como "há proposta/preço/condições na mesa" — a etapa "Proposta" já carrega o hint. Proposta feita **é** o gatilho de etapa com a etapa certa. Zero tabela nova, doutrina DIRC respeitada no item **C**alcular. |
 | **`agent-stage-sync.ts` passa a emitir `event_log`**, em commit próprio, separado do gatilho. | Maestro | Mover card pela IA tem de ser indistinguível de mover pela mão. Regra que ignora metade dos movimentos em silêncio é pior que regra que dispara demais — e o defeito é undiscoverable hoje. Muda comportamento além do follow-up: **está declarado aqui de propósito**. |
 
+#### A prova em tela do B1 — feita, e vermelha de propósito
+
+`tests/e2e/followup-tempo-adaptativo.spec.ts` (commit `e1cc21b6`). Monta o fluxo
+pelo canvas, escolhe **"Adaptativo (min–max)"** com janela de **10 a 360 min** e a
+orientação *"O lead pediu retorno ainda hoje, em cerca de meia hora"*, publica
+pelos botões, matricula um contato, roda o worker e lê o próximo disparo na Fila.
+
+```
+Expected: < 360
+Received:   360.02346666666665
+```
+
+**O motor agendou o teto exato.** A orientação não muda nada e nada na tela deixa
+o usuário perceber. Evidência visual versionada em `evidence/followup-vivo/`.
+
+O teste **nasce vermelho de propósito** — é a metade RED do ciclo e vira o
+critério de aceite da frente MOTOR. Continua valendo depois: se alguém voltar a
+cair no teto por atalho, inclusive como fallback silencioso quando o modelo não
+responde, ele reprova. Cair no teto sem dizer é o defeito, não degradação.
+
+#### Bugs de harness achados no caminho (todos fora do escopo pedido)
+
+| # | Bug | Estado |
+|---|---|---|
+| H1 | `pnpm e2e:env` executava as crases do próprio comentário — o heredoc precisa ficar sem aspas (as `$API_URL` expandem), então o shell fazia substituição de comando em 3 palavras entre crases. 3 × `comando não encontrado` a cada execução, e o comentário saía mutilado no arquivo gerado. | **corrigido** `fec37ba5`, com controle positivo (3 erros antes, 0 depois, script chegando ao fim nas duas vezes) |
+| H2 | `followup-builder.spec.ts` teste 6.2 tem corrida com o `autoFocus` do Radix: digita antes do foco chegar, o `fill` se perde, o campo fica vazio, o submit nasce desabilitado e o teste espera um diálogo que nunca fecha. O teste 6.1 do **mesmo arquivo** já tem a guarda. Reproduzido. | aberto — a spec nova já nasce com a guarda; consertar a 6.2 fica para quem tocar naquele arquivo |
+| H3 | `NewFlowDialog` chama `create.mutate` **só com `onSuccess`**. POST que falha não mostra nada ao usuário — falha silenciosa na UI. Fato de código, independente de carga. | aberto · atribuído à frente E (linguagem) |
+
+#### Protocolo do ambiente E2E — nasceu de um achado do DevGatilhos
+
+Ele parou antes de rodar a suíte e perguntou, porque percebeu que
+`scripts/seed-e2e-credentials.ts` **rotaciona o TOTP do admin** e derrubaria o run
+do maestro em andamento. Virou regra escrita para o time
+(`/Users/rafaelmelgaco/fv-briefings/PROTOCOLO-E2E.md`): o maestro é o dono do
+seed, ninguém mais o roda, credenciais se copiam; nunca criar `.env.local` num
+worktree; uma porta por frente (3101–3106); prazo de 60s nas esperas.
+
+#### Uma medição minha que eu tive de retratar
+
+Rodei os testes do contrato e vi **2 falhas em 180**. Quase reportei que o
+Arquiteto havia commitado vermelho. **Não reproduz**: em `841528a8` com árvore
+limpa dá 180/180, medido três vezes (inclusive repetindo o caminho torto que eu
+tinha digitado). A primeira medição foi feita contra uma árvore que podia estar
+sendo escrita naquele instante, e eu não declarei o SHA nem o `git status` junto
+com o número. A explicação interessante era "ele errou"; a chata — o meu
+instrumento — é a que sobreviveu.
+
 #### Pendências abertas
 
-- Nenhuma além dos bugs acima.
+- **H2** e **H3** acima.
+- O `e2e` ainda não é check obrigatório na `main` (issue #63). As specs desta
+  missão não mudam isso; quem for propor a obrigatoriedade precisa antes de uma
+  série verde estável do conjunto atual.
