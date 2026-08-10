@@ -42,6 +42,22 @@ jobs:
     # FORA_DO_CI exige motivo escrito no próprio nome do bloco abaixo — spec fora
     # do gate sem razão declarada é a dívida voltando pela porta de serviço.
     # ─────────────────────────────────────────────────────────────────────────
+    #
+    # ═══ POR QUE AS DUAS SPECS NOVAS ESTÃO NA PARTE 1 ═══
+    #
+    # Medido no PR #218: com elas na parte 2, `olhar-telas-do-epico` reprovou com
+    # **429 Too Many Requests** em 9 telas. Não era defeito de produto nem das specs
+    # novas — era o TETO DE REQUISIÇÕES POR PROCESSO.
+    #
+    # A divisão em duas invocações existe porque cada processo tem seu contador (o
+    # Redis não sobe neste job: o servidor cai no contador em memória). A parte 2 já
+    # era a pesada — 69 testes em 12,2 min contra 46 em 2,7 min da parte 1 — e
+    # acrescentar duas specs ali empurrou o contador além do teto. `AUTH_RATE_LIMIT_
+    # LOGIN_IP` cobre LOGIN; estes 429 vieram de outras rotas, com teto próprio.
+    #
+    # O conserto é rebalancear, não afrouxar o limitador do produto: mexer num
+    # controle de segurança para acomodar o teste é a troca errada, e está escrito
+    # como regra no comentário da parte 1 mais abaixo.
     env:
       SPECS_PARTE_1: >-
         smoke.spec.ts auth.spec.ts error-pages.spec.ts
@@ -52,6 +68,7 @@ jobs:
         conversa-vira-lead.spec.ts contato-salva-email.spec.ts
         confirmar-dado-do-contato.spec.ts
         risk-radar.spec.ts invite-lifecycle.spec.ts system-update.spec.ts
+        agente-papeis-operador.spec.ts prova-painel-provedores.spec.ts
       SPECS_PARTE_2: >-
         agente-novo-e-uso.spec.ts agente-organiza-operacao.spec.ts
         central-de-avisos-capacidades.spec.ts escalacao-ciclo.spec.ts
@@ -63,8 +80,6 @@ jobs:
         webhooks.spec.ts
         capacidades-do-agente.spec.ts
         escopo-de-funil-do-agente.spec.ts
-        agente-papeis-operador.spec.ts
-        prova-painel-provedores.spec.ts
       # Cada item aqui tem o motivo MEDIDO, não presumido — e o gate cobra que a
       # lista exista e some com as outras duas.
       #
