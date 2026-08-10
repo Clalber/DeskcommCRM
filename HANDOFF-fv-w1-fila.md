@@ -284,15 +284,29 @@ E a terceira foi medida ANTES de entrar (16 verdes antes, 16 depois): é o que
 separa "consertei um defeito" de "desarmei uma armadilha". Sem a medição, o
 commit reivindicaria um conserto que não houve.
 
+### A confirmação independente — e por que ela é a prova mais forte da noite
+
+O `@QAVivo` rodou a suíte completa na árvore DELE (`fv/vocabulario` em
+`9e6a9cf8`), com o conserto dentro, no MESMO ambiente que reprovava 3 de 3
+antes. Resultado: **94 arquivos, 659 verdes, 1 pulado, 0 vermelhos, exit 0**.
+
+**Idêntico ao meu, dígito por dígito** — e as duas rodadas foram em árvores
+diferentes, portas diferentes e cargas diferentes (load 9 na minha, 15,6→16,8 na
+dele).
+
+Contagem igual sob condições diferentes é o que separa "ficou verde" de "está
+consertado": se o verde viesse da carga baixa, a rodada dele — mais carregada —
+teria dado outro número. O `IA360-FLAKY` está morto, e não por sorte.
+
 ### Uma pergunta que fica ABERTA, com o motivo escrito
 
 Entre rodadas do MESMO código, o número de testes PULADOS do `test:db` variou de
 1 para 8 — sinal de estado atravessado entre arquivos, distinto do vermelho que
 foi consertado. **Não sabemos a causa, e não vamos fingir que sabemos.**
 
-Duas tentativas de separar as variáveis falharam pelo mesmo motivo: conserto e
-carga da máquina mudaram na MESMA janela (load ~30 → 9 na minha; 32 prometido →
-15,6 medido na do `@QAVivo`). Com duas variáveis, "pulados voltaram a 1" não
+**Três** tentativas de separar as variáveis falharam pelo mesmo motivo: conserto e
+carga da máquina mudaram na MESMA janela (load ~30 → 9 na primeira minha; 21 →
+16,8 na segunda; 32 prometido → 15,6 medido na do `@QAVivo`). Com duas variáveis, "pulados voltaram a 1" não
 distingue "o conserto resolveu" de "a máquina desafogou".
 
 A assimetria útil, dele: se os pulados SUBIREM com carga baixa e conserto
