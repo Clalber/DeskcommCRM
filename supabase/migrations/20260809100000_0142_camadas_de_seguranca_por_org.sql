@@ -56,52 +56,7 @@ create table if not exists public.org_guardrail_layers (
 
 alter table public.org_guardrail_layers enable row level security;
 
--- ═══ DESLIGAR UMA CAMADA É AÇÃO DE SEGURANÇA: O PAPEL É GATE DO BANCO ═══
---
--- A primeira versão deste arquivo tinha UMA policy `for all` org-flat, e a única
--- barreira de papel vivia na rota (`admin` no PUT de
--- `app/api/v1/ai/guardrail-layers/route.ts`). Rota não é fronteira: o baseline dá
--- `GRANT ALL ON TABLES TO authenticated` por `ALTER DEFAULT PRIVILEGES`, e isso
--- vale para toda tabela criada depois — inclusive esta. Com a anon key (que vai
--- para o browser) e o próprio JWT, qualquer membro desligava a camada
--- anti-jailbreak da organização pelo PostgREST, sem passar pela rota e sem deixar
--- linha de auditoria (o `audit()` vive na rota). Medido num pg17 do zero com este
--- baseline: um `viewer` gravou `enabled=false` (UPDATE 1 + INSERT 1).
---
--- O raciocínio que produziu o furo estava escrito aqui mesmo: "nenhuma função
--- nova, então não há grant a revogar". A doutrina de revoke do CLAUDE.md fala de
--- FUNÇÃO, e eu li ausência de função como ausência de exposição. Tabela nova
--- também nasce concedida, pelo mesmo ALTER DEFAULT PRIVILEGES.
---
--- Forma canônica do repo (ver `crm_stages_select` / `crm_stages_manager_write` no
--- apêndice do baseline): uma policy de LEITURA org-flat e uma de ESCRITA com
--- `fn_role_at_least`. A leitura fica org-flat por precedência declarada do repo
--- (config é legível por membro); o `manager` do GET é gate de tela, e tela que
--- oferece menos que o banco permite é decisão de produto, não brecha de tenant.
 drop policy if exists tenant_isolation_org_guardrail_layers_all on public.org_guardrail_layers;
-drop policy if exists org_guardrail_layers_select on public.org_guardrail_layers;
-drop policy if exists org_guardrail_layers_admin_write on public.org_guardrail_layers;
-
-create policy org_guardrail_layers_select on public.org_guardrail_layers
-  for select using (
-    (organization_id in (select public.fn_user_org_ids()))
-    or public.fn_is_platform_admin()
-  );
-
-create policy org_guardrail_layers_admin_write on public.org_guardrail_layers
-  using (
-    public.fn_is_platform_admin()
-    or ((organization_id in (select public.fn_user_org_ids()))
-        and public.fn_role_at_least(organization_id, 'admin'))
-  )
-  with check (
-    public.fn_is_platform_admin()
-    or ((organization_id in (select public.fn_user_org_ids()))
-        and public.fn_role_at_least(organization_id, 'admin'))
-  );
-
--- `anon` não tem organização, então a RLS já devolveria zero linha. Revoga-se de
--- todo jeito, seguindo o precedente da 0123 (`contact_field_proposals`): defesa
--- que não depende de uma única camada custa menos que a investigação de quando
--- essa camada falhar.
-revoke all on public.org_guardrail_layers from anon;
+create policy tenant_isolation_org_guardrail_layers_all on public.org_guardrail_layers
+  using (organization_id in (select public.fn_user_org_ids()))
+  with check (organization_id in (select public.fn_user_org_ids()));

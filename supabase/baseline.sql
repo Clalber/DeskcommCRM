@@ -10794,13 +10794,16 @@ create table if not exists public.org_guardrail_layers (
 
 alter table public.org_guardrail_layers enable row level security;
 
+-- ---- escrita de guardrail exige admin (migration 0143) ----
+--
 -- Leitura org-flat, escrita com gate de PAPEL no banco (forma canônica do repo:
 -- ver `crm_stages_select` / `crm_stages_manager_write` acima). O `admin` da rota
 -- não é fronteira — com a anon key e o próprio JWT, um `viewer` desligava a camada
--- anti-jailbreak da organização pelo PostgREST, sem auditoria. Medido.
+-- anti-jailbreak da organização pelo PostgREST, sem auditoria. Medido: UPDATE 1 +
+-- INSERT 1 num pg17 do zero.
 --
--- Auto-curativo: derruba a policy antiga por nome antes de criar as duas novas,
--- então o `update.sh` de um clone que já aplicou a versão anterior fica correto.
+-- Auto-curativo: derruba a policy da 0142 por nome antes de criar as duas novas,
+-- então o `update.sh` de um clone que parou na 0142 fica correto sem passo manual.
 drop policy if exists tenant_isolation_org_guardrail_layers_all on public.org_guardrail_layers;
 drop policy if exists org_guardrail_layers_select on public.org_guardrail_layers;
 drop policy if exists org_guardrail_layers_admin_write on public.org_guardrail_layers;
