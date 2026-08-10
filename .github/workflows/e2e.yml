@@ -43,32 +43,38 @@ jobs:
     # do gate sem razão declarada é a dívida voltando pela porta de serviço.
     # ─────────────────────────────────────────────────────────────────────────
     #
-    # ═══ O 429 DE `olhar-telas-do-epico`, MEDIDO ATÉ O FIM ═══
+    # ═══ O 429 DE `olhar-telas-do-epico`: O QUE JÁ FOI DESCARTADO ═══
     #
-    # Essa spec reprova com **429 Too Many Requests** em TODAS as 7 telas que visita,
-    # e a falha é PRÉ-EXISTENTE NA MAIN — o run 31343408488 (main, 2026-08-10T00:03)
-    # traz a lista byte-idêntica, antes de o PR #218 existir. Não é regressão de
-    # branch nenhuma.
+    # A spec reprova com **429 Too Many Requests** em TODAS as 7 telas que visita, e a
+    # falha é PRÉ-EXISTENTE NA MAIN: o run 31343408488 (main, 2026-08-10T00:03) traz a
+    # lista byte-idêntica, antes do PR #218. Não é regressão de branch nenhuma.
     #
-    # Duas coisas que eu afirmei aqui e estavam ERRADAS, corrigidas em vez de
-    # apagadas: (1) que a causa era a parte 2 estar sobrecarregada, e (2) que mover
-    # duas specs para a parte 1 resolveria. Medido: a parte 2 caiu de 69 para 53
-    # testes e a falha veio byte-idêntica. O motivo é simples e eu não tinha olhado —
-    # as duas specs que movi rodavam DEPOIS dela na ordem da lista, então nunca
-    # contribuíram para o contador naquele ponto.
+    # Três runs foram gastos nisto e o valor que sobrou são as HIPÓTESES DESCARTADAS,
+    # que é o que estreita a busca de quem for consertar de verdade:
     #
-    # O que exaure o limitador são as specs que rodam ANTES dela no MESMO processo (o
-    # Redis não sobe neste job: o servidor cai no contador em memória, e o webServer é
-    # um só por invocação). Daí o conserto: `olhar-telas-do-epico` roda PRIMEIRO na
-    # parte 2, com o contador ainda limpo. É a mesma lógica que já justifica a divisão
-    # em duas invocações, aplicada dentro de uma delas.
+    #  1. "a parte 2 está sobrecarregada" — DESCARTADA. Caiu de 69 para 53 testes e a
+    #     falha veio byte-idêntica.
+    #  2. "as specs que rodam ANTES dela exaurem o contador" — DESCARTADA. Ela foi
+    #     posta em PRIMEIRO lugar na parte 2, com o contador limpo, e as mesmas 7
+    #     telas deram 429 — inclusive a primeira que ela visita.
     #
-    # `AUTH_RATE_LIMIT_LOGIN_IP` não cobre isto: ele afrouxa o teto de LOGIN, e estes
-    # 429 vêm de outras rotas, com teto próprio. Afrouxar o limitador do produto para
-    # acomodar o teste continua sendo a troca errada.
+    # O que a segunda medição revela: não é acúmulo. Se fosse, as primeiras telas
+    # passariam e as últimas cairiam. Todas caem, desde a primeira — o limitador já
+    # está recusando antes do primeiro `goto`. A pista que sobra é o próprio fallback:
+    # `redis incr failed; falling back to in-memory` aparece centenas de vezes neste
+    # job, e o caminho em memória precisa ser MEDIDO (teto? janela? chave global em vez
+    # de por-IP?) antes de qualquer outra tentativa.
     #
-    # O rebalanceamento FICA, por outro motivo e sem alegar mais do que faz: as duas
-    # partes ficaram 6,5 min + 8,1 min em vez de 2,7 min + 12,2 min.
+    # `AUTH_RATE_LIMIT_LOGIN_IP` não cobre: ele afrouxa o teto de LOGIN, e estes 429
+    # vêm de outras rotas. Afrouxar o limitador do produto para acomodar o teste segue
+    # sendo a troca errada.
+    #
+    # A ordem das listas voltou ao que era: mudá-la foi tentativa que não se sustentou,
+    # e deixar a mudança de pé com um comentário dizendo "hipótese" seria pior — o
+    # próximo leitor herdaria uma decisão tomada por um motivo medido FALSO.
+    #
+    # O rebalanceamento das duas partes FICA, por outro motivo e sem alegar mais do que
+    # faz: 6,5 + 8,1 min em vez de 2,7 + 12,2.
     env:
       SPECS_PARTE_1: >-
         smoke.spec.ts auth.spec.ts error-pages.spec.ts
@@ -81,10 +87,9 @@ jobs:
         risk-radar.spec.ts invite-lifecycle.spec.ts system-update.spec.ts
         agente-papeis-operador.spec.ts prova-painel-provedores.spec.ts
       SPECS_PARTE_2: >-
-        olhar-telas-do-epico.spec.ts
         agente-novo-e-uso.spec.ts agente-organiza-operacao.spec.ts
         central-de-avisos-capacidades.spec.ts escalacao-ciclo.spec.ts
-        navegacao.spec.ts pipelines-gestao.spec.ts
+        navegacao.spec.ts olhar-telas-do-epico.spec.ts pipelines-gestao.spec.ts
         qa-agente-usa-as-maos.spec.ts qa-selo-no-funil-usado.spec.ts
         qa-telas-descobertas-w4.spec.ts retorno-anti-morte.spec.ts
         followup-builder.spec.ts followup-queue.spec.ts
