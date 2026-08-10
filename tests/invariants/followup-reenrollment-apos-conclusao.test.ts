@@ -81,7 +81,47 @@ const pool = new pg.Pool({
   max: 4,
 });
 
+/**
+ * QUEM SUJA, LIMPA — os pointers que ESTE arquivo criou, e nada além disso.
+ * Mesma doutrina (e mesmo racional) de `followup-gatilho-etapa.test.ts`: um
+ * enrollment devido deixado aqui entra no `runFollowupTick` do arquivo seguinte
+ * e contamina os agregados dele, e quem reprova não é quem sujou.
+ *
+ * Complementa, e não substitui, a defesa de entrada de quem consome: o
+ * `afterAll` não roda se o processo morrer no meio, e a defesa de entrada não
+ * protege contra um arquivo novo cujo autor esqueceu de se defender. As duas
+ * falham em cenários diferentes, e é por isso que as duas existem.
+ *
+ * Pelos ids criados aqui, nunca por critério largo: num banco compartilhado por
+ * dezenas de arquivos, `delete` amplo apaga a fixture de outro no meio do run
+ * dele — o mesmo problema com o sinal trocado.
+ */
+const pointersCriados: string[] = [];
+
 afterAll(async () => {
+  if (pointersCriados.length > 0) {
+    // Dois números pelo mesmo motivo do arquivo irmão: DEVIDO rouba vaga do
+    // lote de quem roda depois; VIVO não-devido não rouba, mas ocupa o índice
+    // único org-wide e pode barrar o insert de outro arquivo no mesmo contato.
+    // Zero nos dois é limpeza decorativa, e aí a obrigação é dizer.
+    const { rows } = await pool.query<{ devidos: string; totais: string }>(
+      `select
+         count(*) filter (
+           where status in ('active','waiting_reply')
+             and next_eval_at is not null and next_eval_at <= now()
+         ) as devidos,
+         count(*) filter (
+           where status in ('active','waiting_reply','paused_handoff')
+         ) as totais
+       from followup_enrollments where pointer_id = any($1::uuid[])`,
+      [pointersCriados],
+    );
+    process.stdout.write(
+      `[followup-reenrollment] deixados para trás antes da limpeza — ` +
+        `devidos: ${rows[0]!.devidos}, vivos no total: ${rows[0]!.totais}\n`,
+    );
+    await pool.query(`delete from followup_flow_pointers where id = any($1::uuid[])`, [pointersCriados]);
+  }
   await pool.end();
 });
 
@@ -285,6 +325,7 @@ describe("re-entrada na fila depois que o follow-up terminou (comportamento cong
       ],
     );
     const pointerId = pointer[0]!.id;
+    pointersCriados.push(pointerId);
 
     const { rows: sess } = await pool.query<{ id: string }>(
       `insert into channel_sessions (organization_id, waha_session_name, status, webhook_secret_encrypted)
@@ -328,8 +369,12 @@ describe("re-entrada na fila depois que o follow-up terminou (comportamento cong
     const depois = await aplicaGatilhoDeEtapa(deps(), eventoDeEtapa(org, leadId, etapaOrigem, etapaDestino));
     expect(depois.enrolled).toBe(1);
 
+    // `started_at`, e não `created_at`: esta tabela não tem `created_at` — o
+    // relógio dela é `started_at`/`completed_at`/`updated_at`. Ordenar pela
+    // coluna errada não devolve ordem errada, devolve ERRO, e foi assim que este
+    // teste reprovou na primeira execução mesmo com o congelamento funcionando.
     const { rows: finais } = await pool.query<{ status: string }>(
-      `select status from followup_enrollments where pointer_id = $1 and contact_id = $2 order by created_at`,
+      `select status from followup_enrollments where pointer_id = $1 and contact_id = $2 order by started_at`,
       [pointerId, contactId],
     );
     expect(finais.map((r) => r.status)).toEqual(["completed", "active"]);
