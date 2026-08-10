@@ -453,6 +453,19 @@ describe("applyReactivityEvent — inbound wake (waiting_reply, sem cancel_on_re
     expect(new Date(afterWake.next_eval_at as string).getTime()).toBeLessThanOrEqual(Date.now() + 2_000);
     expect(afterWake.status).toBe("waiting_reply"); // reactivity não muda status, só acorda
 
+    // A asserção acima já provou o que a reactivity faz: trouxe o next_eval_at de
+    // +10min para "agora". O empurrão abaixo existe por causa de DOIS RELÓGIOS:
+    // a reactivity grava o instante com o relógio do PROCESSO (clock injetado) e
+    // o claim pergunta `next_eval_at <= now()`, o do POSTGRES. Medido nesta
+    // configuração: o `now()` do banco fica 17 a 34ms ATRÁS do processo — então
+    // "agora" gravado aqui ainda é futuro para o claim, e o tick logo em seguida
+    // não reclama nada. Em produção o efeito não existe (o tick seguinte vem um
+    // minuto depois); neste teste os dois passos são consecutivos, e era a última
+    // fonte de vermelho intermitente do arquivo.
+    await pool.query(`update followup_enrollments set next_eval_at = now() - interval '1 second' where id = $1`, [
+      enrollmentId,
+    ]);
+
     // 2º tick: reclama por causa do next_eval_at movido. SEM o wake marker,
     // waitElapsed=true cairia em 'no_reply' (fix da Task 5.1) — descartando a
     // resposta real. COM o marker, wokeEarly=true força reenfileirar classify.
