@@ -32,6 +32,11 @@ const pool = new pg.Pool({
 });
 
 afterAll(async () => {
+  // Quem suja, limpa. O último caso deste arquivo cria 90 enrollments e reclama
+  // 21 — deixaria ~69 DEVIDOS para o próximo arquivo, e o claim é global. O
+  // `beforeEach` das irmãs protegeria, mas depender disso é justamente o que
+  // produziu o vermelho intermitente que este épico foi consertar.
+  await isolarFixtureDeFollowup(pool);
   await pool.end();
 });
 

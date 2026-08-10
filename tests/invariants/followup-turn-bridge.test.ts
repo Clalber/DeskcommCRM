@@ -4,6 +4,10 @@ import pg from "pg";
 import { runFollowupTick, type FollowupJobRequest, type TickDeps } from "@/lib/followup/engine";
 import { completeTurnForEnrollment, createPgAdminClient } from "@/lib/followup/turn-bridge";
 import { flowGraphSchema, type FlowGraph } from "@/lib/followup/graph-schema";
+// O schema do OUTRO lado da fila. Importado só aqui, e só no teste: agent-engine
+// nunca importa followup/* (a dependência é numa direção só) — mas provar que as
+// duas metades do contrato casam exige ver as duas no mesmo lugar.
+import { followupTurnPayloadSchema } from "@/lib/agent-engine/agent/followup-turn";
 
 import { isolarFixtureDeFollowup } from "./followup-isolamento";
 
@@ -329,6 +333,15 @@ describe("plano de tempo — acionamento decide, espera obedece", () => {
         guidance: "não insistir de madrugada",
       },
     ]);
+
+    // CONTRATO entre as duas pontas. O engine emite este payload e quem o lê é o
+    // handler do worker, do outro lado da fila — e as duas metades só casam por
+    // convenção: o schema tem `.passthrough()` e `waits` é opcional, então um
+    // nome de campo divergente passa pela validação e só explode no worker, em
+    // produção. Aqui o payload REAL do engine atravessa o schema REAL do handler.
+    const aceito = followupTurnPayloadSchema.parse(planJob!.payload);
+    expect(aceito.purpose).toBe("plan_timing");
+    expect(aceito.waits).toEqual(planJob!.payload.waits);
     expect((await getEnrollment(enrollmentId)).current_node_id).toBe("t1"); // ainda no trigger
 
     // 2. O turno volta com a proposta; a ponte clampa contra o grafo e grava.
