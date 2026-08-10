@@ -262,7 +262,10 @@ test.describe("nó de espera — o modo Adaptativo tem de decidir de verdade", (
     const filaRes = await page.request.get(`/api/v1/ai/followups/queue?pointer_id=${flowId}`);
     expect(filaRes.ok(), `ler fila: ${filaRes.status()}`).toBe(true);
     const { data: fila } = (await filaRes.json()) as {
-      data: Array<{ id: string; next_fire_at: string | null }>;
+      // `node_or_reason` entra aqui porque a asserção ESTRUTURAL abaixo o lê: o
+      // tipo declarava dois campos e a linha 282 acessava um terceiro, então o
+      // `pnpm typecheck` reprovava (a spec não roda no gate de tipos do e2e).
+      data: Array<{ id: string; next_fire_at: string | null; node_or_reason: string }>;
     };
     const minha = fila.find((r) => r.id === matricula.id);
     expect(minha, "o enrollment recém-criado não apareceu na fila").toBeTruthy();
