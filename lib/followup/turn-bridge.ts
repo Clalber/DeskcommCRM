@@ -17,6 +17,7 @@ import type pg from "pg";
 import type { AdminClient, EnrollmentPatch } from "./engine";
 import { flowGraphSchema } from "./graph-schema";
 import { selectEdge, type EnrollmentRow } from "./node-handlers";
+import { coletarEsperasAdaptativas, montarTimingPlan, type PropostaDeEspera } from "./timing-plan";
 
 /** Superset de AdminClient: a ponte precisa do snapshot COMPLETO do enrollment
  *  (current_node_id/version_id/steps_taken) pra montar o passo de conclusão —
@@ -33,21 +34,8 @@ export interface TurnBridgeAdminClient extends AdminClient {
 export type TurnResult =
   | { kind: "sent" }
   | { kind: "classified"; class: string }
-  | { kind: "timing"; proposed_at: string };
-
-/**
- * Clampa o instante proposto pela IA em `[now+min_ms, now+max_ms]` — `wait`
- * smart nunca deixa a IA decidir fora do range configurado no nó (onda 5,
- * critério 3). `proposed_at` ilegível (parse NaN) degrada pro mínimo — o lado
- * seguro (não deixa o enrollment preso além do combinado por um instante
- * inválido).
- */
-export function clampProposedAt(proposedAt: string, now: Date, minMs: number, maxMs: number): Date {
-  const parsed = Date.parse(proposedAt);
-  const deltaMs = Number.isNaN(parsed) ? minMs : parsed - now.getTime();
-  const clampedMs = Math.min(Math.max(deltaMs, minMs), maxMs);
-  return new Date(now.getTime() + clampedMs);
-}
+  /** Plano de tempo do fluxo inteiro, proposto no acionamento — cru, antes do clamp. */
+  | { kind: "planned"; propostas: PropostaDeEspera[]; modelo: string };
 
 /**
  * Traduz o resultado de um turno concluído em progressão do enrollment —
@@ -149,15 +137,31 @@ export async function completeTurnForEnrollment(
     return;
   }
 
-  // 'timing'
-  if (node.type !== "wait" || node.config.mode !== "smart") {
-    throw new Error(`completeTurnForEnrollment: resultado 'timing' mas o nó "${node.id}" não é 'wait' (smart)`);
+  // 'planned' — o acionamento decidiu os instantes de TODAS as esperas adaptativas.
+  if (node.type !== "trigger") {
+    throw new Error(`completeTurnForEnrollment: resultado 'planned' mas o nó "${node.id}" não é 'trigger'`);
   }
-  const nextEvalAt = clampProposedAt(result.proposed_at, now, node.config.min_ms, node.config.max_ms);
+  // Clampa contra o GRAFO PINADO, nunca contra o que o payload do modelo afirma
+  // que o intervalo era: quem propõe é a IA, quem decide o intervalo é o nó.
+  const plano = montarTimingPlan({
+    esperas: coletarEsperasAdaptativas(graph.nodes),
+    propostas: result.propostas,
+    modelo: result.modelo,
+    agora: now,
+  });
+  const edge = selectEdge(graph.edges, node.id, { type: "always" });
+  if (!edge) throw new Error(`trigger node "${node.id}" sem aresta 'always' de saída`);
   await applyStep(
-    "wait_started",
-    { next_eval_at: nextEvalAt.toISOString(), mode: "smart" },
-    { current_node_id: enrollment.current_node_id, status: "active", next_eval_at: nextEvalAt.toISOString() },
+    "timing_plan_decidido",
+    // O plano inteiro no evento (não só um ponteiro pra coluna): a timeline do
+    // enrollment precisa ser legível sozinha, com o motivo de cada espera.
+    { ...plano },
+    {
+      current_node_id: edge.target,
+      status: "active",
+      next_eval_at: now.toISOString(),
+      timing_plan: plano,
+    },
   );
 }
 
@@ -195,6 +199,9 @@ function mapEnrollmentRow(row: Record<string, unknown>): EnrollmentRow {
     started_at: toIso(row.started_at)!,
     completed_at: toIso(row.completed_at),
     updated_at: toIso(row.updated_at)!,
+    // `?? null` e não `as TimingPlan`: num clone sem a migration 0144 a chave
+    // simplesmente não vem, e "sem plano" é exatamente o que null significa.
+    timing_plan: row.timing_plan ?? null,
   };
 }
 
