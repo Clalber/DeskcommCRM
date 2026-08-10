@@ -143,10 +143,17 @@ const DESFECHOS_NO_TIPO = literaisDaUniao(NODE_HANDLERS, "EnrollmentOutcome");
  * inscrever nela.
  */
 function mapasExportados(): Array<[string, Record<string, unknown>]> {
-  return Object.entries(vocabulario).filter(
-    (par): par is [string, Record<string, unknown>] =>
-      typeof par[1] === "object" && par[1] !== null && !Array.isArray(par[1]),
-  );
+  // Sem predicado de tipo: `Object.entries` de um módulo devolve a UNIÃO dos
+  // tipos exportados, e estreitar essa união para `Record<string, unknown>` não
+  // compila (as chaves literais de cada mapa não são atribuíveis a `string`
+  // genérico). Coletar e converter por entrada é o que o TypeScript aceita.
+  const mapas: Array<[string, Record<string, unknown>]> = [];
+  for (const [nome, valor] of Object.entries(vocabulario) as Array<[string, unknown]>) {
+    if (typeof valor === "object" && valor !== null && !Array.isArray(valor)) {
+      mapas.push([nome, valor as Record<string, unknown>]);
+    }
+  }
+  return mapas;
 }
 
 function rotulosExportados(): Array<[string, string]> {
