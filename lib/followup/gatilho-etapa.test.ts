@@ -187,6 +187,11 @@ describe("aplicaGatilhoDeEtapa — o gate do agente", () => {
 });
 
 describe("aplicaGatilhoDeEtapa — o enrollment que nasce", () => {
+  // ⚠️ `next_eval_at` NÃO aparece no objeto esperado, e a ausência é o
+  // contrato: desde a migration 0147 o produtor OMITE o campo para o
+  // `default now()` do BANCO decidir — gravar o "agora" do processo produz um
+  // instante que ainda é futuro para o claim, e o enrollment perde um tick
+  // inteiro. Se este campo voltar a aparecer aqui, o defeito voltou.
   it("fluxo armado e liberado → 1 enrollment no nó de gatilho, com o agente pinado", async () => {
     const reg = registro();
     const s = await aplicaGatilhoDeEtapa(
@@ -205,7 +210,6 @@ describe("aplicaGatilhoDeEtapa — o enrollment que nasce", () => {
         version_id: VERSION,
         contact_id: CONTATO,
         current_node_id: "t1",
-        next_eval_at: "2026-08-10T12:00:00.000Z",
         agent_id: AGENT,
       },
     ]);
