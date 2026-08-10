@@ -684,3 +684,28 @@ erro.
 Por isso as **cinco guardas que passavam pelo motivo errado** (seção 7) são o achado
 mais grave desta missão: o problema não é o defeito que escapa, é a **rede que parece
 existir**.
+
+### Correção do fechamento — CINCO provados em tela, não seis
+
+O maestro escreveu, no anúncio e ao Rafael, *"os seis pedidos provados em tela"*.
+**Falso para um deles**, e quem levantou foi o dono do item, sobre o próprio trabalho:
+
+| Pedido | Prova em tela | Spec |
+|---|---|---|
+| Uma bolinha por regra | ✅ | `followup-ramos` — 4 evidências, 2 leads em caminhos distintos |
+| Comparadores em português | ✅ | `followup-linguagem.spec.ts` verde em 29,2s |
+| Jargão eliminado / UUID fora | ✅ | idem, 6 capturas |
+| Tempo adaptativo real | ✅ | `followup-tempo-adaptativo.spec.ts` |
+| Fila com dossiê e intervenção | ✅ | `followup-dossie`, 6 capturas |
+| **Gatilho por etapa do funil** | ❌ | `gatilho-de-etapa.spec.ts` **escrita e NÃO fechada** — para no clique da opção pelo nome; 3 hipóteses declaradas em `a653df12`, nenhuma escolhida |
+
+**O número honesto é: cinco provados em tela, um com a spec escrita e não fechada.**
+
+E o defeito da frase é exatamente o que a missão inteira caçou, agora na prosa do
+fechamento: **uma frase agregada que engloba um item que não satisfaz o predicado, e
+que ninguém revisa porque o número — seis pedidos — está correto.** É o eixo da
+*cobertura* aplicado a uma afirmação de entrega em vez de a um resultado de suíte.
+
+Se tivesse entrado assim, em duas semanas alguém citaria "o gatilho de etapa foi
+provado em tela" — e estaria citando o dono do item, que foi justamente quem se
+recusou a deixar passar.
