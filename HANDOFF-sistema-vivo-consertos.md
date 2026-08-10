@@ -278,6 +278,60 @@ na prosa de um card. Aceitar menção em vez de peça é medir o proxy.
 | `escalacao-ciclo:128` | fixture apagada pelo re-seed + `--env-file=.env.local` | consertado (`3ebb6ba5`) |
 | `prova-painel-provedores:77,139` | F3 exige catálogo de modelos que o CI não semeia | declarada em `FORA_DO_CI` com motivo (`c42b6553`) |
 | `vps-fresh-onboarding:111` | WAHA + Redis + Resend + Nuvemshop | segue fora, declarada — é a P0 da doutrina de QA Visual |
+| `olhar-telas-do-epico:110` | **429 em todas as 7 telas** — não era limitador nenhum deste app: era o SDK do Sentry mandando 2 sessões de release health por navegação para o DSN da comunidade, cuja organização estava suspensa por cota (`x-sentry-rate-limits: 60::organization:suspended`, categoria vazia = todas) | consertado (`77b4a486`) — ver a seção abaixo |
+
+---
+
+## O 429 que não era limitador — e as três hipóteses que caíram
+
+Vale como registro porque o custo esteve todo no **instrumento**, não no defeito.
+
+A spec cobra "a tela não cospe erro no console". Reprovava com 429 nas 7 telas, e a
+mensagem que o browser dá para requisição barrada é `Failed to load resource: the
+server responded with a status of 429` — que **não diz quem respondeu**. A spec
+descartava `m.location()`, o relatório do CI não guarda trace, e assim a única cópia
+do endereço morria no listener. Três runs foram gastos adivinhando o dono de um 429
+cuja URL o próprio teste tinha em mãos.
+
+Hipóteses derrubadas por medição, na ordem:
+
+1. *"a parte 2 está sobrecarregada"* — caiu de 69 para 53 testes, falha byte-idêntica.
+2. *"as specs anteriores exaurem o contador"* — posta em primeiro lugar, contador
+   limpo, mesmas 7 telas em 429, inclusive a primeira. (E `workers: 1`, então a spec
+   rodou isolada de fato.)
+3. *"é o fallback em memória do limitador"* — foi a pista que eu deixei escrita no
+   workflow. **Medido no job real: 120 quedas para memória, 103 no bucket
+   `auth:login:ip`, contra teto de 1000.** O limitador não barrou nada; o fallback é
+   por chave e por janela, e estava correto.
+
+Com a URL capturada, o dono apareceu na primeira medição: `/monitoring`, o túnel do
+Sentry. Percurso de 7 telas: 19 requisições, 17 respostas, **todas 429**, e o corpo de
+cada envelope era `{"type":"session"}` com `errors: 0`.
+
+**A causa raiz é uma política declarada que não estava em vigor.** `isCommunityDsn`
+diz "no Sentry da comunidade, só erro", e duas torneiras foram fechadas
+(`tracesSampleRate`, `replaysSessionSampleRate`). A terceira ficou fora da conta:
+`browserSessionIntegration` é **default** do `@sentry/browser`, com
+`lifecycle: "route"` — cada navegação fecha uma sessão e abre outra. Passou porque
+`integrations: [x]` **soma** aos defaults do SDK; só a forma de função os substitui, e
+essa diferença não aparece em tipo, em lint, nem em teste que não abra um browser.
+
+Consertado em `77b4a486`: `integracoesDoCliente` tira a `BrowserSession` quando o DSN
+é o da comunidade (e mantém tudo para quem aponta o próprio Sentry — mesma assimetria
+das amostragens); o `init` passa a função; o gerador do `.env.e2e` escreve
+`SENTRY_DSN=off`, porque a suíte não pode mandar dado ao Sentry de produção do projeto
+nem depender do estado de cobrança de um terceiro. **Consequência aceita e declarada:**
+com `off` a suíte deixa de exercitar a política, então quem a guarda é
+`tests/unit/sentry-comunidade-so-erro.test.ts` (9 casos; sabotagem prevista 2/2/1/1 e
+medida 2/2/1/1).
+
+Prova de comportamento, mesmo percurso e com o DSN da comunidade ainda ativo: **0
+requisições ao túnel** (eram 19) e spec verde em 44s.
+
+**O que isto deixa em aberto, e não é pequeno:** enquanto a organização do Sentry
+estiver suspensa, a telemetria de comunidade que justifica o DSN default **não entrega
+nada** — erro real de instalação real é descartado no ingest. Isso é decisão de conta,
+fora do código.
 
 ---
 

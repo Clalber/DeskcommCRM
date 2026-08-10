@@ -43,31 +43,37 @@ jobs:
     # do gate sem razão declarada é a dívida voltando pela porta de serviço.
     # ─────────────────────────────────────────────────────────────────────────
     #
-    # ═══ O 429 DE `olhar-telas-do-epico`: O QUE JÁ FOI DESCARTADO ═══
+    # ═══ O 429 DE `olhar-telas-do-epico`: RESOLVIDO, E O QUE ELE ENSINOU ═══
     #
-    # A spec reprova com **429 Too Many Requests** em TODAS as 7 telas que visita, e a
-    # falha é PRÉ-EXISTENTE NA MAIN: o run 31343408488 (main, 2026-08-10T00:03) traz a
-    # lista byte-idêntica, antes do PR #218. Não é regressão de branch nenhuma.
+    # A spec reprovava com **429** em TODAS as 7 telas, falha PRÉ-EXISTENTE NA MAIN (run
+    # 31343408488, main, 2026-08-10T00:03, lista byte-idêntica). Consertado em 77b4a486.
     #
-    # Três runs foram gastos nisto e o valor que sobrou são as HIPÓTESES DESCARTADAS,
-    # que é o que estreita a busca de quem for consertar de verdade:
+    # Não era limitador NENHUM deste app. Era o SDK do Sentry no browser mandando duas
+    # SESSÕES de release health por navegação para o DSN da comunidade, cuja organização
+    # estava suspensa por cota: o ingest respondia `429` com
+    # `x-sentry-rate-limits: 60::organization:suspended` — categoria vazia, todas — e
+    # cada tentativa barrada virava erro de console, que é o que a spec cobra. Detalhe do
+    # desenho em `lib/sentry/dsn.ts`; o gate é `tests/unit/sentry-comunidade-so-erro.test.ts`.
     #
-    #  1. "a parte 2 está sobrecarregada" — DESCARTADA. Caiu de 69 para 53 testes e a
-    #     falha veio byte-idêntica.
-    #  2. "as specs que rodam ANTES dela exaurem o contador" — DESCARTADA. Ela foi
-    #     posta em PRIMEIRO lugar na parte 2, com o contador limpo, e as mesmas 7
-    #     telas deram 429 — inclusive a primeira que ela visita.
+    # Três hipóteses minhas caíram por medição, e o custo delas foi maior que o do
+    # conserto. As duas primeiras foram descartadas na época:
     #
-    # O que a segunda medição revela: não é acúmulo. Se fosse, as primeiras telas
-    # passariam e as últimas cairiam. Todas caem, desde a primeira — o limitador já
-    # está recusando antes do primeiro `goto`. A pista que sobra é o próprio fallback:
-    # `redis incr failed; falling back to in-memory` aparece centenas de vezes neste
-    # job, e o caminho em memória precisa ser MEDIDO (teto? janela? chave global em vez
-    # de por-IP?) antes de qualquer outra tentativa.
+    #  1. "a parte 2 está sobrecarregada" — caiu de 69 para 53 testes, falha byte-idêntica.
+    #  2. "as specs anteriores exaurem o contador" — posta em PRIMEIRO lugar, contador
+    #     limpo, as mesmas 7 telas deram 429, inclusive a primeira.
+    #  3. "é o fallback em memória do limitador" — foi o que este comentário afirmou como
+    #     "a pista que sobra". MEDIDO no job real: 120 quedas para memória, 103 delas no
+    #     bucket `auth:login:ip` contra teto de 1000. O limitador não barrou nada.
     #
-    # `AUTH_RATE_LIMIT_LOGIN_IP` não cobre: ele afrouxa o teto de LOGIN, e estes 429
-    # vêm de outras rotas. Afrouxar o limitador do produto para acomodar o teste segue
-    # sendo a troca errada.
+    # A lição operacional é sobre INSTRUMENTO, não sobre limitador: a mensagem do browser
+    # para requisição barrada é "Failed to load resource: ... 429" e não diz QUEM
+    # respondeu; a spec descartava `m.location()` e o relatório não guarda trace, então a
+    # única cópia do endereço morria ali. Três runs foram gastos adivinhando o dono de um
+    # 429 cuja URL o próprio teste tinha em mãos. A spec agora registra a URL.
+    #
+    # `AUTH_RATE_LIMIT_LOGIN_IP` segue existindo pelo motivo dele (o teto por IP no CI é
+    # um runner só) e não teve nada a ver com isto. Afrouxar o limitador do produto para
+    # acomodar teste segue sendo a troca errada — e aqui não foi preciso.
     #
     # A ordem das listas voltou ao que era: mudá-la foi tentativa que não se sustentou,
     # e deixar a mudança de pé com um comentário dizendo "hipótese" seria pior — o
