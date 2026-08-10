@@ -98,7 +98,7 @@ async function abrirAbaDoOperador(): Promise<void> {
 }
 
 test.describe("A aba do papel que organiza o sistema", () => {
-  test("os dois papéis aparecem, e os nomes dizem o que cada um faz", async () => {
+  test("os TRÊS papéis aparecem, e os nomes dizem o que cada um faz", async () => {
     await pagina.goto(`/app/ai/agents/${agenteDeTeste()}`);
 
     // Os rótulos são o contrato com quem configura. "Conversador"/"Operador" é
@@ -106,6 +106,32 @@ test.describe("A aba do papel que organiza o sistema", () => {
     // e em quem mantém a casa em ordem.
     await expect(pagina.getByTestId("papel-conversa")).toHaveText(/conversa com o cliente/i);
     await expect(pagina.getByTestId("papel-operacao")).toHaveText(/organiza o sistema/i);
+    // O TERCEIRO. O épico se chama "os três papéis" e foi entregue com dois na
+    // tela — a cadeia de conferências rodava e ninguém que configura sabia.
+    await expect(pagina.getByTestId("papel-seguranca")).toHaveText(/confere antes de enviar/i);
+  });
+
+  test("o papel que confere mostra a lista inteira, aberta, e sem interruptor decorativo", async () => {
+    await pagina.goto(`/app/ai/agents/${agenteDeTeste()}`);
+    await pagina.getByTestId("papel-seguranca").click();
+
+    const painel = pagina.getByTestId("painel-de-seguranca");
+    await expect(painel).toBeVisible();
+
+    // MEDIDA POR FERRAMENTA, não a olho: o defeito que este painel substitui era
+    // um `<details>` FECHADO dentro do resultado de um teste — presente no DOM e
+    // invisível na prática. Altura real > 0 é o que separa "existe" de "aparece".
+    const altura = await painel.evaluate((el) => el.getBoundingClientRect().height);
+    expect(altura, "o painel está no DOM e não ocupa espaço na tela").toBeGreaterThan(100);
+
+    // Todas as conferências, não uma amostra.
+    const itens = painel.locator('[data-testid^="conferencia-"]:not([data-testid$="-fixa"]):not([data-testid$="-escolha"])');
+    await expect(itens).toHaveCount(11);
+
+    // ZERO interruptores: as que não são escolha não se apresentam como escolha,
+    // e as duas configuráveis ainda são decididas no servidor. Um switch aqui
+    // seria a tela oferecendo o que o motor ignora.
+    await expect(painel.locator('[role="switch"]')).toHaveCount(0);
   });
 
   test("desligado, a tela diz o que CONTINUA acontecendo — não só o que para", async () => {
