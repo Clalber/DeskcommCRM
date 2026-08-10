@@ -452,6 +452,36 @@ describe("applyReactivityEvent — STOP/opt-out (message.received + is_blocked)"
     expect(row.status).toBe("paused_manual");
   });
 
+  /**
+   * SEGUNDO controle positivo, e fecha o resíduo que o @MaestroConexoes apontou:
+   * `it.fails` também é satisfeito por EXCEÇÃO. Se `applyReactivityEvent` passar
+   * a estourar por regressão alheia, a catraca abaixo fica verde satisfeita pelo
+   * throw — pelo motivo errado, de novo, um nível acima da fixture.
+   *
+   * Este caso é `it` normal: exercita o MESMO caminho e só exige que ele
+   * complete. Regressão que derrube `applyReactivityEvent` reprova ALTO aqui,
+   * com a mensagem apontando para a exceção, enquanto a catraca seguiria muda.
+   */
+  it("controle positivo: aplicar o evento de STOP com enrollment pausado não estoura", async () => {
+    const org = nextOrgId();
+    await seedOrg(org);
+    const contactId = await seedContact(org, { isBlocked: true });
+    const flow = await seedFlow(org, SIMPLE_GRAPH);
+    await seedEnrollment({
+      org,
+      pointerId: flow.pointerId,
+      versionId: flow.versionId,
+      contactId,
+      currentNodeId: "w1",
+      status: "paused_manual",
+      nextEvalAt: null,
+    });
+
+    const row = eventRow({ organization_id: org, event_type: "message.received", payload: { contact_id: contactId } });
+    const summary = await applyReactivityEvent(reactivityDb(), () => new Date(), row);
+    expect(summary.matched).toBe(true); // completou; o QUANTO é a catraca abaixo
+  });
+
   // ACOPLADO À MIGRATION 0145: o `seedEnrollment` abaixo grava
   // `status: "paused_manual"`, e na `main` o CHECK de `followup_enrollments`
   // ainda RECUSA esse valor (0054: active, waiting_reply, paused_handoff,
@@ -489,9 +519,15 @@ describe("applyReactivityEvent — STOP/opt-out (message.received + is_blocked)"
     // quebrasse por outro motivo, o caso seguiria falhando, o `.fails` seguiria
     // satisfeito, e a catraca não reprovaria: sobreviveria ao próprio conserto.
     //
-    // O estado final do enrollment cancelado é congelado pelo caso irmão de
-    // `paused_handoff`, logo acima — os dois passam pelo mesmo `cancelAll`, que
-    // não tem ramo por status. Nenhuma propriedade fica órfã.
+    // O estado final do enrollment cancelado é congelado pelo caso irmão
+    // "cancela o enrollment VIVO do contato (outcome='opted_out') e ignora os já
+    // terminais" — citado pelo TÍTULO, e não por "logo acima", porque a garantia
+    // desta catraca depende dele e um `git grep` precisa achá-lo se ele se mudar.
+    // Os dois passam pelo mesmo `cancelAll`, que não tem ramo por status.
+    //
+    // DÍVIDA DECLARADA: se aquele caso for removido, movido ou pulado, as três
+    // propriedades ficam órfãs e ESTA catraca continua com cara de saudável.
+    // Prosa não reprova — quem mexer no irmão está mexendo em dois lugares.
     expect(summary.reacted).toBe(1);
   });
 
