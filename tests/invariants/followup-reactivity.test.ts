@@ -420,6 +420,14 @@ describe("applyReactivityEvent — STOP/opt-out (message.received + is_blocked)"
    * em follow-up e não sabemos a razão". Mais turnos enfileirados só para serem
    * vetados, e a métrica de outcome sem contar este opt-out.
    */
+  // ACOPLADO À MIGRATION 0145: o `seedEnrollment` abaixo grava
+  // `status: "paused_manual"`, e na `main` o CHECK de `followup_enrollments`
+  // ainda RECUSA esse valor (0054: active, waiting_reply, paused_handoff,
+  // completed, cancelled, dead). Este caso só roda em árvore que carrega a 0145 —
+  // medido: 1 arquivo de migration 0145 e 7 ocorrências no baseline desta base.
+  // Cherry-pick isolado para uma árvore sem ela vira 23514 no seed, e o vermelho
+  // vai parecer defeito de reactivity em vez de migration ausente.
+  //
   // `it.fails` = CATRACA, não teste desligado. Ele EXECUTA e exige que o defeito
   // ainda esteja lá; no dia em que `LIVE_STATUSES` ganhar `paused_manual` este
   // caso REPROVA por ter passado, e quem consertar é obrigado a vir tirar o
