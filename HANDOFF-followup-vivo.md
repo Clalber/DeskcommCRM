@@ -86,6 +86,15 @@ arquivo alheio? Pede ao dono pelo canal, não edita.
 **Ponto de atrito conhecido:** `NodeConfigPanel.tsx` é tocado por A e E. Mitigação —
 E quebra o arquivo em um arquivo por formulário **na Wave 0**, antes de A encostar nele.
 
+**Arquivos que mudaram de dono durante a missão** (apontado pelo DevGatilhos — sem
+esta linha, quem retomar as frentes descobre no conflito):
+
+| Arquivo | Dono original | Passou para | Por quê |
+|---|---|---|---|
+| `lib/leads/agent-stage-sync.ts` | ninguém (fora da tabela) | **C · Gatilhos** | decisão do maestro: o conserto do B4 pertence ao emissor, e quem o achou tinha o contexto |
+| `lib/followup/turn-bridge.ts` | B · Motor | **compartilhado** com D · Fila | a fila precisa da lista positiva de status para introduzir pausa manual; o motor combina em vez de reverter |
+| `tests/invariants/vocabulario-banco-x-typescript.test.ts` | — | **D e E juntos** | os dois o modificam; combinar antes de escrever |
+
 **Faixas de migration reservadas** (evita colisão de numeração):
 
 | Frente | Faixa |
