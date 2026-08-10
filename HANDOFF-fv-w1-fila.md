@@ -235,6 +235,39 @@ BIDIRECIONAL — imagem versionada que nenhum doc cita é órfã — e o extrato
 expande chaves: as seis contavam como não citadas, e o `test:unit` foi de 3470
 verdes para 1 vermelho. Citar o caminho inteiro de cada uma resolveu.
 
+### O `IA360-FLAKY`, caçado até a raiz
+
+O invariante instável que o repo carregava como "às vezes vermelho" tinha causa
+determinística, e ela é uma lição sobre teste que mexe em SCHEMA.
+
+`tests/invariants/followup-silence-sweep.test.ts` dropa e recria o
+`idx_followup_enrollments_one_live` no banco COMPARTILHADO, para provar o
+RED→GREEN do próprio caso. O `finally` que diz "restaura o estado do baseline"
+restaurava uma versão **congelada no tempo**:
+`('active','waiting_reply','paused_handoff')` — de antes de a 0145 acrescentar
+`paused_manual`. Depois que aquele arquivo rodava, o banco ficava com um índice
+que o baseline não tem mais, e o próximo teste a depender dele reprovava.
+
+O meu era o próximo: sem `paused_manual` no índice, o enrollment pausado deixa de
+ocupar a vaga e o segundo é aceito.
+
+| medição | resultado |
+|---|---|
+| par `silence-sweep` + `intervencao`, SEM conserto | **1 vermelho** (previsto 1), 27 ms |
+| o mesmo par, COM conserto | 22 verdes |
+| suíte completa COM conserto | **94 arquivos / 659 verdes, 0 vermelhos** |
+
+**O que NÃO afirmo:** que o conserto explica os outros vermelhos das rodadas
+anteriores (17 sob load 68; 3 sob load ~30). A carga caiu para 9 na rodada
+final — duas variáveis mudaram, e o número não separa as causas. O que a
+medição isolada prova é o par, onde a carga não entra: dois arquivos, 30
+segundos.
+
+**A lição, escrita no cabeçalho do helper:** quem recria objeto de SCHEMA num
+banco compartilhado assume a dívida de acompanhar toda migration futura que o
+toque — e nada avisa quando ela chega. A dívida venceu meses depois, na conta de
+outra pessoa.
+
 **Ressalva honesta do `test:db`:** as 3 falhas estão todas em
 `tests/invariants/webhooks-inbound.test.ts`, com 39–43 s cada (casos que normalmente
 levam <2 s). Meu diff **não toca nenhum arquivo de webhook**. Numa primeira rodada,
