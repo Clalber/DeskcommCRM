@@ -174,7 +174,7 @@ test.describe("nó de espera — o modo Adaptativo tem de decidir de verdade", (
     await expect(painel).toBeVisible({ timeout: PRAZO_SOB_CARGA });
 
     await painel.locator("#wait-mode").click();
-    await page.getByRole("option", { name: "Adaptativo (min–max)" }).click();
+    await page.getByRole("option", { name: "A IA escolhe a hora" }).click();
 
     await painel.locator("#wait-min").fill(String(MIN_MINUTOS));
     await painel.locator("#wait-max").fill(String(MAX_MINUTOS));
