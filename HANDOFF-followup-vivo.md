@@ -264,6 +264,51 @@ sendo escrita naquele instante, e eu não declarei o SHA nem o `git status` junt
 com o número. A explicação interessante era "ele errou"; a chata — o meu
 instrumento — é a que sobreviveu.
 
+#### A causa real da máquina travada: MEMÓRIA, não CPU
+
+Medido: **swap 22.528 MB usados contra 452 MB livres**, numa máquina de **18 GB de
+RAM**, com **8.226.181 pageouts**. A máquina estava em *thrashing*.
+
+Isso reinterpreta tudo o que parecia contenção de CPU: um `next build` parado em
+**estado `S` a 0% de CPU não disputa processador — está bloqueado esperando disco
+de swap**. Dois builds simultâneos nesta máquina não terminam nenhum dos dois.
+(Primeiro visto pelo QAVivo, que reportou 568 MB livres antes de eu medir.)
+
+Regra que entrou em vigor: **um `next build` por vez na máquina inteira**, com o
+maestro como dono do token. Vale para `test:db` e Playwright, que sobem container e
+browser. **Não** vale para commit, `typecheck` e `lint`.
+
+**Ação do maestro em worktree alheio, registrada de propósito:** matei o `next build`
+do `fv-fila` (pids 65417/65480) depois de **duas medições com 12 min de intervalo**,
+ambas 0% de CPU e estado `S`, 59 min de vida, zero linhas novas de saída — morto, não
+lento. Confirmei o dono por `lsof -p PID -a -d cwd` antes, matei só os dois pelo pid,
+reconferi depois. Swap livre subiu de 452 MB para 1.942 MB. Build morto não deixa
+artefato aproveitável (o meu, no mesmo estado, tinha `.next` sem `BUILD_ID`), então o
+dono perdeu espera, não trabalho. Comunicado a ele com a medição e com a opção de
+vetar a prática.
+
+#### O canal mente sobre entrega — e isso escondeu uma frente parada
+
+O `lina handoff` da `W2-LINGUAGEM` respondeu **"ok: enviada"** e **não foi entregue**.
+O QAVivo passou horas sem tarefa, e eu o li como parado. Regra: **confirmação de envio
+não é prova de entrega; o artefato (claim no plano, commit no git) é o único sinal
+confiável.** O inverso, apontado pelo DevGatilhos, é o que mais importa: *"o colega
+não respondeu" não se lê como "o colega parou" — olhe a árvore dele antes de cobrar.*
+Aconteceu duas vezes comigo no mesmo dia: cobrei o DevVivo por 21 arquivos sem commit
+e a mensagem chegou depois de 5 commits dele; cobrei o QAVivo por estar parado quando
+ele nunca tinha recebido a tarefa. Nos dois casos o git tinha a resposta.
+
+#### Crédito ao método, não ao caráter
+
+Elogiei o DevGatilhos por ter escrito no código a ressalva sobre o `agent-stage-sync`
+e por ter recusado o atalho de ler `crm_lead_activities`. Ele corrigiu o registro para
+baixo, e a correção fica: o cabeçalho ele escreveu **no instante em que mediu**, antes
+de eu corrigir o briefing — não foi resposta a pedido meu; e recusar o atalho **não lhe
+custou nada**, porque o atalho era pior para ele também (dois enrollments no dia em que
+o emissor fosse consertado). Creditar a virtude o que veio de estrutura desliga o
+alarme: sugere que o bom resultado dependeu de alguém ser cuidadoso, quando dependeu de
+o caminho errado ser obviamente pior.
+
 #### A máquina virou o gargalo — e o que isso ensinou
 
 `load average` chegou a **78 em 11 CPUs**. Os consumidores reais **não eram os
