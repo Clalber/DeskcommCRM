@@ -40,6 +40,15 @@ export type ActivityType =
   | "reactivation_expired"
   | "followup_scheduled"
   | "followup_cancelled"
+  /**
+   * As quatro formas de INTERVIR num follow-up em andamento, sem matá-lo.
+   * Antes delas, a única saída era cancelar — e quem lesse a timeline via o
+   * fluxo sumir sem saber se alguém desistiu ou se ele terminou.
+   */
+  | "followup_paused"
+  | "followup_resumed"
+  | "followup_snoozed"
+  | "followup_step_skipped"
   | "demand_closed";
 
 export const ACTIVITY_LABELS: Record<ActivityType, string> = {
@@ -84,6 +93,15 @@ export const ACTIVITY_LABELS: Record<ActivityType, string> = {
   // retomar, para não repropor o que uma pessoa já desmarcou.
   followup_scheduled: "Retorno agendado",
   followup_cancelled: "Retorno cancelado",
+  // PAUSAR NÃO É CANCELAR, e a diferença importa para quem pega o atendimento
+  // depois: cancelado é decisão fechada, pausado é o fluxo parado esperando uma
+  // pessoa. Sem as duas linhas, quem lê a timeline não sabe se o silêncio do
+  // agente é desistência ou espera — e, no caso do adiamento, nem que existe
+  // uma data combinada.
+  followup_paused: "Follow-up pausado",
+  followup_resumed: "Follow-up retomado",
+  followup_snoozed: "Follow-up adiado",
+  followup_step_skipped: "Passo do follow-up pulado",
   // ENCERRAR É O OUTRO LADO do invariante 4: uma demanda aberta precisa de
   // próximo passo OU de desfecho registrado. Fechar como ganho ou perdido era
   // invisível na timeline — só existia em audit e event_log, que ninguém lê na
