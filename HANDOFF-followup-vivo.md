@@ -264,6 +264,38 @@ sendo escrita naquele instante, e eu não declarei o SHA nem o `git status` junt
 com o número. A explicação interessante era "ele errou"; a chata — o meu
 instrumento — é a que sobreviveu.
 
+#### A máquina virou o gargalo — e o que isso ensinou
+
+`load average` chegou a **78 em 11 CPUs**. Os consumidores reais **não eram os
+builds**: Docker (VM do Supabase) 123%, o app do Lina 115%, Chrome 117% somado,
+WindowServer 41%. Um `next build` da integração ficou **48 minutos a 0% de CPU em
+estado `S`** — bloqueado, não lento; nenhuma linha nova de saída por mais de uma
+hora; `.next` sem `BUILD_ID`, ou seja, artefato inutilizável. Morto e reiniciado
+com o cache do Turbopack quente.
+
+Três regras saíram disso:
+
+1. **O critério de serialização não é "isso é uma medição?", é "isso consome a
+   máquina?"** (formulação do DevGatilhos, melhor que a minha original). Build não
+   contamina resultado, mas é o maior produtor da carga que faz a medição dos
+   outros reprovar por teto.
+2. **Identifique o processo pelo DONO, nunca pelo nome.** `pgrep -f "next build" |
+   head -1` devolvia o processo de *outra frente* — cheguei a reportar tempo de
+   build errado por isso. O certo é `lsof -p PID -a -d cwd`. Para matar: confirme o
+   dono, mate só o seu pelo pid, e **reconfira depois** que sobrou o que devia.
+   `pkill` amplo nesta máquina já matou trabalho de terceiro.
+3. **`0% de CPU` com estado `S` é travamento, `R` seria disputa.** A distinção diz
+   se você espera ou mata. E uma amostra só não decide: tire três.
+
+#### O exit code que mentiu, de novo
+
+O harness notificou **"completed (exit code 0)"** para o build que eu tinha acabado
+de matar. Esse zero era o exit do **último comando da cadeia**, não do build; o
+real estava no log: `build exit=143` (SIGTERM). É a mesma classe do
+`cmd | tail` que o DevGatilhos apanhou de manhã e que virou regra do time — e o
+maestro quase caiu nela três horas depois de escrevê-la. **Sempre leia o exit da
+etapa que interessa, gravado por ela mesma, nunca o exit agregado.**
+
 #### Doutrina de medição que esta missão descobriu na prática
 
 Três terminais bateram no **mesmo** muro sem saber, e o custo de cada um
