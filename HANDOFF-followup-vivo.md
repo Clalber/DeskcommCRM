@@ -86,6 +86,15 @@ arquivo alheio? Pede ao dono pelo canal, não edita.
 **Ponto de atrito conhecido:** `NodeConfigPanel.tsx` é tocado por A e E. Mitigação —
 E quebra o arquivo em um arquivo por formulário **na Wave 0**, antes de A encostar nele.
 
+**Arquivos que mudaram de dono durante a missão** (apontado pelo DevGatilhos — sem
+esta linha, quem retomar as frentes descobre no conflito):
+
+| Arquivo | Dono original | Passou para | Por quê |
+|---|---|---|---|
+| `lib/leads/agent-stage-sync.ts` | ninguém (fora da tabela) | **C · Gatilhos** | decisão do maestro: o conserto do B4 pertence ao emissor, e quem o achou tinha o contexto |
+| `lib/followup/turn-bridge.ts` | B · Motor | **compartilhado** com D · Fila | a fila precisa da lista positiva de status para introduzir pausa manual; o motor combina em vez de reverter |
+| `tests/invariants/vocabulario-banco-x-typescript.test.ts` | — | **D e E juntos** | os dois o modificam; combinar antes de escrever |
+
 **Faixas de migration reservadas** (evita colisão de numeração):
 
 | Frente | Faixa |
@@ -302,6 +311,51 @@ tinha digitado). A primeira medição foi feita contra uma árvore que podia est
 sendo escrita naquele instante, e eu não declarei o SHA nem o `git status` junto
 com o número. A explicação interessante era "ele errou"; a chata — o meu
 instrumento — é a que sobreviveu.
+
+#### A causa real da máquina travada: MEMÓRIA, não CPU
+
+Medido: **swap 22.528 MB usados contra 452 MB livres**, numa máquina de **18 GB de
+RAM**, com **8.226.181 pageouts**. A máquina estava em *thrashing*.
+
+Isso reinterpreta tudo o que parecia contenção de CPU: um `next build` parado em
+**estado `S` a 0% de CPU não disputa processador — está bloqueado esperando disco
+de swap**. Dois builds simultâneos nesta máquina não terminam nenhum dos dois.
+(Primeiro visto pelo QAVivo, que reportou 568 MB livres antes de eu medir.)
+
+Regra que entrou em vigor: **um `next build` por vez na máquina inteira**, com o
+maestro como dono do token. Vale para `test:db` e Playwright, que sobem container e
+browser. **Não** vale para commit, `typecheck` e `lint`.
+
+**Ação do maestro em worktree alheio, registrada de propósito:** matei o `next build`
+do `fv-fila` (pids 65417/65480) depois de **duas medições com 12 min de intervalo**,
+ambas 0% de CPU e estado `S`, 59 min de vida, zero linhas novas de saída — morto, não
+lento. Confirmei o dono por `lsof -p PID -a -d cwd` antes, matei só os dois pelo pid,
+reconferi depois. Swap livre subiu de 452 MB para 1.942 MB. Build morto não deixa
+artefato aproveitável (o meu, no mesmo estado, tinha `.next` sem `BUILD_ID`), então o
+dono perdeu espera, não trabalho. Comunicado a ele com a medição e com a opção de
+vetar a prática.
+
+#### O canal mente sobre entrega — e isso escondeu uma frente parada
+
+O `lina handoff` da `W2-LINGUAGEM` respondeu **"ok: enviada"** e **não foi entregue**.
+O QAVivo passou horas sem tarefa, e eu o li como parado. Regra: **confirmação de envio
+não é prova de entrega; o artefato (claim no plano, commit no git) é o único sinal
+confiável.** O inverso, apontado pelo DevGatilhos, é o que mais importa: *"o colega
+não respondeu" não se lê como "o colega parou" — olhe a árvore dele antes de cobrar.*
+Aconteceu duas vezes comigo no mesmo dia: cobrei o DevVivo por 21 arquivos sem commit
+e a mensagem chegou depois de 5 commits dele; cobrei o QAVivo por estar parado quando
+ele nunca tinha recebido a tarefa. Nos dois casos o git tinha a resposta.
+
+#### Crédito ao método, não ao caráter
+
+Elogiei o DevGatilhos por ter escrito no código a ressalva sobre o `agent-stage-sync`
+e por ter recusado o atalho de ler `crm_lead_activities`. Ele corrigiu o registro para
+baixo, e a correção fica: o cabeçalho ele escreveu **no instante em que mediu**, antes
+de eu corrigir o briefing — não foi resposta a pedido meu; e recusar o atalho **não lhe
+custou nada**, porque o atalho era pior para ele também (dois enrollments no dia em que
+o emissor fosse consertado). Creditar a virtude o que veio de estrutura desliga o
+alarme: sugere que o bom resultado dependeu de alguém ser cuidadoso, quando dependeu de
+o caminho errado ser obviamente pior.
 
 #### A máquina virou o gargalo — e o que isso ensinou
 

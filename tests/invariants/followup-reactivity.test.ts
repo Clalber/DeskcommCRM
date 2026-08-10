@@ -1,6 +1,7 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import pg from "pg";
 
+import { isolarFixtureDeFollowup } from "./followup-isolamento";
 import { runFollowupTick, type FollowupJobRequest, type TickDeps, type AdminClient } from "@/lib/followup/engine";
 import { completeTurnForEnrollment, createPgAdminClient } from "@/lib/followup/turn-bridge";
 import {
@@ -351,6 +352,14 @@ beforeAll(() => {
   flowGraphSchema.parse(SIMPLE_GRAPH);
 });
 
+// Este arquivo roda `runFollowupTick` e cada `it` cria o próprio enrollment
+// (`nextOrgId()`), então limpar entre eles não tira nada de ninguém — e impede
+// que o tick daqui reclame enrollment devido de outro arquivo. Ver
+// ./followup-isolamento.ts.
+beforeEach(async () => {
+  await isolarFixtureDeFollowup(pool);
+});
+
 // ---- 1. STOP cancela tudo ----
 
 describe("applyReactivityEvent — STOP/opt-out (message.received + is_blocked)", () => {
@@ -443,6 +452,19 @@ describe("applyReactivityEvent — inbound wake (waiting_reply, sem cancel_on_re
     const afterWake = await getEnrollment(enrollmentId);
     expect(new Date(afterWake.next_eval_at as string).getTime()).toBeLessThanOrEqual(Date.now() + 2_000);
     expect(afterWake.status).toBe("waiting_reply"); // reactivity não muda status, só acorda
+
+    // A asserção acima já provou o que a reactivity faz: trouxe o next_eval_at de
+    // +10min para "agora". O empurrão abaixo existe por causa de DOIS RELÓGIOS:
+    // a reactivity grava o instante com o relógio do PROCESSO (clock injetado) e
+    // o claim pergunta `next_eval_at <= now()`, o do POSTGRES. Medido nesta
+    // configuração: o `now()` do banco fica 17 a 34ms ATRÁS do processo — então
+    // "agora" gravado aqui ainda é futuro para o claim, e o tick logo em seguida
+    // não reclama nada. Em produção o efeito não existe (o tick seguinte vem um
+    // minuto depois); neste teste os dois passos são consecutivos, e era a última
+    // fonte de vermelho intermitente do arquivo.
+    await pool.query(`update followup_enrollments set next_eval_at = now() - interval '1 second' where id = $1`, [
+      enrollmentId,
+    ]);
 
     // 2º tick: reclama por causa do next_eval_at movido. SEM o wake marker,
     // waitElapsed=true cairia em 'no_reply' (fix da Task 5.1) — descartando a
