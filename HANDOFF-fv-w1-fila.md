@@ -427,3 +427,93 @@ index c3235df5..e9b991ab 100644
    });
  });
 ```
+
+---
+
+## Apêndice 3 — o conserto do `IA360-FLAKY`, PRONTO e FORA da árvore fechada
+
+⚠️ **A missão foi declarada fechada em `feat/followup-vivo = f37a04b0`, e este
+conserto NÃO está lá.** Medido:
+
+```console
+$ git show f37a04b0:tests/invariants/followup-silence-sweep.test.ts | sed -n '521p'
+       where status in ('active','waiting_reply','paused_handoff')`,
+```
+
+O predicado anterior à 0145 continua no helper que recria o índice no banco
+compartilhado — ou seja, **o defeito determinístico segue vivo na árvore de
+integração**. O motivo de não estar commitado é o mesmo dos apêndices 1 e 2:
+`tests/invariants/**` é congelado pelo hook, e a autorização foi pedida.
+
+Isso NÃO contradiz o número do fechamento (334 arquivos / 3639 testes verdes):
+aquele é o `test:unit`, e o `IA360-FLAKY` vive no `test:db`, que não entra
+naquele run. São duas afirmações sobre coisas diferentes.
+
+Medições deste patch:
+
+| medição | resultado |
+|---|---|
+| par `silence-sweep` + `intervencao` SEM o patch | 1 vermelho (previsto 1), 27 ms |
+| o mesmo par COM o patch | 22 verdes |
+| suíte completa COM o patch | 94 arquivos / 659 verdes, 0 vermelhos |
+
+**A segunda ocorrência do predicado velho (linha ~646) NÃO entra no patch, e é
+deliberado:** ela é a réplica fiel da dedup da migration 0062, que não conhecia
+`paused_manual`. Ali o predicado não restaura estado — reproduz história.
+"Completar" as duas quebraria a réplica achando que conserta. O patch inclui o
+comentário que diz isso, para o próximo não cair nessa.
+
+```diff
+diff --git a/tests/invariants/followup-silence-sweep.test.ts b/tests/invariants/followup-silence-sweep.test.ts
+index 9713eae9..5a2c1167 100644
+--- a/tests/invariants/followup-silence-sweep.test.ts
++++ b/tests/invariants/followup-silence-sweep.test.ts
+@@ -514,11 +514,32 @@ async function countLiveForContact(org: string, contactId: string): Promise<numb
+ }
+ 
+ const ONE_LIVE = "idx_followup_enrollments_one_live";
++
++/**
++ * ⚠️ O PREDICADO É COPIADO DO BASELINE, NÃO DIGITADO DE MEMÓRIA.
++ *
++ * Este helper dropa e recria um índice do schema no banco COMPARTILHADO pelos
++ * invariantes — e o `finally` que "restaura o estado do baseline" restaurava uma
++ * versão CONGELADA no tempo: `('active','waiting_reply','paused_handoff')`, de
++ * antes de a 0145 acrescentar `paused_manual`. Depois que este arquivo rodava, o
++ * banco ficava com um índice que o baseline não tem mais, e o próximo teste a
++ * depender dele reprovava — determinística e rapidamente (27ms, falha de
++ * asserção, não timeout), o que fez a suíte parecer instável por carga.
++ *
++ * Medido: rodando só `followup-silence-sweep` + `followup-intervencao`, o caso
++ * "pausado ocupa a vaga do contato na ORGANIZAÇÃO" reprova; isolado, passa. É o
++ * `IA360-FLAKY` com assinatura, achado por `@QAVivo` e caçado a partir da pista
++ * dele ("isolado passa, então o culpado está na vizinhança").
++ *
++ * A lição que a constante carrega: quem recria objeto de schema num banco
++ * compartilhado assume a dívida de acompanhar TODA migration futura que o toque.
++ */
++const ONE_LIVE_STATUSES = "'active','waiting_reply','paused_handoff','paused_manual'";
+ async function setOneLiveIndex(columns: string): Promise<void> {
+   await pool.query(`drop index if exists ${ONE_LIVE}`);
+   await pool.query(
+     `create unique index if not exists ${ONE_LIVE} on followup_enrollments (${columns})
+-       where status in ('active','waiting_reply','paused_handoff')`,
++       where status in (${ONE_LIVE_STATUSES})`,
+   );
+ }
+ 
+@@ -615,6 +636,13 @@ describe("dedup 0062 — >1 enrollment vivo pro mesmo (org,contact) vira 1 vivo
+       );
+ 
+       // A DEDUP exata da migration 0062 (window function genérica, sem ids hardcoded).
++      //
++      // ⚠️ ESTE PREDICADO NÃO ACOMPANHA A 0145, E É DE PROPÓSITO. Ele não
++      // restaura estado: REPRODUZ o que a 0062 fazia, e a 0062 não conhecia
++      // `paused_manual`. Acrescentar o status aqui mudaria o que a réplica
++      // replica — o oposto de consertar. O predicado que PRECISA acompanhar as
++      // migrations é o de `setOneLiveIndex`, lá em cima, porque aquele devolve o
++      // banco compartilhado ao estado do baseline.
+       await pool.query(
+         `with ranked as (
+            select id, row_number() over (
+```
