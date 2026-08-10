@@ -366,3 +366,104 @@ describe('validateFlowForPublish', () => {
     expect(result.ok).toBe(true);
   });
 });
+
+/**
+ * Cobertura por ramo no modo 'per_check'. A regra é NOVA e vale só para a forma
+ * nova: um nó de condição combinado continua publicando sob as mesmas exigências
+ * de sempre, senão o publish passaria a reprovar fluxo que já está rodando.
+ */
+describe('validateFlowForPublish — cobertura por ramo (per_check)', () => {
+  const VIP = { id: 'chk_vip', label: 'Cliente VIP', field: 'tag' as const, op: 'contains' as const, value: 'vip' };
+  const FRIO = { id: 'chk_frio', field: 'steps_taken' as const, op: 'gte' as const, value: 3 };
+  const branch = (branchId: string): FlowEdge['condition'] => ({ type: 'branch', branch_id: branchId });
+
+  function perCheck(id: string): FlowNode {
+    return {
+      id,
+      type: 'condition',
+      label: id,
+      position: pos,
+      config: { combinator: 'and', branching: 'per_check', checks: [VIP, FRIO] },
+    };
+  }
+
+  /** trigger -> c1 -> (ramos) -> end. `extra` são as arestas de saída do nó de condição. */
+  function comRamos(extra: FlowEdge[]): FlowGraph {
+    return graph(
+      [trigger('t1'), perCheck('c1'), end('fim')],
+      [edge('t1', 'c1', always()), ...extra]
+    );
+  }
+
+  it('publica quando toda saída, inclusive a de "nenhuma delas", tem destino', () => {
+    const result = validateFlowForPublish(
+      comRamos([
+        edge('c1', 'fim', branch('chk_vip')),
+        edge('c1', 'fim', branch('chk_frio')),
+        edge('c1', 'fim', always()),
+      ])
+    );
+    expect(result).toEqual({ ok: true });
+  });
+
+  it('reprova nomeando a REGRA que ficou sem saída, não "o nó está incompleto"', () => {
+    const result = validateFlowForPublish(
+      comRamos([edge('c1', 'fim', branch('chk_vip')), edge('c1', 'fim', always())])
+    );
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    const semSaida = result.errors.filter((e) => e.code === 'missing_branch_edge');
+    expect(semSaida).toHaveLength(1);
+    expect(semSaida[0]!.branch_id).toBe('chk_frio');
+    expect(semSaida[0]!.node_id).toBe('c1');
+  });
+
+  it('usa o rótulo que o usuário escreveu na mensagem', () => {
+    const result = validateFlowForPublish(
+      comRamos([edge('c1', 'fim', branch('chk_frio')), edge('c1', 'fim', always())])
+    );
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.errors.find((e) => e.branch_id === 'chk_vip')!.message).toContain('Cliente VIP');
+  });
+
+  it('sem rótulo, quem descreve a regra é o vocabulário — nunca o id cru', () => {
+    const result = validateFlowForPublish(
+      comRamos([edge('c1', 'fim', branch('chk_vip')), edge('c1', 'fim', always())])
+    );
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    const msg = result.errors.find((e) => e.branch_id === 'chk_frio')!.message;
+    expect(msg).not.toContain('chk_frio');
+    expect(msg).not.toContain('steps_taken');
+    expect(msg).toMatch(/passos/i);
+  });
+
+  it('reprova quando falta a saída "nenhuma delas" — é ela que impede lead parado', () => {
+    const result = validateFlowForPublish(
+      comRamos([edge('c1', 'fim', branch('chk_vip')), edge('c1', 'fim', branch('chk_frio'))])
+    );
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    const semEscape = result.errors.filter((e) => e.code === 'missing_always_fallback');
+    expect(semEscape).toHaveLength(1);
+    expect(semEscape[0]!.branch_id).toBe('else');
+  });
+
+  it('NÃO aplica a regra nova a um nó combinado — fluxo v1 publica como sempre publicou', () => {
+    // Mesmas duas regras, modo de hoje, e só a saída do "sim" ligada: sob a regra
+    // do per_check isto teria 2 erros. Em combinado tem que continuar passando.
+    const combinado: FlowNode = {
+      id: 'c1',
+      type: 'condition',
+      label: 'c1',
+      position: pos,
+      config: { combinator: 'and', checks: [VIP, FRIO] },
+    };
+    const g = graph(
+      [trigger('t1'), combinado, end('fim')],
+      [edge('t1', 'c1', always()), edge('c1', 'fim', condResult(true))]
+    );
+    expect(validateFlowForPublish(g)).toEqual({ ok: true });
+  });
+});

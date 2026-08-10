@@ -1,4 +1,6 @@
-import type { FlowGraph, FlowEdge, FlowNode } from './graph-schema';
+import type { FlowBranch, FlowGraph, FlowEdge, FlowNode } from './graph-schema';
+import { branchIdForCondition, nodeBranches } from './graph-schema';
+import { fraseDaCondicao } from './vocabulario';
 
 /**
  * Structural publish validator for follow-up flow graphs.
@@ -11,6 +13,7 @@ export const PUBLISH_ERROR_CODES = [
   'unreachable_node',
   'no_end_path',
   'missing_class_edge',
+  'missing_branch_edge',
   'missing_no_reply_edge',
   'missing_always_fallback',
   'grace_too_short',
@@ -24,6 +27,8 @@ export type PublishValidationError = {
   node_id: string | null;
   code: PublishErrorCode;
   message: string;
+  /** Qual saída do nó ficou descoberta — o editor ancora o aviso na bolinha certa, não no nó inteiro. */
+  branch_id?: string;
 };
 
 export type PublishValidationResult =
@@ -229,6 +234,19 @@ function byId(a: { id: string }, b: { id: string }): number {
   return a.id.localeCompare(b.id);
 }
 
+/**
+ * Como a saída se chama numa mensagem de erro. O rótulo que o usuário escreveu
+ * vence; sem ele, quem monta a frase é o vocabulário — este arquivo não tem
+ * dicionário de campo/operador próprio, e não vai ganhar um.
+ */
+function branchText(branch: FlowBranch): string {
+  if (branch.label !== null) return branch.label;
+  if (branch.check !== null) {
+    return fraseDaCondicao(branch.check.field, branch.check.op, branch.check.value);
+  }
+  return branch.id;
+}
+
 export function validateFlowForPublish(graph: FlowGraph): PublishValidationResult {
   const { nodes, edges } = graph;
   const errors: PublishValidationError[] = [];
@@ -297,6 +315,34 @@ export function validateFlowForPublish(graph: FlowGraph): PublishValidationResul
         node_id: null,
         code: 'max_steps_exceeded',
         message: `O caminho mais longo a partir do trigger excede ${MAX_PATH_STEPS} passos.`,
+      });
+    }
+  }
+
+  // Cobertura por ramo — SÓ no modo 'per_check'. É deliberado que o modo
+  // combinado fique de fora: hoje nenhuma regra exige aresta por resultado num
+  // nó de condição, e passar a exigir reprovaria no publish fluxos v1 que estão
+  // rodando. Regra nova só vale para a forma nova.
+  for (const node of [...nodes].sort(byId)) {
+    if (node.type !== 'condition' || node.config.branching !== 'per_check') continue;
+    const outgoing = outEdges.get(node.id) ?? [];
+
+    for (const branch of nodeBranches(node)) {
+      if (outgoing.some((e) => branchIdForCondition(node, e.condition) === branch.id)) continue;
+      if (branch.kind === 'fallback') {
+        errors.push({
+          node_id: node.id,
+          code: 'missing_always_fallback',
+          branch_id: branch.id,
+          message: `Nó "${node.id}" não tem a saída "Nenhuma delas": um lead que não bater em regra nenhuma fica parado aqui.`,
+        });
+        continue;
+      }
+      errors.push({
+        node_id: node.id,
+        code: 'missing_branch_edge',
+        branch_id: branch.id,
+        message: `Nó "${node.id}": a saída "${branchText(branch)}" não está ligada a nada.`,
       });
     }
   }
