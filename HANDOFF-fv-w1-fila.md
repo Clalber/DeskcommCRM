@@ -298,6 +298,21 @@ Contagem igual sob condições diferentes é o que separa "ficou verde" de "est�
 consertado": se o verde viesse da carga baixa, a rodada dele — mais carregada —
 teria dado outro número. O `IA360-FLAKY` está morto, e não por sorte.
 
+**E a distinção que fecha o método, do `@QAVivo`: repetir não é o mesmo que
+variar.** Repetir na MESMA condição só mostra que não foi azar naquela condição;
+variar a condição é o que mostra que o resultado não depende dela. Foram três
+verdes em três cargas (9; 16→21; 15,6→16,8) — ampliação de faixa, não repetição.
+
+**A consequência prática é que a MESMA rodada tem valores probatórios diferentes
+conforme a pergunta:**
+
+| a mesma rodada verde… | …sobre o vermelho do `pausado` | …sobre os testes PULADOS |
+|---|---|---|
+| vale como | **prova** — o vermelho não volta em nenhuma carga, logo estava ligado ao índice | **nada** — a carga é justamente a variável suspeita |
+
+Ler um resultado sem a pergunta ao lado é como o número vira conclusão errada:
+o mesmo "0 vermelhos, 1 pulado" responde uma coisa e não responde a outra.
+
 ### Uma pergunta que fica ABERTA, com o motivo escrito
 
 Entre rodadas do MESMO código, o número de testes PULADOS do `test:db` variou de
