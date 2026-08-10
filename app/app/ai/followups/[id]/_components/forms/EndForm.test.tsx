@@ -21,18 +21,18 @@ beforeAll(() => {
   Element.prototype.scrollIntoView ??= () => {};
 });
 
+/**
+ * `delay: null` mata a espera que o user-event insere entre cada evento de
+ * ponteiro. Com o default, abrir este Select levou 16,6s numa máquina carregada
+ * e estourou o teto de 15s do vitest — reprovação por lentidão, sem defeito
+ * nenhum, que é o jeito mais rápido de ensinar o time a ignorar o gate.
+ */
+const usuario = () => userEvent.setup({ delay: null });
+
 describe("EndForm — seletor de resultado", () => {
-  it("oferece Convertido, Esgotado e Personalizado, nessa ordem", async () => {
-    render(<EndForm config={{ outcome: "exhausted" }} onChange={() => {}} />);
-
-    await userEvent.click(screen.getByRole("combobox", { name: "Resultado" }));
-
-    const itens = await screen.findAllByRole("option");
-    expect(itens.map((i) => i.textContent)).toEqual(["Convertido", "Esgotado", "Personalizado"]);
-  });
-
-  it("escolher uma opção grava o valor de wire correspondente", async () => {
+  it("oferece Convertido/Esgotado/Personalizado e grava o wire da escolha", async () => {
     const gravados: Array<{ outcome: string }> = [];
+    const user = usuario();
     render(
       <EndForm
         config={{ outcome: "exhausted" }}
@@ -40,8 +40,12 @@ describe("EndForm — seletor de resultado", () => {
       />,
     );
 
-    await userEvent.click(screen.getByRole("combobox", { name: "Resultado" }));
-    await userEvent.click(await screen.findByRole("option", { name: "Convertido" }));
+    await user.click(screen.getByRole("combobox", { name: "Resultado" }));
+
+    const itens = await screen.findAllByRole("option");
+    expect(itens.map((i) => i.textContent)).toEqual(["Convertido", "Esgotado", "Personalizado"]);
+
+    await user.click(screen.getByRole("option", { name: "Convertido" }));
 
     // O rótulo é português; o que desce para o grafo continua sendo o wire.
     expect(gravados).toEqual([{ outcome: "converted" }]);
