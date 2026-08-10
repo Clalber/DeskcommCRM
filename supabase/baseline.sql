@@ -10944,6 +10944,62 @@ create index if not exists idx_followup_events_enrollment_tempo
 
 notify pgrst, 'reload schema';
 
+-- ⚠️ ESTE BLOCO FICA ACIMA DA VARREDURA DE ANON DE PROPÓSITO, e a posição é
+-- parte do conserto. O corpo do baseline traz um `alter default privileges …
+-- grant all on functions to anon`, então TODA função nova nasce alcançável
+-- pela chave anônima — que vai para o browser. O bloco de varredura no fim do
+-- arquivo cura isso, mas só para o que veio ANTES dele: um apêndice colocado
+-- depois fica exposto COM os `revoke` escritos e parecendo corretos. Defesa
+-- certa na ordem errada é exposição com gate verde.
+-- Vigiado por `tests/unit/varredura-anon-e-o-ultimo-bloco.test.ts`.
+
+-- ---- relógio do banco para o agendamento do follow-up (migration 0147) ----
+-- Quem AGENDA gravava `next_eval_at` com o relógio do PROCESSO; quem RECLAMA
+-- compara com `now()` do POSTGRES. Medido: o banco fica 17–34 ms atrás, então o
+-- "agora" do processo ainda é FUTURO para o claim — o tick seguinte não reclama
+-- e o enrollment espera o tick DEPOIS (até 60 s, cron de minuto em minuto).
+-- Corrigir por margem seria número mágico que envelhece; a correção é os dois
+-- lados usarem o mesmo relógio.
+--
+-- ADITIVO E RETROCOMPATÍVEL: `default` só age na AUSÊNCIA da coluna, então todo
+-- insert que já passa `next_eval_at` explicitamente continua idêntico. Nada a
+-- corrigir nos dados antes — não há constraint nova.
+--
+-- O QUE O DEFAULT CUSTA, decidido e não descoberto depois: hoje inserir um
+-- enrollment ativo SEM `next_eval_at` falha ALTO (o CHECK recusa); com o
+-- default, esquecer o campo passa a ser SILENCIOSO e significa "vencido agora".
+-- Troca de falha barulhenta por plausível — aceita porque os dois produtores de
+-- nascimento significam "agora", quem quiser outro instante continua passando
+-- valor explícito, e a regra está escrita no `comment on column` abaixo.
+alter table public.followup_enrollments
+  alter column next_eval_at set default now();
+
+comment on column public.followup_enrollments.next_eval_at is
+  'Quando este enrollment vence. DEFAULT now() do BANCO (migration 0147): quem agenda "para agora" deve OMITIR a coluna, porque o claim compara com now() do Postgres e o relógio do processo fica milissegundos à frente — o suficiente para o enrollment perder um tick inteiro (60s). Agendamento para o FUTURO continua passando valor explícito.';
+
+-- Para o caso em que `default` não alcança: UPDATE. O supabase-js grava VALOR,
+-- nunca EXPRESSÃO, e o PostgREST só expõe tabela e função — sem isto o worker
+-- agendaria com o relógio do próprio processo.
+create or replace function public.fn_agora()
+returns timestamptz
+language sql
+stable
+set search_path to 'public', 'pg_temp'
+as $fn$
+  select now()
+$fn$;
+
+comment on function public.fn_agora() is
+  'O relógio do BANCO, para quem precisa gravar um instante que será comparado com now() (migration 0147).';
+
+-- AS DUAS ORIGENS DE EXECUTE (CLAUDE.md, doutrina de migrations, item 9): o
+-- grant direto a anon do `alter default privileges` do baseline, que
+-- `revoke from public` não remove; e o grant a PUBLIC que o Postgres dá na
+-- criação, que `revoke from anon` não remove.
+revoke all     on function public.fn_agora() from public;
+revoke execute on function public.fn_agora() from anon, authenticated;
+grant  execute on function public.fn_agora() to service_role;
+
 -- ---- VARREDURA anon: função nova nasce exposta em quem ATUALIZA (migration 0116) ----
 --
 -- ⚠️ ESTE BLOCO É, DE PROPÓSITO, O ÚLTIMO DO ARQUIVO. Apêndice novo entra ANTES
@@ -11019,51 +11075,6 @@ grant execute on function public.fn_lgpd_cascade_redact_contact(uuid, uuid, uuid
 grant execute on function public.fn_update_budget_consumption() to service_role;
 
 
--- ---- relógio do banco para o agendamento do follow-up (migration 0147) ----
--- Quem AGENDA gravava `next_eval_at` com o relógio do PROCESSO; quem RECLAMA
--- compara com `now()` do POSTGRES. Medido: o banco fica 17–34 ms atrás, então o
--- "agora" do processo ainda é FUTURO para o claim — o tick seguinte não reclama
--- e o enrollment espera o tick DEPOIS (até 60 s, cron de minuto em minuto).
--- Corrigir por margem seria número mágico que envelhece; a correção é os dois
--- lados usarem o mesmo relógio.
---
--- ADITIVO E RETROCOMPATÍVEL: `default` só age na AUSÊNCIA da coluna, então todo
--- insert que já passa `next_eval_at` explicitamente continua idêntico. Nada a
--- corrigir nos dados antes — não há constraint nova.
---
--- O QUE O DEFAULT CUSTA, decidido e não descoberto depois: hoje inserir um
--- enrollment ativo SEM `next_eval_at` falha ALTO (o CHECK recusa); com o
--- default, esquecer o campo passa a ser SILENCIOSO e significa "vencido agora".
--- Troca de falha barulhenta por plausível — aceita porque os dois produtores de
--- nascimento significam "agora", quem quiser outro instante continua passando
--- valor explícito, e a regra está escrita no `comment on column` abaixo.
-alter table public.followup_enrollments
-  alter column next_eval_at set default now();
 
-comment on column public.followup_enrollments.next_eval_at is
-  'Quando este enrollment vence. DEFAULT now() do BANCO (migration 0147): quem agenda "para agora" deve OMITIR a coluna, porque o claim compara com now() do Postgres e o relógio do processo fica milissegundos à frente — o suficiente para o enrollment perder um tick inteiro (60s). Agendamento para o FUTURO continua passando valor explícito.';
-
--- Para o caso em que `default` não alcança: UPDATE. O supabase-js grava VALOR,
--- nunca EXPRESSÃO, e o PostgREST só expõe tabela e função — sem isto o worker
--- agendaria com o relógio do próprio processo.
-create or replace function public.fn_agora()
-returns timestamptz
-language sql
-stable
-set search_path to 'public', 'pg_temp'
-as $fn$
-  select now()
-$fn$;
-
-comment on function public.fn_agora() is
-  'O relógio do BANCO, para quem precisa gravar um instante que será comparado com now() (migration 0147).';
-
--- AS DUAS ORIGENS DE EXECUTE (CLAUDE.md, doutrina de migrations, item 9): o
--- grant direto a anon do `alter default privileges` do baseline, que
--- `revoke from public` não remove; e o grant a PUBLIC que o Postgres dá na
--- criação, que `revoke from anon` não remove.
-revoke all     on function public.fn_agora() from public;
-revoke execute on function public.fn_agora() from anon, authenticated;
-grant  execute on function public.fn_agora() to service_role;
 
 notify pgrst, 'reload schema';
