@@ -38,7 +38,7 @@ import type { ActivityType } from "@/lib/leads/activity-vocabulary";
 import { logger } from "@/lib/logger";
 
 import { resolveAlvoDoRetorno } from "./retorno-crm";
-import { flowGraphSchema, type FlowEdge } from "./graph-schema";
+import { flowGraphSchema, type FlowEdge, type FlowNode } from "./graph-schema";
 import { rotuloDaAresta } from "./eventos-legiveis";
 
 /** Estados em que o enrollment tem relógio: são os únicos que o motor reclama. */
@@ -127,12 +127,18 @@ export interface SaidaDoNo {
  * atendimento — a tela pergunta. Com saída única, perguntar seria burocracia; com
  * várias, `escolha_necessaria` devolve as opções para a tela oferecer.
  */
-export function escolheSaida(edges: FlowEdge[], from: string, edgeIdPedido?: string | null): EscolhaDeSaida {
+export function escolheSaida(
+  edges: FlowEdge[],
+  from: string,
+  edgeIdPedido?: string | null,
+  /** O nó de origem — no grafo v2 é ele que conhece o NOME de cada ramo. */
+  origem?: FlowNode,
+): EscolhaDeSaida {
   const candidatas = edges.filter((e) => e.source === from).slice().sort((a, b) => b.priority - a.priority);
   const opcoes: SaidaDoNo[] = candidatas.map((e) => ({
     edge_id: e.id,
     target_id: e.target,
-    quando: rotuloDaAresta(e),
+    quando: rotuloDaAresta(e, origem),
   }));
 
   if (candidatas.length === 0) return { ok: false, codigo: "sem_caminho", opcoes };
@@ -580,7 +586,12 @@ export async function pulaPassoDoEnrollment(
     };
   }
 
-  const escolha = escolheSaida(grafo.data.edges, alvo.current_node_id, edgeId);
+  const escolha = escolheSaida(
+    grafo.data.edges,
+    alvo.current_node_id,
+    edgeId,
+    grafo.data.nodes.find((n) => n.id === alvo.current_node_id),
+  );
   if (!escolha.ok) {
     const mensagem =
       escolha.codigo === "sem_caminho"

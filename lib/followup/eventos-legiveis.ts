@@ -19,9 +19,9 @@
  * contato) — quando o nó sumiu do grafo pinado, o id cru aparece dito como id,
  * porque um alvo feio é melhor que alvo nenhum.
  */
-import { nodeBranches } from "./graph-schema";
+import { FALLBACK_BRANCH_ID, branchIdForCondition, nodeBranches } from "./graph-schema";
 import type { BranchableNode, FlowEdge, FlowNode } from "./graph-schema";
-import { rotuloDoRamo } from "./rotulo-do-ramo";
+import { fraseDoRamo } from "./vocabulario";
 
 // ---------------------------------------------------------------------------
 // Duração
@@ -164,28 +164,36 @@ export function resumoDoNo(node: FlowNode): NoDoDossie {
 /**
  * Quando este caminho é seguido — o que a pessoa lê ao escolher um ramo para pular.
  *
- * `class_match`/`cond_result` viram frase, não jargão; o `always` diz que é o
- * caminho único, porque "sempre" sozinho não informa nada a quem está decidindo.
+ * A frase NÃO é escrita aqui: vem de `fraseDoRamo` (vocabulario.ts), que é o
+ * registro do DOSSIÊ, distinto do registro de etiqueta que o canvas usa. Foi uma
+ * convergência independente que expôs isto — a Fila escreveu as frases inline e
+ * eu deleguei ao rótulo de etiqueta; as duas estavam meio certas. As frases são
+ * do vocabulário, e é lá que elas ficam.
  *
- * `origem` é o nó de onde a aresta sai. Só ele sabe o NOME da saída quando a
- * condição é `branch` (o `branch_id` é opaco de propósito — é identidade, não
- * texto). Passe-o e a frase sai com o rótulo que o usuário escreveu; sem ele a
- * frase diz que é um caminho nomeado, e não inventa um nome nem cospe o id.
- * Quem compõe é `rotuloDoRamo`, o MESMO usado pelo card e pelo painel da
- * aresta — este arquivo não vai ganhar um segundo dicionário.
+ * Delegar é também o que faz o MESMO fluxo ser lido igual nos dois dialetos: o
+ * ramo chega como `class_match` (v1) ou como `branch_id` (v2),
+ * `branchIdForCondition` resolve os dois para o mesmo ramo, e o texto sai único.
+ * Era exatamente esse risco que `fraseDoRamo` foi escrita para eliminar.
+ *
+ * `origem` é o nó de onde a aresta sai — só ele sabe o rótulo declarado do ramo,
+ * porque no contrato v2 a identidade mora no nó e o `branch_id` é opaco.
  */
 export function rotuloDaAresta(edge: FlowEdge, origem?: BranchableNode): string {
-  if (edge.condition.type === "always") return "caminho normal";
-  if (edge.condition.type === "cond_result") {
-    return edge.condition.value ? "quando a condição é verdadeira" : "quando a condição é falsa";
-  }
-  if (edge.condition.type === "branch") {
-    const alvo = edge.condition.branch_id; // fora do closure: lá dentro o narrowing se perde
-    const ramo = origem ? nodeBranches(origem).find((b) => b.id === alvo) : undefined;
-    return ramo ? `quando ${rotuloDoRamo(ramo).toLocaleLowerCase("pt-BR")}` : "por uma saída específica";
-  }
-  if (edge.condition.value === "no_reply") return "quando ninguém responde";
-  return `quando a resposta é “${edge.condition.value}”`;
+  // Ramo que o nó não declara mais (regra apagada, fluxo republicado): o RAMO
+  // sumiu, o caminho não. Chamar isso de "caminho normal" seria afirmar que o
+  // lead seguiu o fluxo padrão — mentira sobre o que aconteceu, e pior que os
+  // dois textos que estavam em disputa aqui. Segue como ramo sem nome.
+  const ramoId =
+    branchIdForCondition(origem, edge.condition) ??
+    (edge.condition.type === "branch" ? edge.condition.branch_id : FALLBACK_BRANCH_ID);
+  // No dialeto v1 o texto da classe é ao mesmo tempo o id e o rótulo — é o que
+  // o usuário escreveu. Só o v2 separa os dois, e aí o nome mora no nó. Sem
+  // este segundo caminho, um fluxo v1 (a maioria hoje) perderia o nome da
+  // classe no histórico e leria "por um caminho sem nome".
+  const doNo = origem ? nodeBranches(origem).find((b) => b.id === ramoId)?.label : null;
+  const declarado =
+    doNo ?? (edge.condition.type === "class_match" ? edge.condition.value : undefined);
+  return fraseDoRamo(ramoId, declarado);
 }
 
 /** O nó como aparece numa frase; id cru quando ele não está mais no grafo pinado. */
@@ -266,7 +274,13 @@ export function descreveEvento(
       return { titulo: "Começou a esperar", detalhe: ate ? `volta a olhar em ${ate}${modo}` : null, ...motor };
     }
     case "turn_enqueued":
-      return { titulo: "Pediu ao agente para escrever a mensagem", detalhe: null, ...motor };
+      // O MESMO event_type serve a dois pedidos diferentes, e o `purpose` no
+      // payload é o que os separa. Sem olhar para ele, o passo de PLANEJAMENTO
+      // aparecia como "escrever a mensagem" — uma linha que descreve o passo
+      // errado é pior que uma linha genérica, porque não parece errada.
+      return texto(p.purpose) === "plan_timing"
+        ? { titulo: "Pediu ao agente para planejar os tempos de espera", detalhe: null, ...motor }
+        : { titulo: "Pediu ao agente para escrever a mensagem", detalhe: null, ...motor };
     case "classify_enqueued":
       return { titulo: "Pediu ao agente para interpretar a resposta", detalhe: null, ...motor };
     case "action_recheck": {
@@ -310,6 +324,22 @@ export function descreveEvento(
       return { titulo: "Pausado porque uma pessoa assumiu a conversa", detalhe: null, ...pessoa };
     case "handoff_resumed":
       return { titulo: "Retomado: o atendimento voltou para o agente", detalhe: null, ...motor };
+    case "timing_plan_decidido": {
+      const quantas = Object.keys((p.esperas as Record<string, unknown> | undefined) ?? {}).length;
+      return {
+        titulo: "O agente decidiu quanto esperar em cada passo",
+        detalhe: quantas > 0 ? `${quantas} ${quantas === 1 ? "espera planejada" : "esperas planejadas"}` : null,
+        ...motor,
+      };
+    }
+    case "timing_plan_desistido":
+      // Seguir sem plano é um FATO, não a ausência de um: cada espera cai no
+      // máximo, e quem lê o dossiê precisa saber por que o fluxo ficou lento.
+      return {
+        titulo: "Seguiu sem o plano de tempo",
+        detalhe: "o agente não respondeu a tempo; cada espera usa o máximo configurado",
+        ...motor,
+      };
     case "cancelled_manual":
       return { titulo: "Cancelado por uma pessoa da equipe", detalhe: null, ...pessoa };
     case "paused_manual":

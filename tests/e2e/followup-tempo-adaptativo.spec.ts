@@ -262,10 +262,12 @@ test.describe("nó de espera — o modo Adaptativo tem de decidir de verdade", (
     const filaRes = await page.request.get(`/api/v1/ai/followups/queue?pointer_id=${flowId}`);
     expect(filaRes.ok(), `ler fila: ${filaRes.status()}`).toBe(true);
     const { data: fila } = (await filaRes.json()) as {
-      // `node_or_reason` faltava só nesta anotação local — a rota devolve o campo
-      // (`app/api/v1/ai/followups/queue/route.ts`), e a asserção estrutural
-      // abaixo já o usava. Nenhuma asserção mudou; só o tipo passou a descrever
-      // o que a resposta tem.
+      // `node_or_reason` é a coluna "Nó atual / Motivo" da tela — a mesma que a
+      // asserção estrutural abaixo lê. Faltava só nesta anotação LOCAL: a rota
+      // devolve o campo (`app/api/v1/ai/followups/queue/route.ts`), então
+      // declarar só `id` e `next_fire_at` deixava o typecheck vermelho na
+      // integração. Nenhuma asserção mudou; o tipo é que passou a descrever o
+      // que a resposta já tinha.
       data: Array<{ id: string; next_fire_at: string | null; node_or_reason: string }>;
     };
     const minha = fila.find((r) => r.id === matricula.id);
