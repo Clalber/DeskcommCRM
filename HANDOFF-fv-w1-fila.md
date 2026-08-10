@@ -101,6 +101,20 @@ Lição para a wave: `drop index` + `create index` de um índice que já foi
 recriado antes é reescrita silenciosa. A definição a copiar é a que está em
 vigor, nunca a da DDL original.
 
+### O vermelho que eu HERDEI (e que vale um alerta de repo)
+
+Ao mergear a integração, o `pnpm typecheck` veio VERMELHO por um arquivo que não
+é meu: `tests/e2e/followup-tempo-adaptativo.spec.ts` declara o tipo da resposta
+da fila como `{ id, next_fire_at }` e a asserção estrutural lê `node_or_reason`.
+Uma linha; corrigida, com aviso ao dono.
+
+**O que isso revela é maior que o erro:** o `e2e` não roda no gate de tipos, e
+`pnpm test:e2e` não faz typecheck — então uma spec com tipo incompleto só
+reprova quando alguém roda `pnpm typecheck`, que é o check OBRIGATÓRIO da main.
+Quer dizer: qualquer spec nova entra na árvore podendo derrubar o `verify` de
+quem mergear depois, e o autor não vê. Vale para as cinco specs que esta wave
+criou.
+
 ### E o que só a TELA pegou
 
 O cenário do plano rodou, e a screenshot mostrou duas linhas erradas na história
