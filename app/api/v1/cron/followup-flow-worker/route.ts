@@ -83,8 +83,14 @@ async function handle(req: NextRequest): Promise<Response> {
   // `claim_falhou` entra na condição porque é o ÚNICO caso em que todos os
   // contadores são zero e ainda assim algo aconteceu: o claim não chegou ao
   // banco. Sem esta cláusula o tick que falhou é idêntico, na trilha, ao tick de
-  // uma instalação sem nada a fazer — e o campo, criado justamente para
-  // distinguir os dois, não teria consumidor nenhum.
+  // uma instalação sem nada a fazer.
+  //
+  // O emissor NUNCA foi o buraco: `claim_falhou` e o `logger.error` existem em
+  // `runFollowupTick` desde f66f0ddb, com teste. O que faltava era o outro lado
+  // — anti-pattern 3 do CLAUDE.md, evento sem consumer: o campo criado para
+  // separar "o banco não respondeu" de "não havia nada a fazer" era emitido e
+  // ninguém o lia. Quem vier depois precisa saber onde estava o defeito, senão
+  // vai procurar no lugar que já estava certo.
   if (
     summary.claim_falhou ||
     summary.claimed ||
