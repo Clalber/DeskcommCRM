@@ -25,6 +25,7 @@
 import { describe, expect, it } from "vitest";
 
 import { BEFORE_SEND_GATES } from "@/lib/agent-engine/guardrails/before-send";
+import { CAMADAS_SEMANTICAS } from "@/lib/agent-engine/guardrails/camadas-da-org";
 import {
   CONFERENCIAS_DE_SAIDA,
   CONFERENCIA_DE_ENTRADA,
@@ -85,6 +86,30 @@ describe("a lista da tela casa com a cadeia que roda", () => {
         ).toBeGreaterThan(30);
       } else {
         expect(c.escolha.custo, `${c.nome} é configurável e não diz o custo`).toMatch(/consulta/i);
+      }
+    }
+  });
+
+  it("as camadas configuráveis apontam para chaves que a tabela conhece", () => {
+    // SÃO DOIS VOCABULÁRIOS e eles não coincidem: aqui o nome é o do gate na
+    // cadeia (`semantic_promise`), na tabela é o da camada (`promessa_semantica`).
+    // Casar um pelo outro por semelhança de nome fez a tela não encontrar o
+    // estado e mostrar "carregando…" para sempre — pego pelo teste de componente
+    // ao escrever isto. O vínculo é explícito no campo `camada`, e este caso é o
+    // que impede a próxima divergência.
+    const declaradas = [...CONFERENCIAS_DE_SAIDA, CONFERENCIA_DE_ENTRADA]
+      .map((c) => c.camada)
+      .filter((c): c is NonNullable<typeof c> => c !== null);
+
+    expect(new Set(declaradas)).toEqual(new Set(CAMADAS_SEMANTICAS));
+
+    // E o inverso: conferência COM escolha tem de declarar a camada, senão o
+    // interruptor não teria o que gravar.
+    for (const c of [...CONFERENCIAS_DE_SAIDA, CONFERENCIA_DE_ENTRADA]) {
+      if (c.escolha !== null) {
+        expect(c.camada, `${c.nome} é configurável e não diz qual camada grava`).not.toBeNull();
+      } else {
+        expect(c.camada, `${c.nome} não é escolha e mesmo assim aponta uma camada`).toBeNull();
       }
     }
   });

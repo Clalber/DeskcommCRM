@@ -119,6 +119,7 @@ import {
   type JailbreakClassifierKnobs,
   type JailbreakLevel,
 } from '../guardrails/jailbreak/classifier';
+import { camadaLigada, lerCamadasDaOrg } from '../guardrails/camadas-da-org';
 
 /**
  * Superfície ESTÁTICA das tools do agente (description + inputSchema) — parte do
@@ -751,6 +752,19 @@ export async function runAgentTurn(
   // Contexto do RUN em toda linha de log do turno (F2-16): job_id É o run id.
   const runLog = withFields(deps.log, { job_id: job.id, tenant_id: tenantId, lead_id: leadId });
 
+  // AS DUAS CAMADAS QUE CUSTAM DINHEIRO, resolvidas UMA vez por turno.
+  //
+  // Os knobs (`deps.knobs.jailbreak`, `deps.knobs.promiseSemantic`) nascem no boot
+  // do worker e valem para a instalação inteira; a linha em `org_guardrail_layers`
+  // é a preferência de QUEM PAGA a consulta. Sem linha, `camadaLigada` devolve o
+  // padrão do ambiente — aplicar a migration não muda o comportamento de quem já
+  // decidiu no `.env`.
+  //
+  // Lido aqui, e não em cada ponto de uso: os dois consumidores ficam a ~900
+  // linhas de distância um do outro, e duas queries para a mesma pergunta viram,
+  // com o tempo, duas respostas.
+  const camadas = await lerCamadasDaOrg(pool, tenantId);
+
   // F4-06 (acceptance 2): lead em handoff humano → NO-OP no INÍCIO do turno, antes de
   // qualquer chamada de modelo/CRM. O bot silenciou (bot_silenced_until='infinity', cache
   // do force_human do CRM) e só o humano/CRM libera — o agente nunca reassume (regra dura 2).
@@ -1066,7 +1080,7 @@ export async function runAgentTurn(
   // ROW do job fechados dentro (regra dura nº 1) — resolvido pelo seam agnóstico. undefined =
   // camada off (gate no-op). CUSTO: uma chamada de modelo POR ENVIO quando ligada.
   const semanticClassifier =
-    deps.knobs.promiseSemantic?.enabled === true
+    camadaLigada(camadas.promessa_semantica, deps.knobs.promiseSemantic?.enabled === true)
       ? (candidate: string) =>
           classifyPromise(
             pool,
@@ -1965,14 +1979,16 @@ export async function runAgentTurn(
   // checado nele). NÃO veta o inbound — só FLAGRA o turno no trace; flag/level não são PII
   // (a mensagem/reason nunca vão a log). A correlação com promessa fora de tabela escala no fim.
   let jailbreakLevel: JailbreakLevel = 'none';
-  if (deps.knobs.jailbreak !== undefined) {
+  if (camadaLigada(camadas.jailbreak, deps.knobs.jailbreak !== undefined)) {
     const verdict = await classifyJailbreak(
       pool,
       deps.llmCfg,
       { tenantId, leadId, jobId: job.id },
       {
         message: skillSignal,
-        ...argsAux(deps.knobs.jailbreak.model),
+        // Knob ausente + organização ligando = roda com o modelo padrão dela,
+        // que é a convenção já usada pelo stageClassifier.
+        ...argsAux(deps.knobs.jailbreak?.model),
       },
       { registry: deps.registry, log: runLog },
     );

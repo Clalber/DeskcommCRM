@@ -24,15 +24,26 @@
  * uma linha; onde há (as duas que custam uma consulta ao modelo), ela diz o custo
  * e de onde a decisão vem hoje.
  *
- * As duas configuráveis ainda são decididas no servidor. A tela DIZ isso, em vez
- * de mostrar um interruptor que ela grava e o motor ignora — que é exatamente o
- * defeito de "tela oferece o que o código ignora". Quando o motor passar a ler a
- * escolha por organização, o interruptor entra aqui; até lá, controle decorativo
- * é pior que controle ausente.
+ * As duas configuráveis TÊM interruptor, e ele só existe porque o motor passou a
+ * ler a escolha por organização (`org_guardrail_layers`, migration 0142) nos três
+ * pontos onde as camadas são consumidas. A ordem importou: enquanto o motor lia
+ * só o `.env`, um interruptor aqui seria a tela gravando o que o código ignora —
+ * o defeito de "controle decorativo", que é pior que controle ausente.
+ *
+ * E há TRÊS estados, não dois. Sem escolha da organização vale o padrão do
+ * servidor, e a tela diz isso em vez de mostrar um interruptor desligado para
+ * quem tem a camada ligada por fora.
  */
 import * as React from "react";
 
 import { Card } from "@/components/ui/card";
+import { Switch } from "@/components/ui/switch";
+
+import {
+  useGuardrailLayers,
+  useSetGuardrailLayer,
+  type CamadaDeSeguranca,
+} from "@/hooks/ai/useGuardrailLayers";
 
 import {
   CONFERENCIAS_DE_SAIDA,
@@ -40,9 +51,27 @@ import {
   type ConferenciaDeSaida,
 } from "@/lib/ai/guardrails/lista-de-conferencia";
 
-function Conferencia({ c, ordem }: { c: ConferenciaDeSaida; ordem: number | null }) {
+function Conferencia({
+  c,
+  ordem,
+  estado,
+  podeEditar,
+  salvando,
+  onToggle,
+}: {
+  c: ConferenciaDeSaida;
+  ordem: number | null;
+  estado: CamadaDeSeguranca | undefined;
+  podeEditar: boolean;
+  salvando: boolean;
+  onToggle: (layer: string, v: boolean) => void;
+}) {
+  // Prefixo próprio para o ITEM: os controles dentro dele têm testid começando em
+  // `conferencia-`, e contar por esse prefixo misturava os dois — a contagem
+  // mudava a cada elemento novo. O teste de tela pegou isso quando o interruptor
+  // entrou.
   return (
-    <li data-testid={`conferencia-${c.nome}`} className="flex gap-3 py-3">
+    <li data-testid={`item-conferencia-${c.nome}`} className="flex gap-3 py-3">
       <span
         aria-hidden
         className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium text-muted-foreground"
@@ -58,14 +87,33 @@ function Conferencia({ c, ordem }: { c: ConferenciaDeSaida; ordem: number | null
             {c.porQueNaoSeDesliga}
           </p>
         ) : (
-          <p data-testid={`conferencia-${c.nome}-escolha`} className="text-xs text-muted-foreground">
-            <span className="font-medium text-foreground">Ligada</span> — a escolha vem da
-            configuração do servidor. Custa {c.escolha.custo}. O modelo usado se escolhe em{" "}
-            <a className="underline underline-offset-2" href="/app/ai/providers">
-              Provedores de IA
-            </a>
-            .
-          </p>
+          <div data-testid={`conferencia-${c.nome}-escolha`} className="space-y-1">
+            <div className="flex items-center gap-2">
+              <Switch
+                data-testid={`conferencia-${c.nome}-liga`}
+                checked={estado?.efetivo ?? false}
+                disabled={!podeEditar || salvando}
+                onCheckedChange={(v) => onToggle(c.nome, v)}
+                aria-label={c.rotulo}
+              />
+              <span className="text-xs text-muted-foreground">
+                {estado === undefined
+                  ? "carregando…"
+                  : estado.escolha === null
+                    ? `${estado.efetivo ? "Ligada" : "Desligada"} — vem da configuração do servidor`
+                    : estado.escolha
+                      ? "Ligada por você"
+                      : "Desligada por você"}
+              </span>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Custa {c.escolha.custo}. O modelo usado se escolhe em{" "}
+              <a className="underline underline-offset-2" href="/app/ai/providers">
+                Provedores de IA
+              </a>
+              .
+            </p>
+          </div>
         )}
       </div>
     </li>
@@ -73,6 +121,19 @@ function Conferencia({ c, ordem }: { c: ConferenciaDeSaida; ordem: number | null
 }
 
 export function PainelDeSeguranca() {
+  const camadas = useGuardrailLayers();
+  const gravar = useSetGuardrailLayer();
+
+  const porNome = new Map((camadas.data?.camadas ?? []).map((c) => [c.layer as string, c]));
+  const podeEditar = camadas.data?.podeEditar ?? false;
+  const props = (camada: string | null) => ({
+    estado: camada === null ? undefined : porNome.get(camada),
+    podeEditar,
+    salvando: gravar.isPending,
+    onToggle: (layer: string, v: boolean) =>
+      gravar.mutate({ layer: layer as CamadaDeSeguranca["layer"], enabled: v }),
+  });
+
   return (
     <div className="space-y-4" data-testid="painel-de-seguranca">
       <Card className="space-y-2 p-4">
@@ -84,7 +145,7 @@ export function PainelDeSeguranca() {
         </p>
         <ul className="divide-y">
           {CONFERENCIAS_DE_SAIDA.map((c, i) => (
-            <Conferencia key={c.nome} c={c} ordem={i + 1} />
+            <Conferencia key={c.nome} c={c} ordem={i + 1} {...props(c.camada)} />
           ))}
         </ul>
       </Card>
@@ -95,7 +156,7 @@ export function PainelDeSeguranca() {
           Esta roda sobre a mensagem que chega, antes das outras — por isso aparece separada.
         </p>
         <ul className="divide-y">
-          <Conferencia c={CONFERENCIA_DE_ENTRADA} ordem={null} />
+          <Conferencia c={CONFERENCIA_DE_ENTRADA} ordem={null} {...props(CONFERENCIA_DE_ENTRADA.camada)} />
         </ul>
       </Card>
     </div>

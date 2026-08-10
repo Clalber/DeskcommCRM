@@ -50,6 +50,16 @@ export interface ConferenciaDeSaida {
   escolha: { custo: string } | null;
   /** Por que não se desliga. Vazio quando há escolha. */
   porQueNaoSeDesliga: string;
+  /**
+   * A chave da camada em `org_guardrail_layers`, quando há escolha.
+   *
+   * São DOIS vocabulários e eles não coincidem: aqui o nome é o do gate na cadeia
+   * (`semantic_promise`), lá é o da camada configurável (`promessa_semantica`). O
+   * vínculo é explícito porque casar um pelo outro por semelhança de nome é como
+   * a tela deixa de encontrar o estado e mostra "carregando…" para sempre —
+   * aconteceu ao escrever isto, e o teste de componente pegou.
+   */
+  camada: "promessa_semantica" | "jailbreak" | null;
 }
 
 /**
@@ -66,6 +76,7 @@ export const CONFERENCIAS_DE_SAIDA: readonly ConferenciaDeSaida[] = [
     escolha: null,
     porQueNaoSeDesliga:
       "Quem pediu para parar tem o direito de ser deixado em paz — e insistir é infração, não estratégia.",
+     camada: null,
   },
   {
     nome: "lgpd",
@@ -74,6 +85,7 @@ export const CONFERENCIAS_DE_SAIDA: readonly ConferenciaDeSaida[] = [
       "Contato anonimizado a pedido não recebe mensagem, e prospecção sem base legal não sai.",
     escolha: null,
     porQueNaoSeDesliga: "É obrigação legal. Apagar dados é irreversível por desenho, e escrever para quem foi apagado desfaria isso.",
+     camada: null,
   },
   {
     nome: "pacing",
@@ -82,6 +94,7 @@ export const CONFERENCIAS_DE_SAIDA: readonly ConferenciaDeSaida[] = [
       "Espaça as mensagens para o seu número não parecer robô e ser bloqueado pelo WhatsApp.",
     escolha: null,
     porQueNaoSeDesliga: "É o que impede seu número de ser bloqueado — e o número é o seu negócio.",
+     camada: null,
   },
   {
     nome: "messaging_window",
@@ -91,6 +104,7 @@ export const CONFERENCIAS_DE_SAIDA: readonly ConferenciaDeSaida[] = [
     escolha: null,
     porQueNaoSeDesliga:
       "Quem impõe é o WhatsApp, não nós. Desligar aqui não libera nada: a mensagem seria recusada lá, ou cobrada.",
+     camada: null,
   },
   {
     nome: "spinning",
@@ -99,6 +113,7 @@ export const CONFERENCIAS_DE_SAIDA: readonly ConferenciaDeSaida[] = [
       "Evita mandar a mesma frase idêntica para muita gente, que é o padrão que denuncia disparo em massa.",
     escolha: null,
     porQueNaoSeDesliga: "Texto idêntico em massa é o gatilho de spam do WhatsApp — mesmo risco do ritmo de envio.",
+     camada: null,
   },
   {
     nome: "promise",
@@ -108,6 +123,7 @@ export const CONFERENCIAS_DE_SAIDA: readonly ConferenciaDeSaida[] = [
     escolha: null,
     porQueNaoSeDesliga:
       "Uma promessa escrita obriga o seu negócio. A conferência é uma regra fixa, não custa nada e não tem troca a oferecer.",
+     camada: null,
   },
   {
     nome: "semantic_promise",
@@ -116,6 +132,7 @@ export const CONFERENCIAS_DE_SAIDA: readonly ConferenciaDeSaida[] = [
       "Uma segunda leitura, feita por um modelo, para pegar a promessa escrita de um jeito que a regra fixa não reconhece.",
     escolha: { custo: "+1 consulta ao modelo por mensagem enviada" },
     porQueNaoSeDesliga: "",
+    camada: "promessa_semantica",
   },
   {
     nome: "case_promise",
@@ -125,6 +142,7 @@ export const CONFERENCIAS_DE_SAIDA: readonly ConferenciaDeSaida[] = [
     escolha: null,
     porQueNaoSeDesliga:
       "É promessa que só você pode cumprir, e o cliente fica esperando. Regra fixa, sem custo.",
+     camada: null,
   },
   {
     nome: "internal_vocabulary",
@@ -134,6 +152,7 @@ export const CONFERENCIAS_DE_SAIDA: readonly ConferenciaDeSaida[] = [
     escolha: null,
     porQueNaoSeDesliga:
       "É a conferência que derrubou o vazamento medido de 30% para zero. Desligar reabre exatamente o defeito que ela existe para fechar.",
+     camada: null,
   },
   {
     nome: "disclosure",
@@ -141,6 +160,7 @@ export const CONFERENCIAS_DE_SAIDA: readonly ConferenciaDeSaida[] = [
     oQueProtege: "Se o cliente pergunta se está falando com um robô, a resposta não pode enganar.",
     escolha: null,
     porQueNaoSeDesliga: "Esconder que é um assistente é enganar o cliente.",
+     camada: null,
   },
 ];
 
@@ -158,4 +178,5 @@ export const CONFERENCIA_DE_ENTRADA: ConferenciaDeSaida = {
     "Lê a mensagem que chega e reconhece quem está tentando fazer o assistente ignorar as suas instruções.",
   escolha: { custo: "+1 consulta ao modelo por mensagem recebida" },
   porQueNaoSeDesliga: "",
+  camada: "jailbreak",
 };

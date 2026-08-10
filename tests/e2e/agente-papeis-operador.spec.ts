@@ -125,13 +125,19 @@ test.describe("A aba do papel que organiza o sistema", () => {
     expect(altura, "o painel está no DOM e não ocupa espaço na tela").toBeGreaterThan(100);
 
     // Todas as conferências, não uma amostra.
-    const itens = painel.locator('[data-testid^="conferencia-"]:not([data-testid$="-fixa"]):not([data-testid$="-escolha"])');
+    const itens = painel.locator('[data-testid^="item-conferencia-"]');
     await expect(itens).toHaveCount(11);
 
-    // ZERO interruptores: as que não são escolha não se apresentam como escolha,
-    // e as duas configuráveis ainda são decididas no servidor. Um switch aqui
-    // seria a tela oferecendo o que o motor ignora.
-    await expect(painel.locator('[role="switch"]')).toHaveCount(0);
+    // EXATAMENTE DOIS interruptores — um por camada que custa dinheiro. Este caso
+    // já afirmou ZERO, e a mudança é deliberada: enquanto o motor lia só o `.env`,
+    // um controle aqui seria a tela gravando o que o código ignora. Depois que a
+    // 0142 criou a escolha por organização e os três pontos de consumo passaram a
+    // lê-la, o interruptor deixou de ser decorativo.
+    //
+    // As outras nove seguem sem controle, e é isso que a contagem exata guarda:
+    // um switch a mais aqui é alguém oferecendo desligar o que protege o número
+    // do cliente.
+    await expect(painel.locator('[role="switch"]')).toHaveCount(2);
   });
 
   test("desligado, a tela diz o que CONTINUA acontecendo — não só o que para", async () => {
