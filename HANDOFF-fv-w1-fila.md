@@ -126,9 +126,9 @@ verde** — afirmo que o invariante novo (`followup-intervencao`, 6 casos) passo
    (`hooks/followup/useFollowupQueue.ts → FollowupEnrollmentStatus`) deveria
    entrar em `tests/invariants/vocabulario-banco-x-typescript.test.ts`. O hook de
    pre-commit congela `tests/invariants/**` e a exceção que ele prevê é outra
-   (flip de `test.fails`) — **não driblei**. O texto pronto está em
-   `/private/tmp/.../scratchpad/par-vocabulario-pendente.md`. Sem ele a entrega
-   funciona; o que se perde é a guarda contra a próxima divergência banco↔tela.
+   (flip de `test.fails`) — **não driblei**. O texto pronto está no apêndice
+   deste documento. Sem ele a entrega funciona; o que se perde é a guarda contra
+   a próxima divergência banco↔tela.
 
 2. **`timing_plan` criado com `if not exists` na 0145** — a coluna é do contrato
    da 0144 (DevVivo). Criei aqui de propósito: o consumidor não pode depender da
@@ -140,3 +140,37 @@ verde** — afirmo que o invariante novo (`followup-intervencao`, 6 casos) passo
    teste tem `timing_plan` (o motor adaptativo é da wave dele). A leitura está
    coberta por unitário; quando o DevVivo integrar, um cenário com plano fecha
    o caso J9 que falta.
+
+---
+
+## Apêndice — o par pendente, pronto para aplicar
+
+Vai no fim do array `PARES` de
+`tests/invariants/vocabulario-banco-x-typescript.test.ts` (depois de
+`channel_sessions.provider`). **Não afrouxa nada**: acrescenta uma linha à tabela
+que o próprio arquivo pede ("Coluna nova com CHECK de conjunto → uma linha
+aqui"); nenhuma asserção existente é tocada.
+
+```ts
+  {
+    tabela: "followup_enrollments",
+    coluna: "status",
+    // hooks/followup/useFollowupQueue.ts → FollowupEnrollmentStatus.
+    //
+    // O par aponta para o tipo da TELA, e não para `EnrollmentStatus` de
+    // `lib/followup/node-handlers.ts`, porque são conjuntos diferentes de
+    // propósito: o do motor enumera o que o motor manipula, e o motor nunca lê
+    // nem escreve `paused_manual` (o claim filtra `active|waiting_reply`). Quem
+    // precisa conhecer TODOS os estados é quem os mostra — a fila.
+    //
+    // Nasce junto com a 0145, que acrescentou o sétimo valor. Sem o par, um
+    // status novo no CHECK vira linha na fila com rótulo cru: `rotuloDoStatus`
+    // cai no fallback e a tela mostra o identificador do banco no rosto de quem
+    // opera.
+    arquivo: "hooks/followup/useFollowupQueue.ts",
+    simbolo: "FollowupEnrollmentStatus",
+  },
+```
+
+Com autorização, o commit precisa de `DESKCOMM_GOV_INVARIANTS_EDIT=1` e da razão
+citada na mensagem — é o que o hook exige de quem passa por ele.
