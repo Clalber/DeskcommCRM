@@ -354,8 +354,17 @@ export type FlowBranchKind = 'match' | 'fallback';
 export type FlowBranch = {
   /** Stable within the node. Reserved ids are contract-owned; the rest come from the user's config. */
   id: string;
-  /** pt-br text for the handle and the edge panel. */
-  label: string;
+  /**
+   * Text that is ALREADY decided: what the user typed (the rule's label, the
+   * class name) or a fixed term of the contract. `null` on a `per_check` branch
+   * the user never named — there the sentence is COMPOSED from `check`, and
+   * composing pt-br out of a rule is the vocabulary's job (`vocabulario.ts`,
+   * `fraseDaCondicao`), not the contract's. This file must not grow a second
+   * field/operator dictionary next to that one.
+   */
+  label: string | null;
+  /** The rule behind a `per_check` branch, so the vocabulary can phrase it. `null` on every other branch. */
+  check: ConditionCheck | null;
   kind: FlowBranchKind;
   /** The condition an edge leaving through this branch must carry — canonical for THIS node's dialect. */
   condition: FlowEdgeCondition;
@@ -365,29 +374,14 @@ const FALLBACK_ALWAYS_LABEL = 'Sempre';
 const FALLBACK_NONE_LABEL = 'Nenhuma delas';
 const NO_REPLY_LABEL = 'Sem resposta';
 
-const CHECK_FIELD_LABELS: Record<ConditionCheck['field'], string> = {
-  lead_stage: 'Etapa',
-  tag: 'Tag',
-  steps_taken: 'Passos',
-  last_outcome: 'Último desfecho',
-};
-
-const CHECK_OP_LABELS: Record<ConditionCheck['op'], string> = {
-  eq: '=',
-  neq: '≠',
-  gte: '≥',
-  lte: '≤',
-  contains: 'contém',
-};
-
-/** Fallback text for a per-check branch the user never named — readable, not an id dump. */
-export function checkBranchLabel(check: ConditionCheck): string {
-  if (check.label !== undefined) return check.label;
-  return `${CHECK_FIELD_LABELS[check.field]} ${CHECK_OP_LABELS[check.op]} ${check.value}`;
-}
-
 function fallbackBranch(label: string): FlowBranch {
-  return { id: FALLBACK_BRANCH_ID, label, kind: 'fallback', condition: { type: 'always' } };
+  return {
+    id: FALLBACK_BRANCH_ID,
+    label,
+    check: null,
+    kind: 'fallback',
+    condition: { type: 'always' },
+  };
 }
 
 /**
@@ -406,7 +400,8 @@ export function nodeBranches(node: FlowNode): FlowBranch[] {
             : [
                 {
                   id: check.id,
-                  label: checkBranchLabel(check),
+                  label: check.label ?? null, // null: o vocabulário monta a frase a partir de `check`
+                  check,
                   kind: 'match' as const,
                   condition: { type: 'branch' as const, branch_id: check.id },
                 },
@@ -418,12 +413,14 @@ export function nodeBranches(node: FlowNode): FlowBranch[] {
         {
           id: CONDITION_TRUE_BRANCH_ID,
           label: 'Sim',
+          check: null,
           kind: 'match',
           condition: { type: 'cond_result', value: true },
         },
         {
           id: CONDITION_FALSE_BRANCH_ID,
           label: 'Não',
+          check: null,
           kind: 'match',
           condition: { type: 'cond_result', value: false },
         },
@@ -437,12 +434,14 @@ export function nodeBranches(node: FlowNode): FlowBranch[] {
         ? declared.map((b) => ({
             id: b.id,
             label: b.label,
+            check: null,
             kind: 'match' as const,
             condition: { type: 'branch' as const, branch_id: b.id },
           }))
         : node.config.classes.map((cls) => ({
             id: cls, // v1: the class string is its own branch id
             label: cls,
+            check: null,
             kind: 'match' as const,
             condition: { type: 'class_match' as const, value: cls },
           }));
@@ -451,6 +450,7 @@ export function nodeBranches(node: FlowNode): FlowBranch[] {
         {
           id: NO_REPLY_BRANCH_ID,
           label: NO_REPLY_LABEL,
+          check: null,
           kind: 'match',
           condition: declared
             ? { type: 'branch', branch_id: NO_REPLY_BRANCH_ID }
