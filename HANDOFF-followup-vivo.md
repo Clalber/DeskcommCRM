@@ -179,6 +179,23 @@ reprovações espera — reprovar menos que o previsto denuncia mecanismo redund
 | B1 | Modo "Adaptativo" do nó de espera é decorativo — engine sempre usa `max_ms` | Maestro (reconhecimento) | aberto · frente B |
 | B2 | Starvation do claim global: org grande monopoliza o tick, pequenas nunca rodam; falha do claim vira `claimed=0` silencioso | MaestroConexoes (W4, pré-existente) | aberto · frente B |
 | B3 | Invariante de follow-up instável no `test:db` — CI vermelho aleatório | Maestro (IA 360, pré-existente) | aberto · frente B |
+| B4 | **Regras de automação estão mortas para todo card que a IA move.** `lib/leads/agent-stage-sync.ts` grava a atividade em `crm_lead_activities` e **não** emite `lead.stage_changed` em `event_log` — zero ocorrência de `event_log` no arquivo. Só as 3 rotas HTTP emitem (`leads/[id]/move:171`, `_handler.ts:589`, `bulk:200`). E `lib/automation/engine.handler.ts:9` consome exatamente `lead.stage_changed`. Ou seja: a regra que o operador configurou ignora, em silêncio, metade dos movimentos do funil. | DevGatilhos, confirmado por medição independente do maestro | aberto · frente C |
+
+#### Correção de rota — o maestro errou o briefing
+
+O briefing de gatilhos afirmava que `agent-stage-sync.ts:220` emitia `stage_changed` em
+`event_log`. **Não emite.** O `type: "stage_changed"` que eu tinha visto num grep é o
+tipo da *atividade*, não do evento — inferi o resto. DevGatilhos contradisse, eu remedi
+na fonte antes de deferir, e ele estava certo. Briefing corrigido com a ressalva escrita
+no próprio arquivo, para não enganar quem o ler depois.
+
+#### Decisões tomadas durante a execução
+
+| Decisão | Quem | Racional |
+|---|---|---|
+| **"Caso aberto" vira "caso encerrado".** | Maestro, sobre achado do DevGatilhos | Disparar um fluxo no mesmo evento (`ai.handoff_triggered`) que a política de handoff usa para **pausar/cancelar** os follow-ups vivos (`reactivity.ts:226+`) é contradição: o evento que abriria o fluxo é o que mata os outros. E `demandas` abre automaticamente no primeiro inbound de **todo** contato (trigger `trg_demanda_abre_no_inbound`), então o gatilho valeria para qualquer um que escrevesse. O simétrico é coerente e `conversation_end` já está no schema — mesmo trabalho. |
+| **"Proposta feita" não precisa de tabela.** | DevGatilhos, aprovado pelo Maestro | `crm_stages.agent_stage_hint` aceita `negotiating` (CHECK, migration `0084`), definido como "há proposta/preço/condições na mesa" — a etapa "Proposta" já carrega o hint. Proposta feita **é** o gatilho de etapa com a etapa certa. Zero tabela nova, doutrina DIRC respeitada no item **C**alcular. |
+| **`agent-stage-sync.ts` passa a emitir `event_log`**, em commit próprio, separado do gatilho. | Maestro | Mover card pela IA tem de ser indistinguível de mover pela mão. Regra que ignora metade dos movimentos em silêncio é pior que regra que dispara demais — e o defeito é undiscoverable hoje. Muda comportamento além do follow-up: **está declarado aqui de propósito**. |
 
 #### Pendências abertas
 
