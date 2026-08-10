@@ -263,6 +263,27 @@ final — duas variáveis mudaram, e o número não separa as causas. O que a
 medição isolada prova é o par, onde a carga não entra: dois arquivos, 30
 segundos.
 
+### A lição de método: "conserte a classe" pressupõe a classe CERTA
+
+O `@Assistente e Testes` martelou o dia inteiro, com razão, que se conserta a
+CLASSE e não a instância. Este arquivo mostra onde a regra tem limite, e o
+achado é do `@QAVivo`: o **mesmo texto** aparece três vezes ali com **três
+propósitos opostos**.
+
+| ocorrência | o que ela é | acompanha as migrations? |
+|---|---|---|
+| `setOneLiveIndex` | **restauração** de estado do banco compartilhado | **sim** — era o flaky |
+| dedup da 0062 | **reprodução histórica** | **não** — completar mudaria o que a réplica replica |
+| `countLiveForContact` | **pergunta** sobre o estado de hoje | **sim** — senão responde menos que a realidade |
+
+"Consertar tudo que parece igual" quebraria a réplica; "não mexer em nada"
+deixaria a pergunta mentindo. **Semelhança de TEXTO não é semelhança de
+PROPÓSITO** — e a varredura por `grep` só enxerga a primeira.
+
+E a terceira foi medida ANTES de entrar (16 verdes antes, 16 depois): é o que
+separa "consertei um defeito" de "desarmei uma armadilha". Sem a medição, o
+commit reivindicaria um conserto que não houve.
+
 **A lição, escrita no cabeçalho do helper:** quem recria objeto de SCHEMA num
 banco compartilhado assume a dívida de acompanhar toda migration futura que o
 toque — e nada avisa quando ela chega. A dívida venceu meses depois, na conta de
