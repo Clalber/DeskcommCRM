@@ -244,6 +244,47 @@ sendo escrita naquele instante, e eu não declarei o SHA nem o `git status` junt
 com o número. A explicação interessante era "ele errou"; a chata — o meu
 instrumento — é a que sobreviveu.
 
+#### Doutrina de medição que esta missão descobriu na prática
+
+Três terminais bateram no **mesmo** muro sem saber, e o custo de cada um
+redescobrir sozinho foi o que mais atrasou o dia. Fica escrito:
+
+1. **`user-event` com delay default leva ~16s para abrir um `Select` do Radix sob
+   carga** e estoura o teto de 15s do vitest. Reprovação por lentidão, sem defeito
+   nenhum. Conserto: `userEvent.setup({ delay: null })`, e teto próprio no teste
+   quando ainda faltar — com justificativa **medida no mesmo commit em dois
+   estados de máquina** (QAVivo mediu 1,8s livre × 15,7s com seis worktrees
+   compilando; 30s é o dobro do pior caso observado).
+2. **Nunca validar por pipe.** `cmd | tail` devolve o exit do `tail`: DevGatilhos
+   recebeu "exit 0" de um run com 14 falhas, e o pipe comeu justamente as linhas
+   que diziam quais. Redirecione para arquivo, capture `$?` na hora, leia depois.
+3. **Quem mede tempo não tolera vizinho — e o vizinho pode ser você.** DevGatilhos
+   rodava `test:unit`, a suíte de invariantes e o `next build` ao mesmo tempo:
+   fabricou a lentidão que reprovou o próprio teste. A contagem dele não era
+   comparável nem com a dele mesmo.
+4. **Mas nem toda medição é sensível a carga.** `typecheck` e `lint` são
+   invariantes: `tsc` erra ou não erra, ficar lento não muda o resultado. Só
+   serialize o que tem teto de tempo (vitest, Playwright). Serializar tudo custa
+   caro à toa.
+5. **Controle no SHA pai.** O Arquiteto rodou `test:unit` em `4f89a0da` e mostrou
+   os **mesmos 6 arquivos** falhando sem a mudança dele, nenhum citando follow-up.
+   É o que separa "a máquina está lenta" de desculpa.
+6. **Número viaja com o alvo.** Toda contagem sai com SHA curto, `git status` e —
+   como esta missão aprendeu — **o que mais estava rodando na máquina**. Duas
+   vezes hoje o maestro mediu contra árvore em movimento: uma contra o worktree de
+   um colega mid-edit (quase virou acusação de commit vermelho, não reproduziu), e
+   uma contra a própria árvore no meio de um conflito de merge (o typecheck acusou
+   marcadores de conflito).
+
+#### Regra de branch que nasceu de um atrito real
+
+**Branch já consumida pela integração não se reescreve.** `fv/vocabulario` foi
+emendada três vezes (`05933159` → `053faadc` → `f2cfa4e1`) depois de eu já ter
+mergeado as duas primeiras. Cada reescrita apaga da branch o commit que a
+integração consumiu e força um conflito `add/add` no mesmo arquivo. A partir do
+primeiro merge do maestro: correção vira **commit novo por cima**, nunca `amend`
+nem `rebase`.
+
 #### Pendências abertas
 
 - **H2** e **H3** acima.
