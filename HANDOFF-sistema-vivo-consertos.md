@@ -33,14 +33,14 @@ mais caro que a que ela esconde.
 
 ---
 
-## Estado final, medido (`da6c250e`)
+## Estado final, medido (`2cbe84f5`)
 
 | medida | valor | contra o baseline |
 |---|---|---|
-| `pnpm test:unit` | **329 arquivos / 3475 testes** verdes | +19 arquivos, +266 casos (50 commits da main + os meus) |
-| `pnpm lint` | 0 erros, 235 warnings | **0 nos meus arquivos**, medido por arquivo; os 47 a mais vieram com a main |
+| `pnpm test:unit` | **331 arquivos / 3490 testes** verdes | +21 arquivos, +281 casos (55 commits da main + os meus) |
+| `pnpm lint` | 0 erros, 235 warnings | **0 nos meus arquivos** — um import morto que eu deixei foi medido e removido |
 | `pnpm typecheck` | **exit 0** (medido sem pipe) | igual |
-| `pnpm test:db` (invariante do Operador) | **10/10** | +6 casos |
+| `pnpm test:db` | Operador **10/10** · camadas **8/8** | o de camadas roda com o baseline aplicado em install E update |
 | specs × listadas | 39 × **38 rodam + 1 declarada fora** | soma conferida por gate |
 
 > **Sobre "typecheck limpo" no meio da sessão:** eu afirmei isso medindo com `| tail`, que mascara o
@@ -212,6 +212,33 @@ fica para a próxima rodada, e virá com client de sessão.
 cadeia" é auto-referente (renderiza da lista, compara com a lista) e seguiu verde quando removi uma
 conferência. Renomeado para o que ele de fato mede.
 
+### 10 · As duas camadas que custam dinheiro viram escolha da organização · `d41e5133`
+
+O **P5-C6b**, que ontem ficou de fora por não ser honesto sozinho. A ordem foi o ponto: o motor
+passou a ler a escolha **primeiro**, nos TRÊS pontos de consumo (dois no turno do Conversador, um na
+re-entrada determinística — que passa pela mesma cadeia e tinha de honrar a mesma preferência), e só
+então o interruptor entrou na tela.
+
+**Três estados, não dois.** Sem linha vale o ambiente: aplicar a migration não muda o comportamento
+de quem já decidiu no `.env`. Colapsar num booleano com default `false` desligaria as duas camadas de
+toda instalação que as tinha ligadas, no dia do deploy, em silêncio.
+
+Tripla completa (0142 + apêndice antes da varredura anon + MANIFEST), `layer` sem CHECK na exceção de
+vocabulário aberto, rota com client de sessão deixando a RLS fazer a tenancy.
+
+### 11 · As três medidas da spec §7 existem, e estão na tela · `d41e5133`
+
+Saem do `event_log` que o C3 passou a gravar — o payload foi escolhido para que cada uma seja uma
+contagem, não uma varredura. **"Quitadas" virou "assumidas"**, porque o sistema não sabe se a promessa
+foi cumprida; publicar "quitadas" seria o mesmo defeito do aviso antigo, em forma de número.
+
+### 12 · O gate da FIAÇÃO — a lacuna que a sabotagem achou · `2cbe84f5`
+
+Desfiz a leitura da escolha no motor e rodei a rede inteira: **13 testes, nenhum vermelho**. O teste
+puro guardava a regra, o invariante o schema, o componente e o e2e a tela — e ninguém guardava o que
+liga uma coisa na outra. Sem esse gate, o interruptor podia voltar a ser decorativo num refactor, que
+é precisamente o defeito que 6b existe para não cometer.
+
 ## Triagem completa das 4 falhas do e2e
 
 | spec | causa | ação |
@@ -230,10 +257,10 @@ conferência. Renomeado para o que ele de fato mede.
 | 1 | **`followup.scheduled` perde auditoria** — `api_audit_log_actor_api_token_id_fkey`, 2× na corrida | Investiguei e a hipótese óbvia está **errada**: `revokeEphemeralToken` faz `update revoked_at`, não delete, e o FK é `ON DELETE SET NULL`; nenhum código do repo apaga de `api_tokens` (sonda com controle positivo: 11 arquivos usam a tabela). É um token id que nunca existiu, e não consegui estabelecer a causa. Fica com a evidência, sem história por cima |
 | ~~2~~ | ~~O desfecho do Operador não é persistido~~ | ✅ `9f5a7ee7` |
 | ~~3~~ | ~~O aviso de promessa afirma sem apurar, e sem dedup~~ | ✅ `9f5a7ee7` |
-| ~~4~~ | ~~O terceiro papel não existe como papel~~ | ✅ `da6c250e` (6a). Falta o **6b**: o interruptor real das 2 camadas semânticas, que só é honesto quando o motor ler a escolha por organização |
+| ~~4~~ | ~~O terceiro papel não existe como papel~~ | ✅ `da6c250e` (6a) + `d41e5133` (6b, com o motor lendo a escolha) |
 | 5 | **O mapa vivo não recebeu o Operador**, e `agent-turn.workflow.json` descreve uma chamada de modelo por mensagem quando há duas | P4 inteira |
 | 6 | **A projeção nunca arma num agente real** — `turnoProjeta` exige zero ferramenta de catálogo; o pacote "atender" tem 18 | P2-C5 |
-| 7 | As três métricas da spec §7 agora têm **denominador** (`event_log`, uma linha por execução) e ainda **não têm tela** | a leitura é a próxima peça — P5-C5/C8 |
+| ~~7~~ | ~~As três métricas da spec §7~~ | ✅ `d41e5133` — no painel do próprio papel |
 | 8 | Nenhum turno de produção observado com worker real | não houve chave de IA nesta máquina |
 
 ---
