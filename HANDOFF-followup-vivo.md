@@ -30,8 +30,28 @@ Somam-se dois defeitos **já catalogados** pelo time no plano do Lina, ambos de
 follow-up, ambos em escopo aqui:
 
 - **`IA360-STARVATION`** — o claim é global com teto 20 e ordenado por `next_eval_at`
-  crescente; org grande monopoliza cada tick e as pequenas nunca rodam. `runFollowupTick`
-  engole a falha do claim e devolve `claimed=0`, indistinguível de "nada vencido".
+  crescente; org grande domina os primeiros ticks.
+
+  > **CORRIGIDO PELA MEDIÇÃO (DevVivo, 2026-08-10).** O item do plano dizia
+  > *"STARVATION PERSISTENTE … as menores nunca rodam"*. **Não é permanente.**
+  > Medido em pg17 com 300 vencidos na org grande e 1 na pequena: a pequena é
+  > atendida no **tick 16**, não nunca. Confirmei o mecanismo na fonte —
+  > `fn_claim_due_followup_enrollments` faz `set claimed_until = now() + lease` e
+  > o `where` exclui `claimed_until >= now()`, então o lote reclamado sai do
+  > conjunto de candidatos e o ponteiro avança: `ceil(K/limit)` ticks.
+  > A caracterização original veio de **leitura**, não de medição, e estava errada.
+  > Continua sendo defeito e o conserto entrou: atraso proporcional **sem teto
+  > superior** é 15 min com 300 vencidos e horas com 10 mil, e o tenant pequeno
+  > paga por um vizinho grande sem nunca saber.
+
+- **O silêncio do claim** — `runFollowupTick` devolvia `claimed=0` indistinguível de
+  "nada vencido".
+
+  > **REFINADO PELA MEDIÇÃO (DevVivo).** O sinal **já existia** na base: `claim_falhou`
+  > + `logger.error`, commit `f66f0ddb`, com teste. O que faltava era **consumidor** —
+  > a rota de cron só auditava tick com contador não-zero, e claim falhado tem todos
+  > zerados. É o anti-pattern nº 3 do `CLAUDE.md` (evento sem consumer), não emissor
+  > ausente.
 - **`IA360-FLAKY`** — invariante de follow-up instável no `test:db` pinta o CI de
   vermelho aleatoriamente. Dois testes DIFERENTES caindo no mesmo SHA: assinatura de
   interferência de estado, não de defeito de código.
