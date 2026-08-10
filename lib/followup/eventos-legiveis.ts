@@ -19,7 +19,14 @@
  * contato) — quando o nó sumiu do grafo pinado, o id cru aparece dito como id,
  * porque um alvo feio é melhor que alvo nenhum.
  */
-import type { FlowEdge, FlowNode } from "./graph-schema";
+import {
+  CONDITION_FALSE_BRANCH_ID,
+  CONDITION_TRUE_BRANCH_ID,
+  NO_REPLY_BRANCH_ID,
+  nodeBranches,
+  type FlowEdge,
+  type FlowNode,
+} from "./graph-schema";
 
 // ---------------------------------------------------------------------------
 // Duração
@@ -164,14 +171,44 @@ export function resumoDoNo(node: FlowNode): NoDoDossie {
  *
  * `class_match`/`cond_result` viram frase, não jargão; o `always` diz que é o
  * caminho único, porque "sempre" sozinho não informa nada a quem está decidindo.
+ *
+ * ⚠️ O RAMO NOMEADO (grafo v2) SÓ TEM NOME NO NÓ. `{type:'branch', branch_id}`
+ * carrega um id opaco, estável a renomeações — de propósito: o rótulo pertence
+ * ao nó de origem, e replicá-lo na aresta faria as duas cópias divergirem no
+ * primeiro rename. Por isso a origem é parâmetro. Sem ela, ou com um id que o
+ * nó não declara mais, aparece o ID — feio e verdadeiro ganha de um nome
+ * inventado, que mandaria o operador pelo caminho errado ao pular um passo.
  */
-export function rotuloDaAresta(edge: FlowEdge): string {
-  if (edge.condition.type === "always") return "caminho normal";
-  if (edge.condition.type === "cond_result") {
-    return edge.condition.value ? "quando a condição é verdadeira" : "quando a condição é falsa";
+export function rotuloDaAresta(edge: FlowEdge, origem?: FlowNode): string {
+  const c = edge.condition;
+  if (c.type === "always") return "caminho normal";
+  if (c.type === "cond_result") {
+    return c.value ? "quando a condição é verdadeira" : "quando a condição é falsa";
   }
-  if (edge.condition.value === "no_reply") return "quando ninguém responde";
-  return `quando a resposta é “${edge.condition.value}”`;
+  if (c.type === "class_match") {
+    return c.value === NO_REPLY_BRANCH_ID
+      ? "quando ninguém responde"
+      : `quando a resposta é “${c.value}”`;
+  }
+
+  if (c.branch_id === NO_REPLY_BRANCH_ID) return "quando ninguém responde";
+  if (c.branch_id === CONDITION_TRUE_BRANCH_ID) return "quando a condição é verdadeira";
+  if (c.branch_id === CONDITION_FALSE_BRANCH_ID) return "quando a condição é falsa";
+
+  const nome = rotuloDoRamo(origem, c.branch_id);
+  return nome ? `quando a resposta é “${nome}”` : `pelo ramo ${c.branch_id}`;
+}
+
+/**
+ * O nome que a pessoa deu ao ramo, procurado onde ele mora: no nó de origem.
+ *
+ * Delega a `nodeBranches` — a lista de ramos é do contrato do grafo, e uma
+ * segunda travessia aqui divergiria dela no primeiro tipo de nó que ganhasse
+ * ramos (é o mesmo motivo de o rótulo não viver na aresta).
+ */
+function rotuloDoRamo(origem: FlowNode | undefined, branchId: string): string | null {
+  if (!origem) return null;
+  return nodeBranches(origem).find((b) => b.id === branchId)?.label ?? null;
 }
 
 /** O nó como aparece numa frase; id cru quando ele não está mais no grafo pinado. */
@@ -252,7 +289,13 @@ export function descreveEvento(
       return { titulo: "Começou a esperar", detalhe: ate ? `volta a olhar em ${ate}${modo}` : null, ...motor };
     }
     case "turn_enqueued":
-      return { titulo: "Pediu ao agente para escrever a mensagem", detalhe: null, ...motor };
+      // O MESMO event_type serve a dois pedidos diferentes, e o `purpose` no
+      // payload é o que os separa. Sem olhar para ele, o passo de PLANEJAMENTO
+      // aparecia como "escrever a mensagem" — uma linha que descreve o passo
+      // errado é pior que uma linha genérica, porque não parece errada.
+      return texto(p.purpose) === "plan_timing"
+        ? { titulo: "Pediu ao agente para planejar os tempos de espera", detalhe: null, ...motor }
+        : { titulo: "Pediu ao agente para escrever a mensagem", detalhe: null, ...motor };
     case "classify_enqueued":
       return { titulo: "Pediu ao agente para interpretar a resposta", detalhe: null, ...motor };
     case "action_recheck": {
@@ -296,6 +339,22 @@ export function descreveEvento(
       return { titulo: "Pausado porque uma pessoa assumiu a conversa", detalhe: null, ...pessoa };
     case "handoff_resumed":
       return { titulo: "Retomado: o atendimento voltou para o agente", detalhe: null, ...motor };
+    case "timing_plan_decidido": {
+      const quantas = Object.keys((p.esperas as Record<string, unknown> | undefined) ?? {}).length;
+      return {
+        titulo: "O agente decidiu quanto esperar em cada passo",
+        detalhe: quantas > 0 ? `${quantas} ${quantas === 1 ? "espera planejada" : "esperas planejadas"}` : null,
+        ...motor,
+      };
+    }
+    case "timing_plan_desistido":
+      // Seguir sem plano é um FATO, não a ausência de um: cada espera cai no
+      // máximo, e quem lê o dossiê precisa saber por que o fluxo ficou lento.
+      return {
+        titulo: "Seguiu sem o plano de tempo",
+        detalhe: "o agente não respondeu a tempo; cada espera usa o máximo configurado",
+        ...motor,
+      };
     case "cancelled_manual":
       return { titulo: "Cancelado por uma pessoa da equipe", detalhe: null, ...pessoa };
     case "paused_manual":

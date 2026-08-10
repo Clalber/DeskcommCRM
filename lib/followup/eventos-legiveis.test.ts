@@ -163,3 +163,80 @@ describe("rotuloDoStatus", () => {
     expect(rotuloDoStatus("paused_handoff")).toBe("Pausado (atendimento humano)");
   });
 });
+
+describe("rotuloDaAresta — o ramo nomeado do grafo v2", () => {
+  const classify: FlowNode = {
+    id: "ac1",
+    type: "ai_classify",
+    label: "Interpreta",
+    position: { x: 0, y: 0 },
+    config: {
+      classes: ["quente", "frio"],
+      branches: [
+        { id: "b-quente", label: "quente" },
+        { id: "b-frio", label: "frio" },
+      ],
+      grace_timeout_ms: 900_000,
+      target: "last_reply",
+    },
+  };
+  const aresta = (branchId: string) => ({
+    id: "e",
+    source: "ac1",
+    target: "x",
+    priority: 0,
+    condition: { type: "branch" as const, branch_id: branchId },
+  });
+
+  it("usa o NOME que a pessoa deu ao ramo, que só existe no nó", () => {
+    expect(rotuloDaAresta(aresta("b-quente"), classify)).toBe("quando a resposta é “quente”");
+  });
+
+  it("sem o nó de origem, mostra o id — nunca um nome inventado", () => {
+    // Nome errado aqui mandaria o operador pelo caminho errado ao pular um passo.
+    expect(rotuloDaAresta(aresta("b-quente"))).toBe("pelo ramo b-quente");
+  });
+
+  it("ramo que o nó não declara mais também cai no id", () => {
+    expect(rotuloDaAresta(aresta("b-sumiu"), classify)).toBe("pelo ramo b-sumiu");
+  });
+
+  it("os ramos reservados do contrato viram frase sem depender do nó", () => {
+    expect(rotuloDaAresta(aresta("no_reply"))).toBe("quando ninguém responde");
+    expect(rotuloDaAresta(aresta("true"))).toBe("quando a condição é verdadeira");
+    expect(rotuloDaAresta(aresta("false"))).toBe("quando a condição é falsa");
+  });
+});
+
+describe("os eventos que o plano de tempo trouxe", () => {
+  it("o pedido de PLANEJAMENTO não se disfarça de pedido de mensagem", () => {
+    // Os dois são `turn_enqueued`; só o `purpose` os separa. Uma linha que
+    // descreve o passo errado é pior que uma genérica: não parece errada.
+    const planejar = descreveEvento(
+      evento({ node_id: null, event_type: "turn_enqueued", payload: { purpose: "plan_timing" } }),
+      nos,
+    );
+    expect(planejar.titulo).toBe("Pediu ao agente para planejar os tempos de espera");
+
+    const mensagem = descreveEvento(
+      evento({ event_type: "turn_enqueued", payload: { purpose: "send_message" } }),
+      nos,
+    );
+    expect(mensagem.titulo).toBe("Pediu ao agente para escrever a mensagem");
+  });
+
+  it("o plano decidido vira frase, não `código: timing_plan_decidido`", () => {
+    const r = descreveEvento(
+      evento({ event_type: "timing_plan_decidido", payload: { esperas: { "wait-1": {}, "wait-2": {} } } }),
+      nos,
+    );
+    expect(r.titulo).toBe("O agente decidiu quanto esperar em cada passo");
+    expect(r.detalhe).toBe("2 esperas planejadas");
+  });
+
+  it("desistir do plano é um FATO na timeline, não silêncio", () => {
+    const r = descreveEvento(evento({ event_type: "timing_plan_desistido" }), nos);
+    expect(r.titulo).toBe("Seguiu sem o plano de tempo");
+    expect(r.detalhe).toContain("máximo configurado");
+  });
+});

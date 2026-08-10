@@ -31,7 +31,7 @@ import {
   type EventoDeEnrollment,
   type NoDoDossie,
 } from "@/lib/followup/eventos-legiveis";
-import { leituraDoPlano, type PlanoDeTempo } from "@/lib/followup/plano-de-tempo";
+import { leituraDoPlano, type TimingPlan } from "@/lib/followup/plano-de-tempo";
 import { flowGraphSchema } from "@/lib/followup/graph-schema";
 import { createClient } from "@/lib/supabase/server";
 
@@ -81,7 +81,7 @@ export interface DossieDoEnrollment {
   saidas: Array<{ edge_id: string; target_id: string; target_rotulo: string; quando: string }>;
   eventos: EventoDeEnrollment[];
   eventos_truncados: boolean;
-  plano_de_tempo: PlanoDeTempo | null;
+  plano_de_tempo: TimingPlan | null;
   /** id → nome de quem interveio. "Uma pessoa da equipe" não responde "quem?". */
   autores: Record<string, string>;
 }
@@ -175,6 +175,12 @@ export async function GET(_req: NextRequest, ctx: RouteCtx): Promise<Response> {
   const nos: NoDoDossie[] = grafo?.success ? grafo.data.nodes.map(resumoDoNo) : [];
   const porId = new Map(nos.map((n) => [n.id, n]));
 
+  // O nó de ORIGEM vai junto: no grafo v2 o rótulo do ramo mora nele, não na
+  // aresta — sem ele a tela ofereceria "pelo ramo b3f1" na hora de escolher
+  // por onde pular.
+  const noDeOrigem = grafo?.success
+    ? grafo.data.nodes.find((n) => n.id === row.current_node_id)
+    : undefined;
   const saidas = (grafo?.success ? grafo.data.edges : [])
     .filter((e) => e.source === row.current_node_id)
     .sort((a, b) => b.priority - a.priority)
@@ -182,7 +188,7 @@ export async function GET(_req: NextRequest, ctx: RouteCtx): Promise<Response> {
       edge_id: e.id,
       target_id: e.target,
       target_rotulo: porId.get(e.target)?.rotulo ?? e.target,
-      quando: rotuloDaAresta(e),
+      quando: rotuloDaAresta(e, noDeOrigem),
     }));
 
   const contato = embedded(
