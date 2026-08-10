@@ -776,3 +776,36 @@ primeira já dá a sensação de ter verificado.
 **Conserto**: `export` no `LIVE_STATUSES` de produção, e o teste importa em vez de
 declarar. Uma palavra, sem mudança de comportamento — autorizada com o dono avisado
 **antes** e com poder de veto.
+
+### Posse de arquivo: `git log --author` não mede nada nesta máquina
+
+A tabela "não toque" da seção 3 nomeava **pessoas**, e o maestro a escreveu **na primeira
+hora, sem medir** — a partir do que cada frente ia fazer. Saiu errado para
+`lib/followup/reactivity.ts`, e a atribuição errada foi **repassada três vezes como
+fato** antes de alguém conferir.
+
+**A resposta:** o arquivo é da **onda 5** do épico de follow-up (`ba22723e` o criou,
+`c5b4f334` é o único outro que o tocou — os dois marcados `[onda 5]`).
+
+**A ressalva de método, que vale mais que a resposta** (DevVivo e MaestroConexoes):
+
+> Nesta máquina **todo commit sai com a mesma identidade git**, então o campo `author`
+> não distingue sessão nenhuma. Quem identifica dono aqui é a **etiqueta da onda no
+> assunto do commit**, não o autor.
+>
+> Qualquer varredura de posse com `git shortlog` ou `git log --author` devolve **uma
+> pessoa só e parece conclusiva** — e está medindo nada. Quem for varrer os outros
+> briefings precisa saber disso **antes** de varrer, senão confirma o erro com um
+> instrumento que não mede.
+
+E há **duas perguntas diferentes**, com respostas diferentes, que o briefing colapsou
+numa só:
+
+| Pergunta | Como se responde |
+|---|---|
+| *"De quem é este arquivo?"* | etiqueta da onda no histórico |
+| *"Para quem eu despacho este patch agora?"* | `git log <base>..HEAD -- <arquivo>` — quem tocou **nesta missão** |
+
+A origem provável do erro do briefing: quem escreveu leu **proximidade de contexto** (a
+pessoa mexia em `silence-sweep.ts` e `api-schemas.ts`, que são vizinhos) em vez de
+histórico. Duas linhas de `git log --follow` diziam a resposta, e ninguém rodou.
