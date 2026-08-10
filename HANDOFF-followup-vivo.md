@@ -230,7 +230,22 @@ Received:   360.02346666666665
 ```
 
 **O motor agendou o teto exato.** A orientação não muda nada e nada na tela deixa
-o usuário perceber. Evidência visual versionada em `evidence/followup-vivo/`.
+o usuário perceber. Evidência visual versionada, uma imagem para cada metade da
+contradição:
+
+- `evidence/followup-vivo/tempo-adaptativo-01-a-promessa-da-tela.png` — o painel
+  com a janela de 10 a 360 min e a orientação escrita, que é o que o operador vê.
+- `evidence/followup-vivo/tempo-adaptativo-02-o-que-o-motor-agendou.png` — a Fila
+  mostrando o disparo no teto, que é o que o motor fez.
+
+> Citadas aqui pelo caminho, e não pela pasta, porque
+> `tests/unit/evidencia-citada.test.ts` reprova imagem versionada que nenhum
+> documento nomeia — e reprovava: a frase anterior apontava só para o diretório,
+> o que deixou o `verify` vermelho até a W2-LINGUAGEM topar com ele.
+>
+> O rótulo do modo mudou depois desta prova: **"Adaptativo (min–max)"** virou
+> **"A IA escolhe a hora"** (W2-LINGUAGEM), e a spec acompanhou. As imagens são
+> anteriores à troca.
 
 O teste **nasce vermelho de propósito** — é a metade RED do ciclo e vira o
 critério de aceite da frente MOTOR. Continua valendo depois: se alguém voltar a
