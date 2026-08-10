@@ -709,3 +709,35 @@ que ninguém revisa porque o número — seis pedidos — está correto.** É o 
 Se tivesse entrado assim, em duas semanas alguém citaria "o gatilho de etapa foi
 provado em tela" — e estaria citando o dono do item, que foi justamente quem se
 recusou a deixar passar.
+
+### O par simétrico: "conserte a classe" pressupõe ter achado a classe certa
+
+A missão repetiu **"conserte a classe, não a instância"** desde a primeira hora, e
+descobriu no fim que a regra tem uma precondição que ninguém enunciava: **você
+identificou a classe certa?**
+
+Duas falhas simétricas, no mesmo dia, com a mesma raiz:
+
+| Falha | Quem | Classe escolhida | Erro |
+|---|---|---|---|
+| **Larga demais** | DevVivo | "arquivos que rodam o tick" | a classe era *"arquivos que exercitam o claim"* — agrupou o que não pertencia junto, e a irmã de fora continuou vazando |
+| **Estreita demais** | Maestro / QAVivo | "o predicado velho" | eram **três** classes com o mesmo texto — restauração, reprodução histórica e pergunta. Consertar as três quebraria a réplica; consertar nenhuma deixaria a pergunta respondendo menos que a realidade |
+
+**Raiz comum:** escolher a classe pelo que se **vê** em vez de pelo que a coisa
+**faz**. `grep` enxerga texto, não propósito.
+
+Uma sozinha ensina metade: a primeira sugere "amplie o escopo", a segunda sugere
+"restrinja". Juntas dizem a coisa certa — **classifique por função, e a semelhança de
+texto é só um indício de onde procurar.**
+
+### E autorização precisa de lugar que sobreviva à conversa
+
+Três pedidos de edição de invariante passaram pelo maestro nesta missão. Dois foram
+autorizados; **o terceiro se perdeu na fila da conversa e ficou retido a noite
+inteira**, com o conserto do `IA360-FLAKY` pronto na árvore de quem pediu — e o
+defeito seguiu vivo por isso, inclusive na árvore que o maestro declarou fechada.
+
+O que salvou os patches não foi disciplina: foi alguém ter percebido no meio que o
+ponteiro apontava para `/tmp`, que some quando a sessão fecha, e tê-los versionado no
+próprio `HANDOFF`. **Pedido que só existe numa mensagem depende de quem centraliza não
+esquecer — e quem centraliza esquece.**
