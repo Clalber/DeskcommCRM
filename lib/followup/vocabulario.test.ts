@@ -25,6 +25,7 @@ import { enumsDoFollowup } from "@/tests/support/enums-do-grafo";
 import { triggerConfigSchema } from "./api-schemas";
 import { conditionLabel } from "./edge-condition-options";
 import {
+  NO_REPLY_BRANCH_ID,
   RESERVED_BRANCH_IDS,
   actionConfigSchema,
   aiClassifyConfigSchema,
@@ -44,11 +45,13 @@ import {
   MODOS_DE_ESPERA,
   MODOS_DE_RAMIFICACAO,
   RAMOS_RESERVADOS,
+  RAMOS_RESERVADOS_EM_FRASE,
   RESULTADOS_DO_FIM,
   SITUACOES_DO_ACOMPANHAMENTO,
   comparador,
   comparadoresDoCampo,
   fraseDaCondicao,
+  fraseDoRamo,
   opcoes,
   type CampoDaCondicao,
   type OperadorDaCondicao,
@@ -394,6 +397,38 @@ describe("etiqueta é pertinência, não igualdade", () => {
       expect(comparador("tag", op).oferecido).toBe(false);
       expect(comparador("tag", op).aviso).toBeTruthy();
     }
+  });
+});
+
+describe("o ramo em frase — o registro do dossiê", () => {
+  it("os quatro reservados têm frase, e o no_reply mantém o texto que a Fila já escrevia", () => {
+    // O risco do v2 é silencioso: `no_reply` deixa de chegar como `class_match`
+    // e vira `branch_id`, então a linha que o tratava fica órfã e a frase vira
+    // o identificador — sem exceção nenhuma. Este caso é o que reprova nisso.
+    expect(fraseDoRamo(NO_REPLY_BRANCH_ID)).toBe("quando ninguém responde");
+    for (const ramo of RESERVED_BRANCH_IDS) {
+      expect(fraseDoRamo(ramo), `ramo reservado '${ramo}' sem frase`).not.toBe("por um caminho sem nome");
+      expect(fraseDoRamo(ramo), `frase de '${ramo}' devolve o id`).not.toContain(ramo);
+    }
+  });
+
+  it("ramo declarado usa o rótulo do nó; sem rótulo, admite que não tem nome em vez de ecoar o id", () => {
+    expect(fraseDoRamo("br_7f3a", "cliente interessado")).toBe("quando a resposta é “cliente interessado”");
+    // Ecoar `br_7f3a` seria o defeito que o dicionário existe para impedir.
+    expect(fraseDoRamo("br_7f3a")).not.toContain("br_7f3a");
+  });
+
+  it("os dois registros dizem a mesma coisa em tons diferentes, e nenhum é cópia do outro", () => {
+    for (const ramo of RESERVED_BRANCH_IDS) {
+      expect(RAMOS_RESERVADOS[ramo].length, `chip de '${ramo}' vazio`).toBeGreaterThan(0);
+      expect(RAMOS_RESERVADOS_EM_FRASE[ramo].length, `frase de '${ramo}' vazia`).toBeGreaterThan(0);
+    }
+    // Se algum dia os dois registros convergirem palavra por palavra, um dos
+    // dois virou peso morto e a distinção que justifica os dois se perdeu.
+    const iguais = RESERVED_BRANCH_IDS.filter((r) => RAMOS_RESERVADOS[r] === RAMOS_RESERVADOS_EM_FRASE[r]);
+    expect(iguais.length, `${iguais.join(", ")} têm chip e frase idênticos — sobra um registro`).toBeLessThan(
+      RESERVED_BRANCH_IDS.length,
+    );
   });
 });
 
