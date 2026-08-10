@@ -33,14 +33,15 @@ mais caro que a que ela esconde.
 
 ---
 
-## Estado final, medido (`3ebb6ba5`)
+## Estado final, medido (`da6c250e`)
 
 | medida | valor | contra o baseline |
 |---|---|---|
-| `pnpm test:unit` | **313 arquivos / 3225 testes** verdes | +3 arquivos, +16 casos — a aritmética fecha |
-| `pnpm lint` | 0 erros, **188** warnings | o MESMO número; nenhum warning novo |
+| `pnpm test:unit` | **329 arquivos / 3475 testes** verdes | +19 arquivos, +266 casos (50 commits da main + os meus) |
+| `pnpm lint` | 0 erros, 235 warnings | **0 nos meus arquivos**, medido por arquivo; os 47 a mais vieram com a main |
 | `pnpm typecheck` | **exit 0** (medido sem pipe) | igual |
-| specs × listadas | 39 × **37 rodam + 2 declaradas fora** | soma conferida por gate |
+| `pnpm test:db` (invariante do Operador) | **10/10** | +6 casos |
+| specs × listadas | 39 × **38 rodam + 1 declarada fora** | soma conferida por gate |
 
 > **Sobre "typecheck limpo" no meio da sessão:** eu afirmei isso medindo com `| tail`, que mascara o
 > exit code. Medido sem pipe, estava **quebrado** — num arquivo meu, já commitado. Consertado em
@@ -124,10 +125,14 @@ três propriedades com três modos de falha: completude, vigência (filtro que n
 verde) e **consumo** (declarar não é executar). Sabotagens: 1 + 1 + 1, cada uma num teste diferente.
 
 > **Correção da minha própria decisão** (`c42b6553`): eu vi um caso da `prova-painel-provedores` passar
-> e concluí que o arquivo estava verde. Errado — 2 de 6 falham, e o caso F3 **não pode** passar no CI:
-> exige >50 modelos da OpenRouter e o catálogo chega lá com 2 linhas (o baseline não semeia catálogo e
-> não existe seed que o popule). A spec passa onde o dado por acaso existe. Foi para `FORA_DO_CI` com o
-> motivo medido.
+> e concluí que o arquivo estava verde. Errado — 2 de 6 falhavam, e o caso F3 não podia passar no CI:
+> exige >50 modelos da OpenRouter e o catálogo chegava lá com 2 linhas. A spec passava onde o dado por
+> acaso existe, e ela foi para `FORA_DO_CI` com o motivo medido.
+>
+> **E depois voltou** (`12e32806`): a main criou `scripts/seed-e2e-catalogo-openrouter.ts` e o job
+> passou a semeá-lo — o docstring do seed diz exatamente o que eu tinha medido ("a spec media a SORTE
+> do ambiente"). A condição que a excluía deixou de existir. Hoje `FORA_DO_CI` tem um item só,
+> `vps-fresh-onboarding`, que é a P0 da doutrina de QA Visual e depende de infra externa.
 
 ### 6 · Duas mutações perdiam a auditoria em silêncio · `639f0894`
 
@@ -163,6 +168,50 @@ declaradas e um teste cobrando que exceção órfã seja removida.
 
 ---
 
+### 8 · O desfecho do Operador passa a existir, e o aviso apura antes de afirmar · `9f5a7ee7`
+
+O **P1-C3**, com C1 e C4 junto (a mesma linha de código). O retorno de `runModelCall` era
+descartado, e disso saíam três defeitos: o desfecho não tinha o que persistir (virou `log.info` no
+stdout de um contêiner que o próprio arquivo declara não ser superfície), o aviso da Central usou um
+PROXY — a contagem de promessas **declaradas**, que é fato sobre o Conversador —, e afirmava
+"o sistema ainda não registrou o cumprimento", veredito que nenhuma linha apurava.
+
+Agora `apuraDonoDaPromessa` responde o que o sistema consegue saber: **alguém ficou responsável?**
+(ferramenta chamada neste turno, ou retorno vivo — reusando a MESMA regra que o Radar usa para dizer
+"em voo"). Não responde "foi cumprida?", e nenhuma frase do produto diz que sim.
+
+Regra de emissão, com a razão de cada linha: `event_log` **sempre** (mata o `return` mudo e dá
+denominador às três medidas da spec §7); timeline `promise_unowned` **só** quando há promessa sem
+dono (disciplina do `diffCheckpoint` — turno em que o papel agiu já gera as atividades das
+ferramentas dele); Central pelo mesmo critério **menos** o handoff (quem assumiu está com a conversa
+na frente). `insertInboxItem` ganhou dedup por `kind + ref_id`.
+
+Sabotagens: previ 2/1/1/1 e vieram **2/1/2/1** — a terceira reprovou mais que o previsto porque
+minha sabotagem devolvia lista vazia e derrubava dois casos, não um. Errei a previsão, não o
+mecanismo.
+
+### 9 · O terceiro papel existe na tela · `da6c250e`
+
+O **P5-C6a**. A cadeia de dez conferências rodava e o dono do negócio não sabia — os gates só
+apareciam num `<details>` fechado dentro do resultado de um teste. Agora há a aba
+**"Confere antes de enviar"**, com as dez na ordem em que rodam, o que cada uma protege, e
+**nenhum interruptor**: nove não se desligam e a tela diz por quê em uma linha cada; as duas que
+custam uma consulta ao modelo dizem o custo e que a decisão mora no servidor — em vez de um switch
+que a tela grava e o motor ignora.
+
+A lista de apresentação é duplicada por necessidade (o módulo da cadeia arrasta `pg` e o adaptador
+de canal para o bundle), e o que impede a duplicata de mentir é um teste que importa
+`BEFORE_SEND_GATES` e reprova nos dois sentidos.
+
+**Corrigi uma justificativa falsa do plano** em vez de herdá-la: ele mandava usar service role
+porque `before_send_traces` "não tem policy para authenticated" — tem, e o controle positivo é
+`llm_calls`, no mesmo loop do baseline, lido com client de sessão em produção. A agregação de vetos
+fica para a próxima rodada, e virá com client de sessão.
+
+**A sabotagem achou um teste meu que prometia demais:** o caso "mostra todas as conferências da
+cadeia" é auto-referente (renderiza da lista, compara com a lista) e seguiu verde quando removi uma
+conferência. Renomeado para o que ele de fato mede.
+
 ## Triagem completa das 4 falhas do e2e
 
 | spec | causa | ação |
@@ -179,12 +228,12 @@ declaradas e um teste cobrando que exceção órfã seja removida.
 | # | o quê | por que ficou |
 |---|---|---|
 | 1 | **`followup.scheduled` perde auditoria** — `api_audit_log_actor_api_token_id_fkey`, 2× na corrida | Investiguei e a hipótese óbvia está **errada**: `revokeEphemeralToken` faz `update revoked_at`, não delete, e o FK é `ON DELETE SET NULL`; nenhum código do repo apaga de `api_tokens` (sonda com controle positivo: 11 arquivos usam a tabela). É um token id que nunca existiu, e não consegui estabelecer a causa. Fica com a evidência, sem história por cima |
-| 2 | **O desfecho do Operador não é persistido** (P1-C3) — `{tipo:'agiu'}` é tipo morto, o retorno de `runModelCall` é descartado | é a maior peça restante; plano completo abaixo |
-| 3 | **O aviso de promessa afirma sem apurar**, e sem dedup | depende do item 2 (é o mesmo dado) |
-| 4 | **O terceiro papel (Segurança) não existe como papel** — os 10 gates são lista informativa no TestPanel; os knobs semânticos seguem no `.env` | P5-C6, a maior peça de UI |
+| ~~2~~ | ~~O desfecho do Operador não é persistido~~ | ✅ `9f5a7ee7` |
+| ~~3~~ | ~~O aviso de promessa afirma sem apurar, e sem dedup~~ | ✅ `9f5a7ee7` |
+| ~~4~~ | ~~O terceiro papel não existe como papel~~ | ✅ `da6c250e` (6a). Falta o **6b**: o interruptor real das 2 camadas semânticas, que só é honesto quando o motor ler a escolha por organização |
 | 5 | **O mapa vivo não recebeu o Operador**, e `agent-turn.workflow.json` descreve uma chamada de modelo por mensagem quando há duas | P4 inteira |
 | 6 | **A projeção nunca arma num agente real** — `turnoProjeta` exige zero ferramenta de catálogo; o pacote "atender" tem 18 | P2-C5 |
-| 7 | **As três métricas que a spec 16 §7 diz que "passam a existir"** não existem | dependem do item 2 |
+| 7 | As três métricas da spec §7 agora têm **denominador** (`event_log`, uma linha por execução) e ainda **não têm tela** | a leitura é a próxima peça — P5-C5/C8 |
 | 8 | Nenhum turno de produção observado com worker real | não houve chave de IA nesta máquina |
 
 ---
