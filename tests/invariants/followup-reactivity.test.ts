@@ -420,6 +420,38 @@ describe("applyReactivityEvent — STOP/opt-out (message.received + is_blocked)"
    * em follow-up e não sabemos a razão". Mais turnos enfileirados só para serem
    * vetados, e a métrica de outcome sem contar este opt-out.
    */
+  /**
+   * CONTROLE POSITIVO da catraca abaixo, e ele é um `it` NORMAL de propósito.
+   *
+   * `it.fails` é satisfeito por QUALQUER falha — typo, import quebrado, fixture
+   * impossível. Numa árvore sem a 0145 o CHECK de `followup_enrollments` recusa
+   * `paused_manual`, o seed estoura 23514, a catraca fica VERDE por não
+   * conseguir nem montar o cenário, e ninguém vira essa pedra nunca: catraca
+   * verde pelo motivo errado é pior que caso ausente, porque parece cobertura.
+   *
+   * Pôr a asserção DENTRO da catraca não resolveria — a falha dela também
+   * satisfaria o `.fails`. Separado e alto, este caso reprova de verdade e a
+   * mensagem aponta para migration ausente em vez de defeito de reactivity.
+   */
+  it("controle positivo: a fixture consegue mesmo criar um enrollment paused_manual", async () => {
+    const org = nextOrgId();
+    await seedOrg(org);
+    const contactId = await seedContact(org);
+    const flow = await seedFlow(org, SIMPLE_GRAPH);
+    const id = await seedEnrollment({
+      org,
+      pointerId: flow.pointerId,
+      versionId: flow.versionId,
+      contactId,
+      currentNodeId: "w1",
+      status: "paused_manual",
+      nextEvalAt: null,
+    });
+
+    const row = await getEnrollment(id);
+    expect(row.status).toBe("paused_manual");
+  });
+
   // ACOPLADO À MIGRATION 0145: o `seedEnrollment` abaixo grava
   // `status: "paused_manual"`, e na `main` o CHECK de `followup_enrollments`
   // ainda RECUSA esse valor (0054: active, waiting_reply, paused_handoff,
