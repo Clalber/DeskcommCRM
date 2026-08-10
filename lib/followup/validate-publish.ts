@@ -235,6 +235,38 @@ function byId(a: { id: string }, b: { id: string }): number {
 }
 
 
+/**
+ * Toda saída declarada do nó precisa levar a algum lugar, e a mensagem nomeia
+ * QUAL ficou solta. Serve tanto ao `condition` por regra quanto ao
+ * `ai_classify` migrado: a pergunta é a mesma — "existe aresta para este
+ * ramo?" — e escrevê-la duas vezes é como a cobertura de classes ficou para
+ * trás quando os ramos nasceram.
+ */
+function cobrirRamos(
+  node: FlowNode,
+  outgoing: FlowEdge[],
+  errors: PublishValidationError[]
+): void {
+  for (const branch of nodeBranches(node)) {
+    if (outgoing.some((e) => branchIdForCondition(node, e.condition) === branch.id)) continue;
+    if (branch.kind === 'fallback') {
+      errors.push({
+        node_id: node.id,
+        code: 'missing_always_fallback',
+        branch_id: branch.id,
+        message: `Nó "${node.id}" não tem a saída de escape: um lead que não se encaixar em nenhuma saída fica parado aqui.`,
+      });
+      continue;
+    }
+    errors.push({
+      node_id: node.id,
+      code: 'missing_branch_edge',
+      branch_id: branch.id,
+      message: `Nó "${node.id}": a saída "${rotuloDoRamo(branch)}" não está ligada a nada.`,
+    });
+  }
+}
+
 export function validateFlowForPublish(graph: FlowGraph): PublishValidationResult {
   const { nodes, edges } = graph;
   const errors: PublishValidationError[] = [];
@@ -315,29 +347,28 @@ export function validateFlowForPublish(graph: FlowGraph): PublishValidationResul
     if (node.type !== 'condition' || node.config.branching !== 'per_check') continue;
     const outgoing = outEdges.get(node.id) ?? [];
 
-    for (const branch of nodeBranches(node)) {
-      if (outgoing.some((e) => branchIdForCondition(node, e.condition) === branch.id)) continue;
-      if (branch.kind === 'fallback') {
-        errors.push({
-          node_id: node.id,
-          code: 'missing_always_fallback',
-          branch_id: branch.id,
-          message: `Nó "${node.id}" não tem a saída "Nenhuma delas": um lead que não bater em regra nenhuma fica parado aqui.`,
-        });
-        continue;
-      }
-      errors.push({
-        node_id: node.id,
-        code: 'missing_branch_edge',
-        branch_id: branch.id,
-        message: `Nó "${node.id}": a saída "${rotuloDoRamo(branch)}" não está ligada a nada.`,
-      });
-    }
+    cobrirRamos(node, outgoing, errors);
   }
 
   for (const node of [...nodes].sort(byId)) {
     if (node.type !== 'ai_classify') continue;
     const outgoing = outEdges.get(node.id) ?? [];
+
+    // Nó migrado para ramos nomeados: a aresta referencia o id estável, não o
+    // texto da classe. Exigir `class_match` aqui reprovaria um grafo VÁLIDO — e
+    // o operador ficaria sem publicar sem entender por quê. As regras v1 abaixo
+    // continuam valendo, intactas, para todo nó que não declarou ramos.
+    if (node.config.branches !== undefined) {
+      cobrirRamos(node, outgoing, errors);
+      if (node.config.grace_timeout_ms < 900_000) {
+        errors.push({
+          node_id: node.id,
+          code: 'grace_too_short',
+          message: `Nó "${node.id}" tem grace_timeout_ms abaixo do mínimo de 15min.`,
+        });
+      }
+      continue;
+    }
 
     for (const cls of node.config.classes) {
       const hasEdge = outgoing.some(

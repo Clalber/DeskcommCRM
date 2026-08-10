@@ -467,3 +467,76 @@ describe('validateFlowForPublish — cobertura por ramo (per_check)', () => {
     expect(validateFlowForPublish(g)).toEqual({ ok: true });
   });
 });
+
+/**
+ * Terceira ocorrência da mesma classe de defeito, apontada pelo DevVivo: a
+ * cobertura de classes exigia aresta `class_match` por classe e para
+ * `no_reply`. Num nó já migrado para ramos nomeados as arestas são `branch` —
+ * então um grafo VÁLIDO era reprovado no publish, e o operador ficava sem
+ * conseguir publicar sem entender por quê.
+ */
+describe('validateFlowForPublish — cobertura por ramo num ai_classify migrado', () => {
+  const RAMOS = [
+    { id: 'br_quente', label: 'quente' },
+    { id: 'br_frio', label: 'frio' },
+  ];
+  const branch = (branchId: string): FlowEdge['condition'] => ({ type: 'branch', branch_id: branchId });
+
+  function classifyV2(id: string): FlowNode {
+    return {
+      id,
+      type: 'ai_classify',
+      label: id,
+      position: pos,
+      config: { classes: ['quente', 'frio'], branches: RAMOS, grace_timeout_ms: 900_000, target: 'last_reply' },
+    };
+  }
+
+  function grafo(saidas: FlowEdge[]): FlowGraph {
+    return graph(
+      [trigger('t1'), classifyV2('ac1'), end('fim')],
+      [edge('t1', 'ac1', always()), ...saidas]
+    );
+  }
+
+  it('publica um grafo v2 com uma aresta por ramo — sem exigir class_match nenhum', () => {
+    const result = validateFlowForPublish(
+      grafo([
+        edge('ac1', 'fim', branch('br_quente')),
+        edge('ac1', 'fim', branch('br_frio')),
+        edge('ac1', 'fim', branch('no_reply')),
+        edge('ac1', 'fim', always()),
+      ])
+    );
+    expect(result).toEqual({ ok: true });
+  });
+
+  it('reprova nomeando a CLASSE que ficou sem saída', () => {
+    const result = validateFlowForPublish(
+      grafo([
+        edge('ac1', 'fim', branch('br_quente')),
+        edge('ac1', 'fim', branch('no_reply')),
+        edge('ac1', 'fim', always()),
+      ])
+    );
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    const semSaida = result.errors.filter((e) => e.code === 'missing_branch_edge');
+    expect(semSaida).toHaveLength(1);
+    expect(semSaida[0]!.branch_id).toBe('br_frio');
+    expect(semSaida[0]!.message).toContain('frio');
+  });
+
+  it('reprova quando falta a saída de quem não respondeu', () => {
+    const result = validateFlowForPublish(
+      grafo([
+        edge('ac1', 'fim', branch('br_quente')),
+        edge('ac1', 'fim', branch('br_frio')),
+        edge('ac1', 'fim', always()),
+      ])
+    );
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.errors.some((e) => e.branch_id === 'no_reply')).toBe(true);
+  });
+});

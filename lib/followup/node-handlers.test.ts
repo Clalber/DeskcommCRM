@@ -624,3 +624,79 @@ describe("processNode — end", () => {
     expect(result).toEqual({ kind: "complete", outcome: null, cancel_reason: "lead pediu pra sair" });
   });
 });
+
+/**
+ * A IRMÃ do defeito dos ramos, achada pelo DevVivo na revisão: eu ensinei o
+ * `selectEdge` a casar `branch` e usei isso SÓ no `condition`. O `ai_classify`
+ * continuou resolvendo a saída por TEXTO — e num nó já migrado para ramos ele
+ * não acha aresta nenhuma, cai no fallback `always` e manda todo mundo pelo
+ * mesmo caminho, calado.
+ *
+ * O `no_reply` é o pior lugar para isso acontecer: é o caminho de quem NÃO
+ * respondeu, que num follow-up é o caso mais comum.
+ */
+describe("processNode — ai_classify migrado para ramos nomeados", () => {
+  const RAMOS = [
+    { id: "br_quente", label: "quente" },
+    { id: "br_frio", label: "frio" },
+  ];
+
+  function classifyV2(): FlowNode {
+    return {
+      id: "ac1",
+      type: "ai_classify",
+      label: "Classificar",
+      position: { x: 0, y: 0 },
+      config: {
+        classes: ["quente", "frio"],
+        branches: RAMOS,
+        grace_timeout_ms: 900_000,
+        target: "last_reply",
+      },
+    };
+  }
+
+  const edges = [
+    edge({ source: "ac1", target: "no-quente", condition: { type: "branch", branch_id: "br_quente" } }),
+    edge({ source: "ac1", target: "no-frio", condition: { type: "branch", branch_id: "br_frio" } }),
+    edge({ source: "ac1", target: "no-sem-resposta", condition: { type: "branch", branch_id: "no_reply" } }),
+    edge({ source: "ac1", target: "escape", condition: { type: "always" } }),
+  ];
+
+  it("grace vencido sem resposta sai pelo ramo 'sem resposta', não pela escape", () => {
+    const result = processNode({
+      node: classifyV2(),
+      edges,
+      enrollment: enrollment(),
+      lead: lead(),
+      clock,
+      waitElapsed: true,
+      wokeEarly: false,
+    });
+    expect(result).toMatchObject({ kind: "advance", next_node_id: "no-sem-resposta" });
+  });
+
+  it("um nó v1 continua saindo pela aresta class_match de 'no_reply'", () => {
+    const v1: FlowNode = {
+      id: "ac1",
+      type: "ai_classify",
+      label: "Classificar",
+      position: { x: 0, y: 0 },
+      config: { classes: ["quente"], grace_timeout_ms: 900_000, target: "last_reply" },
+    };
+    const arestasV1 = [
+      edge({ source: "ac1", target: "no-sem-resposta", condition: { type: "class_match", value: "no_reply" } }),
+      edge({ source: "ac1", target: "escape", condition: { type: "always" } }),
+    ];
+    const result = processNode({
+      node: v1,
+      edges: arestasV1,
+      enrollment: enrollment(),
+      lead: lead(),
+      clock,
+      waitElapsed: true,
+      wokeEarly: false,
+    });
+    expect(result).toMatchObject({ kind: "advance", next_node_id: "no-sem-resposta" });
+  });
+});

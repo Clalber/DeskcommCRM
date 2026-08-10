@@ -3,6 +3,7 @@
  * `engine.ts` owns the tick/DB orchestration; this file only decides "given
  * this node + these facts, what happens next" so it's testable without Postgres.
  */
+import { NO_REPLY_BRANCH_ID, nodeBranches } from "./graph-schema";
 import type { FlowEdge, FlowNode } from "./graph-schema";
 import { clampEspera, esperaPlanejadaDe, type EsperaAdaptativa } from "./timing-plan";
 
@@ -109,6 +110,34 @@ export type EdgeMatch =
   | { type: "class_match"; value: string }
   | { type: "cond_result"; value: boolean }
   | { type: "branch"; branch_id: string };
+
+/**
+ * Qual saída de um nó de classificação leva à classe `classe` — resolvendo os
+ * dois dialetos (nó v1 casa por texto, nó migrado casa pelo id estável do ramo).
+ *
+ * Existe como função porque a MESMA pergunta é feita em dois pontos do caminho
+ * de execução: aqui, quando o prazo vence sem resposta, e no `turn-bridge`,
+ * quando o modelo classifica. Consertar só um dos dois deixava o fluxo migrado
+ * roteando certo para quem responde e errado, em silêncio, para quem não
+ * responde — que num follow-up é o caso mais comum. Achado pelo DevVivo na
+ * revisão: eu tinha ensinado o `selectEdge` a casar ramo e usado isso só no
+ * `condition`.
+ *
+ * Casa por rótulo E por id de propósito: `no_reply` é reservado (id `no_reply`,
+ * rótulo "Sem resposta"), e uma classe do usuário é achada pelo texto que ele
+ * escreveu.
+ */
+export function classEdgeMatch(
+  node: Extract<FlowNode, { type: "ai_classify" }>,
+  classe: string,
+): EdgeMatch {
+  const ramo = nodeBranches(node).find(
+    (b) => b.kind === "match" && (b.label === classe || b.id === classe),
+  );
+  return ramo?.condition.type === "branch"
+    ? { type: "branch", branch_id: ramo.condition.branch_id }
+    : { type: "class_match", value: classe };
+}
 
 /**
  * Picks the outbound edge from `from`: highest `priority` first, exact
@@ -337,7 +366,7 @@ export function processNode(input: {
       // grace_timeout_ms venceu sem turno de classificação concluído — classifica
       // como 'no_reply' SEM chamar o LLM (onda 5, critério 2); selectEdge já cai
       // no fallback 'always' se não houver aresta 'no_reply' explícita.
-      const edge = selectEdge(edges, node.id, { type: "class_match", value: "no_reply" });
+      const edge = selectEdge(edges, node.id, classEdgeMatch(node, NO_REPLY_BRANCH_ID));
       if (!edge) return { kind: "fail", error: `ai_classify node "${node.id}" has no edge for class "no_reply" (fallback also missing)` };
       return { kind: "advance", next_node_id: edge.target, next_eval_at: clock() };
     }
