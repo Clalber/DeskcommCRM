@@ -66,7 +66,7 @@ export function ClassifyForm({
             setClassesText(e.target.value);
             commit({ classesText: e.target.value, graceMin, target, hint });
           }}
-          placeholder="hot, cold, no_reply"
+          placeholder="interessado, sem interesse"
         />
       </div>
       <div className="space-y-2">

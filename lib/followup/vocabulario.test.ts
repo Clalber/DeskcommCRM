@@ -20,6 +20,8 @@ import { join } from "node:path";
 import * as ts from "typescript";
 import { describe, expect, it } from "vitest";
 
+import { enumsDoFollowup } from "@/tests/support/enums-do-grafo";
+
 import { triggerConfigSchema } from "./api-schemas";
 import { conditionLabel } from "./edge-condition-options";
 import {
@@ -28,7 +30,6 @@ import {
   aiClassifyConfigSchema,
   conditionConfigSchema,
   endConfigSchema,
-  flowNodeSchema,
   waitConfigSchema,
 } from "./graph-schema";
 import {
@@ -81,45 +82,6 @@ function discriminantes(uniao: unknown, chave: string): string[] {
     if (typeof valor !== "string") throw new Error(`membro da união sem literal '${chave}'`);
     return valor;
   });
-}
-
-/**
- * Todo `z.enum` alcançável a partir de um schema, descendo por objeto, array,
- * optional/default e união. Existe porque a versão anterior deste arquivo
- * conferia os VALORES de cada vocabulário que eu tinha listado — e por isso não
- * viu o `branching` inteiro entrar no contrato v2. Conferir valor de lista
- * conhecida não é o mesmo que perceber lista nova.
- */
-function enumsAlcancaveis(raiz: unknown): Array<{ caminho: string; valores: string[] }> {
-  const achados: Array<{ caminho: string; valores: string[] }> = [];
-  const vistos = new Set<unknown>();
-
-  const desce = (no: any, caminho: string): void => {
-    if (!no || typeof no !== "object" || vistos.has(no)) return;
-    vistos.add(no);
-
-    const def = no.def ?? no._def;
-    // ZodEnum expõe `options` de strings; literal expõe `value` (discriminante
-    // estrutural, não vocabulário de tela) e por isso fica de fora.
-    if (Array.isArray(no.options) && no.options.every((o: unknown) => typeof o === "string")) {
-      achados.push({ caminho, valores: no.options as string[] });
-      return;
-    }
-    if (Array.isArray(no.options)) {
-      no.options.forEach((membro: unknown, i: number) => desce(membro, `${caminho}|${i}`));
-    }
-    if (typeof no.unwrap === "function") desce(no.unwrap(), caminho);
-    if (def?.innerType) desce(def.innerType, caminho);
-    if (def?.element) desce(def.element, `${caminho}[]`);
-    if (no.element) desce(no.element, `${caminho}[]`);
-    const shape = no.shape ?? def?.shape;
-    if (shape && typeof shape === "object") {
-      for (const [chave, filho] of Object.entries(shape)) desce(filho, `${caminho}.${chave}`);
-    }
-  };
-
-  desce(raiz, "");
-  return achados;
 }
 
 const checkShape = zod(conditionConfigSchema).shape.checks.element.shape;
@@ -272,10 +234,7 @@ describe("vocabulário NOVO não entra escondido", () => {
     Object.fromEntries(OPERADORES_NO_SCHEMA.map((op) => [op, true])),
   ];
 
-  const descobertos = [
-    ...enumsAlcancaveis(flowNodeSchema).map((e) => ({ ...e, caminho: `flowNode${e.caminho}` })),
-    ...enumsAlcancaveis(triggerConfigSchema).map((e) => ({ ...e, caminho: `trigger${e.caminho}` })),
-  ];
+  const descobertos = enumsDoFollowup();
 
   it("a varredura encontra os enums que sabemos existir", () => {
     // Controle: um walker quebrado devolve [] e faria o teste seguinte passar
