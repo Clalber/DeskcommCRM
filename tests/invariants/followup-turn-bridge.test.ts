@@ -10,6 +10,7 @@ import { flowGraphSchema, type FlowGraph } from "@/lib/followup/graph-schema";
 import { followupTurnPayloadSchema } from "@/lib/agent-engine/agent/followup-turn";
 
 import { isolarFixtureDeFollowup } from "./followup-isolamento";
+import { relogioAncoradoNoBanco } from "./followup-relogio";
 
 /**
  * Task 5.1 — a ponte engine ⇄ job_queue contra Postgres real (baseline
@@ -101,7 +102,7 @@ async function getEnrollment(id: string): Promise<Record<string, unknown>> {
 }
 
 function makeTickDeps(jobs: FollowupJobRequest[]): TickDeps {
-  return { db, clock: () => new Date(), enqueueJob: async (job) => void jobs.push(job) };
+  return { db, clock: relogioAncoradoNoBanco(), enqueueJob: async (job) => void jobs.push(job) };
 }
 
 // ---- graphs ----

@@ -81,7 +81,17 @@ export interface GatilhoEtapaDb {
     version_id: string;
     contact_id: string;
     current_node_id: string;
-    next_eval_at: string;
+    /**
+     * ⚠️ OMITIDO DE PROPÓSITO quando o enrollment nasce vencido — e é sempre o
+     * caso deste produtor. Quem grava aqui o "agora" do PROCESSO grava um
+     * instante que ainda é FUTURO para o claim (que compara com `now()` do
+     * Postgres, e o banco fica 17–34 ms atrás): o tick seguinte pula o
+     * enrollment e ele espera o tick DEPOIS, até 60 s. Ausente, o
+     * `default now()` da coluna (migration 0147) resolve com o relógio certo,
+     * sem round-trip e sem nada para chamar errado. Só preencha para agendar no
+     * FUTURO, onde o desvio é irrelevante.
+     */
+    next_eval_at?: string;
     agent_id: string | null;
   }): Promise<{ inserted: boolean; id: string | null }>;
   /** A linha de proveniência na timeline do enrollment. */
@@ -161,7 +171,6 @@ export async function aplicaGatilhoDeEtapa(
     return summary;
   }
 
-  const agoraIso = deps.clock().toISOString();
   for (const pointer of armados) {
     const agentId = await resolveAgentForAutomaticTrigger(deps.gateDb, row.organization_id, pointer.id);
     if (agentId === null) {
@@ -178,7 +187,8 @@ export async function aplicaGatilhoDeEtapa(
       version_id: pointer.active_version_id,
       contact_id: contatoId,
       current_node_id: noDeGatilho,
-      next_eval_at: agoraIso,
+      // `next_eval_at` NÃO vai: o default do banco decide. Ver o comentário na
+      // interface e a migration 0147.
       agent_id: agentId,
     });
     if (!inserted) {

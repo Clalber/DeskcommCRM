@@ -25,6 +25,7 @@ import { enumsDoFollowup } from "@/tests/support/enums-do-grafo";
 import { triggerConfigSchema } from "./api-schemas";
 import { conditionLabel } from "./edge-condition-options";
 import {
+  NO_REPLY_BRANCH_ID,
   RESERVED_BRANCH_IDS,
   actionConfigSchema,
   aiClassifyConfigSchema,
@@ -32,6 +33,7 @@ import {
   endConfigSchema,
   waitConfigSchema,
 } from "./graph-schema";
+import * as vocabulario from "./vocabulario";
 import {
   ALVOS_DA_CLASSIFICACAO,
   CAMPOS_DA_CONDICAO,
@@ -43,11 +45,16 @@ import {
   MODOS_DE_ESPERA,
   MODOS_DE_RAMIFICACAO,
   RAMOS_RESERVADOS,
+  RAMOS_RESERVADOS_EM_FRASE,
   RESULTADOS_DO_FIM,
   SITUACOES_DO_ACOMPANHAMENTO,
   comparador,
   comparadoresDoCampo,
   fraseDaCondicao,
+  fraseDaClasse,
+  fraseDaRegraNomeada,
+  fraseDaRegraSemNome,
+  fraseDoRamo,
   opcoes,
   type CampoDaCondicao,
   type OperadorDaCondicao,
@@ -129,6 +136,48 @@ function literaisDaUniao(arquivo: string, nome: string): string[] {
 
 const SITUACOES_NO_TIPO = literaisDaUniao(NODE_HANDLERS, "EnrollmentStatus");
 const DESFECHOS_NO_TIPO = literaisDaUniao(NODE_HANDLERS, "EnrollmentOutcome");
+
+
+/**
+ * Todo par (valor de wire -> texto que o usuário lê) EXPORTADO pelo módulo, e
+ * todo mapa, colhidos dos exports em vez de listados aqui.
+ *
+ * A lista escrita à mão que isto substitui já estava incompleta no dia em que
+ * foi escrita: `MODOS_DE_RAMIFICACAO` e `RAMOS_RESERVADOS` entraram no
+ * dicionário e nenhuma varredura os alcançou. É o mesmo ponto cego que a regra
+ * do underscore tinha, um nível acima — a guarda cobria o que alguém lembrou de
+ * inscrever nela.
+ */
+function mapasExportados(): Array<[string, Record<string, unknown>]> {
+  // Sem predicado de tipo: `Object.entries` de um módulo devolve a UNIÃO dos
+  // tipos exportados, e estreitar essa união para `Record<string, unknown>` não
+  // compila (as chaves literais de cada mapa não são atribuíveis a `string`
+  // genérico). Coletar e converter por entrada é o que o TypeScript aceita.
+  const mapas: Array<[string, Record<string, unknown>]> = [];
+  for (const [nome, valor] of Object.entries(vocabulario) as Array<[string, unknown]>) {
+    if (typeof valor === "object" && valor !== null && !Array.isArray(valor)) {
+      mapas.push([nome, valor as Record<string, unknown>]);
+    }
+  }
+  return mapas;
+}
+
+function rotulosExportados(): Array<[string, string]> {
+  const pares: Array<[string, string]> = [];
+  for (const [, mapa] of mapasExportados()) {
+    for (const [chave, conteudo] of Object.entries(mapa)) {
+      if (typeof conteudo === "string") pares.push([chave, conteudo]);
+      else if (
+        conteudo !== null &&
+        typeof conteudo === "object" &&
+        typeof (conteudo as { rotulo?: unknown }).rotulo === "string"
+      ) {
+        pares.push([chave, (conteudo as { rotulo: string }).rotulo]);
+      }
+    }
+  }
+  return pares;
+}
 
 // ─── controles de vacuidade ──────────────────────────────────────────────
 
@@ -220,19 +269,10 @@ describe("vocabulário NOVO não entra escondido", () => {
    * dicionário cobre? — e ela não depende de eu lembrar da lista.
    */
   const TODOS_OS_MAPAS: Array<Record<string, unknown>> = [
-    CAMPOS_DA_CONDICAO,
-    COMBINADORES,
-    ALVOS_DA_CLASSIFICACAO,
-    RESULTADOS_DO_FIM,
-    MODOS_DE_ESPERA,
-    MODOS_DA_ACAO,
-    MODOS_DE_RAMIFICACAO,
-    RAMOS_RESERVADOS,
-    GATILHOS,
-    SITUACOES_DO_ACOMPANHAMENTO,
-    DESFECHOS,
+    ...mapasExportados().map(([, mapa]) => mapa),
     Object.fromEntries(OPERADORES_NO_SCHEMA.map((op) => [op, true])),
   ];
+
 
   const descobertos = enumsDoFollowup();
 
@@ -262,17 +302,21 @@ describe("a tradução não é o valor cru disfarçado", () => {
    * português e coincidir com o wire ali não é vazamento. `waiting_reply` num
    * rótulo, é.
    */
-  const rotulosPorValor: Array<[string, string]> = [
-    ...Object.entries(CAMPOS_DA_CONDICAO).map(([k, v]) => [k, v.rotulo] as [string, string]),
-    ...Object.entries(COMBINADORES),
-    ...Object.entries(ALVOS_DA_CLASSIFICACAO),
-    ...Object.entries(RESULTADOS_DO_FIM),
-    ...Object.entries(MODOS_DE_ESPERA),
-    ...Object.entries(MODOS_DA_ACAO),
-    ...Object.entries(GATILHOS),
-    ...Object.entries(SITUACOES_DO_ACOMPANHAMENTO),
-    ...Object.entries(DESFECHOS),
-  ];
+  const rotulosPorValor: Array<[string, string]> = rotulosExportados();
+
+  it("a colheita de rótulos alcança todos os mapas do módulo", () => {
+    // Controle: colher dos exports só vale se a colheita for gorda. Um filtro
+    // quebrado devolveria pouca coisa e as varreduras abaixo passariam por
+    // omissão — que é exatamente como a lista à mão falhava.
+    expect(rotulosPorValor.length).toBeGreaterThan(30);
+    for (const esperado of ["Parou por falha", "Uma saída para cada regra", "Convertido", "Etiqueta do contato"]) {
+      expect(
+        rotulosPorValor.map(([, r]) => r),
+        `'${esperado}' não foi colhido — algum mapa ficou fora da varredura`,
+      ).toContain(esperado);
+    }
+  });
+
 
   it("nenhum rótulo carrega o token snake_case do wire", () => {
     const comUnderscore = rotulosPorValor.filter(([valor]) => valor.includes("_"));
@@ -286,6 +330,36 @@ describe("a tradução não é o valor cru disfarçado", () => {
     for (const [valor, rotulo] of rotulosPorValor) {
       expect(rotulo.trim().length, `'${valor}' sem rótulo`).toBeGreaterThan(0);
     }
+  });
+
+  /**
+   * Coincidências legítimas: palavras que o português usa e que por acaso são
+   * iguais ao valor de wire. Cada entrada precisa de razão escrita, senão a
+   * allowlist vira o lugar onde os vazamentos vão morar.
+   */
+  const COINCIDENCIAS_ACEITAS = new Map([
+    ["manual", "'Manual' é o português de manual, e é o texto que TriggerConfigControl já mostra e o e2e seleciona."],
+  ]);
+
+  it("nenhum rótulo É o valor de wire, mesmo sem underscore", () => {
+    // A regra do `_` acima não pega `gte`, `eq` nem `and` — exatamente os
+    // comparadores de que o Rafael reclamou. E os rótulos dos COMPARADORES não
+    // estavam em varredura nenhuma até aqui: eles não moram num Record simples.
+    const tudo: Array<[string, string]> = [
+      ...rotulosPorValor,
+      ...(CAMPOS_NO_SCHEMA as CampoDaCondicao[]).flatMap((campo) =>
+        (OPERADORES_NO_SCHEMA as OperadorDaCondicao[]).map(
+          (op) => [`${campo}+${op}`, comparador(campo, op).rotulo] as [string, string],
+        ),
+      ),
+    ];
+    const wire = new Set([...CAMPOS_NO_SCHEMA, ...OPERADORES_NO_SCHEMA, ...COMBINADORES_NO_SCHEMA]);
+
+    const crus = tudo.filter(([, rotulo]) => {
+      const r = rotulo.trim().toLowerCase();
+      return wire.has(r) && !COINCIDENCIAS_ACEITAS.has(r);
+    });
+    expect(crus.map(([onde, rotulo]) => `${onde} → "${rotulo}"`)).toEqual([]);
   });
 
   it("a palavra 'grace' não aparece em nada que o usuário lê", () => {
@@ -326,6 +400,55 @@ describe("etiqueta é pertinência, não igualdade", () => {
       expect(comparador("tag", op).oferecido).toBe(false);
       expect(comparador("tag", op).aviso).toBeTruthy();
     }
+  });
+});
+
+describe("o ramo em frase — o registro do dossiê", () => {
+  it("os quatro reservados têm frase, e o no_reply mantém o texto que a Fila já escrevia", () => {
+    // O risco do v2 é silencioso: `no_reply` deixa de chegar como `class_match`
+    // e vira `branch_id`, então a linha que o tratava fica órfã e a frase vira
+    // o identificador — sem exceção nenhuma. Este caso é o que reprova nisso.
+    expect(fraseDoRamo(NO_REPLY_BRANCH_ID)).toBe("quando ninguém responde");
+    for (const ramo of RESERVED_BRANCH_IDS) {
+      expect(fraseDoRamo(ramo), `ramo reservado '${ramo}' sem frase`).toBeTruthy();
+      expect(fraseDoRamo(ramo) ?? "", `frase de '${ramo}' devolve o id`).not.toContain(ramo);
+    }
+  });
+
+  it("classe da IA e regra do negócio têm moldes DIFERENTES — um só mentiria em metade dos casos", () => {
+    // "quando a resposta é “Tem a etiqueta VIP”" não é resposta de ninguém: é
+    // regra do negócio. O molde único obrigaria um dos dois lados a mentir.
+    expect(fraseDaClasse("interessado")).toBe("quando a IA classifica a resposta como “interessado”");
+    expect(fraseDaRegraNomeada("Cliente VIP")).toBe("quando vale a regra “Cliente VIP”");
+    expect(fraseDaClasse("x")).not.toBe(fraseDaRegraNomeada("x"));
+  });
+
+  it("regra sem nome vira a condição por extenso, encaixada em minúscula", () => {
+    // Sem isto sairia "quando O contato tem…" — maiúscula no meio da frase, que
+    // ninguém revisa e todo mundo lê. E jamais o id: `regra-2` na tela é o
+    // defeito que este módulo existe para impedir.
+    expect(fraseDaRegraSemNome("tag", "eq", "vip")).toBe("quando o contato tem a etiqueta “vip”");
+    expect(fraseDaRegraSemNome("steps_taken", "gte", 3)).toBe("quando o fluxo já deu pelo menos 3 passos");
+  });
+
+  it("fraseDoRamo devolve null para ramo não reservado, em vez de inventar", () => {
+    // Quem chama precisa escolher o molde (classe ou regra) com o contexto do
+    // NÓ, que este módulo não tem. Devolver texto aqui seria adivinhar.
+    expect(fraseDoRamo("br_7f3a")).toBeNull();
+    expect(fraseDoRamo(NO_REPLY_BRANCH_ID)).toBe("quando ninguém responde");
+  });
+
+  it("os dois registros dizem a mesma coisa em tons diferentes, e nenhum é cópia do outro", () => {
+    for (const ramo of RESERVED_BRANCH_IDS) {
+      expect(RAMOS_RESERVADOS[ramo].length, `chip de '${ramo}' vazio`).toBeGreaterThan(0);
+      expect(RAMOS_RESERVADOS_EM_FRASE[ramo].length, `frase de '${ramo}' vazia`).toBeGreaterThan(0);
+    }
+    // Se algum dia os dois registros convergirem palavra por palavra, um dos
+    // dois virou peso morto e a distinção que justifica os dois se perdeu.
+    const iguais = RESERVED_BRANCH_IDS.filter((r) => RAMOS_RESERVADOS[r] === RAMOS_RESERVADOS_EM_FRASE[r]);
+    expect(iguais.length, `${iguais.join(", ")} têm chip e frase idênticos — sobra um registro`).toBeLessThan(
+      RESERVED_BRANCH_IDS.length,
+    );
   });
 });
 

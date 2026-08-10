@@ -42,7 +42,94 @@ const pool = new pg.Pool({
   max: 4,
 });
 
+/**
+ * QUEM SUJA, LIMPA — os pointers que ESTE arquivo criou, e nada além disso.
+ *
+ * Os invariantes compartilham um Postgres que não é resetado entre arquivos. Um
+ * enrollment DEVIDO (`next_eval_at` no passado, status vivo) deixado aqui entra
+ * no `runFollowupTick` do arquivo seguinte, consome vaga do lote — que é
+ * pequeno — e contamina os agregados dele. O arquivo que reprova não é o que
+ * sujou, e por isso o defeito é caro de achar: mediu-se cinco arquivos de
+ * follow-up deixando 10 enrollments devidos contra um `limit` de 5.
+ *
+ * ⚠️ ISTO NÃO SUBSTITUI A DEFESA DE ENTRADA de quem consome (`beforeEach` que
+ * limpa antes de rodar, como `followup-engine.test.ts` faz desde a Task 5.2, e
+ * como `ab4ad829` estendeu para as irmãs). As duas existem porque FALHAM EM
+ * CENÁRIOS DIFERENTES: o `afterAll` não roda se o processo morrer no meio
+ * (crash, timeout do runner, kill) — aí só a defesa de entrada salva quem vem
+ * depois; e a defesa de entrada não protege ninguém contra um arquivo NOVO cujo
+ * autor esqueceu de se defender — aí só a limpeza na origem impede o vazamento
+ * de chegar nele. Redundância entre defesas que falham juntas é desperdício;
+ * entre defesas que falham separado é o que torna isto robusto.
+ *
+ * ⚠️ PELOS IDS QUE ESTE ARQUIVO CRIOU, jamais um `delete` amplo por tabela ou
+ * por organização. Num banco compartilhado por 91 arquivos, apagar por critério
+ * largo é a próxima geração do mesmo problema com o sinal trocado: em vez de
+ * deixar sujeira para o próximo, você apaga a fixture de outro no meio do run
+ * dele. O `on delete cascade` de `followup_enrollments.pointer_id` leva os
+ * enrollments junto, então apagar os pointers basta — e é o mínimo que resolve.
+ */
+const pointersCriados: string[] = [];
+
 afterAll(async () => {
+  if (pointersCriados.length > 0) {
+    // A CONTAGEM ANTES DA LIMPEZA é o que prova que esta limpeza não é
+    // cerimônia: é exatamente o que este arquivo entregaria ao próximo se o
+    // `afterAll` não existisse. Zero aqui significaria que a limpeza é
+    // decorativa — e limpeza decorativa é pior que nenhuma, porque dá a
+    // sensação de que o problema foi tratado.
+    // ⚠️ DOIS NÚMEROS, E NÃO UM, porque zero significa duas coisas diferentes e
+    // só uma delas autoriza a frase "limpeza decorativa":
+    //   - DEVIDOS  → rouba vaga do lote do `runFollowupTick` de quem rodar
+    //                depois, e contamina os agregados dele;
+    //   - TOTAIS   → mesmo não-devido, um enrollment VIVO ocupa o índice único
+    //                `idx_followup_enrollments_one_live` (org-wide por contato).
+    //                Ele não rouba claim, mas pode BARRAR o insert de outro
+    //                arquivo que use o mesmo contato — e lá o sintoma seria
+    //                "enrolled 0, skipped 1" onde o autor esperava 1. Outro
+    //                vazamento, por outra porta.
+    // 0 e 0 é limpeza decorativa, e nesse caso é obrigação dizer isso em vez de
+    // manter a cerimônia: sensação de tratado é o que impede o próximo de tratar.
+    const { rows } = await pool.query<{ devidos: string; totais: string }>(
+      `select
+         count(*) filter (
+           where status in ('active','waiting_reply')
+             and next_eval_at is not null and next_eval_at <= now()
+         ) as devidos,
+         count(*) filter (
+           where status in ('active','waiting_reply','paused_handoff','paused_manual')
+         ) as totais
+       from followup_enrollments where pointer_id = any($1::uuid[])`,
+      [pointersCriados],
+    );
+    process.stdout.write(
+      `[followup-gatilho-etapa] deixados para trás antes da limpeza — ` +
+        `devidos: ${rows[0]!.devidos}, vivos no total: ${rows[0]!.totais}\n`,
+    );
+    await pool.query(`delete from followup_flow_pointers where id = any($1::uuid[])`, [pointersCriados]);
+
+    // ⚠️ A SEGUNDA METADE, e sem ela o commit não estava provado. A contagem
+    // acima mostra que a sujeira EXISTE; esta mostra que a limpeza a REMOVE, e
+    // são afirmações diferentes — a ponte entre "havia sujeira" e "escrevi um
+    // afterAll" seria suposição. Zero aqui é o que autoriza dizer que este
+    // arquivo não vaza.
+    const { rows: sobrou } = await pool.query<{ devidos: string; totais: string }>(
+      `select
+         count(*) filter (
+           where status in ('active','waiting_reply')
+             and next_eval_at is not null and next_eval_at <= now()
+         ) as devidos,
+         count(*) filter (
+           where status in ('active','waiting_reply','paused_handoff','paused_manual')
+         ) as totais
+       from followup_enrollments where pointer_id = any($1::uuid[])`,
+      [pointersCriados],
+    );
+    process.stdout.write(
+      `[followup-gatilho-etapa] DEPOIS da limpeza — ` +
+        `devidos: ${sobrou[0]!.devidos}, vivos no total: ${sobrou[0]!.totais}\n`,
+    );
+  }
   await pool.end();
 });
 
@@ -108,17 +195,25 @@ function gatilhoDb(): GatilhoEtapaDb {
     async insereEnrollment(input) {
       try {
         const { rows } = await pool.query<{ id: string }>(
-          `insert into followup_enrollments
-             (organization_id, pointer_id, version_id, contact_id, current_node_id, status, next_eval_at, agent_id)
-           values ($1, $2, $3, $4, $5, 'active', $6, $7) returning id`,
+          // ⚠️ ESPELHA O ADAPTER DE PRODUÇÃO: quando `next_eval_at` vem
+          // ausente, a coluna é OMITIDA e o `default now()` do banco decide
+          // (migration 0147). Um adapter de teste que preenchesse o campo
+          // sozinho esconderia o defeito de relógio que a guarda mede.
+          input.next_eval_at === undefined || input.next_eval_at === null
+            ? `insert into followup_enrollments
+                 (organization_id, pointer_id, version_id, contact_id, current_node_id, status, agent_id)
+               values ($1, $2, $3, $4, $5, 'active', $6) returning id`
+            : `insert into followup_enrollments
+                 (organization_id, pointer_id, version_id, contact_id, current_node_id, status, agent_id, next_eval_at)
+               values ($1, $2, $3, $4, $5, 'active', $6, $7) returning id`,
           [
             input.organization_id,
             input.pointer_id,
             input.version_id,
             input.contact_id,
             input.current_node_id,
-            input.next_eval_at,
             input.agent_id,
+            ...(input.next_eval_at === undefined || input.next_eval_at === null ? [] : [input.next_eval_at]),
           ],
         );
         return { inserted: true, id: rows[0]!.id };
@@ -240,6 +335,9 @@ async function seedFluxo(
      values ($1, $2, 'active', $3, $4) returning id`,
     [org, `Gatilho Etapa ${Date.now()}-${Math.random()}`, version[0]!.id, JSON.stringify(trigger)],
   );
+  // Registrado para o `afterAll` apagar exatamente o que este arquivo criou —
+  // é o cascade deste pointer que leva embora os enrollments devidos.
+  pointersCriados.push(pointer[0]!.id);
   return { pointerId: pointer[0]!.id, versionId: version[0]!.id };
 }
 
