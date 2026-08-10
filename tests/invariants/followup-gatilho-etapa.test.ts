@@ -195,17 +195,25 @@ function gatilhoDb(): GatilhoEtapaDb {
     async insereEnrollment(input) {
       try {
         const { rows } = await pool.query<{ id: string }>(
-          `insert into followup_enrollments
-             (organization_id, pointer_id, version_id, contact_id, current_node_id, status, next_eval_at, agent_id)
-           values ($1, $2, $3, $4, $5, 'active', $6, $7) returning id`,
+          // ⚠️ ESPELHA O ADAPTER DE PRODUÇÃO: quando `next_eval_at` vem
+          // ausente, a coluna é OMITIDA e o `default now()` do banco decide
+          // (migration 0147). Um adapter de teste que preenchesse o campo
+          // sozinho esconderia o defeito de relógio que a guarda mede.
+          input.next_eval_at === undefined || input.next_eval_at === null
+            ? `insert into followup_enrollments
+                 (organization_id, pointer_id, version_id, contact_id, current_node_id, status, agent_id)
+               values ($1, $2, $3, $4, $5, 'active', $6) returning id`
+            : `insert into followup_enrollments
+                 (organization_id, pointer_id, version_id, contact_id, current_node_id, status, agent_id, next_eval_at)
+               values ($1, $2, $3, $4, $5, 'active', $6, $7) returning id`,
           [
             input.organization_id,
             input.pointer_id,
             input.version_id,
             input.contact_id,
             input.current_node_id,
-            input.next_eval_at,
             input.agent_id,
+            ...(input.next_eval_at === undefined || input.next_eval_at === null ? [] : [input.next_eval_at]),
           ],
         );
         return { inserted: true, id: rows[0]!.id };
