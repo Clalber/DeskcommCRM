@@ -107,6 +107,28 @@ afterAll(async () => {
         `devidos: ${rows[0]!.devidos}, vivos no total: ${rows[0]!.totais}\n`,
     );
     await pool.query(`delete from followup_flow_pointers where id = any($1::uuid[])`, [pointersCriados]);
+
+    // ⚠️ A SEGUNDA METADE, e sem ela o commit não estava provado. A contagem
+    // acima mostra que a sujeira EXISTE; esta mostra que a limpeza a REMOVE, e
+    // são afirmações diferentes — a ponte entre "havia sujeira" e "escrevi um
+    // afterAll" seria suposição. Zero aqui é o que autoriza dizer que este
+    // arquivo não vaza.
+    const { rows: sobrou } = await pool.query<{ devidos: string; totais: string }>(
+      `select
+         count(*) filter (
+           where status in ('active','waiting_reply')
+             and next_eval_at is not null and next_eval_at <= now()
+         ) as devidos,
+         count(*) filter (
+           where status in ('active','waiting_reply','paused_handoff')
+         ) as totais
+       from followup_enrollments where pointer_id = any($1::uuid[])`,
+      [pointersCriados],
+    );
+    process.stdout.write(
+      `[followup-gatilho-etapa] DEPOIS da limpeza — ` +
+        `devidos: ${sobrou[0]!.devidos}, vivos no total: ${sobrou[0]!.totais}\n`,
+    );
   }
   await pool.end();
 });

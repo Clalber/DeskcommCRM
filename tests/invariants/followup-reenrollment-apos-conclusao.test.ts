@@ -121,6 +121,26 @@ afterAll(async () => {
         `devidos: ${rows[0]!.devidos}, vivos no total: ${rows[0]!.totais}\n`,
     );
     await pool.query(`delete from followup_flow_pointers where id = any($1::uuid[])`, [pointersCriados]);
+
+    // A segunda metade: "a sujeira existe" e "a limpeza a remove" são
+    // afirmações diferentes, e só a segunda justifica este afterAll. Zero aqui
+    // é o que autoriza dizer que este arquivo não vaza.
+    const { rows: sobrou } = await pool.query<{ devidos: string; totais: string }>(
+      `select
+         count(*) filter (
+           where status in ('active','waiting_reply')
+             and next_eval_at is not null and next_eval_at <= now()
+         ) as devidos,
+         count(*) filter (
+           where status in ('active','waiting_reply','paused_handoff')
+         ) as totais
+       from followup_enrollments where pointer_id = any($1::uuid[])`,
+      [pointersCriados],
+    );
+    process.stdout.write(
+      `[followup-reenrollment] DEPOIS da limpeza — ` +
+        `devidos: ${sobrou[0]!.devidos}, vivos no total: ${sobrou[0]!.totais}\n`,
+    );
   }
   await pool.end();
 });
