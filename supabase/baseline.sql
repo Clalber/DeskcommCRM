@@ -10776,8 +10776,13 @@ notify pgrst, 'reload schema';
 -- TypeScript.
 --
 -- Idempotente e auto-curativo: `create table if not exists` + `drop policy if
--- exists` antes do `create policy`. Nenhuma função nova, então não há grant a
--- revogar aqui.
+-- exists` antes do `create policy`.
+--
+-- TABELA NOVA NASCE CONCEDIDA, e não só função: o `ALTER DEFAULT PRIVILEGES ...
+-- GRANT ALL ON TABLES TO anon/authenticated` deste mesmo baseline vale para toda
+-- tabela criada depois dele. A primeira versão deste bloco dizia "nenhuma função
+-- nova, então não há grant a revogar" — leitura errada da doutrina, que fala de
+-- FUNÇÃO. O efeito medido está no cabeçalho da migration 0142.
 
 create table if not exists public.org_guardrail_layers (
   organization_id uuid not null references public.organizations(id) on delete cascade,
@@ -10789,10 +10794,39 @@ create table if not exists public.org_guardrail_layers (
 
 alter table public.org_guardrail_layers enable row level security;
 
+-- ---- escrita de guardrail exige admin (migration 0143) ----
+--
+-- Leitura org-flat, escrita com gate de PAPEL no banco (forma canônica do repo:
+-- ver `crm_stages_select` / `crm_stages_manager_write` acima). O `admin` da rota
+-- não é fronteira — com a anon key e o próprio JWT, um `viewer` desligava a camada
+-- anti-jailbreak da organização pelo PostgREST, sem auditoria. Medido: UPDATE 1 +
+-- INSERT 1 num pg17 do zero.
+--
+-- Auto-curativo: derruba a policy da 0142 por nome antes de criar as duas novas,
+-- então o `update.sh` de um clone que parou na 0142 fica correto sem passo manual.
 drop policy if exists tenant_isolation_org_guardrail_layers_all on public.org_guardrail_layers;
-create policy tenant_isolation_org_guardrail_layers_all on public.org_guardrail_layers
-  using (organization_id in (select public.fn_user_org_ids()))
-  with check (organization_id in (select public.fn_user_org_ids()));
+drop policy if exists org_guardrail_layers_select on public.org_guardrail_layers;
+drop policy if exists org_guardrail_layers_admin_write on public.org_guardrail_layers;
+
+create policy org_guardrail_layers_select on public.org_guardrail_layers
+  for select using (
+    (organization_id in (select public.fn_user_org_ids()))
+    or public.fn_is_platform_admin()
+  );
+
+create policy org_guardrail_layers_admin_write on public.org_guardrail_layers
+  using (
+    public.fn_is_platform_admin()
+    or ((organization_id in (select public.fn_user_org_ids()))
+        and public.fn_role_at_least(organization_id, 'admin'))
+  )
+  with check (
+    public.fn_is_platform_admin()
+    or ((organization_id in (select public.fn_user_org_ids()))
+        and public.fn_role_at_least(organization_id, 'admin'))
+  );
+
+revoke all on public.org_guardrail_layers from anon;
 
 
 -- ---- VARREDURA anon: função nova nasce exposta em quem ATUALIZA (migration 0116) ----
