@@ -72,6 +72,14 @@ async function oQuePainelMostra(painel: Locator): Promise<{ texto: string; valor
 
 test.describe("construtor de follow-up — a tela não fala em código (W2-LINGUAGEM)", () => {
   test.use({ viewport: { width: 1600, height: 900 } });
+  /**
+   * O teto do teste precisa caber as esperas de 60s do protocolo, senão elas
+   * são decorativas: medido, a 1ª tentativa morreu em `Test timeout of
+   * 30000ms` (o default do `playwright.config.ts`) com o POST de criação AINDA
+   * EM VOO — botão em "Criando…", desabilitado. Não era o app travando, era o
+   * teste desistindo antes: só o login leva ~15s nesta máquina.
+   */
+  test.describe.configure({ timeout: 240_000 });
 
   test("nenhum valor de wire e nenhum UUID aparecem no painel de nenhum tipo de nó", async ({ page }) => {
     const c = creds();

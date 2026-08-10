@@ -252,6 +252,30 @@ critério de aceite da frente MOTOR. Continua valendo depois: se alguém voltar 
 cair no teto por atalho, inclusive como fallback silencioso quando o modelo não
 responde, ele reprova. Cair no teto sem dizer é o defeito, não degradação.
 
+#### A prova em tela da W2-LINGUAGEM — o painel deixou de falar em código
+
+`tests/e2e/followup-linguagem.spec.ts`, porta 3105, verde em 29,2s. Percorre o
+painel dos seis tipos de nó e afirma que **nenhum valor de wire aparece no texto
+renderizado** e **nenhum campo de texto contém UUID**. A lista do proibido é
+derivada do schema (`tests/support/enums-do-grafo.ts`), não escrita à mão.
+
+Uma captura por tipo de nó, que é a unidade da afirmação — se um painel voltar a
+falar em código, é numa destas que se vê:
+
+- `evidence/followup-vivo/linguagem-painel-trigger.png`
+- `evidence/followup-vivo/linguagem-painel-wait.png` — "Como calcular a espera",
+  onde antes se lia "Modo" e "Adaptativo (min–max)".
+- `evidence/followup-vivo/linguagem-painel-condition.png` — o seletor que
+  mostrava `lead_stage` e `eq`, agora com a frase inteira da condição embaixo.
+- `evidence/followup-vivo/linguagem-painel-ai_classify.png` — o antigo "Grace".
+- `evidence/followup-vivo/linguagem-painel-action.png` — onde estavam os dois
+  campos de UUID de template.
+- `evidence/followup-vivo/linguagem-painel-end.png`
+
+Verde de varredura só vale se ela souber ficar vermelha: injetando na lista de
+proibidos uma palavra que ESTÁ na tela ("Rótulo"), a spec reprovou uma vez e
+nomeou os seis painéis. Previsto 1, medido 1.
+
 #### Bugs de harness achados no caminho (todos fora do escopo pedido)
 
 | # | Bug | Estado |
