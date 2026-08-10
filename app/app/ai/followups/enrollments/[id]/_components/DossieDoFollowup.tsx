@@ -297,12 +297,20 @@ export function DossieDoFollowup({ id, canWrite }: Props) {
               <Clock size={14} aria-hidden className="mr-1" /> Adiar
             </Button>
           )}
-          {podeMexerNoRelogio && (
+          {/*
+            SEM SAÍDA, O BOTÃO NÃO EXISTE — não fica desabilitado.
+            Passo sem aresta de saída não tem para onde pular NUNCA, não é um
+            "agora não": um controle que jamais terá efeito é decorativo, e
+            decorativo mente pior que ausente (o usuário fica procurando a
+            condição que o habilita). Desabilitado continua certo para o que é
+            temporário, como o `isPending` dos outros.
+          */}
+          {podeMexerNoRelogio && data.saidas.length > 0 && (
             <Button
               variant="outline"
               size="sm"
               data-testid="dossie-pular"
-              disabled={intervir.isPending || data.saidas.length === 0}
+              disabled={intervir.isPending}
               onClick={() => (data.saidas.length === 1 ? pular() : setPulando(true))}
             >
               <SkipForward size={14} aria-hidden className="mr-1" /> Pular este passo
