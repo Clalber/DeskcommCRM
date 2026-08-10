@@ -205,16 +205,25 @@ setup publica um fluxo, cria o enrollment pela API e chama o cron
 
 | # | Caso | Expectativa | Resultado |
 |---|------|-------------|-----------|
-| J9.1 | Clicar no contato na aba Fila | abre o dossiê daquele follow-up (rota própria, sobrevive ao F5) | |
-| J9.2 | Ler a história depois de dois ticks do motor | "Seguiu em frente" e "Começou a esperar"; **nenhum** `node_advanced` nem `wait-1` na tela | |
-| J9.3 | Onde está agora | o nome que a pessoa deu ao passo + quando volta a andar | |
-| J9.4 | Pausar | status vira "Pausado por uma pessoa"; próximo passo vira "Parado até alguém retomar" | |
-| J9.5 | Pausado não oferece adiar/pular | botão que só sabe recusar não aparece | |
-| J9.6 | Retomar | volta a andar pelo tempo que FALTAVA (não dispara na hora) | |
-| J9.7 | Adiar para uma data escolhida | o próximo disparo passa a ser a data do diálogo | |
-| J9.8 | Pular o passo | o follow-up anda para o passo seguinte; com mais de um caminho, a tela PERGUNTA por onde | |
-| J9.9 | A intervenção aparece na timeline do NEGÓCIO | "Follow-up pausado"/"Follow-up retomado" no card, com autor humano | |
-| J9.10 | Viewer | lê o dossiê inteiro, sem coluna de ações; as 4 rotas devolvem 403 `forbidden_role` | |
+| J9.1 | Clicar no contato na aba Fila | abre o dossiê daquele follow-up (rota própria, sobrevive ao F5) | PASS |
+| J9.2 | Ler a história depois de dois ticks do motor | "Seguiu em frente" e "Começou a esperar"; **nenhum** `node_advanced` nem `wait-1` na tela | PASS |
+| J9.3 | Onde está agora | "Deixa esfriar (Espera — espera 4 horas)" + quando volta a andar | PASS |
+| J9.4 | Pausar | status vira "Pausado por uma pessoa"; próximo passo vira "Parado até alguém retomar" | PASS |
+| J9.5 | Pausado não oferece adiar/pular | botão que só sabe recusar não aparece | PASS |
+| J9.6 | Retomar | volta a andar pelo tempo que FALTAVA (não dispara na hora) | PASS |
+| J9.7 | Adiar para uma data escolhida | o próximo disparo passa a ser a data do diálogo | PASS |
+| J9.8 | Pular o passo | o follow-up anda para o passo seguinte; com mais de um caminho, a tela PERGUNTA por onde | PASS |
+| J9.9 | A intervenção aparece na timeline do NEGÓCIO | as **quatro** linhas no card, com autor humano nomeado ("E2E Manager") e sem colapsar apesar de terem acontecido no mesmo minuto | PASS |
+| J9.10 | Viewer | lê o dossiê inteiro, sem coluna de ações; as 4 rotas devolvem 403 `forbidden_role` | PASS |
+
+Evidência: `evidence/followup-dossie/{01-dossie-timeline,02-pausado,03-adiado,04-pulado,05-timeline-do-negocio,06-viewer-so-leitura}.png`.
+
+**O que o J9.9 mediu e quase passou batido:** as quatro intervenções acontecem
+no mesmo minuto e pelo mesmo ator, e a timeline do negócio COLAPSA blocos assim
+(`agrupaTimeline`, janela de 60s). Escondidas atrás de um "+", o próximo
+atendente abriria o card e não veria que uma pessoa segurou o fluxo — que é a
+única razão de a linha existir. Os quatro tipos entraram em `NUNCA_COLAPSA`
+pelo critério que já estava escrito lá: decisão humana não colapsa.
 
 ---
 
