@@ -40,10 +40,10 @@ import type { FlowGraph } from "@/lib/followup/graph-schema";
  * Se um dia isso incomodar em produção, o dado vem de lá, não de um chute aqui.
  *
  * O que NÃO é congelado por este arquivo, e continua garantido pelo índice
- * `idx_followup_enrollments_one_live` (org-wide, parcial em
- * `status in ('active','waiting_reply','paused_handoff')`): enquanto o
- * enrollment está VIVO, nenhum segundo nasce. Não há laço — o risco é de
- * frequência, não de recursão.
+ * `idx_followup_enrollments_one_live` (org-wide, parcial nos status VIVOS —
+ * `active`, `waiting_reply`, `paused_handoff` e, desde a migration 0145,
+ * `paused_manual`): enquanto o enrollment está vivo, nenhum segundo nasce. Não
+ * há laço — o risco é de frequência, não de recursão.
  *
  * ═══ QUAL LINHA UM COOLDOWN QUEBRA, E O PONTO CEGO QUE SOBRA ═══
  *
@@ -111,7 +111,7 @@ afterAll(async () => {
              and next_eval_at is not null and next_eval_at <= now()
          ) as devidos,
          count(*) filter (
-           where status in ('active','waiting_reply','paused_handoff')
+           where status in ('active','waiting_reply','paused_handoff','paused_manual')
          ) as totais
        from followup_enrollments where pointer_id = any($1::uuid[])`,
       [pointersCriados],
@@ -132,7 +132,7 @@ afterAll(async () => {
              and next_eval_at is not null and next_eval_at <= now()
          ) as devidos,
          count(*) filter (
-           where status in ('active','waiting_reply','paused_handoff')
+           where status in ('active','waiting_reply','paused_handoff','paused_manual')
          ) as totais
        from followup_enrollments where pointer_id = any($1::uuid[])`,
       [pointersCriados],

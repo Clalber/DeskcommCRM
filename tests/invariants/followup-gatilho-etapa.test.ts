@@ -97,7 +97,7 @@ afterAll(async () => {
              and next_eval_at is not null and next_eval_at <= now()
          ) as devidos,
          count(*) filter (
-           where status in ('active','waiting_reply','paused_handoff')
+           where status in ('active','waiting_reply','paused_handoff','paused_manual')
          ) as totais
        from followup_enrollments where pointer_id = any($1::uuid[])`,
       [pointersCriados],
@@ -120,7 +120,7 @@ afterAll(async () => {
              and next_eval_at is not null and next_eval_at <= now()
          ) as devidos,
          count(*) filter (
-           where status in ('active','waiting_reply','paused_handoff')
+           where status in ('active','waiting_reply','paused_handoff','paused_manual')
          ) as totais
        from followup_enrollments where pointer_id = any($1::uuid[])`,
       [pointersCriados],
