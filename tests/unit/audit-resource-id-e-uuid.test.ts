@@ -54,9 +54,6 @@ const RAIZ = process.cwd();
 const EXCECOES: Record<string, string> = {
   "pid": "parâmetro de rota /proposals/[pid] — é o uuid da proposta, o nome curto vem do path",
   "vid": "parâmetro de rota /versions/[vid] — uuid da versão",
-  "runRow?.id ?? null": "id da linha quando existe, null quando não — a forma certa dos dois casos",
-  "data.id as string": "id da linha recém-inserida, com cast por causa do tipo do client",
-  "ver.id as string": "idem — id da versão de memória",
   "String(lead.id)": "uuid do lead, convertido porque a origem é jsonb do webhook",
   "string | null | undefined":
     "falso positivo do parser: é uma ANOTAÇÃO DE TIPO num componente, não uma chamada de audit",
@@ -78,8 +75,25 @@ function arquivosDeCodigo(base: string): string[] {
   return achados;
 }
 
+/**
+ * A expressão resolve para um id (ou para `null`)?
+ *
+ * NORMALIZA antes de julgar, e isso é o conserto de um falso positivo real: a
+ * forma idiomática `(x as { id?: string }).id ?? null` — que é EXATAMENTE o
+ * conserto certo deste defeito, e chegou pela main em 2026-08-09 — não terminava
+ * em `id` e era acusada. Gate que reprova a correção correta faz as pessoas
+ * encherem a allowlist até ela virar a regra.
+ *
+ * As duas caudas removidas são semanticamente neutras para a pergunta que se faz
+ * aqui: `?? null` só acrescenta o caso vazio (que já é permitido) e `as <T>` é
+ * anotação, não valor.
+ */
 function pareceId(expr: string): boolean {
-  const v = expr.trim();
+  const v = expr
+    .trim()
+    .replace(/\s*\?\?\s*null$/, "")
+    .replace(/\s+as\s+[\w<>[\]|\s{}?:;]+$/, "")
+    .trim();
   if (v === "null") return true;
   return /(Id|_id|\bid)$/.test(v);
 }
@@ -126,6 +140,13 @@ describe("resourceId do audit é sempre um uuid (ou null)", () => {
         chamadas.some((c) => c.valor === expr),
         `a exceção \`${expr}\` não corresponde a nenhuma chamada — remova-a`,
       ).toBe(true);
+      // E que ela ainda seja NECESSÁRIA. Sem isto, uma régua que melhorou deixa
+      // exceções para trás, e a allowlist cresce sozinha até virar a regra —
+      // aconteceu aqui: normalizar `?? null` e `as <T>` tornou três delas inúteis.
+      expect(
+        pareceId(expr),
+        `a exceção \`${expr}\` não é mais necessária — a régua já a aceita. Remova-a.`,
+      ).toBe(false);
     }
   });
 });

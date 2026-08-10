@@ -231,10 +231,23 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
             onKeyDown={onKeyDown}
             onPaste={onPaste}
             rows={1}
+            // O atalho saiu do placeholder e foi para o diálogo de atalhos (`?`)
+            // e para o `title` aqui. Dois motivos, nesta ordem: ele some assim
+            // que se digita a primeira letra — isto é, some justamente quando
+            // você ia quebrar linha —; e, com a coluna do inbox mais estreita
+            // depois do conserto do layout, a frase quebrava em duas linhas
+            // dentro de um campo de uma linha só.
+            //
+            // "(só o time vê)" FICA: não é atalho, é consequência. Quem escreve
+            // uma nota interna precisa saber que ela não vai para o cliente, e
+            // essa informação não pode depender de abrir um diálogo.
             placeholder={
+              mode === "note" ? "Escreva uma nota interna… (só o time vê)" : "Escreva uma mensagem…"
+            }
+            title={
               mode === "note"
-                ? "Escreva uma nota interna… (só o time vê)"
-                : "Escreva uma mensagem… (Enter envia, Shift+Enter quebra linha)"
+                ? "Enter salva a nota · Shift+Enter quebra linha"
+                : "Enter envia · Shift+Enter quebra linha"
             }
             className={cn(
               "min-h-9 max-h-40 flex-1 resize-none rounded-md border border-input bg-background px-3 py-2 text-sm",

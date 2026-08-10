@@ -80,15 +80,14 @@ const REMOCOES_DELIBERADAS: Record<string, { valores: string[]; porque: string }
   "20260807180000_0129_midia_nao_lida.sql::agent_inbox_items_kind_check": {
     valores: ["contact_proposal_expired", "other", "promise_unfulfilled"],
     porque:
-      "A REINCIDÊNCIA, de 2026-08-07, e a que motivou este gate: a 0129 acrescentou " +
-      "`midia_nao_lida` a partir de uma lista que era verdade antes da 0111 e derrubou " +
-      "três kinds. Ela aplicou corretamente a lição da issue #159 (entrar na MESMA " +
-      "constraint, e o comentário dela diz isso com todas as letras) e ainda assim " +
-      "reintroduziu o defeito, porque aquela lição era sobre BLOCOS e o mecanismo é " +
-      "sobre LISTAS. Reparada pela 0131, que restaura os 18 valores canônicos — a " +
-      "asserção de ESTADO abaixo é a que prova o reparo, e ela NÃO tem allowlist. " +
-      "Liberado aqui só porque migration aplicada não se edita: o evento é história, a " +
-      "consequência foi consertada.",
+      "A REINCIDÊNCIA, de 2026-08-07: a 0129 acrescentou `midia_nao_lida` a partir de " +
+      "uma lista que era verdade antes da 0111 e derrubou três kinds. Ela aplicou " +
+      "corretamente a lição da issue #159 (entrar na MESMA constraint, e o comentário " +
+      "dela diz isso com todas as letras) e ainda assim reintroduziu o defeito, porque " +
+      "aquela lição era sobre BLOCOS e o mecanismo é sobre LISTAS. Reparada pela 0139 " +
+      "(`kind_check_completo`), que restaura os 18 valores canônicos. Liberado aqui só " +
+      "porque migration aplicada não se edita: o evento é história, a consequência foi " +
+      "consertada.",
   },
 };
 
@@ -195,60 +194,20 @@ describe("a cadeia de migrations não encolhe vocabulário de CHECK", () => {
     ).toEqual([]);
   });
 
-  it("a cadeia termina no MESMO vocabulário que o baseline", () => {
-    // Esta é a asserção de ESTADO, e ela mede outra coisa que a de cima. A de
-    // cima pega o EVENTO (alguém encolheu) e aceita allowlist; esta pega a
-    // CONSEQUÊNCIA (um clone está quebrado agora). Uma perda reparada por uma
-    // migration posterior falha só a primeira; uma perda em pé falha as duas.
-    //
-    // Os dois artefatos de schema andam juntos por doutrina (CLAUDE.md): o
-    // arquivo em `migrations/` é a fonte da verdade para quem usa o Supabase
-    // CLI, o apêndice do `baseline.sql` é o que o kit self-host aplica. Terminar
-    // diferentes significa que uma das duas populações de instalação tem um
-    // banco que a outra não tem — e ninguém sabe qual das duas está certa.
-    const baseline = semComentarios(
-      readFileSync(path.join(process.cwd(), "supabase", "baseline.sql"), "utf8"),
-    );
-    const doBaseline = new Map<string, Set<string>>();
-    for (const r of reconstrucoesEm("baseline.sql", baseline)) {
-      // A ÚLTIMA definição vence, como no Postgres.
-      doBaseline.set(r.constraint, r.valores);
-    }
-
-    const ultimaDaCadeia = new Map<string, Set<string>>();
-    for (const r of cadeiaDeMigrations()) ultimaDaCadeia.set(r.constraint, r.valores);
-
-    // Controle positivo: se o baseline parou de ser parseável, a comparação
-    // abaixo compararia dois vazios e passaria sem medir nada.
-    expect(
-      doBaseline.get("agent_inbox_items_kind_check")?.size ?? 0,
-      "não consegui ler a constraint de kinds do baseline",
-    ).toBeGreaterThan(10);
-
-    const divergencias: string[] = [];
-    for (const [constraint, naCadeia] of ultimaDaCadeia) {
-      const noBaseline = doBaseline.get(constraint);
-      if (noBaseline === undefined) continue;
-      const faltamNaCadeia = [...noBaseline].filter((v) => !naCadeia.has(v));
-      const faltamNoBaseline = [...naCadeia].filter((v) => !noBaseline.has(v));
-      if (faltamNaCadeia.length > 0) {
-        divergencias.push(
-          `${constraint}: o clone que aplica migrations NÃO aceita ${faltamNaCadeia
-            .sort()
-            .join(", ")}, e o kit self-host aceita`,
-        );
-      }
-      if (faltamNoBaseline.length > 0) {
-        divergencias.push(
-          `${constraint}: o baseline não aceita ${faltamNoBaseline
-            .sort()
-            .join(", ")}, e a cadeia aceita — o kit não recebeu a mudança`,
-        );
-      }
-    }
-
-    expect(divergencias, "").toEqual([]);
-  });
+  // A ASSERÇÃO DE ESTADO (a cadeia termina igual ao baseline) VIVE EM OUTRO
+  // ARQUIVO, e isso é deliberado.
+  //
+  // `tests/unit/kind-check-migration-x-baseline.test.ts` — escrito em paralelo a
+  // este, na main, para o MESMO defeito da 0129 — já compara a última reconstrução
+  // de cada constraint com o bloco canônico do baseline, com controle positivo
+  // próprio. Duplicar aqui criaria a terceira lista que este tipo de invariante
+  // existe para matar.
+  //
+  // A divisão: lá se mede a CONSEQUÊNCIA (um clone está quebrado agora); aqui se
+  // mede o EVENTO (alguém encolheu, mesmo que outra migration repare depois). O
+  // evento importa sozinho no caso em que autor encolhe a migration E o baseline
+  // na mesma mudança: o estado bate, os dois estão errados, e só a monotonicidade
+  // contra o histórico da cadeia percebe.
 
   it("toda remoção liberada tem justificativa escrita", () => {
     for (const [chave, entrada] of Object.entries(REMOCOES_DELIBERADAS)) {
