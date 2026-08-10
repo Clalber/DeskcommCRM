@@ -741,3 +741,38 @@ O que salvou os patches não foi disciplina: foi alguém ter percebido no meio q
 ponteiro apontava para `/tmp`, que some quando a sessão fecha, e tê-los versionado no
 próprio `HANDOFF`. **Pedido que só existe numa mensagem depende de quem centraliza não
 esquecer — e quem centraliza esquece.**
+
+### Sabotar o CONSERTO, não só o defeito
+
+A missão cobrou sabotagem a noite inteira, sempre na mesma direção: **quebre o código
+e confirme que o teste reprova**. O DevVivo fez o inverso no último achado e ele é o
+que mais ensina.
+
+Ele escreveu um invariante para o `LIVE_STATUSES` da reatividade, viu nascer vermelho
+como previsto, e então **consertou o defeito** — exigindo que a catraca acusasse a
+passagem. **Ela não acusou.**
+
+Motivo, estrutural: `tests/invariants/followup-reactivity.test.ts:55` tem a **própria
+cópia** da lista e injeta o próprio adapter. A lista de produção
+(`lib/followup/reactivity.ts:63`) **nunca é exercitada por aquele arquivo**.
+
+> **O invariante não pode pegar defeito naquela lista, por construção.** A réplica
+> erra igual à original, e concordância entre cópias parece confirmação.
+
+**Ele não commitou.** Um teste vermelho que documenta um defeito que ele não vigia é
+pior que teste ausente: ocupa o lugar de um que funcionaria — e viria com a assinatura
+completa de rigor (previsão, sabotagem, catraca), então ninguém o revisaria depois.
+
+**A regra:**
+
+| Sabotagem | O que prova |
+|---|---|
+| quebrar o **defeito** | que o teste **reage** |
+| quebrar o **conserto** | que ele reage **ao lugar certo** |
+
+Só a segunda pega teste que não alcança o alvo. E é a que quase ninguém faz, porque a
+primeira já dá a sensação de ter verificado.
+
+**Conserto**: `export` no `LIVE_STATUSES` de produção, e o teste importa em vez de
+declarar. Uma palavra, sem mudança de comportamento — autorizada com o dono avisado
+**antes** e com poder de veto.
