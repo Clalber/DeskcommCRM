@@ -10866,6 +10866,81 @@ as $$
 $$;
 
 revoke execute on function fn_claim_due_followup_enrollments(int, int) from public, anon, authenticated;
+-- ---- o dossiê do follow-up: tempo escolhido pela IA + pausa manual (migration 0145) ----
+--
+-- Ver o cabeçalho de `supabase/migrations/20260810120000_0145_dossie_do_followup.sql`
+-- para o porquê de cada peça. Aqui vale a nota de re-aplicação: tudo é
+-- auto-curativo. O CHECK só ACRESCENTA um valor ao conjunto aceito e o predicado
+-- novo do índice cobre as mesmas linhas do antigo (nenhum banco tem
+-- `paused_manual` antes desta migration) — nada a deduplicar antes.
+
+-- A coluna `timing_plan` NÃO é recriada aqui: ela pertence ao apêndice da
+-- migration 0144 (acima). Duas criações da mesma coluna são idempotentes, mas os
+-- dois `comment on column` competem e o último vence — duplicação com dois donos
+-- e nenhuma fonte da verdade. Resolvido na integração: 0144 cria e descreve; 0145
+-- consome.
+
+-- Os dois CHECKs saem pelo CATÁLOGO, não pelo nome: num clone que passou por
+-- dump/restore o nome gerado pode não ser o deste repo, e dropar por nome fixo
+-- falharia em silêncio — o `add constraint` tropeçaria no duplicado, o
+-- `exception when duplicate_object` engoliria, e o banco ficaria com o CHECK
+-- ANTIGO recusando `paused_manual` num INSERT que a aplicação considera válido.
+do $$
+declare
+  c record;
+begin
+  for c in
+    select con.conname
+      from pg_constraint con
+      join pg_class rel on rel.oid = con.conrelid
+      join pg_namespace ns on ns.oid = rel.relnamespace
+     where ns.nspname = 'public'
+       and rel.relname = 'followup_enrollments'
+       and con.contype = 'c'
+       and pg_get_constraintdef(con.oid) like '%paused_handoff%'
+       and pg_get_constraintdef(con.oid) not like '%paused_manual%'
+  loop
+    execute format('alter table public.followup_enrollments drop constraint %I', c.conname);
+  end loop;
+end $$;
+
+do $$ begin
+  alter table public.followup_enrollments
+    add constraint followup_enrollments_status_valido
+    check (status in ('active','waiting_reply','paused_handoff','paused_manual','completed','cancelled','dead'));
+exception when duplicate_object then null; end $$;
+
+do $$ begin
+  alter table public.followup_enrollments
+    add constraint followup_enrollments_relogio_coerente
+    check (
+      (status in ('active','waiting_reply') and next_eval_at is not null)
+      or (status in ('paused_handoff','paused_manual','completed','cancelled','dead'))
+    );
+exception when duplicate_object then null; end $$;
+
+-- ⚠️ AS COLUNAS SÃO (organization_id, contact_id), NÃO (pointer_id, contact_id).
+--
+-- A DDL original da tabela (bem acima neste arquivo) cria este índice por
+-- `pointer_id`; o apêndice da migration 0062 o DERRUBA e recria por
+-- `organization_id`, e é essa a definição em vigor: **um follow-up vivo por lead
+-- na organização inteira**, não um por fluxo. É o guard anti-empilhamento — sem
+-- ele o mesmo contato entra em N sequências ao mesmo tempo e leva N mensagens,
+-- que é o bug de spam que a doutrina anti-banimento existe para impedir. O
+-- `silence-sweep.ts` e o produtor do gatilho de etapa dependem dele: os dois
+-- tratam o `23505` como skip silencioso, e é ele que garante que não há laço.
+--
+-- Quem precisa MEXER no predicado (como aqui, para incluir `paused_manual`) tem
+-- de copiar a definição EM VIGOR, não a da DDL original — recriar a partir da
+-- linha errada reverte a garantia sem conflito de merge e sem sintoma imediato.
+-- Corrigido na integração; ver a nota no MANIFEST da 0145.
+drop index if exists idx_followup_enrollments_one_live;
+create unique index if not exists idx_followup_enrollments_one_live
+  on public.followup_enrollments (organization_id, contact_id)
+  where status in ('active','waiting_reply','paused_handoff','paused_manual');
+
+create index if not exists idx_followup_events_enrollment_tempo
+  on public.followup_enrollment_events (enrollment_id, created_at);
 
 notify pgrst, 'reload schema';
 

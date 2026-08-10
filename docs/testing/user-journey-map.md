@@ -194,6 +194,30 @@ Bugs desta jornada estão detalhados em `HANDOFF-ia-360.md` (BUG-01 a BUG-05).
 
 ---
 
+## J9 — Ver o que o follow-up já fez, e intervir sem matá-lo `[P1]`
+
+Contexto do código: o dossiê do enrollment (`/app/ai/followups/enrollments/[id]`,
+wave FV-W1-FILA). `followup_enrollment_events` gravava cada passo do motor desde a
+0054 e **nenhuma tela lia a tabela**; a única intervenção possível era cancelar.
+Spec: `tests/e2e/followup-dossie.spec.ts` — os eventos da timeline são REAIS (o
+setup publica um fluxo, cria o enrollment pela API e chama o cron
+`followup-flow-worker`, o mesmo caminho de produção; nada de `INSERT` à mão).
+
+| # | Caso | Expectativa | Resultado |
+|---|------|-------------|-----------|
+| J9.1 | Clicar no contato na aba Fila | abre o dossiê daquele follow-up (rota própria, sobrevive ao F5) | |
+| J9.2 | Ler a história depois de dois ticks do motor | "Seguiu em frente" e "Começou a esperar"; **nenhum** `node_advanced` nem `wait-1` na tela | |
+| J9.3 | Onde está agora | o nome que a pessoa deu ao passo + quando volta a andar | |
+| J9.4 | Pausar | status vira "Pausado por uma pessoa"; próximo passo vira "Parado até alguém retomar" | |
+| J9.5 | Pausado não oferece adiar/pular | botão que só sabe recusar não aparece | |
+| J9.6 | Retomar | volta a andar pelo tempo que FALTAVA (não dispara na hora) | |
+| J9.7 | Adiar para uma data escolhida | o próximo disparo passa a ser a data do diálogo | |
+| J9.8 | Pular o passo | o follow-up anda para o passo seguinte; com mais de um caminho, a tela PERGUNTA por onde | |
+| J9.9 | A intervenção aparece na timeline do NEGÓCIO | "Follow-up pausado"/"Follow-up retomado" no card, com autor humano | |
+| J9.10 | Viewer | lê o dossiê inteiro, sem coluna de ações; as 4 rotas devolvem 403 `forbidden_role` | |
+
+---
+
 ## J7 — Exploração completa `[P2]`
 
 Andar por TODAS as rotas navegáveis logado como admin e como agent: settings, contacts,

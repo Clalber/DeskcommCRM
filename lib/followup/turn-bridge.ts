@@ -64,18 +64,19 @@ export async function completeTurnForEnrollment(
   const enrollment = await db.loadEnrollmentById(orgId, enrollmentId);
   if (!enrollment) return; // enrollment sumiu (nunca deveria, mas nada a completar)
   if (enrollment.current_node_id !== nodeId) return; // turno tardio/obsoleto — o enrollment já saiu do nó
-  // paused_handoff entra aqui: um turno em voo quando o handoff pausou (reactivity.ts)
-  // NUNCA pode reativar/avançar por baixo do reactToHandoffClose — o resultado é
-  // stale (computado antes do humano intervir); descartar é o comportamento CERTO,
-  // não perda de dado (fix de review — Task 5.2, o guard excluía só completed/
-  // cancelled/dead, deixando essa corrida passar).
-  if (
-    enrollment.status === "completed" ||
-    enrollment.status === "cancelled" ||
-    enrollment.status === "dead" ||
-    enrollment.status === "paused_handoff"
-  )
-    return;
+  // SÓ QUEM ESTÁ ANDANDO AVANÇA — lista positiva, e isso é o conserto.
+  //
+  // O guard nasceu excluindo completed/cancelled/dead e a Task 5.2 teve de
+  // acrescentar `paused_handoff` depois, porque um turno em voo reativava por
+  // baixo do `reactToHandoffClose`. Lista negativa tem esse modo de falha por
+  // construção: todo estado NOVO entra por omissão, e o sintoma é silencioso —
+  // o resultado stale (computado ANTES de o humano intervir) sobrescreve a
+  // decisão da pessoa e o fluxo volta a andar sozinho.
+  //
+  // Aconteceu de novo com `paused_manual` (migration 0145): sem esta troca, um
+  // envio que terminasse depois do clique desfazia a pausa em silêncio.
+  // Descartar o resultado é o comportamento CERTO, não perda de dado.
+  if (enrollment.status !== "active" && enrollment.status !== "waiting_reply") return;
 
   const graph = await db.loadFlowGraph(orgId, enrollment.version_id);
   if (!graph) throw new Error("flow_version_not_found");
