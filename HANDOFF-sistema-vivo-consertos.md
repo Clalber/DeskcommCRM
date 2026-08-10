@@ -286,6 +286,16 @@ na prosa de um card. Aceitar menção em vez de peça é medir o proxy.
 
 Vale como registro porque o custo esteve todo no **instrumento**, não no defeito.
 
+> **Convergência independente, registrada porque o git não a registra.** Enquanto esta
+> frente media, outra sessão chegou à MESMA causa raiz e mergeou na `main` o
+> `a60cae2d` (PR #220): `SENTRY_DSN: "off"` no workflow do e2e e no `perf.yml`. O merge
+> da `main` para dentro desta branch **não deu conflito** — as duas correções tocam
+> regiões diferentes do mesmo arquivo —, então a duplicação passaria calada. Os dois
+> consertos são complementares: o dele desliga a telemetria **no ambiente do CI**; o
+> daqui conserta **o produto**, que mandava sessão de toda instalação self-host. Nenhum
+> torna o outro dispensável, e o meu run verde não pegou carona no dele (a branch não
+> tinha as linhas dele; o verde veio do gerador do `.env.e2e`).
+
 A spec cobra "a tela não cospe erro no console". Reprovava com 429 nas 7 telas, e a
 mensagem que o browser dá para requisição barrada é `Failed to load resource: the
 server responded with a status of 429` — que **não diz quem respondeu**. A spec
