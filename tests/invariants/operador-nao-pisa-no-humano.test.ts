@@ -76,6 +76,8 @@ const LEAD = "0be7a70b-0000-4000-8000-000000000009";
  */
 const CONV_B = "0be7a70b-0000-4000-8000-00000000000a";
 const SESSION_B = "0be7a70b-0000-4000-8000-00000000000b";
+/** O job do turno do Conversador — o MESMO valor que `job().payload.origin_job_id`. */
+const ORIGIN_JOB = "0be7a70b-0000-4000-8000-0000000000bb";
 
 /** A declaração que o Conversador deixou: uma promessa, com prazo. */
 const DECLARACAO = {
@@ -126,7 +128,7 @@ function job(): JobRow {
     source_event_id: null,
     payload: {
       conversation_id: CONV,
-      origin_job_id: "0be7a70b-0000-4000-8000-0000000000bb",
+      origin_job_id: ORIGIN_JOB,
       agent_id: AGENT,
     },
     status: "running",
@@ -198,10 +200,22 @@ beforeAll(async () => {
     [VERSION, ORG, AGENT, SESSION],
   );
   await pool.query(`update ai_agents set published_version_id = $1 where id = $2`, [VERSION, AGENT]);
+  // O JOB QUE ORIGINOU O TURNO — e ele vem ANTES do checkpoint por causa da FK
+  // `lead_checkpoints.job_id references job_queue(id)`.
+  //
+  // Sem ele o checkpoint ficaria com `job_id = null` e a leitura do Operador, que
+  // agora é pela CHAVE DO TURNO (`checkpointDoJob`), não acharia nada: os quatro
+  // casos deste arquivo passariam a medir um turno sem declaração, ou seja,
+  // passariam por não medir o que dizem medir.
+  await pool.query(
+    `insert into job_queue (id, organization_id, contact_id, kind, payload)
+     values ($1, $2, $3, 'inbound_turn', '{}') on conflict (id) do nothing`,
+    [ORIGIN_JOB, ORG, CONTACT],
+  );
   await pool.query(
     `insert into lead_checkpoints (organization_id, contact_id, job_id, rolling_summary, declaracao)
-     values ($1, $2, null, 'quer remarcar', $3::jsonb)`,
-    [ORG, CONTACT, JSON.stringify(DECLARACAO)],
+     values ($1, $2, $3, 'quer remarcar', $4::jsonb)`,
+    [ORG, CONTACT, ORIGIN_JOB, JSON.stringify(DECLARACAO)],
   );
 
   // Funil + etapa + negócio ABERTO: sem um lead aberto para o contato, a linha de

@@ -10,8 +10,15 @@
  * Porque isso devolveria o problema inteiro. Se o Operador só rodasse quando o
  * Conversador lembrasse de acioná-lo, o turno em que ele "não achasse necessário"
  * seria um lead parado no funil, em silêncio — e silêncio é justamente o modo de
- * falha que ninguém vê. O disparo é do RUNTIME, no fim do turno, incondicional.
- * Mesmo argumento que este codebase já usa para a chamada de fechamento.
+ * falha que ninguém vê. O disparo é do RUNTIME, não do modelo.
+ *
+ * "Incondicional" era o que este comentário dizia, e era falso em dois pontos que
+ * vale medir em vez de prometer: o job é enfileirado DEPOIS de o checkpoint
+ * existir, então um turno que morre antes do fechamento não gera Operador naquela
+ * tentativa (e quando o job esgota as tentativas, quem fecha o laço é o `job_dead`
+ * crítico da fila); e ele só é enfileirado com o PAPEL LIGADO, porque enfileirar
+ * com o papel desligado gastava fila e a vaga do lead para escrever uma linha de
+ * log. O que não depende de nada é o modelo lembrar — e é isso que importava.
  *
  * ═══ O CURTO-CIRCUITO, e por que ele é fiel em vez de econômico ═══
  *
@@ -32,7 +39,7 @@ import type pg from 'pg';
 import { withFields } from '../obs/logger';
 import type { JobRow } from '../queue/queue';
 import type { InboundTurnDeps } from './inbound-turn';
-import { latestCheckpoint } from './inbound-turn';
+import { checkpointDoJob } from './inbound-turn';
 import { declaracaoDoTurnoSchema, promessasEmAberto, type DeclaracaoDoTurno } from './declaracao';
 import { loadPublishedAgentConfigById } from './agent-config';
 import { isLeadInHandoff } from './human-handoff';
@@ -173,17 +180,28 @@ export function apuraDonoDaPromessa(input: {
 /**
  * Lê a declaração do último checkpoint do lead.
  *
- * `null` tem DOIS significados aqui e eles não se confundem: sem checkpoint
- * nenhum (turno que morreu antes do fechamento) ou checkpoint sem declaração
- * (modelo não declarou). Os dois levam o Operador a RODAR, não a pular — nos dois
- * casos ninguém avaliou o turno, que é a condição em que ele mais importa.
+ * `null` tem DOIS significados aqui e eles não se confundem: o turno que me
+ * originou não fechou (não há checkpoint com aquele `job_id`) ou o checkpoint
+ * existe e não trouxe declaração (o modelo não declarou). Os dois levam o
+ * Operador a RODAR, não a pular — nos dois casos ninguém avaliou o turno, que é a
+ * condição em que ele mais importa.
+ *
+ * A leitura é pela CHAVE DO TURNO, não pelo mais recente do lead: ver
+ * `checkpointDoJob`. Ler o mais recente fazia o Operador N agir sobre a
+ * declaração N+1 quando uma mensagem nova chegava no meio do fechamento.
  */
 export async function lerDeclaracaoDoTurno(
   db: pg.Pool,
   tenantId: string,
   leadId: string,
+  /**
+   * O job do turno do Conversador que originou este. OBRIGATÓRIO de propósito:
+   * com parâmetro opcional o compilador aceitaria o call site que esquece a
+   * chave, que é exatamente o defeito que isto conserta.
+   */
+  originJobId: string,
 ): Promise<{ declaracao: DeclaracaoDoTurno | null; houveCheckpoint: boolean }> {
-  const checkpoint = await latestCheckpoint(db, tenantId, leadId);
+  const checkpoint = await checkpointDoJob(db, tenantId, leadId, originJobId);
   if (checkpoint === null) return { declaracao: null, houveCheckpoint: false };
   if (checkpoint.declaracao === null) return { declaracao: null, houveCheckpoint: true };
   // O jsonb do banco não é confiável por vir do banco: foi escrito por um modelo.
@@ -282,7 +300,7 @@ export function createOperatorTurnHandler(deps: InboundTurnDeps) {
     // alguém publicar o primeiro agente — saía antes de apurar qualquer coisa, e
     // uma promessa feita ali não gerava rede nenhuma. Primeira impressão é onde
     // um lead perdido custa o cliente inteiro.
-    const { declaracao, houveCheckpoint } = await lerDeclaracaoDoTurno(pool, tenantId, leadId);
+    const { declaracao, houveCheckpoint } = await lerDeclaracaoDoTurno(pool, tenantId, leadId, payload.origin_job_id);
     const promessas = promessasEmAberto(declaracao);
 
     const agentConfig =
