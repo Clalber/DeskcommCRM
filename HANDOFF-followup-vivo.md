@@ -629,3 +629,58 @@ chega depois não sabe se aquilo prova algo ou se foi esquecido.
 - **`evidence/gatilho-de-etapa/gatilho-etapa-03-antes-do-movimento.png`** — o estado da fila **antes** de mover
   o lead, que é o controle: sem ele, um enrollment pré-existente seria lido como
   efeito do gatilho.
+
+---
+
+## 9. Fechamento medido
+
+**Alvo:** `f37a04b0` · árvore limpa (0 arquivos) · carga **6,64** no início, **19,58** no fim
+
+```
+TYPECHECK_EXIT=0
+LINT_EXIT=0
+TESTUNIT_EXIT=0
+
+Test Files  334 passed (334)
+Tests      3639 passed (3639)
+```
+
+As cinco frentes numa árvore, zero pendente, zero reprova.
+
+O número vem com **os três exits capturados separadamente**, e não com o exit
+agregado nem só com a contagem de testes — porque `test:unit` passa numa árvore que
+não compila (o vitest não typechecka), e porque exit agregado esconde qual etapa
+caiu. **Contagem de teste verde sem o typecheck ao lado é meio número** (QAVivo).
+
+### Os cinco eixos que uma frase precisa carimbar
+
+Descobertos um a um ao longo da missão, cada um por uma pessoa diferente, todos da
+mesma família: **o instrumento estava certo e o alcance da frase estava errado.**
+
+| Eixo | A frase parece carimbar | E não carimba | Quem achou |
+|---|---|---|---|
+| **Escopo** | "não há ocorrências" | qual arquivo | maestro (contra si) |
+| **Instante** | "após o merge" | qual merge — houve dois | DevGatilhos |
+| **Cobertura** | "verde" | qual suíte | QAVivo e DevGatilhos |
+| **Dono** | "medi" | qual repositório | DevGatilhos |
+| **Posição** | "revoguei as duas origens" | onde no arquivo | guarda do repo |
+
+Os quatro primeiros enganam quem **mede**. O quinto engana quem **revisa** — e é o
+pior, porque revisão é a última linha.
+
+**A regra acionável (DevGatilhos):** *a frase precisa carregar o escopo e o instante
+junto do número, senão ela viaja mais longe do que a medição alcança.* E o motivo de
+essa família atravessar revisão intacta: **a auditoria olha para onde há o que
+conferir — e o que há para conferir é o número, que está sempre correto.**
+
+### Doutrina cobre o que alguém já errou; guarda cobre o que ninguém pensou
+
+O caso que fecha: os `revoke` da função nova estavam nas duas origens, como a
+doutrina manda — e **a doutrina não fala de ordem**. A função ficaria exposta à chave
+anônima com o código parecendo correto. Quem salvou foi uma guarda escrita por alguém
+que previu uma função que ainda não existia, com o conserto dentro da mensagem de
+erro.
+
+Por isso as **cinco guardas que passavam pelo motivo errado** (seção 7) são o achado
+mais grave desta missão: o problema não é o defeito que escapa, é a **rede que parece
+existir**.
