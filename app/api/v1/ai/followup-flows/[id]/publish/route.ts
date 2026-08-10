@@ -48,18 +48,63 @@ export async function POST(_req: NextRequest, ctx: RouteCtx): Promise<Response> 
   if (fetchErr) return fail("internal_error", fetchErr.message, 500, { requestId });
   if (!pointer) return fail("not_found", "Fluxo não encontrado.", 404, { requestId });
 
-  // Só `manual` e `silence` têm motor de enrollment (POST manual / silence-sweep).
-  // `stage_change`/`conversation_end` são kinds válidos no schema (roadmap) mas
-  // publicar um fluxo com eles produziria um `status='active'` que nunca enrola
-  // ninguém — um fluxo morto e silencioso. Bloqueia no publish, não no schema.
-  const triggerKind = (pointer.trigger_config as { kind?: string } | null)?.kind ?? "manual";
-  if (triggerKind === "stage_change" || triggerKind === "conversation_end") {
+  // Cada kind só passa daqui se tiver motor de enrollment vivo: `manual` (POST
+  // manual), `silence` (silence-sweep) e `stage_change` (gatilho-etapa, consumidor
+  // de `lead.stage_changed` no event_log). `conversation_end` continua sem
+  // produtor — publicar com ele produziria um `status='active'` que nunca enrolla
+  // ninguém, um fluxo morto e silencioso. Bloqueia no publish, não no schema.
+  const trigger = (pointer.trigger_config ?? { kind: "manual" }) as {
+    kind?: string;
+    params?: { stage_id?: string };
+  };
+  const triggerKind = trigger.kind ?? "manual";
+  if (triggerKind === "conversation_end") {
     return fail(
       "trigger_kind_not_implemented",
-      `O gatilho '${triggerKind}' ainda não está disponível — use Silêncio ou Manual.`,
+      "O gatilho 'fim do atendimento' ainda não está disponível — use Etapa do funil, Silêncio ou Manual.",
       422,
       { requestId },
     );
+  }
+
+  // ⚠️ ETAPA QUE NÃO EXISTE MAIS É FLUXO MORTO COM CARA DE VIVO. O gatilho casa
+  // o `to_stage_id` do evento com este `stage_id`: apontando para etapa apagada,
+  // arquivada ou de outra org, o pointer fica `active` e nunca enrolla ninguém —
+  // exatamente o desfecho que o bloqueio acima existe para evitar. A recusa é
+  // aqui, no momento em que há um humano na tela para corrigir.
+  if (triggerKind === "stage_change") {
+    const stageId = trigger.params?.stage_id;
+    if (!stageId || !UUID_RX.test(stageId)) {
+      return fail(
+        "trigger_stage_missing",
+        "Escolha a etapa do funil que dispara este fluxo antes de publicar.",
+        422,
+        { requestId },
+      );
+    }
+    const { data: stage, error: stageErr } = await admin
+      .from("crm_stages")
+      .select("id, name, is_archived")
+      .eq("id", stageId)
+      .eq("organization_id", activeOrg.orgId)
+      .maybeSingle();
+    if (stageErr) return fail("internal_error", stageErr.message, 500, { requestId });
+    if (!stage) {
+      return fail(
+        "trigger_stage_not_found",
+        "A etapa escolhida para o gatilho não existe mais neste funil — escolha outra.",
+        422,
+        { requestId },
+      );
+    }
+    if (stage.is_archived) {
+      return fail(
+        "trigger_stage_archived",
+        `A etapa «${stage.name}» está arquivada e nunca receberia um negócio — escolha uma etapa ativa.`,
+        422,
+        { requestId },
+      );
+    }
   }
 
   if (!pointer.draft_graph) {
