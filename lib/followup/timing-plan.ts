@@ -139,6 +139,23 @@ export function montarTimingPlan(input: {
  * `null` é o caminho de compatibilidade: enrollment de antes desta feature,
  * fluxo sem espera adaptativa, plano corrompido ou nó ausente do plano — todos
  * caem no comportamento anterior. NUNCA lança.
+ *
+ * TUDO OU NADA, e é deliberado: o `safeParse` valida o plano INTEIRO, e `esperas`
+ * é um `z.record` — uma única espera malformada invalida o record e esta função
+ * devolve `null` para TODOS os nós, não só para o podre. O fluxo inteiro cai no
+ * `max_ms`.
+ *
+ * A alternativa (parse por nó, aproveitando as esperas boas) foi recusada: um
+ * plano meio-lido faz parte das esperas obedecerem à IA e parte ao teto, e
+ * ninguém — nem o operador na tela, nem quem for depurar — consegue explicar a
+ * mistura. Plano nenhum é um estado que se explica em uma frase; plano pela
+ * metade, não.
+ *
+ * Consequência para QUEM EXIBE: a tela precisa ler por aqui, e não por um parse
+ * próprio mais tolerante, senão ela mostra uma escolha que o motor não vai
+ * cumprir. Se um dia a granularidade for desejada (exibir as boas e marcar a
+ * podre), a troca do `record` por parse por-nó tem de acontecer nos dois lados no
+ * MESMO commit.
  */
 export function esperaPlanejadaDe(timingPlan: unknown, nodeId: string): EsperaPlanejada | null {
   if (timingPlan === null || timingPlan === undefined) return null;
