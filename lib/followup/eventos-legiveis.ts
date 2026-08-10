@@ -289,7 +289,13 @@ export function descreveEvento(
       return { titulo: "Começou a esperar", detalhe: ate ? `volta a olhar em ${ate}${modo}` : null, ...motor };
     }
     case "turn_enqueued":
-      return { titulo: "Pediu ao agente para escrever a mensagem", detalhe: null, ...motor };
+      // O MESMO event_type serve a dois pedidos diferentes, e o `purpose` no
+      // payload é o que os separa. Sem olhar para ele, o passo de PLANEJAMENTO
+      // aparecia como "escrever a mensagem" — uma linha que descreve o passo
+      // errado é pior que uma linha genérica, porque não parece errada.
+      return texto(p.purpose) === "plan_timing"
+        ? { titulo: "Pediu ao agente para planejar os tempos de espera", detalhe: null, ...motor }
+        : { titulo: "Pediu ao agente para escrever a mensagem", detalhe: null, ...motor };
     case "classify_enqueued":
       return { titulo: "Pediu ao agente para interpretar a resposta", detalhe: null, ...motor };
     case "action_recheck": {
@@ -333,6 +339,22 @@ export function descreveEvento(
       return { titulo: "Pausado porque uma pessoa assumiu a conversa", detalhe: null, ...pessoa };
     case "handoff_resumed":
       return { titulo: "Retomado: o atendimento voltou para o agente", detalhe: null, ...motor };
+    case "timing_plan_decidido": {
+      const quantas = Object.keys((p.esperas as Record<string, unknown> | undefined) ?? {}).length;
+      return {
+        titulo: "O agente decidiu quanto esperar em cada passo",
+        detalhe: quantas > 0 ? `${quantas} ${quantas === 1 ? "espera planejada" : "esperas planejadas"}` : null,
+        ...motor,
+      };
+    }
+    case "timing_plan_desistido":
+      // Seguir sem plano é um FATO, não a ausência de um: cada espera cai no
+      // máximo, e quem lê o dossiê precisa saber por que o fluxo ficou lento.
+      return {
+        titulo: "Seguiu sem o plano de tempo",
+        detalhe: "o agente não respondeu a tempo; cada espera usa o máximo configurado",
+        ...motor,
+      };
     case "cancelled_manual":
       return { titulo: "Cancelado por uma pessoa da equipe", detalhe: null, ...pessoa };
     case "paused_manual":

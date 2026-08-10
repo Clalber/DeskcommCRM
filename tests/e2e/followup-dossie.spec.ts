@@ -378,6 +378,16 @@ test.describe("dossiê do follow-up — ler a história e intervir", () => {
     await expect(bloco.getByTestId("dossie-espera-pedido")).toContainText("a IA pediu 3 dias");
     await expect(bloco).toContainText("o cliente pediu para retomar semana que vem");
     await expect(bloco).toContainText("seu limite: de 10 minutos a 12 horas");
+
+    // A tela pegou dois defeitos de tradução que nenhum unitário pegaria: o
+    // evento do plano caía no fallback ("código: timing_plan_decidido") e o
+    // turno de PLANEJAMENTO se anunciava como "escrever a mensagem". Os dois
+    // ficam vigiados aqui, onde apareceram.
+    const historia = page.getByTestId("dossie-timeline");
+    await expect(historia).toContainText("O agente decidiu quanto esperar em cada passo");
+    await expect(historia).toContainText("Pediu ao agente para planejar os tempos de espera");
+    await expect(historia).not.toContainText("timing_plan_decidido");
+    await expect(historia).not.toContainText("escrever a mensagem");
     await page.screenshot({ path: path.join(ARTIFACTS_DIR, "07-plano-de-tempo.png"), fullPage: true });
 
     await page.request.post(`/api/v1/ai/followups/enrollments/${enrollment.id}/cancel`, { data: {} });

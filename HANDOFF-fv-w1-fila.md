@@ -101,6 +101,22 @@ Lição para a wave: `drop index` + `create index` de um índice que já foi
 recriado antes é reescrita silenciosa. A definição a copiar é a que está em
 vigor, nunca a da DDL original.
 
+### E o que só a TELA pegou
+
+O cenário do plano rodou, e a screenshot mostrou duas linhas erradas na história
+— nenhuma delas visível por unitário, porque os dois eventos são do motor novo:
+
+- `timing_plan_decidido` caía no meu fallback e aparecia como
+  **"código: timing_plan_decidido"** na tela. O fallback fez o trabalho dele
+  (mostrar que existe um passo que a tela ainda não aprendeu), e agora o passo
+  foi aprendido: "O agente decidiu quanto esperar em cada passo".
+- o turno de PLANEJAMENTO se anunciava como **"Pediu ao agente para escrever a
+  mensagem"**. O `event_type` é o mesmo (`turn_enqueued`) para os dois pedidos;
+  o `purpose` no payload é que os separa. Uma linha que descreve o passo errado
+  é pior que uma genérica — ela não parece errada.
+
+Os dois ficam vigiados na própria spec, onde apareceram.
+
 ### O que a INTEGRAÇÃO cobrou (e o build pegou)
 
 O merge de `feat/followup-vivo` trouxe o **grafo v2** do Arquiteto: uma aresta

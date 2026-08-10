@@ -207,3 +207,36 @@ describe("rotuloDaAresta — o ramo nomeado do grafo v2", () => {
     expect(rotuloDaAresta(aresta("false"))).toBe("quando a condição é falsa");
   });
 });
+
+describe("os eventos que o plano de tempo trouxe", () => {
+  it("o pedido de PLANEJAMENTO não se disfarça de pedido de mensagem", () => {
+    // Os dois são `turn_enqueued`; só o `purpose` os separa. Uma linha que
+    // descreve o passo errado é pior que uma genérica: não parece errada.
+    const planejar = descreveEvento(
+      evento({ node_id: null, event_type: "turn_enqueued", payload: { purpose: "plan_timing" } }),
+      nos,
+    );
+    expect(planejar.titulo).toBe("Pediu ao agente para planejar os tempos de espera");
+
+    const mensagem = descreveEvento(
+      evento({ event_type: "turn_enqueued", payload: { purpose: "send_message" } }),
+      nos,
+    );
+    expect(mensagem.titulo).toBe("Pediu ao agente para escrever a mensagem");
+  });
+
+  it("o plano decidido vira frase, não `código: timing_plan_decidido`", () => {
+    const r = descreveEvento(
+      evento({ event_type: "timing_plan_decidido", payload: { esperas: { "wait-1": {}, "wait-2": {} } } }),
+      nos,
+    );
+    expect(r.titulo).toBe("O agente decidiu quanto esperar em cada passo");
+    expect(r.detalhe).toBe("2 esperas planejadas");
+  });
+
+  it("desistir do plano é um FATO na timeline, não silêncio", () => {
+    const r = descreveEvento(evento({ event_type: "timing_plan_desistido" }), nos);
+    expect(r.titulo).toBe("Seguiu sem o plano de tempo");
+    expect(r.detalhe).toContain("máximo configurado");
+  });
+});
