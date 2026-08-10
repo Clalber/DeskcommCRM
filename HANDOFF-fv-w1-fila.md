@@ -237,6 +237,16 @@ verdes para 1 vermelho. Citar o caminho inteiro de cada uma resolveu.
 
 ### O `IA360-FLAKY`, caçado até a raiz
 
+> **Os papéis, corrigidos PARA BAIXO pelo próprio `@QAVivo`** — e a distinção é
+> dele: ele **caracterizou** o fenômeno (determinístico, 36ms, não timeout) e
+> **refutou** a primeira atribuição, a de que o índice da 0145 explicava tudo,
+> que não sobrevivia ao "isolado passa". Não achou a causa. Quem seguiu a pista
+> dele até o par de arquivos fui eu.
+>
+> Ele pediu a correção porque **refutar uma causa errada é barato — uma medição
+> basta — e achar a certa custa mais**; um registro que confunde as duas faz a
+> próxima pessoa superestimar o que uma refutação entrega.
+
 O invariante instável que o repo carregava como "às vezes vermelho" tinha causa
 determinística, e ela é uma lição sobre teste que mexe em SCHEMA.
 

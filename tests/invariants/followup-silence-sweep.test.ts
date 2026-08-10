@@ -551,8 +551,12 @@ const ONE_LIVE = "idx_followup_enrollments_one_live";
  *
  * Medido: rodando só `followup-silence-sweep` + `followup-intervencao`, o caso
  * "pausado ocupa a vaga do contato na ORGANIZAÇÃO" reprova; isolado, passa. É o
- * `IA360-FLAKY` com assinatura, achado por `@QAVivo` e caçado a partir da pista
- * dele ("isolado passa, então o culpado está na vizinhança").
+ * `IA360-FLAKY` com assinatura. Os papéis, porque a diferença ensina: `@QAVivo`
+ * CARACTERIZOU o fenômeno (determinístico, 36ms, não timeout) e REFUTOU a
+ * primeira atribuição — a de que o índice da 0145 explicava tudo, que não
+ * sobrevivia ao "isolado passa". Refutar uma causa errada é barato e uma medição
+ * basta; achar a certa custou seguir a pista dele ("o culpado está na
+ * vizinhança") até o par de arquivos.
  *
  * A lição que a constante carrega: quem recria objeto de schema num banco
  * compartilhado assume a dívida de acompanhar TODA migration futura que o toque.
