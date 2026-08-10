@@ -96,7 +96,10 @@ describe("escolheSaida — pular sem decidir pelo operador", () => {
     if (!r.ok) {
       expect(r.codigo).toBe("escolha_necessaria");
       expect(r.opcoes.map((o) => o.edge_id)).toEqual(["e1", "e2"]);
-      expect(r.opcoes[0]?.quando).toBe("quando a resposta é “quente”");
+      // A frase vem do vocabulário compartilhado (`lib/followup/vocabulario.ts`):
+      // ela nomeia a IA como quem julgou, porque quem lê precisa saber que a
+      // decisão foi de um modelo e não de uma regra fixa.
+      expect(r.opcoes[0]?.quando).toBe("quando a IA classifica a resposta como “quente”");
     }
   });
 

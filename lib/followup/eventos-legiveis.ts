@@ -19,9 +19,21 @@
  * contato) — quando o nó sumiu do grafo pinado, o id cru aparece dito como id,
  * porque um alvo feio é melhor que alvo nenhum.
  */
-import { FALLBACK_BRANCH_ID, branchIdForCondition, nodeBranches } from "./graph-schema";
-import type { BranchableNode, FlowEdge, FlowNode } from "./graph-schema";
-import { fraseDoRamo } from "./vocabulario";
+import {
+  CONDITION_FALSE_BRANCH_ID,
+  CONDITION_TRUE_BRANCH_ID,
+  FALLBACK_BRANCH_ID,
+  NO_REPLY_BRANCH_ID,
+  type FlowEdge,
+  type FlowNode,
+} from "./graph-schema";
+import {
+  RAMOS_RESERVADOS_EM_FRASE,
+  fraseDaClasse,
+  fraseDaRegraNomeada,
+  fraseDaRegraSemNome,
+  fraseDoRamo,
+} from "./vocabulario";
 
 // ---------------------------------------------------------------------------
 // Duração
@@ -164,45 +176,74 @@ export function resumoDoNo(node: FlowNode): NoDoDossie {
 /**
  * Quando este caminho é seguido — o que a pessoa lê ao escolher um ramo para pular.
  *
- * A frase NÃO é escrita aqui: vem de `fraseDoRamo` (vocabulario.ts), que é o
- * registro do DOSSIÊ, distinto do registro de etiqueta que o canvas usa. Foi uma
- * convergência independente que expôs isto — a Fila escreveu as frases inline e
- * eu deleguei ao rótulo de etiqueta; as duas estavam meio certas. As frases são
- * do vocabulário, e é lá que elas ficam.
+ * ⚠️ AS FRASES NÃO MORAM AQUI. Vieram para `lib/followup/vocabulario.ts`, que é
+ * o dicionário do follow-up — este arquivo sempre declarou no cabeçalho que era
+ * um PONTO DE TROCA até ele existir, e a troca é esta. O risco que ela mata é
+ * concreto no grafo v2: o MESMO ramo chega como `class_match` (v1) ou como
+ * `branch_id` (v2), e com dois dicionários o mesmo fluxo seria lido de dois
+ * jeitos conforme a versão em que foi publicado.
  *
- * Delegar é também o que faz o MESMO fluxo ser lido igual nos dois dialetos: o
- * ramo chega como `class_match` (v1) ou como `branch_id` (v2),
- * `branchIdForCondition` resolve os dois para o mesmo ramo, e o texto sai único.
- * Era exatamente esse risco que `fraseDoRamo` foi escrita para eliminar.
- *
- * `origem` é o nó de onde a aresta sai — só ele sabe o rótulo declarado do ramo,
- * porque no contrato v2 a identidade mora no nó e o `branch_id` é opaco.
+ * ⚠️ E O RAMO SEM NOME DEIXOU DE ECOAR O ID. A versão anterior mostrava
+ * "pelo ramo b3f1", com o argumento de que um alvo feio é melhor que alvo
+ * nenhum. O dono do vocabulário tem a regra oposta e é a certa aqui:
+ * `branch_id` é identificador INTERNO e não pode chegar à tela. O que dava a
+ * distinguibilidade continua existindo por outro campo — a lista de saídas do
+ * dossiê mostra o RÓTULO DO DESTINO ao lado da frase, e é ele que separa duas
+ * opções na hora de escolher por onde pular.
  */
-export function rotuloDaAresta(edge: FlowEdge, origem?: BranchableNode): string {
-  // Ramo que o nó não declara mais (regra apagada, fluxo republicado): o RAMO
-  // sumiu, o caminho não. Chamar isso de "caminho normal" seria afirmar que o
-  // lead seguiu o fluxo padrão — mentira sobre o que aconteceu, e pior que os
-  // dois textos que estavam em disputa aqui. Segue como ramo sem nome.
-  const ramoId =
-    branchIdForCondition(origem, edge.condition) ??
-    (edge.condition.type === "branch" ? edge.condition.branch_id : FALLBACK_BRANCH_ID);
-  // No dialeto v1 o texto da classe é ao mesmo tempo o id e o rótulo — é o que
-  // o usuário escreveu. Só o v2 separa os dois, e aí o nome mora no nó. Sem
-  // este segundo caminho, um fluxo v1 (a maioria hoje) perderia o nome da
-  // classe no histórico e leria "por um caminho sem nome".
-  const doNo = origem ? nodeBranches(origem).find((b) => b.id === ramoId)?.label : null;
-  const declarado =
-    doNo ?? (edge.condition.type === "class_match" ? edge.condition.value : undefined);
-  return fraseDoRamo(ramoId, declarado);
+export function rotuloDaAresta(edge: FlowEdge, origem?: FlowNode): string {
+  const c = edge.condition;
+  if (c.type === "always") return RAMOS_RESERVADOS_EM_FRASE[FALLBACK_BRANCH_ID];
+  if (c.type === "cond_result") {
+    return RAMOS_RESERVADOS_EM_FRASE[c.value ? CONDITION_TRUE_BRANCH_ID : CONDITION_FALSE_BRANCH_ID];
+  }
+  // v1: a classe é o próprio identificador do ramo.
+  if (c.type === "class_match") {
+    return c.value === NO_REPLY_BRANCH_ID
+      ? RAMOS_RESERVADOS_EM_FRASE[NO_REPLY_BRANCH_ID]
+      : fraseDaClasse(c.value);
+  }
+
+  // v2: reservado tem frase própria; declarado precisa do NÓ, porque é lá que a
+  // identidade do ramo mora — e o molde depende do tipo do nó (classe da IA e
+  // regra do negócio não se leem igual).
+  return fraseDoRamo(c.branch_id) ?? fraseDoRamoDeclarado(origem, c.branch_id);
+}
+
+const RAMO_SEM_NOME = "por um caminho sem nome";
+
+/** O molde certo para o ramo que o usuário declarou, escolhido pelo tipo do nó. */
+function fraseDoRamoDeclarado(origem: FlowNode | undefined, branchId: string): string {
+  if (!origem) return RAMO_SEM_NOME;
+
+  if (origem.type === "ai_classify") {
+    const label = origem.config.branches?.find((b) => b.id === branchId)?.label;
+    return label ? fraseDaClasse(label) : RAMO_SEM_NOME;
+  }
+
+  if (origem.type === "condition") {
+    const check = origem.config.checks.find((c) => c.id === branchId);
+    if (!check) return RAMO_SEM_NOME;
+    // Regra batizada usa o nome que a pessoa deu; sem nome, a condição por
+    // extenso — `regra-2` na tela do operador é o que o vocabulário proíbe.
+    return check.label
+      ? fraseDaRegraNomeada(check.label)
+      : fraseDaRegraSemNome(check.field, check.op, check.value);
+  }
+
+  return RAMO_SEM_NOME;
 }
 
 /** O nó como aparece numa frase; id cru quando ele não está mais no grafo pinado. */
 export function refDoNo(nodeId: string | null, nos: Record<string, NoDoDossie>): string {
   if (!nodeId) return "sem passo associado";
   const no = nos[nodeId];
-  // O nó saiu do grafo (fluxo republicado, versão pinada divergente): dizer que
-  // é um id EXPLICITAMENTE é melhor que exibi-lo como se fosse um nome, e muito
-  // melhor que omitir — sem ele, o evento vira "falhou" sem onde.
+  // ⚠️ AQUI o id CRU aparece de propósito, e não contradiz a regra do ramo.
+  // São coisas diferentes: `branch_id` é identificador interno de um caminho que
+  // TEM nome em outro lugar; um `node_id` órfão é um passo que sumiu do grafo
+  // pinado e não tem nome em lugar nenhum. Dizer "passo wait-9 (não existe mais
+  // neste fluxo)" é a única forma de quem investiga achar o que aconteceu —
+  // omitir deixaria "falhou" sem onde.
   return no ? no.rotulo : `passo ${nodeId} (não existe mais neste fluxo)`;
 }
 
