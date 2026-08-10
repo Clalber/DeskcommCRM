@@ -1,0 +1,296 @@
+/**
+ * O GATILHO DE ETAPA DO FUNIL, provado pela tela.
+ *
+ * O que esta spec prova, na ordem em que um dono de clínica faria: ele arma o
+ * follow-up escolhendo uma etapa PELO NOME (nunca um uuid), publica o fluxo,
+ * e depois move um negócio para aquela etapa no quadro — com o teclado, que é
+ * o mesmo arrasto do mouse pela via acessível do `@hello-pangea/dnd`. O
+ * follow-up então aparece sozinho na aba Fila, sem ninguém apertar nada.
+ *
+ * ⚠️ O QUE É REAL AQUI. O produtor (`lib/followup/gatilho-etapa.ts`) é
+ * event-driven: a rota de movimento emite `lead.stage_changed` no `event_log` e
+ * o dreno consome. Em produção esse dreno é um cron de um minuto; a spec chama
+ * a MESMA rota (`/api/v1/cron/event-log-drain`) com o segredo interno, em vez de
+ * esperar o relógio. É o mecanismo de produção acionado à mão, não um atalho
+ * que pula o mecanismo.
+ *
+ * ⚠️ O QUE É SETUP, e por que não é pela tela. Criar o funil, o contato, o
+ * negócio e o agente publicado é o cenário, não a feature — e cada um desses
+ * caminhos já tem spec própria. O que esta spec dirige pela tela é exatamente o
+ * que a frente de gatilhos entregou: o controle de gatilho e o efeito dele.
+ */
+import { execFileSync } from "node:child_process";
+import * as fs from "node:fs";
+import * as path from "node:path";
+
+import { test, expect, type Page } from "@playwright/test";
+
+import { generateTotp, msUntilNextTotpWindow } from "./utils/totp";
+import { carregarEnvLocal } from "../../scripts/lib/env-de-teste";
+
+const CREDS_PATH = path.join(process.cwd(), ".e2e-creds.json");
+// `evidence/` é VERSIONADO. `e2e-artifacts/` está no .gitignore, e evidência
+// citada que não entra no repo é evidência que ninguém consegue conferir depois.
+const ARTIFACTS_DIR = path.join(process.cwd(), "evidence", "gatilho-de-etapa");
+fs.mkdirSync(ARTIFACTS_DIR, { recursive: true });
+
+/** Esta máquina roda saturada (medido: load average acima de 40 em 11 CPUs, com
+ *  login chegando a 15s). Os 5s do default do Playwright viram vermelho por
+ *  azar — e suíte que falha por azar desliga o gate inteiro. */
+const ESPERA = 60_000;
+
+interface Creds {
+  password: string;
+  users: Record<string, { email: string }>;
+  admin_totp?: { factor_id: string; secret: string };
+  followup_agent_fixtures?: { credential_id: string; channel_session_id: string };
+}
+
+/**
+ * ⚠️ ESTA SPEC NUNCA SEMEIA CREDENCIAIS, e isso é protocolo do time, não
+ * preguiça. `scripts/seed-e2e-credentials.ts` **rotaciona o fator TOTP do
+ * admin** e reescreve a senha da organização de teste, que é COMPARTILHADA por
+ * todas as frentes desta missão. Rodá-lo derruba o login de quem estiver no meio
+ * de um run — e o sintoma que a pessoa vê é "MFA falhou", que não aponta para a
+ * causa. O dono do seed é o maestro; aqui a gente copia o arquivo dele.
+ */
+function loadCreds(): Creds {
+  if (!fs.existsSync(CREDS_PATH)) {
+    throw new Error(
+      "Faltam credenciais de E2E. Copie as do maestro — `cp /Users/rafaelmelgaco/fv-integra/.e2e-creds.json .` — " +
+        "e NÃO rode scripts/seed-e2e-credentials.ts (ele rotaciona o TOTP do admin e derruba o run das outras frentes).",
+    );
+  }
+  return JSON.parse(fs.readFileSync(CREDS_PATH, "utf8")) as Creds;
+}
+
+let creds = loadCreds();
+
+function segredoInterno(): string {
+  const secret = carregarEnvLocal().INTERNAL_SECRET?.trim();
+  if (!secret) throw new Error("INTERNAL_SECRET não encontrado em .env.local");
+  return secret;
+}
+
+async function loginComTotp(page: Page, email: string, secret: string): Promise<void> {
+  await page.goto("/login");
+  await expect(page.locator("#email")).toBeVisible({ timeout: ESPERA });
+  await page.locator("#email").fill(email);
+  await page.locator("#password").fill(creds.password);
+  await page.getByRole("button", { name: /entrar/i }).click();
+  await page.waitForURL(/\/login\/mfa/, { timeout: ESPERA });
+
+  for (let tentativa = 0; tentativa < 3; tentativa++) {
+    if (msUntilNextTotpWindow() < 3_000) await page.waitForTimeout(msUntilNextTotpWindow() + 200);
+    await page.locator('input[aria-label="Dígito 1"]').click();
+    await page.keyboard.type(generateTotp(secret), { delay: 40 });
+    try {
+      await page.waitForURL(/\/app\//, { timeout: 20_000 });
+      return;
+    } catch {
+      await page.waitForTimeout(msUntilNextTotpWindow() + 200);
+    }
+  }
+  throw new Error("MFA falhou depois de 2 tentativas de TOTP");
+}
+
+const GRAFO_MINIMO = {
+  nodes: [
+    { id: "trigger-1", type: "trigger", label: "Início", position: { x: 0, y: 0 }, config: {} },
+    { id: "end-1", type: "end", label: "Fim", position: { x: 0, y: 200 }, config: { outcome: "exhausted" } },
+  ],
+  edges: [{ id: "edge-1", source: "trigger-1", target: "end-1", priority: 0, condition: { type: "always" } }],
+};
+
+test.describe("gatilho de etapa do funil", () => {
+  test.beforeAll(() => {
+    if (!creds.followup_agent_fixtures) {
+      execFileSync("npx", ["tsx", "scripts/seed-e2e-followup-agent.ts"], { stdio: "inherit" });
+      creds = JSON.parse(fs.readFileSync(CREDS_PATH, "utf8")) as Creds;
+    }
+  });
+
+  test("o negócio movido no quadro para a etapa escolhida arma o follow-up sozinho", async ({ page }) => {
+    test.setTimeout(180_000);
+    expect(creds.admin_totp?.secret, "seed deve gravar admin_totp").toBeTruthy();
+    expect(creds.followup_agent_fixtures, "seed-e2e-followup-agent.ts deve gravar as fixtures").toBeTruthy();
+
+    await loginComTotp(page, creds.users.admin!.email, creds.admin_totp!.secret);
+
+    const marca = Date.now();
+    const nomeDoFluxo = `E2E Gatilho Etapa ${marca}`;
+    let flowId = "";
+    let agentId = "";
+
+    try {
+      // ---- cenário: funil novo (nasce com as etapas padrão), contato e negócio ----
+      const funilRes = await page.request.post("/api/v1/pipelines", {
+        data: { name: `E2E Funil Gatilho ${marca}` },
+      });
+      expect(funilRes.status()).toBe(201);
+      const { data: funis } = (await funilRes.json()) as { data: { pipelines: Array<{ id: string; name: string }> } };
+      const funil = funis.pipelines.find((p) => p.name === `E2E Funil Gatilho ${marca}`)!;
+      expect(funil, "o funil recém-criado tem que voltar na lista").toBeTruthy();
+
+      const etapasRes = await page.request.get(`/api/v1/pipelines/${funil.id}/agent-mapping`);
+      expect(etapasRes.status()).toBe(200);
+      const { data: mapa } = (await etapasRes.json()) as { data: { etapas: Array<{ id: string; name: string }> } };
+      expect(mapa.etapas.length, "funil novo nasce com etapas").toBeGreaterThanOrEqual(2);
+      const etapaOrigem = mapa.etapas[0]!;
+      const etapaDestino = mapa.etapas[1]!;
+
+      const contatoRes = await page.request.post("/api/v1/contacts", {
+        data: { display_name: `Contato Gatilho ${marca}`, phone_number: `+5511${String(marca).slice(-9)}` },
+      });
+      expect(contatoRes.status()).toBe(201);
+      const { data: contato } = (await contatoRes.json()) as { data: { id: string; display_name: string } };
+
+      const negocioRes = await page.request.post("/api/v1/leads", {
+        data: {
+          pipeline_id: funil.id,
+          stage_id: etapaOrigem.id,
+          contact_id: contato.id,
+          title: `Negócio Gatilho ${marca}`,
+        },
+      });
+      expect(negocioRes.status()).toBe(201);
+      const { data: negocio } = (await negocioRes.json()) as { data: { id: string; title: string } };
+
+      // ---- 1. o fluxo, e o gatilho armado PELA TELA ----
+      const criaFluxo = await page.request.post("/api/v1/ai/followup-flows", { data: { name: nomeDoFluxo } });
+      expect(criaFluxo.status()).toBe(201);
+      flowId = ((await criaFluxo.json()) as { data: { id: string } }).data.id;
+      expect(
+        (await page.request.patch(`/api/v1/ai/followup-flows/${flowId}`, { data: { draft_graph: GRAFO_MINIMO } }))
+          .status(),
+      ).toBe(200);
+
+      await page.goto(`/app/ai/followups/${flowId}`);
+      await expect(page.getByTestId("flow-builder-shell")).toBeVisible({ timeout: ESPERA });
+
+      const botaoDoGatilho = page.getByTestId("trigger-config-button");
+      await expect(botaoDoGatilho).toHaveText("Gatilho: Manual", { timeout: ESPERA });
+      await botaoDoGatilho.click();
+
+      const painel = page.getByTestId("trigger-config-panel");
+      await expect(painel).toBeVisible({ timeout: ESPERA });
+      await painel.getByRole("combobox").first().click();
+      await page.getByRole("option", { name: "Etapa do funil", exact: true }).click();
+
+      // A ETAPA É ESCOLHIDA PELO NOME. Se algum dia isto voltar a ser um campo
+      // de uuid, esta linha é a que reprova.
+      const seletorDeEtapa = page.getByTestId("trigger-stage-select");
+      await expect(seletorDeEtapa).toBeEnabled({ timeout: ESPERA });
+      await seletorDeEtapa.click();
+      await page.getByRole("option", { name: etapaDestino.name, exact: true }).click();
+      await page.screenshot({
+        path: path.join(ARTIFACTS_DIR, "gatilho-etapa-01-configurado.png"),
+        fullPage: true,
+      });
+
+      await painel.getByTestId("trigger-config-save").click();
+      await expect(botaoDoGatilho).toHaveText(`Gatilho: entrou em «${etapaDestino.name}»`, { timeout: ESPERA });
+
+      // ---- 2. publica o fluxo pela tela ----
+      // O rótulo é "Fluxo publicado." e o selo vira "Ativo" — não existe selo
+      // "Publicado" nesta tela, e procurá-lo é vermelho garantido.
+      await page.getByRole("button", { name: /^Publicar$/ }).click();
+      await expect(page.getByText("Fluxo publicado.").first()).toBeVisible({ timeout: ESPERA });
+      const depoisDoPublish = await page.request.get(`/api/v1/ai/followup-flows/${flowId}`);
+      expect(((await depoisDoPublish.json()) as { data: { status: string } }).data.status).toBe("active");
+      await page.screenshot({
+        path: path.join(ARTIFACTS_DIR, "gatilho-etapa-02-publicado.png"),
+        fullPage: true,
+      });
+
+      // ---- 3. cenário: o agente publicado que ARMA o fluxo (o gate) ----
+      const fixtures = creds.followup_agent_fixtures!;
+      const criaAgente = await page.request.post("/api/v1/ai/agents", {
+        data: {
+          name: `E2E Agente Gatilho ${marca}`,
+          version: {
+            system_prompt: "Agente de teste E2E do gatilho de etapa.",
+            provider: "anthropic",
+            model: "claude-sonnet-4-6",
+            credential_id: fixtures.credential_id,
+            channel_session_id: fixtures.channel_session_id,
+            followup: { enabled: true, flow_pointer_ids: [flowId] },
+          },
+        },
+      });
+      expect(criaAgente.status()).toBe(201);
+      const criado = (await criaAgente.json()) as { data: { agent: { id: string }; version: { id: string } } };
+      agentId = criado.data.agent.id;
+      const publicaAgente = await page.request.post(`/api/v1/ai/agents/${agentId}/publish`, {
+        data: { version_id: criado.data.version.id },
+      });
+      expect(publicaAgente.status(), "o gate só libera com agente PUBLICADO").toBe(200);
+
+      // ---- 4. o movimento, no quadro, pelo teclado ----
+      await page.goto(`/app/pipelines/${funil.id}`);
+      const card = page.getByRole("group", { name: `Lead: ${negocio.title}` });
+      await expect(card).toBeVisible({ timeout: ESPERA });
+      await page.screenshot({
+        path: path.join(ARTIFACTS_DIR, "gatilho-etapa-03-antes-do-movimento.png"),
+        fullPage: true,
+      });
+
+      // O arrasto acessível do @hello-pangea/dnd: espaço levanta, seta move de
+      // coluna, espaço solta. É o MESMO caminho de código do arrasto com o
+      // mouse (mesmo `onDragEnd`), e não depende de coordenadas de pixel.
+      await card.focus();
+      await page.keyboard.press("Space");
+      await page.waitForTimeout(400);
+      await page.keyboard.press("ArrowRight");
+      await page.waitForTimeout(400);
+      await page.keyboard.press("Space");
+
+      await expect
+        .poll(
+          async () => {
+            const r = await page.request.get(`/api/v1/leads/${negocio.id}`);
+            return ((await r.json()) as { data: { stage_id: string } }).data.stage_id;
+          },
+          { timeout: 60_000, message: "o card tem que ter mudado de etapa no banco" },
+        )
+        .toBe(etapaDestino.id);
+      await page.screenshot({
+        path: path.join(ARTIFACTS_DIR, "gatilho-etapa-04-depois-do-movimento.png"),
+        fullPage: true,
+      });
+
+      // ---- 5. o dreno do event_log (o que o cron de 1 minuto faz sozinho) ----
+      const secret = segredoInterno();
+      await expect
+        .poll(
+          async () => {
+            const r = await page.request.post("/api/v1/cron/event-log-drain", {
+              headers: { authorization: `Bearer ${secret}` },
+            });
+            expect(r.status(), "o dreno tem que responder 200").toBe(200);
+            const fila = await page.request.get("/api/v1/ai/followups/queue?limit=100");
+            const { data } = (await fila.json()) as {
+              data: { items?: Array<{ contact: { id: string } }> } | Array<{ contact: { id: string } }>;
+            };
+            const itens = Array.isArray(data) ? data : (data.items ?? []);
+            return itens.some((i) => i.contact.id === contato.id);
+          },
+          { timeout: 60_000, message: "o follow-up tem que nascer do movimento de etapa" },
+        )
+        .toBe(true);
+
+      // ---- 6. e o dono vê o follow-up na fila, sem ter apertado nada ----
+      await page.goto("/app/ai/followups");
+      await page.getByRole("tab", { name: "Fila" }).click();
+      const linha = page.getByTestId("queue-row").filter({ hasText: contato.display_name });
+      await expect(linha).toHaveCount(1, { timeout: ESPERA });
+      await page.screenshot({
+        path: path.join(ARTIFACTS_DIR, "gatilho-etapa-05-fila-com-o-followup.png"),
+        fullPage: true,
+      });
+    } finally {
+      if (flowId) await page.request.post(`/api/v1/ai/followup-flows/${flowId}/disable`, { data: {} });
+      if (agentId) await page.request.delete(`/api/v1/ai/agents/${agentId}`);
+    }
+  });
+});
