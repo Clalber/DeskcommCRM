@@ -216,7 +216,13 @@ setup publica um fluxo, cria o enrollment pela API e chama o cron
 | J9.9 | A intervenção aparece na timeline do NEGÓCIO | as **quatro** linhas no card, com autor humano nomeado ("E2E Manager") e sem colapsar apesar de terem acontecido no mesmo minuto | PASS |
 | J9.10 | Viewer | lê o dossiê inteiro, sem coluna de ações; as 4 rotas devolvem 403 `forbidden_role` | PASS |
 
-Evidência: `evidence/followup-dossie/{01-dossie-timeline,02-pausado,03-adiado,04-pulado,05-timeline-do-negocio,06-viewer-so-leitura}.png`.
+Evidência (uma por passo, na ordem da jornada):
+`evidence/followup-dossie/01-dossie-timeline.png` ·
+`evidence/followup-dossie/02-pausado.png` ·
+`evidence/followup-dossie/03-adiado.png` ·
+`evidence/followup-dossie/04-pulado.png` ·
+`evidence/followup-dossie/05-timeline-do-negocio.png` ·
+`evidence/followup-dossie/06-viewer-so-leitura.png`.
 
 **O que o J9.9 mediu e quase passou batido:** as quatro intervenções acontecem
 no mesmo minuto e pelo mesmo ator, e a timeline do negócio COLAPSA blocos assim
