@@ -262,7 +262,10 @@ test.describe("nó de espera — o modo Adaptativo tem de decidir de verdade", (
     const filaRes = await page.request.get(`/api/v1/ai/followups/queue?pointer_id=${flowId}`);
     expect(filaRes.ok(), `ler fila: ${filaRes.status()}`).toBe(true);
     const { data: fila } = (await filaRes.json()) as {
-      data: Array<{ id: string; next_fire_at: string | null }>;
+      // `node_or_reason` é a coluna "Nó atual / Motivo" da tela — a mesma que a
+      // asserção estrutural lê. Declarar só `id` e `next_fire_at` deixava o
+      // typecheck vermelho na integração.
+      data: Array<{ id: string; next_fire_at: string | null; node_or_reason: string }>;
     };
     const minha = fila.find((r) => r.id === matricula.id);
     expect(minha, "o enrollment recém-criado não apareceu na fila").toBeTruthy();
