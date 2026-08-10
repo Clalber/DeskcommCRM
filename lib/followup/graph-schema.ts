@@ -346,6 +346,17 @@ export type FlowGraph = z.infer<typeof flowGraphSchema>;
  * handles, the edge panel, publish validation, the engine's routing — must go
  * through `nodeBranches()` and never read the raw shape, so the compatibility
  * cost is paid exactly once, here.
+ *
+ * ⚠️ MIGRAR UM NÓ DE v1 PARA v2 NÃO É SÓ TROCAR A CONFIG. `branchIdForCondition`
+ * aceita, num nó v2, uma aresta legada `class_match` casando pelo RÓTULO — isso
+ * existe para o canvas continuar desenhando um nó meio-migrado sem perder a
+ * linha. O ROTEAMENTO não tem essa cortesia: `classEdgeMatch` (node-handlers)
+ * devolve `{type:'branch'}` e `selectEdge` não casa a aresta antiga, caindo no
+ * `always`. O resultado é tela correta com roteamento errado, e nada acusa.
+ *
+ * Portanto: dar `branches` a um nó que já tem arestas exige reescrever essas
+ * arestas no MESMO instante — operação de canvas, atômica. É por isso que o
+ * `ClassifyForm` ainda emite v1 de propósito; a ressalva está lá também.
  */
 
 /**
