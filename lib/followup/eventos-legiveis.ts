@@ -239,11 +239,16 @@ export function refDoNo(nodeId: string | null, nos: Record<string, NoDoDossie>):
   if (!nodeId) return "sem passo associado";
   const no = nos[nodeId];
   // ⚠️ AQUI o id CRU aparece de propósito, e não contradiz a regra do ramo.
-  // São coisas diferentes: `branch_id` é identificador interno de um caminho que
-  // TEM nome em outro lugar; um `node_id` órfão é um passo que sumiu do grafo
-  // pinado e não tem nome em lugar nenhum. Dizer "passo wait-9 (não existe mais
-  // neste fluxo)" é a única forma de quem investiga achar o que aconteceu —
-  // omitir deixaria "falhou" sem onde.
+  //
+  // A distinção, na formulação do dono do vocabulário (`@QAVivo`), que é melhor
+  // que a que eu tinha: a pergunta não é "id na tela, sim ou não" — é se existe
+  // NOME DISPONÍVEL em outro lugar. Ramo tem nome no nó, então ecoar o
+  // `branch_id` é preguiça. Passo apagado do grafo não tem nome em lugar nenhum,
+  // e o id vira o único gancho que sobrou.
+  //
+  // E ele é apresentado EXPLICITAMENTE como id, com "não existe mais neste
+  // fluxo" ao lado, para ninguém o ler como nome: **id disfarçado de nome é o
+  // defeito; id assumido como id, quando não há nome, é informação.**
   return no ? no.rotulo : `passo ${nodeId} (não existe mais neste fluxo)`;
 }
 
