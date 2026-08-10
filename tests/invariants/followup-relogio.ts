@@ -35,6 +35,33 @@
  */
 
 /**
+ * A FRONTEIRA DESTE ARQUIVO — leia antes de concluir que o assunto está fechado.
+ *
+ * Isto elimina a instabilidade do TESTE. NÃO conserta produção, e produção tem a
+ * mesma forma: 8 pontos gravam `next_eval_at` como "agora" pelo relógio do
+ * processo — 5 em `node-handlers.ts` (`next_eval_at: clock()`, os avanços
+ * imediatos) e 3 em `turn-bridge.ts` (`now.toISOString()`). Os outros 5 pontos
+ * somam duração (backoff, grace, wait, recheck) e são indiferentes a isto: a
+ * margem deles é de minutos.
+ *
+ * Magnitude em produção, para ninguém herdar nem o alarme nem a tranquilidade
+ * sem o número: o custo é `teto(skew / intervalo_do_cron)` ciclos, com o cron de
+ * 60s (`docker-compose.prod.yml`). Enquanto o desvio entre o relógio da
+ * aplicação e o do Postgres for menor que 60s — o que NTP funcionando garante
+ * com folga de três ordens de grandeza — o custo é ZERO: o instante já passou
+ * muito antes do tick seguinte. Só passa a custar se os dois relógios
+ * divergirem mais que o intervalo do cron, e aí cada avanço imediato paga um
+ * ciclo. Não medi esse desvio em produção; medi 7 a 13ms nesta máquina, entre
+ * processo e container.
+ *
+ * Ou seja: em produção isto é uma dependência latente de sincronia de relógio,
+ * não um defeito ativo — e é diferente do caso da `reactivity.ts`, onde o
+ * enrollment fica esperando o próximo tick de qualquer jeito. Está catalogado
+ * como pendência com dono; quem for fechá-la, o conserto de raiz é gravar
+ * `now()` do BANCO nos 8 pontos, não ajustar relógio de processo.
+ */
+
+/**
  * Folga de uma ordem de grandeza sobre o maior desvio observado (13,2ms), e duas
  * ordens ABAIXO da menor tolerância das asserções de tempo destes arquivos (2s).
  * Nada aqui depende do valor exato: ele só precisa ser maior que o desvio entre
