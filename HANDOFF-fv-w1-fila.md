@@ -81,13 +81,16 @@ que já custou o `paused_handoff` na Task 5.2. **Virou lista positiva.**
 
 ---
 
-## Medições (SHA `2a94f4ee`, working tree limpo)
+## Medições (SHA `9616f69b`, working tree limpo)
+
+> Os gates foram medidos NESTE SHA, que é o último commit de código+doc da wave.
+> O commit que ajusta esta tabela não toca em código.
 
 | gate | resultado |
 |---|---|
-| `pnpm typecheck` | **0** — 4 erros achados e corrigidos no caminho (`AuditAction` é union fechado) |
+| `pnpm typecheck` | **exit 0** — 4 erros achados e corrigidos no caminho (`AuditAction` é union fechado) |
 | `pnpm lint` | **0 erros** (235 warnings, todos pré-existentes) |
-| `pnpm test:unit` | **326 arquivos / 3464 testes, verde** |
+| `pnpm test:unit` | **326 arquivos / 3470 testes, verde** |
 | `pnpm build` (produção, ambiente de e2e) | **verde** |
 | `pnpm test:db` | **90 arquivos / 641 testes · 637 passaram, 3 falharam** — ver ressalva abaixo |
 | `tests/e2e/followup-dossie.spec.ts` | **2 passed**, jornada inteira pelo clique |
@@ -98,6 +101,12 @@ que já custou o `paused_handoff` na Task 5.2. **Virou lista positiva.**
   do evento desconhecido) → **3 vermelhos, um por sabotagem**.
 - denylist devolvida ao `turn-bridge` → **1 vermelho**, o do turno stale, com o
   controle positivo verde.
+
+**Um gate pegou este relatório, e vale registrar:** a primeira versão citava as
+screenshots com chave de expansão (`{01-...,02-...}.png`). `evidencia-citada` é
+BIDIRECIONAL — imagem versionada que nenhum doc cita é órfã — e o extrator não
+expande chaves: as seis contavam como não citadas, e o `test:unit` foi de 3470
+verdes para 1 vermelho. Citar o caminho inteiro de cada uma resolveu.
 
 **Ressalva honesta do `test:db`:** as 3 falhas estão todas em
 `tests/invariants/webhooks-inbound.test.ts`, com 39–43 s cada (casos que normalmente
