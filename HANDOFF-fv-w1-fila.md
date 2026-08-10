@@ -255,3 +255,82 @@ aqui"); nenhuma asserção existente é tocada.
 
 Com autorização, o commit precisa de `DESKCOMM_GOV_INVARIANTS_EDIT=1` e da razão
 citada na mensagem — é o que o hook exige de quem passa por ele.
+
+---
+
+## Apêndice 2 — o endurecimento do invariante, pronto para aplicar
+
+Também bloqueado pelo hook de `tests/invariants/**`, e pelo mesmo motivo do
+apêndice 1: o caso não é o flip previsto na exceção. **Não afrouxa nada** — o
+teste passava com QUALQUER um dos dois predicados possíveis, e passa a exigir o
+certo.
+
+Medição (runner de verdade, `scripts/test-db.sh` com o baseline aplicado):
+
+| estado | resultado |
+|---|---|
+| baseline correto + teste endurecido | 6/6 verdes |
+| baseline sabotado para `(pointer_id, contact_id)` | **1 vermelho — o previsto** |
+| baseline sabotado + teste ANTIGO | 0 vermelhos (era o defeito) |
+
+```diff
+diff --git a/tests/invariants/followup-intervencao.test.ts b/tests/invariants/followup-intervencao.test.ts
+index c3235df5..e9b991ab 100644
+--- a/tests/invariants/followup-intervencao.test.ts
++++ b/tests/invariants/followup-intervencao.test.ts
+@@ -15,9 +15,9 @@ import type { FlowGraph } from "@/lib/followup/graph-schema";
+  *  2. `fn_claim_due_followup_enrollments` deixa de ver o pausado. É o que faz a
+  *     pausa PARAR o fluxo: sem isso a tela diria "pausado" e o worker seguiria
+  *     mandando mensagem;
+- *  3. o pausado continua ocupando a vaga de "vivo" do par (pointer, contato).
+- *     Se a liberasse, um segundo enrollment nasceria ao lado e os dois andariam
+- *     juntos no instante da retomada;
++ *  3. o pausado continua ocupando a vaga de "vivo" do par (ORGANIZAÇÃO,
++ *     contato) — nem em outro fluxo nasce um segundo. Se a liberasse, dois
++ *     follow-ups andariam juntos sobre a mesma pessoa no instante da retomada;
+  *  4. um turno que termina DEPOIS da pausa é descartado. Esta é a metade da
+  *     corrida que mora no `turn-bridge.ts`, e o teste vem com CONTROLE POSITIVO
+  *     (o mesmo turno, num enrollment ativo, avança) — sem ele, um bug que
+@@ -157,13 +157,39 @@ describe("pausa manual — o que o banco garante", () => {
+     expect(ids).not.toContain(pausado);
+   });
+ 
+-  it("pausado continua ocupando a vaga do vivo — não abre espaço para um segundo", async () => {
++  /**
++   * ⚠️ O SEGUNDO ENROLLMENT NASCE EM OUTRO FLUXO, E É ISSO QUE O TESTE MEDE.
++   *
++   * A versão anterior reusava o mesmo `pointer_id`, e assim ela passava com
++   * QUALQUER um dos dois predicados possíveis — o `(pointer_id, contact_id)` da
++   * DDL original e o `(organization_id, contact_id)` que está em vigor. Passava
++   * por sorte: a 0145 recriou o índice copiando a definição ERRADA (revertendo
++   * "um vivo por contato na organização" para "um por fluxo"), e este teste
++   * ficou verde em cima do defeito.
++   *
++   * Com dois fluxos e o mesmo contato, só o predicado CERTO recusa a segunda
++   * linha — e a diferença entre os dois deixa de ser invisível.
++   */
++  it("pausado ocupa a vaga do contato na ORGANIZAÇÃO — nem em outro fluxo nasce um segundo", async () => {
+     const c = await montaCenario("unico");
+     await criaEnrollment(c, { status: "paused_manual", comRelogio: false });
+ 
+-    await expect(criaEnrollment(c, { status: "active" })).rejects.toThrow(
+-      /idx_followup_enrollments_one_live|duplicate key/i,
++    const { rows: outraVersao } = await pool.query<{ id: string }>(
++      `insert into followup_flow_versions (organization_id, graph) values ($1, $2) returning id`,
++      [c.org, JSON.stringify(GRAFO)],
+     );
++    const { rows: outroPointer } = await pool.query<{ id: string }>(
++      `insert into followup_flow_pointers (organization_id, name, status, active_version_id)
++       values ($1, $2, 'active', $3) returning id`,
++      [c.org, `Outro fluxo ${Date.now()}-${Math.random()}`, outraVersao[0]!.id],
++    );
++
++    await expect(
++      criaEnrollment(
++        { ...c, pointerId: outroPointer[0]!.id, versionId: outraVersao[0]!.id },
++        { status: "active" },
++      ),
++    ).rejects.toThrow(/idx_followup_enrollments_one_live|duplicate key/i);
+   });
+ });
+```
