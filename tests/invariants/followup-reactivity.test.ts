@@ -470,7 +470,7 @@ describe("applyReactivityEvent — STOP/opt-out (message.received + is_blocked)"
     await seedOrg(org);
     const contactId = await seedContact(org, { isBlocked: true });
     const flow = await seedFlow(org, SIMPLE_GRAPH);
-    const pausado = await seedEnrollment({
+    await seedEnrollment({
       org,
       pointerId: flow.pointerId,
       versionId: flow.versionId,
@@ -482,12 +482,21 @@ describe("applyReactivityEvent — STOP/opt-out (message.received + is_blocked)"
 
     const row = eventRow({ organization_id: org, event_type: "message.received", payload: { contact_id: contactId } });
     const summary = await applyReactivityEvent(reactivityDb(), () => new Date(), row);
-    expect(summary).toEqual({ matched: true, reacted: 1 });
 
-    const after = await getEnrollment(pausado);
-    expect(after.status).toBe("cancelled");
-    expect(after.outcome).toBe("opted_out");
-    expect(after.next_eval_at).toBeNull();
+    // UMA asserção, e é deliberado. `it.fails` é satisfeito pela PRIMEIRA que
+    // falha: com quatro asserções aqui, as três seguintes nunca estreiam
+    // enquanto o defeito existe — e no dia do conserto, se QUALQUER uma delas
+    // falhasse (o cancelAll deixar de gravar `opted_out`, digamos), o caso
+    // continuaria falhando, o `.fails` seguiria satisfeito, e a catraca NÃO
+    // reprovaria. Ela sobreviveria ao próprio conserto, e o alarme se perderia
+    // em silêncio.
+    //
+    // Então esta catraca afirma SÓ a propriedade que o conserto vira: o STOP
+    // alcançou o enrollment. O que acontece DEPOIS de alcançado — virar
+    // `cancelled`, com `outcome='opted_out'` e `next_eval_at` nulo — já é
+    // congelado pelo caso irmão logo acima (o de `paused_handoff`), e os dois
+    // passam pelo mesmo `cancelAll`. Não há propriedade órfã.
+    expect(summary.reacted).toBe(1);
   });
 
   it("re-drenar o MESMO event_log row é idempotente — sem efeito duplicado", async () => {
