@@ -295,6 +295,41 @@ export const MODOS_DE_RAMIFICACAO: Record<ModoDeRamificacao, string> = {
  * `conditionLabel`, que já é a fonte da verdade do rótulo que a aresta mostra
  * no canvas — assim o painel e o desenho não podem divergir.
  */
+/**
+ * Os mesmos ramos, em frase — o registro do DOSSIÊ, não o da etiqueta.
+ *
+ * Dois registros de propósito. "Sem resposta" cabe num chip ao lado de uma
+ * aresta, onde o contexto está no desenho; "quando ninguém responde" cabe numa
+ * linha de histórico, onde a frase precisa se sustentar sozinha. Achatar os
+ * dois num só empobrece as duas telas.
+ *
+ * As três primeiras frases são as que `eventos-legiveis.ts` já escrevia à mão
+ * para o dialeto v1. Centralizá-las aqui é o que impede o risco real do v2: o
+ * mesmo fluxo lido de dois jeitos conforme o ramo chegue como `class_match`
+ * (v1) ou como `branch_id` (v2). Um dicionário, duas portas, um texto.
+ */
+export const RAMOS_RESERVADOS_EM_FRASE: Record<RamoReservado, string> = {
+  [FALLBACK_BRANCH_ID]: "caminho normal",
+  [NO_REPLY_BRANCH_ID]: "quando ninguém responde",
+  [CONDITION_TRUE_BRANCH_ID]: "quando a condição é verdadeira",
+  [CONDITION_FALSE_BRANCH_ID]: "quando a condição é falsa",
+};
+
+/**
+ * A frase de um ramo qualquer, reservado ou declarado pelo usuário.
+ *
+ * `rotuloDeclarado` vem do NÓ (`branches[].label` no classificar,
+ * `checks[].label` no condicional), porque no contrato v2 é lá que a identidade
+ * do ramo mora. Sem ele, o melhor honesto é dizer que é um caminho sem nome —
+ * nunca ecoar o `branch_id`, que é identificador interno.
+ */
+export function fraseDoRamo(branchId: string, rotuloDeclarado?: string): string {
+  const reservado = RAMOS_RESERVADOS_EM_FRASE[branchId as RamoReservado];
+  if (reservado) return reservado;
+  if (rotuloDeclarado?.trim()) return `quando a resposta é “${rotuloDeclarado}”`;
+  return "por um caminho sem nome";
+}
+
 export const RAMOS_RESERVADOS: Record<RamoReservado, string> = {
   [FALLBACK_BRANCH_ID]: conditionLabel({ type: "always" }),
   [NO_REPLY_BRANCH_ID]: conditionLabel({ type: "class_match", value: NO_REPLY_BRANCH_ID }),
