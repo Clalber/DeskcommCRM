@@ -263,6 +263,49 @@ final — duas variáveis mudaram, e o número não separa as causas. O que a
 medição isolada prova é o par, onde a carga não entra: dois arquivos, 30
 segundos.
 
+### A lição de método: "conserte a classe" pressupõe a classe CERTA
+
+O `@Assistente e Testes` martelou o dia inteiro, com razão, que se conserta a
+CLASSE e não a instância. Este arquivo mostra onde a regra tem limite, e o
+achado é do `@QAVivo`: o **mesmo texto** aparece três vezes ali com **três
+propósitos opostos**.
+
+| ocorrência | o que ela é | acompanha as migrations? |
+|---|---|---|
+| `setOneLiveIndex` | **restauração** de estado do banco compartilhado | **sim** — era o flaky |
+| dedup da 0062 | **reprodução histórica** | **não** — completar mudaria o que a réplica replica |
+| `countLiveForContact` | **pergunta** sobre o estado de hoje | **sim** — senão responde menos que a realidade |
+
+"Consertar tudo que parece igual" quebraria a réplica; "não mexer em nada"
+deixaria a pergunta mentindo. **Semelhança de TEXTO não é semelhança de
+PROPÓSITO** — e a varredura por `grep` só enxerga a primeira.
+
+E a terceira foi medida ANTES de entrar (16 verdes antes, 16 depois): é o que
+separa "consertei um defeito" de "desarmei uma armadilha". Sem a medição, o
+commit reivindicaria um conserto que não houve.
+
+### Uma pergunta que fica ABERTA, com o motivo escrito
+
+Entre rodadas do MESMO código, o número de testes PULADOS do `test:db` variou de
+1 para 8 — sinal de estado atravessado entre arquivos, distinto do vermelho que
+foi consertado. **Não sabemos a causa, e não vamos fingir que sabemos.**
+
+Duas tentativas de separar as variáveis falharam pelo mesmo motivo: conserto e
+carga da máquina mudaram na MESMA janela (load ~30 → 9 na minha; 32 prometido →
+15,6 medido na do `@QAVivo`). Com duas variáveis, "pulados voltaram a 1" não
+distingue "o conserto resolveu" de "a máquina desafogou".
+
+A assimetria útil, dele: se os pulados SUBIREM com carga baixa e conserto
+dentro, é evidência forte de fenômeno próprio — mais forte que a do desenho
+original, porque elimina a explicação rival. Se ficarem em 1, é inconclusivo.
+
+E a separação de verdade exigiria carga alta de propósito numa máquina
+compartilhada — o que faria outra pessoa pagar a conta da nossa medição. Ficou
+combinado não fabricar.
+
+**Aberta com o motivo escrito é um estado legítimo; fechada por conveniência não
+é.** Quem reabrir precisa saber que o obstáculo não foi falta de tentativa.
+
 **A lição, escrita no cabeçalho do helper:** quem recria objeto de SCHEMA num
 banco compartilhado assume a dívida de acompanhar toda migration futura que o
 toque — e nada avisa quando ela chega. A dívida venceu meses depois, na conta de

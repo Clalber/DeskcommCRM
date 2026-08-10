@@ -297,12 +297,27 @@ export function DossieDoFollowup({ id, canWrite }: Props) {
               <Clock size={14} aria-hidden className="mr-1" /> Adiar
             </Button>
           )}
-          {podeMexerNoRelogio && (
+          {/*
+            SEM SAÍDA, O BOTÃO NÃO EXISTE — não fica desabilitado.
+            Passo sem aresta de saída não tem para onde pular NUNCA, e isso não é
+            um "agora não".
+
+            A regra, na formulação do `@QAVivo`, que nomeia quem paga e como:
+            desabilitado é PROMESSA de "agora não", então serve para o que é
+            temporário (o `isPending`, que volta em segundos). Desabilitado
+            PERMANENTE manda o usuário procurar a condição que habilita — e ela
+            não existe, então ele acha que a culpa é dele.
+
+            Mesma família do modo adaptativo desta wave: a tela oferecendo o que
+            o código ignora. Só que ali ela mentia sobre o RESULTADO, e aqui
+            mentiria sobre a POSSIBILIDADE.
+          */}
+          {podeMexerNoRelogio && data.saidas.length > 0 && (
             <Button
               variant="outline"
               size="sm"
               data-testid="dossie-pular"
-              disabled={intervir.isPending || data.saidas.length === 0}
+              disabled={intervir.isPending}
               onClick={() => (data.saidas.length === 1 ? pular() : setPulando(true))}
             >
               <SkipForward size={14} aria-hidden className="mr-1" /> Pular este passo
