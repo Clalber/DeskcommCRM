@@ -19,14 +19,9 @@
  * contato) — quando o nó sumiu do grafo pinado, o id cru aparece dito como id,
  * porque um alvo feio é melhor que alvo nenhum.
  */
-import {
-  CONDITION_FALSE_BRANCH_ID,
-  CONDITION_TRUE_BRANCH_ID,
-  NO_REPLY_BRANCH_ID,
-  nodeBranches,
-  type FlowEdge,
-  type FlowNode,
-} from "./graph-schema";
+import { FALLBACK_BRANCH_ID, branchIdForCondition, nodeBranches } from "./graph-schema";
+import type { BranchableNode, FlowEdge, FlowNode } from "./graph-schema";
+import { fraseDoRamo } from "./vocabulario";
 
 // ---------------------------------------------------------------------------
 // Duração
@@ -169,46 +164,36 @@ export function resumoDoNo(node: FlowNode): NoDoDossie {
 /**
  * Quando este caminho é seguido — o que a pessoa lê ao escolher um ramo para pular.
  *
- * `class_match`/`cond_result` viram frase, não jargão; o `always` diz que é o
- * caminho único, porque "sempre" sozinho não informa nada a quem está decidindo.
+ * A frase NÃO é escrita aqui: vem de `fraseDoRamo` (vocabulario.ts), que é o
+ * registro do DOSSIÊ, distinto do registro de etiqueta que o canvas usa. Foi uma
+ * convergência independente que expôs isto — a Fila escreveu as frases inline e
+ * eu deleguei ao rótulo de etiqueta; as duas estavam meio certas. As frases são
+ * do vocabulário, e é lá que elas ficam.
  *
- * ⚠️ O RAMO NOMEADO (grafo v2) SÓ TEM NOME NO NÓ. `{type:'branch', branch_id}`
- * carrega um id opaco, estável a renomeações — de propósito: o rótulo pertence
- * ao nó de origem, e replicá-lo na aresta faria as duas cópias divergirem no
- * primeiro rename. Por isso a origem é parâmetro. Sem ela, ou com um id que o
- * nó não declara mais, aparece o ID — feio e verdadeiro ganha de um nome
- * inventado, que mandaria o operador pelo caminho errado ao pular um passo.
- */
-export function rotuloDaAresta(edge: FlowEdge, origem?: FlowNode): string {
-  const c = edge.condition;
-  if (c.type === "always") return "caminho normal";
-  if (c.type === "cond_result") {
-    return c.value ? "quando a condição é verdadeira" : "quando a condição é falsa";
-  }
-  if (c.type === "class_match") {
-    return c.value === NO_REPLY_BRANCH_ID
-      ? "quando ninguém responde"
-      : `quando a resposta é “${c.value}”`;
-  }
-
-  if (c.branch_id === NO_REPLY_BRANCH_ID) return "quando ninguém responde";
-  if (c.branch_id === CONDITION_TRUE_BRANCH_ID) return "quando a condição é verdadeira";
-  if (c.branch_id === CONDITION_FALSE_BRANCH_ID) return "quando a condição é falsa";
-
-  const nome = rotuloDoRamo(origem, c.branch_id);
-  return nome ? `quando a resposta é “${nome}”` : `pelo ramo ${c.branch_id}`;
-}
-
-/**
- * O nome que a pessoa deu ao ramo, procurado onde ele mora: no nó de origem.
+ * Delegar é também o que faz o MESMO fluxo ser lido igual nos dois dialetos: o
+ * ramo chega como `class_match` (v1) ou como `branch_id` (v2),
+ * `branchIdForCondition` resolve os dois para o mesmo ramo, e o texto sai único.
+ * Era exatamente esse risco que `fraseDoRamo` foi escrita para eliminar.
  *
- * Delega a `nodeBranches` — a lista de ramos é do contrato do grafo, e uma
- * segunda travessia aqui divergiria dela no primeiro tipo de nó que ganhasse
- * ramos (é o mesmo motivo de o rótulo não viver na aresta).
+ * `origem` é o nó de onde a aresta sai — só ele sabe o rótulo declarado do ramo,
+ * porque no contrato v2 a identidade mora no nó e o `branch_id` é opaco.
  */
-function rotuloDoRamo(origem: FlowNode | undefined, branchId: string): string | null {
-  if (!origem) return null;
-  return nodeBranches(origem).find((b) => b.id === branchId)?.label ?? null;
+export function rotuloDaAresta(edge: FlowEdge, origem?: BranchableNode): string {
+  // Ramo que o nó não declara mais (regra apagada, fluxo republicado): o RAMO
+  // sumiu, o caminho não. Chamar isso de "caminho normal" seria afirmar que o
+  // lead seguiu o fluxo padrão — mentira sobre o que aconteceu, e pior que os
+  // dois textos que estavam em disputa aqui. Segue como ramo sem nome.
+  const ramoId =
+    branchIdForCondition(origem, edge.condition) ??
+    (edge.condition.type === "branch" ? edge.condition.branch_id : FALLBACK_BRANCH_ID);
+  // No dialeto v1 o texto da classe é ao mesmo tempo o id e o rótulo — é o que
+  // o usuário escreveu. Só o v2 separa os dois, e aí o nome mora no nó. Sem
+  // este segundo caminho, um fluxo v1 (a maioria hoje) perderia o nome da
+  // classe no histórico e leria "por um caminho sem nome".
+  const doNo = origem ? nodeBranches(origem).find((b) => b.id === ramoId)?.label : null;
+  const declarado =
+    doNo ?? (edge.condition.type === "class_match" ? edge.condition.value : undefined);
+  return fraseDoRamo(ramoId, declarado);
 }
 
 /** O nó como aparece numa frase; id cru quando ele não está mais no grafo pinado. */

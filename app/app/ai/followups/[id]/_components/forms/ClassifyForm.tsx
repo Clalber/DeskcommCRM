@@ -22,6 +22,28 @@ import {
 
 import { msToMin, minToMs, type ConfigOf } from "./shared";
 
+/**
+ * ⚠️ AS CLASSES AQUI USAM A SEMÂNTICA v1 DE PROPÓSITO — não é esquecimento.
+ *
+ * O contrato do grafo já tem ramos nomeados (`branches`, id estável separado do
+ * rótulo), e é tentador fazer este formulário passar a emiti-los: resolveria o
+ * defeito de renomear uma classe e soltar a aresta. NÃO FAÇA sem migrar as
+ * arestas junto, porque o modo de falha é o pior que existe neste código:
+ *
+ * As arestas de saída de um nó que já existe estão gravadas como
+ * `class_match:<texto>`. Assim que o nó ganha `branches`, ele passa a ser um nó
+ * v2: `classEdgeMatch` (node-handlers) devolve `{type:'branch'}`, `selectEdge`
+ * não casa a aresta antiga e cai no `always`. Só que o CANVAS continua
+ * desenhando tudo certo, porque `branchIdForCondition` resolve `class_match`
+ * pelo rótulo — tela correta, roteamento errado, e nada acusando.
+ *
+ * Migrar um nó exige reescrever as arestas dele NO MESMO INSTANTE. Isso é
+ * operação de canvas, com atomicidade, não mudança de formulário.
+ *
+ * O estado de hoje é seguro e completo do lado do usuário: o nó já desenha uma
+ * bolinha por classe e roteia por `class_match`. O que falta é só a identidade
+ * estável no rename, e ela tem item próprio.
+ */
 export function ClassifyForm({
   config,
   onChange,

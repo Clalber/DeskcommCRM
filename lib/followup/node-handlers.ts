@@ -3,6 +3,7 @@
  * `engine.ts` owns the tick/DB orchestration; this file only decides "given
  * this node + these facts, what happens next" so it's testable without Postgres.
  */
+import { NO_REPLY_BRANCH_ID, nodeBranches } from "./graph-schema";
 import type { FlowEdge, FlowNode } from "./graph-schema";
 import { clampEspera, esperaPlanejadaDe, type EsperaAdaptativa } from "./timing-plan";
 
@@ -107,7 +108,36 @@ export const MAX_PLAN_RECHECKS = 3;
 export type EdgeMatch =
   | { type: "always" }
   | { type: "class_match"; value: string }
-  | { type: "cond_result"; value: boolean };
+  | { type: "cond_result"; value: boolean }
+  | { type: "branch"; branch_id: string };
+
+/**
+ * Qual saída de um nó de classificação leva à classe `classe` — resolvendo os
+ * dois dialetos (nó v1 casa por texto, nó migrado casa pelo id estável do ramo).
+ *
+ * Existe como função porque a MESMA pergunta é feita em dois pontos do caminho
+ * de execução: aqui, quando o prazo vence sem resposta, e no `turn-bridge`,
+ * quando o modelo classifica. Consertar só um dos dois deixava o fluxo migrado
+ * roteando certo para quem responde e errado, em silêncio, para quem não
+ * responde — que num follow-up é o caso mais comum. Achado pelo DevVivo na
+ * revisão: eu tinha ensinado o `selectEdge` a casar ramo e usado isso só no
+ * `condition`.
+ *
+ * Casa por rótulo E por id de propósito: `no_reply` é reservado (id `no_reply`,
+ * rótulo "Sem resposta"), e uma classe do usuário é achada pelo texto que ele
+ * escreveu.
+ */
+export function classEdgeMatch(
+  node: Extract<FlowNode, { type: "ai_classify" }>,
+  classe: string,
+): EdgeMatch {
+  const ramo = nodeBranches(node).find(
+    (b) => b.kind === "match" && (b.label === classe || b.id === classe),
+  );
+  return ramo?.condition.type === "branch"
+    ? { type: "branch", branch_id: ramo.condition.branch_id }
+    : { type: "class_match", value: classe };
+}
 
 /**
  * Picks the outbound edge from `from`: highest `priority` first, exact
@@ -117,9 +147,16 @@ export function selectEdge(edges: FlowEdge[], from: string, match: EdgeMatch): F
   const candidates = edges.filter((e) => e.source === from).slice().sort((a, b) => b.priority - a.priority);
 
   const exact = candidates.find((e) => {
-    if (match.type === "always") return e.condition.type === "always";
-    if (match.type === "class_match") return e.condition.type === "class_match" && e.condition.value === match.value;
-    return e.condition.type === "cond_result" && e.condition.value === match.value;
+    switch (match.type) {
+      case "always":
+        return e.condition.type === "always";
+      case "class_match":
+        return e.condition.type === "class_match" && e.condition.value === match.value;
+      case "cond_result":
+        return e.condition.type === "cond_result" && e.condition.value === match.value;
+      case "branch":
+        return e.condition.type === "branch" && e.condition.branch_id === match.branch_id;
+    }
   });
   if (exact) return exact;
 
@@ -291,6 +328,27 @@ export function processNode(input: {
     }
 
     case "condition": {
+      if (node.config.branching === "per_check") {
+        // "Uma saída por regra": a PRIMEIRA regra que passa manda, e a ordem da
+        // lista é a precedência — a mesma ordem que o usuário vê no formulário.
+        // Duas regras verdadeiras não podem sortear caminho; `combinator` não
+        // é consultado aqui, porque nesse modo a regra não vota, ela roteia.
+        const hitId = node.config.checks.find((c) => c.id !== undefined && evaluateCheck(c, lead))?.id;
+        // Nenhuma regra passou -> o ramo obrigatório 'else', que na aresta é `always`.
+        // `selectEdge` também cai nele quando o usuário deixou um ramo sem ligar:
+        // sair pela saída de escape é ruim, ficar preso no nó é pior.
+        const edge =
+          hitId === undefined
+            ? selectEdge(edges, node.id, { type: "always" })
+            : selectEdge(edges, node.id, { type: "branch", branch_id: hitId });
+        if (!edge) {
+          return {
+            kind: "fail",
+            error: `condition node "${node.id}" has no edge for branch "${hitId ?? "else"}"`,
+          };
+        }
+        return { kind: "advance", next_node_id: edge.target, next_eval_at: clock() };
+      }
       const result = evaluateCondition(node.config, lead);
       const edge = selectEdge(edges, node.id, { type: "cond_result", value: result });
       if (!edge) return { kind: "fail", error: `condition node "${node.id}" has no matching edge for result ${result}` };
@@ -308,7 +366,7 @@ export function processNode(input: {
       // grace_timeout_ms venceu sem turno de classificação concluído — classifica
       // como 'no_reply' SEM chamar o LLM (onda 5, critério 2); selectEdge já cai
       // no fallback 'always' se não houver aresta 'no_reply' explícita.
-      const edge = selectEdge(edges, node.id, { type: "class_match", value: "no_reply" });
+      const edge = selectEdge(edges, node.id, classEdgeMatch(node, NO_REPLY_BRANCH_ID));
       if (!edge) return { kind: "fail", error: `ai_classify node "${node.id}" has no edge for class "no_reply" (fallback also missing)` };
       return { kind: "advance", next_node_id: edge.target, next_eval_at: clock() };
     }

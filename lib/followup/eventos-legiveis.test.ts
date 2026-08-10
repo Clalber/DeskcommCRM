@@ -192,13 +192,29 @@ describe("rotuloDaAresta — o ramo nomeado do grafo v2", () => {
     expect(rotuloDaAresta(aresta("b-quente"), classify)).toBe("quando a resposta é “quente”");
   });
 
-  it("sem o nó de origem, mostra o id — nunca um nome inventado", () => {
-    // Nome errado aqui mandaria o operador pelo caminho errado ao pular um passo.
-    expect(rotuloDaAresta(aresta("b-quente"))).toBe("pelo ramo b-quente");
+  /**
+   * ⚠️ ESTES DOIS CASOS MUDARAM NA CONCILIAÇÃO, e a mudança é deliberada.
+   *
+   * Esperavam `pelo ramo <id>`, com a justificativa de que "feio e verdadeiro
+   * ganha de um nome inventado". A justificativa está certa e não se aplica: o
+   * vocabulário não inventa nome nenhum — `fraseDoRamo` diz explicitamente que
+   * NÃO há nome, e o cabeçalho dela decide, por escrito, "nunca ecoar o
+   * `branch_id`, que é identificador interno". O dono da linguagem é quem
+   * decide o registro do dossiê, e ele decidiu ali.
+   *
+   * O que se perde é o id como pista de diagnóstico. Se a Fila precisar dele,
+   * o lugar é a coluna de diagnóstico, não a frase do histórico — e aí a
+   * conversa é sobre a tela, não sobre esta função. Vetem se discordarem: é
+   * uma string, e está isolada nestes dois casos de propósito.
+   */
+  it("sem o nó de origem, diz que o caminho não tem nome — nunca inventa um", () => {
+    expect(rotuloDaAresta(aresta("b-quente"))).toBe("por um caminho sem nome");
   });
 
-  it("ramo que o nó não declara mais também cai no id", () => {
-    expect(rotuloDaAresta(aresta("b-sumiu"), classify)).toBe("pelo ramo b-sumiu");
+  it("ramo que o nó não declara mais também vira caminho sem nome, e NÃO 'caminho normal'", () => {
+    // A regra foi apagada: o RAMO sumiu, o caminho não. Dizer "caminho normal"
+    // afirmaria que o lead seguiu o fluxo padrão — mentira sobre o que houve.
+    expect(rotuloDaAresta(aresta("b-sumiu"), classify)).toBe("por um caminho sem nome");
   });
 
   it("os ramos reservados do contrato viram frase sem depender do nó", () => {
