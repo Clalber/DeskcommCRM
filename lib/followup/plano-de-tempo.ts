@@ -6,6 +6,16 @@
  * fluxo. Aqui só se lê, para o dossiê mostrar quanto a IA escolheu, por quê, e
  * se a escolha bateu no limite que o dono do fluxo configurou.
  *
+ * ⚠️ O PLANO É TUDO-OU-NADA, E ISSO É DECISÃO DO PRODUTOR. `timingPlanSchema`
+ * valida `esperas` como um `z.record`: UMA espera malformada invalida o registro
+ * inteiro, e o motor devolve `null` para TODOS os nós — o fluxo cai no `max_ms`
+ * em cada espera, não só na podre. É deliberado do lado dele (plano meio-lido
+ * seria pior: parte das esperas obedeceria à IA e parte ao teto, sem ninguém
+ * conseguir explicar a mistura), e é por isso que esta tela não mostra bloco
+ * nenhum quando o plano não valida — mostrar as esperas boas prometeria o que o
+ * motor não vai fazer. Se um dia a granularidade for desejada, a mudança é nos
+ * DOIS lados no mesmo commit; ver o cabeçalho de `timing-plan.ts`.
+ *
  * ⚠️ O CRITÉRIO DE ACEITE É O DO MOTOR, NÃO UM PARALELO. `esperaPlanejadaDe`
  * (timing-plan.ts) faz `timingPlanSchema.safeParse` do plano INTEIRO e, se
  * falhar, ignora o plano todo — a espera cai no comportamento anterior (o
