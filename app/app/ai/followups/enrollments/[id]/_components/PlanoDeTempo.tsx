@@ -1,11 +1,11 @@
 "use client";
 
 import { Badge } from "@/components/ui/badge";
-import { descreveEspera, type PlanoDeTempo } from "@/lib/followup/plano-de-tempo";
+import { descreveEspera, type TimingPlan } from "@/lib/followup/plano-de-tempo";
 import type { NoDoDossie } from "@/lib/followup/eventos-legiveis";
 
 interface Props {
-  plano: PlanoDeTempo | null;
+  plano: TimingPlan | null;
   nos: NoDoDossie[];
   /** Quando o plano foi decidido, em texto relativo já formatado por quem chama. */
   decididoRelativo: string | null;
@@ -50,6 +50,17 @@ export function PlanoDeTempoBloco({ plano, nos, decididoRelativo }: Props) {
                   </Badge>
                 )}
               </div>
+              {/*
+                O TAMANHO do corte, não só o fato dele. "Bateu no seu limite"
+                diz que houve corte; é a diferença que decide se o operador vai
+                mexer no nó — e o produtor guarda `proposto_ms` justamente para
+                esta linha existir.
+              */}
+              {d.pedido && (
+                <p className="text-xs text-warning-fg" data-testid="dossie-espera-pedido">
+                  a IA pediu {d.pedido}
+                </p>
+              )}
               <p className="text-xs text-text-muted">{d.motivo}</p>
               <p className="text-[11px] text-text-muted">{d.faixa}</p>
             </li>

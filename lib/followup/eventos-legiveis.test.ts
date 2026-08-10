@@ -163,3 +163,47 @@ describe("rotuloDoStatus", () => {
     expect(rotuloDoStatus("paused_handoff")).toBe("Pausado (atendimento humano)");
   });
 });
+
+describe("rotuloDaAresta — o ramo nomeado do grafo v2", () => {
+  const classify: FlowNode = {
+    id: "ac1",
+    type: "ai_classify",
+    label: "Interpreta",
+    position: { x: 0, y: 0 },
+    config: {
+      classes: ["quente", "frio"],
+      branches: [
+        { id: "b-quente", label: "quente" },
+        { id: "b-frio", label: "frio" },
+      ],
+      grace_timeout_ms: 900_000,
+      target: "last_reply",
+    },
+  };
+  const aresta = (branchId: string) => ({
+    id: "e",
+    source: "ac1",
+    target: "x",
+    priority: 0,
+    condition: { type: "branch" as const, branch_id: branchId },
+  });
+
+  it("usa o NOME que a pessoa deu ao ramo, que só existe no nó", () => {
+    expect(rotuloDaAresta(aresta("b-quente"), classify)).toBe("quando a resposta é “quente”");
+  });
+
+  it("sem o nó de origem, mostra o id — nunca um nome inventado", () => {
+    // Nome errado aqui mandaria o operador pelo caminho errado ao pular um passo.
+    expect(rotuloDaAresta(aresta("b-quente"))).toBe("pelo ramo b-quente");
+  });
+
+  it("ramo que o nó não declara mais também cai no id", () => {
+    expect(rotuloDaAresta(aresta("b-sumiu"), classify)).toBe("pelo ramo b-sumiu");
+  });
+
+  it("os ramos reservados do contrato viram frase sem depender do nó", () => {
+    expect(rotuloDaAresta(aresta("no_reply"))).toBe("quando ninguém responde");
+    expect(rotuloDaAresta(aresta("true"))).toBe("quando a condição é verdadeira");
+    expect(rotuloDaAresta(aresta("false"))).toBe("quando a condição é falsa");
+  });
+});
