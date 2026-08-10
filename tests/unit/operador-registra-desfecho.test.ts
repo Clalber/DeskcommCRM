@@ -31,6 +31,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  apurarComRetorno,
   apuraDonoDaPromessa,
   nomesDasFerramentasChamadas,
 } from "@/lib/agent-engine/agent/operator-turn";
@@ -137,5 +138,47 @@ describe("nomesDasFerramentasChamadas — de onde se lê a ação", () => {
 
   it("passo sem toolCalls não conta como ação", () => {
     expect(nomesDasFerramentasChamadas({ result: { steps: [{}, {}] } })).toEqual([]);
+  });
+});
+
+/**
+ * A FIAÇÃO, não a regra.
+ *
+ * `apuraDonoDaPromessa` — a regra pura — já tinha rede: os casos acima cobrem
+ * cada braço. O que NÃO tinha era o fio que a alimenta. Medido em 6e057379:
+ * trocar `temRetornoVivo: retorno !== null` por `temRetornoVivo: false` em
+ * `apurarComRetorno` deixava a suíte unitária INTEIRA verde — 3516 casos,
+ * exit 0 — e restaurava, palavra por palavra, o comportamento que o PR diz ter
+ * matado: a Central acusando "ninguém cumpriu ainda" quem acabou de agendar.
+ *
+ * É a mesma classe que este PR já tinha aprendido nas camadas do guardrail
+ * ("nada guardava a FIAÇÃO"), e que não foi aplicada aqui — no conserto mais
+ * central dele.
+ */
+describe("apurarComRetorno — o fio entre a busca e a regra", () => {
+  const entrada = {
+    ferramentasChamadas: [] as readonly string[],
+    operadorRodou: true,
+    operadorTemFerramentas: true,
+  };
+
+  it("retorno VIVO no banco vira `retorno_agendado` — o fio carrega", async () => {
+    const dono = await apurarComRetorno({} as never, "org", "lead", 1, entrada, async () => ({
+      id: "r-1",
+    }));
+    expect(dono, "sem o fio, a Central volta a acusar quem acabou de agendar").toEqual({
+      assumida: true,
+      por: "retorno_agendado",
+    });
+  });
+
+  /**
+   * Guarda de vacuidade: sem retorno o resultado TEM de mudar. Se os dois
+   * dessem o mesmo, o de cima passaria por acidente e o fio poderia estar
+   * cortado do mesmo jeito.
+   */
+  it("SEM retorno no banco, o desfecho é outro — a sonda distingue", async () => {
+    const dono = await apurarComRetorno({} as never, "org", "lead", 1, entrada, async () => null);
+    expect(dono).not.toEqual({ assumida: true, por: "retorno_agendado" });
   });
 });

@@ -468,7 +468,14 @@ export function createOperatorTurnHandler(deps: InboundTurnDeps) {
  * novo aqui: é a mesma regra que decide se o lead tem retorno em voo no Radar de
  * Risco. Duas queries para a mesma pergunta viram, com o tempo, duas respostas.
  */
-async function apurarComRetorno(
+/**
+ * EXPORTADA so para o teste alcancar a FIACAO. A regra (`apuraDonoDaPromessa`)
+ * ja tinha rede; o fio que a liga ao `buscaRetornoVivo` nao tinha — medido:
+ * trocar `retorno !== null` por `false` deixava a suite INTEIRA verde (3516
+ * casos, exit 0), e o comportamento restaurado era exatamente o que este PR diz
+ * ter matado: a Central acusando quem acabou de agendar o retorno.
+ */
+export async function apurarComRetorno(
   pool: pg.Pool,
   tenantId: string,
   leadId: string,
@@ -478,9 +485,17 @@ async function apurarComRetorno(
     operadorRodou: boolean;
     operadorTemFerramentas: boolean;
   },
+  /**
+   * Costura só para o teste alcançar o FIO. Produção nunca passa este argumento.
+   * Mock de módulo não serve aqui: o grafo já está carregado quando o caso roda,
+   * e o `criaRetornoDbPg` real acaba chamado com um pool falso — medido,
+   * `db.query is not a function`.
+   */
+  buscaRetorno: (t: string, l: string) => Promise<unknown> = (t, l) =>
+    criaRetornoDbPg(pool).buscaRetornoVivo(t, l),
 ): Promise<DonoDaPromessa | null> {
   if (promessasDeclaradas === 0) return null;
-  const retorno = await criaRetornoDbPg(pool).buscaRetornoVivo(tenantId, leadId);
+  const retorno = await buscaRetorno(tenantId, leadId);
   return apuraDonoDaPromessa({ ...entrada, temRetornoVivo: retorno !== null });
 }
 
