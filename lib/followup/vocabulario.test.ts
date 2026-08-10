@@ -288,6 +288,36 @@ describe("a tradução não é o valor cru disfarçado", () => {
     }
   });
 
+  /**
+   * Coincidências legítimas: palavras que o português usa e que por acaso são
+   * iguais ao valor de wire. Cada entrada precisa de razão escrita, senão a
+   * allowlist vira o lugar onde os vazamentos vão morar.
+   */
+  const COINCIDENCIAS_ACEITAS = new Map([
+    ["manual", "'Manual' é o português de manual, e é o texto que TriggerConfigControl já mostra e o e2e seleciona."],
+  ]);
+
+  it("nenhum rótulo É o valor de wire, mesmo sem underscore", () => {
+    // A regra do `_` acima não pega `gte`, `eq` nem `and` — exatamente os
+    // comparadores de que o Rafael reclamou. E os rótulos dos COMPARADORES não
+    // estavam em varredura nenhuma até aqui: eles não moram num Record simples.
+    const tudo: Array<[string, string]> = [
+      ...rotulosPorValor,
+      ...(CAMPOS_NO_SCHEMA as CampoDaCondicao[]).flatMap((campo) =>
+        (OPERADORES_NO_SCHEMA as OperadorDaCondicao[]).map(
+          (op) => [`${campo}+${op}`, comparador(campo, op).rotulo] as [string, string],
+        ),
+      ),
+    ];
+    const wire = new Set([...CAMPOS_NO_SCHEMA, ...OPERADORES_NO_SCHEMA, ...COMBINADORES_NO_SCHEMA]);
+
+    const crus = tudo.filter(([, rotulo]) => {
+      const r = rotulo.trim().toLowerCase();
+      return wire.has(r) && !COINCIDENCIAS_ACEITAS.has(r);
+    });
+    expect(crus.map(([onde, rotulo]) => `${onde} → "${rotulo}"`)).toEqual([]);
+  });
+
   it("a palavra 'grace' não aparece em nada que o usuário lê", () => {
     const tudo = [
       ...rotulosPorValor.map(([, r]) => r),
