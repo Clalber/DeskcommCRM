@@ -86,7 +86,8 @@ export const MAX_ACTION_RECHECKS = 5;
 export type EdgeMatch =
   | { type: "always" }
   | { type: "class_match"; value: string }
-  | { type: "cond_result"; value: boolean };
+  | { type: "cond_result"; value: boolean }
+  | { type: "branch"; branch_id: string };
 
 /**
  * Picks the outbound edge from `from`: highest `priority` first, exact
@@ -96,9 +97,16 @@ export function selectEdge(edges: FlowEdge[], from: string, match: EdgeMatch): F
   const candidates = edges.filter((e) => e.source === from).slice().sort((a, b) => b.priority - a.priority);
 
   const exact = candidates.find((e) => {
-    if (match.type === "always") return e.condition.type === "always";
-    if (match.type === "class_match") return e.condition.type === "class_match" && e.condition.value === match.value;
-    return e.condition.type === "cond_result" && e.condition.value === match.value;
+    switch (match.type) {
+      case "always":
+        return e.condition.type === "always";
+      case "class_match":
+        return e.condition.type === "class_match" && e.condition.value === match.value;
+      case "cond_result":
+        return e.condition.type === "cond_result" && e.condition.value === match.value;
+      case "branch":
+        return e.condition.type === "branch" && e.condition.branch_id === match.branch_id;
+    }
   });
   if (exact) return exact;
 
@@ -212,6 +220,27 @@ export function processNode(input: {
     }
 
     case "condition": {
+      if (node.config.branching === "per_check") {
+        // "Uma saída por regra": a PRIMEIRA regra que passa manda, e a ordem da
+        // lista é a precedência — a mesma ordem que o usuário vê no formulário.
+        // Duas regras verdadeiras não podem sortear caminho; `combinator` não
+        // é consultado aqui, porque nesse modo a regra não vota, ela roteia.
+        const hitId = node.config.checks.find((c) => c.id !== undefined && evaluateCheck(c, lead))?.id;
+        // Nenhuma regra passou -> o ramo obrigatório 'else', que na aresta é `always`.
+        // `selectEdge` também cai nele quando o usuário deixou um ramo sem ligar:
+        // sair pela saída de escape é ruim, ficar preso no nó é pior.
+        const edge =
+          hitId === undefined
+            ? selectEdge(edges, node.id, { type: "always" })
+            : selectEdge(edges, node.id, { type: "branch", branch_id: hitId });
+        if (!edge) {
+          return {
+            kind: "fail",
+            error: `condition node "${node.id}" has no edge for branch "${hitId ?? "else"}"`,
+          };
+        }
+        return { kind: "advance", next_node_id: edge.target, next_eval_at: clock() };
+      }
       const result = evaluateCondition(node.config, lead);
       const edge = selectEdge(edges, node.id, { type: "cond_result", value: result });
       if (!edge) return { kind: "fail", error: `condition node "${node.id}" has no matching edge for result ${result}` };

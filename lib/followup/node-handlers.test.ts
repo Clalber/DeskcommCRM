@@ -58,6 +58,7 @@ describe("selectEdge", () => {
     edge({ source: "n1", target: "high", condition: { type: "always" }, priority: 10 }),
     edge({ source: "n1", target: "hot", condition: { type: "class_match", value: "hot" }, priority: 5 }),
     edge({ source: "n1", target: "yes", condition: { type: "cond_result", value: true }, priority: 5 }),
+    edge({ source: "n1", target: "ramo", condition: { type: "branch", branch_id: "chk_vip" }, priority: 5 }),
     edge({ source: "other", target: "x", condition: { type: "always" }, priority: 99 }),
   ];
 
@@ -84,6 +85,23 @@ describe("selectEdge", () => {
   it("falls back to 'always' when cond_result value doesn't match", () => {
     const picked = selectEdge(edges, "n1", { type: "cond_result", value: false });
     expect(picked?.target).toBe("high");
+  });
+
+  it("picks the exact branch edge over the always fallback", () => {
+    expect(selectEdge(edges, "n1", { type: "branch", branch_id: "chk_vip" })?.target).toBe("ramo");
+  });
+
+  it("falls back to 'always' for a branch nobody wired — escape, não lead preso", () => {
+    expect(selectEdge(edges, "n1", { type: "branch", branch_id: "chk_orfao" })?.target).toBe("high");
+  });
+
+  it("não confunde branch com class_match de mesmo nome", () => {
+    const homonimos: FlowEdge[] = [
+      edge({ source: "n1", target: "por-classe", condition: { type: "class_match", value: "vip" } }),
+      edge({ source: "n1", target: "por-ramo", condition: { type: "branch", branch_id: "vip" } }),
+    ];
+    expect(selectEdge(homonimos, "n1", { type: "branch", branch_id: "vip" })?.target).toBe("por-ramo");
+    expect(selectEdge(homonimos, "n1", { type: "class_match", value: "vip" })?.target).toBe("por-classe");
   });
 
   it("returns null when the node has no outbound edges at all", () => {
@@ -268,6 +286,120 @@ describe("processNode — condition", () => {
       clock,
     });
     expect(result.kind).toBe("fail");
+  });
+});
+
+/**
+ * `branching: 'per_check'` — a queixa original do Rafael: N regras, N saídas.
+ * O nó deixa de dobrar as regras num booleano e passa a rotear pelo `branch_id`
+ * da regra que passou.
+ */
+describe("processNode — condition com uma saída por regra", () => {
+  const VIP = { id: "chk_vip", field: "tag" as const, op: "contains" as const, value: "vip" };
+  const FRIO = { id: "chk_frio", field: "steps_taken" as const, op: "gte" as const, value: 3 };
+
+  function perCheckNode(): FlowNode {
+    return {
+      id: "c1",
+      type: "condition",
+      label: "Triagem",
+      position: { x: 0, y: 0 },
+      config: { combinator: "and", branching: "per_check", checks: [VIP, FRIO] },
+    };
+  }
+
+  const edges = [
+    edge({ source: "c1", target: "caminho-vip", condition: { type: "branch", branch_id: "chk_vip" } }),
+    edge({ source: "c1", target: "caminho-frio", condition: { type: "branch", branch_id: "chk_frio" } }),
+    edge({ source: "c1", target: "nenhuma-delas", condition: { type: "always" } }),
+  ];
+
+  it("cada regra manda o lead pelo SEU caminho", () => {
+    const soVip = processNode({
+      node: perCheckNode(),
+      edges,
+      enrollment: enrollment(),
+      lead: lead({ tags: ["vip"], steps_taken: 0 }),
+      clock,
+    });
+    expect(soVip).toMatchObject({ kind: "advance", next_node_id: "caminho-vip" });
+
+    const soFrio = processNode({
+      node: perCheckNode(),
+      edges,
+      enrollment: enrollment(),
+      lead: lead({ tags: [], steps_taken: 5 }),
+      clock,
+    });
+    expect(soFrio).toMatchObject({ kind: "advance", next_node_id: "caminho-frio" });
+  });
+
+  it("nenhuma regra passando cai no ramo obrigatório 'nenhuma delas'", () => {
+    const result = processNode({
+      node: perCheckNode(),
+      edges,
+      enrollment: enrollment(),
+      lead: lead({ tags: [], steps_taken: 0 }),
+      clock,
+    });
+    expect(result).toMatchObject({ kind: "advance", next_node_id: "nenhuma-delas" });
+  });
+
+  it("duas regras verdadeiras: vence a PRIMEIRA da lista, não é sorteio", () => {
+    const result = processNode({
+      node: perCheckNode(),
+      edges,
+      enrollment: enrollment(),
+      lead: lead({ tags: ["vip"], steps_taken: 9 }), // as duas passam
+      clock,
+    });
+    expect(result).toMatchObject({ kind: "advance", next_node_id: "caminho-vip" });
+  });
+
+  it("a ordem é a da lista, não a do id: invertidas as regras, inverte o vencedor", () => {
+    const invertido: FlowNode = {
+      id: "c1",
+      type: "condition",
+      label: "Triagem",
+      position: { x: 0, y: 0 },
+      config: { combinator: "and", branching: "per_check", checks: [FRIO, VIP] },
+    };
+    const result = processNode({
+      node: invertido,
+      edges,
+      enrollment: enrollment(),
+      lead: lead({ tags: ["vip"], steps_taken: 9 }), // as duas passam, de novo
+      clock,
+    });
+    expect(result).toMatchObject({ kind: "advance", next_node_id: "caminho-frio" });
+  });
+
+  it("ramo sem aresta sai pela escape em vez de prender o lead no nó", () => {
+    const semArestaDoFrio = [
+      edge({ source: "c1", target: "caminho-vip", condition: { type: "branch", branch_id: "chk_vip" } }),
+      edge({ source: "c1", target: "nenhuma-delas", condition: { type: "always" } }),
+    ];
+    const result = processNode({
+      node: perCheckNode(),
+      edges: semArestaDoFrio,
+      enrollment: enrollment(),
+      lead: lead({ tags: [], steps_taken: 5 }), // bate na regra do frio, que ninguém ligou
+      clock,
+    });
+    expect(result).toMatchObject({ kind: "advance", next_node_id: "nenhuma-delas" });
+  });
+
+  it("'combinator' não é consultado neste modo — 'and' com uma só regra batendo ainda roteia", () => {
+    // No modo combinado este mesmo nó daria FALSE (uma das duas regras falha) e
+    // iria para a saída do 'não'. Aqui ele vai pelo caminho da regra que passou.
+    const result = processNode({
+      node: perCheckNode(),
+      edges,
+      enrollment: enrollment(),
+      lead: lead({ tags: ["vip"], steps_taken: 0 }),
+      clock,
+    });
+    expect(result).toMatchObject({ kind: "advance", next_node_id: "caminho-vip" });
   });
 });
 
