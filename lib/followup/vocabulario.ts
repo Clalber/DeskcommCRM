@@ -41,12 +41,17 @@ import type { z } from "zod";
 
 import type { TriggerConfig } from "./api-schemas";
 import { conditionLabel } from "./edge-condition-options";
-import type {
-  actionConfigSchema,
-  aiClassifyConfigSchema,
-  conditionConfigSchema,
-  endConfigSchema,
-  waitConfigSchema,
+import {
+  CONDITION_FALSE_BRANCH_ID,
+  CONDITION_TRUE_BRANCH_ID,
+  FALLBACK_BRANCH_ID,
+  NO_REPLY_BRANCH_ID,
+  type RESERVED_BRANCH_IDS,
+  type actionConfigSchema,
+  type aiClassifyConfigSchema,
+  type conditionConfigSchema,
+  type endConfigSchema,
+  type waitConfigSchema,
 } from "./graph-schema";
 import type { EnrollmentOutcome, EnrollmentStatus } from "./node-handlers";
 
@@ -56,6 +61,8 @@ type Check = ConditionConfig["checks"][number];
 export type CampoDaCondicao = Check["field"];
 export type OperadorDaCondicao = Check["op"];
 export type Combinador = ConditionConfig["combinator"];
+export type ModoDeRamificacao = NonNullable<ConditionConfig["branching"]>;
+export type RamoReservado = (typeof RESERVED_BRANCH_IDS)[number];
 export type AlvoDaClassificacao = z.infer<typeof aiClassifyConfigSchema>["target"];
 export type ResultadoDoFim = z.infer<typeof endConfigSchema>["outcome"];
 export type ModoDeEspera = z.infer<typeof waitConfigSchema>["mode"];
@@ -271,6 +278,28 @@ export function fraseDaCondicao(
 export const COMBINADORES: Record<Combinador, string> = {
   and: "Todas as condições",
   or: "Qualquer uma das condições",
+};
+
+/**
+ * Grafo v2: como o nó de condição abre as saídas dele. `combined` avalia tudo
+ * junto e sai por Sim/Não; `per_check` dá uma saída por regra, endereçada pelo
+ * id estável do ramo.
+ */
+export const MODOS_DE_RAMIFICACAO: Record<ModoDeRamificacao, string> = {
+  combined: "Uma saída para todas as regras juntas",
+  per_check: "Uma saída para cada regra",
+};
+
+/**
+ * Os ramos que o contrato reserva. Não redeclaramos o texto: ele vem de
+ * `conditionLabel`, que já é a fonte da verdade do rótulo que a aresta mostra
+ * no canvas — assim o painel e o desenho não podem divergir.
+ */
+export const RAMOS_RESERVADOS: Record<RamoReservado, string> = {
+  [FALLBACK_BRANCH_ID]: conditionLabel({ type: "always" }),
+  [NO_REPLY_BRANCH_ID]: conditionLabel({ type: "class_match", value: NO_REPLY_BRANCH_ID }),
+  [CONDITION_TRUE_BRANCH_ID]: conditionLabel({ type: "cond_result", value: true }),
+  [CONDITION_FALSE_BRANCH_ID]: conditionLabel({ type: "cond_result", value: false }),
 };
 
 // ─── classificação pela IA ───────────────────────────────────────────────

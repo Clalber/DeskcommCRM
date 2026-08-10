@@ -13,6 +13,12 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { aiClassifyConfigSchema } from "@/lib/followup/graph-schema";
+import {
+  ALVOS_DA_CLASSIFICACAO,
+  ESPERA_PELA_RESPOSTA,
+  opcoes,
+  type AlvoDaClassificacao,
+} from "@/lib/followup/vocabulario";
 
 import { msToMin, minToMs, type ConfigOf } from "./shared";
 
@@ -29,7 +35,7 @@ export function ClassifyForm({
   const [hint, setHint] = useState(config.hint ?? "");
   const [error, setError] = useState<string | null>(null);
 
-  const commit = (next: { classesText: string; graceMin: number; target: "last_reply" | "summary"; hint: string }) => {
+  const commit = (next: { classesText: string; graceMin: number; target: AlvoDaClassificacao; hint: string }) => {
     const classes = next.classesText
       .split(",")
       .map((c) => c.trim())
@@ -64,11 +70,11 @@ export function ClassifyForm({
         />
       </div>
       <div className="space-y-2">
-        <Label htmlFor="classify-grace">Grace (minutos, mín. 15)</Label>
+        <Label htmlFor="classify-grace">{ESPERA_PELA_RESPOSTA.rotulo}</Label>
         <Input
           id="classify-grace"
           type="number"
-          min={15}
+          min={ESPERA_PELA_RESPOSTA.minimoMinutos}
           value={graceMin}
           onChange={(e) => {
             const v = Number(e.target.value);
@@ -76,13 +82,14 @@ export function ClassifyForm({
             commit({ classesText, graceMin: v, target, hint });
           }}
         />
+        <p className="text-xs text-text-muted">{ESPERA_PELA_RESPOSTA.ajuda}</p>
       </div>
       <div className="space-y-2">
-        <Label htmlFor="classify-target">Alvo</Label>
+        <Label htmlFor="classify-target">O que a IA vai ler</Label>
         <Select
           value={target}
           onValueChange={(v) => {
-            const next = v as "last_reply" | "summary";
+            const next = v as AlvoDaClassificacao;
             setTarget(next);
             commit({ classesText, graceMin, target: next, hint });
           }}
@@ -91,8 +98,11 @@ export function ClassifyForm({
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="last_reply">Última resposta</SelectItem>
-            <SelectItem value="summary">Resumo</SelectItem>
+            {opcoes(ALVOS_DA_CLASSIFICACAO).map(({ valor, rotulo }) => (
+              <SelectItem key={valor} value={valor}>
+                {rotulo}
+              </SelectItem>
+            ))}
           </SelectContent>
         </Select>
       </div>

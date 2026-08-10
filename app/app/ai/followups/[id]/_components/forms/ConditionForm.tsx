@@ -13,12 +13,31 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { conditionConfigSchema } from "@/lib/followup/graph-schema";
+import {
+  CAMPOS_DA_CONDICAO,
+  COMBINADORES,
+  comparador,
+  comparadoresDoCampo,
+  fraseDaCondicao,
+  opcoes,
+  type CampoDaCondicao,
+  type Combinador,
+  type OperadorDaCondicao,
+} from "@/lib/followup/vocabulario";
 import { Plus, Trash } from "@/lib/ui/icons";
 
 import type { ConfigOf } from "./shared";
 
-const CONDITION_FIELDS = ["lead_stage", "tag", "steps_taken", "last_outcome"] as const;
-const CONDITION_OPS = ["eq", "neq", "gte", "lte", "contains"] as const;
+/**
+ * Trocar de campo pode deixar o operador órfão: `gte` faz sentido em "passos
+ * dados" e nunca é verdadeiro em "etiqueta". Em vez de manter na tela uma
+ * escolha que o motor ignora, cai no primeiro operador que o campo novo
+ * oferece.
+ */
+function operadorValidoPara(campo: CampoDaCondicao, atual: OperadorDaCondicao): OperadorDaCondicao {
+  if (comparador(campo, atual).oferecido) return atual;
+  return comparadoresDoCampo(campo)[0]!.op;
+}
 
 export function ConditionForm({
   config,
@@ -31,7 +50,7 @@ export function ConditionForm({
   const [checks, setChecks] = useState(config.checks);
   const [error, setError] = useState<string | null>(null);
 
-  const commit = (nextCombinator: "and" | "or", nextChecks: typeof checks) => {
+  const commit = (nextCombinator: Combinador, nextChecks: typeof checks) => {
     const parsed = conditionConfigSchema.safeParse({ combinator: nextCombinator, checks: nextChecks });
     if (!parsed.success) {
       setError(parsed.error.issues[0]?.message ?? "Configuração inválida.");
@@ -44,11 +63,11 @@ export function ConditionForm({
   return (
     <div className="space-y-3">
       <div className="space-y-2">
-        <Label htmlFor="cond-combinator">Combinador</Label>
+        <Label htmlFor="cond-combinator">Seguir por aqui quando</Label>
         <Select
           value={combinator}
           onValueChange={(v) => {
-            const next = v as "and" | "or";
+            const next = v as Combinador;
             setCombinator(next);
             commit(next, checks);
           }}
@@ -57,8 +76,11 @@ export function ConditionForm({
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="and">E (todas)</SelectItem>
-            <SelectItem value="or">OU (qualquer uma)</SelectItem>
+            {opcoes(COMBINADORES).map(({ valor, rotulo }) => (
+              <SelectItem key={valor} value={valor}>
+                {rotulo}
+              </SelectItem>
+            ))}
           </SelectContent>
         </Select>
       </div>
@@ -86,7 +108,10 @@ export function ConditionForm({
             <Select
               value={check.field}
               onValueChange={(v) => {
-                const next = checks.map((c, i) => (i === idx ? { ...c, field: v as (typeof CONDITION_FIELDS)[number] } : c));
+                const campo = v as CampoDaCondicao;
+                const next = checks.map((c, i) =>
+                  i === idx ? { ...c, field: campo, op: operadorValidoPara(campo, c.op) } : c,
+                );
                 setChecks(next);
                 commit(combinator, next);
               }}
@@ -95,9 +120,9 @@ export function ConditionForm({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {CONDITION_FIELDS.map((f) => (
+                {(Object.keys(CAMPOS_DA_CONDICAO) as CampoDaCondicao[]).map((f) => (
                   <SelectItem key={f} value={f}>
-                    {f}
+                    {CAMPOS_DA_CONDICAO[f].rotulo}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -105,7 +130,7 @@ export function ConditionForm({
             <Select
               value={check.op}
               onValueChange={(v) => {
-                const next = checks.map((c, i) => (i === idx ? { ...c, op: v as (typeof CONDITION_OPS)[number] } : c));
+                const next = checks.map((c, i) => (i === idx ? { ...c, op: v as OperadorDaCondicao } : c));
                 setChecks(next);
                 commit(combinator, next);
               }}
@@ -114,16 +139,16 @@ export function ConditionForm({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {CONDITION_OPS.map((op) => (
+                {comparadoresDoCampo(check.field).map(({ op, rotulo }) => (
                   <SelectItem key={op} value={op}>
-                    {op}
+                    {rotulo}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
             <Input
               aria-label="Valor"
-              placeholder="Valor"
+              placeholder={CAMPOS_DA_CONDICAO[check.field].tipoDeValor === "numero" ? "Ex.: 3" : "Valor"}
               value={String(check.value)}
               onChange={(e) => {
                 const next = checks.map((c, i) => (i === idx ? { ...c, value: e.target.value } : c));
@@ -131,6 +156,12 @@ export function ConditionForm({
                 commit(combinator, next);
               }}
             />
+            {/* A frase inteira, para quem não tem certeza do que os três campos
+                acima somam — e o aviso quando o motor nunca satisfaz o par. */}
+            <p className="text-xs text-text-muted">{fraseDaCondicao(check.field, check.op, check.value)}</p>
+            {comparador(check.field, check.op).aviso && (
+              <p className="text-xs text-warning-fg">{comparador(check.field, check.op).aviso}</p>
+            )}
           </div>
         ))}
       </div>
