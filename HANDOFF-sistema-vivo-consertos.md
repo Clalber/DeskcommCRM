@@ -33,14 +33,14 @@ mais caro que a que ela esconde.
 
 ---
 
-## Estado final, medido (`2cbe84f5`)
+## Estado final, medido (`8e5dcdac`)
 
 | medida | valor | contra o baseline |
 |---|---|---|
-| `pnpm test:unit` | **331 arquivos / 3490 testes** verdes | +21 arquivos, +281 casos (55 commits da main + os meus) |
+| `pnpm test:unit` | **332 arquivos / 3502 testes** verdes | +22 arquivos, +293 casos (55 commits da main + os meus) |
 | `pnpm lint` | 0 erros, 235 warnings | **0 nos meus arquivos** — um import morto que eu deixei foi medido e removido |
 | `pnpm typecheck` | **exit 0** (medido sem pipe) | igual |
-| `pnpm test:db` | Operador **10/10** · camadas **8/8** | o de camadas roda com o baseline aplicado em install E update |
+| `pnpm test:db` | Operador **10/10** · chave do turno **4/4** · camadas **8/8** | os de camadas rodam com o baseline em install E update |
 | specs × listadas | 39 × **38 rodam + 1 declarada fora** | soma conferida por gate |
 
 > **Sobre "typecheck limpo" no meio da sessão:** eu afirmei isso medindo com `| tail`, que mascara o
@@ -239,6 +239,37 @@ puro guardava a regra, o invariante o schema, o componente e o e2e a tela — e 
 liga uma coisa na outra. Sem esse gate, o interruptor podia voltar a ser decorativo num refactor, que
 é precisamente o defeito que 6b existe para não cometer.
 
+### 13 · A chave do turno, o enfileiramento condicional e o silêncio da falha · `01069858`
+
+O **P2**, quatro dos sete consertos. A leitura do Operador era "o mais recente do lead": entre o fim
+do turno N e o claim do job do Operador N cabe o turno N+1 inteiro (a fila ordena por `run_after`, o
+job do Operador nasce com `now()` e o inbound com `now() + 8s`), então ele acordava lendo a declaração
+N+1 — mesma promessa executada duas vezes. A chave sempre viajou no payload e era usada só como campo
+de log: classe **"chave presente, chave não usada"**.
+
+Também: enfileirar passou a ser decisão (era implícita em "sempre", e custava um job, um slot de
+concorrência e a vaga do lead no claim por turno, mesmo com o papel desligado — o default); a falha ao
+enfileirar virou aviso na Central em vez de linha de log; e as duas frases que o repo afirmava e o
+código negava saíram.
+
+**Consertei a fixture da rede vizinha**, sem o que ela passaria a medir nada: o checkpoint tinha
+`job_id = null` e a leitura por chave não o acharia.
+
+Sabotagens: previ 1 e 2, vieram **1 e 3** — o caso do turno órfão também depende da chave, e eu não
+contei com ele.
+
+### 14 · O segundo turno entra no mapa, e o gate perde o ponto cego · `8e5dcdac`
+
+O **P4**. O mapa dizia "cadeia de 7 gates" (são 10) e uma chamada de modelo por mensagem (são 2), e
+não conhecia o segundo turno. 21→24 nós, 26→33 arestas, 10→13 faixas, cada aresta com evidência em
+arquivo:linha. O gate filtrava `.architecture.json` e por isso **não olhava o mapa do turno** — foi
+por essa fresta que as frases envelheceram.
+
+Duas coisas que a sabotagem ensinou: o artefato pronto **reproduzia** a frase "incondicional" que o C4
+tinha acabado de corrigir (o defeito da P4 dentro da própria P4), e a primeira versão do meu gate
+fazia `includes` no JSON inteiro — passava com o nó do Operador apagado, porque o nome do kind aparece
+na prosa de um card. Aceitar menção em vez de peça é medir o proxy.
+
 ## Triagem completa das 4 falhas do e2e
 
 | spec | causa | ação |
@@ -258,8 +289,9 @@ liga uma coisa na outra. Sem esse gate, o interruptor podia voltar a ser decorat
 | ~~2~~ | ~~O desfecho do Operador não é persistido~~ | ✅ `9f5a7ee7` |
 | ~~3~~ | ~~O aviso de promessa afirma sem apurar, e sem dedup~~ | ✅ `9f5a7ee7` |
 | ~~4~~ | ~~O terceiro papel não existe como papel~~ | ✅ `da6c250e` (6a) + `d41e5133` (6b, com o motor lendo a escolha) |
-| 5 | **O mapa vivo não recebeu o Operador**, e `agent-turn.workflow.json` descreve uma chamada de modelo por mensagem quando há duas | P4 inteira |
-| 6 | **A projeção nunca arma num agente real** — `turnoProjeta` exige zero ferramenta de catálogo; o pacote "atender" tem 18 | P2-C5 |
+| ~~5~~ | ~~O mapa vivo não recebeu o Operador~~ | ✅ `8e5dcdac` |
+| 6 | **A projeção nunca arma num agente real** — `turnoProjeta` exige zero ferramenta de catálogo; o pacote "atender" tem 18 e 17 sobrevivem ao passo 6 | **P2-C5, e o cético REPROVOU o plano de execução** (o teste proposto era auto-referente; o conserto muda o prompt de todo agente empacotado e exige prova por turno real, DoD 12). Refazer com as 4 amarras dele antes de aplicar — não é conserto para véspera de PR |
+| 9 | Identificador cru no prompt: índice de notas por uuid (P2-C6) e o `case_id` anunciado na prosa (P2-C7) | planejados e revisados; C7 é aplicável sozinho, C6 muda formato que agentes publicados já aprenderam (a tolerância aos dois formatos é parte do conserto) |
 | ~~7~~ | ~~As três métricas da spec §7~~ | ✅ `d41e5133` — no painel do próprio papel |
 | 8 | Nenhum turno de produção observado com worker real | não houve chave de IA nesta máquina |
 
