@@ -7,6 +7,7 @@ import { runFollowupTick, type FollowupJobRequest, type TickDeps, type AdminClie
 import { completeTurnForEnrollment, createPgAdminClient } from "@/lib/followup/turn-bridge";
 import {
   applyReactivityEvent,
+  LIVE_STATUSES,
   RESUME_GRACE_MS,
   type LiveEnrollmentRef,
   type ReactivityAdminClient,
@@ -52,7 +53,11 @@ afterAll(async () => {
 
 // ---- pg-backed ReactivityAdminClient (test-only; prod usa createSupabaseReactivityClient) ----
 
-const LIVE_STATUSES = ["active", "waiting_reply", "paused_handoff"];
+// A lista de estados vivos vem de PRODUÇÃO, e isso não é higiene: com uma cópia
+// aqui, este arquivo não conseguia pegar defeito nela. Medido — apliquei o
+// conserto em `reactivity.ts` e a catraca abaixo NÃO disparou, porque o adapter
+// deste teste consultava a réplica. Réplica que erra igual à original concorda
+// com ela, e concordância entre cópias parece confirmação.
 
 function reactivityDb(): ReactivityAdminClient {
   return {
@@ -396,6 +401,53 @@ describe("applyReactivityEvent — STOP/opt-out (message.received + is_blocked)"
 
     const afterDone = await getEnrollment(done);
     expect(afterDone.status).toBe("completed"); // terminal intocado pelo STOP
+  });
+
+  /**
+   * O caso gêmeo de `paused_manual` (migration 0145). `LIVE_STATUSES` é escrita à
+   * mão, e estado novo não entra nela sozinho: dos SEIS consumidores que listam
+   * estados vivos, cinco acompanharam a 0145 e este — o único que fala em nome do
+   * opt-out do lead — não. O comentário do STOP promete "cancela TUDO que está
+   * vivo, sem exceção de política", e TUDO deixou de ser verdade quando o estado
+   * novo entrou: comentário que descreve alcance envelhece junto com a lista.
+   *
+   * O QUE CUSTA, medido em consequência e não em susto: a mensagem NÃO vaza —
+   * `stopGate` (before-send) relê `is_blocked` direto da fonte no turno e o sink
+   * veta em definitivo no 403. O que sobra é sujeira de estado: o enrollment não
+   * vira `opted_out` e OCUPA a vaga única do contato
+   * (`idx_followup_enrollments_one_live`), então um follow-up legítimo futuro
+   * morre com 23505 sem ninguém entender por quê — "esse contato nunca mais entra
+   * em follow-up e não sabemos a razão". Mais turnos enfileirados só para serem
+   * vetados, e a métrica de outcome sem contar este opt-out.
+   */
+  // `it.fails` = CATRACA, não teste desligado. Ele EXECUTA e exige que o defeito
+  // ainda esteja lá; no dia em que `LIVE_STATUSES` ganhar `paused_manual` este
+  // caso REPROVA por ter passado, e quem consertar é obrigado a vir tirar o
+  // `.fails`. O conserto é acrescentar o estado à lista em
+  // `lib/followup/reactivity.ts` — decisão de comportamento, do dono do arquivo.
+  it.fails("STOP alcança também o enrollment PAUSADO MANUALMENTE — opt-out não abre exceção de estado", async () => {
+    const org = nextOrgId();
+    await seedOrg(org);
+    const contactId = await seedContact(org, { isBlocked: true });
+    const flow = await seedFlow(org, SIMPLE_GRAPH);
+    const pausado = await seedEnrollment({
+      org,
+      pointerId: flow.pointerId,
+      versionId: flow.versionId,
+      contactId,
+      currentNodeId: "w1",
+      status: "paused_manual",
+      nextEvalAt: null,
+    });
+
+    const row = eventRow({ organization_id: org, event_type: "message.received", payload: { contact_id: contactId } });
+    const summary = await applyReactivityEvent(reactivityDb(), () => new Date(), row);
+    expect(summary).toEqual({ matched: true, reacted: 1 });
+
+    const after = await getEnrollment(pausado);
+    expect(after.status).toBe("cancelled");
+    expect(after.outcome).toBe("opted_out");
+    expect(after.next_eval_at).toBeNull();
   });
 
   it("re-drenar o MESMO event_log row é idempotente — sem efeito duplicado", async () => {
