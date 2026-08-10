@@ -503,11 +503,34 @@ describe("runSilenceSweep — pina o agent_id do agente que arma o pointer (Task
 
 // ---- 7. Task 8.6: exclusividade 1-follow-up-vivo-por-lead ORG-WIDE ------
 
+/**
+ * Os status que ocupam a vaga do VIVO — copiados do baseline, nunca digitados
+ * de memória. Três lugares deste arquivo dependem deles, e cada um por um
+ * motivo diferente; o cabeçalho de `setOneLiveIndex` conta a história.
+ */
+const ONE_LIVE_STATUSES = "'active','waiting_reply','paused_handoff','paused_manual'";
+
+/**
+ * Quantos follow-ups VIVOS este contato tem.
+ *
+ * ⚠️ TERCEIRA CATEGORIA, e ela não é nenhuma das outras duas deste arquivo:
+ * aqui não se restaura estado nem se reproduz história — faz-se uma PERGUNTA
+ * sobre o estado atual. Por isso o predicado tem de ser o do produto HOJE, e
+ * `paused_manual` entra: um enrollment pausado por uma pessoa ocupa a vaga do
+ * vivo (é o que o índice garante desde a 0145), então uma contagem que o ignora
+ * responde MENOS do que a realidade.
+ *
+ * Achado por `@QAVivo` na varredura do arquivo, e classificado por ele. Estava
+ * LATENTE — medido: nenhuma asserção de hoje muda com a correção (16 verdes
+ * antes, 16 depois). Consertado mesmo assim porque a armadilha estava armada: o
+ * primeiro caso de pausa manual escrito aqui passaria por SORTE, que é
+ * exatamente o defeito que esta wave já pagou uma vez.
+ */
 async function countLiveForContact(org: string, contactId: string): Promise<number> {
   const { rows } = await pool.query<{ n: string }>(
     `select count(*) as n from followup_enrollments
      where organization_id = $1 and contact_id = $2
-       and status in ('active','waiting_reply','paused_handoff')`,
+       and status in (${ONE_LIVE_STATUSES})`,
     [org, contactId],
   );
   return Number(rows[0]!.n);
@@ -534,7 +557,6 @@ const ONE_LIVE = "idx_followup_enrollments_one_live";
  * A lição que a constante carrega: quem recria objeto de schema num banco
  * compartilhado assume a dívida de acompanhar TODA migration futura que o toque.
  */
-const ONE_LIVE_STATUSES = "'active','waiting_reply','paused_handoff','paused_manual'";
 async function setOneLiveIndex(columns: string): Promise<void> {
   await pool.query(`drop index if exists ${ONE_LIVE}`);
   await pool.query(
