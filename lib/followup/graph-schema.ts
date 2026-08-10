@@ -346,7 +346,29 @@ export type FlowGraph = z.infer<typeof flowGraphSchema>;
  * handles, the edge panel, publish validation, the engine's routing — must go
  * through `nodeBranches()` and never read the raw shape, so the compatibility
  * cost is paid exactly once, here.
+ *
+ * ⚠️ MIGRAR UM NÓ DE v1 PARA v2 NÃO É SÓ TROCAR A CONFIG. `branchIdForCondition`
+ * aceita, num nó v2, uma aresta legada `class_match` casando pelo RÓTULO — isso
+ * existe para o canvas continuar desenhando um nó meio-migrado sem perder a
+ * linha. O ROTEAMENTO não tem essa cortesia: `classEdgeMatch` (node-handlers)
+ * devolve `{type:'branch'}` e `selectEdge` não casa a aresta antiga, caindo no
+ * `always`. O resultado é tela correta com roteamento errado, e nada acusa.
+ *
+ * Portanto: dar `branches` a um nó que já tem arestas exige reescrever essas
+ * arestas no MESMO instante — operação de canvas, atômica. É por isso que o
+ * `ClassifyForm` ainda emite v1 de propósito; a ressalva está lá também.
  */
+
+/**
+ * What branch resolution actually reads off a node: its type and its config.
+ * Written as a mapped union instead of `Pick<FlowNode, 'type' | 'config'>`
+ * because `Pick` over a union flattens it and loses the correlation between the
+ * two — and because the builder holds React Flow nodes, which have no
+ * `position` in the shape this file expects. A full `FlowNode` is assignable.
+ */
+export type BranchableNode = {
+  [K in NodeType]: Pick<Extract<FlowNode, { type: K }>, 'type' | 'config'>;
+}[NodeType];
 
 /** `fallback` is the mandatory catch-all: exactly one per node, never deletable in the builder. */
 export type FlowBranchKind = 'match' | 'fallback';
@@ -354,8 +376,17 @@ export type FlowBranchKind = 'match' | 'fallback';
 export type FlowBranch = {
   /** Stable within the node. Reserved ids are contract-owned; the rest come from the user's config. */
   id: string;
-  /** pt-br text for the handle and the edge panel. */
-  label: string;
+  /**
+   * Text that is ALREADY decided: what the user typed (the rule's label, the
+   * class name) or a fixed term of the contract. `null` on a `per_check` branch
+   * the user never named — there the sentence is COMPOSED from `check`, and
+   * composing pt-br out of a rule is the vocabulary's job (`vocabulario.ts`,
+   * `fraseDaCondicao`), not the contract's. This file must not grow a second
+   * field/operator dictionary next to that one.
+   */
+  label: string | null;
+  /** The rule behind a `per_check` branch, so the vocabulary can phrase it. `null` on every other branch. */
+  check: ConditionCheck | null;
   kind: FlowBranchKind;
   /** The condition an edge leaving through this branch must carry — canonical for THIS node's dialect. */
   condition: FlowEdgeCondition;
@@ -365,29 +396,14 @@ const FALLBACK_ALWAYS_LABEL = 'Sempre';
 const FALLBACK_NONE_LABEL = 'Nenhuma delas';
 const NO_REPLY_LABEL = 'Sem resposta';
 
-const CHECK_FIELD_LABELS: Record<ConditionCheck['field'], string> = {
-  lead_stage: 'Etapa',
-  tag: 'Tag',
-  steps_taken: 'Passos',
-  last_outcome: 'Último desfecho',
-};
-
-const CHECK_OP_LABELS: Record<ConditionCheck['op'], string> = {
-  eq: '=',
-  neq: '≠',
-  gte: '≥',
-  lte: '≤',
-  contains: 'contém',
-};
-
-/** Fallback text for a per-check branch the user never named — readable, not an id dump. */
-export function checkBranchLabel(check: ConditionCheck): string {
-  if (check.label !== undefined) return check.label;
-  return `${CHECK_FIELD_LABELS[check.field]} ${CHECK_OP_LABELS[check.op]} ${check.value}`;
-}
-
 function fallbackBranch(label: string): FlowBranch {
-  return { id: FALLBACK_BRANCH_ID, label, kind: 'fallback', condition: { type: 'always' } };
+  return {
+    id: FALLBACK_BRANCH_ID,
+    label,
+    check: null,
+    kind: 'fallback',
+    condition: { type: 'always' },
+  };
 }
 
 /**
@@ -396,7 +412,7 @@ function fallbackBranch(label: string): FlowBranch {
  * node yields `branch` conditions — a published flow is never rewritten just
  * because the contract grew.
  */
-export function nodeBranches(node: FlowNode): FlowBranch[] {
+export function nodeBranches(node: BranchableNode): FlowBranch[] {
   switch (node.type) {
     case 'condition': {
       if (node.config.branching === 'per_check') {
@@ -406,7 +422,8 @@ export function nodeBranches(node: FlowNode): FlowBranch[] {
             : [
                 {
                   id: check.id,
-                  label: checkBranchLabel(check),
+                  label: check.label ?? null, // null: o vocabulário monta a frase a partir de `check`
+                  check,
                   kind: 'match' as const,
                   condition: { type: 'branch' as const, branch_id: check.id },
                 },
@@ -418,12 +435,14 @@ export function nodeBranches(node: FlowNode): FlowBranch[] {
         {
           id: CONDITION_TRUE_BRANCH_ID,
           label: 'Sim',
+          check: null,
           kind: 'match',
           condition: { type: 'cond_result', value: true },
         },
         {
           id: CONDITION_FALSE_BRANCH_ID,
           label: 'Não',
+          check: null,
           kind: 'match',
           condition: { type: 'cond_result', value: false },
         },
@@ -437,12 +456,14 @@ export function nodeBranches(node: FlowNode): FlowBranch[] {
         ? declared.map((b) => ({
             id: b.id,
             label: b.label,
+            check: null,
             kind: 'match' as const,
             condition: { type: 'branch' as const, branch_id: b.id },
           }))
         : node.config.classes.map((cls) => ({
             id: cls, // v1: the class string is its own branch id
             label: cls,
+            check: null,
             kind: 'match' as const,
             condition: { type: 'class_match' as const, value: cls },
           }));
@@ -451,6 +472,7 @@ export function nodeBranches(node: FlowNode): FlowBranch[] {
         {
           id: NO_REPLY_BRANCH_ID,
           label: NO_REPLY_LABEL,
+          check: null,
           kind: 'match',
           condition: declared
             ? { type: 'branch', branch_id: NO_REPLY_BRANCH_ID }
@@ -474,7 +496,7 @@ export function nodeBranches(node: FlowNode): FlowBranch[] {
  * resolves instead of silently losing its route.
  */
 export function branchIdForCondition(
-  source: FlowNode | undefined,
+  source: BranchableNode | undefined,
   condition: FlowEdgeCondition
 ): string | null {
   if (condition.type === 'always') return FALLBACK_BRANCH_ID;
@@ -504,6 +526,6 @@ export function branchIdForCondition(
 }
 
 /** The condition an edge must carry to leave `node` through `branchId` — `null` if no such branch. */
-export function conditionForBranch(node: FlowNode, branchId: string): FlowEdgeCondition | null {
+export function conditionForBranch(node: BranchableNode, branchId: string): FlowEdgeCondition | null {
   return nodeBranches(node).find((b) => b.id === branchId)?.condition ?? null;
 }

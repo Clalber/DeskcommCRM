@@ -21,7 +21,6 @@ import {
   nodeBranches,
   branchIdForCondition,
   conditionForBranch,
-  checkBranchLabel,
 } from './graph-schema';
 import { toReactFlow, fromReactFlow } from './graph-mappers';
 
@@ -1004,15 +1003,16 @@ describe('graph-schema', () => {
     it('keeps emitting the v1 edge dialect for a v1 ai_classify node — a published flow is never rewritten', () => {
       const node = parseLegacy().nodes.find((n) => n.id === 'ac1')!;
       expect(nodeBranches(node)).toStrictEqual([
-        { id: 'quente', label: 'quente', kind: 'match', condition: { type: 'class_match', value: 'quente' } },
-        { id: 'frio', label: 'frio', kind: 'match', condition: { type: 'class_match', value: 'frio' } },
+        { id: 'quente', label: 'quente', check: null, kind: 'match', condition: { type: 'class_match', value: 'quente' } },
+        { id: 'frio', label: 'frio', check: null, kind: 'match', condition: { type: 'class_match', value: 'frio' } },
         {
           id: NO_REPLY_BRANCH_ID,
           label: 'Sem resposta',
+          check: null,
           kind: 'match',
           condition: { type: 'class_match', value: 'no_reply' },
         },
-        { id: FALLBACK_BRANCH_ID, label: 'Sempre', kind: 'fallback', condition: { type: 'always' } },
+        { id: FALLBACK_BRANCH_ID, label: 'Sempre', check: null, kind: 'fallback', condition: { type: 'always' } },
       ]);
     });
 
@@ -1022,16 +1022,18 @@ describe('graph-schema', () => {
         {
           id: CONDITION_TRUE_BRANCH_ID,
           label: 'Sim',
+          check: null,
           kind: 'match',
           condition: { type: 'cond_result', value: true },
         },
         {
           id: CONDITION_FALSE_BRANCH_ID,
           label: 'Não',
+          check: null,
           kind: 'match',
           condition: { type: 'cond_result', value: false },
         },
-        { id: FALLBACK_BRANCH_ID, label: 'Sempre', kind: 'fallback', condition: { type: 'always' } },
+        { id: FALLBACK_BRANCH_ID, label: 'Sempre', check: null, kind: 'fallback', condition: { type: 'always' } },
       ]);
     });
 
@@ -1050,7 +1052,7 @@ describe('graph-schema', () => {
       for (const id of ['t1', 'a1', 'e1']) {
         const branches = nodeBranches(graph.nodes.find((n) => n.id === id)!);
         expect(branches).toStrictEqual([
-          { id: FALLBACK_BRANCH_ID, label: 'Sempre', kind: 'fallback', condition: { type: 'always' } },
+          { id: FALLBACK_BRANCH_ID, label: 'Sempre', check: null, kind: 'fallback', condition: { type: 'always' } },
         ]);
       }
     });
@@ -1207,27 +1209,51 @@ describe('graph-schema', () => {
           {
             id: 'chk_vip',
             label: 'Cliente VIP',
+            check: { id: 'chk_vip', label: 'Cliente VIP', field: 'tag', op: 'contains', value: 'vip' },
             kind: 'match',
             condition: { type: 'branch', branch_id: 'chk_vip' },
           },
           {
             id: 'chk_frio',
-            label: 'Passos ≥ 3',
+            label: null,
+            check: { id: 'chk_frio', field: 'steps_taken', op: 'gte', value: 3 },
             kind: 'match',
             condition: { type: 'branch', branch_id: 'chk_frio' },
           },
           {
             id: FALLBACK_BRANCH_ID,
             label: 'Nenhuma delas',
+            check: null,
             kind: 'fallback',
             condition: { type: 'always' },
           },
         ]);
       });
 
-      it('names an unlabelled rule from its own content instead of dumping the id', () => {
-        expect(checkBranchLabel({ field: 'tag', op: 'contains', value: 'vip' })).toBe('Tag contém vip');
-        expect(checkBranchLabel({ field: 'lead_stage', op: 'neq', value: 'perdido' })).toBe('Etapa ≠ perdido');
+      /**
+       * O contrato não inventa pt-br derivado de uma regra: quem compõe a frase é
+       * `vocabulario.ts` (`fraseDaCondicao`), que já tem um dicionário por par
+       * campo-operador. Este teste é a trava contra um SEGUNDO dicionário nascer
+       * aqui — foi o que aconteceu quando duas frentes convergiram sozinhas e o
+       * merge não acusou conflito.
+       */
+      it('leaves an unnamed rule without text and hands the rule over for the vocabulary to phrase', () => {
+        const semRotulo = nodeBranches(conditionNode(perCheckConfig))[1]!;
+        expect(semRotulo.label).toBeNull();
+        expect(semRotulo.check).toStrictEqual({
+          id: 'chk_frio',
+          field: 'steps_taken',
+          op: 'gte',
+          value: 3,
+        });
+      });
+
+      it('carries no rule on a branch that is not per_check — nothing to phrase there', () => {
+        const combinado = nodeBranches(
+          conditionNode({ combinator: 'and', checks: [{ field: 'tag', op: 'eq', value: 'a' }] })
+        );
+        expect(combinado.every((b) => b.check === null)).toBe(true);
+        expect(combinado.every((b) => typeof b.label === 'string')).toBe(true);
       });
 
       it('exposes exactly one fallback branch per node, always last', () => {

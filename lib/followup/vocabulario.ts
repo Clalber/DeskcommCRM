@@ -295,6 +295,74 @@ export const MODOS_DE_RAMIFICACAO: Record<ModoDeRamificacao, string> = {
  * `conditionLabel`, que já é a fonte da verdade do rótulo que a aresta mostra
  * no canvas — assim o painel e o desenho não podem divergir.
  */
+/**
+ * Os mesmos ramos, em frase — o registro do DOSSIÊ, não o da etiqueta.
+ *
+ * Dois registros de propósito. "Sem resposta" cabe num chip ao lado de uma
+ * aresta, onde o contexto está no desenho; "quando ninguém responde" cabe numa
+ * linha de histórico, onde a frase precisa se sustentar sozinha. Achatar os
+ * dois num só empobrece as duas telas.
+ *
+ * As três primeiras frases são as que `eventos-legiveis.ts` já escrevia à mão
+ * para o dialeto v1. Centralizá-las aqui é o que impede o risco real do v2: o
+ * mesmo fluxo lido de dois jeitos conforme o ramo chegue como `class_match`
+ * (v1) ou como `branch_id` (v2). Um dicionário, duas portas, um texto.
+ */
+export const RAMOS_RESERVADOS_EM_FRASE: Record<RamoReservado, string> = {
+  [FALLBACK_BRANCH_ID]: "caminho normal",
+  [NO_REPLY_BRANCH_ID]: "quando ninguém responde",
+  [CONDITION_TRUE_BRANCH_ID]: "quando a condição é verdadeira",
+  [CONDITION_FALSE_BRANCH_ID]: "quando a condição é falsa",
+};
+
+/**
+ * A frase de um ramo qualquer, reservado ou declarado pelo usuário.
+ *
+ * `rotuloDeclarado` vem do NÓ (`branches[].label` no classificar,
+ * `checks[].label` no condicional), porque no contrato v2 é lá que a identidade
+ * do ramo mora. Sem ele, o melhor honesto é dizer que é um caminho sem nome —
+ * nunca ecoar o `branch_id`, que é identificador interno.
+ */
+export function fraseDoRamo(branchId: string): string | null {
+  return RAMOS_RESERVADOS_EM_FRASE[branchId as RamoReservado] ?? null;
+}
+
+/**
+ * Uma frase deste módulo encaixada depois de "quando".
+ *
+ * As frases nascem como oração completa e maiúscula ("O contato tem a etiqueta
+ * …") porque também são lidas sozinhas, no resumo do nó. Emendar a maiúscula no
+ * meio de outra frase é o tipo de detalhe que ninguém revisa e todo mundo lê.
+ */
+function encaixa(frase: string): string {
+  return frase.charAt(0).toLocaleLowerCase("pt-BR") + frase.slice(1);
+}
+
+/**
+ * Ramo de uma CLASSE da IA. Nomeia a IA como quem julgou, de propósito: quem lê
+ * o histórico precisa saber que um modelo decidiu, não uma regra fixa.
+ */
+export function fraseDaClasse(nomeDaClasse: string): string {
+  return `quando a IA classifica a resposta como “${nomeDaClasse}”`;
+}
+
+/** Ramo de uma REGRA que o usuário batizou. Regra do negócio não é resposta de ninguém. */
+export function fraseDaRegraNomeada(rotulo: string): string {
+  return `quando vale a regra “${rotulo}”`;
+}
+
+/**
+ * Ramo de uma regra SEM nome: em vez do id, a própria condição por extenso.
+ * `regra-2` na tela do operador é o defeito que este módulo existe para impedir.
+ */
+export function fraseDaRegraSemNome(
+  campo: CampoDaCondicao,
+  op: OperadorDaCondicao,
+  valor: string | number,
+): string {
+  return `quando ${encaixa(fraseDaCondicao(campo, op, valor))}`;
+}
+
 export const RAMOS_RESERVADOS: Record<RamoReservado, string> = {
   [FALLBACK_BRANCH_ID]: conditionLabel({ type: "always" }),
   [NO_REPLY_BRANCH_ID]: conditionLabel({ type: "class_match", value: NO_REPLY_BRANCH_ID }),

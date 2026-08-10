@@ -134,8 +134,19 @@ test.describe("followup flows — lista + criação (Task 6.1)", () => {
  * `steps` on the 2nd move gives React Flow's connection-line drag enough
  * intermediate pointermove events to register the gesture reliably.
  */
-async function connectHandles(page: Page, sourceNodeId: string, targetNodeId: string): Promise<void> {
-  const source = page.locator(`.react-flow__node[data-id="${sourceNodeId}"] .react-flow__handle.source`);
+async function connectHandles(
+  page: Page,
+  sourceNodeId: string,
+  targetNodeId: string,
+  sourceHandleId?: string,
+): Promise<void> {
+  // Um nó que ramifica tem AGORA uma bolinha por saída, então `.source` sozinho
+  // casa várias e o modo estrito do Playwright recusa. Quem arrasta de um nó
+  // desses diz de qual saída — que é exatamente o ponto da funcionalidade.
+  const sourceSel = sourceHandleId
+    ? `.react-flow__node[data-id="${sourceNodeId}"] .react-flow__handle.source[data-handleid="${sourceHandleId}"]`
+    : `.react-flow__node[data-id="${sourceNodeId}"] .react-flow__handle.source`;
+  const source = page.locator(sourceSel).first();
   const target = page.locator(`.react-flow__node[data-id="${targetNodeId}"] .react-flow__handle.target`);
   const sBox = await source.boundingBox();
   const tBox = await target.boundingBox();
@@ -530,10 +541,14 @@ test.describe("followup flow builder — editor de condição de aresta / ai_cla
     // 4. Connect the graph. Order fixes each edge's deterministic id (edge-1..edge-7 —
     // FlowCanvas assigns ids from a monotonic counter in connection order).
     await connectHandles(page, triggerId, classifyId); // edge-1: trigger -> classify
-    await connectHandles(page, classifyId, action1Id); // edge-2: classify -> action1
-    await connectHandles(page, classifyId, action2Id); // edge-3: classify -> action2
-    await connectHandles(page, classifyId, end1Id); // edge-4: classify -> end1 (will become no_reply)
-    await connectHandles(page, classifyId, end2Id); // edge-5: classify -> end2 (stays always-fallback)
+    // Todas as 4 saem da bolinha "nenhuma delas" de propósito: é o que reproduz o
+    // estado `always` em todas as arestas do classify que a checagem negativa
+    // abaixo exige. Arrastando da bolinha de cada classe a aresta já nasceria
+    // certa — e aí não haveria 422 para o editor de aresta consertar.
+    await connectHandles(page, classifyId, action1Id, "else"); // edge-2: classify -> action1
+    await connectHandles(page, classifyId, action2Id, "else"); // edge-3: classify -> action2
+    await connectHandles(page, classifyId, end1Id, "else"); // edge-4: classify -> end1 (will become no_reply)
+    await connectHandles(page, classifyId, end2Id, "else"); // edge-5: classify -> end2 (stays always-fallback)
     await connectHandles(page, action1Id, end1Id); // edge-6: action1 -> end1
     await connectHandles(page, action2Id, end1Id); // edge-7: action2 -> end1
     await expect(page.locator(".react-flow__edge")).toHaveCount(7);

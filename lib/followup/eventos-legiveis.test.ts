@@ -163,3 +163,96 @@ describe("rotuloDoStatus", () => {
     expect(rotuloDoStatus("paused_handoff")).toBe("Pausado (atendimento humano)");
   });
 });
+
+describe("rotuloDaAresta — o ramo nomeado do grafo v2", () => {
+  const classify: FlowNode = {
+    id: "ac1",
+    type: "ai_classify",
+    label: "Interpreta",
+    position: { x: 0, y: 0 },
+    config: {
+      classes: ["quente", "frio"],
+      branches: [
+        { id: "b-quente", label: "quente" },
+        { id: "b-frio", label: "frio" },
+      ],
+      grace_timeout_ms: 900_000,
+      target: "last_reply",
+    },
+  };
+  const aresta = (branchId: string) => ({
+    id: "e",
+    source: "ac1",
+    target: "x",
+    priority: 0,
+    condition: { type: "branch" as const, branch_id: branchId },
+  });
+
+  it("usa o NOME que a pessoa deu ao ramo, que só existe no nó", () => {
+    expect(rotuloDaAresta(aresta("b-quente"), classify)).toBe("quando a resposta é “quente”");
+  });
+
+  /**
+   * ⚠️ ESTES DOIS CASOS MUDARAM NA CONCILIAÇÃO, e a mudança é deliberada.
+   *
+   * Esperavam `pelo ramo <id>`, com a justificativa de que "feio e verdadeiro
+   * ganha de um nome inventado". A justificativa está certa e não se aplica: o
+   * vocabulário não inventa nome nenhum — `fraseDoRamo` diz explicitamente que
+   * NÃO há nome, e o cabeçalho dela decide, por escrito, "nunca ecoar o
+   * `branch_id`, que é identificador interno". O dono da linguagem é quem
+   * decide o registro do dossiê, e ele decidiu ali.
+   *
+   * O que se perde é o id como pista de diagnóstico. Se a Fila precisar dele,
+   * o lugar é a coluna de diagnóstico, não a frase do histórico — e aí a
+   * conversa é sobre a tela, não sobre esta função. Vetem se discordarem: é
+   * uma string, e está isolada nestes dois casos de propósito.
+   */
+  it("sem o nó de origem, diz que o caminho não tem nome — nunca inventa um", () => {
+    expect(rotuloDaAresta(aresta("b-quente"))).toBe("por um caminho sem nome");
+  });
+
+  it("ramo que o nó não declara mais também vira caminho sem nome, e NÃO 'caminho normal'", () => {
+    // A regra foi apagada: o RAMO sumiu, o caminho não. Dizer "caminho normal"
+    // afirmaria que o lead seguiu o fluxo padrão — mentira sobre o que houve.
+    expect(rotuloDaAresta(aresta("b-sumiu"), classify)).toBe("por um caminho sem nome");
+  });
+
+  it("os ramos reservados do contrato viram frase sem depender do nó", () => {
+    expect(rotuloDaAresta(aresta("no_reply"))).toBe("quando ninguém responde");
+    expect(rotuloDaAresta(aresta("true"))).toBe("quando a condição é verdadeira");
+    expect(rotuloDaAresta(aresta("false"))).toBe("quando a condição é falsa");
+  });
+});
+
+describe("os eventos que o plano de tempo trouxe", () => {
+  it("o pedido de PLANEJAMENTO não se disfarça de pedido de mensagem", () => {
+    // Os dois são `turn_enqueued`; só o `purpose` os separa. Uma linha que
+    // descreve o passo errado é pior que uma genérica: não parece errada.
+    const planejar = descreveEvento(
+      evento({ node_id: null, event_type: "turn_enqueued", payload: { purpose: "plan_timing" } }),
+      nos,
+    );
+    expect(planejar.titulo).toBe("Pediu ao agente para planejar os tempos de espera");
+
+    const mensagem = descreveEvento(
+      evento({ event_type: "turn_enqueued", payload: { purpose: "send_message" } }),
+      nos,
+    );
+    expect(mensagem.titulo).toBe("Pediu ao agente para escrever a mensagem");
+  });
+
+  it("o plano decidido vira frase, não `código: timing_plan_decidido`", () => {
+    const r = descreveEvento(
+      evento({ event_type: "timing_plan_decidido", payload: { esperas: { "wait-1": {}, "wait-2": {} } } }),
+      nos,
+    );
+    expect(r.titulo).toBe("O agente decidiu quanto esperar em cada passo");
+    expect(r.detalhe).toBe("2 esperas planejadas");
+  });
+
+  it("desistir do plano é um FATO na timeline, não silêncio", () => {
+    const r = descreveEvento(evento({ event_type: "timing_plan_desistido" }), nos);
+    expect(r.titulo).toBe("Seguiu sem o plano de tempo");
+    expect(r.detalhe).toContain("máximo configurado");
+  });
+});

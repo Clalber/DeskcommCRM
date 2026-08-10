@@ -312,6 +312,80 @@ sendo escrita naquele instante, e eu não declarei o SHA nem o `git status` junt
 com o número. A explicação interessante era "ele errou"; a chata — o meu
 instrumento — é a que sobreviveu.
 
+#### Dois defeitos que a INTEGRAÇÃO pegou — nenhum teste os pegaria
+
+Os dois vieram de merges que o git resolveu **sem conflito**, que é o modo de falha
+mais caro: nada acusa, nada fica vermelho, e o sintoma só aparece em produção.
+
+**1. O guard anti-spam revertido por uma linha de índice.** A migration `0145`
+(Fila) recria `idx_followup_enrollments_one_live` com `(pointer_id, contact_id)`.
+A definição **em vigor** é `(organization_id, contact_id)` — a DDL original da
+tabela cria por `pointer_id` e o apêndice da `0062` derruba e recria por
+`organization_id`. Copiaram a linha da DDL original em vez da que está valendo.
+
+Efeito: o índice deixa de garantir **um follow-up vivo por lead na organização** e
+passa a garantir um por fluxo. O mesmo contato entra em N fluxos e recebe N
+sequências — o bug de spam que a doutrina anti-banimento existe para impedir. E o
+argumento do produtor do gatilho de etapa de que **não há laço de re-enrollment**
+se apoia exatamente nessa garantia: ela cairia junto, sem ninguém ver a ligação.
+
+Corrigido na integração preservando o `paused_manual` que a Fila precisava, com a
+razão escrita no próprio arquivo para o próximo não repetir.
+
+**2. `timing_plan` criado duas vezes**, por duas frentes, com dois
+`comment on column` competindo — o último vence. Idempotente, mas é duplicação com
+dois donos e nenhuma fonte da verdade. Removido do apêndice da `0145` **só no
+baseline** (onde o maestro controla a ordem); na migration da Fila ele **fica**, e
+o motivo está no achado seguinte.
+
+#### ALERTA DE REPO: o número de sequência e o timestamp discordam
+
+```
+20260810120000_0145_dossie_do_followup.sql
+20260810121000_0144_followup_timing_plan.sql
+20260810122000_0146_claim_justo_entre_organizacoes.sql
+```
+
+Ordenados por **nome de arquivo** (que é como um clone aplica), a `0145` roda
+**antes** da `0144`. Sequência e timestamp discordando torna "aplicar em ordem"
+ambíguo — e num projeto cujo produto é o self-host, o clone aplica por nome.
+
+Consequência prática já vivida: a defesa da Fila (`add column if not exists` para
+uma coluna de outra migration) **não é redundância, é necessidade** — sem ela, a
+rota do dossiê encontraria `42703` num clone que aplicou a `0145` primeiro.
+
+Fora do escopo desta missão consertar a numeração retroativamente; fica registrado
+para quem definir a convenção.
+
+#### Falso positivo de governança no hook de migration
+
+O hook de pre-commit reprova commit de **merge** alegando `NNNN já existe na branch
+de origem` — condição que **todo merge satisfaz por definição**, já que o arquivo
+vem de lá. Conferido que não havia colisão real (`0145` só em `fv/fila`) antes de
+usar `DESKCOMM_GOV_MIGRATION_EDIT=1`. Falso positivo em gate treina a equipe a
+driblar o gate; vale consertar.
+
+#### Quando rodar o conjunto — a regra que faltava
+
+O maestro verificou cada frente separada e **nunca rodou o `test:unit` sobre a
+integração**, e foi lá que o QAVivo achou um vermelho com dono (o gate de evidência
+citada, defeito do maestro: imagens versionadas com o handoff citando a **pasta** em
+vez de cada arquivo).
+
+Mas a autocrítica "eu deveria ter rodado sempre" está errada, e a correção é do
+QAVivo: ele rodou o **mesmo commit duas vezes** e teve **3 e 41** reprovas, com **36
+das 41** sendo estouro de teto de 15s sob swap de 23 GB. **Conjunto vermelho por
+carga ensina a ignorar o gate tão rápido quanto conjunto que nunca roda.**
+
+Regra: **rode o conjunto quando a máquina estiver sã, e declare a carga junto do
+número.** Com `load 32`, o sinal ficou limpo: **1 reprova real em 3.519 casos**.
+
+E a ordem importa (DevGatilhos): **isolado primeiro, conjunto depois.** O isolado
+responde "o meu trabalho quebra alguma coisa?"; o conjunto responde "o baseline do
+self-hoster aguenta as cinco frentes juntas?". Rodar só o conjunto é mais barato e
+devolve um número que não responde nenhuma das duas, porque sem a linha de base não
+há como separar a causa.
+
 #### A causa real da máquina travada: MEMÓRIA, não CPU
 
 Medido: **swap 22.528 MB usados contra 452 MB livres**, numa máquina de **18 GB de
@@ -436,3 +510,86 @@ nem `rebase`.
 - O `e2e` ainda não é check obrigatório na `main` (issue #63). As specs desta
   missão não mudam isso; quem for propor a obrigatoriedade precisa antes de uma
   série verde estável do conjunto atual.
+
+---
+
+## 7. Fechamento — o que ficou, o que está aberto, e para quem
+
+### O padrão que atravessou a missão
+
+Rafael pediu que *"o jeito de configurar execute exatamente a função conforme é
+orientado na UI"*. Isso virou o critério que achou **cinco defeitos**, nenhum na
+lista original — todos da mesma família: **a tela promete o que o motor não cumpre**.
+
+| # | Onde | O que a tela dizia | O que o motor fazia |
+|---|---|---|---|
+| 1 | nó de espera | "Adaptativo, 10–360 min" + orientação | esperava **sempre 360** |
+| 2 | card da condição | anunciava o combinador | no modo por-regra o motor **não o consulta** |
+| 3 | painel da aresta | oferecia "Sim/Não" | nenhum ramo daquele nó casa |
+| 4 | dossiê | "escrever a mensagem" | era o turno de **planejar o tempo** |
+| 5 | classify (evitado) | canvas desenharia certo | rotearia pelo escape, calado |
+
+O nº 5 **não entrou**: ligar a emissão de ramos no classify sem migrar as arestas
+atomicamente produziria exatamente o defeito que a missão existiu para eliminar,
+com o canvas desenhando certo. Adiado como item próprio, com a ressalva escrita no
+`ClassifyForm` e no cabeçalho do resolvedor — senão o próximo lê como esquecimento.
+
+### E o mesmo padrão nas GUARDAS
+
+Cinco guardas passavam **pelo motivo errado**, e as cinco só apareceram quando
+alguém perguntou *"o que exatamente reprovaria se eu quebrasse isto?"*:
+
+- o isolamento de fixture existia em **um** arquivo e faltava nas irmãs;
+- a varredura de rótulo cru só olhava valores **com underscore** — pegava
+  `waiting_reply`, deixava passar `gte`, `eq`, `and`;
+- a lista de dicionários varridos era **escrita à mão** e já nascia incompleta;
+- o contador de vazamento ficou **cego** para um status que a `0145` criou;
+- o invariante do índice criava o 2º enrollment **no mesmo fluxo**, então não
+  distinguia as duas definições de índice — a única coisa que importava.
+
+### Erros do maestro, registrados porque o registro é o que vale
+
+1. **Matou o `next build` de um colega** com medição insuficiente: pai e filho de um
+   build ficam em `0% / estado S` **por desenho**, e o trabalho roda num descendente.
+   Retratado. Regra nova: percorrer descendentes recursivamente, e **não tocar em
+   processo alheio nem com medição** — o dono decide.
+2. **Propagou um número sem SHA** ("1 reprova em 3.519") como medição sólida.
+   Retirado. E a retirada precisou ser corrigida também: o certo não é "estava
+   errado", é **"é irreproduzível, e número irreproduzível não serve para decidir
+   mesmo quando por acaso está certo"** (QAVivo).
+3. **Entregou contrato incompleto**: pediu ao motor que guardasse `proposto_ms` e deu
+   à fila um contrato JSON sem esse campo — cujo propósito era a tela da fila.
+4. **Verificou frente por frente e nunca o conjunto** — e foi no conjunto que o
+   vermelho estava. Mas a autocrítica "deveria ter rodado sempre" também está errada:
+   **conjunto vermelho por carga ensina a ignorar o gate tão rápido quanto conjunto
+   que nunca roda**. A regra é *rodar com a máquina sã e declarar a carga*.
+5. **Dois proxies que perderam para critérios estruturais de outros**: "até 2 linhas"
+   (o certo era *escopo delimitado por estrutura*, e o critério do DevVivo — *"não é o
+   tamanho do hunk, é vir com teste"* — é melhor) e "~2× de altura do card" (o certo
+   era *custo por ramo*, 19,3px, medido pelo Arquiteto).
+6. **Afirmou que o `e2e` não é check obrigatório.** É. Os **quatro** são —
+   `verify`, `invariants`, `build-and-size` e `e2e`, medido na branch protection em
+   2026-08-08 (`CLAUDE.md` linhas 209-221). A leitura veio de uma versão mais velha
+   do documento.
+
+### Pendências abertas, com dono e prioridade
+
+| # | O quê | Dono | Nota |
+|---|---|---|---|
+| P1 | **Ordem dos dois cron.** `followup-flow-worker` e `event-log-drain` são ambos `* * * * *`. Se o worker reclama antes de o drain terminar de escrever (drain tem `-m45`, worker `-m25`), o enrollment espera o minuto seguinte **sempre**, por ordem de execução — e o conserto do relógio **não** resolve. Medição autorizada; **conserto não**: mexer em ordem de cron é decisão do Rafael com o número na mão. | DevGatilhos | **maior que os 8 abaixo** |
+| P2 | 8 outros call sites que agendam com o relógio do processo, nomeados na guarda | a definir | baixa (ver P1 antes) |
+| P3 | Migração do classify para ramos (item próprio, ver acima) | Arquiteto | média |
+| P4 | Enumeração de status em instrumento de teste sem guarda — hoje sobrevive por coincidência com o CHECK do schema | DevGatilhos | baixa |
+| P5 | Falso positivo do hook de migration em commit de **merge** (a condição que ele vigia é satisfeita por todo merge) | — | **treina a equipe a driblar o gate** |
+| P6 | Sequência e timestamp das migrations discordam (`0145` ordena antes de `0144` por nome de arquivo) | — | ambiguidade em "aplicar em ordem"; num produto self-host o clone aplica por nome |
+
+### O número de fechamento — condição aceita, ainda não cumprida
+
+Os **três gates verdes no mesmo SHA**, com carga declarada. O maestro aceitou essa
+condição do QAVivo em vez de despachar um número parcial: **contagem de teste verde
+sem o typecheck ao lado é meio número**, e `test:unit` passa numa árvore que não
+compila porque o vitest não typechecka.
+
+Último medido, alvo declarado (`82c88733`, árvore limpa, carga 19,97 → 41,08):
+`lint` **0** · `typecheck` **2 causas / 4 linhas** (ambas com dono, ambas
+consertadas depois) · `test:unit` **3.578 / 3.580**.

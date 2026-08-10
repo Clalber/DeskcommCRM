@@ -31,7 +31,36 @@ fs.mkdirSync(ARTIFACTS_DIR, { recursive: true });
 
 interface Creds {
   password: string;
+  org_id: string;
   users: Record<string, { email: string }>;
+}
+
+/**
+ * O seam do plano de tempo, e por que ele NÃO é um INSERT à mão.
+ *
+ * O plano nasce de uma chamada de modelo, e este ambiente não tem chave de IA
+ * (o `.env.e2e` é placeholder). Em vez de escrever `timing_plan` no banco — o
+ * que provaria só que a tela sabe desenhar um jsonb inventado —, a spec chama
+ * `completeTurnForEnrollment` com o resultado CONTROLADO: exatamente a função
+ * que o worker 24/7 chamaria depois do modelo responder. O clamp, a gravação e
+ * o `proposto_ms` são os de produção.
+ *
+ * Mesmo seam já usado por `followup-journey.spec.ts`, pelo mesmo motivo.
+ */
+function concluiTurno(orgId: string, enrollmentId: string, nodeId: string, resultado: unknown): void {
+  execFileSync(
+    "npx",
+    [
+      "tsx",
+      "scripts/e2e-followup-journey-helpers.ts",
+      "complete-turn",
+      orgId,
+      enrollmentId,
+      nodeId,
+      JSON.stringify(resultado),
+    ],
+    { encoding: "utf8" },
+  );
 }
 
 function loadCreds(): Creds {
@@ -284,5 +313,84 @@ test.describe("dossiê do follow-up — ler a história e intervir", () => {
     await page.context().clearCookies();
     await login(page, creds.users.manager!.email);
     await limpa(page, cenario);
+  });
+
+  test("o dossiê mostra o tempo que a IA escolheu — e quanto ela pediu antes do corte", async ({ page }) => {
+    test.setTimeout(180_000);
+    await login(page, creds.users.manager!.email);
+
+    // Fluxo com espera ADAPTATIVA: é o único que tem plano a mostrar.
+    const stamp = Date.now();
+    const flowName = `E2E Dossiê plano ${stamp}`;
+    const contactName = `Cliente Dossiê plano ${stamp}`;
+    const { data: flow } = (await (
+      await page.request.post("/api/v1/ai/followup-flows", { data: { name: flowName } })
+    ).json()) as ApiOk<{ id: string }>;
+
+    const graph = {
+      nodes: [
+        { id: "trigger-1", type: "trigger", label: "Início", position: { x: 0, y: 0 }, config: {} },
+        {
+          id: "wait-1",
+          type: "wait",
+          label: "Deixa esfriar",
+          position: { x: 0, y: 120 },
+          // 10 min a 12h: o teto que a IA vai estourar de propósito.
+          config: { mode: "smart", min_ms: 600_000, max_ms: 43_200_000, guidance: "o cliente pediu calma" },
+        },
+        { id: "end-1", type: "end", label: "Fim", position: { x: 0, y: 240 }, config: { outcome: "exhausted" } },
+      ],
+      edges: [
+        { id: "edge-1", source: "trigger-1", target: "wait-1", priority: 0, condition: { type: "always" } },
+        { id: "edge-2", source: "wait-1", target: "end-1", priority: 0, condition: { type: "always" } },
+      ],
+    };
+    expect((await page.request.patch(`/api/v1/ai/followup-flows/${flow.id}`, { data: { draft_graph: graph } })).status()).toBe(200);
+    expect((await page.request.post(`/api/v1/ai/followup-flows/${flow.id}/publish`, { data: {} })).status()).toBe(200);
+
+    const { data: contactResult } = (await (
+      await page.request.post("/api/v1/contacts", { data: { display_name: contactName } })
+    ).json()) as ApiOk<{ contact: { id: string } }>;
+    const { data: enrollment } = (await (
+      await page.request.post("/api/v1/ai/followups/enrollments", {
+        data: { pointer_id: flow.id, contact_id: contactResult.contact.id },
+      })
+    ).json()) as ApiOk<{ id: string }>;
+
+    // Tick 1: o acionamento pede o plano (o enrollment fica no trigger).
+    await rodaTickDoMotor(page);
+    // O modelo "responde" pedindo 3 DIAS — muito acima do teto de 12h do nó.
+    concluiTurno(creds.org_id, enrollment.id, "trigger-1", {
+      kind: "planned",
+      modelo: "anthropic/claude-sonnet-4-6",
+      propostas: [
+        { node_id: "wait-1", aguardar_ms: 259_200_000, motivo: "o cliente pediu para retomar semana que vem" },
+      ],
+    });
+
+    await page.goto(`/app/ai/followups/enrollments/${enrollment.id}`);
+    const bloco = page.getByTestId("dossie-plano-de-tempo");
+    await expect(bloco).toBeVisible({ timeout: 30_000 });
+    // O que o nó permitiu, não o que a IA pediu.
+    await expect(bloco).toContainText("esperar 12 horas");
+    await expect(bloco.getByTestId("dossie-espera-clampada")).toBeVisible();
+    // E o TAMANHO do corte, que é o que decide se o operador mexe no nó.
+    await expect(bloco.getByTestId("dossie-espera-pedido")).toContainText("a IA pediu 3 dias");
+    await expect(bloco).toContainText("o cliente pediu para retomar semana que vem");
+    await expect(bloco).toContainText("seu limite: de 10 minutos a 12 horas");
+
+    // A tela pegou dois defeitos de tradução que nenhum unitário pegaria: o
+    // evento do plano caía no fallback ("código: timing_plan_decidido") e o
+    // turno de PLANEJAMENTO se anunciava como "escrever a mensagem". Os dois
+    // ficam vigiados aqui, onde apareceram.
+    const historia = page.getByTestId("dossie-timeline");
+    await expect(historia).toContainText("O agente decidiu quanto esperar em cada passo");
+    await expect(historia).toContainText("Pediu ao agente para planejar os tempos de espera");
+    await expect(historia).not.toContainText("timing_plan_decidido");
+    await expect(historia).not.toContainText("escrever a mensagem");
+    await page.screenshot({ path: path.join(ARTIFACTS_DIR, "07-plano-de-tempo.png"), fullPage: true });
+
+    await page.request.post(`/api/v1/ai/followups/enrollments/${enrollment.id}/cancel`, { data: {} });
+    await page.request.post(`/api/v1/ai/followup-flows/${flow.id}/disable`, { data: {} });
   });
 });

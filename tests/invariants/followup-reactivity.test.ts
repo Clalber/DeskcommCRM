@@ -2,6 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import pg from "pg";
 
 import { isolarFixtureDeFollowup } from "./followup-isolamento";
+import { relogioAncoradoNoBanco } from "./followup-relogio";
 import { runFollowupTick, type FollowupJobRequest, type TickDeps, type AdminClient } from "@/lib/followup/engine";
 import { completeTurnForEnrollment, createPgAdminClient } from "@/lib/followup/turn-bridge";
 import {
@@ -428,7 +429,7 @@ describe("applyReactivityEvent — inbound wake (waiting_reply, sem cancel_on_re
     // 1º tick: entra no ai_classify, enfileira o classify (status vira waiting_reply).
     const jobs: FollowupJobRequest[] = [];
     const eDb = engineDb();
-    const tickDeps: TickDeps = { db: eDb, clock: () => new Date(), enqueueJob: async (j) => void jobs.push(j) };
+    const tickDeps: TickDeps = { db: eDb, clock: relogioAncoradoNoBanco(), enqueueJob: async (j) => void jobs.push(j) };
     const enrollmentId = await seedEnrollment({
       org,
       pointerId,
@@ -641,7 +642,7 @@ describe("applyReactivityEvent — anti-Tomik: paused_handoff SEMPRE tem consumi
       enrollmentId,
     ]);
     expect(resumed.steps_taken).toBe(0); // reactivity nunca mexe em steps_taken (não é passo de grafo)
-    await runFollowupTick({ db: engineDb(), clock: () => new Date(), enqueueJob: async () => {} }, { limit: 50 });
+    await runFollowupTick({ db: engineDb(), clock: relogioAncoradoNoBanco(), enqueueJob: async () => {} }, { limit: 50 });
     const afterTick = await getEnrollment(enrollmentId);
     expect(Number(afterTick.steps_taken)).toBe(1); // ESTE enrollment foi processado pelo tick de verdade
   });
@@ -700,7 +701,7 @@ describe("completeTurnForEnrollment (turn-bridge) — respeita paused_handoff", 
       currentNodeId: "ac1",
       nextEvalAt: new Date(Date.now() - 1_000).toISOString(),
     });
-    const tick1 = await runFollowupTick({ db: pgDb, clock: () => new Date(), enqueueJob: async (j) => void jobs.push(j) }, { limit: 5 });
+    const tick1 = await runFollowupTick({ db: pgDb, clock: relogioAncoradoNoBanco(), enqueueJob: async (j) => void jobs.push(j) }, { limit: 5 });
     expect(tick1.scheduled).toBe(1);
     const afterTick1 = await getEnrollment(enrollmentId);
     expect(afterTick1.status).toBe("waiting_reply");

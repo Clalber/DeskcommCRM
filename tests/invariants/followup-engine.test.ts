@@ -7,6 +7,7 @@ import { MAX_ACTION_RECHECKS, type EnrollmentEventRef, type EnrollmentRow } from
 import { completeTurnForEnrollment, createPgAdminClient } from "@/lib/followup/turn-bridge";
 
 import { isolarFixtureDeFollowup } from "./followup-isolamento";
+import { relogioAncoradoNoBanco } from "./followup-relogio";
 
 /**
  * Task 4.1 — motor do worker de follow-up (tick + node-handlers) contra
@@ -229,7 +230,7 @@ async function getEnrollment(id: string): Promise<Record<string, unknown>> {
 function makeDeps(jobs: FollowupJobRequest[], db: AdminClient = pgAdminClient()): TickDeps {
   return {
     db,
-    clock: () => new Date(),
+    clock: relogioAncoradoNoBanco(),
     enqueueJob: async (job) => {
       jobs.push(job);
     },
