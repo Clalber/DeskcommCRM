@@ -10760,6 +10760,27 @@ create trigger trg_ai_agent_versions_content_immutable
 
 notify pgrst, 'reload schema';
 
+-- ---- plano de tempo do follow-up (migration 0144) ----
+--
+-- O modo "Adaptativo (min–max)" do nó de espera existia na tela e não existia no
+-- motor: o fluxo esperava SEMPRE o máximo. Esta coluna guarda o plano decidido
+-- uma vez no acionamento, para todas as esperas adaptativas de uma vez.
+--
+-- Sem CHECK e sem NOT NULL de propósito: `null` é "ainda não planejado" e também
+-- o estado de todo enrollment anterior — os dois caem no comportamento antigo, e
+-- não há dado a corrigir antes de criar a coluna. Um CHECK de shape sobre jsonb
+-- quebraria o `update.sh` de um clone que já tivesse gravado algo aqui; quem
+-- valida é `lib/followup/timing-plan.ts`, que degrada para o máximo diante de
+-- plano ilegível em vez de derrubar o tick.
+
+alter table followup_enrollments
+  add column if not exists timing_plan jsonb;
+
+comment on column followup_enrollments.timing_plan is
+  'Plano de tempo das esperas adaptativas, decidido uma vez no acionamento do fluxo. null = sem plano (cai no max_ms de cada espera). Ver lib/followup/timing-plan.ts.';
+
+notify pgrst, 'reload schema';
+
 -- ---- VARREDURA anon: função nova nasce exposta em quem ATUALIZA (migration 0116) ----
 --
 -- ⚠️ ESTE BLOCO É, DE PROPÓSITO, O ÚLTIMO DO ARQUIVO. Apêndice novo entra ANTES
