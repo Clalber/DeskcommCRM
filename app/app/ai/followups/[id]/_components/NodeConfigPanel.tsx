@@ -18,6 +18,8 @@ import { NODE_VISUALS } from "./nodes/nodeVisuals";
 interface Props {
   node: RFNode;
   onChange: (patch: Partial<RFNodeData>) => void;
+  /** Ramos deste nó que já têm aresta — quem sabe isso é o canvas, que é dono do grafo. */
+  ramosLigados?: string[];
 }
 
 /**
@@ -29,7 +31,7 @@ interface Props {
  * quando o candidato passa no schema — senão mostra erro inline e o canvas
  * mantém a última config válida (nunca um valor pela metade rio acima).
  */
-export function NodeConfigPanel({ node, onChange }: Props) {
+export function NodeConfigPanel({ node, onChange, ramosLigados }: Props) {
   const type = node.type as FlowNode["type"];
   const visual = NODE_VISUALS[type];
   const Icon = visual.icon;
@@ -85,6 +87,7 @@ export function NodeConfigPanel({ node, onChange }: Props) {
           <ConditionForm
             config={node.data.config as ConfigOf<"condition">}
             onChange={(config) => onChange({ config })}
+            ramosLigados={ramosLigados}
           />
         )}
         {type === "ai_classify" && (

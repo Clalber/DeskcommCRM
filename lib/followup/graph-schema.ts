@@ -348,6 +348,17 @@ export type FlowGraph = z.infer<typeof flowGraphSchema>;
  * cost is paid exactly once, here.
  */
 
+/**
+ * What branch resolution actually reads off a node: its type and its config.
+ * Written as a mapped union instead of `Pick<FlowNode, 'type' | 'config'>`
+ * because `Pick` over a union flattens it and loses the correlation between the
+ * two — and because the builder holds React Flow nodes, which have no
+ * `position` in the shape this file expects. A full `FlowNode` is assignable.
+ */
+export type BranchableNode = {
+  [K in NodeType]: Pick<Extract<FlowNode, { type: K }>, 'type' | 'config'>;
+}[NodeType];
+
 /** `fallback` is the mandatory catch-all: exactly one per node, never deletable in the builder. */
 export type FlowBranchKind = 'match' | 'fallback';
 
@@ -390,7 +401,7 @@ function fallbackBranch(label: string): FlowBranch {
  * node yields `branch` conditions — a published flow is never rewritten just
  * because the contract grew.
  */
-export function nodeBranches(node: FlowNode): FlowBranch[] {
+export function nodeBranches(node: BranchableNode): FlowBranch[] {
   switch (node.type) {
     case 'condition': {
       if (node.config.branching === 'per_check') {
@@ -474,7 +485,7 @@ export function nodeBranches(node: FlowNode): FlowBranch[] {
  * resolves instead of silently losing its route.
  */
 export function branchIdForCondition(
-  source: FlowNode | undefined,
+  source: BranchableNode | undefined,
   condition: FlowEdgeCondition
 ): string | null {
   if (condition.type === 'always') return FALLBACK_BRANCH_ID;
@@ -504,6 +515,6 @@ export function branchIdForCondition(
 }
 
 /** The condition an edge must carry to leave `node` through `branchId` — `null` if no such branch. */
-export function conditionForBranch(node: FlowNode, branchId: string): FlowEdgeCondition | null {
+export function conditionForBranch(node: BranchableNode, branchId: string): FlowEdgeCondition | null {
   return nodeBranches(node).find((b) => b.id === branchId)?.condition ?? null;
 }

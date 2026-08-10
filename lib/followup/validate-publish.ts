@@ -1,6 +1,6 @@
-import type { FlowBranch, FlowGraph, FlowEdge, FlowNode } from './graph-schema';
+import type { FlowGraph, FlowEdge, FlowNode } from './graph-schema';
 import { branchIdForCondition, nodeBranches } from './graph-schema';
-import { fraseDaCondicao } from './vocabulario';
+import { rotuloDoRamo } from './rotulo-do-ramo';
 
 /**
  * Structural publish validator for follow-up flow graphs.
@@ -234,18 +234,6 @@ function byId(a: { id: string }, b: { id: string }): number {
   return a.id.localeCompare(b.id);
 }
 
-/**
- * Como a saída se chama numa mensagem de erro. O rótulo que o usuário escreveu
- * vence; sem ele, quem monta a frase é o vocabulário — este arquivo não tem
- * dicionário de campo/operador próprio, e não vai ganhar um.
- */
-function branchText(branch: FlowBranch): string {
-  if (branch.label !== null) return branch.label;
-  if (branch.check !== null) {
-    return fraseDaCondicao(branch.check.field, branch.check.op, branch.check.value);
-  }
-  return branch.id;
-}
 
 export function validateFlowForPublish(graph: FlowGraph): PublishValidationResult {
   const { nodes, edges } = graph;
@@ -342,7 +330,7 @@ export function validateFlowForPublish(graph: FlowGraph): PublishValidationResul
         node_id: node.id,
         code: 'missing_branch_edge',
         branch_id: branch.id,
-        message: `Nó "${node.id}": a saída "${branchText(branch)}" não está ligada a nada.`,
+        message: `Nó "${node.id}": a saída "${rotuloDoRamo(branch)}" não está ligada a nada.`,
       });
     }
   }
