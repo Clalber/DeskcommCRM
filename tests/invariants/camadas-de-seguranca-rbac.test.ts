@@ -43,6 +43,8 @@ import {
 /** Uma linha para exercitar UPDATE; o INSERT é exercitado em outra camada. */
 const CAMADA_EXISTENTE = "jailbreak";
 const CAMADA_NOVA = "promessa_semantica";
+/** Nome fora do vocabulário real, só para o caso do admin não colidir com os demais. */
+const CAMADA_SO_DO_ADMIN = "sonda_do_invariante";
 
 beforeAll(() => {
   seedGov();
@@ -91,10 +93,14 @@ describe("escrita em org_guardrail_layers exige admin", () => {
     );
     expect(atualizadas).toBe(1);
 
+    // Camada PRÓPRIA, não a que os casos de cima tentam inserir: com a policy
+    // sabotada, aquelas inserções passam e este INSERT colidiria na chave primária,
+    // produzindo uma reprovação COLATERAL que não fala do que este caso mede.
+    // Medido: numa sabotagem do `with check` a contagem veio 4 em vez de 3 por isso.
     const inseridas = writeCountAs(
       GOV_ADMIN,
       `insert into public.org_guardrail_layers (organization_id, layer, enabled)
-         values ('${GOV_ORG}', '${CAMADA_NOVA}', false)`,
+         values ('${GOV_ORG}', '${CAMADA_SO_DO_ADMIN}', false)`,
     );
     expect(inseridas).toBe(1);
   });
