@@ -299,11 +299,18 @@ export function DossieDoFollowup({ id, canWrite }: Props) {
           )}
           {/*
             SEM SAÍDA, O BOTÃO NÃO EXISTE — não fica desabilitado.
-            Passo sem aresta de saída não tem para onde pular NUNCA, não é um
-            "agora não": um controle que jamais terá efeito é decorativo, e
-            decorativo mente pior que ausente (o usuário fica procurando a
-            condição que o habilita). Desabilitado continua certo para o que é
-            temporário, como o `isPending` dos outros.
+            Passo sem aresta de saída não tem para onde pular NUNCA, e isso não é
+            um "agora não".
+
+            A regra, na formulação do `@QAVivo`, que nomeia quem paga e como:
+            desabilitado é PROMESSA de "agora não", então serve para o que é
+            temporário (o `isPending`, que volta em segundos). Desabilitado
+            PERMANENTE manda o usuário procurar a condição que habilita — e ela
+            não existe, então ele acha que a culpa é dele.
+
+            Mesma família do modo adaptativo desta wave: a tela oferecendo o que
+            o código ignora. Só que ali ela mentia sobre o RESULTADO, e aqui
+            mentiria sobre a POSSIBILIDADE.
           */}
           {podeMexerNoRelogio && data.saidas.length > 0 && (
             <Button
