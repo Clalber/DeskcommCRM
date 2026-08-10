@@ -604,28 +604,28 @@ chega depois não sabe se aquilo prova algo ou se foi esquecido.
 
 ### Ramificação — uma saída por regra (`evidence/followup-vivo/`)
 
-- **`ramos-01-uma-bolinha-por-regra.png`** — o nó de condição com duas regras mostra
+- **`evidence/followup-vivo/ramos-01-uma-bolinha-por-regra.png`** — o nó de condição com duas regras mostra
   **três saídas separadas**, cada uma com nome legível: *"Tem a etiqueta VIP"*,
   *"Tem a etiqueta atrasado"* e *"Nenhuma delas"*. É a queixa original do Rafael
   resolvida na tela; antes havia **uma bolinha só** para todas as saídas.
-- **`ramos-02-altura-com-5-regras.png`** — o card com cinco regras, usado para medir
+- **`evidence/followup-vivo/ramos-02-altura-com-5-regras.png`** — o card com cinco regras, usado para medir
   a altura por ferramenta (43,4px com uma saída → 159,1px com cinco, custo por ramo
   de 19,3px). Registra a decisão de **não** esconder ramo atrás de um "+2 mais":
   ramo escondido perde a bolinha, que é o defeito que a wave conserta.
-- **`ramos-03-publicado.png`** — o fluxo com ramos nomeados **publicado**, provando
+- **`evidence/followup-vivo/ramos-03-publicado.png`** — o fluxo com ramos nomeados **publicado**, provando
   que `validateFlowForPublish` aceita a forma nova e exige cobertura por ramo.
-- **`ramos-04-dois-leads-dois-caminhos.png`** — dois leads com etiquetas diferentes
+- **`evidence/followup-vivo/ramos-04-dois-leads-dois-caminhos.png`** — dois leads com etiquetas diferentes
   terminando em **nós diferentes**. É a prova de que a bolinha não é enfeite: o
   roteamento por `branch_id` decide o caminho de verdade.
 
 ### Gatilho de etapa (`evidence/gatilho-de-etapa/`)
 
-- **`gatilho-etapa-01-configurado.png`** — o gatilho "Etapa do funil" armado pela
+- **`evidence/gatilho-de-etapa/gatilho-etapa-01-configurado.png`** — o gatilho "Etapa do funil" armado pela
   tela, com o seletor mostrando a etapa **pelo nome**, agrupada por funil — nunca
   UUID — e o rótulo prometendo "poucos minutos" em vez de "na hora", porque o
   produtor roda no tick do cron.
-- **`gatilho-etapa-02-publicado.png`** — o fluxo publicado com `kind='stage_change'`,
+- **`evidence/gatilho-de-etapa/gatilho-etapa-02-publicado.png`** — o fluxo publicado com `kind='stage_change'`,
   que até esta missão o publish **recusava** por não haver produtor.
-- **`gatilho-etapa-03-antes-do-movimento.png`** — o estado da fila **antes** de mover
+- **`evidence/gatilho-de-etapa/gatilho-etapa-03-antes-do-movimento.png`** — o estado da fila **antes** de mover
   o lead, que é o controle: sem ele, um enrollment pré-existente seria lido como
   efeito do gatilho.
