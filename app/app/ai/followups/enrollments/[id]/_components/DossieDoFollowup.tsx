@@ -39,6 +39,8 @@ import {
 import { useFollowupEnrollment, useIntervirNoFollowup } from "@/hooks/followup/useFollowupEnrollment";
 import { useCancelFollowupEnrollment } from "@/hooks/followup/useFollowupQueue";
 
+import { PlanoDeTempoBloco } from "./PlanoDeTempo";
+
 interface Props {
   id: string;
   canWrite: boolean;
@@ -325,6 +327,11 @@ export function DossieDoFollowup({ id, canWrite }: Props) {
         </section>
       )}
 
+      <PlanoDeTempoBloco
+        plano={data.plano_de_tempo}
+        nos={data.nos}
+        decididoRelativo={relativa(data.plano_de_tempo?.decidido_em ?? null)}
+      />
 
       <section className="rounded-md border border-border p-4">
         <h2 className="mb-1 text-sm font-medium">O que já aconteceu</h2>

@@ -2,7 +2,7 @@
  * GET /api/v1/ai/followups/enrollments/:id (any member) — o dossiê de UM
  * follow-up: quem é o contato, em que passo está, quando volta a andar, o que
  * já aconteceu (a tabela `followup_enrollment_events`, que existe desde a 0054 e
- * nenhuma tela lia) e por que parou.
+ * nenhuma tela lia) e, quando houver, o plano de tempo que o agente decidiu.
  *
  * Três decisões que valem mais que o código:
  *
@@ -31,6 +31,7 @@ import {
   type EventoDeEnrollment,
   type NoDoDossie,
 } from "@/lib/followup/eventos-legiveis";
+import { leituraDoPlano, type PlanoDeTempo } from "@/lib/followup/plano-de-tempo";
 import { flowGraphSchema } from "@/lib/followup/graph-schema";
 import { createClient } from "@/lib/supabase/server";
 
@@ -80,6 +81,7 @@ export interface DossieDoEnrollment {
   saidas: Array<{ edge_id: string; target_id: string; target_rotulo: string; quando: string }>;
   eventos: EventoDeEnrollment[];
   eventos_truncados: boolean;
+  plano_de_tempo: PlanoDeTempo | null;
   /** id → nome de quem interveio. "Uma pessoa da equipe" não responde "quem?". */
   autores: Record<string, string>;
 }
@@ -142,7 +144,7 @@ export async function GET(_req: NextRequest, ctx: RouteCtx): Promise<Response> {
     .select(
       `id, status, contact_id, pointer_id, version_id, current_node_id, next_eval_at, claimed_until,
        started_at, completed_at, updated_at, outcome, cancel_reason, last_error, attempts, max_attempts,
-       steps_taken,
+       steps_taken, timing_plan,
        contacts:contact_id(id, name, display_name, phone_number),
        followup_flow_pointers:pointer_id(name),
        ai_agents:agent_id(name),
@@ -219,6 +221,7 @@ export async function GET(_req: NextRequest, ctx: RouteCtx): Promise<Response> {
     saidas,
     eventos: lidos.slice(0, TETO_DE_EVENTOS) as EventoDeEnrollment[],
     eventos_truncados: truncado,
+    plano_de_tempo: leituraDoPlano(row.timing_plan),
     autores: await resolveAutores(lidos),
   };
 

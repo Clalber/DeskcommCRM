@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { showApiError } from "@/components/feedback/ApiErrorToast";
 import { apiClient } from "@/lib/api/client";
 import type { EventoDeEnrollment, NoDoDossie } from "@/lib/followup/eventos-legiveis";
+import type { PlanoDeTempo } from "@/lib/followup/plano-de-tempo";
 
 export interface SaidaDoPasso {
   edge_id: string;
@@ -37,6 +38,7 @@ export interface FollowupEnrollmentDossie {
   saidas: SaidaDoPasso[];
   eventos: EventoDeEnrollment[];
   eventos_truncados: boolean;
+  plano_de_tempo: PlanoDeTempo | null;
   autores: Record<string, string>;
 }
 
