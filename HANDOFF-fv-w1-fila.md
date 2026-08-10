@@ -237,6 +237,16 @@ verdes para 1 vermelho. Citar o caminho inteiro de cada uma resolveu.
 
 ### O `IA360-FLAKY`, caçado até a raiz
 
+> **Os papéis, corrigidos PARA BAIXO pelo próprio `@QAVivo`** — e a distinção é
+> dele: ele **caracterizou** o fenômeno (determinístico, 36ms, não timeout) e
+> **refutou** a primeira atribuição, a de que o índice da 0145 explicava tudo,
+> que não sobrevivia ao "isolado passa". Não achou a causa. Quem seguiu a pista
+> dele até o par de arquivos fui eu.
+>
+> Ele pediu a correção porque **refutar uma causa errada é barato — uma medição
+> basta — e achar a certa custa mais**; um registro que confunde as duas faz a
+> próxima pessoa superestimar o que uma refutação entrega.
+
 O invariante instável que o repo carregava como "às vezes vermelho" tinha causa
 determinística, e ela é uma lição sobre teste que mexe em SCHEMA.
 
@@ -284,15 +294,44 @@ E a terceira foi medida ANTES de entrar (16 verdes antes, 16 depois): é o que
 separa "consertei um defeito" de "desarmei uma armadilha". Sem a medição, o
 commit reivindicaria um conserto que não houve.
 
+### A confirmação independente — e por que ela é a prova mais forte da noite
+
+O `@QAVivo` rodou a suíte completa na árvore DELE (`fv/vocabulario` em
+`9e6a9cf8`), com o conserto dentro, no MESMO ambiente que reprovava 3 de 3
+antes. Resultado: **94 arquivos, 659 verdes, 1 pulado, 0 vermelhos, exit 0**.
+
+**Idêntico ao meu, dígito por dígito** — e as duas rodadas foram em árvores
+diferentes, portas diferentes e cargas diferentes (load 9 na minha, 15,6→16,8 na
+dele).
+
+Contagem igual sob condições diferentes é o que separa "ficou verde" de "está
+consertado": se o verde viesse da carga baixa, a rodada dele — mais carregada —
+teria dado outro número. O `IA360-FLAKY` está morto, e não por sorte.
+
+**E a distinção que fecha o método, do `@QAVivo`: repetir não é o mesmo que
+variar.** Repetir na MESMA condição só mostra que não foi azar naquela condição;
+variar a condição é o que mostra que o resultado não depende dela. Foram três
+verdes em três cargas (9; 16→21; 15,6→16,8) — ampliação de faixa, não repetição.
+
+**A consequência prática é que a MESMA rodada tem valores probatórios diferentes
+conforme a pergunta:**
+
+| a mesma rodada verde… | …sobre o vermelho do `pausado` | …sobre os testes PULADOS |
+|---|---|---|
+| vale como | **prova** — o vermelho não volta em nenhuma carga, logo estava ligado ao índice | **nada** — a carga é justamente a variável suspeita |
+
+Ler um resultado sem a pergunta ao lado é como o número vira conclusão errada:
+o mesmo "0 vermelhos, 1 pulado" responde uma coisa e não responde a outra.
+
 ### Uma pergunta que fica ABERTA, com o motivo escrito
 
 Entre rodadas do MESMO código, o número de testes PULADOS do `test:db` variou de
 1 para 8 — sinal de estado atravessado entre arquivos, distinto do vermelho que
 foi consertado. **Não sabemos a causa, e não vamos fingir que sabemos.**
 
-Duas tentativas de separar as variáveis falharam pelo mesmo motivo: conserto e
-carga da máquina mudaram na MESMA janela (load ~30 → 9 na minha; 32 prometido →
-15,6 medido na do `@QAVivo`). Com duas variáveis, "pulados voltaram a 1" não
+**Três** tentativas de separar as variáveis falharam pelo mesmo motivo: conserto e
+carga da máquina mudaram na MESMA janela (load ~30 → 9 na primeira minha; 21 →
+16,8 na segunda; 32 prometido → 15,6 medido na do `@QAVivo`). Com duas variáveis, "pulados voltaram a 1" não
 distingue "o conserto resolveu" de "a máquina desafogou".
 
 A assimetria útil, dele: se os pulados SUBIREM com carga baixa e conserto
