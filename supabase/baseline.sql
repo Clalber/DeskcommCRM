@@ -10760,6 +10760,72 @@ create trigger trg_ai_agent_versions_content_immutable
 
 notify pgrst, 'reload schema';
 
+-- ---- o dossiê do follow-up: tempo escolhido pela IA + pausa manual (migration 0145) ----
+--
+-- Ver o cabeçalho de `supabase/migrations/20260810120000_0145_dossie_do_followup.sql`
+-- para o porquê de cada peça. Aqui vale a nota de re-aplicação: tudo é
+-- auto-curativo. O CHECK só ACRESCENTA um valor ao conjunto aceito e o predicado
+-- novo do índice cobre as mesmas linhas do antigo (nenhum banco tem
+-- `paused_manual` antes desta migration) — nada a deduplicar antes.
+
+alter table public.followup_enrollments
+  add column if not exists timing_plan jsonb;
+
+comment on column public.followup_enrollments.timing_plan is
+  'Plano de atrasos decidido pelo agente no acionamento do follow-up (migration 0144). '
+  'Forma: {"decidido_em":ISO,"modelo":texto,"esperas":{"<node_id>":{"escolhido_ms":int,'
+  '"min_ms":int,"max_ms":int,"clampado":bool,"motivo":texto}}}. NULL = fluxo v1 ou espera '
+  'fixa: o dossiê não mostra o bloco em vez de inventar valor.';
+
+-- Os dois CHECKs saem pelo CATÁLOGO, não pelo nome: num clone que passou por
+-- dump/restore o nome gerado pode não ser o deste repo, e dropar por nome fixo
+-- falharia em silêncio — o `add constraint` tropeçaria no duplicado, o
+-- `exception when duplicate_object` engoliria, e o banco ficaria com o CHECK
+-- ANTIGO recusando `paused_manual` num INSERT que a aplicação considera válido.
+do $$
+declare
+  c record;
+begin
+  for c in
+    select con.conname
+      from pg_constraint con
+      join pg_class rel on rel.oid = con.conrelid
+      join pg_namespace ns on ns.oid = rel.relnamespace
+     where ns.nspname = 'public'
+       and rel.relname = 'followup_enrollments'
+       and con.contype = 'c'
+       and pg_get_constraintdef(con.oid) like '%paused_handoff%'
+       and pg_get_constraintdef(con.oid) not like '%paused_manual%'
+  loop
+    execute format('alter table public.followup_enrollments drop constraint %I', c.conname);
+  end loop;
+end $$;
+
+do $$ begin
+  alter table public.followup_enrollments
+    add constraint followup_enrollments_status_valido
+    check (status in ('active','waiting_reply','paused_handoff','paused_manual','completed','cancelled','dead'));
+exception when duplicate_object then null; end $$;
+
+do $$ begin
+  alter table public.followup_enrollments
+    add constraint followup_enrollments_relogio_coerente
+    check (
+      (status in ('active','waiting_reply') and next_eval_at is not null)
+      or (status in ('paused_handoff','paused_manual','completed','cancelled','dead'))
+    );
+exception when duplicate_object then null; end $$;
+
+drop index if exists idx_followup_enrollments_one_live;
+create unique index if not exists idx_followup_enrollments_one_live
+  on public.followup_enrollments (pointer_id, contact_id)
+  where status in ('active','waiting_reply','paused_handoff','paused_manual');
+
+create index if not exists idx_followup_events_enrollment_tempo
+  on public.followup_enrollment_events (enrollment_id, created_at);
+
+notify pgrst, 'reload schema';
+
 -- ---- VARREDURA anon: função nova nasce exposta em quem ATUALIZA (migration 0116) ----
 --
 -- ⚠️ ESTE BLOCO É, DE PROPÓSITO, O ÚLTIMO DO ARQUIVO. Apêndice novo entra ANTES
