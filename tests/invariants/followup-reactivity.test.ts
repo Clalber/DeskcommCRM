@@ -104,6 +104,12 @@ function reactivityDb(): ReactivityAdminClient {
         ...values,
       ]);
     },
+    // Migration 0143: quem acorda um enrollment grava o relógio do BANCO,
+    // porque o claim compara com now() e o processo fica à frente.
+    async agoraNoBanco() {
+      const { rows } = await pool.query<{ agora: string }>(`select public.fn_agora() as agora`);
+      return rows[0]!.agora;
+    },
   };
 }
 
