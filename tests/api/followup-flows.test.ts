@@ -495,7 +495,19 @@ describe("POST /api/v1/ai/followup-flows/:id/publish", () => {
     expect(res.status).toBe(404);
   });
 
-  it("trigger_config.kind='stage_change' (sem motor de enrollment) → 422 trigger_kind_not_implemented, sem publicar", async () => {
+  /**
+   * ⚠️ O KIND MUDOU DE LADO, E A PROPRIEDADE CONTINUA A MESMA.
+   *
+   * Este caso usava `stage_change`, que passou a TER motor (a wave do gatilho de
+   * etapa entregou o consumidor de `lead.stage_changed`). Mantido com
+   * `conversation_end`, que é o que segue sem produtor: publicar com ele daria
+   * um `status='active'` que nunca matricula ninguém — fluxo morto com cara de
+   * vivo, que é exatamente o que este teste existe para impedir.
+   *
+   * Trocar o kind preserva a propriedade; apagar o caso a perderia junto com o
+   * valor obsoleto.
+   */
+  it("trigger_config.kind='conversation_end' (sem motor de enrollment) → 422 trigger_kind_not_implemented, sem publicar", async () => {
     const db = makeDb(
       [
         {
@@ -503,7 +515,7 @@ describe("POST /api/v1/ai/followup-flows/:id/publish", () => {
           organization_id: ORG_ID,
           status: "draft",
           draft_graph: VALID_GRAPH,
-          trigger_config: { kind: "stage_change", params: { stage_id: "44444444-4444-4444-8444-444444444444" } },
+          trigger_config: { kind: "conversation_end" },
         },
       ],
       [],
