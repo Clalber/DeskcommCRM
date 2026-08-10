@@ -101,6 +101,41 @@ Lição para a wave: `drop index` + `create index` de um índice que já foi
 recriado antes é reescrita silenciosa. A definição a copiar é a que está em
 vigor, nunca a da DDL original.
 
+### ⚠️ CORREÇÃO: "o e2e não segura merge" é FALSO — e a fonte da crença é o achado
+
+A mensagem do commit `c67a61cc` afirma que "o `e2e` não segura merge neste
+repo". **É falso**, e mensagem de commit não se edita depois de mergeada — por
+isso a correção vive aqui, num commit próprio, como `@Assistente e Testes`
+pediu.
+
+Medido no `CLAUDE.md` do meu HEAD, que traz a saída do `gh api` colada:
+
+```console
+$ gh api repos/melgarafael/DeskcommCRM/branches/main/protection --jq '.required_status_checks.contexts|join(", ")'
+verify, build-and-size, invariants, e2e
+```
+
+**São QUATRO obrigatórios, `e2e` incluído** (medido em 2026-08-08).
+
+**E a origem da crença não é descuido de quem repetiu — é estrutural.** O
+`CLAUDE.md` que chega ao contexto de uma sessão vem do DIRETÓRIO PRINCIPAL
+(`/Users/rafaelmelgaco/DeskcommCRM`), não do worktree onde se trabalha. Medido
+agora: o principal está na branch `feat/indice-de-atrito` e o arquivo lá ainda
+diz, na linha 215, `Check **não-obrigatório** (roda, mas não segura merge)`. O
+`CLAUDE.md` do worktree `fv-fila` **já estava corrigido** — inclusive na base
+`4f89a0da`. Ou seja: a doutrina que eu li era mais VELHA que a do código em que
+eu mexia, e nada na tela avisa isso.
+
+É a terceira vez que a crença aparece hoje (o `@Assistente e Testes` a disse ao
+Rafael, eu a escrevi num comentário — retratado em `f4719b31` — e de novo numa
+mensagem de commit). Três pessoas, uma fonte.
+
+**A conclusão do commit `c67a61cc` continua válida por outro motivo**, e é o que
+deve ser lido: cobrir o caminho novo no unitário vale mesmo com o `e2e`
+obrigatório, porque o unitário roda em segundos e o `e2e` em minutos — feedback
+rápido para quem escreve é valor por si, sem precisar do argumento sobre
+obrigatoriedade.
+
 ### O vermelho que eu HERDEI (e que vale um alerta de repo)
 
 Ao mergear a integração, o `pnpm typecheck` veio VERMELHO por um arquivo que não
