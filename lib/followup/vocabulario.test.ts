@@ -51,6 +51,9 @@ import {
   comparador,
   comparadoresDoCampo,
   fraseDaCondicao,
+  fraseDaClasse,
+  fraseDaRegraNomeada,
+  fraseDaRegraSemNome,
   fraseDoRamo,
   opcoes,
   type CampoDaCondicao,
@@ -407,15 +410,32 @@ describe("o ramo em frase — o registro do dossiê", () => {
     // o identificador — sem exceção nenhuma. Este caso é o que reprova nisso.
     expect(fraseDoRamo(NO_REPLY_BRANCH_ID)).toBe("quando ninguém responde");
     for (const ramo of RESERVED_BRANCH_IDS) {
-      expect(fraseDoRamo(ramo), `ramo reservado '${ramo}' sem frase`).not.toBe("por um caminho sem nome");
-      expect(fraseDoRamo(ramo), `frase de '${ramo}' devolve o id`).not.toContain(ramo);
+      expect(fraseDoRamo(ramo), `ramo reservado '${ramo}' sem frase`).toBeTruthy();
+      expect(fraseDoRamo(ramo) ?? "", `frase de '${ramo}' devolve o id`).not.toContain(ramo);
     }
   });
 
-  it("ramo declarado usa o rótulo do nó; sem rótulo, admite que não tem nome em vez de ecoar o id", () => {
-    expect(fraseDoRamo("br_7f3a", "cliente interessado")).toBe("quando a resposta é “cliente interessado”");
-    // Ecoar `br_7f3a` seria o defeito que o dicionário existe para impedir.
-    expect(fraseDoRamo("br_7f3a")).not.toContain("br_7f3a");
+  it("classe da IA e regra do negócio têm moldes DIFERENTES — um só mentiria em metade dos casos", () => {
+    // "quando a resposta é “Tem a etiqueta VIP”" não é resposta de ninguém: é
+    // regra do negócio. O molde único obrigaria um dos dois lados a mentir.
+    expect(fraseDaClasse("interessado")).toBe("quando a IA classifica a resposta como “interessado”");
+    expect(fraseDaRegraNomeada("Cliente VIP")).toBe("quando vale a regra “Cliente VIP”");
+    expect(fraseDaClasse("x")).not.toBe(fraseDaRegraNomeada("x"));
+  });
+
+  it("regra sem nome vira a condição por extenso, encaixada em minúscula", () => {
+    // Sem isto sairia "quando O contato tem…" — maiúscula no meio da frase, que
+    // ninguém revisa e todo mundo lê. E jamais o id: `regra-2` na tela é o
+    // defeito que este módulo existe para impedir.
+    expect(fraseDaRegraSemNome("tag", "eq", "vip")).toBe("quando o contato tem a etiqueta “vip”");
+    expect(fraseDaRegraSemNome("steps_taken", "gte", 3)).toBe("quando o fluxo já deu pelo menos 3 passos");
+  });
+
+  it("fraseDoRamo devolve null para ramo não reservado, em vez de inventar", () => {
+    // Quem chama precisa escolher o molde (classe ou regra) com o contexto do
+    // NÓ, que este módulo não tem. Devolver texto aqui seria adivinhar.
+    expect(fraseDoRamo("br_7f3a")).toBeNull();
+    expect(fraseDoRamo(NO_REPLY_BRANCH_ID)).toBe("quando ninguém responde");
   });
 
   it("os dois registros dizem a mesma coisa em tons diferentes, e nenhum é cópia do outro", () => {

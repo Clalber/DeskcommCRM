@@ -323,11 +323,44 @@ export const RAMOS_RESERVADOS_EM_FRASE: Record<RamoReservado, string> = {
  * do ramo mora. Sem ele, o melhor honesto é dizer que é um caminho sem nome —
  * nunca ecoar o `branch_id`, que é identificador interno.
  */
-export function fraseDoRamo(branchId: string, rotuloDeclarado?: string): string {
-  const reservado = RAMOS_RESERVADOS_EM_FRASE[branchId as RamoReservado];
-  if (reservado) return reservado;
-  if (rotuloDeclarado?.trim()) return `quando a resposta é “${rotuloDeclarado}”`;
-  return "por um caminho sem nome";
+export function fraseDoRamo(branchId: string): string | null {
+  return RAMOS_RESERVADOS_EM_FRASE[branchId as RamoReservado] ?? null;
+}
+
+/**
+ * Uma frase deste módulo encaixada depois de "quando".
+ *
+ * As frases nascem como oração completa e maiúscula ("O contato tem a etiqueta
+ * …") porque também são lidas sozinhas, no resumo do nó. Emendar a maiúscula no
+ * meio de outra frase é o tipo de detalhe que ninguém revisa e todo mundo lê.
+ */
+function encaixa(frase: string): string {
+  return frase.charAt(0).toLocaleLowerCase("pt-BR") + frase.slice(1);
+}
+
+/**
+ * Ramo de uma CLASSE da IA. Nomeia a IA como quem julgou, de propósito: quem lê
+ * o histórico precisa saber que um modelo decidiu, não uma regra fixa.
+ */
+export function fraseDaClasse(nomeDaClasse: string): string {
+  return `quando a IA classifica a resposta como “${nomeDaClasse}”`;
+}
+
+/** Ramo de uma REGRA que o usuário batizou. Regra do negócio não é resposta de ninguém. */
+export function fraseDaRegraNomeada(rotulo: string): string {
+  return `quando vale a regra “${rotulo}”`;
+}
+
+/**
+ * Ramo de uma regra SEM nome: em vez do id, a própria condição por extenso.
+ * `regra-2` na tela do operador é o defeito que este módulo existe para impedir.
+ */
+export function fraseDaRegraSemNome(
+  campo: CampoDaCondicao,
+  op: OperadorDaCondicao,
+  valor: string | number,
+): string {
+  return `quando ${encaixa(fraseDaCondicao(campo, op, valor))}`;
 }
 
 export const RAMOS_RESERVADOS: Record<RamoReservado, string> = {
