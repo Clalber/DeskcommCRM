@@ -32,6 +32,7 @@ import {
   endConfigSchema,
   waitConfigSchema,
 } from "./graph-schema";
+import * as vocabulario from "./vocabulario";
 import {
   ALVOS_DA_CLASSIFICACAO,
   CAMPOS_DA_CONDICAO,
@@ -130,6 +131,41 @@ function literaisDaUniao(arquivo: string, nome: string): string[] {
 const SITUACOES_NO_TIPO = literaisDaUniao(NODE_HANDLERS, "EnrollmentStatus");
 const DESFECHOS_NO_TIPO = literaisDaUniao(NODE_HANDLERS, "EnrollmentOutcome");
 
+
+/**
+ * Todo par (valor de wire -> texto que o usuário lê) EXPORTADO pelo módulo, e
+ * todo mapa, colhidos dos exports em vez de listados aqui.
+ *
+ * A lista escrita à mão que isto substitui já estava incompleta no dia em que
+ * foi escrita: `MODOS_DE_RAMIFICACAO` e `RAMOS_RESERVADOS` entraram no
+ * dicionário e nenhuma varredura os alcançou. É o mesmo ponto cego que a regra
+ * do underscore tinha, um nível acima — a guarda cobria o que alguém lembrou de
+ * inscrever nela.
+ */
+function mapasExportados(): Array<[string, Record<string, unknown>]> {
+  return Object.entries(vocabulario).filter(
+    (par): par is [string, Record<string, unknown>] =>
+      typeof par[1] === "object" && par[1] !== null && !Array.isArray(par[1]),
+  );
+}
+
+function rotulosExportados(): Array<[string, string]> {
+  const pares: Array<[string, string]> = [];
+  for (const [, mapa] of mapasExportados()) {
+    for (const [chave, conteudo] of Object.entries(mapa)) {
+      if (typeof conteudo === "string") pares.push([chave, conteudo]);
+      else if (
+        conteudo !== null &&
+        typeof conteudo === "object" &&
+        typeof (conteudo as { rotulo?: unknown }).rotulo === "string"
+      ) {
+        pares.push([chave, (conteudo as { rotulo: string }).rotulo]);
+      }
+    }
+  }
+  return pares;
+}
+
 // ─── controles de vacuidade ──────────────────────────────────────────────
 
 describe("o instrumento está vivo", () => {
@@ -220,19 +256,10 @@ describe("vocabulário NOVO não entra escondido", () => {
    * dicionário cobre? — e ela não depende de eu lembrar da lista.
    */
   const TODOS_OS_MAPAS: Array<Record<string, unknown>> = [
-    CAMPOS_DA_CONDICAO,
-    COMBINADORES,
-    ALVOS_DA_CLASSIFICACAO,
-    RESULTADOS_DO_FIM,
-    MODOS_DE_ESPERA,
-    MODOS_DA_ACAO,
-    MODOS_DE_RAMIFICACAO,
-    RAMOS_RESERVADOS,
-    GATILHOS,
-    SITUACOES_DO_ACOMPANHAMENTO,
-    DESFECHOS,
+    ...mapasExportados().map(([, mapa]) => mapa),
     Object.fromEntries(OPERADORES_NO_SCHEMA.map((op) => [op, true])),
   ];
+
 
   const descobertos = enumsDoFollowup();
 
@@ -262,17 +289,21 @@ describe("a tradução não é o valor cru disfarçado", () => {
    * português e coincidir com o wire ali não é vazamento. `waiting_reply` num
    * rótulo, é.
    */
-  const rotulosPorValor: Array<[string, string]> = [
-    ...Object.entries(CAMPOS_DA_CONDICAO).map(([k, v]) => [k, v.rotulo] as [string, string]),
-    ...Object.entries(COMBINADORES),
-    ...Object.entries(ALVOS_DA_CLASSIFICACAO),
-    ...Object.entries(RESULTADOS_DO_FIM),
-    ...Object.entries(MODOS_DE_ESPERA),
-    ...Object.entries(MODOS_DA_ACAO),
-    ...Object.entries(GATILHOS),
-    ...Object.entries(SITUACOES_DO_ACOMPANHAMENTO),
-    ...Object.entries(DESFECHOS),
-  ];
+  const rotulosPorValor: Array<[string, string]> = rotulosExportados();
+
+  it("a colheita de rótulos alcança todos os mapas do módulo", () => {
+    // Controle: colher dos exports só vale se a colheita for gorda. Um filtro
+    // quebrado devolveria pouca coisa e as varreduras abaixo passariam por
+    // omissão — que é exatamente como a lista à mão falhava.
+    expect(rotulosPorValor.length).toBeGreaterThan(30);
+    for (const esperado of ["Parou por falha", "Uma saída para cada regra", "Convertido", "Etiqueta do contato"]) {
+      expect(
+        rotulosPorValor.map(([, r]) => r),
+        `'${esperado}' não foi colhido — algum mapa ficou fora da varredura`,
+      ).toContain(esperado);
+    }
+  });
+
 
   it("nenhum rótulo carrega o token snake_case do wire", () => {
     const comUnderscore = rotulosPorValor.filter(([valor]) => valor.includes("_"));
