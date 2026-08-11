@@ -725,7 +725,7 @@ test.describe("followup flow selector no editor do agente (Task 7.2)", () => {
 });
 
 test.describe("followup flow builder — controle de gatilho na PublishBar (Task 8.5)", () => {
-  test("operador arma o gatilho de Silêncio (threshold) pela UI; oferece só Manual/Silêncio; PATCH round-trips", async ({
+  test("operador arma o gatilho de Silêncio (threshold) pela UI; oferece só os kinds com motor; PATCH round-trips", async ({
     page,
   }) => {
     await login(page, creds.users.manager!.email);
@@ -751,14 +751,23 @@ test.describe("followup flow builder — controle de gatilho na PublishBar (Task
 
       // Só o que tem motor de enrollment é oferecido. Eram 2 até a frente de
       // gatilhos entregar o produtor de `stage_change`
-      // (`lib/followup/gatilho-etapa.ts`); `conversation_end` continua fora,
+      // (`lib/followup/gatilho-etapa.ts`), e viraram 4 com `case_opened`
+      // (`lib/followup/gatilho-caso.ts`); `conversation_end` continua fora,
       // porque continua sem produtor — e o publish o recusa.
+      //
+      // ⚠️ A LISTA, E NÃO A CONTAGEM. Este bloco cobrava `toHaveCount(3)`, e o
+      // gatilho novo o derrubou — uma spec alheia vermelha por uma mudança que
+      // ninguém pediu ali. Contagem também diz menos do que parece: ela reprova
+      // igual se alguém TROCAR um kind por outro, e passa se o conjunto certo
+      // aparecer pelo motivo errado. Cobrar o conjunto nomeado pega as duas
+      // coisas — e é o que o operador de fato vê.
       const kindSelect = panel.getByRole("combobox");
       await kindSelect.click();
-      await expect(page.getByRole("option")).toHaveCount(3);
-      await expect(page.getByRole("option", { name: "Manual", exact: true })).toBeVisible();
-      await expect(page.getByRole("option", { name: "Silêncio", exact: true })).toBeVisible();
-      await expect(page.getByRole("option", { name: "Etapa do funil", exact: true })).toBeVisible();
+      const OFERECIDOS = ["Manual", "Silêncio", "Etapa do funil", "Agente pediu ajuda"];
+      for (const nome of OFERECIDOS) {
+        await expect(page.getByRole("option", { name: nome, exact: true })).toBeVisible();
+      }
+      await expect(page.getByRole("option")).toHaveCount(OFERECIDOS.length);
       await expect(page.getByRole("option", { name: /conversation_end|fim do atendimento/i })).toHaveCount(0);
 
       await page.getByRole("option", { name: "Silêncio", exact: true }).click();
