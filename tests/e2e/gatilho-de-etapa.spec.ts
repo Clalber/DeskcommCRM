@@ -207,15 +207,19 @@ test.describe("gatilho de etapa do funil", () => {
       const seletorDeEtapa = page.getByTestId("trigger-stage-select");
       await expect(seletorDeEtapa).toBeEnabled({ timeout: ESPERA });
       await seletorDeEtapa.click();
-      // ⚠️ ESCOPADO PELO GRUPO DO FUNIL, e isso é a feature se provando: duas
-      // etapas podem ter o MESMO nome em funis diferentes — foi por isso que o
-      // seletor agrupa por funil. O banco de teste acumula um funil por
-      // execução, então "Em andamento" existe várias vezes e um `option` solto
-      // casa com todas (o Playwright recusa por ambiguidade, com razão). Quem
-      // desambigua é o cabeçalho do funil, exatamente como para o operador.
+      // ⚠️ A OPÇÃO É PEDIDA PELO NOME COMPOSTO — «etapa · funil» —, e isso é a
+      // asserção que guarda o conserto. Duas etapas podem se chamar «Em
+      // andamento» em funis diferentes (todo funil nasce com as mesmas quatro),
+      // e por um tempo a tela oferecia as duas com o mesmo nome: o funil vivia
+      // só no cabeçalho do grupo, que não entra no nome acessível da opção nem
+      // sobrevive ao seletor fechado. Escolher errado armava um fluxo que ficava
+      // `active` e nunca disparava, calado.
+      //
+      // Escopar por grupo também funcionaria, mas provaria menos: passaria igual
+      // se alguém tirasse o funil do texto do item. Pedir o nome composto é o
+      // que reprova essa regressão.
       await page
-        .getByRole("group", { name: `E2E Funil Gatilho ${marca}` })
-        .getByRole("option", { name: etapaDestino.name, exact: true })
+        .getByRole("option", { name: `${etapaDestino.name} · ${funil.name}`, exact: true })
         .click();
       await page.screenshot({
         path: path.join(ARTIFACTS_DIR, "gatilho-etapa-01-configurado.png"),
@@ -223,14 +227,17 @@ test.describe("gatilho de etapa do funil", () => {
       });
 
       await painel.getByTestId("trigger-config-save").click();
-      await expect(botaoDoGatilho).toHaveText(`Gatilho: entrou em «${etapaDestino.name}»`, { timeout: ESPERA });
+      // O rótulo persistente carrega o funil — é a superfície que o dono lê uma
+      // semana depois, sem abrir nada, e sem o funil ela não distinguia qual das
+      // homônimas estava armada.
+      await expect(botaoDoGatilho).toHaveText(`Gatilho: entrou em «${etapaDestino.name}» em ${funil.name}`, {
+        timeout: ESPERA,
+      });
 
-      // ⚠️ O RÓTULO SOZINHO NÃO É ORÁCULO. Ele mostra só o NOME da etapa, e
-      // nomes se repetem entre funis (todo funil nasce com «Novo / Em andamento
-      // / Ganho / Perdido»). Se o clique tivesse armado a «Em andamento» de
-      // OUTRO funil, a asserção acima passaria idêntica — e o teste só quebraria
-      // 60s depois, na fila vazia, acusando o motor em vez do seletor. Quem
-      // amarra é o uuid persistido.
+      // ⚠️ E MESMO ASSIM O RÓTULO NÃO É O ORÁCULO FINAL: ele prova o que a tela
+      // mostra, não o que foi gravado. Quem amarra a escolha à etapa certa é o
+      // uuid persistido — se um dia a exibição e a gravação divergirem, é esta
+      // linha que reprova, e a de cima que passaria dizendo o contrário.
       const gatilhoSalvo = await page.request.get(`/api/v1/ai/followup-flows/${flowId}`);
       expect(
         ((await gatilhoSalvo.json()) as { data: { trigger_config: { params?: { stage_id?: string } } } }).data

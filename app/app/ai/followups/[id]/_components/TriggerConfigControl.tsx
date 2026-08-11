@@ -31,8 +31,19 @@ import { useEtapasDeGatilho } from "@/hooks/followup/useEtapasDeGatilho";
  * «(indisponível)» em vez de mentir «Manual».
  *
  * ⚠️ A ETAPA É ESCOLHIDA PELO NOME, NUNCA POR UUID. O `trigger_config` guarda
- * `stage_id`; a tela resolve id → nome com `useEtapasDeGatilho`, e agrupa por
- * funil porque duas etapas podem se chamar «Proposta» em funis diferentes.
+ * `stage_id`; a tela resolve id → nome com `useEtapasDeGatilho`.
+ *
+ * ⚠️ E O NOME DA ETAPA SOZINHO NÃO IDENTIFICA A ETAPA. Todo funil nasce com
+ * «Novo / Em andamento / Ganho / Perdido» (`ETAPAS_INICIAIS`), então DOIS funis
+ * já bastam para quatro pares homônimos — não é caso de borda, é o default. Por
+ * isso o funil viaja junto do nome da etapa em TODA superfície: no item da
+ * lista, no seletor fechado e no rótulo do botão. O agrupamento por funil ficou,
+ * mas ele sozinho não resolvia: o cabeçalho só existe DENTRO da lista aberta, e
+ * some nas duas superfícies que duram. Quem armasse a homônima do funil errado
+ * via `Gatilho: entrou em «Em andamento»` — idêntico ao certo — e o motor então
+ * saía por `pointers_armados = 0`, calado (`lib/followup/gatilho-etapa.ts`):
+ * fluxo `active` que nunca dispara, sem um sinal. É o invariante 6 do Sistema
+ * Vivo, que proíbe exatamente o `return` mudo em cima de estado configurável.
  *
  * ⚠️ O RÓTULO DIZ QUANDO, NÃO SÓ O QUÊ. O disparo depende de dois crons de um
  * minuto (o dreno do `event_log` e o tick do motor), então a tela promete
@@ -94,7 +105,10 @@ function toTriggerConfig(form: TriggerFormState): Record<string, unknown> {
   };
 }
 
-function summaryLabel(cfg: Record<string, unknown>, nomeDaEtapa: string | null): string {
+function summaryLabel(
+  cfg: Record<string, unknown>,
+  etapa: { stageName: string; pipelineName: string } | null,
+): string {
   if (cfg.kind === "silence") {
     const minutes = (cfg.params as { threshold_minutes?: number } | undefined)?.threshold_minutes;
     return `Gatilho: Silêncio${typeof minutes === "number" ? ` (${minutes} min)` : ""}`;
@@ -102,7 +116,9 @@ function summaryLabel(cfg: Record<string, unknown>, nomeDaEtapa: string | null):
   if (cfg.kind === "stage_change") {
     // Enquanto os nomes não chegaram (ou a etapa sumiu do funil) o rótulo diz o
     // TIPO em vez de vazar o uuid — que é justamente o que esta tela não faz.
-    return nomeDaEtapa ? `Gatilho: entrou em «${nomeDaEtapa}»` : "Gatilho: Etapa do funil";
+    // Com o funil junto, este rótulo passa a distinguir as homônimas: é a única
+    // superfície que o dono lê uma semana depois, sem abrir nada.
+    return etapa ? `Gatilho: entrou em «${etapa.stageName}» em ${etapa.pipelineName}` : "Gatilho: Etapa do funil";
   }
   if (cfg.kind === "manual" || cfg.kind === undefined) return "Gatilho: Manual";
   // conversation_end de dados antigos (API crua) — sem UI própria, mas mostrado
@@ -174,7 +190,7 @@ export function TriggerConfigControl({ flowId, triggerConfig }: Props) {
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <Button type="button" variant="outline" size="sm" data-testid="trigger-config-button">
-          {summaryLabel(triggerConfig, etapaSalva?.stageName ?? null)}
+          {summaryLabel(triggerConfig, etapaSalva ?? null)}
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-80" align="end" data-testid="trigger-config-panel">
@@ -209,8 +225,13 @@ export function TriggerConfigControl({ flowId, triggerConfig }: Props) {
                     <SelectGroup key={funil.id}>
                       <SelectLabel>{funil.nome}</SelectLabel>
                       {funil.etapas.map((etapa) => (
+                        // O funil vai no TEXTO do item, não só no cabeçalho do
+                        // grupo: é o texto do item que vira o nome acessível da
+                        // opção e o que o seletor mostra depois de fechado. Sem
+                        // isto, escolher entre duas «Em andamento» é adivinhação
+                        // — e escolher errado falha calado no motor.
                         <SelectItem key={etapa.stageId} value={etapa.stageId}>
-                          {etapa.stageName}
+                          {etapa.stageName} · {etapa.pipelineName}
                         </SelectItem>
                       ))}
                     </SelectGroup>

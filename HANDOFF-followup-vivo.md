@@ -629,6 +629,15 @@ chega depois não sabe se aquilo prova algo ou se foi esquecido.
 - **`evidence/gatilho-de-etapa/gatilho-etapa-03-antes-do-movimento.png`** — o estado da fila **antes** de mover
   o lead, que é o controle: sem ele, um enrollment pré-existente seria lido como
   efeito do gatilho.
+- **`evidence/gatilho-de-etapa/gatilho-etapa-04-depois-do-movimento.png`** — o quadro **depois** do arrasto,
+  com o card na etapa que arma o gatilho. O movimento é pelo teclado, que é a via
+  acessível do mesmo `onDragEnd` do mouse — não um atalho por API.
+- **`evidence/gatilho-de-etapa/gatilho-etapa-05-fila-com-o-followup.png`** — o follow-up **na fila**, nascido do
+  movimento, sem ninguém apertar nada. Esta é a tela que fecha a jornada, e
+  nenhuma execução tinha chegado até ela: a spec parava três passos antes.
+  Proveniência conferida no banco — o evento do enrollment é
+  `enrolled_by_stage_change`, então a fila não está mostrando um follow-up que
+  veio por outro caminho.
 
 ---
 
