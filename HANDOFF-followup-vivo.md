@@ -618,6 +618,22 @@ chega depois não sabe se aquilo prova algo ou se foi esquecido.
   terminando em **nós diferentes**. É a prova de que a bolinha não é enfeite: o
   roteamento por `branch_id` decide o caminho de verdade.
 
+### Gatilho de caso aberto (`evidence/gatilho-de-caso/`)
+
+- **`evidence/gatilho-de-caso/caso-01-gatilho-armado.png`** — o gatilho "Agente pediu ajuda" escolhido
+  pela tela, com o aviso em destaque para começar o fluxo por uma espera. O aviso
+  não é dica: abrir um caso não cala o agente, e sem espera o cliente receberia
+  duas mensagens ao mesmo tempo.
+- **`evidence/gatilho-de-caso/caso-02-publicado.png`** — o fluxo publicado com `kind='case_opened'`, que
+  até esta sessão o publish recusava por não haver produtor.
+- **`evidence/gatilho-de-caso/caso-03-fila-com-o-followup.png`** — o follow-up na fila, nascido do caso
+  que o agente abriu, sem ninguém apertar nada.
+- **`evidence/gatilho-de-caso/caso-04-cancelado-apos-resolver.png`** — o outro lado do laço: resolver o
+  caso deixa o follow-up **marcado como Cancelado**, e não some da fila. A
+  primeira versão da spec cobrava desaparecimento e reprovou — o mecanismo estava
+  certo e a asserção errada: linha que evapora não deixa o operador saber o que
+  houve.
+
 ### Gatilho de etapa (`evidence/gatilho-de-etapa/`)
 
 - **`evidence/gatilho-de-etapa/gatilho-etapa-01-configurado.png`** — o gatilho "Etapa do funil" armado pela
