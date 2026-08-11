@@ -218,9 +218,15 @@ test.describe("gatilho de etapa do funil", () => {
       // Escopar por grupo também funcionaria, mas provaria menos: passaria igual
       // se alguém tirasse o funil do texto do item. Pedir o nome composto é o
       // que reprova essa regressão.
+      // O prazo explícito não é cosmético: o config não define `actionTimeout`,
+      // então um clique sem prazo espera até o teto de 180s do teste e morre
+      // como "Test timeout exceeded" — apontando para a chamada seguinte, que
+      // costuma ser o teardown. Medido: com o funil removido do item, a falha
+      // vinha rotulada `apiRequestContext.post`, que não é a causa. Com prazo,
+      // ela nomeia o locator que não encontrou.
       await page
         .getByRole("option", { name: `${etapaDestino.name} · ${funil.name}`, exact: true })
-        .click();
+        .click({ timeout: ESPERA });
       await page.screenshot({
         path: path.join(ARTIFACTS_DIR, "gatilho-etapa-01-configurado.png"),
         fullPage: true,
