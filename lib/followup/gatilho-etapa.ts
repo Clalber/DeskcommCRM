@@ -18,14 +18,14 @@
  * O payload traz `from_stage_id`/`to_stage_id` e `entity_id` = id do negócio;
  * `contact_id` NÃO vem, por isso é resolvido aqui a partir do lead.
  *
- * ⚠️ LACUNA CONHECIDA, MEDIDA E FORA DESTE ARQUIVO: `lib/leads/agent-stage-sync.ts`
- * (o assistente movendo o card) escreve `crm_leads.stage_id` direto e grava a
- * atividade em `crm_lead_activities`, mas NÃO emite `lead.stage_changed` no
- * `event_log`. Movimento feito pelo assistente, portanto, não arma este gatilho
- * — nem as regras de automação, que consomem o mesmo evento. Está reportado; o
- * conserto é no emissor, não aqui (um segundo produtor lendo a atividade
- * duplicaria a verdade e dispararia dois enrollments no dia em que o primeiro
- * fosse corrigido).
+ * ⚠️ O ASSISTENTE TAMBÉM ARMA ESTE GATILHO. `lib/leads/agent-stage-sync.ts:309`
+ * emite `lead.stage_changed` no `event_log` quando a IA move o card, igual às
+ * rotas HTTP de movimento — então card movido por humano e card movido pelo
+ * assistente entram por aqui pelo mesmo caminho. (Este bloco já afirmou o
+ * contrário, e a afirmação sobreviveu ao conserto do emissor: typecheck, lint e
+ * a suíte inteira passam com um comentário falso dentro. Num arquivo em que o
+ * comentário é a doutrina, isso grava modelo mental errado — o gate não lê
+ * comentário, então quem lê é quem edita.)
  *
  * Regras do motor que este produtor RESPEITA (nenhuma é contornada):
  *   - **Um follow-up vivo por lead.** `idx_followup_enrollments_one_live` é

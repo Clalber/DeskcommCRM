@@ -108,6 +108,17 @@ test.describe("gatilho de etapa do funil", () => {
       execFileSync("npx", ["tsx", "scripts/seed-e2e-followup-agent.ts"], { stdio: "inherit" });
       creds = JSON.parse(fs.readFileSync(CREDS_PATH, "utf8")) as Creds;
     }
+    // ⚠️ A PRECONDIÇÃO DO PUBLISH É EXPLÍCITA AQUI, e não herdada de outra spec.
+    // `seed-e2e-followup-agent.ts` cria a credential SEM `validated_at` e a
+    // sessão em `'STARTING'` (ele declara isso no cabeçalho: não precisava
+    // publicar). Mas `fn_publish_ai_agent_version` EXIGE `validated_at not null`
+    // e `status = 'WORKING'`. Esta spec publica — e só passava porque o helper
+    // de OUTRA spec tinha validado as fixtures neste banco. Num ambiente fresco
+    // (o que a doutrina de QA Visual manda) o publish devolveria 422, e a
+    // mensagem acusaria o gate do agente, que não é a causa.
+    execFileSync("npx", ["tsx", "scripts/e2e-followup-journey-helpers.ts", "prepare-agent-fixtures"], {
+      stdio: "inherit",
+    });
   });
 
   test("o negócio movido no quadro para a etapa escolhida arma o follow-up sozinho", async ({ page }) => {
@@ -121,6 +132,9 @@ test.describe("gatilho de etapa do funil", () => {
     const nomeDoFluxo = `E2E Gatilho Etapa ${marca}`;
     let flowId = "";
     let agentId = "";
+    // Hoistados só para o `finally` alcançá-los na limpeza — ver o teardown no fim.
+    let funilId = "";
+    let negocioId = "";
 
     try {
       // ---- cenário: funil novo (nasce com as etapas padrão), contato e negócio ----
@@ -131,6 +145,7 @@ test.describe("gatilho de etapa do funil", () => {
       const { data: funis } = (await funilRes.json()) as { data: { pipelines: Array<{ id: string; name: string }> } };
       const funil = funis.pipelines.find((p) => p.name === `E2E Funil Gatilho ${marca}`)!;
       expect(funil, "o funil recém-criado tem que voltar na lista").toBeTruthy();
+      funilId = funil.id;
 
       const etapasRes = await page.request.get(`/api/v1/pipelines/${funil.id}/agent-mapping`);
       expect(etapasRes.status()).toBe(200);
@@ -164,6 +179,7 @@ test.describe("gatilho de etapa do funil", () => {
       });
       expect(negocioRes.status()).toBe(201);
       const { data: negocio } = (await negocioRes.json()) as { data: { id: string; title: string } };
+      negocioId = negocio.id;
 
       // ---- 1. o fluxo, e o gatilho armado PELA TELA ----
       const criaFluxo = await page.request.post("/api/v1/ai/followup-flows", { data: { name: nomeDoFluxo } });
@@ -208,6 +224,19 @@ test.describe("gatilho de etapa do funil", () => {
 
       await painel.getByTestId("trigger-config-save").click();
       await expect(botaoDoGatilho).toHaveText(`Gatilho: entrou em «${etapaDestino.name}»`, { timeout: ESPERA });
+
+      // ⚠️ O RÓTULO SOZINHO NÃO É ORÁCULO. Ele mostra só o NOME da etapa, e
+      // nomes se repetem entre funis (todo funil nasce com «Novo / Em andamento
+      // / Ganho / Perdido»). Se o clique tivesse armado a «Em andamento» de
+      // OUTRO funil, a asserção acima passaria idêntica — e o teste só quebraria
+      // 60s depois, na fila vazia, acusando o motor em vez do seletor. Quem
+      // amarra é o uuid persistido.
+      const gatilhoSalvo = await page.request.get(`/api/v1/ai/followup-flows/${flowId}`);
+      expect(
+        ((await gatilhoSalvo.json()) as { data: { trigger_config: { params?: { stage_id?: string } } } }).data
+          .trigger_config.params?.stage_id,
+        "o gatilho tem que apontar para a etapa DESTE funil, não para a homônima de outro",
+      ).toBe(etapaDestino.id);
 
       // ---- 2. publica o fluxo pela tela ----
       // O rótulo é "Fluxo publicado." e o selo vira "Ativo" — não existe selo
@@ -267,7 +296,7 @@ test.describe("gatilho de etapa do funil", () => {
         .poll(
           async () => {
             // O board, e não `GET /api/v1/leads/:id` — essa rota NÃO existe
-            // (o arquivo só expõe PATCH/DELETE), e pedi-la devolvia corpo
+            // (o arquivo só expõe PATCH), e pedi-la devolvia corpo
             // vazio: o erro que aparecia era "Unexpected end of JSON input",
             // que fala do parser e esconde que a rota não está lá.
             const r = await page.request.get(`/api/v1/pipelines/${funil.id}/board`);
@@ -291,6 +320,13 @@ test.describe("gatilho de etapa do funil", () => {
               headers: { authorization: `Bearer ${secret}` },
             });
             expect(r.status(), "o dreno tem que responder 200").toBe(200);
+            // O 200 diz que o dreno RODOU, não que os handlers deram certo:
+            // `consumed_by` só acumula quem terminou ok, e handler que estourou
+            // vira `failed` com o motivo em `last_error`. Sem cobrar isto, um
+            // erro de INSERT vira "timeout de 60s" e a mensagem acusa o motor —
+            // foi exatamente o que já custou um diagnóstico errado aqui.
+            const resumo = ((await r.json()) as { data: { failed: number; dead: number } }).data;
+            expect(resumo.failed + resumo.dead, "nenhum handler pode ter falhado no dreno").toBe(0);
             const fila = await page.request.get("/api/v1/ai/followups/queue?limit=100");
             const { data } = (await fila.json()) as {
               data: { items?: Array<{ contact: { id: string } }> } | Array<{ contact: { id: string } }>;
@@ -312,6 +348,29 @@ test.describe("gatilho de etapa do funil", () => {
         fullPage: true,
       });
     } finally {
+      // ⚠️ A SPEC APAGA O QUE A API DEIXA APAGAR — e isto não é asseio, é
+      // correção de causa. Cada execução criava um funil com «Novo / Em
+      // andamento / Ganho / Perdido», e era a PRÓPRIA spec que tornava
+      // «Em andamento» ambíguo para a execução seguinte: o clique quebrou
+      // quando o nome passou a casar 5 opções.
+      //
+      // Ordem imposta pelas FKs: `crm_leads.pipeline_id` é RESTRICT (o negócio
+      // sai primeiro), `crm_stages.pipeline_id` é CASCADE (as 4 etapas vão de
+      // graça com o funil).
+      //
+      // Ficam para trás, declarados em vez de esquecidos: o CONTATO e o FLOW
+      // POINTER não têm rota de delete (ambos só expõem GET/PATCH), e o agente
+      // some por arquivamento mole. É o mesmo resíduo que as outras specs de
+      // follow-up já deixam.
+      try {
+        if (negocioId) {
+          await page.request.post("/api/v1/leads/bulk", { data: { action: "delete", lead_ids: [negocioId] } });
+        }
+        if (funilId) await page.request.delete(`/api/v1/pipelines/${funilId}?definitivo=1`);
+      } catch {
+        // Limpeza é best-effort: o vermelho do teste tem que ser o do teste,
+        // nunca o do teardown.
+      }
       if (flowId) await page.request.post(`/api/v1/ai/followup-flows/${flowId}/disable`, { data: {} });
       if (agentId) await page.request.delete(`/api/v1/ai/agents/${agentId}`);
     }
