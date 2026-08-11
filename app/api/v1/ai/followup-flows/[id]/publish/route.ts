@@ -48,20 +48,28 @@ export async function POST(_req: NextRequest, ctx: RouteCtx): Promise<Response> 
   if (fetchErr) return fail("internal_error", fetchErr.message, 500, { requestId });
   if (!pointer) return fail("not_found", "Fluxo não encontrado.", 404, { requestId });
 
-  // Cada kind só passa daqui se tiver motor de enrollment vivo: `manual` (POST
-  // manual), `silence` (silence-sweep) e `stage_change` (gatilho-etapa, consumidor
-  // de `lead.stage_changed` no event_log). `conversation_end` continua sem
-  // produtor — publicar com ele produziria um `status='active'` que nunca enrolla
-  // ninguém, um fluxo morto e silencioso. Bloqueia no publish, não no schema.
+  // ⚠️ ALLOWLIST, NÃO DENYLIST — e a diferença não é estilo.
+  //
+  // A versão anterior recusava UM literal (`conversation_end`) e deixava passar
+  // qualquer outro. Só que `trigger_config` é `jsonb` SEM CHECK, e este publish
+  // lê a linha CRUA do banco — não passa pelo Zod do PATCH. Então uma linha
+  // escrita por SQL à mão, por um clone open-source, ou por uma versão futura do
+  // produto, publicava `status='active'` e nunca enrollava ninguém: fluxo morto
+  // com cara de vivo, que é o desfecho exato que este bloco existe para impedir.
+  //
+  // Kind entra neste conjunto só DEPOIS de ter motor de enrollment vivo:
+  // `manual` (POST manual), `silence` (silence-sweep) e `stage_change`
+  // (gatilho-etapa, consumidor de `lead.stage_changed` no `event_log`).
+  const KINDS_COM_MOTOR = new Set(["manual", "silence", "stage_change"]);
   const trigger = (pointer.trigger_config ?? { kind: "manual" }) as {
     kind?: string;
     params?: { stage_id?: string };
   };
   const triggerKind = trigger.kind ?? "manual";
-  if (triggerKind === "conversation_end") {
+  if (!KINDS_COM_MOTOR.has(triggerKind)) {
     return fail(
       "trigger_kind_not_implemented",
-      "O gatilho 'fim do atendimento' ainda não está disponível — use Etapa do funil, Silêncio ou Manual.",
+      `O gatilho «${triggerKind}» não está disponível — use Etapa do funil, Silêncio ou Manual.`,
       422,
       { requestId },
     );
