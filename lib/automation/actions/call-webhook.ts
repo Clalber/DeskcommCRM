@@ -69,7 +69,7 @@ export async function executeCallWebhook(
     try {
       assertSafeOutboundUrl(url);
       // Guard textual não resolve nome: um hostname público apontando para
-      // 169.254.169.254 (metadata da nuvem) ou para `redis`/`waha` da rede do
+      // 169.254.169.254 (metadata da nuvem) ou para os serviços internos da rede do
       // compose passava por ele. Este segundo resolve e julga o IP.
       await assertDestinoResolvidoSeguro(new URL(url).hostname);
     } catch (err) {

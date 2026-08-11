@@ -5,7 +5,7 @@
  * O guard textual (`assertSafeOutboundUrl`) declarava a própria dívida: um
  * hostname público que resolve para IP privado no momento do fetch passava
  * batido. Numa VPS de self-host isso alcança o que mora na rede do compose —
- * `redis` e `waha` sem autenticação de rede, o Postgres, e o serviço de
+ * o cache e o gateway de mensageria sem autenticação de rede, o Postgres, e o serviço de
  * metadados da nuvem em 169.254.169.254, que entrega credencial de instância.
  *
  * Quem cadastra a URL precisa ser `manager+`, então o atacante já é alguém de
