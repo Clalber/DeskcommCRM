@@ -460,5 +460,9 @@ export const GATILHOS: Record<TipoDeGatilho, string> = {
   manual: "Manual",
   silence: "Silêncio",
   stage_change: "Mudança de etapa no funil",
+  // "Caso" é a palavra que a tela de escalação já usa. O rótulo diz o FATO que
+  // dispara ("o agente pediu ajuda"), não o nome da tabela — quem lê é dono de
+  // clínica, não quem escreveu o schema.
+  case_opened: "Quando o agente pede ajuda de um humano",
   conversation_end: "Fim da conversa",
 };

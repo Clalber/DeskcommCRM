@@ -66,6 +66,13 @@ const ESCRITORES: Record<string, { agenda: "agora" | "futuro" | "nenhum"; nota: 
     agenda: "agora",
     nota: "mesmo caso do gatilho de etapa: nasce vencido, insert omite a coluna.",
   },
+  "gatilho-caso.ts": {
+    agenda: "nenhum",
+    nota:
+      "O INSERT omite a coluna (default now() do banco, igual ao gatilho de etapa). A única " +
+      "menção é `next_eval_at: null` no cancelamento por caso fechado — desagendar não é agendar, " +
+      "e `null` não tem relógio para escolher errado.",
+  },
   "reactivity.ts": {
     agenda: "agora",
     nota: "'acorde agora' quando o lead responde. É UPDATE, então default não alcança: usa fn_agora().",

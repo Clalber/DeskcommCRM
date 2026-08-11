@@ -11068,6 +11068,89 @@ revoke all     on function public.fn_agora() from public;
 revoke execute on function public.fn_agora() from anon, authenticated;
 grant  execute on function public.fn_agora() to service_role;
 
+-- ---- o caso anuncia abertura e fechamento no barramento (migration 0148) ----
+--
+-- `agent_cases` é a entidade de escalação e não emitia nada no `event_log`, então
+-- nenhum consumidor podia reagir a um caso. TRIGGER e não emissor em código porque
+-- o FECHAMENTO tem cinco escritores: caçar emissor deixa a garantia dependendo de
+-- alguém lembrar, e o próximo caminho nasce mudo. SQL puro, sem I/O externo — a
+-- proibição da doutrina é HTTP dentro da transação, e `fn_emit_conversation_routing`
+-- já usa este mesmo mecanismo. Idempotente: `create or replace` + `drop trigger if
+-- exists`, então o `update.sh` de um clone re-aplica sem efeito duplo.
+create or replace function public.fn_emit_agent_case_event()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_contact_id uuid;
+  v_tipo text;
+begin
+  v_tipo := case when tg_op = 'INSERT' then 'ai.case_opened' else 'ai.case_closed' end;
+
+  -- O contato viaja no PAYLOAD porque ele sempre existe por schema
+  -- (`agent_cases.conversation_id` é not null e `conversations.contact_id` é
+  -- not null) e porque poupa o consumidor de uma ida ao banco. O consumidor
+  -- mantém o fallback de buscar, para não confiar em convenção.
+  select c.contact_id into v_contact_id
+    from public.conversations c
+   where c.id = new.conversation_id;
+
+  perform public.emit_event(
+    v_tipo,
+    'agent_case',
+    new.id,
+    jsonb_build_object(
+      'case_id',         new.id,
+      'conversation_id', new.conversation_id,
+      'contact_id',      v_contact_id,
+      'lead_id',         new.lead_id,
+      'agent_id',        new.agent_id,
+      'source',          new.source,
+      'status',          new.status
+    ),
+    '{}'::jsonb,
+    new.organization_id   -- SEMPRE de `new`, nunca de parâmetro: é o filtro de tenant
+  );
+  return null;            -- AFTER trigger: o retorno é ignorado
+end;
+$$;
+
+alter function public.fn_emit_agent_case_event() owner to postgres;
+
+-- ⚠️ AS DUAS ORIGENS DE EXECUTE (doutrina de migrations, item 9). Tratar só uma
+-- deixa a função exposta com o gate verde: (A) o grant a PUBLIC que o Postgres
+-- dá a qualquer função ao criá-la, que `revoke from anon` não remove; (B) o
+-- `alter default privileges ... to anon` do baseline, que vale para toda função
+-- criada depois dele e que `revoke from public` não remove.
+revoke all     on function public.fn_emit_agent_case_event() from public;
+revoke execute on function public.fn_emit_agent_case_event() from anon, authenticated;
+
+-- ABERTURA: só os dois status que o código considera aberto
+-- (`OPEN_STATUSES` em lib/agent-engine/agent/human-cases.ts:75).
+drop trigger if exists trg_agent_case_opened on public.agent_cases;
+create trigger trg_agent_case_opened
+  after insert on public.agent_cases
+  for each row
+  when (new.status in ('awaiting_human','awaiting_lead'))
+  execute function public.fn_emit_agent_case_event();
+
+-- FECHAMENTO: os três status terminais. `escalated` entra porque o caso deixou
+-- de esperar o cliente — seguir cobrando quem já foi passado adiante é o mesmo
+-- defeito de cobrar quem já foi resolvido.
+drop trigger if exists trg_agent_case_closed on public.agent_cases;
+create trigger trg_agent_case_closed
+  after update of status on public.agent_cases
+  for each row
+  when (old.status is distinct from new.status
+        and new.status in ('resolved','escalated','cancelled'))
+  execute function public.fn_emit_agent_case_event();
+
+notify pgrst, 'reload schema';
+
+
+
 -- ---- VARREDURA anon: função nova nasce exposta em quem ATUALIZA (migration 0116) ----
 --
 -- ⚠️ ESTE BLOCO É, DE PROPÓSITO, O ÚLTIMO DO ARQUIVO. Apêndice novo entra ANTES

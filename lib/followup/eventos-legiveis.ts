@@ -404,6 +404,35 @@ export function descreveEvento(
         detalhe: `seguiu para ${refDoNo(texto(p.next_node_id), nos)}`,
         ...pessoa,
       };
+    // ── POR QUE ESTE CONTATO ESTÁ AQUI ────────────────────────────────────
+    // As linhas de PROVENIÊNCIA são a primeira coisa que o operador procura ao
+    // abrir um dossiê, e as três abaixo caíam no `default` — apareciam como
+    // "Passo registrado pelo motor, código: enrolled_by_stage_change". O dado
+    // existia e a tela mostrava o nome da variável.
+    case "enrolled_by_stage_change":
+      return {
+        titulo: "Começou porque o negócio entrou numa etapa",
+        detalhe: "a etapa escolhida no gatilho deste fluxo",
+        ...motor,
+      };
+    case "enrolled_by_case_opened":
+      return {
+        titulo: "Começou porque o agente pediu ajuda de um humano",
+        // `source` separa o caso que o agente DECIDIU abrir daquele que uma
+        // trava do sistema abriu sozinha. São situações diferentes para quem
+        // vai atender, e a distinção não existe em nenhum outro lugar da tela.
+        detalhe:
+          texto(p.source) === "guardrail_autofallback"
+            ? "o caso foi aberto por uma trava de segurança, não por decisão do agente"
+            : "o agente abriu um caso de atendimento",
+        ...motor,
+      };
+    case "cancelled_by_case_closed":
+      return {
+        titulo: "Cancelado porque o caso foi resolvido",
+        detalhe: "o follow-up existia para esse caso e parou junto com ele",
+        ...motor,
+      };
     default:
       return { titulo: "Passo registrado pelo motor", detalhe: `código: ${evento.event_type}`, ...motor };
   }

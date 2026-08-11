@@ -50,7 +50,7 @@ import { useEtapasDeGatilho } from "@/hooks/followup/useEtapasDeGatilho";
  * «poucos minutos», não «na hora» — prometer instantâneo seria o controle
  * mentindo sobre a própria função.
  */
-type TriggerKind = "manual" | "silence" | "stage_change";
+type TriggerKind = "manual" | "silence" | "stage_change" | "case_opened";
 
 interface TriggerFormState {
   kind: TriggerKind;
@@ -67,11 +67,24 @@ const KIND_LABEL: Record<TriggerKind, string> = {
   manual: "Manual",
   silence: "Silêncio",
   stage_change: "Etapa do funil",
+  case_opened: "Agente pediu ajuda",
 };
 
 function parseTriggerConfig(raw: Record<string, unknown>): TriggerFormState {
+  // ⚠️ RECONHECER É DIFERENTE DE ACEITAR. Esta função degradava QUALQUER kind
+  // desconhecido para "manual" — e o formulário então salvava `{kind:"manual"}`,
+  // destruindo a configuração com um toast de sucesso. Bastava o operador abrir
+  // o painel de um fluxo `case_opened` numa versão antiga do app e mexer no
+  // botão de cancelar-na-resposta. Agora só os kinds que este painel sabe EDITAR
+  // caem no formulário; o resto é preservado (ver `open` no componente).
   const kind: TriggerKind =
-    raw.kind === "silence" ? "silence" : raw.kind === "stage_change" ? "stage_change" : "manual";
+    raw.kind === "silence"
+      ? "silence"
+      : raw.kind === "stage_change"
+        ? "stage_change"
+        : raw.kind === "case_opened"
+          ? "case_opened"
+          : "manual";
   const params =
     (raw.params as { threshold_minutes?: number; segments?: string[]; stage_id?: string } | undefined) ?? {};
   return {
@@ -93,6 +106,10 @@ function toTriggerConfig(form: TriggerFormState): Record<string, unknown> {
   if (form.kind === "stage_change") {
     return { kind: "stage_change", params: { stage_id: form.stageId }, ...cancelOnReply };
   }
+
+  // Sem `params`: não há o que casar. Todo caso aberto da organização dispara
+  // todo fluxo armado assim.
+  if (form.kind === "case_opened") return { kind: "case_opened", ...cancelOnReply };
 
   const segments = form.segments
     .split(",")
@@ -120,6 +137,7 @@ function summaryLabel(
     // superfície que o dono lê uma semana depois, sem abrir nada.
     return etapa ? `Gatilho: entrou em «${etapa.stageName}» em ${etapa.pipelineName}` : "Gatilho: Etapa do funil";
   }
+  if (cfg.kind === "case_opened") return "Gatilho: quando o agente pede ajuda";
   if (cfg.kind === "manual" || cfg.kind === undefined) return "Gatilho: Manual";
   // conversation_end de dados antigos (API crua) — sem UI própria, mas mostrado
   // com transparência em vez de mentir "Manual".
@@ -205,6 +223,7 @@ export function TriggerConfigControl({ flowId, triggerConfig }: Props) {
                 <SelectItem value="manual">{KIND_LABEL.manual}</SelectItem>
                 <SelectItem value="silence">{KIND_LABEL.silence}</SelectItem>
                 <SelectItem value="stage_change">{KIND_LABEL.stage_change}</SelectItem>
+                <SelectItem value="case_opened">{KIND_LABEL.case_opened}</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -246,6 +265,28 @@ export function TriggerConfigControl({ flowId, triggerConfig }: Props) {
               <p className="text-xs text-muted-foreground">
                 O fluxo começa quando um negócio entra nesta etapa, por arrasto no quadro ou por
                 automação. A entrada na fila leva poucos minutos, não é instantânea.
+              </p>
+            </div>
+          )}
+
+          {form.kind === "case_opened" && (
+            <div className="space-y-2">
+              <p className="text-xs text-muted-foreground">
+                O fluxo começa quando o agente abre um caso — o momento em que ele diz que
+                precisa de uma pessoa. Não há o que escolher aqui: vale para qualquer caso
+                desta conta.
+              </p>
+              {/* ⚠️ ESTA FRASE NÃO É DICA, É A DEFESA PRINCIPAL. Abrir um caso não
+                  cala o agente: ele continua conversando. Um fluxo que fale no mesmo
+                  instante põe duas vozes na mesma conversa. O atraso é do FLUXO, e
+                  quem monta precisa saber disso antes de publicar. */}
+              <p className="text-xs text-muted-foreground">
+                <strong className="font-medium">Comece o fluxo por uma espera.</strong> O agente
+                continua conversando depois de abrir o caso — sem espera, o cliente recebe duas
+                mensagens ao mesmo tempo.
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Se o caso for resolvido antes, o follow-up é cancelado sozinho.
               </p>
             </div>
           )}
