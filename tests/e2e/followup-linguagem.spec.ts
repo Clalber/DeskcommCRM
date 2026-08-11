@@ -95,6 +95,22 @@ test.describe("construtor de follow-up — a tela não fala em código (W2-LINGU
 
     await login(page, c.users.manager!.email, c.password);
 
+    // ⚠️ UM MODELO DE MENSAGEM ANTES DE TUDO, e isso conserta um teste que
+    // media o ambiente. Sem NENHUM modelo na conta, `SeletorDeModelo` renderiza
+    // uma frase honesta ("Você ainda não tem modelos…") em vez do `<Select>` —
+    // e aí `#action-fallback` não existe. Localmente passava porque o banco
+    // tinha modelos deixados por outra spec; no CI, banco fresco, caía. Passar
+    // onde o dado por acaso existe é o mesmo defeito que já tirou
+    // `prova-painel-provedores` do CI uma vez.
+    //
+    // Criado ANTES de abrir o construtor de propósito: fazê-lo depois exigiria
+    // um `reload`, e o custo dele estourou o teto de 240s desta spec, que já
+    // abre seis painéis e tira seis capturas.
+    const criaModelo = await page.request.post("/api/v1/message-templates", {
+      data: { title: `E2E Linguagem ${Date.now()}`, body: "Oi {{nome}}, tudo bem?" },
+    });
+    expect(criaModelo.status(), "o seletor de modelo só existe se houver ao menos um").toBe(201);
+
     await page.goto("/app/ai/followups");
     const nomeDoFluxo = `E2E Linguagem ${Date.now()}`;
     await page.getByRole("button", { name: "Novo fluxo" }).click();

@@ -181,10 +181,21 @@ test.describe("condição com várias regras — uma bolinha por regra", () => {
     async function preencherRegra(idx: number, nome: string, valor: string): Promise<void> {
       await painel.getByLabel(`Nome da saída ${idx + 1}`).fill(nome);
       const bloco = painel.getByTestId(`condition-check-${idx}`);
+      // ⚠️ PELO RÓTULO EM PORTUGUÊS, e não pelo valor de wire. Esta spec pedia
+      // `"tag"` e `"contains"` — os nomes internos —, e ficou 7 MINUTOS clicando
+      // num item que não existe mais. Não era ambiente: as duas frentes (ramos e
+      // vocabulário) estavam verdes separadas e vermelhas juntas, porque a
+      // segunda trocou justamente esses rótulos, que é a feature que Rafael
+      // pediu. Pedir pelo nome interno num painel cujo propósito é NÃO falar em
+      // código é o teste desmentindo o produto.
+      //
+      // E `contains` não é só outro nome: ele foi TIRADO do seletor de propósito
+      // (`oferecido: false`), por ser duplicata de `eq` para etiqueta. O que o
+      // usuário escolhe é "tem a etiqueta".
       await bloco.getByRole("combobox", { name: "Campo" }).click();
-      await page.getByRole("option", { name: "tag", exact: true }).click();
+      await page.getByRole("option", { name: "Etiqueta do contato", exact: true }).click();
       await bloco.getByRole("combobox", { name: "Operador" }).click();
-      await page.getByRole("option", { name: "contains", exact: true }).click();
+      await page.getByRole("option", { name: "tem a etiqueta", exact: true }).click();
       await bloco.getByLabel("Valor").fill(valor);
       await bloco.getByLabel("Valor").blur();
     }
