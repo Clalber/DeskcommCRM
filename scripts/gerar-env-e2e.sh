@@ -88,9 +88,9 @@ SUPABASE_DB_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres
 # Placeholders: 'next start' roda em NODE_ENV=production, e lib/env.ts exige
 # estas vars em produção. As specs não exercitam os serviços por trás delas.
 # Local e CI falham pelos mesmos motivos porque leem ESTE arquivo: o workflow
-# publica o `.env.e2e` no ambiente do job em vez de redigitar os valores. A
+# publica o \`.env.e2e\` no ambiente do job em vez de redigitar os valores. A
 # versão anterior desta linha prometia "valores iguais aos do CI" e eles não
-# eram iguais (`e2e-placeholder…` aqui, `ci-placeholder…` lá) — a promessa por
+# eram iguais (\`e2e-placeholder…\` aqui, \`ci-placeholder…\` lá) — a promessa por
 # coincidência durou até a primeira divergência, que custou 8 specs em 401.
 INTERNAL_SECRET=e2e-placeholder-nao-e-segredo
 # As três abaixo são chaves de CIFRA de verdade: o app exige 32 bytes e recusa
@@ -107,6 +107,18 @@ WAHA_WEBHOOK_BASE_URL=http://127.0.0.1:3001
 UPSTASH_REDIS_REST_URL=http://127.0.0.1:3998
 UPSTASH_REDIS_REST_TOKEN=e2e-placeholder-nao-e-segredo
 NEXT_TELEMETRY_DISABLED=1
+# Telemetria DESLIGADA na suíte, e não é preferência: sem isto o SDK do browser
+# assume o DSN da comunidade (\`lib/sentry/dsn.ts\` → DEFAULT_SENTRY_DSN) e a suíte
+# MANDA DADO para o Sentry de produção do projeto — mesma família do e2e que
+# escrevia no banco de produção. E o inverso morde igual: em 2026-08-10 a
+# organização do Sentry estava suspensa por cota, o ingest respondeu 429 a tudo, o
+# SDK cuspiu erro de console em toda tela e \`olhar-telas-do-epico\` reprovou. A cor
+# do CI não pode depender do estado de cobrança de um terceiro.
+#
+# Consequência aceita: com \`off\` o cliente não inicializa, então a suíte NÃO
+# exercita a política do DSN da comunidade — quem a guarda é
+# \`tests/unit/sentry-comunidade-so-erro.test.ts\`.
+SENTRY_DSN=off
 EOF
 
 echo "==> .env.e2e gerado, apontando para $API_URL"
