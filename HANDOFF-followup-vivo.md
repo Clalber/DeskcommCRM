@@ -928,3 +928,91 @@ lint e 3639 testes verdes por cima dela.
   existe no schema é o encerramento, e nenhum dos dois foi entregue. Nunca virou
   item — falha de leitura do pedido, não decisão.
 - **A ordem dos dois cron** (§ anterior) segue sendo decisão de produção.
+
+---
+
+## 11. O gatilho de CASO ABERTO (2026-08-11)
+
+O último dos três que Rafael listou no início — "lead cai em um estágio / **caso
+aberto** / proposta feita". Etapa e proposta saíram na missão; este nunca virou
+item, e a falha foi de leitura do pedido, não decisão.
+
+### O que "caso" é neste produto
+
+`agent_cases` — o caso de ESCALAÇÃO: o instante em que o agente de IA trava e diz
+que precisa de gente. Quatro entidades disputavam a palavra (`agent_cases`,
+`conversations`, `demandas`, `agent_inbox_items`); esta é a que a tela chama de
+"Casos" e a que fica ao lado de "proposta feita" na frase do pedido.
+
+### O buraco medido
+
+A tabela não emitia **nada** no barramento. Grep por `emit_event` em
+`lib/agent-engine/`, `lib/escalacao/` e `app/api/v1/ai/cases/`: zero linhas
+(controle positivo: a mesma sonda acha `agent-stage-sync.ts:308`). Nenhum
+consumidor podia reagir a um caso.
+
+### O desenho, e a decisão que mudou por medição
+
+Meu instinto era "caso aberto **e parado há N**", porque abrir um caso **não cala
+o agente** — ele continua conversando, e um follow-up no mesmo instante poria
+duas vozes na mesma conversa. O levantamento propôs melhor: o atraso vive no **nó
+de espera do próprio fluxo** (mais flexível, coerente com os outros gatilhos), e
+o par `ai.case_closed` cancela quando o caso resolve rápido. Adotado.
+
+**O par é uma peça só.** Medido: o caso de referência fechou em **6 segundos**.
+Follow-up nascido de caso e nunca cancelado só morre por esgotamento ou resposta
+— cobraria o cliente sobre um problema já resolvido. Os dois eventos moram no
+MESMO handler, para não existir o dia em que só um está registrado.
+
+### Por que TRIGGER e não emissor em código
+
+A abertura tem um escritor; o fechamento tem **cinco**. Caçar emissor deixa a
+garantia dependendo de alguém lembrar. Com trigger a garantia é da TABELA — e de
+quebra viabiliza a prova em tela, porque **não existe rota de criação de caso**.
+
+Provado no banco antes de escrever o consumidor: INSERT emite `ai.case_opened`
+com o contato resolvido; `status→resolved` emite `ai.case_closed`; e mexer só no
+`summary` **não** emite (anti-eco).
+
+### O que veio junto
+
+- `followup_enrollments.conversation_id` ganhou o **primeiro escritor do repo**.
+  Existia desde a 0054, era lida pelo motor, e só o typegen "escrevia".
+- `EventRow.created_at` passa a viajar — sem ele não dá para distinguir evento de
+  agora de evento parado em `pending` há três dias, e o drain leva 50 por tick
+  sem janela de recência.
+- `parseTriggerConfig` degradava kind desconhecido para "manual", e o Salvar
+  gravava `{kind:"manual"}` — **destruía o gatilho com um toast de sucesso**.
+- O publish virou **allowlist**: recusava um literal e liberava todo o resto,
+  publicando `active` sem motor.
+- Três eventos de proveniência ganharam tradução no dossiê, incluindo
+  `enrolled_by_stage_change`, que aparecia como código cru desde a onda anterior.
+
+### As guardas, sabotadas
+
+| Sabotagem | Previsão | Medido |
+|---|---|---|
+| volta a denylist no publish | 1 reprova (kind desconhecido) | ✅ 1 de 29 |
+| handler registra só a ABERTURA | 1 reprova no passo 6 | ✅ 1, `resolver o caso tem que CANCELAR`, **84s** |
+
+### Duas asserções minhas que estavam erradas (o mecanismo, não)
+
+1. **"a linha some da fila"** — não some, e não deve: a fila mostra todos os
+   status com selo, porque linha que evapora não deixa o operador saber o que
+   houve. Passou a cobrar o ESTADO ("Cancelado", pela tela).
+2. **"basta recarregar a aba"** — cancelar zera o `next_eval_at` e a linha afunda
+   na ordenação; num banco com 52 enrollments ela sai da primeira página. A spec
+   passa a **buscar pelo nome**, que é o que o operador faria.
+
+### Fica aberto
+
+- **`assignee_kind` / `bot_silenced_until`** não são lidos pela cadeia de envio do
+  follow-up. `force_human` é. Atendente que assume sem levantar `force_human` não
+  é detectado — declarado no cabeçalho do consumidor, não descoberto depois.
+- **`agent_cases.followup_attempts`** continua sem escritor no repo inteiro. O
+  painel de Atrito vai reportar `insistencia_media = 0` enquanto este gatilho
+  insiste. O ponto de inserção é o nó de envio, compartilhado com os outros três
+  kinds — item próprio, não deste.
+- **`conversation_end`** segue no Zod sem motor. Sob allowlist ele agora é
+  recusado como qualquer desconhecido, então é inofensivo; a remoção é commit
+  próprio.

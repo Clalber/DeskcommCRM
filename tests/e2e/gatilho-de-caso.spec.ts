@@ -279,6 +279,12 @@ test.describe("gatilho de caso aberto", () => {
 
       await page.reload();
       await page.getByRole("tab", { name: "Fila" }).click();
+      // ⚠️ BUSCAR, E NÃO CONFIAR NA PRIMEIRA PÁGINA. Cancelar zera o
+      // `next_eval_at`, e a linha afunda na ordenação da fila — numa conta com
+      // dezenas de follow-ups ela sai da primeira página. Medido: a asserção sem
+      // busca reprovou com 0 linhas num banco com 52 enrollments, sendo que a
+      // API devolvia a linha corretamente. É também o que o operador faria.
+      await page.getByLabel("Buscar contato").fill(cenario.contactName);
       const linhaCancelada = page.getByTestId("queue-row").filter({ hasText: cenario.contactName });
       await expect(linhaCancelada).toHaveCount(1, { timeout: ESPERA });
       // Pela TELA, e em português: o operador tem que conseguir ler que aquele
