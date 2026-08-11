@@ -706,9 +706,10 @@ O maestro escreveu, no anúncio e ao Rafael, *"os seis pedidos provados em tela"
 | Jargão eliminado / UUID fora | ✅ | idem, 6 capturas |
 | Tempo adaptativo real | ✅ | `followup-tempo-adaptativo.spec.ts` |
 | Fila com dossiê e intervenção | ✅ | `followup-dossie`, 6 capturas |
-| **Gatilho por etapa do funil** | ❌ | `gatilho-de-etapa.spec.ts` **escrita e NÃO fechada** — para no clique da opção pelo nome; 3 hipóteses declaradas em `a653df12`, nenhuma escolhida |
+| **Gatilho por etapa do funil** | ✅ | `gatilho-de-etapa.spec.ts` **fechada em `eb6ab093`** — 5 capturas, a 05 (o follow-up na fila) inédita. Ver §10 |
 
-**O número honesto é: cinco provados em tela, um com a spec escrita e não fechada.**
+**O número honesto era: cinco provados em tela, um com a spec escrita e não fechada.
+Com a §10, são seis.**
 
 E o defeito da frase é exatamente o que a missão inteira caçou, agora na prosa do
 fechamento: **uma frase agregada que engloba um item que não satisfaz o predicado, e
@@ -818,3 +819,96 @@ numa só:
 A origem provável do erro do briefing: quem escreveu leu **proximidade de contexto** (a
 pessoa mexia em `silence-sweep.ts` e `api-schemas.ts`, que são vizinhos) em vez de
 histórico. Duas linhas de `git log --follow` diziam a resposta, e ninguém rodou.
+
+---
+
+## 10. O gatilho de etapa fecha (sessão de 2026-08-10, noite)
+
+**Alvo:** `eb6ab093` · árvore limpa · carga 5,2 → 9,9 ao longo da sessão.
+
+### O erro real, que a descrição anterior errava
+
+`a653df12` registrou *"'Em andamento' não é encontrada como `option`"*. **Falso.**
+Rodando, o erro é o oposto — ela é encontrada **cinco vezes**:
+
+```
+strict mode violation: getByRole('option', { name: 'Em andamento', exact: true })
+  resolved to 5 elements
+  1) … aka getByRole('group', { name: 'E2E Funil Gatilho 1786397109367' })…
+```
+
+O Playwright imprimiu o conserto na própria mensagem. Das três hipóteses
+declaradas, a do agrupamento por Radix está **refutada** (a opção tem `role=option`
+e é achável); a do acúmulo está **confirmada**.
+
+### Eram TRÊS bloqueios, não um
+
+| # | Bloqueio | Origem |
+|---|---|---|
+| 1 | Seletor ambíguo | a spec |
+| 2 | Contato lido em `data.id` num handler que devolve `{contact, action}` — o negócio nascia **sem contato** e o gatilho corretamente não enrollava | a spec |
+| 3 | Migrations `0146`/`0147` **não aplicadas** no Postgres local: sem `default now()` em `next_eval_at`, o INSERT do enrollment estourava o CHECK `followup_enrollments_relogio_coerente` | o banco |
+
+O 3 é o mais instrutivo: **código certo, banco velho.** O produtor omite
+`next_eval_at` de propósito porque o HEAD promete o default. Nenhum gate pega
+isso — `test:db` usa container efêmero do `baseline.sql`, e o Supabase local de
+longa duração ficou para trás sem avisar.
+
+### O trabalho já estava feito, e não era meu
+
+Os bloqueios 1 e 2 já estavam consertados em `4bc9f4c1`, na branch `fv/gatilhos`,
+commitado às 22:03 — **enquanto eu media**. Os funis que apareceram no banco às
+21:58 e 22:01 eram aquela sessão rodando a mesma spec. Trouxe por `cherry-pick`
+em vez de reescrever.
+
+**A lição de método:** eu atribuí dois funis novos à minha própria rodada e
+escrevi que "o retry se auto-alimenta". `retries: 0`, zero retries no log —
+inventei um mecanismo para um número que não era meu. Em máquina compartilhada,
+**inventariar quem está vivo vem antes de explicar o número**, não depois.
+
+### O defeito de produto que a auditoria achou
+
+Recebeu ordem explícita de ser cética com *"é só o teste"* — a conclusão que me
+pouparia trabalho. Voltou com **PRODUTO**, e o argumento se sustenta sem o banco
+sujo: `ETAPAS_INICIAIS` dá a todo funil «Novo / Em andamento / Ganho / Perdido»,
+então **dois funis já bastam** para quatro pares homônimos.
+
+O agrupamento por funil não desambiguava: o cabeçalho só existe dentro da lista
+aberta e some no seletor fechado e no botão persistente. Armar a homônima errada
+levava a `pointers_armados = 0` e `return` mudo — fluxo `active` que nunca
+dispara, sem sinal. Invariante 6 do Sistema Vivo. Corrigido em `b688ad22`.
+
+### As guardas, sabotadas uma a uma
+
+| Sabotagem | Previsão | Medido |
+|---|---|---|
+| `.first()` no lugar do escopo | 1 reprova, no oráculo do `stage_id`, rápida | ✅ 1, `a etapa DESTE funil…`, **14s** |
+| emissor de produção quebrado | 1 reprova, no passo 5, ~60s | ✅ 1, `nascer do movimento de etapa`, **78s** |
+| funil fora do texto do item | 1 reprova, no clique | ⚠️ 1, mas rotulada `apiRequestContext.post` aos **180s** |
+
+A terceira reprovou **pelo lugar errado**: sem `actionTimeout` no config, o
+clique espera o teto do teste e a falha sai colada na chamada seguinte — o
+teardown. Consertado em `eb6ab093`; refeita, a mensagem virou
+`locator.click: Timeout 60000ms exceeded` em 73s.
+
+**Prever a mensagem, e não só a contagem, é o que pegou isso.** Uma sabotagem que
+reprova "1 de 1" e passa batido teria deixado a guarda com vermelho enganoso.
+
+### Erro meu, medido
+
+Reportei "29 funis" e "24 etapas homônimas". Números corretos do **banco inteiro**
+(24 organizações) — e irrelevantes: o seletor mostra só a org do usuário, por RLS.
+No escopo certo eram 10 e 6. Contei o banco e apresentei como se descrevesse a
+tela. **Régua errada, não número errado** — e o "24" era só a contagem de orgs.
+
+E o comentário em `lib/followup/gatilho-etapa.ts:21-28` afirmava que o assistente
+**não** emite `lead.stage_changed`. Ele emite desde o conserto do emissor, nesta
+mesma missão: **a afirmação falsa sobreviveu ao próprio conserto**, com typecheck,
+lint e 3639 testes verdes por cima dela.
+
+### Fica aberto
+
+- **`conversation_end`** continua sem produtor. Rafael pediu "caso aberto"; o que
+  existe no schema é o encerramento, e nenhum dos dois foi entregue. Nunca virou
+  item — falha de leitura do pedido, não decisão.
+- **A ordem dos dois cron** (§ anterior) segue sendo decisão de produção.
