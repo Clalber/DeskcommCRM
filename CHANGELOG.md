@@ -8,6 +8,51 @@ Se você roda o DeskcommCRM numa VPS, **leia a seção da versão para a qual es
 
 ## [Não lançado]
 
+## [1.2.1] — 2026-08-12
+
+**Versão de segurança. Se você roda o DeskcommCRM numa VPS, atualize.**
+
+Um usuário da comunidade auditou o código e mandou um relatório. Parte do que ele apontou já
+tinha sido corrigida nas versões seguintes à que ele analisou — mas **seis** problemas estavam
+de pé, e um deles deixava dados de uma empresa visíveis para outra. Todos foram corrigidos,
+cada um com um teste automático que impede o problema de voltar.
+
+### Corrigido
+
+- **Uma empresa conseguia ler a base de conhecimento de outra, e escrever no histórico dela.**
+  Duas funções internas aceitavam o identificador da empresa como se fosse confiável, sem
+  conferir se quem pediu era mesmo de lá. O isolamento entre empresas estava de pé em todo o
+  resto — o furo era só nessas duas portas, e elas agora conferem.
+- **Quem tinha permissão de apenas visualizar conseguia mudar configurações importantes.** Um
+  usuário "visualizador" podia reescrever as instruções do agente de IA (o texto que ele fala
+  com o seu cliente), desligar o canal de WhatsApp, mexer no limite de gastos e apagar a chave
+  do provedor de IA — bastava falar direto com o banco de dados, sem passar pelas telas. Agora
+  essas mudanças exigem administrador, como as telas já exigiam.
+- **A verificação em duas etapas do administrador valia só na tela.** Quem tinha a senha de um
+  administrador, mas não o segundo fator, ficava barrado na interface e mesmo assim alcançava
+  as funções sensíveis por fora dela — criar chave de API, convidar gente para a equipe, pedir
+  exportação de dados. Agora o servidor confere o segundo fator em todas elas.
+- **Link de login podia levar para um site estranho.** Um endereço preparado por terceiros
+  fazia você digitar a senha no site certo e, logo depois de entrar, ser jogado para outro
+  lugar — o momento em que se confia mais na próxima tela.
+- **Envio de arquivo na conversa não conferia permissão.** Era a única ação de escrita da
+  conversa sem essa checagem; um usuário "visualizador" podia enviar arquivos de até 50 MB.
+- **Automação de webhook podia alcançar a rede interna do servidor.** A checagem olhava só o
+  texto do endereço; um domínio preparado para apontar "para dentro" passava, e alcançava
+  serviços internos e a área de credenciais do provedor de nuvem. Agora o endereço é resolvido
+  de verdade antes de qualquer envio.
+
+### ⚠️ Requer atenção
+
+- **Administradores vão precisar entrar de novo, com o código do aplicativo.** Se você já tem a
+  verificação em duas etapas cadastrada e está com a sessão aberta, as ações de administrador
+  passam a pedir o segundo fator. Sair e entrar novamente resolve. Quem ainda **não** cadastrou
+  o segundo fator não é afetado e continua conseguindo cadastrá-lo normalmente.
+- **Usuários "visualizador" e "gerente" perdem a escrita em configuração de IA e canais.** Se
+  alguém do seu time mexia nessas telas sem ser administrador, promova a pessoa a
+  administrador antes de atualizar — ou ela vai encontrar as ações bloqueadas.
+- **Nenhuma ação manual no banco é necessária.** O `update.sh` aplica tudo sozinho.
+
 ## [1.2.0] — 2026-08-11
 
 A maior versão até aqui: **126 novidades e 205 correções** desde a 1.1.0 (contadas por commit).
@@ -240,6 +285,8 @@ Primeira versão marcada do DeskcommCRM. O projeto vinha sendo desenvolvido publ
 
 - **Node 22 é obrigatório para desenvolvimento.** A suíte de invariantes instancia o cliente do Supabase, que exige o `WebSocket` global — nativo apenas a partir do Node 22. Isso não afeta quem apenas hospeda: a VPS roda a imagem pronta.
 
-[Não lançado]: https://github.com/melgarafael/DeskcommCRM/compare/v1.1.0...HEAD
+[Não lançado]: https://github.com/melgarafael/DeskcommCRM/compare/v1.2.1...HEAD
+[1.2.1]: https://github.com/melgarafael/DeskcommCRM/compare/v1.2.0...v1.2.1
+[1.2.0]: https://github.com/melgarafael/DeskcommCRM/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/melgarafael/DeskcommCRM/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/melgarafael/DeskcommCRM/releases/tag/v1.0.0
