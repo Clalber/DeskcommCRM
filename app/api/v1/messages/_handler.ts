@@ -19,6 +19,7 @@ import {
   type ChannelSessionRef,
 } from "@/lib/channels";
 import { ARCHIVED_AT, queryTolerantToMissingArchived } from "@/lib/channels/archived";
+import { conferirDefinicao } from "@/lib/channels/conferir-definicao";
 import { isMediaPathOwnedBy } from "@/lib/messaging/media/upload-validation";
 import type { ListMessagesQuery, SendMessageInput } from "@/lib/schemas";
 import { sendTemplateForSession } from "@/lib/channels/meta/send-template-for-session";
@@ -104,7 +105,7 @@ async function removerEcoDoProprioEnvio(
 }
 
 const MSG_COLS =
-  "id, organization_id, conversation_id, channel_session_id, contact_id, external_id, type, direction, status, ack, error_code, error_message, body, media_url, media_mime, media_size_bytes, media_storage_path, sent_via, sent_by_user_id, sent_at, delivered_at, read_at, metadata, created_at";
+  "id, organization_id, conversation_id, channel_session_id, contact_id, external_id, type, direction, status, ack, error_code, error_message, body, media_url, media_mime, media_size_bytes, media_storage_path, sent_via, sent_by_user_id, sent_at, delivered_at, read_at, metadata, edited_at, revoked_at, created_at";
 
 function actorAuditPayload(actor: Actor): {
   actorUserId: string | null;
@@ -436,13 +437,49 @@ export async function sendMessageHandler(
         // texto/mídia) porque o payload da plataforma é outro — e porque o envio
         // exige checar o contrato ANTES de sair (bind vigente, valores completos),
         // coisa que só faz sentido para template.
-        externalId = await sendTemplateForSession(supabase, {
+        //
+        // Mas quem SABE falar template é o adapter, quando sabe. Antes disto a
+        // linha de baixo era o único caminho, e ela lê `META_PHONE_NUMBER_ID` e
+        // `META_SYSTEM_USER_TOKEN` do ambiente: template de QUALQUER canal saía
+        // pelo número da Meta, com o token da Meta. Para o canal intermediado
+        // isso não é falha de envio — é a mensagem saindo pelo número ERRADO
+        // para o cliente certo, e ninguém percebe porque ela sai.
+        // ─── Pré-voo ANTES de escolher transporte ──────────────────────────
+        //
+        // Vale para os dois caminhos, e é por isso que está aqui e não dentro
+        // de um deles: a definição aprovada é contrato da plataforma, não
+        // característica do transporte. O caminho de baixo já conferia; o
+        // adapter postava direto, e um parâmetro a mais virava `400` cru em vez
+        // de "falta o valor {{2}}".
+        await conferirDefinicao(supabase, {
           organizationId: ctx.organization_id,
-          to: chatId,
+          // A conexão dona da definição: dois números têm modelos diferentes, e
+          // conferir a do número errado aprovaria um envio que a plataforma
+          // recusa. `null` só em base anterior à 0144.
+          channelSessionId: c.channel_session_id ?? null,
           name: input.template_name ?? "",
           language: input.template_language ?? "",
           values: input.template_values ?? {},
         });
+
+        externalId = adapter.sendTemplate
+          ? (
+              await adapter.sendTemplate({
+                sessionRef: resolveSessionRef(c.channel_sessions),
+                to: chatId,
+                providerConversationId: c.provider_conversation_id,
+                name: input.template_name ?? "",
+                language: input.template_language ?? "",
+                values: input.template_values ?? {},
+              })
+            ).externalId
+          : await sendTemplateForSession(supabase, {
+              organizationId: ctx.organization_id,
+              to: chatId,
+              name: input.template_name ?? "",
+              language: input.template_language ?? "",
+              values: input.template_values ?? {},
+            });
       } else if (input.media_storage_path) {
         // Storage-first: signed URL curta só pro canal baixar (nunca base64).
         const admin = createAdminClient();
@@ -505,6 +542,31 @@ export async function sendMessageHandler(
       const code = msg.startsWith("storage_sign_failed")
         ? "storage_sign_failed"
         : adapter.codes.sendFailed;
+
+      // Falta de CREDENCIAL não é falha desta mensagem: é canal ainda não
+      // conectado, e o desfecho certo é `queued` — a mesma coisa que o ramo de
+      // `!isConfigured()` acima grava. Marcar `failed` mandaria o follow-up
+      // desistir de uma mensagem que sai sozinha assim que alguém conectar.
+      //
+      // Este ramo existe porque nem todo canal consegue responder `isConfigured`
+      // com honestidade: quando a credencial mora na SESSÃO (conta conectada
+      // pela tela) e não no ambiente, um método SÍNCRONO não tem como saber, e
+      // responder "não configurado" travaria em `queued` um canal que funciona.
+      // Quem sabe é `send()`, que pode consultar o banco — então ele lança, e a
+      // tradução do desfecho acontece aqui.
+      if (msg.startsWith(adapter.codes.notConfigured)) {
+        const { data: emFila } = await supabase
+          .from("messages")
+          .update({
+            metadata: { ...(message.metadata ?? {}), queued_reason: adapter.codes.notConfigured },
+          })
+          .eq("id", message.id)
+          .select(MSG_COLS)
+          .maybeSingle();
+        if (emFila) message = emFila as unknown as Message;
+        return message;
+      }
+
       const { data: updated } = await supabase
         .from("messages")
         .update({

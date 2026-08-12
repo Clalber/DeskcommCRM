@@ -27,8 +27,28 @@ export interface ContactSummary {
   force_human?: boolean | null;
 }
 
+/**
+ * O número POR ONDE a conversa entrou.
+ *
+ * Não é o número do cliente — é o da empresa. Com um canal só a distinção não
+ * existe; com dois, saber por qual linha a pessoa escreveu é o que decide o tom
+ * da resposta e qual número ela vai ver respondendo.
+ */
+export interface ChannelSummary {
+  phone_number: string | null;
+  display_name: string | null;
+  /**
+   * Quem impõe a regra deste número. A tela NÃO interpreta este valor — ela o
+   * entrega a `estadoDaJanela` (lib/channels), que decide se há relógio a
+   * mostrar. Ler o campo não é nomear o provider; o `if (provider === ...)` é
+   * que a doutrina proíbe, e ele mora atrás do seam.
+   */
+  provider: string | null;
+}
+
 export type ConversationWithContact = Conversation & {
   contacts?: ContactSummary | null;
+  channel_sessions?: ChannelSummary | null;
 };
 
 export interface ConversationsFilters {

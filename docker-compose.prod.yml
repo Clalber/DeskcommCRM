@@ -102,7 +102,7 @@ services:
       # hash. Sem o prefixo ele compara literal → o app (que manda o plaintext) toma 401.
       WAHA_API_KEY: "sha512:${WAHA_API_KEY_SHA512}"
       WHATSAPP_HOOK_URL: ${WAHA_WEBHOOK_BASE_URL}/api/v1/webhooks/waha
-      WHATSAPP_HOOK_EVENTS: "message,message.any,message.ack,session.status,state.change"
+      WHATSAPP_HOOK_EVENTS: "message,message.any,message.ack,message.edited,message.revoked,session.status,state.change"
       WHATSAPP_HOOK_HMAC: ${WAHA_HMAC_SECRET}
       # WAHA lê WHATSAPP_DEFAULT_ENGINE (NÃO WAHA_DEFAULT_ENGINE — o nome errado
       # fazia cair no default WEBJS, engine com browser que trava/corrompe a sessão
@@ -167,10 +167,12 @@ services:
         */5 * * * * curl -fsS -m25 -H "Authorization: Bearer $$INTERNAL_SECRET" "http://app:3000/api/v1/cron/storage-redaction?limit=50" >/dev/null 2>&1
         */5 * * * * curl -fsS -m25 -H "Authorization: Bearer $$INTERNAL_SECRET" http://app:3000/api/v1/cron/snooze-watcher >/dev/null 2>&1
         */5 * * * * curl -fsS -m25 -H "Authorization: Bearer $$INTERNAL_SECRET" http://app:3000/api/v1/cron/attendant-heartbeat >/dev/null 2>&1
+        */5 * * * * curl -fsS -m45 -H "Authorization: Bearer $$INTERNAL_SECRET" http://app:3000/api/v1/cron/channel-health >/dev/null 2>&1
         */15 * * * * curl -fsS -m60 -H "Authorization: Bearer $$INTERNAL_SECRET" http://app:3000/api/v1/cron/risk-watcher >/dev/null 2>&1
         0 12 * * * curl -fsS -m60 -H "Authorization: Bearer $$INTERNAL_SECRET" http://app:3000/api/v1/cron/lgpd-sla-watcher >/dev/null 2>&1
         30 3 * * * curl -fsS -m120 -H "Authorization: Bearer $$INTERNAL_SECRET" http://app:3000/api/v1/cron/kb-conversations-batch >/dev/null 2>&1
         */10 * * * * curl -fsS -m60 -H "Authorization: Bearer $$INTERNAL_SECRET" http://app:3000/api/v1/cron/contact-avatars >/dev/null 2>&1
+        */30 * * * * curl -fsS -m60 -H "Authorization: Bearer $$INTERNAL_SECRET" http://app:3000/api/v1/cron/contact-phones >/dev/null 2>&1
         15 4 * * * curl -fsS -m60 -H "Authorization: Bearer $$INTERNAL_SECRET" http://app:3000/api/v1/cron/sync-model-catalog >/dev/null 2>&1
         17 * * * * curl -fsS -m60 -H "Authorization: Bearer $$INTERNAL_SECRET" http://app:3000/api/v1/cron/contact-proposals-watcher >/dev/null 2>&1
         EOF

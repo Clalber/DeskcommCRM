@@ -280,7 +280,9 @@ begin
     jsonb_build_object(
       'message_id', new.id, 'conversation_id', new.conversation_id,
       'contact_id', new.contact_id, 'direction', new.direction,
-      'type', new.type, 'status', new.status, 'external_id', new.external_id
+      'type', new.type, 'status', new.status, 'external_id', new.external_id,
+      'channel_session_id', new.channel_session_id,
+      'body_preview', "left"(new.body, 280)
     )
   );
   return new;
@@ -8494,6 +8496,27 @@ alter table public.channel_sessions
 comment on column public.channel_sessions.zernio_token_encrypted is
   'API key do intermediário, cifrada por fn_encrypt_oauth. Por SESSÃO (não por instalação) — mesma decisão da 0087 para o canal oficial.';
 
+-- ---- carimbo do lookup de telefone (migration 0119) ----
+-- Espelho idempotente da 0119. Racional completo no arquivo da migration.
+--
+-- O canal identifica quem escreve por id opaco, e a tradução para telefone é
+-- povoada por ATIVIDADE — hoje não sabe, semana que vem talvez. Sem carimbar a
+-- tentativa, a varredura reprocessaria sempre os mesmos primeiros N e os do fim
+-- da fila nunca seriam perguntados.
+--
+-- NULLABLE de propósito: NULL = nunca perguntado; com valor e telefone ainda
+-- nulo = o canal não sabia na ocasião. Um `not null default now()` colapsaria
+-- os dois e faria contato novo nascer como "já tentado".
+alter table public.contacts
+  add column if not exists phone_lookup_at timestamptz;
+
+comment on column public.contacts.phone_lookup_at is
+  'Última vez que se PERGUNTOU ao canal o telefone por trás da identidade opaca. NULL = nunca perguntado. Com valor e phone_number ainda null = o canal não sabia na ocasião.';
+
+create index if not exists idx_contacts_phone_lookup_pendente
+  on public.contacts (organization_id, phone_lookup_at nulls first)
+  where phone_number is null;
+
 comment on column public.channel_sessions.provider is
   'Canal desta sessão. Vocabulário espelhado em lib/channels/types.ts → ChannelProvider (cobrado por tests/invariants/vocabulario-banco-x-typescript.test.ts).';
 
@@ -9110,6 +9133,8 @@ alter table public.agent_inbox_items
     -- devolvia string vazia EM SILÊNCIO: nenhum erro, nenhum log, e o operador
     -- concluindo que o agente ignorou o cliente de propósito.
     'midia_nao_lida',
+    'channel_template_review',
+    'channel_number_alert',
     -- (migration 0111, spec 16 §3.2) O papel Operador declara promessa em aberto:
     -- o assistente prometeu algo ao cliente e o cumprimento não foi registrado.
     -- A invariante sagrada da spec é "nenhuma promessa deixa de ser cumprida", e
@@ -11575,7 +11600,51 @@ grant execute on function public.fn_encrypt_oauth(text) to service_role;
 grant execute on function public.fn_lgpd_cascade_redact_contact(uuid, uuid, uuid) to service_role;
 grant execute on function public.fn_update_budget_consumption() to service_role;
 
+-- ---- mensagem editada e mensagem apagada (migration 0153) ----
+-- O cliente edita ou apaga no aplicativo e o CRM seguia mostrando a versão
+-- velha — sem erro em lugar nenhum. Combinar preço ou endereço a partir de um
+-- texto que o cliente já corrigiu gera um erro que ninguém rastreia depois.
+-- Duas colunas e não um estado: editada continua valendo (o texto novo conta),
+-- apagada deixou de valer (o texto não pode mais aparecer). Timestamp e não
+-- booleano porque a pergunta seguinte é "quando?". A linha apagada NÃO some: a
+-- remoção levaria junto o contexto das vizinhas e o histórico de quem atendeu.
+alter table public.messages add column if not exists edited_at timestamptz;
+alter table public.messages add column if not exists revoked_at timestamptz;
 
+-- ---- definição sabe de qual conexão é (migration 0154) ----
+-- `meta_templates` nasceu para um canal só: a única marca de origem é
+-- `waba_id`, o id da conta na plataforma da Meta. Um segundo canal não tem onde
+-- entrar sem mentir sobre o que aquele campo significa — e o endpoint, que
+-- resolve a sessão por `metaSessionForOrg`, devolvia lista VAZIA numa
+-- instalação que só tem o canal intermediado. A conexão, e não um `provider`:
+-- dois números do mesmo provider têm definições diferentes. `set null` no
+-- delete porque apagar a conexão não pode apagar o registro do que a
+-- plataforma aprovou — ela continua existindo lá.
+alter table public.meta_templates
+  add column if not exists channel_session_id uuid
+    references public.channel_sessions(id) on delete set null;
+create index if not exists meta_templates_sessao_idx
+  on public.meta_templates (channel_session_id, status)
+  where channel_session_id is not null;
 
+-- ---- o arquivo do webhook aceita os canais novos (migration 0151) ----
+-- `webhook_events_log` guarda o corpo CRU do que o provedor mandou — é o único
+-- lugar onde ele fica. O CHECK do dump conhecia três provedores e nenhum dos
+-- canais do seam, então a rota genérica de canal não tinha como gravar sem
+-- mentir sobre a origem ('generic' para um canal que se sabe qual é).
+--
+-- Este é o BLOCO ÚNICO desta constraint (regra da issue #159): canal novo edita
+-- ESTA lista, e não acrescenta um segundo bloco — dois blocos fazem o
+-- `update.sh` de um clone com dados falhar no primeiro e deixar a tabela sem
+-- constraint entre o `drop` e o `add` que funciona.
+--
+-- Alargamento puro: um CHECK que aceita MAIS valores não pode ser violado por
+-- linha que já passava pelo antigo, então não precisa de backfill antes.
+alter table public.webhook_events_log
+  drop constraint if exists webhook_events_log_provider_check;
+alter table public.webhook_events_log
+  add constraint webhook_events_log_provider_check check (provider in (
+    'waha', 'nuvemshop', 'generic', 'meta_cloud', 'zernio'
+  ));
 
 notify pgrst, 'reload schema';
