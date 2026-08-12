@@ -88,6 +88,7 @@ Detalham schema SQL e payloads exatos. **Consulte antes de modelar qualquer cois
 | [`research/reference-synthesis.md`](research/reference-synthesis.md) | Arquitetura herdada da referência WAHA |
 | [`research/followup-reference-mining.md`](research/followup-reference-mining.md) | Pesquisa do motor de follow-up |
 | [`threat-model.md`](threat-model.md) | **Superfície de ataque real do self-host** |
+| [`alertas-de-seguranca-triados.md`](alertas-de-seguranca-triados.md) | Razão de cada alerta **descartado** no painel do GitHub, e o que a varredura por classe achou que o scanner não vê |
 
 ## 5. Design system
 
