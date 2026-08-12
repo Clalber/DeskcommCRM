@@ -21,6 +21,25 @@ on:
   push:
     branches: [main]
 
+# O GITHUB_TOKEN deste job serve a `actions/checkout` (clone) e a
+# `actions/setup-node` (manifest de `actions/node-versions`, repo público).
+#
+# `supabase/setup-cli@v3` merece a frase inteira, porque a resposta curta está
+# errada: ele é `using: composite` e aninha `oven-sh/setup-bun`, cujo input
+# `token` tem default `${{ github.token }}` — o token É repassado. Com o
+# `.bun-version` do setup-cli fixo em semver exato, o caminho que gasta o token
+# (api.github.com/repos/oven-sh/bun/git/refs/tags) não é tomado; se um dia for, é
+# leitura de repo público e `contents: read` basta. Grep no `action.yml` de topo
+# não enumera consumidor de token quando a action é composite: o consumidor mora
+# um nível abaixo.
+#
+# `actions/upload-artifact@v7` não tem input de token: publica pela Actions
+# Results API, com ACTIONS_RUNTIME_TOKEN + ACTIONS_RESULTS_URL. Nenhum passo
+# `run:` enxerga o GITHUB_TOKEN — ele só entra no ambiente via
+# `secrets.GITHUB_TOKEN`, ausente aqui.
+permissions:
+  contents: read
+
 jobs:
   e2e:
     runs-on: ubuntu-latest
