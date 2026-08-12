@@ -11250,7 +11250,7 @@ grant execute on function public.fn_encrypt_oauth(text) to service_role;
 grant execute on function public.fn_lgpd_cascade_redact_contact(uuid, uuid, uuid) to service_role;
 grant execute on function public.fn_update_budget_consumption() to service_role;
 
--- ---- mensagem editada e mensagem apagada (migration 0149) ----
+-- ---- mensagem editada e mensagem apagada (migration 0153) ----
 -- O cliente edita ou apaga no aplicativo e o CRM seguia mostrando a versão
 -- velha — sem erro em lugar nenhum. Combinar preço ou endereço a partir de um
 -- texto que o cliente já corrigiu gera um erro que ninguém rastreia depois.
@@ -11261,7 +11261,7 @@ grant execute on function public.fn_update_budget_consumption() to service_role;
 alter table public.messages add column if not exists edited_at timestamptz;
 alter table public.messages add column if not exists revoked_at timestamptz;
 
--- ---- definição sabe de qual conexão é (migration 0150) ----
+-- ---- definição sabe de qual conexão é (migration 0154) ----
 -- `meta_templates` nasceu para um canal só: a única marca de origem é
 -- `waba_id`, o id da conta na plataforma da Meta. Um segundo canal não tem onde
 -- entrar sem mentir sobre o que aquele campo significa — e o endpoint, que
