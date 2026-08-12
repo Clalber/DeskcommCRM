@@ -51,7 +51,7 @@ let atual: typeof misconf | typeof morto = misconf;
 
 vi.mock("@upstash/redis", () => ({
   Redis: class {
-    get = (...a: unknown[]) => atual.get(...(a as [])); // eslint-disable-line @typescript-eslint/no-explicit-any
+    get = (...a: unknown[]) => atual.get(...(a as []));
     incr = (...a: unknown[]) => atual.incr(...(a as []));
     expire = (...a: unknown[]) => atual.expire(...(a as []));
   },
