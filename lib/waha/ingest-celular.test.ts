@@ -167,12 +167,37 @@ describe("mensagem digitada no celular do dono (fromMe)", () => {
     expect(messages).toHaveLength(1);
   });
 
-  it("o descarte era silencioso porque chatId vazio cai na classificação de grupo", async () => {
-    // `p.to ?? ""` produzia "" e `parseChatId("")` não casa nenhum sufixo
-    // conhecido → devolve `group`. O `return` executado era o do filtro de
-    // grupo, uma linha ANTES da guarda `if (!p.id || !chatId)`. Mesmo desfecho,
-    // e é por isso que não havia sequer um log: grupo é descarte esperado.
-    expect(parseChatId("")).toEqual({ kind: "group", phone: null, lid: null });
+  it("o descarte era silencioso porque chatId vazio caía na classificação de grupo", async () => {
+    // COMO ERA, e por que o defeito não deixava rastro: `p.to ?? ""` produzia ""
+    // e `parseChatId("")` não casava nenhum sufixo conhecido → devolvia `group`.
+    // O `return` executado era o do filtro de grupo, uma linha ANTES da guarda
+    // que a descrição do PR apontava. Grupo é descarte esperado, então ninguém
+    // jamais pensaria em instrumentar ali — daí o silêncio total.
+    //
+    // COMO É AGORA: string vazia é `unknown`, não `group`. A ausência de dado
+    // parou de se disfarçar de decisão de produto, e o descarte emite
+    // `whatsapp.chat_id_not_recognized`. Ver ingest-chat-desconhecido.test.ts.
+    expect(parseChatId("")).toEqual({ kind: "unknown", phone: null, lid: null });
+  });
+
+  it("pushName de mensagem fromMe é do OPERADOR — nunca vira nome do contato", async () => {
+    // Sintoma real: dono manda msg do celular p/ cliente novo e o contato nasce
+    // na lista como "connectsmartphones" (o nome de WhatsApp da LOJA). Em
+    // payload fromMe, _data.pushName identifica o remetente — o operador — e
+    // não o destinatário; e o coalesce do fn_upsert_wa_contact congela o nome
+    // errado para sempre.
+    const { admin, rpcs } = bancoDeMentira();
+
+    await dispatchWahaEvent(
+      admin as never,
+      SESSION as never,
+      envelope({ ...CELULAR_NOWEB, _data: { pushName: "connectsmartphones" } }),
+      "req-1",
+    );
+
+    const contato = rpcs.find((c) => c.fn === "fn_upsert_wa_contact");
+    expect(contato, "o contato do cliente nem foi criado").toBeDefined();
+    expect(contato!.args.p_notify, "outbound batizou o cliente com o nome do operador").toBeNull();
   });
 });
 

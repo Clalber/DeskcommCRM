@@ -120,17 +120,19 @@ Estes são achados de código/config verificados nesta auditoria, não relatos.
 
 ### 4.1 Os E2E quase não rodam no CI 🟠 — parcialmente resolvido em 2026-07-30
 
-> **Atualização (2026-08-03):** `e2e.yml` roda **10 das 20 specs** (`smoke`, `auth`,
-> `error-pages`) contra Supabase local com o `baseline.sql` aplicado. Não-obrigatório ainda.
-> A primeira execução real já pagou o job: achou a página `/500`, que `public-paths.ts`
-> declarava pública e **nunca havia sido criada**. As 16 restantes seguem sem gate — o texto
-> abaixo continua valendo para elas.
+> **Atualização (2026-08-05, issue #63):** `e2e.yml` roda **28 das 32 specs** contra Supabase
+> local com o `baseline.sql` aplicado. Não-obrigatório ainda. A primeira execução real já
+> pagou o job: achou a página `/500`, que `public-paths.ts` declarava pública e **nunca havia
+> sido criada**. A rodada de 2026-08-05 pagou de novo: as 12 specs do épico IA 360 nunca
+> tinham entrado no gate, e ao rodá-las apareceu um defeito de produto real
+> (`capacidades-do-agente` — o teto de 20 capacidades desabilita a crítica que o desenho manda
+> marcar à mão). As 4 restantes seguem sem gate — o texto abaixo continua valendo para elas.
 
 O gate de isolamento RLS **roda** — `ci.yml` tem o job `invariants` chamando `pnpm test:db`,
 que sobe `pgvector/pgvector:pg17`, aplica `baseline.sql` em modo install e update, e roda os
 56 arquivos de `tests/invariants/`. Esse buraco está fechado.
 
-O que continua fora: **10 das 20 specs Playwright**. A `vps-webhook-outbound-ssrf.spec.ts`,
+O que continua fora: **4 das 32 specs Playwright**. A `vps-webhook-outbound-ssrf.spec.ts`,
 única prova automatizada do guard de SSRF, **passou a rodar** no `e2e.yml`. Mas a
 `vps-fresh-onboarding.spec.ts` — a jornada que a doutrina de QA Visual classifica como o
 caminho mais crítico do produto — continua fora, porque exige WAHA + Redis + Resend +
@@ -228,6 +230,15 @@ consequência natural de trabalho em branches paralelas, mas ilustra a regra:
 5. **`lib/agent-engine/agent/inbound-turn.ts` com 1789 linhas** — 2,4× o segundo maior arquivo
    de lógica (`AgentForm.tsx`, 746), e é o hot path do produto. Cresceu ~200 linhas desde a
    primeira medição desta auditoria.
+6. **NENHUM cron roda no deploy Vercel.** Os 14 crons do produto são agendados exclusivamente
+   pelo `crond` do serviço `scheduler` do `docker-compose.prod.yml` — e **não existe
+   `vercel.json` neste repo** (medido: `ls vercel.json` → ausente). Como a Vercel é a produção
+   real de quem mantém (ver `project_dois_ambientes_de_producao`), tudo que depende de
+   agendamento está **dormente lá**: `event-log-drain`, `agent-dispatcher`, `followup-flow-worker`,
+   `recover-stuck-messages`, `sync-model-catalog`, `contact-proposals-watcher`, etc. O sintoma
+   nunca é um erro — a tela só fica velha, a fila só não anda. Está escrito aqui porque cada
+   frente nova repetia a suposição de que "o cron roda"; a decisão (portar para Vercel Cron ou
+   assumir que a Vercel é vitrine e a VPS é a operação) é do dono do repo.
 
 ---
 

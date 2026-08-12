@@ -22,7 +22,6 @@ import {
   gatewayHeaders,
   isAiGatewayConfigured,
   isEmbeddingProviderConfigured,
-  resolveLanguageModel,
 } from "@/lib/ai/gateway";
 import { embedText } from "@/lib/ai/embed";
 import { computeCost } from "@/lib/ai/cost";
@@ -40,6 +39,7 @@ import type {
   SkipDecision,
 } from "@/lib/ai/types";
 import type { EventRow } from "@/lib/event-log/dispatcher";
+import { resolverModeloDoPonto } from "@/lib/ai/gateway-binding";
 import { logger } from "@/lib/logger";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -141,8 +141,14 @@ export async function processMessageReceived(row: EventRow): Promise<ProcessResu
   //
   // Skip, não erro: modelo que nenhuma chave desta instalação atende é config,
   // não falha transitória — retentar só repetiria o loop que este PR mata.
-  const model = resolveLanguageModel(ctx.agent.model);
-  if (!model) {
+  // O painel de provedores manda aqui também — ver lib/ai/gateway-binding.ts.
+  const resolvido = await resolverModeloDoPonto(
+    "bot_respond",
+    ctx.organization_id,
+    ctx.agent.model,
+  );
+  const model = resolvido?.model ?? null;
+  if (!model || !resolvido) {
     logger.warn("[ai-response-worker] modelo do agente sem provider configurado", {
       organization_id: ctx.organization_id,
       agent_id: ctx.agent.id,
@@ -155,6 +161,14 @@ export async function processMessageReceived(row: EventRow): Promise<ProcessResu
     };
   }
 
+  // Daqui para baixo, o modelo RESOLVIDO pelo painel é o que vai para o provedor
+  // E para a telemetria. Os `logInvocation`/`computeCost` abaixo usavam
+  // `ctx.agent.model`: a chamada saía para o provedor do binding e a linha em
+  // `llm_calls` dizia o modelo do agente. Quem escolhesse, por exemplo, um llama
+  // pela OpenRouter em "Responder o cliente" veria a tela de Execuções atribuir
+  // o gasto à Anthropic — no ponto de IA mais frequente do produto. O mesmo
+  // defeito já tinha sido corrigido no ai-sentiment-worker; aqui era a cópia do
+  // padrão que ficou para trás.
   try {
     const response = await invokeBot(ctx, model);
     const post = postProcess(response.text);
@@ -197,12 +211,12 @@ export async function processMessageReceived(row: EventRow): Promise<ProcessResu
         conversation_id: ctx.conversation_id,
         message_id: persisted.outbound_message_id,
         invocation_kind: "bot_respond",
-        model: ctx.agent.model,
+        model: resolvido.modelId,
         prompt_tokens: response.prompt_tokens,
         completion_tokens: response.completion_tokens,
         latency_ms: response.latency_ms,
         cost_cents: await computeCost({
-          model: ctx.agent.model,
+          model: resolvido.modelId,
           promptTokens: response.prompt_tokens,
           completionTokens: response.completion_tokens,
         }),
@@ -223,12 +237,12 @@ export async function processMessageReceived(row: EventRow): Promise<ProcessResu
       conversation_id: ctx.conversation_id,
       message_id: persisted.outbound_message_id,
       invocation_kind: "bot_respond",
-      model: ctx.agent.model,
+      model: resolvido.modelId,
       prompt_tokens: response.prompt_tokens,
       completion_tokens: response.completion_tokens,
       latency_ms: response.latency_ms,
       cost_cents: await computeCost({
-        model: ctx.agent.model,
+        model: resolvido.modelId,
         promptTokens: response.prompt_tokens,
         completionTokens: response.completion_tokens,
       }),
@@ -249,7 +263,7 @@ export async function processMessageReceived(row: EventRow): Promise<ProcessResu
       conversation_id: ctx.conversation_id,
       message_id: ctx.message_id,
       invocation_kind: "bot_respond",
-      model: ctx.agent.model,
+      model: resolvido.modelId,
       prompt_tokens: 0,
       completion_tokens: 0,
       latency_ms: 0,
@@ -356,6 +370,38 @@ async function buildContext(input: BuildContextInput): Promise<GuardDecision> {
     .maybeSingle();
 
   if (!agent) return skip("agent_inactive_or_missing");
+
+  // O ENGINE É O DONO DA RESPOSTA QUANDO HÁ VERSÃO PUBLICADA (issue #129).
+  //
+  // `lib/waha/ingest.ts` emite, para cada inbound, `ai_agent.dispatch_requested`
+  // (drenado pelo agent-engine) E `message.received` (drenado por este worker),
+  // incondicionalmente — e até aqui não havia trava nenhuma entre os dois. Numa
+  // instalação padrão os dois agiam na MESMA mensagem: o engine respondia de
+  // verdade, e este worker chamava o LLM (custo real, cobrado duas vezes) e
+  // inseria uma outbound `sending` que nunca saía, porque
+  // `message.send_requested` nunca teve consumidor.
+  //
+  // O critério é o MESMO que o engine usa para se considerar dono
+  // (`lib/agent-engine/agent/agent-config.ts`: join em `published_version_id`,
+  // não arquivado). Usar o mesmo predicado é o que garante que não existe buraco
+  // entre os dois: ou o engine responde, ou este worker responde — nunca
+  // nenhum, nunca os dois.
+  //
+  // Quem NÃO publicou versão nenhuma continua caindo aqui, como antes: sem
+  // `published_version_id` o engine não seleciona agente e não age. Por isso a
+  // trava não pode ser "existe engine rodando" — essa pergunta não é
+  // respondível daqui, e errá-la significaria silenciar a IA de quem depende
+  // deste caminho.
+  const { data: publicado } = await admin
+    .from("ai_agents")
+    .select("id")
+    .eq("organization_id", input.organizationId)
+    .not("published_version_id", "is", null)
+    .is("archived_at", null)
+    .limit(1)
+    .maybeSingle();
+  if (publicado) return skip("engine_owns_reply");
+
   if (!agent.active_kb_version_id) return skip("kb_version_missing");
 
   // Budget guard (IA-02)
@@ -603,7 +649,7 @@ async function persistAndDispatch(
     direction: "outbound" as const,
     status: "sending",
     body: finalText,
-    sent_via: "bot" as const,
+    sent_via: "ai" as const,
     sent_at: new Date().toISOString(),
     metadata: {
       ai_generated: true,

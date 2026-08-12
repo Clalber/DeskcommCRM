@@ -41,6 +41,7 @@ MFA obrigatório pra admin logo após o wizard (`MfaEnrollGate`).
 | J1.12 | Tentar `/app/inbox` antes de concluir | redirect pro onboarding, sem loop |
 | J1.13 | Reabrir `/onboarding` depois de concluído | redirect pro app (wizard não reabre) |
 | J1.14 | Stepper com Nuvemshop desabilitado | numeração/etapas não quebram visualmente |
+| J1.15 | Setup IA: erro de banco ao listar os números (a publicação não pode ser decidida) | UI **não mente**: agente criado como rascunho, causa técnica na tela e saída pro próximo passo; clicar de novo NÃO cria um 2º agente · **PASS** (`tests/unit/onboarding-agente-nao-publicado.test.ts`, `tests/unit/onboarding-setup-ai-aviso.test.tsx`) |
 
 ## J2 — Conectar WhatsApp e Central de Conexões `[P0]`
 
@@ -67,6 +68,12 @@ MFA obrigatório pra admin logo após o wizard (`MfaEnrollGate`).
 | J3.7 | AI Gateway key ausente | feedback visível (hoje: skip silencioso — candidato a bug de UX) |
 | J3.8 | Central de avisos do agente (sino) | eventos aparecem com copy leiga |
 | J3.9 | Propostas do flywheel: aplicar bullet | nova versão publicada, badge atualiza |
+| J3.10 | Escolher o que o agente pode fazer, por jornada de trabalho | 6 pacotes em português, com explicação e contagem — não uma lista de `crm_*` monoespaçado · **PASS** (`tests/e2e/capacidades-do-agente.spec.ts`) |
+| J3.11 | Ligar "Atender e responder" NÃO dá direito de mandar WhatsApp | a capacidade de risco crítico fica destacada, exigindo marcação individual; desligar a jornada leva ela junto · **PASS** |
+| J3.12 | Modo avançado: ficha por capacidade + nome técnico | o `name` técnico só aparece aqui; fora dele o leigo lê rótulo, o que toca e risco · **PASS** |
+| J3.13 | A escolha sobrevive ao salvar e recarregar | o servidor aceita a lista (mesmo teto de 20 da tela) e o estado volta igual · **PASS** |
+| J3.14 | Ver se o que está ligado está funcionando (aba Capacidades) | usos, falhas, quantos vieram de teste, última vez — e o que fazer com cada número · **PASS** (números escritos pelo emissor real de audit) |
+| J3.15 | Teto de 20 recusa a passagem, explicando em português | **NÃO EXERCITÁVEL HOJE**: com 16 capacidades no catálogo, ligar tudo não chega a 20. Coberto por teste unitário; vira exercitável quando as waves de capacidades entregarem |
 
 ## J4 — CRM e Pipelines `[P1]`
 
@@ -93,6 +100,20 @@ MFA obrigatório pra admin logo após o wizard (`MfaEnrollGate`).
 | J4.19 | Arquivar o ÚLTIMO funil ativo | recusa explicada: sem funil não há quadro (executado 2026-08-03) |
 | J4.20 | Arquivar funil que é destino de formulário/automação | recusa NOMEANDO a fonte ou a regra (coberto por unit; `webhook_sources` cascateia) |
 | J4.21 | Lista de funis como `agent` | vê a lista e abre o quadro, sem nenhum controle de escrita (executado 2026-08-03) |
+| J4.22 | **Mensagem de contato desconhecido chega pelo webhook do WAHA** | card nasce no funil de entrada (`is_default`), na primeira etapa aberta, com o NOME de quem escreveu — nunca `@c.us`/`@lid` (executado 2026-08-06 · `conversa-vira-lead.spec.ts`) |
+| J4.23 | Timeline do card recém-nascido | diz **"Entrou pelo WhatsApp"** — card que aparece sem explicação destrói a confiança no automatismo (executado 2026-08-06) |
+| J4.24 | Segunda mensagem do MESMO contato | **não** abre um segundo card: um lead por demanda, não um por mensagem (executado 2026-08-06) |
+| J4.31 | **Marcar em que funis o assistente pode mexer** | nasce FECHADO (a tela explica: "conversa normalmente, mas não mexe em negócio"); a marcação sobrevive ao salvar E RECARREGAR — o defeito do campo que "se desmarca sozinho" (`escopo-de-funil-do-agente.spec.ts`, 2026-08-07) |
+| J4.32 | Funil marcado que o assistente não sabe percorrer | a lacuna de tradução aparece AO LADO da marcação, e só no funil marcado — fora do escopo ela não custa nada |
+| J4.33 | Funil de ENTRADA fora da marcação | avisa que as conversas novas viram negócio ali e vão se acumular sem que o assistente possa organizá-los |
+| J4.34 | O assistente tenta mover card de funil que não é dele | não move, e abre aviso PRÓPRIO na Central ("quis organizar um negócio de um funil que não é dele") — não o aviso de falha, porque nada falhou |
+| J4.35 | Uma pessoa desfaz uma movimentação do assistente | vira atividade na timeline com a etapa que a IA escolheu; agregado por etapa responde "onde ele mais erra" |
+| J4.28 | **A IA ouve um dado na conversa e o propõe** | a pendência aparece na ficha do contato COM o trecho que a pessoa escreveu; nada é gravado até alguém decidir (`confirmar-dado-do-contato.spec.ts`, executado 2026-08-07) |
+| J4.29 | Confirmar a sugestão | o dado entra na ficha, sobrevive ao reload, e a pendência some — não fica botão para o que já foi decidido |
+| J4.30 | Descartar a sugestão | some da tela **sem gravar**; a recusa é auditada, porque "vi e decidi não gravar" é sinal de onde a IA erra |
+| J4.26 | **Salvar o e-mail de um contato pela tela** | fica salvo, aparece na ficha e sobrevive ao reload. Era **500** até 2026-08-06: o handler escrevia em `email_normalized`, coluna GERADA, e o Postgres abortava o UPDATE inteiro (`contato-salva-email.spec.ts`) |
+| J4.27 | Anonimizar um contato (LGPD) | mesma causa da J4.26 na rota `/api/v1/lgpd/anonymize` — **a anonimização não acontecia**. Corrigido; guardado pelo invariante de colunas geradas, ainda **sem prova de tela** |
+| J4.25 | ⚠️ O funil de entrada de uma org nova é de **e-commerce** | `fn_seed_default_pipeline_for_org` semeia "Pedidos" com *Carrinho abandonado · Pago · Em separação…*. Numa clínica ou imobiliária, o lead nasce em **"Carrinho abandonado"**. Achado em 2026-08-06 ao provar J4.22; conserto é decisão de produto (spec 17 passo 4) |
 
 ## J5 — Time: convites e atuação de atendentes `[P0]` (convite) / `[P1]` (rotina)
 
@@ -122,6 +143,108 @@ MFA obrigatório pra admin logo após o wizard (`MfaEnrollGate`).
 | J6.8 | call_webhook com URL interna (SSRF) | bloqueado com erro claro |
 | J6.9 | Run falho → botão Reenviar | novo run; sucesso após receiver voltar |
 | J6.10 | Automação SEM cron configurado | hoje: morre em silêncio — **candidato a bug de produto** |
+
+## J8 — O cliente não morre por falta de resposta `[P1]`
+
+Contexto do código: pacote `reter` do catálogo (IA 360 · wave 2). A demanda esfria, o
+agente marca o retorno pela capacidade que o dono ligou na tela, o humano vê e pode
+desmarcar, e o agente descobre que desmarcaram. Spec: `tests/e2e/retorno-anti-morte.spec.ts`
+(seed pela capacidade REAL — `scripts/seed-e2e-retorno.ts`, nunca INSERT à mão).
+
+| # | Caso | Expectativa | Resultado |
+|---|------|-------------|-----------|
+| J8.1 | Negócio 5 dias sem movimento com retorno marcado pelo agente | Radar mostra **"Em voo"** e "Assistente retorna em 2d" — não "crítico" | PASS |
+| J8.2 | Linha do tempo do negócio após o agendamento | entrada `Retorno agendado — <motivo>`, com o agente nomeado | PASS |
+| J8.3 | Fila de acompanhamento mostra a promessa | linha "Promessa" com status **Agendada** e botão Cancelar | PASS |
+| J8.4 | Humano desmarca pela fila | diálogo diz o que acontece; status vira **Cancelada** (não "Concluída") | PASS |
+| J8.5 | O agente consulta os retornos depois do cancelamento | vê `situacao: cancelado` **com o motivo** — é o que o impede de reagendar | PASS |
+| J8.6 | Repetir a jornada | seed reseta o retorno; o teste roda de novo sem intervenção | PASS |
+
+Evidência: `.superpowers/evidence/w2-retorno-{no-radar,na-fila-agendada,dialogo-de-cancelamento,na-fila-cancelada}.png`.
+
+**Sabotagem que confirma que o caso não passa por acaso:** devolvendo `podeCancelar` ao
+estado anterior à wave (promessa não cancelável), J8.4 reprova com timeout no clique —
+1 failed / 1 passed. Restaurado, 2 passed.
+## J8 — Passar o atendimento para uma pessoa, e receber de volta `[P1]`
+
+Contexto do código: o agente abre um chamado (`agent_cases`) quando esbarra num
+bloqueio; a passagem em si (`performHumanHandoff` / `triggerHandoff`) liga **três**
+travas — `contacts.force_human`, `conversations.bot_silenced_until` e
+`assignee_kind='user'`. A volta é `POST /conversations/[id]/reactivate-bot`, hoje
+atrás do botão "Devolver ao automático" no cabeçalho da conversa.
+
+Spec: `tests/e2e/escalacao-ciclo.spec.ts`. Seed: `scripts/seed-e2e-escalacao.ts`
+(chama as funções REAIS `openCase` e `performHumanHandoff` — um seed que ligasse
+as travas com `UPDATE` próprio provaria o teste contra uma cópia da regra).
+Evidência: `.superpowers/evidence/ia-360-w3/`.
+
+| # | Caso | Expectativa | Resultado |
+|---|------|-------------|-----------|
+| J8.1 | O chamado aberto pelo agente aparece em `/app/ai/cases` | linha na fila com o título e o bloqueio | PASS |
+| J8.2 | A pessoa escolhe "Concluí" e escreve o que combinou | o chamado fecha (`resolved`) e o texto fica registrado | PASS |
+| J8.3 | A conversa DIZ que o automático está pausado | aviso visível no cabeçalho — conversa com o robô calado não pode ter a cara de uma conversa normal | FAIL(BUG-04) → PASS |
+| J8.4 | Existe caminho de volta pela tela | botão "Devolver ao automático" | FAIL(BUG-04) → PASS |
+| J8.5 | Devolver solta as **três** travas | `force_human=false`, silêncio nulo, dono nulo, `assignee_kind='ai'` | FAIL(BUG-01) → PASS |
+| J8.6 | A volta aparece na linha do tempo do negócio | atividade "Voltou para o atendimento automático" | FAIL(BUG-02) → PASS |
+| J8.7 | A **ida** aparece na linha do tempo | atividade "Passou para humano" também pelo caminho do harness/casos | FAIL(BUG-05) → PASS |
+| J8.8 | O agente retoma **sabendo** o que a pessoa fez | a abertura do turno (`ritualBlocks`) cita a decisão dela, sem apagar o acumulado anterior | PASS |
+| J8.9 | Status da conversa escalada em português | o cabeçalho mostrava `pending` cru | FAIL → PASS |
+
+Bugs desta jornada estão detalhados em `HANDOFF-ia-360.md` (BUG-01 a BUG-05).
+
+---
+
+## J9 — Ver o que o follow-up já fez, e intervir sem matá-lo `[P1]`
+
+Contexto do código: o dossiê do enrollment (`/app/ai/followups/enrollments/[id]`,
+wave FV-W1-FILA). `followup_enrollment_events` gravava cada passo do motor desde a
+0054 e **nenhuma tela lia a tabela**; a única intervenção possível era cancelar.
+Spec: `tests/e2e/followup-dossie.spec.ts` — os eventos da timeline são REAIS (o
+setup publica um fluxo, cria o enrollment pela API e chama o cron
+`followup-flow-worker`, o mesmo caminho de produção; nada de `INSERT` à mão).
+
+| # | Caso | Expectativa | Resultado |
+|---|------|-------------|-----------|
+| J9.1 | Clicar no contato na aba Fila | abre o dossiê daquele follow-up (rota própria, sobrevive ao F5) | PASS |
+| J9.2 | Ler a história depois de dois ticks do motor | "Seguiu em frente" e "Começou a esperar"; **nenhum** `node_advanced` nem `wait-1` na tela | PASS |
+| J9.3 | Onde está agora | "Deixa esfriar (Espera — espera 4 horas)" + quando volta a andar | PASS |
+| J9.4 | Pausar | status vira "Pausado por uma pessoa"; próximo passo vira "Parado até alguém retomar" | PASS |
+| J9.5 | Pausado não oferece adiar/pular | botão que só sabe recusar não aparece | PASS |
+| J9.6 | Retomar | volta a andar pelo tempo que FALTAVA (não dispara na hora) | PASS |
+| J9.7 | Adiar para uma data escolhida | o próximo disparo passa a ser a data do diálogo | PASS |
+| J9.8 | Pular o passo | o follow-up anda para o passo seguinte; com mais de um caminho, a tela PERGUNTA por onde | PASS |
+| J9.9 | A intervenção aparece na timeline do NEGÓCIO | as **quatro** linhas no card, com autor humano nomeado ("E2E Manager") e sem colapsar apesar de terem acontecido no mesmo minuto | PASS |
+| J9.10 | Viewer | lê o dossiê inteiro, sem coluna de ações; as 4 rotas devolvem 403 `forbidden_role` | PASS |
+| J9.11 | O tempo que a IA escolheu, com plano REAL | "esperar 12 horas" + "bateu no seu limite" + **"a IA pediu 3 dias"** + o motivo e a faixa configurada | PASS |
+| J9.12 | A história do planejamento em português | "O agente decidiu quanto esperar em cada passo" e "Pediu ao agente para planejar os tempos de espera" — sem `timing_plan_decidido` na tela | FAIL → PASS |
+
+Evidência (uma por passo, na ordem da jornada):
+`evidence/followup-dossie/01-dossie-timeline.png` ·
+`evidence/followup-dossie/02-pausado.png` ·
+`evidence/followup-dossie/03-adiado.png` ·
+`evidence/followup-dossie/04-pulado.png` ·
+`evidence/followup-dossie/05-timeline-do-negocio.png` ·
+`evidence/followup-dossie/06-viewer-so-leitura.png` ·
+`evidence/followup-dossie/07-plano-de-tempo.png`.
+
+**J9.11/J9.12 usam plano REAL, não `INSERT` à mão:** o modelo "responde" pelo
+seam `completeTurnForEnrollment` — a mesma função que o worker chama depois da
+chamada de LLM —, então o clamp, a gravação e o `proposto_ms` são os de
+produção. Um jsonb escrito na mão provaria que a tela desenha o que eu inventei.
+
+**O J9.12 nasceu FAIL e é por isso que ele existe:** abrindo o dossiê, a
+história mostrava `código: timing_plan_decidido` e anunciava o turno de
+planejamento como "escrever a mensagem". Nenhum unitário pegaria — os dois
+eventos são do motor novo, e a tela foi o único instrumento que os viu.
+
+**O que o J9.9 mediu e quase passou batido:** as quatro intervenções acontecem
+no mesmo minuto e pelo mesmo ator, e a timeline do negócio COLAPSA blocos assim
+(`agrupaTimeline`, janela de 60s). Escondidas atrás de um "+", o próximo
+atendente abriria o card e não veria que uma pessoa segurou o fluxo — que é a
+única razão de a linha existir. Os quatro tipos entraram em `NUNCA_COLAPSA`
+pelo critério que já estava escrito lá: decisão humana não colapsa.
+
+---
 
 ## J7 — Exploração completa `[P2]`
 

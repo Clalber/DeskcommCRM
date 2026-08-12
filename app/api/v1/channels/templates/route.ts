@@ -46,6 +46,8 @@ export interface TemplateView {
    * seu e deixando o vizinho cru — correto e ilegível. A UI marca os `{{n}}`.
    */
   previews: Array<{ onde: string; text: string }>;
+  /** A definição crua — de onde sai o texto que vai no corpo do envio. */
+  components: unknown[];
 }
 
 /** Textos com placeholder, achatados (inclui os de dentro de card de carrossel). */
@@ -129,12 +131,22 @@ export async function GET(): Promise<NextResponse> {
         onde: describeAddress(s.address),
       })),
       previews: textPreviews(row.components),
+      // A DEFINIÇÃO crua, como a rota do canal intermediado já devolve.
+      //
+      // `previews` não serve para isto: ele filtra por `{{` (só interessa
+      // mostrar o que tem variável), então um modelo SEM variável sai com a
+      // lista vazia — e são exatamente esses que o operador consegue disparar
+      // sem preencher nada. O seletor da janela fechada monta o corpo da
+      // mensagem a partir daqui; sem o campo, ele caía no NOME TÉCNICO do
+      // modelo e era isso que o cliente recebia.
+      components: (row.components as unknown[]) ?? [],
     };
   });
 
   return ok({
-    // `null` aqui não é "erro": é o estado de quem ainda não conectou o canal
-    // oficial, e a tela precisa distingui-lo de "conectado, porém sem template".
+    // `null` aqui não é "erro": é o estado de quem não tem canal oficial ATIVO —
+    // nunca conectou, ou conectou e excluiu —, e a tela precisa distingui-lo de
+    // "conectado, porém sem template".
     waba: sessao?.wabaId ?? null,
     templates,
   });

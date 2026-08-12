@@ -85,6 +85,22 @@ const PARES: Array<{
     simbolo: "LeadStatus",
   },
   {
+    tabela: "ai_invocations",
+    coluna: "invocation_kind",
+    // lib/ai/log-invocation.ts → InvocationKind.
+    //
+    // Par nascido de divergência REAL, achada junto com a issue #160: o tipo
+    // oferecia quatro valores que o CHECK recusa (`sentiment_check`,
+    // `embed_chunk`, `embed_query`, `intent_classify`) e omitia dois que ele
+    // aceita (`triage_classify`, `embedding_generate`). Nenhum estava em uso,
+    // então não havia sintoma — o defeito era uma armadilha carregada: o insert
+    // é fire-and-forget, então quem escolhesse um deles pelo autocomplete
+    // colheria um `23514` que nunca chega à tela de ninguém. É o mesmo modo de
+    // falha que deixou esta tabela VAZIA numa VPS com tráfego real.
+    arquivo: "lib/ai/log-invocation.ts",
+    simbolo: "InvocationKind",
+  },
+  {
     tabela: "agent_inbox_items",
     coluna: "kind",
     // lib/agent-engine/db/repository.ts → InboxKind.
@@ -103,6 +119,19 @@ const PARES: Array<{
     simbolo: "InboxKind",
   },
   {
+    tabela: "agent_case_events",
+    coluna: "kind",
+    // lib/agent-engine/agent/human-cases.ts → CaseEventKind.
+    //
+    // O par nasce no MESMO commit da 0100, que acrescentou 'agent_noted' à
+    // constraint. Antes dele o TypeScript não tinha lista nenhuma: cada INSERT
+    // escrevia o kind como string literal, e o único aviso de divergência seria
+    // um 23514 em produção, num caminho fire-and-forget (o registro do agente no
+    // chamado) que ninguém exercita em dev.
+    arquivo: "lib/agent-engine/agent/human-cases.ts",
+    simbolo: "CaseEventKind",
+  },
+  {
     tabela: "system_update_runs",
     coluna: "status",
     // lib/system/update-run.ts → RunStatus
@@ -115,6 +144,48 @@ const PARES: Array<{
     // lib/system/update-run.ts → RunStep
     arquivo: "lib/system/update-run.ts",
     simbolo: "RunStep",
+  },
+  {
+    tabela: "channel_sessions",
+    coluna: "provider",
+    // lib/channels/types.ts → ChannelProvider
+    //
+    // ⚠️ O `comment on column public.channel_sessions.provider` do
+    // `supabase/baseline.sql` já AFIRMA, desde a 0087, que este par é "cobrado
+    // por tests/invariants/vocabulario-banco-x-typescript.test.ts". Era falso: o
+    // par nunca estava nesta lista. Comentário não é gate, e um comentário que
+    // promete cobertura inexistente é pior que silêncio — ele desliga a busca.
+    //
+    // Medido na triagem do PR que acrescenta o TERCEIRO canal: o `zernio` entrou
+    // no CHECK do banco e em `ChannelProvider` no mesmo commit, e nenhum job do
+    // CI compararia as duas listas se ele tivesse entrado em só uma. O sintoma
+    // seria `23514` no INSERT da sessão — ou, pior, uma sessão que grava e um
+    // `capabilitiesOf` que lança `unknown_channel_provider` no envio.
+    //
+    // `channel_sessions_provider_ref_check` menciona a coluna e tem literais,
+    // mas NÃO é uma definidora para `literaisSeDefine` (é disjunção de ANDs, não
+    // `col = ANY (ARRAY[...])`) — então este par não colide com ela. Medido, não
+    // suposto: com as duas constraints no banco, `valoresDoCheck` devolve uma só.
+    arquivo: "lib/channels/types.ts",
+    simbolo: "ChannelProvider",
+  },
+  {
+    tabela: "followup_enrollments",
+    coluna: "status",
+    // hooks/followup/useFollowupQueue.ts → FollowupEnrollmentStatus.
+    //
+    // O par aponta para o tipo da TELA, e não para `EnrollmentStatus` de
+    // `lib/followup/node-handlers.ts`, porque são conjuntos diferentes de
+    // propósito: o do motor enumera o que o motor manipula, e o motor nunca lê
+    // nem escreve `paused_manual` (o claim filtra `active|waiting_reply`). Quem
+    // precisa conhecer TODOS os estados é quem os mostra — a fila.
+    //
+    // Nasce junto com a 0145, que acrescentou o sétimo valor. Sem o par, um
+    // status novo no CHECK vira linha na fila com rótulo cru: `rotuloDoStatus`
+    // cai no fallback e a tela mostra o identificador do banco no rosto de quem
+    // opera.
+    arquivo: "hooks/followup/useFollowupQueue.ts",
+    simbolo: "FollowupEnrollmentStatus",
   },
 ];
 
