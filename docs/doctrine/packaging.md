@@ -338,11 +338,16 @@ do banco. É o passo que mais trava na estreia de uma imagem nova.
        docker run --rm ghcr.io/melgarafael/deskcommcrm:X.Y.Z \
          node -e 'console.log(process.env.APP_VERSION)'   → X.Y.Z
 [ ] 10. `gh release create vX.Y.Z` com as notas do CHANGELOG
-[ ] 11. Ensaio de atualização numa instalação real (não fresca): update.sh a partir da
+[ ] 11. Apagar tags de branch dos três pacotes — `docs-doutrina-packaging` e
+        qualquer outra que tenha nascido de um `workflow_dispatch` de ensaio.
+        Tag de branch é artefato de trabalho: se ficar, vira canal órfão que
+        alguém pina por engano achando que é release, e ela nunca mais se move.
+        O registry já carrega uma dessas (`quebrada-teste`) como lembrete.
+[ ] 12. Ensaio de atualização numa instalação real (não fresca): update.sh a partir da
         versão anterior, e o /api/v1/health responde X.Y.Z
 ```
 
-O item 11 é o único que exige VPS. Ele não é opcional: a atualização é o caminho que **todo o
+O item 12 é o único que exige VPS. Ele não é opcional: a atualização é o caminho que **todo o
 parque instalado** percorre, e é o único que a suíte de CI não exercita.
 
 ---
