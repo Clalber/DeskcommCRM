@@ -141,6 +141,16 @@ jobs:
   imagens-ok:
     if: always()
     runs-on: ubuntu-latest
+    # Nenhuma permissão: este job só lê o resultado de `needs` e sai. Sem o bloco,
+    # o GITHUB_TOKEN herdaria o default do REPOSITÓRIO — configuração que vive fora
+    # do repo, muda num clique e não passa por PR.
+    #
+    # A regra e o gate que a impõe vieram do PR #241 (alertas do CodeQL), de um
+    # contribuidor. O teste dele pegou este job: eu o criei sem o bloco, e o defeito
+    # só apareceu quando a `main` entrou naquela branch. É o próprio caso que a
+    # justificativa do teste antecipa — "um job novo nasce sem bloco e herda o
+    # default de novo".
+    permissions: {}
     needs: [build-and-push]
     steps:
       - name: Falhar se qualquer imagem não construiu
