@@ -282,7 +282,7 @@ test.describe("J1 — onboarding do dono numa instalação fresca", () => {
     await page.waitForURL(/\/onboarding\/done/);
     await snap(page, "j1.9-done-recap");
 
-    await page.getByRole("button", { name: /ir para o inbox/i }).click();
+    await page.getByRole("button", { name: /começar a usar/i }).click();
     await page.waitForURL(/\/app\/inbox/, { timeout: 30_000 });
 
     const org = await orgRow();
