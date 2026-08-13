@@ -151,7 +151,9 @@ test.describe("J1 — onboarding do dono numa instalação fresca", () => {
     await page.waitForURL(/\/onboarding\/connect-whatsapp/);
 
     // sem banner de "WAHA não está configurado"
-    await expect(page.getByText(/waha não está configurado/i)).toHaveCount(0);
+    // O nome do transporte saiu da tela: o aviso agora fala do "WhatsApp desta
+    // instalação", que é como o dono chama a coisa.
+    await expect(page.getByText(/ainda não subiu/i)).toHaveCount(0);
 
     // QR do proxy (poll de 3s até SCAN_QR_CODE) — imagem carregada de fato
     const qr = page.locator('img[src*="/whatsapp/qr"]');
