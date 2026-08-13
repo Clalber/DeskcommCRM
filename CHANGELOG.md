@@ -8,6 +8,36 @@ Se você roda o DeskcommCRM numa VPS, **leia a seção da versão para a qual es
 
 ## [Não lançado]
 
+### Corrigido
+
+- **O agente de IA nunca recebia atualização.** O worker — o processo que faz o agente
+  atender 24 horas por dia — era compilado dentro do seu servidor no dia da instalação, e
+  nenhuma atualização o reconstruía. Na prática: você atualizava o CRM, o site mudava, e o
+  agente continuava rodando exatamente o código do dia em que você instalou, para sempre.
+  Correções e melhorias do agente não chegavam. Agora ele é uma imagem pronta, publicada
+  junto com o resto, e o `update.sh` a traz como traz o app.
+- **Duas instalações "na mesma versão" rodavam código diferente.** Uma instalação nova ficava
+  apontada para o canal `latest`, que — apesar do nome — acompanha o desenvolvimento em
+  andamento, não a última versão lançada. Quem instalou em semanas diferentes tinha software
+  diferente, e não havia como dizer qual. Agora o instalador grava o **número da versão**
+  (ex.: `1.2.1`), e é essa versão que fica no seu servidor até você decidir atualizar.
+- **O CRM podia não subir por causa de um serviço externo fora do ar.** A configuração pedia
+  ao Docker que verificasse o registro de imagens a cada subida; se ele não respondesse, o
+  contêiner não subia — mesmo com a imagem já baixada no seu disco. Como a versão agora é
+  fixa, essa verificação deixou de ser necessária e saiu.
+- **O agendador de tarefas dependia da internet para voltar.** A cada reinício ele baixava
+  dois programas antes de começar. Sem internet no momento do reboot — justo quando a máquina
+  está se recuperando de alguma coisa —, as tarefas automáticas não voltavam. Agora já vêm
+  dentro da imagem.
+- **A versão mostrada em `/api/v1/health` era sempre `0.1.0`**, em qualquer instalação. Agora
+  é a versão de verdade.
+- O WhatsApp (WAHA) e o serviço de limites deixaram de acompanhar automaticamente qualquer
+  versão nova publicada por terceiros. Passam a mudar só quando nós testamos e lançamos.
+
+Nenhuma dessas correções exige ação sua além de rodar o `update.sh` de sempre. Um `.env`
+antigo continua funcionando: as configurações novas têm valor padrão e o próprio `update.sh`
+as acrescenta.
+
 ## [1.2.1] — 2026-08-12
 
 **Versão de segurança. Se você roda o DeskcommCRM numa VPS, atualize.**
