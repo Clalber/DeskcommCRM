@@ -8,6 +8,8 @@ Se você roda o DeskcommCRM numa VPS, **leia a seção da versão para a qual es
 
 ## [Não lançado]
 
+## [1.3.0] — 2026-08-13
+
 Esta versão mexe em como o sistema **chega e se atualiza** no seu servidor. Em uso, três
 coisas mudam para melhor: a instalação deixa de ter uma etapa que podia falhar por falta de
 memória no meio (o servidor não compila mais nada — tudo vem pronto), fica bem mais rápida, e
@@ -42,9 +44,24 @@ serviços e cerca de 150 MB por número de WhatsApp conectado —, e isso não m
 - O WhatsApp (WAHA) e o serviço de limites deixaram de acompanhar automaticamente qualquer
   versão nova publicada por terceiros. Passam a mudar só quando nós testamos e lançamos.
 
-Nenhuma dessas correções exige ação sua além de rodar o `update.sh` de sempre. Um `.env`
-antigo continua funcionando: as configurações novas têm valor padrão e o próprio `update.sh`
-as acrescenta.
+### ⚠️ Requer atenção
+
+**Se o seu servidor foi instalado antes desta versão, rode o `update.sh` e depois confira.**
+Medido num ensaio em VPS: a primeira execução atualiza o sistema mas pode não trocar o
+agente, porque quem conduz a atualização é o script que já estava no seu servidor — e ele
+não conhece as peças novas. A segunda execução resolve.
+
+Para saber em que pé você está, sem mexer em nada:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/melgarafael/DeskcommCRM/main/hostgator-setup-kit/diagnostico.sh | bash
+```
+
+Ele só lê e explica — não escreve, não reinicia, não atualiza. Se disser que está afetada,
+o passo a passo (com como voltar atrás) está em `docs/runbooks/remediar-worker-congelado.md`.
+
+Fora isso, nada exige ação sua. Um `.env` antigo continua funcionando: as configurações
+novas têm valor padrão e o próprio `update.sh` as acrescenta.
 
 ## [1.2.1] — 2026-08-12
 
