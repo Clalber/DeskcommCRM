@@ -254,6 +254,12 @@ test.describe("o wizard monta um funcionário", () => {
     await login(page);
     await page.waitForURL(/\/onboarding\/funil/, { timeout: 30_000 });
 
+    // Abre espaço primeiro. O teto de colunas é real e o botão desabilita nele:
+    // localmente a sugestão da IA às vezes já chega com as 8, e um teste que
+    // assumisse espaço livre vermelharia conforme a resposta do modelo. Remover
+    // antes de acrescentar também é o que o dono faz — tira o que não serve e
+    // põe o que falta.
+    await page.getByRole("button", { name: /^remover$/i }).last().click();
     await page.getByRole("button", { name: /adicionar coluna/i }).click();
     await expect(page.getByText(/dê um nome à coluna em branco/i)).toBeVisible();
     await expect(page.getByRole("button", { name: /usar este quadro/i })).toBeDisabled();
