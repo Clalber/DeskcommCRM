@@ -91,4 +91,18 @@ export const ACTION_CODES: string[] = [
   "tenant.reactivated",
   "platform_admin.audit_listed",
   "platform_admin.audit_entry_viewed",
+  // Marca da instalação trocada (migration 0155). Entra aqui E em
+  // lib/audit/actions.ts — sem isto o filtro do painel não oferece o código e a
+  // linha existiria no banco sem porta na tela.
+  //
+  // ⚠️ ACHADO, NÃO CONSERTADO AQUI: estas duas listas JÁ DIVERGEM. Medido em
+  // 2026-08-13, com esta entrada JÁ nas duas — 208 códigos no union de
+  // `lib/audit/actions.ts` contra 88 aqui, e 120 que existem, são emitidos e NÃO
+  // são filtráveis no painel (o inverso é 0: nada aqui falta lá). O comentário do
+  // topo diz "keep in sync manually" e não há gate nenhum cobrando — foi assim
+  // que 120 entradas se perderam. Curar 120 entradas alheias dentro
+  // desta mudança misturaria duas coisas e esconderia as duas; a dívida está
+  // registrada no handoff desta frente para virar item próprio (o conserto certo
+  // é derivar esta lista do union, não copiá-la melhor).
+  "platform_branding.updated",
 ];

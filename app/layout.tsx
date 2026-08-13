@@ -2,10 +2,20 @@ import type { Metadata, Viewport } from "next";
 import { Atkinson_Hyperlegible, IBM_Plex_Mono } from "next/font/google";
 import { headers } from "next/headers";
 import { Toaster } from "sonner";
-import { branding } from "@/lib/branding";
 import { cssDaMarca } from "@/lib/branding/css";
+import {
+  marcaDaInstalacao,
+  motivoDoFallback,
+  registrarEstadoDaMarca,
+  type LinhaDaMarca,
+} from "@/lib/branding/instalacao";
 import { REGUA_DO_PRODUTO } from "@/lib/branding/regua-do-produto";
-import { camadaDoAmbiente, resolverMarca } from "@/lib/branding/resolve";
+import {
+  camadaDaInstalacao,
+  camadaDoAmbiente,
+  resolverMarca,
+  type MarcaResolvida,
+} from "@/lib/branding/resolve";
 import { env } from "@/lib/env";
 import { logger } from "@/lib/logger";
 import { ThemeProvider } from "@/lib/theme";
@@ -28,15 +38,46 @@ const plexMono = IBM_Plex_Mono({
 });
 
 /**
+ * A pilha de camadas da marca da instalação: BANCO acima, `.env` embaixo.
+ *
+ * Uma função só porque `generateMetadata` e `EstiloDaMarca` precisam da MESMA
+ * resolução — duas montagens da pilha divergiriam no dia em que a fase seguinte
+ * acrescentar a camada da organização, e a divergência apareceria como título da
+ * aba com uma marca e cor com outra.
+ *
+ * A leitura do banco é memoizada em `lib/branding/instalacao.ts`, então as duas
+ * chamadas por requisição custam UMA consulta a cada TTL.
+ */
+async function marcaResolvida(): Promise<{
+  /** A linha crua — só `EstiloDaMarca` precisa dela, para gravar o estado. */
+  readonly linha: LinhaDaMarca | null;
+  readonly marca: MarcaResolvida;
+}> {
+  const linha = await marcaDaInstalacao();
+  const marca = resolverMarca(
+    [camadaDaInstalacao(linha), camadaDoAmbiente(env)],
+    REGUA_DO_PRODUTO,
+  );
+  return { linha, marca };
+}
+
+/**
  * Metadata dinâmica (não `export const metadata`) para a marca ser lida em RUNTIME.
  * Constante seria resolvida durante o `next build`, e a imagem self-host — que é
  * pré-buildada — carregaria a nossa marca para sempre. Ver `lib/branding.ts`.
  *
  * O `template` é o que faz a marca existir em UM lugar só: as páginas filhas
  * declaram apenas o próprio nome ("Entrar") e herdam o sufixo daqui.
+ *
+ * Passou a ler o BANCO (era `branding()`, só `.env`) porque senão `app_name` na
+ * tabela seria coluna decorativa nesta fase: o operador trocaria o nome, a
+ * gravação daria certo e a aba continuaria com o nome antigo. Os demais call
+ * sites de `lib/branding` seguem no `.env` — está declarado no handoff, com o
+ * motivo medido.
  */
-export function generateMetadata(): Metadata {
-  const { name } = branding();
+export async function generateMetadata(): Promise<Metadata> {
+  const { marca } = await marcaResolvida();
+  const { name } = marca;
   return {
     title: {
       default: `${name} — atendimento e vendas por WhatsApp com agentes de IA`,
@@ -81,9 +122,11 @@ const motivosRegistrados = new Set<string>();
  *
  * É HTML no primeiro byte — antes do CSS e antes do `THEME_INIT_SCRIPT` — então
  * não há flash: o navegador nunca chega a pintar a cor do produto para depois
- * trocar. Server Component de propósito: a leitura é de `process.env` em runtime
- * (a imagem self-host é pré-buildada; ver `lib/branding.ts`), e enviar isso pelo
- * cliente reintroduziria justamente o flash.
+ * trocar. Server Component de propósito: a leitura é do BANCO e do `.env` em
+ * runtime (a imagem self-host é pré-buildada; ver `lib/branding.ts`), e enviar
+ * isso pelo cliente reintroduziria justamente o flash. Desde a migration 0155 a
+ * fonte primária é `platform_branding`; o `.env` continua embaixo como semente e
+ * rede de segurança de rollback (ver `lib/branding/instalacao.ts`).
  *
  * Os motivos NÃO morrem aqui: enquanto a tela de marca não existe (fase
  * seguinte, `/app/settings/tenant/branding`), o log estruturado é por onde o
@@ -98,8 +141,16 @@ async function EstiloDaMarca() {
   // vizinho; declarar aqui torna a garantia local, em vez de depender de um
   // componente que alguém pode mover.
   await headers();
-  const marca = resolverMarca([camadaDoAmbiente(env)], REGUA_DO_PRODUTO);
+  const { linha, marca } = await marcaResolvida();
   const { css, motivos } = cssDaMarca(marca.cor);
+
+  // O ESTADO da recusa vai para o banco, não só para o log. Sem isto, o degrade
+  // ("o produto ficou com a cor dele") é indistinguível de "a feature nunca foi
+  // instalada", e o operador conclui que o campo de cor não funciona.
+  //
+  // Sem `await`: gravar diagnóstico não pode atrasar — nem derrubar — a página
+  // que o diagnóstico descreve. `registrarEstadoDaMarca` já não lança.
+  void registrarEstadoDaMarca(linha, motivoDoFallback([...marca.motivos, ...motivos]));
 
   const avisos = [
     ...marca.motivos.map((m) => ({

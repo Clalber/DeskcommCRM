@@ -321,7 +321,57 @@ export function resolverMarca(
 }
 
 /**
- * A camada do `.env` — a única fonte desta fase, e a que nunca deixa de existir.
+ * A forma da linha de `platform_branding` que o RESOLVEDOR precisa conhecer.
+ *
+ * Só os três campos que viram marca. `fallback_at`, `seeded_from_env` e
+ * companhia são ESTADO da instalação e não entram aqui de propósito: o
+ * resolvedor não decide nada com eles, e um tipo que carrega o que não usa vira
+ * o lugar onde a próxima pessoa acrescenta lógica que não deveria existir aqui.
+ * A linha completa vive em `lib/branding/instalacao.ts`.
+ *
+ * Campos opcionais para o mesmo motivo do `.catchall` do `schema.ts`: código
+ * novo lendo linha velha (ou o contrário) não pode quebrar o layout.
+ */
+export type LinhaDaInstalacao = {
+  readonly app_name?: string | null;
+  readonly logo_url?: string | null;
+  readonly accent_hex?: string | null;
+};
+
+/**
+ * A camada do BANCO — a configuração viva da instalação, acima do `.env`.
+ *
+ * Fica ACIMA do ambiente na pilha porque é ela que o operador edita sem SSH.
+ * O `.env` continua embaixo, e não é redundância: é a rede de segurança do
+ * rollback. O `agent.sh` do kit, em falha de update, reverte só o `APP_IMAGE` —
+ * não o schema e não o `git checkout` —, então o clone fica com CÓDIGO ANTIGO
+ * sobre BANCO NOVO. Código antigo não conhece esta camada; com o `.env` intacto
+ * ele degrada para o valor da instalação em vez de perder a marca.
+ *
+ * `null` (tabela ausente, banco fora do ar, linha ainda não semeada) devolve uma
+ * camada que não fala de nada — e não uma camada que APAGA a de baixo. É a
+ * diferença entre "o banco não respondeu" e "o operador limpou a marca".
+ */
+export function camadaDaInstalacao(linha: LinhaDaInstalacao | null): CamadaDeMarca {
+  if (!linha) return { origem: "banco" };
+  const hex = (linha.accent_hex ?? "").trim();
+  // Mesma regra do `.env`: campo vazio é ausência de configuração, não cor com
+  // defeito. Sem isto, uma linha semeada de um `.env` sem cor emitiria
+  // `cor_ausente` em toda instalação de fábrica — e aviso no caso normal ensina
+  // o operador a ignorar avisos.
+  if (hex.length === 0) {
+    return { origem: "banco", nome: linha.app_name, logoUrl: linha.logo_url };
+  }
+  return {
+    origem: "banco",
+    nome: linha.app_name,
+    logoUrl: linha.logo_url,
+    cor: envelopeDeSemente(hex),
+  };
+}
+
+/**
+ * A camada do `.env` — a SEMENTE, e a que nunca deixa de existir.
  *
  * Mesmo quando a tabela por organização entrar, é esta camada que pinta o login,
  * o e-mail de convite e o erro 500: telas onde ainda não há organização

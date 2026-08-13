@@ -66,7 +66,7 @@ impossível hoje.
 | # | Fase | Estado |
 |---|---|---|
 | **0** | **Encoding do `.env` — bloqueador medido** | ✅ `c3764437` |
-| 1 | Tabela de marca + resolver + **cor por instalação** + reconciliar `white-label.md` | ⬜ |
+| 1 | Tabela de marca + resolver + **cor por instalação** + reconciliar `white-label.md` | 🟡 1a `e318d1a7` · 1b `c4395adf`+`f619f23d` · **1c (tabela) na working tree, NÃO commitada** · falta reconciliar `white-label.md` |
 | 2 | Marca **por organização** (nome + cor), capturada no `welcome` e editável | ⬜ |
 | 3 | Upload de logo (bucket, policies, 512 KB, delete-on-replace) | ⬜ |
 | 4 | Vazamentos hardcoded (MFA, convite, alarme, PDF) + ampliar o gate de marca | ⬜ |
@@ -197,7 +197,71 @@ escape. O ramo de aspas simples **fica** — clone que atualiza não reescreve o
 
 ## Bugs achados executando
 
-_(esta seção enche quando eu começar a clicar na tela)_
+### 🔴 BUG-01 — o anel de foco perde o contraste no tema escuro com marca escura
+
+**Achado na tela, não em teste.** Dev na 3111, `APP_ACCENT_HEX="#0f172a"` (navy), medido
+com `getComputedStyle` em `/login`:
+
+| par | Sage (controle) | navy | piso |
+|---|---|---|---|
+| claro: `accent-500` × bg | 3,79 | 10,77 | 3,0 ✅ |
+| claro: `accent-500` × surface-elevated | 3,60 | 10,22 | 3,0 ✅ |
+| **escuro: `accent-400` × bg** | 4,58 | **2,86** | 3,0 ❌ |
+| **escuro: `accent-400` × surface-elevated** | — | **2,37** | 3,0 ❌ |
+
+**Causa raiz:** `globals.css:376,381` — o anel de foco usa stops **fixos e diferentes por
+tema** (500 no claro, 400 no escuro), e esse stop não passa pela caminhada de contraste
+que governa o accent de ação. A rampa é única, então `accent-400` vale o mesmo nos dois
+temas e no escuro é comparado contra um fundo quase preto.
+
+**Por que nenhum teste pegou:** os testes exercitam a **função de derivação**, não os
+**pares que o produto realmente pinta**. É a diferença entre cobrir caminhos e cobrir o
+call site.
+
+**Gravidade:** WCAG 1.4.11 é nível AA, e o indicador de foco é o exemplo canônico da
+norma. O produto **cumpria antes do épico** e deixaria de cumprir por causa dele.
+
+**Estado:** conserto em execução, com a guarda que fecha a classe inteira (todos os pares
+papel × superfície × 16 sementes) e controle positivo de que a Sage não se move.
+
+### ⚪ BUG-02 — 12 chunks `/_next/static/` dão 403 no browser em dev
+
+Aparece no **controle também**, então não é do épico. `curl` no mesmo chunk devolve
+**200**, e `/^\/_next\//` está em `PUBLIC_PATHS` — não é o proxy. Assinatura de Turbopack
+gerando chunk sob demanda. **A confirmar no build de produção**, onde os chunks são
+estáticos; se sumir lá, é artefato de dev e não vale conserto.
+
+---
+
+## Prova em tela — Fase 1b (dev, porta 3111)
+
+| o que | controle (sem var) | navy `#0f172a` |
+|---|---|---|
+| `/login` | HTTP 200 | HTTP 200 |
+| bloco de marca no `<head>` | — | **1 bloco com `--color-accent`** |
+| `--color-accent` claro | `#506d48` | **`#0f172a`** ← a semente sobrevive intacta |
+| `--color-accent` escuro | `#82a077` | `#828a9d` |
+| alternância de tema sobrevive | sim | **sim** |
+| alternância é reversível | sim | **sim** |
+| `[data-theme="light"]` escopa em subárvore | **sim** (`#faf9f6` sob root escuro) | sim |
+| colisão accent × success (escuro) | **COLIDE** | **ok** ← a reconciliação funciona |
+| accent × surface (claro) | 5,80 | 17,85 |
+
+**Os dois resultados que mais importam:** a navy **permanece `#0f172a`** — é a ancoragem
+por papel funcionando na tela, não no papel — e a colisão accent/success do tema escuro,
+que o produto tem hoje, **passa a `ok`** quando a reconciliação roda.
+
+### Instrumento meu que falhou três vezes nesta rodada (e o que aprendi)
+
+1. `import { chromium } from "playwright"` — o repo tem `@playwright/test`, não `playwright`.
+   ESM resolve a partir do diretório **do arquivo**, não do cwd.
+2. Parser de hex assumindo 6 dígitos — `--color-surface` no claro é `#fff` e
+   `--color-accent-soft` no escuro é `#82a07729`. Devolvia `None` em silêncio.
+3. **O mais grave:** medi o anel de foco com `accent-500` **nos dois temas**, quando o
+   produto usa 400 no escuro. O número que reportei primeiro (1,61) era de um token que o
+   produto não pinta. O defeito é real, mas o valor certo é **2,86**.
+
+Todo número da tabela acima é de run posterior a essas correções.
 
 ---
 
@@ -373,10 +437,197 @@ da própria razão social, aí sim é campo novo, e a razão estará escrita aqu
 
 ---
 
+---
+
+## Fase 1a — ENTREGUE (`e318d1a7`): derivação de cor
+
+`lib/branding/rampa.ts` + `contraste.ts`, funções puras, zero dependência nova.
+37 testes. **Números que eu reproduzi de forma independente**, não repassei:
+
+| medição | subagente | eu |
+|---|---|---|
+| `#0f172a` croma | 0,039824 | **0,039824** |
+| `#1a1f36` croma | 0,044430 | **0,044430** |
+| cinzas (`#808080`, `#000000`) | ~0 | **0,000000 exato** |
+| calibração Sage, Δ por canal | ≤ 2/255 | **Δmax=2**; stops 500/600/700/900/950 exatos |
+
+Gates medidos por mim: `typecheck` 0 · `lint` 0 · `test:unit` **4182 passed (+37)**.
+As 5 falhas visíveis são de `lib/ai/dispatcher/rate-limit.test.ts` e são
+**pré-existentes** — provado removendo os arquivos novos do disco e rodando com a árvore
+limpa no HEAD: falha 5/5 igual.
+
+### Dois números de croma, não um — e a diferença decide o épico
+
+`#0f172a` mede **0,039824** e `#1a1f36` mede **0,044430**: as duas navies caem em lados
+opostos de 0,04 por **0,0046**. Com um gatilho único em 0,04, a navy que motiva o épico
+inteiro perderia a marca e receberia Sage. Então `LIMIAR_ACROMATICO = 0,01` (cinza mede
+0,000000 exato — 40× de margem) é o **gatilho**; `PISO_DE_CROMA = 0,04` continua como
+**asserção** sobre o accent que resta.
+
+### A sabotagem que reprovou menos rendeu mais que o teste
+
+Previsto 4, medido 2 na sabotagem de `CURVA_C`. Investigado: o modelo mental era do
+autor, não do teste — a caminhada de contraste e a reconciliação são governadas por
+**lightness**, e `CURVA_C` só mexe em **croma**.
+
+E o achado maior: **a sabotagem da ancoragem NÃO é pega pela calibração Sage**, porque a
+semente Sage tem L exatamente igual a `ESCADA_L[6]` — ancorar por lightness dá o mesmo
+resultado ali. Por isso os testes de ancoragem existem separados; sem eles, a catraca
+principal daria falso verde justamente na regra mais importante.
+
+### Meu instrumento me traiu (de novo)
+
+Escrevi um teste de verificação chutando o formato de retorno (`.stops`, `.croma`),
+recebi `NaN`/`undefined`, e teria concluído que o código estava errado. `Rampa` é uma
+**tupla de 11 strings**. Li a assinatura, refiz com controle negativo, e os números da
+tabela acima são do run correto.
+
+### Dívida declarada
+
+Nada consome esses módulos. **O invariante 1 (nada é ilha) NÃO está satisfeito** — está
+escrito no commit. A Fase 1b fecha isso.
+
+---
+
+## Defeitos pré-existentes anotados no caminho (fora do escopo, não esquecidos)
+
+| Defeito | Evidência |
+|---|---|
+| `lib/ai/dispatcher/rate-limit.test.ts` falha 5/5 por timeout de 15s | Reproduzido com árvore limpa no HEAD |
+| `--color-accent` usado como **texto** fora do CSS mede **4,02** no tema escuro (< 4,5 de WCAG 1.4.3) | `app/app/ai/followups/[id]/_components/nodes/nodeVisuals.ts:32` (`bg-accent-soft text-accent`) e `.ds-badge--accent`. Consertar move o accent escuro do produto de 400 para 300 — **decisão de design system, não deste épico** |
+
+---
+
+## Fase 1c — ENTREGUE (working tree, NÃO commitada): a marca sai do `.env` e vai para o banco
+
+**Trio de migration completo** (a doutrina exige os três juntos):
+
+| Artefato | Arquivo |
+|---|---|
+| migration | `supabase/migrations/20260813090000_0155_marca_da_instalacao_no_banco.sql` |
+| apêndice idempotente | `supabase/baseline.sql` (+95 linhas, **0 remoções**, antes do `notify pgrst` final) |
+| MANIFEST | `supabase/migrations/MANIFEST.md` (linha nova) |
+
+**Numeração, com a medição que a justifica** (as duas réguas são independentes):
+
+- `NNNN = 0155` — maior existente **em TODAS as branches locais** é `0154`. Medido com o
+  mesmo laço do `loop/hooks/check-migration-triple.sh` (`git branch` × `git ls-tree`), não
+  só neste checkout: `0155` não aparece em branch nenhuma.
+- `timestamp = 20260813090000` — maior existente é `20260811210000`. A ordem de aplicação é
+  por timestamp, e ele **não** é monotônico com o `NNNN` neste repo (a `0119` tem timestamp
+  maior que a `0142`), então os dois se medem separado.
+
+### Código
+
+| Arquivo | O quê |
+|---|---|
+| `lib/branding/instalacao.ts` | **novo** — leitura, semeadura, memo com TTL, estado do fallback |
+| `lib/branding/resolve.ts` | `camadaDaInstalacao()` ao lado de `camadaDoAmbiente()` — o resolvedor foi **estendido**, não reescrito |
+| `app/layout.tsx` | pilha `[banco, env]`; `generateMetadata` virou `async` e lê a marca resolvida |
+| `app/actions/settings/updateBranding.ts` | **nova** server action (gate `is_platform_admin`) |
+| `lib/schemas/settings.ts` | `platformBrandingSchema` |
+| `lib/audit/actions.ts` + `components/admin/audit/action-codes.ts` | `platform_branding.updated` nas **duas** listas |
+| `tests/unit/branding-instalacao.test.ts` | **novo** — 26 casos (decisões, sem I/O) |
+| `tests/invariants/marca-da-instalacao.test.ts` | **novo** — 14 casos (privilégio, comportamento, CHECK, trigger) |
+
+### Prova em Postgres descartável (`pgvector/pgvector:pg17`, o harness do repo)
+
+```
+==> modo INSTALL: aplicando baseline.sql com ON_ERROR_STOP=1
+psql:<stdin>:4084: WARNING:  "wal_level" is insufficient to publish logical changes
+    ✓ install ok
+==> modo UPDATE: re-aplicando baseline.sql sem ON_ERROR_STOP (idempotência)
+    ✓ update ok (re-apply terminou; erros tolerados por contrato)
+```
+
+O `update` emite **301** erros — todos do corpo do `pg_dump` (PK, índice, FK e policy
+"already exists"), que o harness tolera por contrato. Linhas do `update` citando
+`platform_branding`: **zero**, medido com
+`awk '/^==> modo UPDATE/,/update ok/' | grep -ci platform_branding`, não a olho.
+
+**Como sei que o delta do meu bloco é 0 sem ter medido o HEAD:** a sabotagem 2 move a
+contagem de **301 → 302**, e a linha a mais é exatamente a que nomeia a tabela. O par
+"zero menções + a sabotagem produz uma" prende o número dos dois lados; a contagem no
+HEAD eu **não** rodei, e não a afirmo.
+
+### Gates (medidos por mim, com o `.env.local` fora do disco)
+
+| Gate | Base | Depois |
+|---|---|---|
+| `pnpm typecheck` | 0 | **0** |
+| `pnpm lint` | *(não medi no HEAD)* | **0 erros / 241 warnings** no repo. A medição que vale é direta: `npx eslint` nos **13 arquivos criados/alterados** devolve **saída vazia** — 0 erro e 0 warning meus. Os 241 são dívida de estilo pré-existente; não afirmo que eram 241 antes porque não rodei no HEAD |
+| `pnpm test:unit` | 378 files / 4284 tests | **379 / 4310, EXIT=0** (+1 arquivo, +26 casos — bate exato) |
+| `pnpm test:db` | — | **101 files / 732 passed · 1 expected fail · 1 skipped, EXIT=0** |
+
+### Sabotagem — previsto vs medido
+
+| # | O que sabotei | Previsto | Medido |
+|---|---|---|---|
+| 1 | `revoke all … from anon, authenticated` fora do baseline | 5 | **5** |
+| 2 | `create table if not exists` → `create table` (idempotência) | 1 erro no `update`, **0** reprovações | **1 erro, 0 reprovações** (301 → 302) |
+| 3a | `precisaSemear` sempre `"nao"` | 2 | **2** |
+| 3b | guarda `if (!linha.seeded_from_env) return "nao"` removida | 1 | **1** |
+| 4 | filtro `CODIGOS_DE_RECUSA` do fallback removido | 5 | **5** |
+
+**O que a sabotagem 1 mediu, e é o achado que justifica o bloco de comentário:** sem o
+`revoke`, `anon` fica com `DELETE,INSERT,REFERENCES,SELECT,TRIGGER,TRUNCATE,UPDATE` na
+tabela — o `ALTER DEFAULT PRIVILEGES … GRANT ALL ON TABLES TO anon` do próprio baseline
+alcança toda tabela criada depois dele. E o caso **comportamental** reprovou com
+`erroSob` devolvendo `null`: `anon` LEU sem erro (a RLS devolve zero linha calada). É
+por isso que catálogo e comportamento são dois casos e não um — e a mensagem de falha
+foi melhorada (`esperaBarrado`) para dizer "a tabela está exposta" em vez de reclamar de
+`toContain` sobre `null`.
+
+### Um defeito MEU, pego por um gate que já existia
+
+`pnpm test:unit` reprovou `tests/unit/audit-resource-id-e-uuid.test.ts`: eu tinha escrito
+`resourceId: "1"` (a chave do singleton) e `api_audit_log.resource_id` é `uuid`. O INSERT
+do audit estouraria com 22P02 e — como audit é fire-and-forget por doutrina — a marca
+seria gravada, a tela diria "salvo" e a trilha ficaria **sem a linha, sem sintoma**.
+Corrigido para `resourceId: null` (a tabela tem uma linha; `resourceType` já a identifica).
+
+### Achados que NÃO consertei (dívida alheia, registrada em vez de misturada)
+
+1. **As duas listas de ação de auditoria já divergem em 120 códigos.** Medido em
+   2026-08-13, com a minha entrada já nas duas: **208** no union de `lib/audit/actions.ts`
+   contra **88** em `components/admin/audit/action-codes.ts`; o inverso é **0**. O
+   comentário do topo diz *"keep in sync manually"* e **não há gate nenhum**. O conserto
+   certo é derivar a lista do union, não copiá-la melhor — item próprio.
+2. **Apêndice não-idempotente não é pego por gate nenhum.** A sabotagem 2 provou:
+   `test:db` sai **0** e a suíte fica **14/14 verde** com o `create table` duplicando erro
+   no `update.sh` de todo clone, porque o modo update tolera erro **por contrato**. Quem
+   detecta é o diff de stderr, que hoje ninguém roda. Um gate barato seria comparar o
+   conjunto de erros do `update` contra uma lista congelada.
+
+### O que ficou SEM cobertura (declarado, não escondido)
+
+- **Nada foi provado pela tela.** Esta fase não tem UI (a tela de marca é a Fase 2), e o
+  DoD 12 só morde quando há UI/fluxo. O que a tela mostraria — `<style id="marca-instalacao">`
+  — já foi provado na Fase 1b; o que mudou aqui é **de onde vem** o valor.
+- **A server action não tem chamador.** É a Entrada declarada da fase; a tela que a
+  aciona é a Fase 2. Enquanto isso, o único caminho para a tabela é a semeadura.
+- **`logo_url` e os 8 arquivos que ainda importam `branding()` continuam lendo o `.env`.**
+  Medido depois da mudança: `app/layout.tsx` saiu da lista (era 9, é 8) e `generateMetadata`
+  (título da aba, herdado por toda página via `template`) é o único consumidor do banco. Medido o motivo:
+  `tests/unit/branding.test.ts:71-72` fixa `APP_NAME:\s*env\.APP_NAME` dentro de
+  `app/public-env-script.tsx` — e converter o seam do cliente em massa deixaria uma linha
+  velha do banco atropelar o `.env` em TODO o produto antes de existir tela para
+  corrigir. Fase 2 fecha isso junto com a camada da organização, que precisa do mesmo seam.
+- **`lib/database.types.ts` não foi regenerado, e não precisou:** `createAdminClient()`
+  devolve `SupabaseClient` **sem** o genérico `Database` (`lib/supabase/admin.ts:24`),
+  então `.from("platform_branding")` não passa pelos tipos gerados. Precedente medido: a
+  tabela `org_guardrail_layers` (migration 0142) também **não** está lá — `grep -c` = 0.
+- **`fallback_at` não tem tela ainda.** É gravado e limpo pelo `app/layout.tsx`; quem lê
+  hoje é quem abre o banco. A tela da Fase 2 é a consumidora natural.
+
+---
+
 ## Próximo passo exato
 
-Fase 1, com o escopo revisado acima. Ordem interna: **(a)** forma do dado + envelope
-`{format, algo}` e a decisão das 3-ou-4 identidades; **(b)** `lib/branding/` com
-`rampa.ts` e `contraste.ts` já com os 3 eixos corrigidos; **(c)** `[data-theme="light"]`
-no `globals.css` + rider de `forced-colors`; **(d)** gate de marca case-insensitive com
-dívida congelada. Prova em tela a cada passo.
+**Fase 2 — marca por ORGANIZAÇÃO.** A camada nova entra na mesma pilha
+(`[organizacao, banco, env]`), e é ela que fecha o que ficou declarado acima: a tela em
+`/app/settings/tenant/branding` (já inventariada em
+`docs/design-system/screen-flow/03-screen-inventory.md:149`) passa a ser a chamadora da
+server action, a consumidora de `motivos` e de `fallback_reason`, e o momento certo para
+dar a `branding()` uma variante assíncrona de servidor — que é o que destrava os 8 call
+sites que ainda leem o `.env`.

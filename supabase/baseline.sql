@@ -11647,4 +11647,99 @@ alter table public.webhook_events_log
     'waha', 'nuvemshop', 'generic', 'meta_cloud', 'zernio'
   ));
 
+-- ---- a marca da instalação sai do .env e vai para o banco (migration 0155) ----
+--
+-- Nome, logo e cor viviam só em `APP_NAME`/`APP_LOGO_URL`/`APP_ACCENT_HEX`:
+-- trocar qualquer um exigia SSH na VPS e reiniciar a stack. Para quem compra
+-- hospedagem e instala sozinho, isso é o mesmo que não ser configurável.
+--
+-- O `.env` CONTINUA sendo escrito, e não é redundância: o `agent.sh` do kit, em
+-- falha de update, reverte só o `APP_IMAGE` — não o schema, não o `git
+-- checkout`. E o `update.sh` aplica ESTE arquivo ANTES de puxar a imagem. Ou
+-- seja, o rollback põe código antigo sobre banco novo por construção, e código
+-- antigo não conhece esta tabela. Com o `.env` intacto a marca degrada para o
+-- valor da instalação em vez de sumir no meio de um rollback.
+--
+-- ── RLS LIGADA COM ZERO POLICIES + REVOKE EXPLÍCITO ─────────────────────────
+--
+-- As duas coisas, e nenhuma substitui a outra:
+--
+--   (1) `enable row level security` sem NENHUMA policy é a forma explícita de
+--       dizer "o PostgREST nunca serve isto". A tabela é lida e escrita só
+--       server-side, pelo admin client (`service_role`, que é `bypassrls`).
+--
+--   (2) O `revoke` abaixo é O ANÁLOGO, PARA TABELA, DA REGRA DE `security
+--       definer` DO ITEM 9 DO CLAUDE.md — e isso não está documentado em lugar
+--       nenhum hoje, e é o furo que a próxima tabela de apêndice repetiria.
+--       Este mesmo arquivo traz `ALTER DEFAULT PRIVILEGES ... GRANT ALL ON
+--       TABLES TO anon` (linha ~3972) e `... TO authenticated` (~3973), e eles
+--       valem para TODA tabela criada DEPOIS deles — isto é, para todo apêndice
+--       novo. TABELA NOVA NASCE CONCEDIDA. Foi exatamente assim que nasceu a
+--       vulnerabilidade que a 0143 consertou em `org_guardrail_layers` (medido:
+--       um `viewer` desligava a camada anti-jailbreak pelo PostgREST — UPDATE 1
+--       + INSERT 1), depois de a 0142 ter escrito "nenhuma função nova, então
+--       não há grant a revogar": leitura de uma doutrina que fala de FUNÇÃO.
+--
+--       Aqui revoga-se de `authenticated` também (a 0143 revogou só de `anon`),
+--       porque nenhuma tela lê esta tabela pelo client de sessão — quem lê é o
+--       `app/layout.tsx`, no servidor. O privilégio é a camada que sobra no dia
+--       em que alguém acrescentar "só uma policy de leitura".
+--
+-- ⚠️ `accent_hex` tem CHECK de REGEX, não de conjunto: ela NÃO entra na lista
+-- `PARES` de `tests/invariants/vocabulario-banco-x-typescript.test.ts`, cujo
+-- extrator só reconhece `= ANY (ARRAY[...])`. A doutrina "coluna nova com CHECK
+-- → uma linha ali" vale para CHECK de CONJUNTO.
+--
+-- Sem `event_log`: nenhum dos 12 handlers de `lib/event-log/register-handlers.ts`
+-- cobriria um tipo `platform_branding.*`, e o drain deixa evento sem handler
+-- intocado — a linha nasceria `pending` para sempre em todo clone (anti-pattern
+-- nº 3). O registro é `audit()`, com consumidor real.
+--
+-- Idempotente e auto-curativo: `create table if not exists` + `drop trigger if
+-- exists` antes do `create trigger`; grants e revokes são declarativos e podem
+-- ser reaplicados. Nenhuma constraint nova sobre dado existente (a tabela nasce
+-- vazia), então não há o que deduplicar antes.
+
+create table if not exists public.platform_branding (
+  id                  smallint primary key default 1,
+  app_name            text,
+  logo_url            text,
+  accent_hex          text,
+  show_powered_by     boolean     not null default true,
+  seeded_from_env     boolean     not null default false,
+  -- Estado, não configuração: é o que torna a falha OBSERVÁVEL (invariante 6 da
+  -- doutrina Sistema Vivo). Sem estas duas, o degrade ("o produto ficou com a
+  -- cor dele") é indistinguível de "a feature nunca foi instalada".
+  fallback_at         timestamptz,
+  fallback_reason     text,
+  updated_at          timestamptz not null default now(),
+  updated_by          uuid,
+  constraint platform_branding_singleton  check (id = 1),
+  constraint platform_branding_accent_hex check (accent_hex is null or accent_hex ~ '^#[0-9a-f]{6}$')
+);
+
+comment on table public.platform_branding is
+  'Marca da INSTALAÇÃO (login, e-mail, 500) — linha única id=1. Semeada do .env na primeira leitura; o .env continua sendo a rede de segurança de rollback. Lida/escrita só server-side (service_role). Ver lib/branding/instalacao.ts.';
+
+comment on column public.platform_branding.seeded_from_env is
+  'true = os valores vieram do .env e ninguém os editou pela tela. A escrita humana zera isto, e é o que impede a semeadura de reescrever o que uma pessoa apagou de propósito.';
+
+comment on column public.platform_branding.fallback_at is
+  'Quando a cor configurada foi RECUSADA e o produto caiu na cor dele. NULL = nenhuma recusa em vigor.';
+
+comment on column public.platform_branding.fallback_reason is
+  'Códigos de recusa (FORMA, nunca o hex da marca). Escrito e limpo por lib/branding/instalacao.ts.';
+
+alter table public.platform_branding enable row level security;
+
+-- ZERO POLICIES, DE PROPÓSITO — ver o bloco acima.
+
+revoke all on public.platform_branding from anon, authenticated;
+grant select, insert, update on public.platform_branding to service_role;
+
+drop trigger if exists trg_platform_branding_touch on public.platform_branding;
+create trigger trg_platform_branding_touch
+  before update on public.platform_branding
+  for each row execute function public.fn_touch_updated_at();
+
 notify pgrst, 'reload schema';
