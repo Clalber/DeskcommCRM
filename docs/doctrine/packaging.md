@@ -81,7 +81,7 @@ worker:
   `update.sh` jamais o reconstruiu. A feature-título do produto era a única peça que não
   recebia correção. Enquanto isso, `CLAUDE.md` afirmava *"o caminho normal não constrói nada
   na VPS"* — verdade para o app, falso para o produto.
-- **Verificação:** `tests/unit/packaging-compose-sem-build.test.ts` reprova serviço de
+- **Verificação:** `tests/unit/packaging-artefato-do-cliente.test.ts` reprova serviço de
   `docker-compose.prod.yml` com `build:` e sem `image:`.
 
 ### 2. Publicação é ato do CI, e carrega procedência
@@ -93,12 +93,29 @@ OCI — no mínimo `source`, `revision`, `version`, `licenses` — e é constru�
   imagem que não roda na VPS amd64 do cliente, e a falha aparece só no `up -d` dele. **(b)
   Rastreabilidade:** sem `org.opencontainers.image.revision` não existe resposta para "que
   código está rodando neste cliente?", e o suporte vira adivinhação.
-- **Verificação:** o job `build-and-push` é **status check obrigatório** na branch protection
-  da `main` — junto de `verify`, `build-and-size`, `invariants` e `e2e`. O gate existia e não
-  bloqueava: em 2026-08-12 um bump de `next` passou pelos quatro obrigatórios e quebrou o
-  build da imagem na `main`, porque o `next build` dentro do Dockerfile não enxerga `tests/`
-  (`.dockerignore`) e o next 16.3 passou a typechecar os `*.test.ts` colocados. **O artefato
-  que o self-hoster instala era o único sem gate.**
+- **Verificação:** o job **`imagens-ok`** de `publish-image.yml` reprova quando qualquer uma
+  das três imagens não constrói. Ele existe porque a matriz gera um nome de check por imagem,
+  e exigir os três pelo nome faria uma quarta imagem, um dia, escapar do gate em silêncio.
+
+  > **Pendência de ativação — leia antes de citar esta linha como garantia.** `imagens-ok`
+  > **ainda não está** na branch protection. Medido em 2026-08-13:
+  >
+  > ```console
+  > $ gh api repos/melgarafael/DeskcommCRM/branches/main/protection \
+  >     --jq '.required_status_checks.contexts|join(", ")'
+  > verify, build-and-size, invariants, e2e
+  > ```
+  >
+  > Enquanto isso valer, este invariante é **conselho, não gate**. A ativação é o último passo
+  > do merge desta doutrina, e não pode vir antes: um required check que não existe na base
+  > dos PRs já abertos bloqueia todos eles até que cada um rebase. Uma versão anterior deste
+  > parágrafo afirmava, no presente, que o check já era obrigatório — exatamente o defeito que
+  > esta doutrina existe para impedir, cometido dentro dela.
+
+  O gate importa porque já falhou: em 2026-08-12 um bump de `next` passou pelos quatro
+  obrigatórios e quebrou o build da imagem na `main`, porque o `next build` dentro do
+  Dockerfile não enxerga `tests/` (`.dockerignore`) e o next 16.3 passou a typechecar os
+  `*.test.ts` colocados. **O artefato que o self-hoster instala era o único sem gate.**
 
 ### 3. Instalação de cliente nunca aponta para tag móvel
 
@@ -113,12 +130,19 @@ OCI — no mínimo `source`, `revision`, `version`, `licenses` — e é constru�
   #184 chegou descrevendo o ambiente como *"latest do dia 06/08/2026"*, que é a admissão de
   que a versão não era nomeável.
 - **A armadilha específica deste projeto:** `latest` aqui **não** significa "última release" —
-  significa **topo da `main`**, porque a regra do `metadata-action` é
-  `type=raw,value=latest,enable={{is_default_branch}}`. Uma instalação fresca em `:latest`
-  recebe código não-lançado. Isso inverte a expectativa que o nome cria e é a razão de o
-  canal `stable` existir (§Política de canais).
-- **Verificação:** `tests/shell/update-guard.test.sh` prova que a tag escolhida é **gravada**
-  no `.env` (não só exportada) e que uma instalação nova nasce pinada.
+  significa **topo da `main`**. Uma instalação fresca em `:latest` recebe código não-lançado.
+  Isso inverte a expectativa que o nome cria, e é a razão de o canal `stable` existir
+  (§Política de canais).
+
+  A regra `enable={{is_default_branch}}` do `metadata-action`, sozinha, **não** entrega isso:
+  ela é verdadeira também num push de tag, então toda release movia `latest` junto e o canal
+  oscilava entre os dois significados. O workflow prende `latest` a `ref_type == 'branch'`.
+- **Verificação:** duas, porque são dois caminhos distintos e o primeiro passou verde por
+  meses sem nenhum. `hostgator-setup-kit/test-validators.sh` roda o `install.sh` de verdade
+  contra um remoto local com tags conhecidas e cobra o `.env` pinado na maior delas (a ordem
+  alfabética escolheria `v1.9.0` sobre `v1.10.0` — erro que só apareceria na décima release).
+  `tests/shell/update-guard.test.sh` prova que o `update.sh` grava as **três** imagens na
+  mesma versão, no `.env`, sem duplicar chave.
 
 ### 4. Tag de versão é imutável; canal é móvel
 
@@ -187,8 +211,10 @@ default que preserva o comportamento anterior**; se ela precisa existir, quem a 
   é `undefined` — ela só existe quando o processo nasce de um `npm`/`pnpm run`. Toda
   instalação do mundo reportava `0.1.0`. Um campo que responde com confiança o valor errado é
   pior que um campo ausente: ele desliga a pergunta.
-- **Verificação:** `tests/unit/health-versao.test.ts` prova que a versão vem de
-  `APP_VERSION` (injetada no build via `ARG`) e reprova o retorno ao `npm_package_version`.
+- **Verificação:** `tests/unit/packaging-artefato-do-cliente.test.ts` prova que a versão vem
+  de `APP_VERSION` (injetada no build via `ARG`) e reprova o retorno ao `npm_package_version`.
+  Medido no app real: com `APP_VERSION=9.9.9-teste` o endpoint responde `9.9.9-teste`; sem ela,
+  `desconhecido` — nunca um número plausível.
 
 ---
 
@@ -270,10 +296,10 @@ parque instalado** percorre, e é o único que a suíte de CI não exercita.
 
 | Camada | Artefato | Garante |
 |---|---|---|
-| CI (mecânico) | `build-and-push` obrigatório na branch protection | imagem quebrada **reprova o merge** |
-| CI (mecânico) | `tests/unit/packaging-compose-sem-build.test.ts` | serviço `build:`-only em produção reprova |
-| CI (mecânico) | `tests/unit/health-versao.test.ts` | versão que mente reprova |
-| CI (mecânico) | `tests/shell/update-guard.test.sh` | instalação que nasce em tag móvel reprova |
+| CI (mecânico) | `imagens-ok` em `publish-image.yml` | imagem quebrada reprova — **assim que o check entrar na branch protection** (ver invariante 2) |
+| CI (mecânico) | `tests/unit/packaging-artefato-do-cliente.test.ts` | serviço `build:`-only, pin upstream solto, `pull_policy` trocado e versão que mente reprovam |
+| CI (mecânico) | `tests/shell/update-guard.test.sh` | atualização que não pina as três imagens reprova |
+| CI (mecânico) | `hostgator-setup-kit/test-validators.sh` | instalação que nasce em tag móvel reprova |
 | Gate de sessão | item 15 do Definition of Done (`CLAUDE.md`) | nenhuma task de imagem/compose/kit fecha sem responder |
 | Revisão | bloco de packaging em `CONTRIBUTING.md` | contribuidor externo sabe a régua antes do PR |
 | Operação | `docs/runbooks/deploy.md` | o procedimento reflete a lei |

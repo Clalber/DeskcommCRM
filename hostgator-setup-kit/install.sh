@@ -1335,7 +1335,12 @@ esac
   printf '# então ligar isto sem um WAHA Plus (ou proxy que assine) para a ingestão\n'
   printf '# de mensagens. A rota global já não é publicada na internet (ver Caddyfile).\n'
   envq WAHA_WEBHOOK_REQUIRE_SIGNATURE "${WAHA_WEBHOOK_REQUIRE_SIGNATURE:-false}"
-  envq WAHA_IMAGE "${WAHA_IMAGE:-devlikeapro/waha}"
+  # PINADA. Sem a tag, `devlikeapro/waha` é `:latest`, e esta linha gravava isso
+  # no .env de todo cliente — por cima do default pinado do compose, que então
+  # nunca chegava a ninguém. O `dc pull` de cada update entregava qualquer versão
+  # que o upstream tivesse publicado, sem ninguém ter testado.
+  # `latest-2026.7.2` é o mesmo digest de `latest` hoje (65e593e30bb7…).
+  envq WAHA_IMAGE "${WAHA_IMAGE:-devlikeapro/waha:latest-2026.7.2}"
   envq WAHA_DEFAULT_ENGINE "${WAHA_DEFAULT_ENGINE:-NOWEB}"
   envq UPSTASH_REDIS_REST_URL "http://srh:80"
   envq UPSTASH_REDIS_REST_TOKEN "$UPSTASH_REDIS_REST_TOKEN"
@@ -1521,7 +1526,21 @@ SQL
 # ── 9. Sobe a stack ─────────────────────────────────────────────────────────
 fase 4 "Colocando o CRM no ar"
 step "Puxando a imagem e subindo os serviços"
-dc pull
+# A guarda existe porque dar `image:` a um serviço que era build-only mudou o
+# comportamento do `pull`: antes ele PULAVA o worker ("Skipped - No image to be
+# pulled"), agora FALHA a operação inteira se a referência não resolver. E há
+# três motivos reais para não resolver logo depois de um release: pacote novo no
+# GHCR nasce PRIVADO até alguém trocar a visibilidade na mão; a tag git existe
+# minutos antes das imagens; e o GHCR pode estar fora do ar.
+#
+# Sem esta guarda, uma instalação NOVA morria no passo 9 — com o banco já
+# provisionado e o .env já escrito. O `up -d` seguinte não precisa do pull: o
+# worker e o scheduler têm `build:` ao lado do `image:`, e o Compose os constrói
+# quando a imagem não existe (medido).
+if ! dc pull; then
+  c_ylw "⚠ Não consegui puxar todas as imagens do registro."
+  c_ylw "  Sigo assim mesmo: o que faltar é construído aqui (mais lento, mesmo resultado)."
+fi
 dc up -d
 c_grn "✓ containers no ar"
 

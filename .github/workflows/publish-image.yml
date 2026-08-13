@@ -86,13 +86,21 @@ jobs:
             type=ref,event=branch
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
-            type=raw,value=latest,enable={{is_default_branch}}
+            # `enable={{is_default_branch}}` NÃO basta: o metadata-action o
+            # considera verdadeiro também num push de TAG, então toda release
+            # movia `latest` junto. Isso apagava a distinção que a doutrina
+            # inteira depende — `latest` = topo da main, `stable` = última
+            # release — e fazia `latest` oscilar entre os dois.
+            type=raw,value=latest,enable=${{ github.ref_type == 'branch' && github.ref_name == 'main' }}
             # `stable` = a última RELEASE publicada. Existe porque `latest` aqui
             # significa topo da `main` (código não lançado), e o nome engana:
             # quem quer "a última versão estável" pedia `latest` e recebia edge.
             # Trocar o significado de `latest` faria downgrade silencioso em quem
             # já o consome, então o canal novo é o que ganha o nome certo.
-            type=raw,value=stable,enable=${{ github.ref_type == 'tag' }}
+            # Restrito a tag `v*`: `ref_type == 'tag'` sozinho deixaria um
+            # workflow_dispatch numa tag qualquer (ou uma tag de teste) mover o
+            # canal que os implementadores usam para decidir o que instalar.
+            type=raw,value=stable,enable=${{ github.ref_type == 'tag' && startsWith(github.ref_name, 'v') }}
           labels: |
             org.opencontainers.image.title=${{ matrix.title }}
 

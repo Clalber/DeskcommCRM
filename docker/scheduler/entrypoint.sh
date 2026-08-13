@@ -5,11 +5,11 @@
 # só existe no .env do cliente, e o busybox crond não expande variáveis dentro da
 # linha do cron. Então a expansão acontece aqui, uma vez, no start.
 #
-# O que MUDOU em relação à versão anterior (o `command:` inline do compose): não
-# há mais `apk add --no-cache curl tzdata` a cada start. curl e tzdata vêm na
-# imagem. O cron do cliente deixa de depender de a VPS ter internet e de o mirror
-# do Alpine estar de pé no momento de um restart — que é justamente o momento em
-# que a máquina está se recuperando de alguma coisa.
+# O que MUDOU em relação ao `command:` inline do compose: não há mais
+# `apk add --no-cache curl tzdata` a cada start. curl e tzdata vêm na imagem. O
+# cron do cliente deixa de depender de a VPS ter internet e de o mirror do Alpine
+# estar de pé no momento de um restart — que é justamente o momento em que a
+# máquina está se recuperando de alguma coisa.
 set -eu
 
 if [ -z "${INTERNAL_SECRET:-}" ]; then
@@ -18,26 +18,59 @@ if [ -z "${INTERNAL_SECRET:-}" ]; then
   exit 1
 fi
 
-APP_ORIGIN="${SCHEDULER_APP_ORIGIN:-http://app:3000}"
+# Constante, não configuração: `app` é o nome do serviço na rede interna do
+# compose, e o scheduler não fala com mais nada. A primeira versão disto lia um
+# `SCHEDULER_APP_ORIGIN` que o compose nunca repassava e nenhum template
+# documentava — controle decorativo, que é pior que controle nenhum: quem o
+# encontrasse no código o definiria no `.env` e não veria efeito.
+APP_ORIGIN="http://app:3000"
+
+# O crond executa cada linha por `/bin/sh -c`, então o segredo é REAVALIADO pelo
+# shell na hora de disparar. Interpolá-lo cru dentro de aspas duplas fazia com
+# que um `$` no valor virasse expansão de variável (o header sairia truncado, e
+# todo cron responderia 401 em silêncio) e uma crase virasse substituição de
+# comando — execução arbitrária a cada minuto. Medido com um segredo hostil: a
+# versão com aspas duplas entregava `segrafaelmelgacoredo/Users/rafaelmelgaco…`,
+# com o `whoami` EXECUTADO. Aqui o valor vai entre aspas SIMPLES, com as aspas
+# simples internas escapadas — dentro delas o sh não interpreta nada.
+SEGREDO_SEGURO="$(printf '%s' "$INTERNAL_SECRET" | sed "s/'/'\\\\''/g")"
+
+# minuto|timeout|caminho — uma linha por cron. O caminho vai COMPLETO de
+# propósito: o literal `api/v1/cron/<rota>` é o contrato que
+# tests/unit/cron-routes-scheduled.test.ts (e mais dois) leem por grep — esse
+# teste compara a lista com o diretório app/api/v1/cron, e rota criada sem
+# agendamento reprova o CI.
+CRONS="
+* * * * *|25|api/v1/cron/agent-dispatcher
+* * * * *|25|api/v1/cron/followup-flow-worker
+* * * * *|45|api/v1/cron/event-log-drain
+* * * * *|25|api/v1/cron/routing-worker
+* * * * *|25|api/v1/cron/recover-stuck-messages
+*/5 * * * *|25|api/v1/cron/storage-redaction?limit=50
+*/5 * * * *|25|api/v1/cron/snooze-watcher
+*/5 * * * *|25|api/v1/cron/attendant-heartbeat
+*/5 * * * *|45|api/v1/cron/channel-health
+*/10 * * * *|60|api/v1/cron/contact-avatars
+*/15 * * * *|60|api/v1/cron/risk-watcher
+*/30 * * * *|60|api/v1/cron/contact-phones
+17 * * * *|60|api/v1/cron/contact-proposals-watcher
+0 12 * * *|60|api/v1/cron/lgpd-sla-watcher
+30 3 * * *|120|api/v1/cron/kb-conversations-batch
+15 4 * * *|60|api/v1/cron/sync-model-catalog
+"
+
+# CRONTAB_PATH é ponto de injeção do teste (tests/shell/scheduler-entrypoint.test.sh).
+# Sem ele este script só seria exercitável dentro de um contêiner — e o único
+# artefato executável novo desta entrega ficaria sem gate nenhum, que foi
+# exatamente o achado da revisão adversarial.
+DESTINO="${CRONTAB_PATH:-/etc/crontabs/root}"
 
 umask 077
-cat > /etc/crontabs/root <<EOF
-* * * * * curl -fsS -m25 -H "Authorization: Bearer $INTERNAL_SECRET" $APP_ORIGIN/api/v1/cron/agent-dispatcher >/dev/null 2>&1
-* * * * * curl -fsS -m25 -H "Authorization: Bearer $INTERNAL_SECRET" $APP_ORIGIN/api/v1/cron/followup-flow-worker >/dev/null 2>&1
-* * * * * curl -fsS -m45 -H "Authorization: Bearer $INTERNAL_SECRET" $APP_ORIGIN/api/v1/cron/event-log-drain >/dev/null 2>&1
-* * * * * curl -fsS -m25 -H "Authorization: Bearer $INTERNAL_SECRET" $APP_ORIGIN/api/v1/cron/routing-worker >/dev/null 2>&1
-* * * * * curl -fsS -m25 -H "Authorization: Bearer $INTERNAL_SECRET" $APP_ORIGIN/api/v1/cron/recover-stuck-messages >/dev/null 2>&1
-*/5 * * * * curl -fsS -m25 -H "Authorization: Bearer $INTERNAL_SECRET" "$APP_ORIGIN/api/v1/cron/storage-redaction?limit=50" >/dev/null 2>&1
-*/5 * * * * curl -fsS -m25 -H "Authorization: Bearer $INTERNAL_SECRET" $APP_ORIGIN/api/v1/cron/snooze-watcher >/dev/null 2>&1
-*/5 * * * * curl -fsS -m25 -H "Authorization: Bearer $INTERNAL_SECRET" $APP_ORIGIN/api/v1/cron/attendant-heartbeat >/dev/null 2>&1
-*/5 * * * * curl -fsS -m45 -H "Authorization: Bearer $INTERNAL_SECRET" $APP_ORIGIN/api/v1/cron/channel-health >/dev/null 2>&1
-*/10 * * * * curl -fsS -m60 -H "Authorization: Bearer $INTERNAL_SECRET" $APP_ORIGIN/api/v1/cron/contact-avatars >/dev/null 2>&1
-*/15 * * * * curl -fsS -m60 -H "Authorization: Bearer $INTERNAL_SECRET" $APP_ORIGIN/api/v1/cron/risk-watcher >/dev/null 2>&1
-*/30 * * * * curl -fsS -m60 -H "Authorization: Bearer $INTERNAL_SECRET" $APP_ORIGIN/api/v1/cron/contact-phones >/dev/null 2>&1
-17 * * * * curl -fsS -m60 -H "Authorization: Bearer $INTERNAL_SECRET" $APP_ORIGIN/api/v1/cron/contact-proposals-watcher >/dev/null 2>&1
-0 12 * * * curl -fsS -m60 -H "Authorization: Bearer $INTERNAL_SECRET" $APP_ORIGIN/api/v1/cron/lgpd-sla-watcher >/dev/null 2>&1
-30 3 * * * curl -fsS -m120 -H "Authorization: Bearer $INTERNAL_SECRET" $APP_ORIGIN/api/v1/cron/kb-conversations-batch >/dev/null 2>&1
-15 4 * * * curl -fsS -m60 -H "Authorization: Bearer $INTERNAL_SECRET" $APP_ORIGIN/api/v1/cron/sync-model-catalog >/dev/null 2>&1
-EOF
+: > "$DESTINO"
+echo "$CRONS" | while IFS='|' read -r quando timeout rota; do
+  [ -n "$rota" ] || continue
+  printf '%s curl -fsS -m%s -H '"'"'Authorization: Bearer %s'"'"' "%s/%s" >/dev/null 2>&1\n' \
+    "$quando" "$timeout" "$SEGREDO_SEGURO" "$APP_ORIGIN" "$rota" >> "$DESTINO"
+done
 
 exec crond -f -l 2

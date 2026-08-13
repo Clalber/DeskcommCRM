@@ -190,8 +190,22 @@ PREV_IMAGE="$(dc images -q app 2>/dev/null | head -1)" || true
 # tem um custo aqui: um rollback que voltasse SÓ o app deixaria o parque com
 # app na versão antiga e worker/scheduler na nova — mistura de versões que a
 # doutrina de packaging existe para impedir. Então os três voltam juntos.
-PREV_WORKER_IMAGE="$(dc images -q worker 2>/dev/null | head -1)" || true
-PREV_SCHEDULER_IMAGE="$(dc images -q scheduler 2>/dev/null | head -1)" || true
+#
+# SÓ numa instalação que já passou pelo update.sh novo — isto é, cujo .env já
+# tem WORKER_IMAGE/SCHEDULER_IMAGE. Numa instalação LEGADA o `images -q` devolve
+# o ID da imagem antiga, e gravá-lo no .env seria pior que não voltar nada: o
+# scheduler legado era `alpine:3.20` com o crontab montado por um `command:`
+# inline que este compose não tem mais. Pinar aquele ID deixaria o contêiner
+# rodando o CMD do alpine puro — ele sai na hora, e `restart: unless-stopped` o
+# recoloca em crashloop. Os 16 crons parariam, em silêncio, gravado no .env.
+if grep -qE '^WORKER_IMAGE=' .env 2>/dev/null; then
+  PREV_WORKER_IMAGE="$(dc images -q worker 2>/dev/null | head -1)" || true
+fi
+if grep -qE '^SCHEDULER_IMAGE=' .env 2>/dev/null; then
+  PREV_SCHEDULER_IMAGE="$(dc images -q scheduler 2>/dev/null | head -1)" || true
+fi
+PREV_WORKER_IMAGE="${PREV_WORKER_IMAGE:-}"
+PREV_SCHEDULER_IMAGE="${PREV_SCHEDULER_IMAGE:-}"
 if [ -z "$PREV_IMAGE" ]; then
   # Registrado, não ignorado: sem imagem anterior conhecida, se o update.sh
   # falhar mais adiante NÃO HÁ como voltar — o status vai sair "failed", nunca
