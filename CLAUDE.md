@@ -199,8 +199,12 @@ O não-negociável, em quatro linhas:
    `docker compose pull` e imune a `up -d` sem `--build` — ele não é só caro de
    instalar, ele **nunca é atualizado**.
 2. **Publicação é ato do CI.** Nunca da sua máquina: build ARM local não roda
-   na VPS amd64 do cliente, e a falha só aparece no `up -d` dele. `build-and-push`
-   é status check obrigatório.
+   na VPS amd64 do cliente, e a falha só aparece no `up -d` dele. O job
+   `imagens-ok` reprova quando qualquer uma das três imagens não constrói —
+   mas **ainda não é status check obrigatório** (a branch protection tem
+   `verify, build-and-size, invariants, e2e`). Ativá-lo é o passo final do
+   merge desta doutrina: um required check ausente na base dos PRs abertos
+   travaria todos eles. Confira na fonte antes de confiar nesta linha.
 3. **Instalação de cliente aponta para número de versão, nunca para tag móvel.**
    `latest` aqui significa **topo da `main`**, não última release — quem quer a
    última release usa `stable`. `pull_policy` acompanha a mutabilidade da tag:

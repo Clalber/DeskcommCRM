@@ -311,9 +311,50 @@ IMG_SCHEDULER="${IMG_NS}/deskcomm-scheduler"
 ultima_versao_publicada() {
   local url="${1:-https://github.com/melgarafael/DeskcommCRM.git}" ref
   command -v git >/dev/null 2>&1 || return 0
-  ref="$(git ls-remote --tags --refs --sort=-v:refname "$url" 'v*' 2>/dev/null | head -1 | awk '{print $2}')" || return 0
+  # `grep -v -- -` descarta PRERELEASE (v1.11.0-rc1, v1.1.1-jmpo.1 — esta última
+  # existe de verdade neste repo). O `--sort=-v:refname` do git põe o prerelease
+  # ACIMA do release final quando `versionsort.suffix` não está configurado, e
+  # uma instalação nova nasceria num release candidate sem ninguém pedir.
+  ref="$(git ls-remote --tags --refs --sort=-v:refname "$url" 'v*' 2>/dev/null \
+        | awk '{print $2}' | grep -v -- '-' | head -1)" || return 0
   [ -n "$ref" ] || return 0
   printf '%s' "${ref#refs/tags/v}"
+}
+
+# Código HTTP do manifest de uma referência nossa no GHCR, anonimamente.
+#   200 = existe e é pública | 404 = não existe | 403 = pacote PRIVADO | 000 = sem rede
+#
+# 403 é o caso que mais engana: pacote recém-criado no GHCR nasce privado, e
+# repositório público não muda isso. Enquanto ninguém trocar a visibilidade na
+# mão, o `docker compose pull` de toda VPS é negado — e como `pull` de serviço
+# com `image:` falha a operação inteira, a instalação morre no passo de subir.
+ghcr_status() {
+  local img="$1" tag="$2" tok
+  tok="$(curl -fsS --max-time 6 \
+          "https://ghcr.io/token?scope=repository:melgarafael/${img}:pull&service=ghcr.io" 2>/dev/null \
+        | sed -n 's/.*"token":"\([^"]*\)".*/\1/p')" || true
+  if [ -z "$tok" ]; then printf '000'; return 0; fi
+  curl -s -o /dev/null --max-time 6 -w '%{http_code}' \
+    -H "Authorization: Bearer $tok" \
+    -H 'Accept: application/vnd.oci.image.index.v1+json,application/vnd.docker.distribution.manifest.list.v2+json,application/vnd.docker.distribution.manifest.v2+json' \
+    "https://ghcr.io/v2/melgarafael/${img}/manifests/${tag}" 2>/dev/null || printf '000'
+}
+
+# As TRÊS imagens existem e são públicas nesta referência?
+#
+# Perguntar pelas três juntas, e não só pela do app, é o ponto: `deskcomm-worker`
+# e `deskcomm-scheduler` nasceram depois das releases que já existem, então
+# `deskcomm-worker:1.2.1` nunca vai existir — a v1.2.1 é passado. Pinar as três
+# numa versão sem conferir gravaria no .env do cliente duas referências
+# impossíveis, e o kit as construiria na VPS **em silêncio**, do topo da main:
+# app de uma release + worker/scheduler de outro código. Exatamente a mistura de
+# versões que a doutrina existe para proibir, no caminho de primeira impressão.
+trio_publicado() {
+  local tag="$1" i
+  for i in deskcommcrm deskcomm-worker deskcomm-scheduler; do
+    [ "$(ghcr_status "$i" "$tag")" = "200" ] || return 1
+  done
+  return 0
 }
 
 # Escreve no .env as três imagens da MESMA versão + o pull_policy que combina

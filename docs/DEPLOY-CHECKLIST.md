@@ -29,8 +29,13 @@ O procedimento completo está em [`doctrine/packaging.md`](doctrine/packaging.md
       não chegar lá não chega a ninguém
 - [ ] `pnpm test:db` verde localmente (aplica o baseline em install **e** update num Postgres limpo)
 - [ ] `pnpm test:shell` verde (é o único gate que exercita o kit)
-- [ ] O número da versão nunca foi publicado: `git tag --list 'vX.Y.Z'` vazio **e** ausente de
-      `curl -s .../deskcommcrm/tags/list`
+- [ ] O número da versão nunca foi publicado: `git tag --list 'vX.Y.Z'` vazio **e**
+      `ghcr_status deskcommcrm X.Y.Z` → **404**
+
+      Use a função `ghcr_status` de [`doctrine/packaging.md`](doctrine/packaging.md)
+      §Checklist de release. **Não use `curl` cru no GHCR**: ele responde `401`, e um corpo de
+      erro não contém a versão procurada — o que faria este item aprovar qualquer coisa,
+      inclusive uma versão já publicada.
 
 **Publicar**
 

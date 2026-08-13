@@ -97,10 +97,15 @@ jobs:
             # quem quer "a última versão estável" pedia `latest` e recebia edge.
             # Trocar o significado de `latest` faria downgrade silencioso em quem
             # já o consome, então o canal novo é o que ganha o nome certo.
-            # Restrito a tag `v*`: `ref_type == 'tag'` sozinho deixaria um
-            # workflow_dispatch numa tag qualquer (ou uma tag de teste) mover o
-            # canal que os implementadores usam para decidir o que instalar.
-            type=raw,value=stable,enable=${{ github.ref_type == 'tag' && startsWith(github.ref_name, 'v') }}
+            # Três condições, e cada uma barra um caminho medido. `ref_type ==
+            # 'tag'` sozinho deixaria um dispatch numa branch mover o canal;
+            # `startsWith(…, 'v')` barra tag de teste (o registry já tem uma
+            # `quebrada-teste`, que nenhum push na main consegue produzir);
+            # e `event_name == 'push'` barra o pior caso — um dispatch numa
+            # release ANTIGA faria `stable` REGREDIR, e todo self-hoster no
+            # default do compose sofreria downgrade silencioso no próximo
+            # `up -d`, com app velho sobre banco já migrado.
+            type=raw,value=stable,enable=${{ github.event_name == 'push' && github.ref_type == 'tag' && startsWith(github.ref_name, 'v') }}
           labels: |
             org.opencontainers.image.title=${{ matrix.title }}
 

@@ -69,7 +69,7 @@ Ao finalizar um epic:
      migration que não chega lá não chega em quem instalou numa VPS. Nenhum job de CI confere isso
    - **Se você tocou `Dockerfile*`, `docker-compose*.yml` ou `hostgator-setup-kit/`:** a mudança
      alcança quem **já** instalou. Lei em [`docs/doctrine/packaging.md`](docs/doctrine/packaging.md).
-     O CI reprova o essencial (serviço `build:`-only, imagem quebrada, instalação em tag móvel);
+     O CI reprova serviço `build:`-only e instalação em tag móvel (imagem quebrada ainda não bloqueia merge);
      o que fica com você é o resto: variável nova com default que não quebre `.env` antigo, e a
      atualização não pedindo edição manual de arquivo. **Nenhum bump pode exigir que o operador
      da VPS edite alguma coisa na mão** — se exigir, abra issue com plano de migração em vez de PR
@@ -77,7 +77,10 @@ Ao finalizar um epic:
    - `pnpm test:e2e` (subset relevante) — **opcional se você contribui de fora**, ver abaixo
 4. Abrir PR contra `main`. Description deve referenciar o epic e listar evidências (logs/screenshots dos testes).
 5. CI deve passar antes de merge. Obrigatórios: `verify`, `invariants` (isolamento RLS),
-   `build-and-size`, `e2e` e `build-and-push` (a imagem que o self-hoster instala).
+   `build-and-size` e `e2e`.
+
+   O job `imagens-ok` (constrói as três imagens que o self-hoster instala) roda em PR e
+   **ainda não bloqueia** — a ativação depende de um passo de administração do repositório.
 
    Verde no `e2e` **não** é "jornada provada": ele mesmo imprime, no resumo, quais specs não
    cobriu — e a que fica de fora é justamente `vps-fresh-onboarding`, a instalação do zero.

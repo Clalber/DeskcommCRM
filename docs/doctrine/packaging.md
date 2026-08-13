@@ -41,9 +41,15 @@ Se a resposta for "o cliente", a peça está errada e vira imagem publicada.
 |---|---|---|
 | Exemplos | `deskcommcrm`, `deskcomm-worker` | WAHA, Redis, Caddy, `serverless-redis-http`, `postgres` |
 | Quem constrói | nosso CI, uma vez por versão | terceiro, fora do nosso controle |
-| O que fazemos | publicamos com procedência e versão | **referenciamos com tag fixa** |
+| O que fazemos | publicamos com procedência e versão | **referenciamos com tag pinada** (ver ressalva) |
 | O que **nunca** fazemos | publicar da máquina de um dev | republicar, embalar ou copiar |
 | Se quebrar | é bug nosso, com forward-fix | é incidente de fornecedor, com pin de escape |
+
+**Ressalva medida:** `redis:7-alpine` e `caddy:2-alpine` flutuam dentro do major — as duas
+se moveram no Docker Hub em 2026. São dependências de infraestrutura sem estado de negócio, e
+o custo de bumpá-las a cada release não se paga hoje; o item 4 do checklist manda revisitá-las.
+`waha` e `srh` — que tocam WhatsApp e rate limit — estão pinadas de verdade (tag exata e
+digest). O gate reprova tag ausente ou `:latest`, não o major flutuante.
 
 **Nenhuma peça upstream vira imagem nossa.** Não por preguiça: WAHA Plus é licenciado, e
 redistribuir o binário de terceiro dentro de uma imagem nossa é passivo jurídico numa
@@ -65,9 +71,10 @@ publicada. `build:` pode existir **ao lado** — como caminho de escape para que
 worker:
   build: { context: ., dockerfile: Dockerfile.worker }
 
-# CERTO — imagem publicada; o build fica como override opcional
+# CERTO — imagem publicada; o build fica ao lado, como escape
 worker:
-  image: ${WORKER_IMAGE:-ghcr.io/melgarafael/deskcomm-worker:latest}
+  image: ${WORKER_IMAGE:-ghcr.io/melgarafael/deskcomm-worker:stable}
+  build: { context: ., dockerfile: Dockerfile.worker }
 ```
 
 - **Por quê:** um serviço `build:`-only é invisível para `docker compose pull` ("Skipped — No
@@ -121,6 +128,18 @@ OCI — no mínimo `source`, `revision`, `version`, `licenses` — e é constru�
 
 `install.sh` e `update.sh` gravam no `.env` do cliente uma **tag de versão** (`1.2.1`), nunca
 `latest`, `main` ou `stable`.
+
+Duas exceções, ambas deliberadas e ambas com aviso na tela — porque falhar fechado aqui
+seria recusar instalar por não conseguir resolver um número:
+
+1. **Sem rede ou sem tag no remoto**, cai em `latest` e avisa. Trocar previsibilidade por
+   disponibilidade é o negócio errado numa instalação que já começou.
+2. **Quem preenche o `.env` à mão** a partir do template recebe `stable` — o piso seguro
+   para quem não vai rodar a entrevista. `--yes` com o template preserva esse valor.
+
+O que **nenhum** caminho faz é pinar numa versão sem antes conferir que as três imagens
+existem lá: a tag do git nasce minutos antes das imagens, e `deskcomm-worker:1.2.1` nunca
+vai existir porque a v1.2.1 é anterior à criação desse pacote.
 
 - **Por quê:** três consequências de uma só causa. **(a)** A versão do cliente para de mudar
   por acidente — um `up -d` rodado à mão semanas depois não troca o app sob o banco. **(b)**
@@ -203,6 +222,12 @@ default que preserva o comportamento anterior**; se ela precisa existir, quem a 
 ### 7. A versão que roda é observável de fora
 
 `GET /api/v1/health` responde a versão real da imagem em execução.
+
+> **Vale a partir da próxima release.** Nenhuma imagem já publicada carrega
+> `APP_VERSION` — medido: `docker run --rm ghcr.io/melgarafael/deskcommcrm:1.2.1 node -e
+> 'console.log(process.env.APP_VERSION)'` → `undefined`. Todo o parque instalado hoje
+> responde `desconhecido`, que é a resposta honesta e o motivo de o fallback não ser mais
+> um número plausível. O item 9 do checklist de release reprova contra a 1.2.1 de propósito.
 
 - **Por quê:** é o fecho do laço dos invariantes 2 e 3. Procedência sem observabilidade só
   serve a quem tem acesso ao registry; o suporte precisa da resposta a partir da instalação.

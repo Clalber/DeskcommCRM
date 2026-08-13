@@ -883,7 +883,24 @@ montar_vps() {
   : > "$VPS_PROJ/docker-compose.prod.yml"
   cat > "$raiz/bin/docker"
   # Só o v_supabase_url exige resposta online (000 reprova); os outros toleram.
-  printf '#!/usr/bin/env bash\nprintf 200\n' > "$raiz/bin/curl"
+  #
+  # O dublê fala DOIS protocolos porque o install.sh passou a sondar o GHCR
+  # antes de pinar as imagens (`ghcr_status`/`trio_publicado` no _common.sh): o
+  # endpoint de token devolve JSON, o de manifest devolve o código HTTP. Um
+  # dublê que respondesse `200` para tudo faria o `sed` do token sair vazio, a
+  # sonda devolver `000`, e a suíte passaria a exercitar o ramo de fallback
+  # achando que exercita o normal — verde medindo outra coisa.
+  #
+  # `DUBLE_GHCR` permite ao teste escolher o cenário: vazio/`200` = as três
+  # imagens publicadas; `403` = pacote privado; `404` = não existe.
+  cat > "$raiz/bin/curl" <<'STUBCURL'
+#!/usr/bin/env bash
+case "$*" in
+  *ghcr.io/token*) printf '{"token":"dublê"}' ;;
+  *ghcr.io/v2/*)   printf '%s' "${DUBLE_GHCR:-200}" ;;
+  *)               printf 200 ;;
+esac
+STUBCURL
   # O install.sh e o update.sh vão até o fim, e no fim eles AGENDAM CRON. Sem
   # dublê a suíte escreveria no crontab de quem a roda — apontando para um
   # diretório temporário que ela mesma apaga em seguida. Teste que suja a máquina
@@ -1007,7 +1024,7 @@ STUB
 
   # ── A regra de ouro da doutrina de packaging, no ponto onde ela vale ───────
   # Uma instalação nova gravava `APP_IMAGE=…:latest`, e `latest` aqui significa
-  # TOPO DA MAIN (a regra do CI é `enable={{is_default_branch}}`), não a última
+  # TOPO DA MAIN (o canal segue a branch default), não a última
   # release. Duas instalações feitas em semanas diferentes rodavam código
   # diferente, ambas dizendo "estou no latest" — e a issue #184 chegou com o
   # ambiente descrito como "latest do dia 06/08/2026".
@@ -1154,6 +1171,44 @@ STUB
   printf '  ✓ com v1.0.0/v1.9.0/v1.10.0 no remoto, o .env nasce pinado em 1.10.0 (as três imagens)\n'
 ) || fail=1
 rm -rf "$TMP_PIN"
+
+echo "packaging: a tag do git não basta — as imagens têm de existir"
+# A tag nasce minutos antes das imagens, e as do worker/scheduler só passaram a
+# existir depois das releases que já estão publicadas: `deskcomm-worker:1.2.1`
+# nunca vai existir, porque a v1.2.1 é passado. Sem sondar o registry, o .env do
+# cliente receberia referências impossíveis e o kit as construiria aqui EM
+# SILÊNCIO, do topo da main — app de uma release, worker de outro código.
+#
+# 403 é o caso que trava na estreia de uma imagem nova: pacote recém-criado no
+# GHCR nasce privado, e repositório público não muda isso.
+TMP_PRIV="$(mktemp -d)"
+(
+  montar_vps "$TMP_PRIV/vps" "crmpriv" <<'STUB'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$DOCKER_LOG"
+case "$1" in
+  compose) case "$*" in *" exec "*) printf 'healthy\n{"data":{"status":"healthy"}}\n' ;; esac; exit 0 ;;
+esac
+exit 0
+STUB
+  export DUBLE_GHCR=403          # pacote existe mas está PRIVADO
+  saida="$(rodar install.sh --yes)"
+  unset DUBLE_GHCR
+
+  if ! printf '%s' "$saida" | grep -q "construídas neste servidor"; then
+    printf '  ✗ com as imagens inalcançáveis, o instalador não avisou que ia construir aqui\n'
+    printf '     silêncio aqui é o defeito: o dono não descobre que duas peças saíram do fonte local.\n'
+    exit 1
+  fi
+  printf '  ✓ imagens inalcançáveis (403): avisa que vai construir no servidor, em vez de calar\n'
+
+  # E ainda assim a instalação COMPLETA — construir é lento, não é impedimento.
+  if ! grep -qE "^APP_IMAGE=" "$VPS_PROJ/.env"; then
+    printf '  ✗ a instalação não chegou a escrever o .env\n'; exit 1
+  fi
+  printf '  ✓ e mesmo assim conclui a instalação (constrói é lento, não é impedimento)\n'
+) || fail=1
+rm -rf "$TMP_PRIV"
 
 echo "integração: os TRÊS provedores de IA que o instalador oferece"
 # A pergunta "qual IA vai atender" tem três respostas, e até aqui só uma delas

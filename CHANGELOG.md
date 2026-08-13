@@ -10,11 +10,10 @@ Se você roda o DeskcommCRM numa VPS, **leia a seção da versão para a qual es
 
 Esta versão mexe em como o sistema **chega e se atualiza** no seu servidor. Em uso, três
 coisas mudam para melhor: a instalação deixa de ter uma etapa que podia falhar por falta de
-memória no meio (o servidor não compila mais nada — tudo vem pronto), sobra folga de memória
-para o que importa de verdade na operação (WhatsApp, mídia, mais atendimentos na mesma
-máquina), e a instalação fica bem mais rápida. A recomendação de servidor **continua a
-mesma**: o que consome memória é operar o sistema no dia a dia — 7 serviços e cerca de 150 MB
-por número de WhatsApp conectado —, e isso não mudou.
+memória no meio (o servidor não compila mais nada — tudo vem pronto), fica bem mais rápida, e
+o agente de IA passa a receber as correções de cada versão. A recomendação de servidor
+**continua exatamente a mesma**: o que consome memória é operar o sistema no dia a dia — 7
+serviços e cerca de 150 MB por número de WhatsApp conectado —, e isso não mudou nem um pouco.
 
 ### Corrigido
 
@@ -31,8 +30,9 @@ por número de WhatsApp conectado —, e isso não mudou.
   (ex.: `1.2.1`), e é essa versão que fica no seu servidor até você decidir atualizar.
 - **O CRM podia não subir por causa de um serviço externo fora do ar.** A configuração pedia
   ao Docker que verificasse o registro de imagens a cada subida; se ele não respondesse, o
-  contêiner não subia — mesmo com a imagem já baixada no seu disco. Como a versão agora é
-  fixa, essa verificação deixou de ser necessária e saiu.
+  contêiner não subia — mesmo com a imagem já baixada no seu disco. Agora que o seu servidor
+  fica numa versão fixa, essa verificação deixa de ser feita **na sua instalação** (quem
+  acompanha um canal móvel continua com ela, que é onde ela serve para alguma coisa).
 - **O agendador de tarefas dependia da internet para voltar.** A cada reinício ele baixava
   dois programas antes de começar. Sem internet no momento do reboot — justo quando a máquina
   está se recuperando de alguma coisa —, as tarefas automáticas não voltavam. Agora já vêm

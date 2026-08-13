@@ -74,10 +74,9 @@ commit → push → PR → merge na main → CI publica imagem → VPS puxa
    não um `up -d` na mão: ele puxa a tag publicada, re-aplica o `baseline.sql`,
    faz backup antes e grava as três imagens no `.env`.
 
-> **`latest` não é a última release.** A regra do CI é
-> `enable={{is_default_branch}}`, então `latest` segue o **topo da `main`** —
-> código ainda não lançado. Quem quer a última release usa `stable`; quem opera
-> um cliente usa o número da versão. Ver
+> **`latest` não é a última release.** Ele é publicado a partir da branch default, então
+> segue o **topo da `main`** — código ainda não lançado. Quem quer a última release usa
+> `stable`; quem opera um cliente usa o número da versão. Ver
 > [`../doctrine/packaging.md`](../doctrine/packaging.md).
 
 ---

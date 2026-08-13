@@ -85,8 +85,8 @@ services:
     # depois desta mudança, quem executa é o `update.sh` VELHO — o que está no
     # disco —, e ele só sabe gravar APP_IMAGE. O `git checkout` da tag já trocou
     # ESTE arquivo, então worker e scheduler caem no default daqui. Com
-    # `:latest`, esse default seria o TOPO DA MAIN (`enable={{is_default_branch}}`
-    # no publish-image.yml): o app pinado numa release e o runtime do agente de
+    # `:latest`, esse default seria o TOPO DA MAIN (o canal segue a branch
+    # default): o app pinado numa release e o runtime do agente de
     # IA rodando código não lançado, sobre o banco da release. `:stable` é a
     # última release publicada — pareia com o app em vez de correr na frente.
     image: ${WORKER_IMAGE:-ghcr.io/melgarafael/deskcomm-worker:stable}
