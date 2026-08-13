@@ -166,7 +166,7 @@ o summary do job. Se você mexeu em UI fora desse subconjunto, a prova é sua.
 
 ## Critério de conclusão
 
-Vale a **Definition of Done de 13 itens em [`CLAUDE.md`](CLAUDE.md)**. Não declare pronto
+Vale a **Definition of Done de 15 itens em [`CLAUDE.md`](CLAUDE.md)**. Não declare pronto
 sem: typecheck/lint zerados, testes relevantes verdes, RLS testada se tocou tabela
 tenant-aware, migration + baseline + MANIFEST se mudou schema, e prova visual se mudou UI.
 

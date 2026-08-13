@@ -1,0 +1,306 @@
+# Doutrina de Packaging e Distribuição
+
+> Lei de arquitetura para tudo que roda no disco de quem instalou o DeskcommCRM: imagens,
+> composes, tags e o kit de instalação. Complementa [`sistema-vivo.md`](./sistema-vivo.md) —
+> não é aspiração, é critério de aceite. Amarrada ao item 15 do Definition of Done
+> (`CLAUDE.md`).
+
+Esta é a **lei**. O procedimento operacional de deploy vive em
+[`../runbooks/deploy.md`](../runbooks/deploy.md); as decisões estruturais e o que foi
+recusado, em [`../adr/0001-packaging-e-distribuicao.md`](../adr/0001-packaging-e-distribuicao.md).
+Ao mudar um invariante aqui, atualize os dois na mesma sessão.
+
+| Se você quer… | Vá para |
+|---|---|
+| saber se sua mudança precisa virar imagem publicada | §Os 7 invariantes, nº 1 |
+| escolher a tag que uma instalação de cliente consome | §Política de canais |
+| lançar uma versão | §Checklist de release |
+| entender por que o namespace é `melgarafael` e não uma org | o ADR |
+
+---
+
+## O princípio-raiz
+
+**O artefato que a pessoa instala é o produto. O repositório é a receita.**
+
+A distinção não é filosófica — ela decide onde o custo cai. Toda peça do sistema ou é
+**construída uma vez, por nós, no CI**, ou é **construída toda vez, por cada cliente, na VPS
+dele**. A segunda opção transfere para o comprador um custo que é nosso: tempo de instalação,
+RAM, risco de OOM no meio do primeiro contato com o produto — e, pior que tudo, a
+possibilidade de que duas instalações "da mesma versão" estejam rodando código diferente.
+
+Disso decorre a pergunta que classifica qualquer peça nova:
+
+> *"Quando isto muda, quem paga o build?"*
+
+Se a resposta for "o cliente", a peça está errada e vira imagem publicada.
+
+### As duas famílias de artefato
+
+| | **Nosso** | **Upstream** |
+|---|---|---|
+| Exemplos | `deskcommcrm`, `deskcomm-worker` | WAHA, Redis, Caddy, `serverless-redis-http`, `postgres` |
+| Quem constrói | nosso CI, uma vez por versão | terceiro, fora do nosso controle |
+| O que fazemos | publicamos com procedência e versão | **referenciamos com tag fixa** |
+| O que **nunca** fazemos | publicar da máquina de um dev | republicar, embalar ou copiar |
+| Se quebrar | é bug nosso, com forward-fix | é incidente de fornecedor, com pin de escape |
+
+**Nenhuma peça upstream vira imagem nossa.** Não por preguiça: WAHA Plus é licenciado, e
+redistribuir o binário de terceiro dentro de uma imagem nossa é passivo jurídico numa
+dependência crítica. Referência, nunca cópia — e a regra vale para todas, não só a licenciada,
+porque a exceção é o que apaga a regra.
+
+---
+
+## Os 7 invariantes (verificáveis)
+
+### 1. Nenhum serviço de produção constrói na máquina do cliente
+
+Todo serviço de `docker-compose.prod.yml` declara `image:` apontando para uma imagem
+publicada. `build:` pode existir **ao lado** — como caminho de escape para quem quer compilar
+—, nunca sozinho.
+
+```yaml
+# ERRADO — o cliente paga o build, e o update nunca o alcança
+worker:
+  build: { context: ., dockerfile: Dockerfile.worker }
+
+# CERTO — imagem publicada; o build fica como override opcional
+worker:
+  image: ${WORKER_IMAGE:-ghcr.io/melgarafael/deskcomm-worker:latest}
+```
+
+- **Por quê:** um serviço `build:`-only é invisível para `docker compose pull` ("Skipped — No
+  image to be pulled") e imune a `up -d` sem `--build`. Ele não é apenas caro de instalar: ele
+  **nunca é atualizado**. Congela no código do dia da instalação e atravessa todas as
+  atualizações seguintes sem que ninguém perceba.
+- **Anti-exemplo real (o defeito que originou esta doutrina):** o serviço `worker` — que é o
+  runtime do agente de IA, e o único consumidor de `ai_agent.dispatch_requested`, já que
+  `app/api/v1/cron/agent-dispatcher` é no-op permanente — não tinha `image:`. Toda instalação
+  rodava `pnpm install --frozen-lockfile` de 82 pacotes na VPS do cliente, e nenhum
+  `update.sh` jamais o reconstruiu. A feature-título do produto era a única peça que não
+  recebia correção. Enquanto isso, `CLAUDE.md` afirmava *"o caminho normal não constrói nada
+  na VPS"* — verdade para o app, falso para o produto.
+- **Verificação:** `tests/unit/packaging-compose-sem-build.test.ts` reprova serviço de
+  `docker-compose.prod.yml` com `build:` e sem `image:`.
+
+### 2. Publicação é ato do CI, e carrega procedência
+
+Imagem nossa só existe se saiu de `.github/workflows/publish-image.yml`. Ela carrega os labels
+OCI — no mínimo `source`, `revision`, `version`, `licenses` — e é construída para `linux/amd64`.
+
+- **Por quê:** duas razões distintas. **(a) Arquitetura:** um `docker build` num Mac ARM produz
+  imagem que não roda na VPS amd64 do cliente, e a falha aparece só no `up -d` dele. **(b)
+  Rastreabilidade:** sem `org.opencontainers.image.revision` não existe resposta para "que
+  código está rodando neste cliente?", e o suporte vira adivinhação.
+- **Verificação:** o job `build-and-push` é **status check obrigatório** na branch protection
+  da `main` — junto de `verify`, `build-and-size`, `invariants` e `e2e`. O gate existia e não
+  bloqueava: em 2026-08-12 um bump de `next` passou pelos quatro obrigatórios e quebrou o
+  build da imagem na `main`, porque o `next build` dentro do Dockerfile não enxerga `tests/`
+  (`.dockerignore`) e o next 16.3 passou a typechecar os `*.test.ts` colocados. **O artefato
+  que o self-hoster instala era o único sem gate.**
+
+### 3. Instalação de cliente nunca aponta para tag móvel
+
+`install.sh` e `update.sh` gravam no `.env` do cliente uma **tag de versão** (`1.2.1`), nunca
+`latest`, `main` ou `stable`.
+
+- **Por quê:** três consequências de uma só causa. **(a)** A versão do cliente para de mudar
+  por acidente — um `up -d` rodado à mão semanas depois não troca o app sob o banco. **(b)**
+  Atualizar vira **ato deliberado e reversível**: voltar é reescrever uma linha do `.env`.
+  **(c)** O suporte passa a ter resposta exata para "qual versão você está rodando?" — hoje,
+  duas instalações "no latest" feitas em meses diferentes rodam código diferente, e a issue
+  #184 chegou descrevendo o ambiente como *"latest do dia 06/08/2026"*, que é a admissão de
+  que a versão não era nomeável.
+- **A armadilha específica deste projeto:** `latest` aqui **não** significa "última release" —
+  significa **topo da `main`**, porque a regra do `metadata-action` é
+  `type=raw,value=latest,enable={{is_default_branch}}`. Uma instalação fresca em `:latest`
+  recebe código não-lançado. Isso inverte a expectativa que o nome cria e é a razão de o
+  canal `stable` existir (§Política de canais).
+- **Verificação:** `tests/shell/update-guard.test.sh` prova que a tag escolhida é **gravada**
+  no `.env` (não só exportada) e que uma instalação nova nasce pinada.
+
+### 4. Tag de versão é imutável; canal é móvel
+
+`vX.Y.Z` (e a imagem `X.Y.Z`) aponta para um digest **para sempre**. Republicar uma versão é
+proibido — corrige-se com `X.Y.Z+1`. Só `latest`, `main`, `stable` e `X.Y` se movem.
+
+- **Por quê:** a imutabilidade da tag é o que torna a pinagem do invariante 3 uma garantia em
+  vez de uma esperança. Se `1.2.1` puder ser reescrita, todo cliente "pinado" continua exposto
+  — só que agora com uma falsa sensação de controle, que é pior que nenhum controle.
+- **Verificação:** o workflow publica `type=semver` apenas a partir de tag `v*`, e tag git não
+  se reaponta. A dívida conhecida: o GHCR não impõe imutabilidade por configuração — a
+  garantia é de processo, e por isso o checklist de release proíbe reuso de número.
+
+### 5. `pull_policy` acompanha a mutabilidade da tag
+
+Tag imutável → `missing`. Tag móvel → `always`.
+
+- **Por quê:** medido, não deduzido. Com `pull_policy: always` e o registry indisponível
+  **para aquela referência**, o `docker compose up -d` **falha e o contêiner não sobe** —
+  mesmo com a imagem já presente no disco:
+
+  ```console
+  $ docker compose up -d      # pull_policy: always, imagem só local
+   t Error failed to resolve reference "…:1.0.0": not found
+  --> container rodando?           (vazio)
+
+  $ docker compose up -d      # pull_policy: missing, mesma imagem
+   Container polmissing-t-1  Started
+  --> container rodando? running
+  ```
+
+  Com tag móvel, `always` é o que faz o canal significar alguma coisa. Com tag imutável, ele
+  não protege de nada — só amarra a disponibilidade do CRM de um cliente pago à
+  disponibilidade do GHCR, em todo `up -d`. O `update.sh` não depende disso: ele puxa
+  explicitamente com `dc pull` antes de subir.
+- **Verificação:** `tests/shell/update-guard.test.sh` prova que instalação pinada grava
+  `APP_PULL_POLICY=missing`.
+
+### 6. Bump de versão não exige edição manual de `.env`
+
+Uma versão nova sobe sobre o `.env` que o cliente já tem. Variável nova nasce **opcional, com
+default que preserva o comportamento anterior**; se ela precisa existir, quem a acrescenta é o
+`update.sh`, não o usuário.
+
+- **Por quê:** o operador da VPS é leigo por premissa do produto. "Edite o `.env` antes de
+  atualizar" é uma instrução que metade do parque não executa e a outra metade executa errado
+  — e o modo de falha é o app não subir depois de uma atualização que já mexeu no banco.
+- **Anti-exemplo estrutural:** o compose de produção tem 7 variáveis sem fallback
+  (`WAHA_API_KEY_SHA512`, `WAHA_WEBHOOK_BASE_URL`, `WAHA_HMAC_SECRET`, `SRH_TOKEN`,
+  `INTERNAL_SECRET`, `DOMAIN`, `ACME_EMAIL`). Medido: o Compose **não** falha quando elas
+  faltam — substitui por string vazia, avisa em `stderr` e sobe. `DOMAIN: ""` e
+  `WAHA_API_KEY: "sha512:"` quebram em runtime, depois do `up -d`, silenciosamente. Falhar
+  tarde e mudo é pior que falhar cedo.
+- **Verificação:** toda variável nova entra em `.env.example` **e** em `lib/env.ts` com
+  default seguro (já cobrado no DoD); mudança que exija chave nova no `.env` de instalação
+  existente só entra com o `update.sh` sabendo acrescentá-la.
+
+### 7. A versão que roda é observável de fora
+
+`GET /api/v1/health` responde a versão real da imagem em execução.
+
+- **Por quê:** é o fecho do laço dos invariantes 2 e 3. Procedência sem observabilidade só
+  serve a quem tem acesso ao registry; o suporte precisa da resposta a partir da instalação.
+- **Anti-exemplo real:** o campo já existia e **mentia**. `app/api/v1/health/route.ts` lia
+  `process.env.npm_package_version ?? "0.1.0"`, e sob `CMD ["node","server.js"]` essa variável
+  é `undefined` — ela só existe quando o processo nasce de um `npm`/`pnpm run`. Toda
+  instalação do mundo reportava `0.1.0`. Um campo que responde com confiança o valor errado é
+  pior que um campo ausente: ele desliga a pergunta.
+- **Verificação:** `tests/unit/health-versao.test.ts` prova que a versão vem de
+  `APP_VERSION` (injetada no build via `ARG`) e reprova o retorno ao `npm_package_version`.
+
+---
+
+## Política de canais
+
+| Tag | Quem consome | Move? | `pull_policy` | O que significa |
+|---|---|---|---|---|
+| `1.2.1` | **toda instalação de cliente** | **não** | `missing` | uma release, para sempre |
+| `1.2` | ninguém instala | sim | — | conveniência de teste de patch |
+| `stable` | implementador validando antes de atualizar clientes | sim | `always` | a **última release** publicada |
+| `latest` | vitrine, avaliação, quem acompanha o projeto | sim | `always` | **topo da `main`** — código não lançado |
+| `main` | mantenedor e CI | sim | `always` | idêntico a `latest`, nome explícito |
+
+**A regra de ouro:** *instalação que alguém pagou aponta para número de versão. Ponto.*
+
+Ela existe porque o modelo de receita é a venda da VPS com o sistema instalado — quem instala
+para um cliente responde pelo que roda lá. Um canal móvel transfere a decisão de "quando
+atualizar" para o acaso: um reboot, um `up -d` de manutenção, uma queda de energia. Nenhum
+desses eventos é um momento em que alguém escolheu correr o risco de uma versão nova, e
+nenhum deles avisa quando dá errado. Quem descobre é o cliente, por telefone.
+
+**`latest` não é o canal estável, apesar do nome.** Essa é a pegadinha desta configuração: ele
+segue a `main`. `stable` existe para dar nome ao que as pessoas *acham* que `latest` é. E
+`latest` **não muda de significado** — mudá-lo faria clientes que hoje o consomem sofrerem um
+downgrade silencioso no próximo `up -d`, com app antigo sobre banco já migrado.
+
+---
+
+## Retrocompatibilidade — o contrato com quem já instalou
+
+Um bump de versão **pode** exigir do operador da VPS:
+
+- rodar `update.sh` (ou clicar "Atualizar agora" na tela);
+- que a VPS alcance o GHCR e o Supabase durante a atualização.
+
+Um bump de versão **não pode** exigir:
+
+- editar `.env`, compose ou qualquer arquivo à mão;
+- reinstalar, recriar volume, ou recomeçar do zero;
+- que o operador saiba o que é uma imagem, uma tag ou um registry;
+- migração de namespace de imagem — o namespace está gravado no `.env` de todo cliente
+  instalado; trocá-lo é breaking change e só cabe numa major, com o `update.sh` migrando
+  sozinho e o namespace antigo publicando em paralelo durante a transição.
+
+**Mudança que não couber nessas regras não entra: vira issue com plano de migração.**
+
+---
+
+## Checklist de release
+
+Verificável, na ordem. Nenhum item é "conferir se está tudo bem".
+
+```
+[ ] 1. CHANGELOG.md tem a seção da versão, com o que muda para quem já instalou
+[ ] 2. Nenhuma variável nova é obrigatória sem default (grep no diff de .env.example)
+[ ] 3. O número da versão NUNCA foi publicado antes:
+       git tag --list 'vX.Y.Z'  → vazio
+       curl .../tags/list       → não contém X.Y.Z
+[ ] 4. `git tag vX.Y.Z && git push origin vX.Y.Z` — a partir de um commit da `main`
+[ ] 5. O run de publicação ficou verde:
+       gh run list --workflow=publish-image.yml --limit 3
+[ ] 6. As imagens existem no registry, todas as que o compose consome:
+       para IMG in deskcommcrm deskcomm-worker deskcomm-scheduler:
+         curl -sI .../$IMG/manifests/X.Y.Z  → 200
+[ ] 7. `stable` aponta para esta versão (mesmo digest de X.Y.Z)
+[ ] 8. A imagem reporta a versão certa:
+       docker run --rm ghcr.io/…/deskcommcrm:X.Y.Z node -e 'console.log(process.env.APP_VERSION)'
+[ ] 9. `gh release create vX.Y.Z` com as notas do CHANGELOG
+[ ] 10. Ensaio de atualização numa instalação real (não fresca): update.sh a partir da
+        versão anterior, e o /api/v1/health responde X.Y.Z
+```
+
+O item 10 é o único que exige VPS. Ele não é opcional: a atualização é o caminho que **todo o
+parque instalado** percorre, e é o único que a suíte de CI não exercita.
+
+---
+
+## Enforcement
+
+| Camada | Artefato | Garante |
+|---|---|---|
+| CI (mecânico) | `build-and-push` obrigatório na branch protection | imagem quebrada **reprova o merge** |
+| CI (mecânico) | `tests/unit/packaging-compose-sem-build.test.ts` | serviço `build:`-only em produção reprova |
+| CI (mecânico) | `tests/unit/health-versao.test.ts` | versão que mente reprova |
+| CI (mecânico) | `tests/shell/update-guard.test.sh` | instalação que nasce em tag móvel reprova |
+| Gate de sessão | item 15 do Definition of Done (`CLAUDE.md`) | nenhuma task de imagem/compose/kit fecha sem responder |
+| Revisão | bloco de packaging em `CONTRIBUTING.md` | contribuidor externo sabe a régua antes do PR |
+| Operação | `docs/runbooks/deploy.md` | o procedimento reflete a lei |
+
+---
+
+## Decisões registradas
+
+**2026-08-13 — o namespace fica em `melgarafael`.** Uma consultoria externa recomendou criar
+uma org `deskcommcrm` e migrar, sob a premissa de que o compose apontava para uma org
+desvinculada do repo. A premissa era falsa: o compose sempre apontou para
+`ghcr.io/melgarafael/deskcommcrm`, que é o que o CI publica e o que está gravado no `.env` de
+todo cliente instalado. A string `deskcommcrm/deskcommcrm` existia num único lugar — uma URL
+de `git clone` em `docs/deploy-selfhost/README.md`, que retornava 404. O conserto proporcional
+ao defeito foi essa linha. Racional completo no ADR.
+
+**2026-08-13 — a régua de RAM é de operação, não de build.** A mesma consultoria argumentou
+que publicar a imagem derrubaria o requisito de 4 GB para 2 GB. Os 4 GB nunca foram custo de
+build do app: a imagem é pré-buildada desde 2026-07-02. Eles saem de medição de **operação** —
+7 contêineres, `mem_limit` somando 2560m só entre app+worker+waha, e ~150 MB por número de
+WhatsApp conectado. Publicar o worker remove um `pnpm install` da VPS; **não muda o consumo de
+quem opera**, e portanto não muda o tier recomendado. O ganho a comunicar é confiabilidade e
+capacidade — a instalação deixa de poder falhar por memória no meio, e o agente de IA passa a
+receber atualização —, nunca economia de plano.
+
+**2026-08-13 — o limiar codificado continua em 3.500.000 KB.** `install.sh` avisa (amarelo,
+não fatal) abaixo desse valor, e não em 4.000.000, porque `MemTotal` é o que sobra depois do
+que o kernel reserva: uma VPS de 4 GiB reporta ~4.012.000 KB e uma de "4 GB" decimais reporta
+~3.735.000 KB. Cortar em 4.000.000 acusaria justamente quem acabou de comprar o plano
+recomendado, na pior hora possível. Coberto por `hostgator-setup-kit/test-validators.sh`.
