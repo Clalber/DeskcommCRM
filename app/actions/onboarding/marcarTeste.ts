@@ -22,7 +22,7 @@ export async function marcarTesteFeito(respondeu: boolean): Promise<void> {
     organizationId: ctx.orgId,
     metadata: { respondeu },
   });
-  redirect("/onboarding/invite-team");
+  redirect("/onboarding");
 }
 
 export async function pularTeste(): Promise<void> {
@@ -33,5 +33,5 @@ export async function pularTeste(): Promise<void> {
     actorUserId: ctx.userId,
     organizationId: ctx.orgId,
   });
-  redirect("/onboarding/invite-team");
+  redirect("/onboarding");
 }

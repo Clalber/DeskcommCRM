@@ -10,6 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { createDefaultAgent, skipAi } from "@/app/actions/onboarding/createDefaultAgent";
 import type { PromptTemplate } from "@/lib/schemas/onboarding";
 import { cn } from "@/lib/utils";
+import { PROVEDOR_POR_ID } from "@/lib/ai/pontos/provedores";
 
 /**
  * O jeito de falar, não o "estilo de prompt".
@@ -19,6 +20,12 @@ import { cn } from "@/lib/utils";
  * de adopters roda em clínica, imobiliária e infoproduto. Os identificadores
  * continuam os mesmos porque já existem gravados; só a fala mudou.
  */
+/** "openrouter" no meio de uma frase é identificador vazando para a tela. */
+function provedorLegivel(id: string | null): string {
+  if (!id) return "da inteligência escolhida na instalação";
+  return `da ${PROVEDOR_POR_ID.get(id)?.rotulo ?? id}`;
+}
+
 const JEITOS: { id: PromptTemplate; titulo: string; desc: string }[] = [
   {
     id: "ecommerce_friendly",
@@ -51,6 +58,9 @@ export function SetupAiForm({ capacidades, conferencias }: Props) {
   const [naoPublicado, setNaoPublicado] = useState<string | null>(null);
   const [causa, setCausa] = useState<"canal" | "modelo" | null>(null);
   const [provedor, setProvedor] = useState<string | null>(null);
+  const [motivoDoModelo, setMotivoDoModelo] = useState<
+    "catalogo_vazio" | "nenhum_com_ferramentas" | null
+  >(null);
   const [regrasNaoSalvas, setRegrasNaoSalvas] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
@@ -62,6 +72,7 @@ export function SetupAiForm({ capacidades, conferencias }: Props) {
           setNaoPublicado(null);
           setCausa(null);
           setProvedor(null);
+          setMotivoDoModelo(null);
           setRegrasNaoSalvas(null);
           const res = await createDefaultAgent(formData);
           if (res && !res.ok) {
@@ -72,6 +83,7 @@ export function SetupAiForm({ capacidades, conferencias }: Props) {
           if (res?.publish_blocked_by === "modelo") {
             setCausa("modelo");
             setProvedor(res.provider ?? null);
+            setMotivoDoModelo(res.motivo_do_modelo ?? null);
             toast.warning("Atendente criado, mas ainda não está no ar.");
             return;
           }
@@ -201,22 +213,35 @@ export function SetupAiForm({ capacidades, conferencias }: Props) {
           className="space-y-3 rounded-md border border-amber-300/60 bg-amber-50 p-4 dark:border-amber-500/30 dark:bg-amber-950/20"
         >
           <p className="text-sm font-medium">
-            Seu atendente foi criado, mas ficou como <strong>rascunho</strong>: esta
-            instalação ainda não baixou a lista de modelos
-            {provedor ? ` da ${provedor}` : " da inteligência que você escolheu na instalação"}, e
-            sem saber qual modelo usar ele não entra no ar — rascunho não responde mensagem.
+            Seu atendente foi criado, mas ficou como <strong>rascunho</strong> — e rascunho
+            não responde mensagem.
           </p>
-          <p className="text-sm">
-            A lista é atualizada automaticamente uma vez por dia. Para colocá-lo no ar antes
-            disso, vá em <strong>IA › Credenciais</strong> e cadastre a chave dessa empresa;
-            depois publique em <strong>IA › Agentes</strong>.
-          </p>
+          {/*
+            As duas causas pedem conselhos OPOSTOS, e dar o errado custa caro:
+            mandar esperar a sincronização diária quem já tem o catálogo
+            completo é mandar esperar para sempre. Foi o que a tela fazia, e só
+            apareceu percorrendo o wizard num ambiente com 400 modelos baixados.
+          */}
+          {motivoDoModelo === "nenhum_com_ferramentas" ? (
+            <p className="text-sm">
+              Os modelos {provedorLegivel(provedor)} que esta instalação conhece não sabem
+              usar ferramentas — sem isso ele conversaria bem e nunca criaria um cliente
+              nem moveria um negócio no funil. Escolha outra empresa de IA em{" "}
+              <strong>IA › Provedores</strong>.
+            </p>
+          ) : (
+            <p className="text-sm">
+              Esta instalação ainda não tem a lista de modelos {provedorLegivel(provedor)}. Ela
+              é baixada automaticamente uma vez por dia; depois disso, publique em{" "}
+              <strong>IA › Agentes</strong>.
+            </p>
+          )}
           <div className="flex justify-end">
             <Button
               type="button"
               variant="outline"
               onClick={() => {
-                window.location.href = "/onboarding/invite-team";
+                window.location.href = "/onboarding";
               }}
             >
               Continuar sem publicar
@@ -247,7 +272,7 @@ export function SetupAiForm({ capacidades, conferencias }: Props) {
               type="button"
               variant="outline"
               onClick={() => {
-                window.location.href = "/onboarding/invite-team";
+                window.location.href = "/onboarding";
               }}
             >
               Continuar sem publicar

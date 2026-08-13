@@ -5,6 +5,7 @@
  * on the org and stamps `onboarding_state.welcome` with accepted_at + meta.
  */
 import { redirect } from "next/navigation";
+import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 import { audit } from "@/lib/audit";
@@ -57,6 +58,18 @@ export async function acceptWelcome(formData: FormData): Promise<AcceptWelcomeRe
     throw err;
   }
 
+  // MEDIDO percorrendo o wizard: o cabeçalho continuava dizendo "Minha Empresa"
+  // (o nome que o instalador deixa) durante TODO o resto do onboarding, mesmo
+  // com o banco já gravado com o nome novo. O layout do onboarding é
+  // compartilhado entre os passos e o App Router não o re-renderiza numa
+  // navegação dentro da mesma árvore — então ele servia o nome do primeiro
+  // render até um recarregamento completo.
+  //
+  // A pessoa acabou de dizer como se chama o negócio dela e o sistema seguia
+  // chamando-o de outra coisa. Invalidar o layout é o que faz o nome novo
+  // aparecer no passo seguinte.
+  revalidatePath("/onboarding", "layout");
+
   await audit({
     action: "onboarding.welcome_completed",
     actorUserId: ctx.userId,
@@ -66,5 +79,5 @@ export async function acceptWelcome(formData: FormData): Promise<AcceptWelcomeRe
     metadata: { display_name: input.display_name, timezone: input.timezone },
   });
 
-  redirect("/onboarding/connect-whatsapp");
+  redirect("/onboarding");
 }

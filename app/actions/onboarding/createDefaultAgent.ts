@@ -13,6 +13,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { aiAgentDefaultSchema, type PromptTemplate } from "@/lib/schemas/onboarding";
 import { capacidadesPadraoDoOnboarding } from "@/lib/ai/agents/capacidades-padrao";
 import { publicarMemoriaDaOrg } from "@/lib/ai/memoria-da-org";
+import { escolherModeloDoProvedor } from "@/lib/ai/agents/escolher-modelo";
 import { requireOnboardingCtx, patchOnboardingState, OnboardingError } from "./_shared";
 
 /**
@@ -55,7 +56,18 @@ interface AgenteDoOnboarding {
 type PublishOutcome =
   | { published: true }
   | { published: false; reason: "no_channel" }
-  | { published: false; reason: "no_model"; provider: string }
+  | {
+      published: false;
+      reason: "no_model";
+      provider: string;
+      /**
+       * As duas causas pedem conselhos OPOSTOS: catálogo vazio pede esperar (ou
+       * forçar) a sincronização; catálogo cheio sem nenhum modelo que sirva pede
+       * trocar de provedor. Dizer "ainda não baixamos a lista" para quem já tem
+       * 400 modelos é o conselho que nunca resolve.
+       */
+      motivo: "catalogo_vazio" | "nenhum_com_ferramentas";
+    }
   | { published: false; reason: "failed"; message: string };
 
 /**
@@ -134,20 +146,28 @@ async function publishFirstVersion(
 
   const provider = provedorDaInstalacao(org?.settings);
 
-  // O modelo CURADO daquele provedor. Não existe fallback literal: um id de
-  // outro provedor (ou inventado) produz o pior desfecho do produto — o agente
+  // O modelo daquele provedor. Não existe fallback literal: um id de outro
+  // provedor (ou inventado) produz o pior desfecho do produto — o agente
   // responde texto plausível e nunca cria o lead nem move o card.
-  const { data: model } = await admin
+  //
+  // Buscar SÓ o `is_default_for_provider` travava a OpenRouter, que é a opção
+  // [1] do instalador: medido num ambiente real, ela chega com 400 modelos
+  // sincronizados e NENHUM marcado como padrão, porque o cron de catálogo não
+  // escreve esse campo. A regra de escolha (com o requisito de ferramentas)
+  // vive em `escolherModeloDoProvedor`.
+  const { data: modelos } = await admin
     .from("ai_models")
-    .select("model_id")
+    .select("model_id, is_default_for_provider, supports_tools, input_price_per_million_cents, output_price_per_million_cents")
     .eq("provider", provider)
-    .eq("is_default_for_provider", true)
-    .is("deprecated_at", null)
-    .limit(1)
-    .maybeSingle();
+    .is("deprecated_at", null);
 
-  const modelId = model?.model_id as string | undefined;
-  if (!modelId) return { published: false, reason: "no_model", provider };
+  const escolha = escolherModeloDoProvedor(
+    (modelos ?? []) as Parameters<typeof escolherModeloDoProvedor>[0],
+  );
+  if (!escolha.escolhido) {
+    return { published: false, reason: "no_model", provider, motivo: escolha.motivo };
+  }
+  const modelId = escolha.modelId;
 
   // "Em que negócios ele pode mexer". Toda organização nasce com um funil de
   // entrada, criado por gatilho no INSERT de `organizations`. Sem preencher
@@ -244,6 +264,8 @@ export type CreateAgentResult =
       publish_error?: string;
       publish_blocked_by?: "canal" | "modelo";
       provider?: string;
+      /** Catálogo vazio e catálogo sem modelo que sirva pedem conselhos opostos. */
+      motivo_do_modelo?: "catalogo_vazio" | "nenhum_com_ferramentas";
       /** As regras da casa não foram gravadas — o agente existe assim mesmo. */
       regras_nao_salvas?: string;
     }
@@ -395,6 +417,7 @@ export async function createDefaultAgent(formData: FormData): Promise<CreateAgen
       agent_id: agent.id,
       publish_blocked_by: "modelo",
       provider: publicacao.provider,
+      motivo_do_modelo: publicacao.motivo,
       ...(regrasNaoSalvas ? { regras_nao_salvas: regrasNaoSalvas } : {}),
     };
   }
@@ -406,7 +429,7 @@ export async function createDefaultAgent(formData: FormData): Promise<CreateAgen
     return { ok: true, agent_id: agent.id, regras_nao_salvas: regrasNaoSalvas };
   }
 
-  redirect("/onboarding/invite-team");
+  redirect("/onboarding");
 }
 
 export async function skipAi(): Promise<void> {
@@ -414,5 +437,5 @@ export async function skipAi(): Promise<void> {
   await patchOnboardingState(ctx.orgId, {
     ai: { agent_id: "", prompt_template: "skipped", skipped: true },
   });
-  redirect("/onboarding/invite-team");
+  redirect("/onboarding");
 }

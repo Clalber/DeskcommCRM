@@ -186,9 +186,26 @@ function montarBanco(mundo: Mundo = {}): Estado {
       // Consciente do filtro: antes respondia o MESMO modelo para qualquer
       // provedor, e por isso um agente publicado em OpenRouter com um id da
       // Anthropic passava verde aqui.
+      //
+      // Devolve LISTA porque a escolha do modelo deixou de ser "pegue o
+      // marcado como padrão" — a OpenRouter chega com centenas de modelos e
+      // NENHUM marcado, e a regra agora olha ferramentas e preço.
       const provider = String(c.filtros.provider ?? "");
       const modelId = modelos[provider];
-      return { data: modelId ? { model_id: modelId } : null, error: null };
+      return {
+        data: modelId
+          ? [
+              {
+                model_id: modelId,
+                is_default_for_provider: true,
+                supports_tools: true,
+                input_price_per_million_cents: 100,
+                output_price_per_million_cents: 200,
+              },
+            ]
+          : [],
+        error: null,
+      };
     }
 
     if (c.table === "ai_agents") {
@@ -370,7 +387,10 @@ describe("onboarding: publicação impossível não pode terminar em silêncio",
     const res = await clicar();
 
     expect(res).toBe("redirecionou");
-    expect(redirects).toEqual(["/onboarding/invite-team"]);
+    // O destino é o ROTEADOR, não um passo. Fixar o passo aqui foi o que
+    // deixou o wizard pular "Ver ele atender" quando ele nasceu: o teste
+    // continuava verde porque media a intenção antiga.
+    expect(redirects).toEqual(["/onboarding"]);
     expect(estado.versoes).toHaveLength(1);
     expect(estado.versoes[0]).toMatchObject({ channel_session_id: "canal-1", status: "published" });
     expect(estado.agentes[0]?.published_version_id).toBe("versao-1");

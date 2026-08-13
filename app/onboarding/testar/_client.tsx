@@ -46,7 +46,7 @@ export function TestarClient({ nome, agenteId, versaoId }: Props) {
         body: JSON.stringify({ sample_message: mensagem }),
       });
       const json = (await res.json()) as {
-        data?: { final_text?: string };
+        data?: { final_text?: string; status?: string; error_code?: string; error_message?: string };
         error?: { message?: string };
       };
       if (!res.ok) {
@@ -58,7 +58,20 @@ export function TestarClient({ nome, agenteId, versaoId }: Props) {
         });
         return;
       }
-      const texto = json.data?.final_text?.trim();
+      // O ensaio responde 200 mesmo quando o turno FALHA — o resultado traz o
+      // status. Ler só o texto e concluir "executou e não devolveu nada" foi o
+      // que a tela fez no primeiro percurso real, enquanto a causa verdadeira
+      // era outra: a versão não tinha credencial. Mentir sobre a causa manda a
+      // pessoa procurar no lugar errado.
+      const d = json.data;
+      if (d?.status && d.status !== "completed") {
+        setDesfecho({
+          tipo: "erro",
+          mensagem: d.error_message ?? d.error_code ?? `o ensaio terminou como "${d.status}"`,
+        });
+        return;
+      }
+      const texto = d?.final_text?.trim();
       setDesfecho(
         texto
           ? { tipo: "resposta", texto }
