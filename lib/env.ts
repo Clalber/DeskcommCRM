@@ -160,6 +160,19 @@ const schema = z.object({
   // O <PublicEnvScript/> injeta os valores em runtime.
   APP_NAME: z.string().optional().default(""),
   APP_LOGO_URL: z.string().optional().default(""),
+  /**
+   * Cor da marca — um hex (`#506d48`), do qual `lib/branding/` deriva a rampa
+   * inteira. Vazio = o produto se pinta com a cor dele.
+   *
+   * `optional().default("")` e NUNCA `required()`, e o motivo é o modo de falha,
+   * não a preguiça: `lib/env.ts` lança no import do módulo, que no Next
+   * acontece na PRIMEIRA REQUISIÇÃO, não no boot. E o healthcheck do contêiner é
+   * um probe TCP puro (`docker-compose.prod.yml:44`, deliberadamente — /health
+   * derrubaria o app quando o WAHA cai). Somando os dois: o Docker mostraria
+   * `healthy` com 100% das requisições em 500. Uma var de COR não pode ter esse
+   * poder; a validação do valor é do resolvedor, que degrada e diz o motivo.
+   */
+  APP_ACCENT_HEX: z.string().optional().default(""),
 });
 
 let parsed = schema.safeParse(process.env);
