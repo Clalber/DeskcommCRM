@@ -1004,8 +1004,138 @@ STUB
       "$(grep -oE '^[A-Z_]+=' "$VPS_PROJ/.env" | tail -3 | tr '\n' ' ')"; exit 1
   fi
   printf '  ✓ portas livres → Caddy, e o .env sai inteiro mesmo sem proxy externo\n'
+
+  # ── A regra de ouro da doutrina de packaging, no ponto onde ela vale ───────
+  # Uma instalação nova gravava `APP_IMAGE=…:latest`, e `latest` aqui significa
+  # TOPO DA MAIN (a regra do CI é `enable={{is_default_branch}}`), não a última
+  # release. Duas instalações feitas em semanas diferentes rodavam código
+  # diferente, ambas dizendo "estou no latest" — e a issue #184 chegou com o
+  # ambiente descrito como "latest do dia 06/08/2026".
+  #
+  # Esta prova existe porque a anterior não pegava: sabotei o install.sh para
+  # voltar a gravar `:latest` fixo e a suíte inteira passou verde. A regra mais
+  # importante da doutrina não tinha gate nenhum.
+  #
+  # Nota: nesta fixture o remoto é um dublê sem tags, então `ultima_versao_publicada`
+  # devolve vazio e o install cai — de propósito — no canal móvel. Por isso a
+  # asserção não é "a tag é 1.2.3": é que as TRÊS imagens saem na MESMA
+  # referência e com o pull_policy que combina com ela. É o invariante que
+  # sobrevive aos dois caminhos, com rede e sem.
+  img_app="$(grep -oE "^APP_IMAGE='?[^']*" "$VPS_PROJ/.env" | sed "s/^APP_IMAGE='\?//")"
+  tag_app="${img_app##*:}"
+  for par in "WORKER_IMAGE:deskcomm-worker" "SCHEDULER_IMAGE:deskcomm-scheduler"; do
+    chave="${par%%:*}"; repo="${par##*:}"
+    if ! grep -qE "^${chave}='?ghcr\.io/melgarafael/${repo}:${tag_app}'?$" "$VPS_PROJ/.env"; then
+      printf '  ✗ %s não acompanha a versão do app (%s): %s\n' "$chave" "$tag_app" \
+        "$(grep -E "^${chave}=" "$VPS_PROJ/.env" || echo '(ausente)')"
+      printf '     app numa versão e worker em outra é a matriz que ninguém testou.\n'; exit 1
+    fi
+  done
+  case "$tag_app" in
+    latest|main|stable) esperado="always" ;;
+    *)                  esperado="missing" ;;
+  esac
+  for chave in APP_PULL_POLICY WORKER_PULL_POLICY SCHEDULER_PULL_POLICY; do
+    if ! grep -qE "^${chave}='?${esperado}'?$" "$VPS_PROJ/.env"; then
+      printf '  ✗ %s devia ser %s para a tag %s: %s\n' "$chave" "$esperado" "$tag_app" \
+        "$(grep -E "^${chave}=" "$VPS_PROJ/.env" || echo '(ausente)')"; exit 1
+    fi
+  done
+  printf '  ✓ as três imagens saem na MESMA referência (%s), com pull_policy=%s\n' "$tag_app" "$esperado"
 ) || fail=1
 rm -rf "$TMP3B"
+
+echo "packaging: a instalação resolve a última versão publicada"
+# O outro lado da regra de ouro: com um remoto que TEM tags, o install precisa
+# escolher a maior — e não a primeira que aparecer. `git ls-remote` devolve por
+# ordem alfabética de ref, onde "v1.10.0" vem ANTES de "v1.9.0"; sem o
+# `--sort=-v:refname` a instalação nasceria numa versão velha achando que é a
+# nova. É o tipo de erro que só aparece na décima release.
+(
+  # `ultima_versao_publicada` já está no escopo: o preâmbulo desta suíte faz
+  # `. ./_common.sh`. Sourcear de novo dentro de um subshell que muda de
+  # diretório é como a primeira versão disto quebrou.
+  repo_falso="$(mktemp -d)"
+  git init --quiet --bare "$repo_falso/origem.git"
+  trabalho="$(mktemp -d)"
+  git clone --quiet "$repo_falso/origem.git" "$trabalho/w" 2>/dev/null
+  (
+    cd "$trabalho/w" || exit 1
+    git config user.email t@t; git config user.name t
+    echo x > a; git add -A; git commit --quiet -m init
+    for t in v1.0.0 v1.9.0 v1.10.0 v1.2.0; do git tag "$t"; done
+    git push --quiet origin HEAD --tags 2>/dev/null
+  )
+
+  achou="$(ultima_versao_publicada "$repo_falso/origem.git")"
+  if [ "$achou" != "1.10.0" ]; then
+    printf '  ✗ escolheu a versão errada: esperado 1.10.0, veio "%s"\n' "$achou"
+    printf '     (ordem alfabética põe v1.9.0 depois de v1.10.0 — precisa de --sort=-v:refname)\n'
+    rm -rf "$repo_falso" "$trabalho"; exit 1
+  fi
+  printf '  ✓ entre v1.0.0/v1.2.0/v1.9.0/v1.10.0, escolhe 1.10.0 (ordem de VERSÃO, não alfabética)\n'
+
+  vazio="$(mktemp -d)"; git init --quiet --bare "$vazio/sem-tags.git"
+  semtag="$(ultima_versao_publicada "$vazio/sem-tags.git")"
+  if [ -n "$semtag" ]; then
+    printf '  ✗ remoto sem tag devia devolver vazio, veio "%s"\n' "$semtag"
+    rm -rf "$repo_falso" "$trabalho" "$vazio"; exit 1
+  fi
+  printf '  ✓ remoto sem tag nenhuma devolve vazio (o install cai no canal móvel e avisa)\n'
+  rm -rf "$repo_falso" "$trabalho" "$vazio"
+) || fail=1
+
+echo "packaging: a instalação GRAVA a versão resolvida (não só sabe qual é)"
+# A prova acima mostra que a função escolhe certo; esta mostra que o install.sh
+# a USA. São coisas diferentes, e a diferença não é acadêmica: sabotei o install
+# para voltar a gravar `:latest` fixo e TODA a suíte passou verde, porque nada
+# ligava a função ao arquivo que o cliente recebe.
+#
+# Offline de propósito: REPO_URL aponta para um repositório local com tags
+# conhecidas, então a asserção é exata (1.10.0) e não depende de o CI alcançar o
+# GitHub. Um teste que precisa de rede para provar pinagem falha por motivo
+# errado no dia em que a rede oscila.
+TMP_PIN="$(mktemp -d)"
+(
+  origem="$TMP_PIN/origem.git"
+  git init --quiet --bare "$origem"
+  (
+    cd "$TMP_PIN" || exit 1
+    git clone --quiet "$origem" w 2>/dev/null
+    cd w || exit 1
+    git config user.email t@t; git config user.name t
+    echo x > a; git add -A; git commit --quiet -m init
+    for t in v1.0.0 v1.9.0 v1.10.0; do git tag "$t"; done
+    git push --quiet origin HEAD --tags 2>/dev/null
+  )
+
+  montar_vps "$TMP_PIN/vps" "crmpin" <<'STUB'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$DOCKER_LOG"
+case "$1" in
+  compose) case "$*" in *" exec "*) printf 'healthy\n{"data":{"status":"healthy"}}\n' ;; esac; exit 0 ;;
+esac
+exit 0
+STUB
+  export REPO_URL="$origem"
+  rodar install.sh --yes >/dev/null
+  unset REPO_URL
+
+  for par in "APP_IMAGE:deskcommcrm" "WORKER_IMAGE:deskcomm-worker" "SCHEDULER_IMAGE:deskcomm-scheduler"; do
+    chave="${par%%:*}"; repo="${par##*:}"
+    if ! grep -qE "^${chave}='?ghcr\.io/melgarafael/${repo}:1\.10\.0'?$" "$VPS_PROJ/.env"; then
+      printf '  ✗ %s não foi pinado na versão resolvida (1.10.0): %s\n' "$chave" \
+        "$(grep -E "^${chave}=" "$VPS_PROJ/.env" || echo '(ausente)')"
+      printf '     instalação de cliente NUNCA nasce em tag móvel — docs/doctrine/packaging.md, invariante 3.\n'
+      exit 1
+    fi
+  done
+  if grep -qE "^APP_PULL_POLICY='?always'?$" "$VPS_PROJ/.env"; then
+    printf '  ✗ tag imutável com pull_policy=always: o CRM só sobe se o GHCR estiver de pé\n'; exit 1
+  fi
+  printf '  ✓ com v1.0.0/v1.9.0/v1.10.0 no remoto, o .env nasce pinado em 1.10.0 (as três imagens)\n'
+) || fail=1
+rm -rf "$TMP_PIN"
 
 echo "integração: os TRÊS provedores de IA que o instalador oferece"
 # A pergunta "qual IA vai atender" tem três respostas, e até aqui só uma delas

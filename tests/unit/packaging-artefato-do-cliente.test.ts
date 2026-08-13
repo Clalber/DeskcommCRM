@@ -65,7 +65,7 @@ function lerServicos(yaml: string): Map<string, string> {
     const cabecalho = linha.match(/^ {2}([a-z0-9_-]+):\s*$/i);
     if (cabecalho) {
       fechar();
-      atual = cabecalho[1];
+      atual = cabecalho[1] ?? null;
       continue;
     }
     if (atual) buffer.push(linha);
@@ -124,7 +124,7 @@ describe("packaging — o artefato que o cliente instala", () => {
 
       // Tira a interpolação ${VAR:-default} e fica com o default, que é o que
       // vale para quem não configurou nada — ou seja, para todo mundo.
-      const ref = m[1].replace(/^\$\{[A-Z_]+:-(.+)\}$/, "$1");
+      const ref = (m[1] ?? "").replace(/^\$\{[A-Z_]+:-(.+)\}$/, "$1");
 
       if (ref.includes("@sha256:")) continue; // pin por digest: o mais forte que existe
 
@@ -161,7 +161,7 @@ describe("packaging — o artefato que o cliente instala", () => {
       expect(politica, `'${nome}' não declara pull_policy`).toBeDefined();
 
       const defaultDaPolitica = politica!.replace(/^\$\{[A-Z_]+:-(.+)\}$/, "$1");
-      const imagem = bloco.match(/^\s{4}image:\s*(\S+)/m)![1];
+      const imagem = bloco.match(/^\s{4}image:\s*(\S+)/m)?.[1] ?? "";
       const tagDaImagem = imagem.replace(/^\$\{[A-Z_]+:-(.+)\}$/, "$1").split(":").pop();
       const tagEhMovel = ["latest", "main", "stable"].includes(tagDaImagem ?? "");
       avaliados += 1;
