@@ -622,12 +622,80 @@ Corrigido para `resourceId: null` (a tabela tem uma linha; `resourceType` já a 
 
 ---
 
+## Fase 2 — ENTREGUE e PROVADA NA TELA (`0872214d` + `50c20179`)
+
+`public.platform_branding` + tela `/admin/marca`. Ciclo completo medido no browser,
+com login MFA real, em build de produção:
+
+| estado | swatches | `--color-accent` |
+|---|---|---|
+| inicial | 1 | `#506d48` (Sage) |
+| digitando `#7a5cd6` | 15 | `#506d48` |
+| hex inválido | — | **Salvar desabilitado** |
+| salvo | 15 | **`#604aa6`** |
+| recarregado | 15 | **`#604aa6`** — persistiu |
+
+`#604aa6` é exatamente o tom que a tela anunciou como "Botões no modo claro".
+**A tela não mentiu.** Banco após salvar: `accent_hex=#7a5cd6`, `seeded_from_env=f`.
+Zero jargão técnico, zero rolagem lateral. Evidência em `evidence/marca-*.png`.
+
+### O primeiro run REPROVOU, e o erro apareceu na tela
+
+`Could not find the table 'public.platform_branding' in the schema cache`. Não era bug
+do código: o baseline fora provado num Postgres descartável, mas **o Supabase local
+nunca recebera a migration**. Aplicada a 0155 no banco local, o ciclo fechou. Sem
+dirigir o browser, isto teria virado "está pronto" com a feature morta.
+
+### Dois defeitos de PROSA — nenhum gate pega texto errado
+
+1. A frase do ajuste citava o degrau errado: com `#f5c518` o modo escuro anda +2 e a
+   tela dizia *"um tom mais escuro da sua cor"* quando o botão pousa **exatamente na
+   cor da pessoa**.
+2. Com marca neutra (`#808080`) a tela dizia *"sua cor ficou parecida com sucesso"* —
+   sobre uma cor que não pinta nada. A colisão era entre o verde **do produto** e o
+   verde de sucesso **do produto**.
+
+### A regra que virou doutrina
+
+`baseline.sql` tem `ALTER DEFAULT PRIVILEGES … GRANT ALL ON TABLES TO anon`, e ele vale
+para **toda tabela criada depois dele** — todo apêndice novo. Sem `revoke`, `anon` fica
+com 7 privilégios. É o análogo, **para tabela**, da regra de `security definer` do item 9
+do CLAUDE.md. Medido na sabotagem: sem o revoke o **SELECT passa sem erro**, porque a RLS
+devolve zero linha calada — por isso o teste tem dois casos, catálogo e comportamento.
+
+### Higiene do ambiente compartilhado
+
+Durante a prova deixei `accent_hex=#7a5cd6` no Supabase local, que mudaria a cor do app
+para **qualquer outra sessão** no mesmo banco. Limpo (`null`/`null`). Spec temporária e
+`.env.e2e` removidos.
+
+### Dívida declarada
+
+- **Só o título da aba lê o banco.** Os 8 call sites de `branding()` continuam no `.env`
+  — a tela **diz isso** embaixo do campo, em vez de deixar o operador achar que quebrou.
+- Logo e `show_powered_by` não têm controle: `Sidebar.tsx:46` lê o logo do `.env`, e
+  `show_powered_by` tem **zero** consumidores. Campo que salva valor que ninguém mostra
+  seria controle decorativo.
+- `fallback_at` é hoje inalcançável pela UI (o CHECK do banco barra hex corrompido).
+- **Spec e2e da marca é dívida:** a prova foi por spec temporária, removida porque suja
+  o banco compartilhado. Uma spec de verdade precisa de `afterAll` restaurando, e de ser
+  declarada em `.github/workflows/e2e.yml` (senão reprova o job **`verify`**, não o `e2e`).
+
+### Defeitos pré-existentes anotados (fora do escopo)
+
+| Defeito | Evidência |
+|---|---|
+| `border-error-fg/30` **não gera CSS nenhum** no Tailwind 3.4 (opacidade sobre cor em `var()`) — 2 telas do repo estão sem borda | `app/app/contacts/[id]/_client.tsx:64`, `components/contacts/AnonymizeDialog.tsx:102` |
+| As duas listas de audit divergem em **120 códigos** (208 no union × 88 no painel) | `lib/audit/actions.ts` × `components/admin/audit/action-codes.ts`, que diz "keep in sync manually" e não tem gate |
+| Apêndice não-idempotente **não é pego por gate nenhum** — `test:db` fica verde | o modo update tolera erro por contrato; quem detectaria é um diff de stderr que nenhum job roda |
+| **E-mail pessoal do dono no User-Agent** de toda instalação self-host | `lib/nuvemshop/config.ts:13` → sai em `api-client.ts:68`. **Decisão do Rafael**: qual endereço de projeto usar |
+
+---
+
 ## Próximo passo exato
 
-**Fase 2 — marca por ORGANIZAÇÃO.** A camada nova entra na mesma pilha
-(`[organizacao, banco, env]`), e é ela que fecha o que ficou declarado acima: a tela em
-`/app/settings/tenant/branding` (já inventariada em
-`docs/design-system/screen-flow/03-screen-inventory.md:149`) passa a ser a chamadora da
-server action, a consumidora de `motivos` e de `fallback_reason`, e o momento certo para
-dar a `branding()` uma variante assíncrona de servidor — que é o que destrava os 8 call
-sites que ainda leem o `.env`.
+**Fase 3 — marca por ORGANIZAÇÃO.** Reconhecimento em curso sobre as três armadilhas
+conhecidas: a RLS de `organizations` que devolve sucesso casando 0 linhas, a corrida no
+`settings` jsonb (onde mora `visibility_mode`, que é controle de exposição de dado), e a
+precedência pré/pós-login. O caso que só o **segundo admin** exercita é obrigatório —
+o owner do instalador é `platform_admin` e não passa pela policy.
