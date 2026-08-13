@@ -185,6 +185,13 @@ report() { post "{\"kind\":\"run_progress\",\"run_id\":\"${RUN_ID}\",\"step\":\"
 # sempre; sem o "|| true" isso já derrubava o agente ANTES de sequer chamar o
 # update.sh (achado só rodando de propósito com o comando falhando).
 PREV_IMAGE="$(dc images -q app 2>/dev/null | head -1)" || true
+# O worker e o scheduler passaram a ser imagens publicadas e pinadas na mesma
+# versão do app (antes eram `build:`-only e nenhum update os alcançava). Isso
+# tem um custo aqui: um rollback que voltasse SÓ o app deixaria o parque com
+# app na versão antiga e worker/scheduler na nova — mistura de versões que a
+# doutrina de packaging existe para impedir. Então os três voltam juntos.
+PREV_WORKER_IMAGE="$(dc images -q worker 2>/dev/null | head -1)" || true
+PREV_SCHEDULER_IMAGE="$(dc images -q scheduler 2>/dev/null | head -1)" || true
 if [ -z "$PREV_IMAGE" ]; then
   # Registrado, não ignorado: sem imagem anterior conhecida, se o update.sh
   # falhar mais adiante NÃO HÁ como voltar — o status vai sair "failed", nunca
@@ -229,16 +236,34 @@ if [ $RC -eq "$REFUSED_RC" ]; then
 elif [ $RC -ne 0 ]; then
   STATUS="failed"
   if [ -n "$PREV_IMAGE" ]; then
+    # Os serviços que temos como voltar. Worker e scheduler entram só se o
+    # `images -q` deles respondeu: numa instalação que ainda não tinha as
+    # imagens novas, voltar o app sozinho continua sendo o comportamento certo,
+    # e é melhor que não voltar nada.
+    ROLLBACK_ARGS=(app)
+    [ -n "$PREV_WORKER_IMAGE" ] && ROLLBACK_ARGS+=(worker)
+    [ -n "$PREV_SCHEDULER_IMAGE" ] && ROLLBACK_ARGS+=(scheduler)
+
     if APP_IMAGE="$PREV_IMAGE" APP_PULL_POLICY=missing \
-         dc up -d app >>"$LOG" 2>&1; then
+       WORKER_IMAGE="${PREV_WORKER_IMAGE:-}" WORKER_PULL_POLICY=missing \
+       SCHEDULER_IMAGE="${PREV_SCHEDULER_IMAGE:-}" SCHEDULER_PULL_POLICY=missing \
+         dc up -d "${ROLLBACK_ARGS[@]}" >>"$LOG" 2>&1; then
       STATUS="failed_rolled_back"
-      # Persiste a volta: o update.sh já gravou a imagem NOVA (quebrada) no
+      # Persiste a volta: o update.sh já gravou as imagens NOVAS (quebradas) no
       # .env antes do pull. Sem reescrever aqui, o próximo `up -d` — o do
       # cliente, semanas depois — traria o app quebrado de volta e desfaria o
-      # rollback em silêncio. PREV_IMAGE é um ID local (não uma tag no
+      # rollback em silêncio. Os IDs guardados são LOCAIS (não tags do
       # registro), então a política de pull precisa ir junto.
       set_env_var .env APP_IMAGE "$PREV_IMAGE"
       set_env_var .env APP_PULL_POLICY missing
+      if [ -n "$PREV_WORKER_IMAGE" ]; then
+        set_env_var .env WORKER_IMAGE "$PREV_WORKER_IMAGE"
+        set_env_var .env WORKER_PULL_POLICY missing
+      fi
+      if [ -n "$PREV_SCHEDULER_IMAGE" ]; then
+        set_env_var .env SCHEDULER_IMAGE "$PREV_SCHEDULER_IMAGE"
+        set_env_var .env SCHEDULER_PULL_POLICY missing
+      fi
     fi
   fi
 fi

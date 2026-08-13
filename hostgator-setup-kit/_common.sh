@@ -288,6 +288,60 @@ enter_project() {
 # psql efêmero via container (não exige psql no host).
 psql_run() { docker run --rm -i postgres:17-alpine psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 "$@"; }
 
+# ── As três imagens que NÓS publicamos ───────────────────────────────────────
+# O namespace é constante e literal de propósito: ele está gravado no .env de
+# toda instalação viva, e derivá-lo de variável faria o kit antigo (que já está
+# no disco do cliente) e o novo montarem strings diferentes.
+IMG_NS="ghcr.io/melgarafael"
+IMG_APP="${IMG_NS}/deskcommcrm"
+IMG_WORKER="${IMG_NS}/deskcomm-worker"
+IMG_SCHEDULER="${IMG_NS}/deskcomm-scheduler"
+
+# A última versão publicada (ex.: "1.2.1"), ou vazio se não deu para saber.
+#
+# Consulta o REMOTO, não o clone: o install.sh clona com `--depth 1`, que não
+# traz tag nenhuma, então `git tag -l` local devolveria vazio e a instalação
+# nasceria em `latest` sem ninguém perceber — que é justamente o defeito que
+# esta função existe para consertar.
+#
+# Falha ABERTA de propósito: sem rede, sem git ou sem tag no remoto ela devolve
+# vazio e quem chama cai no canal móvel, como era antes. Travar a instalação de
+# alguém porque não deu para resolver um número de versão seria trocar um
+# problema de previsibilidade por um de disponibilidade.
+ultima_versao_publicada() {
+  local url="${1:-https://github.com/melgarafael/DeskcommCRM.git}" ref
+  command -v git >/dev/null 2>&1 || return 0
+  ref="$(git ls-remote --tags --refs --sort=-v:refname "$url" 'v*' 2>/dev/null | head -1 | awk '{print $2}')" || return 0
+  [ -n "$ref" ] || return 0
+  printf '%s' "${ref#refs/tags/v}"
+}
+
+# Escreve no .env as três imagens da MESMA versão + o pull_policy que combina
+# com a mutabilidade da tag.
+#
+# As três juntas porque elas sobem juntas: app numa versão e worker em `latest`
+# é a matriz de compatibilidade que ninguém testou. E o pull_policy não é
+# detalhe — foi medido que, com `always` e o registry sem responder para aquela
+# referência, o `up -d` FALHA e o contêiner não sobe, mesmo com a imagem já no
+# disco. Numa tag imutável isso não protege de nada e só amarra a subida do CRM
+# do cliente à disponibilidade do GHCR.
+#
+#   gravar_imagens .env 1.2.1   → pinado,  pull_policy=missing
+#   gravar_imagens .env latest  → canal,   pull_policy=always
+gravar_imagens() {
+  local envfile="$1" versao="$2" politica
+  case "$versao" in
+    latest|main|stable) politica="always" ;;
+    *)                  politica="missing" ;;
+  esac
+  set_env_var "$envfile" APP_IMAGE             "${IMG_APP}:${versao}"
+  set_env_var "$envfile" APP_PULL_POLICY       "$politica"
+  set_env_var "$envfile" WORKER_IMAGE          "${IMG_WORKER}:${versao}"
+  set_env_var "$envfile" WORKER_PULL_POLICY    "$politica"
+  set_env_var "$envfile" SCHEDULER_IMAGE       "${IMG_SCHEDULER}:${versao}"
+  set_env_var "$envfile" SCHEDULER_PULL_POLICY "$politica"
+}
+
 # Grava (ou reescreve) uma chave no .env — sem duplicar linha se ela já existe.
 #   set_env_var .env APP_IMAGE ghcr.io/…:1.1.0
 #

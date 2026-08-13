@@ -155,15 +155,34 @@ step "Baixando a versão nova do app e reiniciando"
 # acima) e a imagem do container sejam sempre da mesma versão. Gravada no .env,
 # não só exportada: o compose lê a imagem de lá, e um `up -d` rodado à mão
 # depois voltaria pro ":latest" do install — desfazendo a atualização.
-export APP_IMAGE="ghcr.io/melgarafael/deskcommcrm:${TARGET_TAG#v}"
-set_env_var .env APP_IMAGE "$APP_IMAGE"
-# Devolve a política padrão: um rollback anterior deixou "missing" no .env
-# (porque a imagem de volta é um ID local, que não se puxa do registro), e
-# ninguém desfazia isso — o `up -d` manual do dono parava de puxar imagem para
-# sempre. Aqui o alvo é uma tag do registro de novo, então "always" volta a ser
-# o certo.
-set_env_var .env APP_PULL_POLICY always
-dc pull
+#
+# As TRÊS imagens são gravadas juntas, na mesma versão. O worker e o scheduler
+# passaram a ter imagem publicada porque, antes, eram `build:`-only no compose:
+# `dc pull` os PULAVA ("Skipped - No image to be pulled") e o `dc up -d` abaixo
+# recriava o contêiner sobre a imagem velha, sem `--build`. Resultado: o worker
+# — que é o runtime do agente de IA — ficava congelado no código do dia da
+# instalação e atravessava todas as atualizações. Esta é a linha que conserta
+# isso para o parque já instalado, sem que ninguém precise editar arquivo.
+#
+# `gravar_imagens` também resolve o pull_policy pela mutabilidade da tag: como
+# aqui o alvo é sempre uma tag de versão (imutável), sai `missing`. Isso além de
+# tudo desfaz o "missing" que um rollback anterior deixava para trás — antes ele
+# ficava no .env para sempre, e o `up -d` manual do dono nunca mais puxava nada.
+VERSAO_ALVO="${TARGET_TAG#v}"
+export APP_IMAGE="${IMG_APP}:${VERSAO_ALVO}"
+export WORKER_IMAGE="${IMG_WORKER}:${VERSAO_ALVO}"
+export SCHEDULER_IMAGE="${IMG_SCHEDULER}:${VERSAO_ALVO}"
+gravar_imagens .env "$VERSAO_ALVO"
+
+# `dc pull` falha se alguma das três imagens ainda não existir no registro — o
+# que acontece numa instalação atualizando para a primeira versão publicada
+# depois desta mudança, ou se um run de publicação quebrou. Nesse caso o compose
+# ainda tem `build:` ao lado do `image:` do worker e do scheduler, então o
+# `up -d` os constrói localmente: pior que puxar, melhor que não atualizar.
+if ! dc pull; then
+  c_ylw "⚠ Não consegui puxar todas as imagens da versão ${VERSAO_ALVO}."
+  c_ylw "  Sigo assim mesmo: o compose constrói o que faltar (mais lento, mesmo resultado)."
+fi
 # A rede do proxy externo é declarada como EXTERNA no compose: se ela sumiu
 # (um `docker network prune`, ou o `down -v` que o próprio kit ensina como
 # caminho de recomeço), o `up -d` abaixo morre em "network X declared as

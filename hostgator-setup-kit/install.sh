@@ -981,10 +981,34 @@ else
   CAMPO_OPENAI_EXTRA="OPENAI_API_KEY|Chave da OpenAI — só para ouvir áudios e usar a base de conhecimento (Enter pula)||v_openai|secret|opcional"
 fi
 
+# ── A versão que esta instalação vai rodar ───────────────────────────────────
+# Uma instalação nova nascia em `:latest`, e aqui `latest` NÃO quer dizer "a
+# última release": a regra do CI é `enable={{is_default_branch}}`, então ela
+# segue o topo da `main` — código ainda não lançado. Quem instalava no dia 6
+# e quem instalava no dia 20 rodavam software diferente, ambos dizendo "estou
+# no latest", e o suporte não tinha como saber o quê. A issue #184 chegou
+# descrevendo o ambiente como "latest do dia 06/08/2026", que é a admissão de
+# que a versão não era nomeável.
+#
+# Resolvido no REMOTO porque o clone é `--depth 1` e não traz tag nenhuma.
+VERSAO_ALVO="$(ultima_versao_publicada "$REPO_URL")"
+if [ -n "$VERSAO_ALVO" ]; then
+  IMAGEM_APP_DEFAULT="${IMG_APP}:${VERSAO_ALVO}"
+else
+  # Falha ABERTA: sem rede ou sem tag no remoto, segue como antes. Travar a
+  # instalação por não resolver um número seria trocar previsibilidade por
+  # disponibilidade — mas o aviso sai, porque o dono precisa saber que ficou
+  # num canal móvel em vez de numa versão.
+  VERSAO_ALVO="latest"
+  IMAGEM_APP_DEFAULT="${IMG_APP}:latest"
+  c_ylw "⚠ Não consegui descobrir a última versão publicada (rede?)."
+  c_ylw "  Instalando pelo canal 'latest'. Depois rode: bash hostgator-setup-kit/update.sh"
+fi
+
 FIELDS=(
   "DOMAIN|Domínio do CRM (ex: crm.suaempresa.com.br)||v_domain||"
   "ACME_EMAIL|Seu e-mail (avisos de SSL)||v_email||"
-  "APP_IMAGE|Imagem Docker do app|ghcr.io/melgarafael/deskcommcrm:latest|||"
+  "APP_IMAGE|Imagem Docker do app|${IMAGEM_APP_DEFAULT}|||"
   "NEXT_PUBLIC_SUPABASE_URL|Supabase Project URL (Settings > API)||v_supabase_url||"
   "NEXT_PUBLIC_SUPABASE_ANON_KEY|Supabase anon key (Settings > API)||v_anon||"
   "SUPABASE_SERVICE_ROLE_KEY|Supabase service_role key (Settings > API)||v_service|secret|"
@@ -1211,10 +1235,37 @@ if [ -f .env ]; then
   fi
 fi
 
+# A tag que o dono escolheu (o campo APP_IMAGE é editável na entrevista) decide
+# o pull_policy das três imagens. A regra é medida, não estética: com `always` e
+# o registry sem responder para aquela referência, o `up -d` FALHA e o contêiner
+# não sobe, mesmo com a imagem já no disco. Numa tag imutável isso não protege
+# de nada — só amarra a subida do CRM à disponibilidade do GHCR. Numa tag móvel
+# é o contrário: sem `always`, a versão nova nunca chega.
+# Olha só o último segmento do caminho: `registry.local:5000/x/y` tem ':' e NÃO
+# tem tag, e um `${APP_IMAGE##*:}` ingênuo devolveria "5000/x/y" como se fosse
+# uma. Um `@sha256:...` cai aqui como tag imutável, que é o correto.
+_ref_final="${APP_IMAGE##*/}"
+case "$_ref_final" in
+  *:*) TAG_ALVO="${_ref_final##*:}" ;;
+  *)   TAG_ALVO="latest" ;;   # imagem sem ':' é :latest por definição do Docker
+esac
+case "$TAG_ALVO" in
+  latest|main|stable) PULL_POLICY_ALVO="always" ;;
+  *)                  PULL_POLICY_ALVO="missing" ;;
+esac
+
 {
   printf '# Gerado por install.sh — NÃO comitar. Contém segredos.\n'
   envq APP_IMAGE "$APP_IMAGE"
-  envq APP_PULL_POLICY "always"
+  envq APP_PULL_POLICY "$PULL_POLICY_ALVO"
+  # Worker e scheduler acompanham a MESMA versão do app: um em 1.2.1 e outro em
+  # `latest` é uma matriz de compatibilidade que ninguém testou. Estas duas
+  # imagens existem desde que o worker deixou de ser `build:`-only — antes disso
+  # ele era compilado aqui na VPS e nenhum update jamais o alcançava.
+  envq WORKER_IMAGE "${IMG_WORKER}:${TAG_ALVO}"
+  envq WORKER_PULL_POLICY "$PULL_POLICY_ALVO"
+  envq SCHEDULER_IMAGE "${IMG_SCHEDULER}:${TAG_ALVO}"
+  envq SCHEDULER_PULL_POLICY "$PULL_POLICY_ALVO"
   envq DOMAIN "$DOMAIN"
   envq ACME_EMAIL "$ACME_EMAIL"
   printf '# Proxy reverso: "caddy" (o kit sobe o dele nas portas 80/443) ou "traefik"\n'
