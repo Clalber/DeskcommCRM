@@ -90,7 +90,7 @@ export function SignupForm({ convite }: { convite?: ConviteDoSignup }) {
   }
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="space-y-4" noValidate>
+    <form method="post" onSubmit={handleSubmit(onSubmit)} className="space-y-4" noValidate>
       {!convite && (
       <div className="space-y-1.5">
         <Label htmlFor="org_name">Nome da empresa</Label>
