@@ -149,6 +149,37 @@ test.describe("o wizard monta um funcionário", () => {
     await page.waitForURL(/\/onboarding\/setup-ai/, { timeout: 30_000 });
   });
 
+  test("treinar mostra o cérebro dele — e sem chave não é um beco", async ({ page }) => {
+    // Vale nos dois mundos pela mesma razão do caso do quadro (ver lá): no CI
+    // não há chave de provedor e o bloco vira o formulário para colar uma; na
+    // máquina de quem desenvolve, `next start` carrega o `.env.local` e ele vira
+    // o veredito sobre a chave que existe.
+    //
+    // O que NÃO varia: a tela nunca deixa a pessoa sabendo que falta a chave sem
+    // dizer o que fazer. Antes o passo 1 escrevia "Falta a chave da inteligência
+    // artificial" e o assunto morria ali — diagnóstico certo, saída nenhuma.
+    await login(page);
+    await page.waitForURL(/\/onboarding\/setup-ai/, { timeout: 30_000 });
+
+    const corpo = page.locator("body");
+    await expect(corpo).toContainText(/cérebro/i);
+
+    const semChave = await page.locator("#api_key_da_ia").count();
+    if (semChave > 0) {
+      // O beco vira saída: o campo está aqui, no passo em que a chave importa.
+      await expect(page.locator("#provedor_da_ia")).toBeVisible();
+      await expect(page.getByRole("button", { name: /guardar a chave/i })).toBeDisabled();
+      await expect(corpo).toContainText(/guardada cifrada/i);
+    } else {
+      // Com chave, o passo DIZ qual é e confere o crédito — "validada" nunca
+      // significou "funciona": o validador bate num endpoint de listagem, que
+      // responde 200 com a conta zerada.
+      await expect(corpo).toContainText(
+        /Conferindo se a chave tem crédito|Testei agora|não passou|Não consegui testar/i,
+      );
+    }
+  });
+
   test("treinar: pede as regras da casa e mostra o que ele já sabe fazer", async ({ page }) => {
     await login(page);
     await page.waitForURL(/\/onboarding\/setup-ai/, { timeout: 30_000 });

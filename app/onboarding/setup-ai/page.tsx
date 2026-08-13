@@ -1,4 +1,10 @@
+import { redirect } from "next/navigation";
+
+import { requireAuth, resolveActiveOrg } from "@/lib/auth/server";
+import { createClient } from "@/lib/supabase/server";
+import { lerRetratoDaInstalacao } from "@/lib/instalacao/retrato";
 import { SetupAiForm } from "./_form";
+import { InteligenciaDele } from "./_inteligencia";
 import { capacidadesPadraoDoOnboarding } from "@/lib/ai/agents/capacidades-padrao";
 import { TOOL_CATALOG } from "@/lib/mcp/tools/catalog";
 import { CONFERENCIAS_DE_SAIDA } from "@/lib/ai/guardrails/lista-de-conferencia";
@@ -19,7 +25,14 @@ export const dynamic = "force-dynamic";
  * mensagem sair. Escrever essas frases à mão aqui seria a tela prometendo um
  * comportamento que o código não garante.
  */
-export default function SetupAiPage() {
+export default async function SetupAiPage() {
+  const user = await requireAuth();
+  const activeOrg = await resolveActiveOrg(user);
+  if (!activeOrg) redirect("/login");
+
+  const supabase = await createClient();
+  const retrato = await lerRetratoDaInstalacao({ supabase, orgId: activeOrg.orgId });
+
   const porNome = new Map(TOOL_CATALOG.map((c) => [c.name, c]));
   const capacidades = capacidadesPadraoDoOnboarding()
     .map((id) => porNome.get(id)?.rotulo)
@@ -35,6 +48,20 @@ export default function SetupAiPage() {
           Quem ele é, como fala e o que pode prometer. Dá para mudar tudo depois.
         </p>
       </header>
+      {/*
+        O cérebro vem ANTES do resto do formulário: sem chave, nada do que a
+        pessoa preencher abaixo produz um funcionário que responde. E é aqui que
+        a chave passa a importar — um clique antes de ele ser criado com ela.
+      */}
+      <InteligenciaDele
+        inicial={{
+          origem: retrato.inteligencia.origemDaChave,
+          provedor: retrato.inteligencia.provedor,
+          rotulo: retrato.inteligencia.rotulo,
+          final: retrato.inteligencia.chaveDaOrg?.final ?? null,
+        }}
+      />
+
       <SetupAiForm capacidades={capacidades} conferencias={conferencias} />
     </div>
   );

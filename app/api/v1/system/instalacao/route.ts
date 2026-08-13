@@ -24,6 +24,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { listSelectableChannels } from "@/lib/channels/selectable";
 import { lerRetratoDaInstalacao } from "@/lib/instalacao/retrato";
 import { provarSaldo } from "@/lib/instalacao/prova-de-credito";
+import { loadCredential, CredentialUnavailableError } from "@/lib/ai/credentials";
 
 export const dynamic = "force-dynamic";
 
@@ -69,32 +70,63 @@ export async function GET(req: NextRequest) {
     return fail("forbidden", "provar a chave requer papel de administrador", 403);
   }
 
-  const { origemDaChave, modeloCurado, provedor } = retrato.inteligencia;
+  const { origemDaChave, modeloCurado, provedor, chaveEmVerificacao } = retrato.inteligencia;
   if (origemDaChave === "nenhuma" || !modeloCurado) {
+    // "Ainda conferindo" e "não tem" pedem frases OPOSTAS: a primeira é esperar,
+    // a segunda é cadastrar. A validação da chave roda em segundo plano, então
+    // quem acaba de colá-la cai sempre nesta janela.
+    const aindaVerificando = origemDaChave === "nenhuma" && chaveEmVerificacao;
     return ok({
       ...retrato,
       prova: {
         feita: false,
-        motivo:
-          origemDaChave === "nenhuma"
+        ...(aindaVerificando ? { aindaVerificando: true } : {}),
+        motivo: aindaVerificando
+          ? "A chave acabou de ser cadastrada e ainda está sendo conferida."
+          : origemDaChave === "nenhuma"
             ? "Não há chave para testar."
             : "Não há modelo desta empresa de IA nesta instalação ainda.",
       },
     });
   }
 
-  // A chave cadastrada na tela é guardada cifrada; a da instalação o próprio
-  // processo já tem em mãos.
-  const apiKey = retrato.inteligencia.chaveDaOrg
-    ? null
-    : (process.env[chaveDoAmbiente(provedor)] ?? "");
+  // As DUAS origens são testáveis, e a da org precisa ser: quem cola a chave no
+  // wizard é exatamente quem mais precisa saber se ela funciona — antes era o
+  // único caso que respondia "o teste cobre a chave da instalação", ou seja, a
+  // pessoa cadastrava a chave e não recebia confirmação nenhuma.
+  //
+  // A cadastrada vive cifrada e é decifrada aqui, em memória, pelo mesmo caminho
+  // que o runtime usa; a da instalação o próprio processo já tem em mãos.
+  let apiKey = "";
+  const daOrg = retrato.inteligencia.chaveDaOrg;
+  if (daOrg) {
+    try {
+      apiKey = (await loadCredential(daOrg.id, org.orgId)).apiKey;
+    } catch (err) {
+      // ⚠️ "AINDA NÃO VALIDADA" NÃO É "NÃO DEU CERTO", e colapsar as duas manda a
+      // pessoa desconfiar de uma chave que está certa. `loadCredential` recusa
+      // credencial com `validated_at` nulo, e a validação roda em SEGUNDO PLANO
+      // logo depois do cadastro: quem acabou de colar a chave no wizard e pediu
+      // o teste no mesmo segundo caía exatamente nesta janela — medido
+      // percorrendo o wizard, a tela dizia "não consegui testar o crédito" para
+      // uma chave que funcionava.
+      const reason = err instanceof CredentialUnavailableError ? err.reason : "erro";
+      return ok({
+        ...retrato,
+        prova:
+          reason === "not_validated"
+            ? { feita: false, aindaVerificando: true, motivo: "A chave acabou de ser cadastrada e ainda está sendo conferida." }
+            : { feita: false, motivo: "Não consegui abrir a chave cadastrada para testá-la." },
+      });
+    }
+  } else {
+    apiKey = process.env[chaveDoAmbiente(provedor)] ?? "";
+  }
+
   if (!apiKey) {
     return ok({
       ...retrato,
-      prova: {
-        feita: false,
-        motivo: "O teste de saldo cobre a chave que veio na instalação.",
-      },
+      prova: { feita: false, motivo: "Não há chave para testar." },
     });
   }
 

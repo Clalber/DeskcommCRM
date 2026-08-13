@@ -21,11 +21,17 @@ export function JaEstaPronto({ retrato }: { retrato: RetratoDaInstalacao }) {
       texto: "Servidor no ar e banco de dados instalado",
     },
     {
+      // Três estados, não dois: cadastrada-e-confirmada, cadastrada-e-sendo-
+      // conferida, e nenhuma. A do meio existe porque a validação roda em
+      // segundo plano — e dizer "falta a chave" a quem acabou de colá-la é a
+      // frase que manda a pessoa cadastrar de novo o que já está lá.
       pronto: retrato.inteligencia.origemDaChave !== "nenhuma",
       texto:
-        retrato.inteligencia.origemDaChave === "nenhuma"
-          ? "Falta a chave da inteligência artificial"
-          : `Inteligência contratada: ${retrato.inteligencia.rotulo}`,
+        retrato.inteligencia.origemDaChave !== "nenhuma"
+          ? `Inteligência contratada: ${retrato.inteligencia.rotulo}`
+          : retrato.inteligencia.chaveEmVerificacao
+            ? "Chave cadastrada — conferindo com a empresa de IA"
+            : "Falta a chave da inteligência artificial",
     },
     {
       pronto: retrato.whatsapp.transporteApontado,

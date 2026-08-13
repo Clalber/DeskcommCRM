@@ -18,7 +18,15 @@ export interface RetratoDaInstalacao {
     provedor: string;
     rotulo: string;
     origemDaChave: "org" | "instalacao" | "nenhuma";
-    chaveDaOrg: { label: string; final: string } | null;
+    /**
+     * Há chave cadastrada que o provedor ainda não confirmou. NÃO é `origemDaChave`
+     * — o turno não consegue usá-la ainda —, mas também não é "nenhuma": dizer
+     * "falta a chave" a quem acabou de colá-la é a frase que manda a pessoa
+     * cadastrar de novo o que já está lá.
+     */
+    chaveEmVerificacao: boolean;
+    /** `id` para quem precisa DECIFRÁ-LA (a prova de saldo). O resto é só rótulo. */
+    chaveDaOrg: { id: string; label: string; final: string } | null;
     modeloCurado: string | null;
     prontaParaPublicar: boolean;
   };
@@ -63,15 +71,31 @@ export async function lerRetratoDaInstalacao(
 
   // Credencial cadastrada pela tela vence a chave da instalação — mesma
   // precedência que `resolveOrgLlmConfig` aplica no turno.
-  const { data: credencial } = await supabase
+  //
+  // ⚠️ VALIDADA E EM VERIFICAÇÃO SÃO ESTADOS DIFERENTES, e o filtro
+  // `.not("validated_at","is",null)` na consulta colapsava os dois em "nenhuma".
+  // O efeito, MEDIDO percorrendo o wizard: quem colava a chave no passo de
+  // treinar recebia "Não há chave para testar" no mesmo segundo, e o passo 1
+  // seguiria dizendo "Falta a chave da inteligência artificial" para uma
+  // organização que acabava de cadastrá-la. A validação roda em SEGUNDO PLANO,
+  // então essa janela existe sempre — ela é a experiência de quem acabou de
+  // colar a chave, não um caso de borda.
+  //
+  // A precedência não muda: só a VALIDADA vira `origemDaChave: "org"`, porque é
+  // ela que `loadCredential` aceita e que o turno consegue usar. O que passa a
+  // existir é a resposta honesta para o intervalo entre as duas coisas.
+  const { data: credenciais } = await supabase
     .from("ai_provider_credentials")
-    .select("label, api_key_last4")
+    .select("id, label, api_key_last4, validated_at")
     .eq("organization_id", orgId)
     .eq("provider", provider)
     .eq("is_active", true)
-    .not("validated_at", "is", null)
-    .limit(1)
-    .maybeSingle();
+    .order("created_at", { ascending: false })
+    .limit(5);
+
+  const credencial = (credenciais ?? []).find((c) => c.validated_at !== null) ?? null;
+  const emVerificacao =
+    !credencial && (credenciais ?? []).some((c) => c.validated_at === null);
 
   const { data: modelo } = await supabase
     .from("ai_models")
@@ -107,8 +131,13 @@ export async function lerRetratoDaInstalacao(
       provedor: provider,
       rotulo: PROVEDOR_POR_ID.get(provider)?.rotulo ?? provider,
       origemDaChave,
+      chaveEmVerificacao: emVerificacao,
       chaveDaOrg: credencial
-        ? { label: credencial.label as string, final: credencial.api_key_last4 as string }
+        ? {
+            id: credencial.id as string,
+            label: credencial.label as string,
+            final: credencial.api_key_last4 as string,
+          }
         : null,
       modeloCurado,
       // Chave sem modelo no catálogo não publica agente — é o estado de uma
