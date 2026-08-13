@@ -21,6 +21,15 @@ export type PromptTemplate = (typeof PROMPT_TEMPLATES)[number];
 export const aiAgentDefaultSchema = z.object({
   name: z.string().min(2).max(80).default("Atendente IA"),
   prompt_template: z.enum(PROMPT_TEMPLATES).default("ecommerce_friendly"),
+  /**
+   * As regras da casa — o que vale para QUALQUER agente desta organização
+   * (horário, o que nunca prometer, como chamar o cliente). Vai para a memória
+   * da organização, o mesmo lugar que a tela de Memória edita depois.
+   *
+   * Opcional: quem não souber o que escrever no primeiro dia não pode ficar
+   * preso no passo. O teto acompanha o da tela de Memória.
+   */
+  regras_da_casa: z.string().max(20000).optional(),
 });
 export type AiAgentDefaultInput = z.infer<typeof aiAgentDefaultSchema>;
 

@@ -88,6 +88,13 @@ function clienteFalso() {
         c.payload = payload;
         return b;
       },
+      // O ponteiro da memória da organização é gravado por upsert (uma linha
+      // por org). Sem este método o dublê fingia que a tabela não existia.
+      upsert: (payload: Record<string, unknown>) => {
+        c.op = "insert";
+        c.payload = payload;
+        return b;
+      },
       eq: (coluna: string, valor: unknown) => {
         c.filtros[coluna] = valor;
         return b;
@@ -108,6 +115,10 @@ function clienteFalso() {
 }
 
 interface Estado {
+  /** Versões da memória da organização — as "regras da casa". */
+  memoria: Record<string, unknown>[];
+  /** Para onde o ponteiro da memória aponta (vazio = nenhuma publicada). */
+  ponteiroDaMemoria: string;
   agentes: Record<string, unknown>[];
   versoes: Record<string, unknown>[];
   eventos: Record<string, unknown>[];
@@ -144,6 +155,8 @@ interface Mundo {
    * chutar um funil.
    */
   funilPadrao?: { id: string } | null;
+  /** Erro ao gravar as regras da casa. */
+  erroMemoria?: ErroDb;
 }
 
 const CANAL = {
@@ -156,6 +169,8 @@ const CANAL = {
 
 function montarBanco(mundo: Mundo = {}): Estado {
   const estado: Estado = {
+    memoria: [],
+    ponteiroDaMemoria: "",
     agentes: mundo.agentes ?? [],
     versoes: mundo.versoes ?? [],
     eventos: [],
@@ -234,6 +249,28 @@ function montarBanco(mundo: Mundo = {}): Estado {
       return { data: { onboarding_state: estado.onboardingState, onboarded_at: null }, error: null };
     }
 
+    if (c.table === "org_memory_versions") {
+      if (c.op === "insert") {
+        if (mundo.erroMemoria) return { data: null, error: mundo.erroMemoria };
+        const linha: Record<string, unknown> = {
+          id: `mem-${estado.memoria.length + 1}`,
+          ...c.payload,
+        };
+        estado.memoria.push(linha);
+        return { data: { id: linha.id, version_number: linha.version_number }, error: null };
+      }
+      // select-max da versão anterior
+      const ultima = estado.memoria[estado.memoria.length - 1];
+      return { data: ultima ? { version_number: ultima.version_number } : null, error: null };
+    }
+
+    if (c.table === "org_memory_pointers") {
+      estado.ponteiroDaMemoria = String((c.payload as { version_id?: unknown })?.version_id ?? "");
+      return { data: null, error: null };
+    }
+
+
+
     if (c.table === "crm_pipelines") {
       const funil = mundo.funilPadrao === undefined ? { id: "funil-1" } : mundo.funilPadrao;
       return { data: funil, error: null };
@@ -250,17 +287,18 @@ function montarBanco(mundo: Mundo = {}): Estado {
   return estado;
 }
 
-function formulario(nome = "Atendente IA"): FormData {
+function formulario(nome = "Atendente IA", regras?: string): FormData {
   const fd = new FormData();
   fd.set("name", nome);
   fd.set("prompt_template", "ecommerce_friendly");
+  if (regras !== undefined) fd.set("regras_da_casa", regras);
   return fd;
 }
 
 /** A action redireciona LANÇANDO; quem chama precisa distinguir isso de defeito. */
-async function clicar(nome?: string): Promise<CreateAgentResult | "redirecionou"> {
+async function clicar(nome?: string, regras?: string): Promise<CreateAgentResult | "redirecionou"> {
   try {
-    return await createDefaultAgent(formulario(nome));
+    return await createDefaultAgent(formulario(nome, regras));
   } catch (err) {
     if (err instanceof Error && err.message.startsWith("NEXT_REDIRECT")) return "redirecionou";
     throw err;
@@ -504,5 +542,84 @@ describe("onboarding: o agente nasce no provedor que a instalação escolheu", (
     const r = res as CreateAgentResult;
     expect(r.ok && r.publish_error).toMatch(/permission denied for table organizations/);
     expect(estado.versoes).toHaveLength(0);
+  });
+});
+
+/**
+ * AS REGRAS DA CASA.
+ *
+ * O passo perguntava só nome e jeito de falar. O que a pessoa sabe sobre o
+ * próprio negócio — horário, o que nunca prometer, como chamar o cliente — não
+ * tinha onde entrar, e o funcionário nascia sem saber uma linha sobre onde
+ * trabalha.
+ *
+ * Elas vão para a MEMÓRIA DA ORGANIZAÇÃO, não para o prompt deste agente: valem
+ * para qualquer agente que a empresa venha a ter, e é o mesmo lugar que a tela
+ * de Memória edita depois. Enfiá-las no prompt faria a segunda contratação
+ * nascer sem elas.
+ */
+describe("onboarding: o que o funcionário sabe sobre o negócio", () => {
+  it("as regras escritas no passo viram memória da organização, publicada", async () => {
+    const estado = montarBanco();
+
+    await clicar("Atendente IA", "Horário: 9h às 18h. Nunca prometa desconto.");
+
+    expect(estado.memoria).toHaveLength(1);
+    expect(estado.memoria[0]).toMatchObject({
+      organization_id: ORG,
+      version_number: 1,
+      content: "Horário: 9h às 18h. Nunca prometa desconto.",
+    });
+    // Gravar a versão sem mover o ponteiro deixaria o agente lendo a anterior.
+    expect(estado.ponteiroDaMemoria).toBe("mem-1");
+  });
+
+  it("NÃO vão para o prompt do agente — senão o segundo agente nasce sem elas", async () => {
+    const estado = montarBanco();
+
+    await clicar("Atendente IA", "Nunca prometa desconto.");
+
+    const prompt = String((estado.versoes[0] as { system_prompt?: string }).system_prompt ?? "");
+    expect(prompt).not.toContain("Nunca prometa desconto");
+  });
+
+  it("campo em branco não publica memória vazia", async () => {
+    // O campo é opcional de propósito: quem não sabe o que escrever no primeiro
+    // dia não pode ficar preso no passo. Publicar vazio criaria uma versão que
+    // apaga o que existia.
+    const estado = montarBanco();
+
+    await clicar("Atendente IA", "   ");
+
+    expect(estado.memoria).toHaveLength(0);
+  });
+
+  it("falha ao gravar as regras NÃO derruba o passo — mas aparece na tela", async () => {
+    // O agente já existe e o treinamento principal aconteceu. Redirecionar
+    // calado apagaria da tela o único lugar onde aquele texto existia.
+    const estado = montarBanco({
+      erroMemoria: { code: "42501", message: "permission denied for table org_memory_versions" },
+    });
+
+    const res = await clicar("Atendente IA", "Horário: 9h às 18h.");
+
+    expect(res).not.toBe("redirecionou");
+    const r = res as CreateAgentResult;
+    expect(r.ok && r.regras_nao_salvas).toMatch(/permission denied for table org_memory_versions/);
+    // O agente foi publicado assim mesmo: o que falhou foi só a memória.
+    expect(estado.versoes).toHaveLength(1);
+    expect(redirects).toEqual([]);
+  });
+
+  it("o prompt sabe o nome do negócio (e não fala de loja online)", async () => {
+    // Dois dos três jeitos de falar diziam "loja online"/"e-commerce" — numa
+    // clínica, o atendente se apresentava como sendo de outro negócio.
+    const estado = montarBanco();
+
+    await clicar();
+
+    const prompt = String((estado.versoes[0] as { system_prompt?: string }).system_prompt ?? "");
+    expect(prompt).toContain("QA"); // o nome da organização do teste
+    expect(prompt).not.toMatch(/loja online|e-commerce/i);
   });
 });

@@ -28,6 +28,20 @@ vi.mock("sonner", () => ({
 import { SetupAiForm } from "@/app/onboarding/setup-ai/_form";
 
 /**
+ * As listas de "o que ele já sabe" e "o que nunca faz" vêm do servidor, das
+ * mesmas fontes que o runtime usa. Aqui são fixas de propósito: o que está sob
+ * teste é o que a tela diz quando a publicação falha, não o catálogo.
+ */
+function montar() {
+  return (
+    <SetupAiForm
+      capacidades={["Ver os clientes", "Mover o negócio no funil"]}
+      conferencias={["Respeitar quem pediu para parar"]}
+    />
+  );
+}
+
+/**
  * `findByRole` e não `getByRole`: enquanto a transição está pendente o botão se
  * chama "Criando...", e o aviso pode aparecer num commit ANTES de o pendente
  * cair. Buscar pelo rótulo final é o que espera o formulário estar clicável de
@@ -52,7 +66,7 @@ describe("setup de IA: o que a tela diz quando o agente fica rascunho", () => {
       publish_error: "channel_sessions_list_failed: permission denied for table channel_sessions",
     });
 
-    render(<SetupAiForm />);
+    render(montar());
     await enviar();
 
     const aviso = await screen.findByRole("alert");
@@ -69,7 +83,7 @@ describe("setup de IA: o que a tela diz quando o agente fica rascunho", () => {
     // `publish_error` é a do agente publicado.
     createDefaultAgentMock.mockResolvedValue({ ok: true, agent_id: "agente-1" });
 
-    render(<SetupAiForm />);
+    render(montar());
     await enviar();
 
     await waitFor(() => expect(createDefaultAgentMock).toHaveBeenCalled());
@@ -93,7 +107,7 @@ describe("setup de IA: o que a tela diz quando o agente fica rascunho", () => {
       provider: "openrouter",
     });
 
-    render(<SetupAiForm />);
+    render(montar());
     await enviar();
 
     const aviso = await screen.findByRole("alert");
@@ -112,7 +126,7 @@ describe("setup de IA: o que a tela diz quando o agente fica rascunho", () => {
       agent_id: "agente-1",
       publish_error: "channel_sessions_list_failed: connection refused",
     });
-    render(<SetupAiForm />);
+    render(montar());
     await enviar();
     await screen.findByRole("alert");
 

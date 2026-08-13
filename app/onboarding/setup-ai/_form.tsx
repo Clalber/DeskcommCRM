@@ -6,58 +6,69 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { createDefaultAgent, skipAi } from "@/app/actions/onboarding/createDefaultAgent";
 import type { PromptTemplate } from "@/lib/schemas/onboarding";
 import { cn } from "@/lib/utils";
 
-const TEMPLATES: { id: PromptTemplate; title: string; desc: string }[] = [
+/**
+ * O jeito de falar, não o "estilo de prompt".
+ *
+ * Os rótulos anteriores eram "Amigável (e-commerce)", "Profissional" e "Suporte
+ * minimalista" — dois deles amarrados a loja virtual, num produto cuja maioria
+ * de adopters roda em clínica, imobiliária e infoproduto. Os identificadores
+ * continuam os mesmos porque já existem gravados; só a fala mudou.
+ */
+const JEITOS: { id: PromptTemplate; titulo: string; desc: string }[] = [
   {
     id: "ecommerce_friendly",
-    title: "Amigável (e-commerce)",
-    desc: "Tom caloroso e próximo. Bom para lojas com público B2C.",
+    titulo: "Próximo e caloroso",
+    desc: "Conversa como gente, puxa assunto, tranquiliza. Bom para quem vende no dia a dia.",
   },
   {
     id: "ecommerce_professional",
-    title: "Profissional",
-    desc: "Tom formal e objetivo. Foco em pedidos e próximos passos.",
+    titulo: "Objetivo e cordial",
+    desc: "Vai direto ao ponto sem ser seco, e sempre indica o próximo passo.",
   },
   {
     id: "support_minimal",
-    title: "Suporte minimalista",
-    desc: "Frases curtas, direto ao ponto, escalonamento rápido.",
+    titulo: "Curto e prático",
+    desc: "Frases curtas, pergunta só o essencial e chama uma pessoa cedo.",
   },
 ];
 
-export function SetupAiForm() {
+interface Props {
+  /** O que ele já sabe fazer, em linguagem de dono de negócio. */
+  capacidades: string[];
+  /** O que ele nunca faz — as conferências antes de cada mensagem sair. */
+  conferencias: string[];
+}
+
+export function SetupAiForm({ capacidades, conferencias }: Props) {
   const [name, setName] = useState("Atendente IA");
-  const [template, setTemplate] = useState<PromptTemplate>("ecommerce_friendly");
+  const [jeito, setJeito] = useState<PromptTemplate>("ecommerce_friendly");
+  const [regras, setRegras] = useState("");
   const [naoPublicado, setNaoPublicado] = useState<string | null>(null);
-  /**
-   * A causa de o agente ter ficado rascunho. `null` = publicou (ou o wizard já
-   * redirecionou). Existe porque a tela afirmava SEMPRE a causa do canal, e
-   * mandar a pessoa conferir o WhatsApp quando o problema é o catálogo de
-   * modelos é pior do que não explicar nada.
-   */
   const [causa, setCausa] = useState<"canal" | "modelo" | null>(null);
   const [provedor, setProvedor] = useState<string | null>(null);
+  const [regrasNaoSalvas, setRegrasNaoSalvas] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
   return (
     <form
-      className="space-y-5 rounded-lg border bg-background p-6"
+      className="space-y-6"
       action={(formData) => {
         startTransition(async () => {
           setNaoPublicado(null);
           setCausa(null);
           setProvedor(null);
+          setRegrasNaoSalvas(null);
           const res = await createDefaultAgent(formData);
           if (res && !res.ok) {
             toast.error(`Falha ao criar agente: ${res.error}`);
             return;
           }
-          // Agente criado, publicação não. O caminho completo redireciona no
-          // servidor, então chegar aqui é a única forma de a pessoa saber que o
-          // atendente ainda não responde — nunca esconder.
+          if (res?.regras_nao_salvas) setRegrasNaoSalvas(res.regras_nao_salvas);
           if (res?.publish_blocked_by === "modelo") {
             setCausa("modelo");
             setProvedor(res.provider ?? null);
@@ -72,46 +83,117 @@ export function SetupAiForm() {
         });
       }}
     >
-      <div className="space-y-2">
-        <Label htmlFor="name">Nome do agente</Label>
-        <Input
-          id="name"
-          name="name"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          minLength={2}
-          maxLength={80}
-          required
-        />
+      <div className="space-y-5 rounded-lg border bg-background p-6">
+        <div className="space-y-2">
+          <Label htmlFor="name">Como ele vai se chamar</Label>
+          <Input
+            id="name"
+            name="name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            minLength={2}
+            maxLength={80}
+            required
+          />
+          <p className="text-xs text-muted-foreground">
+            É o nome que aparece para o seu time. O cliente vê só a conversa.
+          </p>
+        </div>
+
+        <fieldset className="space-y-2">
+          <legend className="text-sm font-medium">O jeito dele falar</legend>
+          <div className="grid gap-2">
+            {JEITOS.map((j) => (
+              <label
+                key={j.id}
+                className={cn(
+                  "flex cursor-pointer items-start gap-3 rounded-md border p-3 transition-colors",
+                  jeito === j.id ? "border-primary bg-primary/5" : "hover:bg-muted/40",
+                )}
+              >
+                <input
+                  type="radio"
+                  name="prompt_template"
+                  value={j.id}
+                  checked={jeito === j.id}
+                  onChange={() => setJeito(j.id)}
+                  className="mt-1"
+                />
+                <span>
+                  <span className="block text-sm font-medium">{j.titulo}</span>
+                  <span className="block text-xs text-muted-foreground">{j.desc}</span>
+                </span>
+              </label>
+            ))}
+          </div>
+        </fieldset>
+
+        <div className="space-y-2">
+          <Label htmlFor="regras_da_casa">As regras da casa (opcional)</Label>
+          <Textarea
+            id="regras_da_casa"
+            name="regras_da_casa"
+            value={regras}
+            onChange={(e) => setRegras(e.target.value)}
+            rows={5}
+            maxLength={20000}
+            placeholder={
+              "Nunca prometa desconto sem confirmar com uma pessoa.\n" +
+              "Horário de atendimento: 9h às 18h, de segunda a sexta.\n" +
+              "Sempre chame o cliente pelo primeiro nome."
+            }
+          />
+          <p className="text-xs text-muted-foreground">
+            O que vale para qualquer atendimento aqui. Pode deixar em branco agora e
+            escrever depois — ele aprende com você ao longo do tempo.
+          </p>
+        </div>
       </div>
 
-      <fieldset className="space-y-2">
-        <legend className="text-sm font-medium">Estilo de prompt</legend>
-        <div className="grid gap-2">
-          {TEMPLATES.map((t) => (
-            <label
-              key={t.id}
-              className={cn(
-                "flex cursor-pointer items-start gap-3 rounded-md border p-3 transition-colors",
-                template === t.id ? "border-primary bg-primary/5" : "hover:bg-muted/40",
-              )}
-            >
-              <input
-                type="radio"
-                name="prompt_template"
-                value={t.id}
-                checked={template === t.id}
-                onChange={() => setTemplate(t.id)}
-                className="mt-1"
-              />
-              <span>
-                <span className="block text-sm font-medium">{t.title}</span>
-                <span className="block text-xs text-muted-foreground">{t.desc}</span>
-              </span>
-            </label>
-          ))}
+      {/*
+        Nada aqui pede configuração: é o que ele JÁ vem sabendo. O passo
+        anterior entregava um funcionário sem dizer uma linha sobre o que ele
+        é capaz de fazer — e a primeira pergunta de quem contrata alguém é
+        exatamente essa.
+      */}
+      <div className="grid gap-3 sm:grid-cols-2">
+        <section className="rounded-lg border bg-background p-4">
+          <h3 className="text-sm font-medium">Ele já vem sabendo</h3>
+          <ul className="mt-2 space-y-1 text-xs text-muted-foreground">
+            {capacidades.map((c) => (
+              <li key={c}>· {c}</li>
+            ))}
+          </ul>
+        </section>
+        <section className="rounded-lg border bg-background p-4">
+          <h3 className="text-sm font-medium">E nunca vai fazer</h3>
+          <ul className="mt-2 space-y-1 text-xs text-muted-foreground">
+            {conferencias.map((c) => (
+              <li key={c}>· {c}</li>
+            ))}
+          </ul>
+          <p className="mt-2 text-xs text-muted-foreground">
+            Essas conferências acontecem antes de cada mensagem sair, e não têm
+            interruptor.
+          </p>
+        </section>
+      </div>
+
+      {regrasNaoSalvas && (
+        <div
+          role="alert"
+          className="space-y-2 rounded-md border border-amber-300/60 bg-amber-50 p-4 dark:border-amber-500/30 dark:bg-amber-950/20"
+        >
+          <p className="text-sm font-medium">
+            O atendente foi criado, mas as <strong>regras da casa</strong> não foram
+            gravadas. Copie o que você escreveu antes de sair — e salve de novo em{" "}
+            <strong>IA › Memória</strong>.
+          </p>
+          <p className="text-xs text-muted-foreground">
+            Erro do banco de dados: <code className="break-all">{regrasNaoSalvas}</code>
+          </p>
         </div>
-      </fieldset>
+      )}
 
       {causa === "modelo" && (
         <div
@@ -119,15 +201,15 @@ export function SetupAiForm() {
           className="space-y-3 rounded-md border border-amber-300/60 bg-amber-50 p-4 dark:border-amber-500/30 dark:bg-amber-950/20"
         >
           <p className="text-sm font-medium">
-            Seu atendente foi criado, mas ficou como <strong>rascunho</strong>: esta instalação
-            ainda não baixou a lista de modelos
+            Seu atendente foi criado, mas ficou como <strong>rascunho</strong>: esta
+            instalação ainda não baixou a lista de modelos
             {provedor ? ` da ${provedor}` : " da inteligência que você escolheu na instalação"}, e
             sem saber qual modelo usar ele não entra no ar — rascunho não responde mensagem.
           </p>
           <p className="text-sm">
-            A lista é atualizada automaticamente uma vez por dia. Para colocá-lo no ar antes disso,
-            vá em <strong>IA › Credenciais</strong> e cadastre a chave dessa empresa; depois publique
-            em <strong>IA › Agentes</strong>.
+            A lista é atualizada automaticamente uma vez por dia. Para colocá-lo no ar antes
+            disso, vá em <strong>IA › Credenciais</strong> e cadastre a chave dessa empresa;
+            depois publique em <strong>IA › Agentes</strong>.
           </p>
           <div className="flex justify-end">
             <Button

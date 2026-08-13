@@ -12,12 +12,27 @@ import { listSelectableChannels, type SelectableChannel } from "@/lib/channels/s
 import { createAdminClient } from "@/lib/supabase/admin";
 import { aiAgentDefaultSchema, type PromptTemplate } from "@/lib/schemas/onboarding";
 import { capacidadesPadraoDoOnboarding } from "@/lib/ai/agents/capacidades-padrao";
+import { publicarMemoriaDaOrg } from "@/lib/ai/memoria-da-org";
 import { requireOnboardingCtx, patchOnboardingState, OnboardingError } from "./_shared";
 
-const PROMPT_BODIES: Record<PromptTemplate, string> = {
-  ecommerce_friendly: `Você é um(a) atendente virtual amigável de uma loja online. Cumprimente, entenda a dúvida do cliente, ofereça opções claras e use linguagem calorosa. Confirme detalhes do pedido antes de agir.`,
-  ecommerce_professional: `Você é um(a) atendente virtual profissional de e-commerce. Comunicação objetiva, formal e empática. Sempre cite o número do pedido quando relevante e ofereça próximos passos práticos.`,
-  support_minimal: `Você é um(a) agente de suporte minimalista. Responda em frases curtas, peça apenas o necessário e direcione para um humano quando a confiança for baixa.`,
+/**
+ * O jeito de falar do funcionário.
+ *
+ * Os corpos diziam "loja online" e "e-commerce" em dois dos três — num produto
+ * que se declara multi-nicho por escrito, e cuja maioria de adopters roda em
+ * clínica, imobiliária e infoproduto. Uma clínica terminava o onboarding com um
+ * atendente que se apresentava como sendo de uma loja virtual.
+ *
+ * Recebem o nome do negócio: um funcionário que sabe onde trabalha é o mínimo
+ * que se espera de alguém contratado.
+ */
+const PROMPT_BODIES: Record<PromptTemplate, (negocio: string) => string> = {
+  ecommerce_friendly: (n) =>
+    `Você atende os clientes de ${n}. Fale de forma calorosa e próxima, como alguém que gosta de ajudar. Cumprimente, entenda o que a pessoa precisa e ofereça opções claras. Confirme os detalhes antes de agir.`,
+  ecommerce_professional: (n) =>
+    `Você atende os clientes de ${n}. Fale de forma objetiva, cordial e profissional. Vá direto ao ponto, sem parecer frio, e sempre termine indicando o próximo passo.`,
+  support_minimal: (n) =>
+    `Você atende os clientes de ${n}. Responda em frases curtas, peça apenas o que for necessário e chame uma pessoa do time assim que a dúvida sair do seu alcance.`,
 };
 
 /** O agente padrão desta organização, do jeito que este passo precisa vê-lo. */
@@ -229,6 +244,8 @@ export type CreateAgentResult =
       publish_error?: string;
       publish_blocked_by?: "canal" | "modelo";
       provider?: string;
+      /** As regras da casa não foram gravadas — o agente existe assim mesmo. */
+      regras_nao_salvas?: string;
     }
   | { ok: false; error: "auth_required" | "no_active_org" | "invalid_input" | "db_error"; details?: unknown };
 
@@ -244,6 +261,7 @@ export async function createDefaultAgent(formData: FormData): Promise<CreateAgen
   const raw = {
     name: String(formData.get("name") ?? "Atendente IA").trim(),
     prompt_template: String(formData.get("prompt_template") ?? "ecommerce_friendly"),
+    regras_da_casa: String(formData.get("regras_da_casa") ?? "").trim() || undefined,
   };
 
   let input;
@@ -257,7 +275,7 @@ export async function createDefaultAgent(formData: FormData): Promise<CreateAgen
   }
 
   const admin = createAdminClient();
-  const systemPrompt = PROMPT_BODIES[input.prompt_template];
+  const systemPrompt = PROMPT_BODIES[input.prompt_template](ctx.orgName);
 
   // O agente padrão do onboarding é UM por organização, e o banco já garante
   // isso: `ai_agents_one_default_per_org` é índice único parcial em
@@ -302,6 +320,19 @@ export async function createDefaultAgent(formData: FormData): Promise<CreateAgen
       return { ok: false, error: "db_error", details: error?.message };
     }
     agent = data;
+  }
+
+  // As regras da casa valem para QUALQUER agente da organização, então vão para
+  // a memória da org — o mesmo lugar que a tela de Memória edita depois — e não
+  // para o prompt deste agente. Enfiá-las no prompt faria a segunda contratação
+  // nascer sem elas.
+  //
+  // Falha aqui NÃO derruba o passo: o agente já existe e o treinamento
+  // principal aconteceu. Some do caminho crítico e vira aviso.
+  let regrasNaoSalvas: string | null = null;
+  if (input.regras_da_casa) {
+    const pub = await publicarMemoriaDaOrg(admin, ctx.orgId, ctx.userId, input.regras_da_casa);
+    if (!pub.ok) regrasNaoSalvas = pub.mensagem;
   }
 
   const publicacao = await publishFirstVersion(admin, ctx.orgId, agent, systemPrompt, ctx.userId);
@@ -350,6 +381,7 @@ export async function createDefaultAgent(formData: FormData): Promise<CreateAgen
       agent_id: agent.id,
       publish_error: publicacao.message,
       publish_blocked_by: "canal",
+      ...(regrasNaoSalvas ? { regras_nao_salvas: regrasNaoSalvas } : {}),
     };
   }
 
@@ -363,7 +395,15 @@ export async function createDefaultAgent(formData: FormData): Promise<CreateAgen
       agent_id: agent.id,
       publish_blocked_by: "modelo",
       provider: publicacao.provider,
+      ...(regrasNaoSalvas ? { regras_nao_salvas: regrasNaoSalvas } : {}),
     };
+  }
+
+  // Publicou o agente, mas as regras da casa não foram gravadas. O passo
+  // aconteceu; o que a pessoa escreveu, não. Redirecionar calado apagaria da
+  // tela o único lugar onde esse texto existia.
+  if (regrasNaoSalvas) {
+    return { ok: true, agent_id: agent.id, regras_nao_salvas: regrasNaoSalvas };
   }
 
   redirect("/onboarding/invite-team");
