@@ -15,21 +15,24 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-const TIMEZONES = [
-  "America/Sao_Paulo",
-  "America/Recife",
-  "America/Manaus",
-  "America/Cuiaba",
-  "America/Belem",
-  "America/Fortaleza",
-  "America/Bahia",
-  "America/Rio_Branco",
-  "America/Argentina/Buenos_Aires",
-  "America/New_York",
-  "America/Los_Angeles",
-  "Europe/Lisbon",
-  "Europe/Madrid",
-  "UTC",
+/**
+ * Cidade, não identificador de fuso. A lista mostrava "America/Bahia" e
+ * "America/Fortaleza" e esperava que a pessoa soubesse em qual delas mora — o
+ * identificador é do sistema, o que ela reconhece é a cidade.
+ */
+const FUSOS: { id: string; cidade: string }[] = [
+  { id: "America/Sao_Paulo", cidade: "São Paulo, Rio, Brasília, Sul e Sudeste" },
+  { id: "America/Recife", cidade: "Recife, Salvador, Fortaleza e Nordeste" },
+  { id: "America/Belem", cidade: "Belém e Pará" },
+  { id: "America/Manaus", cidade: "Manaus e Amazonas" },
+  { id: "America/Cuiaba", cidade: "Cuiabá e Mato Grosso" },
+  { id: "America/Rio_Branco", cidade: "Rio Branco e Acre" },
+  { id: "America/Argentina/Buenos_Aires", cidade: "Buenos Aires" },
+  { id: "Europe/Lisbon", cidade: "Lisboa" },
+  { id: "Europe/Madrid", cidade: "Madri" },
+  { id: "America/New_York", cidade: "Nova York" },
+  { id: "America/Los_Angeles", cidade: "Los Angeles" },
+  { id: "UTC", cidade: "Outro (horário universal)" },
 ];
 
 export function WelcomeForm({ defaultOrgName }: { defaultOrgName: string }) {
@@ -55,7 +58,7 @@ export function WelcomeForm({ defaultOrgName }: { defaultOrgName: string }) {
       }}
     >
       <div className="space-y-2">
-        <Label htmlFor="display_name">Nome da operação</Label>
+        <Label htmlFor="display_name">Como se chama o seu negócio?</Label>
         <Input
           id="display_name"
           name="display_name"
@@ -66,25 +69,29 @@ export function WelcomeForm({ defaultOrgName }: { defaultOrgName: string }) {
           required
         />
         <p className="text-xs text-muted-foreground">
-          Como sua loja aparece para o time e nos painéis.
+          É o nome que aparece para o seu time e nos relatórios. Pode ser clínica,
+          loja, escritório — o que for seu.
         </p>
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="timezone">Fuso horário</Label>
+        <Label htmlFor="timezone">Onde você atende</Label>
         <Select value={timezone} onValueChange={setTimezone}>
           <SelectTrigger id="timezone">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            {TIMEZONES.map((tz) => (
-              <SelectItem key={tz} value={tz}>
-                {tz}
+            {FUSOS.map((f) => (
+              <SelectItem key={f.id} value={f.id}>
+                {f.cidade}
               </SelectItem>
             ))}
           </SelectContent>
         </Select>
         <input type="hidden" name="timezone" value={timezone} />
+        <p className="text-xs text-muted-foreground">
+          Decide o horário em que seu funcionário pode falar com clientes.
+        </p>
       </div>
 
       <label className="flex items-start gap-2 text-sm">
