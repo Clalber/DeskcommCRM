@@ -182,6 +182,32 @@ describe("packaging — o artefato que o cliente instala", () => {
     expect(avaliados, "o teste de pull_policy não avaliou nenhum serviço").toBe(NOSSOS.length);
   });
 
+  it("nenhum serviço nosso cai em `latest` quando o .env não tem a chave", () => {
+    // Ponto cego que este teste tinha e uma sabotagem revelou: ele cobrava
+    // "tag móvel usa always", e `latest` e `stable` são AMBOS móveis — trocar um
+    // pelo outro passava verde. A distinção importa porque quem cai no default é
+    // quem NÃO tem a chave no .env, e o caso real disso é uma instalação legada
+    // atualizando: o update.sh antigo (o que está no disco dela) só grava
+    // APP_IMAGE, então worker e scheduler pegam o default DESTE arquivo. Com
+    // `latest` — que aqui é o topo da `main` — o parque rodaria o runtime do
+    // agente de IA em código não lançado, pareado com um app de release.
+    const proibidos: string[] = [];
+
+    for (const nome of NOSSOS) {
+      const bloco = servicos.get(nome)!;
+      const imagem = bloco.match(/^\s{4}image:\s*(\S+)/m)?.[1] ?? "";
+      const padrao = imagem.replace(/^\$\{[A-Z_]+:-(.+)\}$/, "$1");
+      const tag = padrao.split(":").pop();
+      if (tag === "latest" || tag === "main") proibidos.push(`${nome} -> ${padrao}`);
+    }
+
+    expect(
+      proibidos,
+      `default para canal de desenvolvimento: ${proibidos.join(", ")}. Em produção o mínimo é ` +
+        `\`:stable\` (a última release). Ver docs/doctrine/packaging.md, invariante 3.`,
+    ).toEqual([]);
+  });
+
   it("cada Dockerfile publicado declara procedência OCI e ARG APP_VERSION", () => {
     // O CI injeta os labels via docker/metadata-action, mas o build local do
     // docker-compose.build.yml não passa por ele. Sem LABEL no arquivo, essa

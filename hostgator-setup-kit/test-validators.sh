@@ -1042,6 +1042,24 @@ STUB
     fi
   done
   printf '  ✓ as três imagens saem na MESMA referência (%s), com pull_policy=%s\n' "$tag_app" "$esperado"
+
+  # O .env VENCE o compose — e é por isso que este bloco existe. O compose já
+  # pinava o WAHA, e o install gravava `WAHA_IMAGE=devlikeapro/waha` (sem tag,
+  # isto é `:latest`) por cima: o pin existia e não alcançava ninguém. Um gate
+  # que olha só o compose dá verde para essa classe inteira de defeito, e foi
+  # uma sabotagem que revelou o ponto cego.
+  img_waha="$(grep -E '^WAHA_IMAGE=' "$VPS_PROJ/.env" | head -1 | cut -d= -f2- | tr -d "'\"")"
+  ref_waha="${img_waha##*/}"
+  case "$ref_waha" in
+    *:*) tag_waha="${ref_waha##*:}" ;;
+    *)   tag_waha="latest" ;;   # imagem sem ':' é :latest por definição do Docker
+  esac
+  if [ -z "$img_waha" ] || [ "$tag_waha" = "latest" ]; then
+    printf '  ✗ WAHA gravado sem pin no .env: %s (tag resolvida: %s)\n' "${img_waha:-(ausente)}" "$tag_waha"
+    printf '     sem tag = :latest, e o `dc pull` de cada update entrega ao cliente qualquer\n'
+    printf '     versão que o upstream publicar — sem ninguém ter testado.\n'; exit 1
+  fi
+  printf '  ✓ o WAHA sai pinado no .env (%s), não em :latest\n' "$img_waha"
 ) || fail=1
 rm -rf "$TMP3B"
 
