@@ -37,12 +37,16 @@ instalado**, por `install.sh` e por `update.sh`, como string literal.
 
 Migrar de namespace não é renomear um repositório: é invalidar o `APP_IMAGE` do parque. O
 `update.sh` que já está no disco dessas VPS continuaria montando o namespace antigo
-(`update.sh:158` tem a string hardcoded), e nenhuma delas receberia a mudança que as
-consertaria — o clássico problema de atualizar o atualizador.
+(a string do namespace está no script que já está no disco dela), e nenhuma receberia a
+mudança que as consertaria — o clássico problema de atualizar o atualizador.
 
-**Custo medido de uma migração futura:** 9 arquivos versionados (`docker-compose.prod.yml`,
-`install.sh`, `update.sh`, `.env.hostgator.example`, `tests/shell/update-guard.test.sh`,
-`CHANGELOG.md`, e 3 docs) **mais** o `.env` de cada instalação viva.
+**Custo medido de uma migração futura:** o namespace vive numa constante única
+(`IMG_NS` em `hostgator-setup-kit/_common.sh`), mais o default de cada serviço em
+`docker-compose.prod.yml`, mais `.env.hostgator.example`, os testes que casam a string
+(`tests/shell/update-guard.test.sh`, `hostgator-setup-kit/test-validators.sh`,
+`tests/unit/packaging-artefato-do-cliente.test.ts`) e os docs — **mais** o `.env` de cada
+instalação viva, que é a parte que nenhum commit alcança. Régua para reconferir antes de
+citar este parágrafo: `grep -rln "ghcr.io/melgarafael" --exclude-dir=node_modules .`
 
 **Reconsideraríamos se:** o projeto ganhar mantenedores com necessidade de publicar sem
 credencial pessoal, ou o repositório mudar de dono. Nesse caso a migração é **aditiva**:
@@ -79,9 +83,12 @@ bundle compilado passa a se pagar.
 
 ### D4 — `stable` é criado; `latest` não muda de significado
 
-`latest` neste projeto aponta para o **topo da `main`**, não para a última release — é a regra
-`type=raw,value=latest,enable={{is_default_branch}}` do `metadata-action`. O nome cria uma
-expectativa que a configuração não cumpre, e instalação fresca herdava isso.
+`latest` neste projeto aponta para o **topo da `main`**, não para a última release. O nome cria
+uma expectativa que a configuração não cumpre, e instalação fresca herdava isso.
+
+A regra `enable={{is_default_branch}}` sozinha nem entregava isso: ela é verdadeira também num
+push de tag, então toda release movia `latest` junto e o canal oscilava entre os dois
+significados. O workflow passou a prendê-lo a `ref_type == 'branch'`.
 
 **Alternativa descartada:** redefinir `latest` como a última release. Seria mais correto
 semanticamente e **quebraria em produção**: quem hoje roda o topo da `main` sofreria um
@@ -114,8 +121,11 @@ GHCR. Instalação pinada grava `missing`; canal móvel continua `always`.
 ## Consequências
 
 **Ganhamos:** o parque para de rodar código congelado no worker; a versão de cada instalação
-vira nomeável e observável; a imagem ganha um gate que reprova merge; e a atualização vira
-ato reversível por uma linha do `.env`.
+vira nomeável e observável; e a atualização vira ato reversível por uma linha do `.env`.
+
+**Ainda não ganhamos:** o gate da imagem só reprova merge depois que `imagens-ok` entrar na
+branch protection — o que não pode acontecer antes deste trabalho estar na `main`, sob pena de
+travar todos os PRs abertos. Enquanto isso, o job roda em PR e informa, mas não bloqueia.
 
 **Pagamos:** três imagens para publicar em vez de uma (mesmo run do CI, sem custo de
 processo); e uma regra a mais no DoD.

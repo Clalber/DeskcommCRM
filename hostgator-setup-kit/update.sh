@@ -180,8 +180,19 @@ gravar_imagens .env "$VERSAO_ALVO"
 # ainda tem `build:` ao lado do `image:` do worker e do scheduler, então o
 # `up -d` os constrói localmente: pior que puxar, melhor que não atualizar.
 if ! dc pull; then
-  c_ylw "⚠ Não consegui puxar todas as imagens da versão ${VERSAO_ALVO}."
-  c_ylw "  Sigo assim mesmo: o compose constrói o que faltar (mais lento, mesmo resultado)."
+  # A mensagem distingue os dois casos porque a consequência é oposta, e uma
+  # frase tranquilizadora sobre o caso errado é o pior desfecho possível: o
+  # `worker` e o `scheduler` têm `build:` ao lado do `image:` e o `up -d` os
+  # constrói; o `app` NÃO tem, então se for a imagem dele que falta, o `up -d`
+  # morre logo abaixo — e dizer "sigo assim mesmo" teria sido mentira.
+  if dc pull app >/dev/null 2>&1; then
+    c_ylw "⚠ Não consegui puxar todas as imagens da versão ${VERSAO_ALVO}."
+    c_ylw "  A do app veio; o que faltar é construído aqui (mais lento, mesmo resultado)."
+  else
+    c_ylw "⚠ Não consegui puxar a imagem do APP na versão ${VERSAO_ALVO}."
+    c_ylw "  Causas comuns: a versão ainda está publicando, ou o pacote está privado no GHCR."
+    c_ylw "  Vou tentar subir mesmo assim — se falhar, rode de novo em alguns minutos."
+  fi
 fi
 # A rede do proxy externo é declarada como EXTERNA no compose: se ela sumiu
 # (um `docker network prune`, ou o `down -v` que o próprio kit ensina como

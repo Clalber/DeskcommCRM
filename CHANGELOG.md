@@ -8,6 +8,14 @@ Se você roda o DeskcommCRM numa VPS, **leia a seção da versão para a qual es
 
 ## [Não lançado]
 
+Esta versão mexe em como o sistema **chega e se atualiza** no seu servidor. Em uso, três
+coisas mudam para melhor: a instalação deixa de ter uma etapa que podia falhar por falta de
+memória no meio (o servidor não compila mais nada — tudo vem pronto), sobra folga de memória
+para o que importa de verdade na operação (WhatsApp, mídia, mais atendimentos na mesma
+máquina), e a instalação fica bem mais rápida. A recomendação de servidor **continua a
+mesma**: o que consome memória é operar o sistema no dia a dia — 7 serviços e cerca de 150 MB
+por número de WhatsApp conectado —, e isso não mudou.
+
 ### Corrigido
 
 - **O agente de IA nunca recebia atualização.** O worker — o processo que faz o agente

@@ -1246,6 +1246,18 @@ fi
 # uma. Um `@sha256:...` cai aqui como tag imutável, que é o correto.
 _ref_final="${APP_IMAGE##*/}"
 case "$_ref_final" in
+  *@sha256:*)
+    # O operador pinou o app por DIGEST. Derivar a tag daí produziria
+    # `deskcomm-worker:<hash-do-app>` — uma referência que não existe em lugar
+    # nenhum, e o `pull` falharia com "manifest unknown" sem ninguém entender
+    # por quê. Worker e scheduler vão para o canal estável, e o aviso sai porque
+    # quem pinou por digest tinha um motivo e precisa saber que ele não se
+    # propagou às outras duas.
+    TAG_ALVO="stable"
+    c_ylw "⚠ APP_IMAGE está pinado por digest."
+    c_ylw "  O worker e o scheduler ficam em 'stable' — ajuste WORKER_IMAGE/SCHEDULER_IMAGE"
+    c_ylw "  no .env se você precisa deles num digest específico também."
+    ;;
   *:*) TAG_ALVO="${_ref_final##*:}" ;;
   *)   TAG_ALVO="latest" ;;   # imagem sem ':' é :latest por definição do Docker
 esac

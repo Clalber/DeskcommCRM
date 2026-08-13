@@ -267,27 +267,55 @@ Um bump de versão **não pode** exigir:
 
 Verificável, na ordem. Nenhum item é "conferir se está tudo bem".
 
+A sonda do registry vem primeiro porque os itens 3 e 6 dependem dela — e porque `curl` cru no
+GHCR responde **401**, que não contém a versão procurada e por isso seria lido como aprovação
+pelo item 3. Um gate que aprova por erro de autenticação é pior que gate nenhum:
+
+```bash
+# Cole no shell antes de começar. Funciona anonimamente (o pacote é público).
+ghcr_status() {   # $1=imagem  $2=tag  → 200 existe | 404 não existe | 403 pacote privado
+  local t
+  t=$(curl -s "https://ghcr.io/token?scope=repository:melgarafael/$1:pull&service=ghcr.io" \
+      | sed -n 's/.*"token":"\([^"]*\)".*/\1/p')
+  curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $t" \
+    -H 'Accept: application/vnd.oci.image.index.v1+json' \
+    "https://ghcr.io/v2/melgarafael/$1/manifests/$2"
+}
+```
+
+**403 não é "não existe": é pacote PRIVADO.** Todo pacote recém-criado no GHCR nasce privado,
+e repositório público não muda isso. Enquanto não for tornado público na mão (Package settings
+→ visibility), o `docker compose pull` de **toda VPS** é negado — e, como o `pull` de um
+serviço com `image:` falha a operação inteira, a atualização morre depois do `git checkout` e
+do banco. É o passo que mais trava na estreia de uma imagem nova.
+
 ```
 [ ] 1. CHANGELOG.md tem a seção da versão, com o que muda para quem já instalou
 [ ] 2. Nenhuma variável nova é obrigatória sem default (grep no diff de .env.example)
 [ ] 3. O número da versão NUNCA foi publicado antes:
-       git tag --list 'vX.Y.Z'  → vazio
-       curl .../tags/list       → não contém X.Y.Z
-[ ] 4. `git tag vX.Y.Z && git push origin vX.Y.Z` — a partir de um commit da `main`
-[ ] 5. O run de publicação ficou verde:
+       git tag --list 'vX.Y.Z'                     → vazio
+       ghcr_status deskcommcrm X.Y.Z               → 404
+[ ] 4. Os pins upstream foram revisitados: `waha`, `srh`, `redis`, `caddy`, `postgres`.
+       Bumpar ou confirmar que ficam — congelar sem revisar é como o `srh` ficou
+       três versões atrás sem ninguém decidir isso
+[ ] 5. `git tag vX.Y.Z && git push origin vX.Y.Z` — a partir de um commit da `main`
+[ ] 6. O run de publicação ficou verde:
        gh run list --workflow=publish-image.yml --limit 3
-[ ] 6. As imagens existem no registry, todas as que o compose consome:
-       para IMG in deskcommcrm deskcomm-worker deskcomm-scheduler:
-         curl -sI .../$IMG/manifests/X.Y.Z  → 200
-[ ] 7. `stable` aponta para esta versão (mesmo digest de X.Y.Z)
-[ ] 8. A imagem reporta a versão certa:
-       docker run --rm ghcr.io/…/deskcommcrm:X.Y.Z node -e 'console.log(process.env.APP_VERSION)'
-[ ] 9. `gh release create vX.Y.Z` com as notas do CHANGELOG
-[ ] 10. Ensaio de atualização numa instalação real (não fresca): update.sh a partir da
+[ ] 7. As TRÊS imagens existem E são públicas nesta versão:
+       for i in deskcommcrm deskcomm-worker deskcomm-scheduler; do
+         echo "$i: $(ghcr_status $i X.Y.Z)"; done      → 200 nas três
+       403 em alguma? Torne o pacote público ANTES de seguir
+[ ] 8. `stable` aponta para esta versão (mesmo digest de X.Y.Z):
+       ghcr_status deskcommcrm stable              → 200, e o digest bate
+[ ] 9. A imagem reporta a versão certa:
+       docker run --rm ghcr.io/melgarafael/deskcommcrm:X.Y.Z \
+         node -e 'console.log(process.env.APP_VERSION)'   → X.Y.Z
+[ ] 10. `gh release create vX.Y.Z` com as notas do CHANGELOG
+[ ] 11. Ensaio de atualização numa instalação real (não fresca): update.sh a partir da
         versão anterior, e o /api/v1/health responde X.Y.Z
 ```
 
-O item 10 é o único que exige VPS. Ele não é opcional: a atualização é o caminho que **todo o
+O item 11 é o único que exige VPS. Ele não é opcional: a atualização é o caminho que **todo o
 parque instalado** percorre, e é o único que a suíte de CI não exercita.
 
 ---
