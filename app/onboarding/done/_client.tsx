@@ -68,6 +68,18 @@ export function DoneClient({
             Você não precisa mexer em nada disso agora. É só para saber que existe.
           </p>
         </div>
+        {/*
+          Cada peça abre e mostra COMO funciona, em passos. Uma frase basta para
+          dizer que a peça existe; não basta para o follow-up, que é a peça mais
+          técnica do produto e a que mais assusta pelo nome — quem lê "volta a
+          falar com quem sumiu" sem saber que o retorno PARA quando o cliente
+          responde imagina um robô perseguindo cliente, e desliga justamente o
+          que mais recupera venda.
+
+          Fechado por padrão: quem acabou de montar o funcionário não precisa ler
+          seis tutoriais agora. O que ele precisa é saber que a explicação existe
+          e está a um clique.
+        */}
         <ul className="grid gap-2 sm:grid-cols-2">
           {pecas.map((p) => (
             <li key={p.href} className="rounded-md border p-3">
@@ -76,6 +88,25 @@ export function DoneClient({
               </a>
               <span className="ml-1 text-xs text-muted-foreground">({p.label})</span>
               <p className="mt-1 text-xs text-muted-foreground">{p.porQue}</p>
+
+              <details className="group mt-2">
+                <summary className="cursor-pointer list-none text-xs text-muted-foreground underline underline-offset-2">
+                  Como funciona
+                </summary>
+                <ol className="mt-2 space-y-1.5">
+                  {p.comoFunciona.map((passo, i) => (
+                    <li key={passo} className="flex gap-2 text-xs text-muted-foreground">
+                      <span
+                        aria-hidden
+                        className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border text-[10px]"
+                      >
+                        {i + 1}
+                      </span>
+                      <span>{passo}</span>
+                    </li>
+                  ))}
+                </ol>
+              </details>
             </li>
           ))}
         </ul>

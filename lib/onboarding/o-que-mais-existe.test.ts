@@ -50,3 +50,39 @@ describe("o que mais existe", () => {
     expect(crus.map((p) => p.comoChamar)).toEqual([]);
   });
 });
+
+describe("o tutorial de cada peça", () => {
+  it("toda peça explica COMO funciona, em passos", () => {
+    // Uma frase basta para dizer que a peça existe; não basta para as técnicas.
+    for (const p of PECAS) {
+      expect(p.comoFunciona.length, p.href).toBeGreaterThanOrEqual(3);
+      expect(p.comoFunciona.length, p.href).toBeLessThanOrEqual(6);
+    }
+  });
+
+  it("os passos são frases inteiras, não rótulos", () => {
+    for (const p of PECAS) {
+      for (const passo of p.comoFunciona) {
+        expect(passo.trim().length, `${p.href}: ${passo}`).toBeGreaterThan(20);
+      }
+    }
+  });
+
+  it("o follow-up diz que o retorno PARA quando o cliente responde", () => {
+    // É a peça que mais assusta pelo nome. Quem imagina um robô perseguindo
+    // cliente desliga justamente o que mais recupera venda — e o comportamento
+    // real é o contrário: `lib/followup/reactivity.ts` reage a mensagem
+    // recebida, a pedido de parar e a atendimento humano.
+    const followup = PECAS.find((p) => p.href === "/app/ai/followups");
+    expect(followup, "o tour precisa apresentar o follow-up").toBeTruthy();
+    const texto = followup!.comoFunciona.join(" ").toLowerCase();
+    expect(texto).toMatch(/responder?, o retorno para|para na hora/);
+    expect(texto).toMatch(/pedir para parar|parar/);
+  });
+
+  it("nenhum passo usa nome técnico", () => {
+    const tecnicos = /\b(enrollment|webhook|endpoint|trigger|payload|jsonb|prompt|token)\b/i;
+    const sujos = PECAS.flatMap((p) => p.comoFunciona.filter((x) => tecnicos.test(x)));
+    expect(sujos).toEqual([]);
+  });
+});
