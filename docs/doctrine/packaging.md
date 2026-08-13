@@ -115,7 +115,9 @@ OCI — no mínimo `source`, `revision`, `version`, `licenses` — e é constru�
   >
   > Enquanto isso valer, este invariante é **conselho, não gate**. A ativação é o último passo
   > do merge desta doutrina, e não pode vir antes: um required check que não existe na base
-  > dos PRs já abertos bloqueia todos eles até que cada um rebase. Uma versão anterior deste
+  > dos PRs já abertos bloqueia todos eles até que cada um rebase. O roteiro, com as
+  > verificações de cada passo, está em
+  > [`../runbooks/ativar-packaging.md`](../runbooks/ativar-packaging.md). Uma versão anterior deste
   > parágrafo afirmava, no presente, que o check já era obrigatório — exatamente o defeito que
   > esta doutrina existe para impedir, cometido dentro dela.
 
