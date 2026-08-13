@@ -35,6 +35,7 @@ import { Info } from "@/lib/ui/icons";
 import Link from "next/link";
 
 import { TETO_TOOLS_POR_AGENTE } from "@/lib/mcp/tools/selecao-por-pacote";
+import { PROVEDORES } from "@/lib/ai/pontos/provedores";
 
 import { ModelPicker, useModelMeta } from "./ModelPicker";
 import { CredentialPicker, findCredential } from "./CredentialPicker";
@@ -576,9 +577,19 @@ export function AgentForm(props: Props) {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="anthropic">Anthropic</SelectItem>
-                  <SelectItem value="openai">OpenAI</SelectItem>
-                  <SelectItem value="google">Google (Gemini)</SelectItem>
+                  {/*
+                    Derivado de PROVEDORES, nunca escrito à mão: esta lista tinha
+                    três itens fixos enquanto o sistema executava quatro, e a
+                    OpenRouter — a opção [1] do instalador — não aparecia. Um
+                    agente publicado nela abria com o campo em BRANCO, porque
+                    nenhum item casava com o valor, e o primeiro save silencioso
+                    trocava o provedor do dono por outro.
+                  */}
+                  {PROVEDORES.map((p) => (
+                    <SelectItem key={p.id} value={p.id}>
+                      {p.rotulo}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>

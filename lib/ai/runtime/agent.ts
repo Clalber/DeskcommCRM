@@ -27,6 +27,9 @@ import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { createOpenAI } from "@ai-sdk/openai";
 import { generateText, stepCountIs, type LanguageModel, type StopCondition, type ToolSet } from "ai";
 
+// Fonte única do endpoint — a mesma constante que o registry de produção usa.
+// Repetir a URL aqui criaria dois lugares para consertar quando ela mudar.
+import { OPENROUTER_ENDPOINT } from "@/lib/agent-engine/edge/llm/providers";
 import { CredentialUnavailableError, loadCredential } from "@/lib/ai/credentials";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { audit } from "@/lib/audit";
@@ -131,7 +134,16 @@ function buildSentinelRegex(keywords: string[]): RegExp | null {
  * "Unauthenticated. Configure AI_GATEWAY_API_KEY or use a provider module.",
  * which is exactly what this does — a direct provider module per `provider`.
  */
-function buildModel(provider: string, apiKey: string, modelId: string): LanguageModel {
+/**
+ * Exportada por causa do invariante: este switch é o SEGUNDO lugar que precisa
+ * conhecer um provedor novo (o primeiro é `createDefaultRegistry`, em
+ * `lib/agent-engine/edge/llm/providers.ts`), e ficou três casos atrás dele.
+ * `tests/unit/provedores-x-registry.test.ts` chama esta função para cada id de
+ * `IDS_DE_PROVEDOR` — sem export, a única guarda possível seria procurar
+ * `case "..."` no texto do arquivo, que passa com um switch que compila e não
+ * executa.
+ */
+export function buildModel(provider: string, apiKey: string, modelId: string): LanguageModel {
   switch (provider) {
     case "anthropic":
       return createAnthropic({ apiKey })(modelId);
@@ -139,6 +151,13 @@ function buildModel(provider: string, apiKey: string, modelId: string): Language
       return createOpenAI({ apiKey })(modelId);
     case "google":
       return createGoogleGenerativeAI({ apiKey })(modelId);
+    // O ensaio precisa alcançar o mesmo provedor que o turno real alcança.
+    // Sem este caso, o dono que instalou pela opção [1] do instalador publica
+    // o agente, clica em "Teste" para conferir antes de confiar, e recebe
+    // `unsupported_provider` — enquanto a mensagem de verdade seria respondida
+    // normalmente pelo worker. Erro no ensaio lê-se como produto quebrado.
+    case "openrouter":
+      return createOpenAI({ apiKey, baseURL: OPENROUTER_ENDPOINT })(modelId);
     default:
       throw new Error(`unsupported_provider: ${provider}`);
   }
