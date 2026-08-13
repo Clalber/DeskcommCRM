@@ -345,6 +345,57 @@ ensaio passou a usar o mesmo *prelude* de stubs que `scripts/test-db.sh` aplica 
 `invariants` — com ele, o baseline da época aplica com `ON_ERROR_STOP=1` e **zero erros**
 (96 tabelas). Sem essa correção, o ensaio estaria medindo o próprio ambiente.
 
+### P4 — a execução real, na produção do projeto (2026-08-13)
+
+Primeira aplicação em instalação de verdade, com dados de verdade. **A produção reproduziu o
+U6-c com exatidão** — o ensaio previu o campo, que é o que dá valor ao ensaio.
+
+| | antes | depois da 1ª | depois da 2ª |
+|---|---|---|---|
+| worker | `deskcommcrm-worker` local, `fb42e47c`, de **31/07** | `deskcomm-worker:stable` `3fe292cad2bd` `version=1.3.0` | `deskcomm-worker:1.3.0` |
+| `.env` | sem `WORKER_IMAGE` | ainda **sem pin** (como o U6-c previu) | as três em `1.3.0`, `pull_policy: missing` |
+| `/api/v1/health` | `0.1.0` | — | **`1.3.0`, healthy** |
+| detector | exit 1 | exit 0 + aviso de tag móvel | **exit 0, sem ressalva** |
+
+**Nada se perdeu, medido item a item:** volume WAHA com **48.607 arquivos** antes e depois,
+sessão `noweb` presente, 4 volumes intactos, **nenhuma** chave do `.env` sumiu (39 → 43: as 4
+novas são as de imagem). De fora da VPS: `HTTP 307`, e o health com `supabase: ok`,
+`redis: ok`, `waha: ok`.
+
+**O código chegou** — prova por hash, não por data. Os arquivos que os 9 commits tocaram, na
+imagem que a produção roda, têm SHA-256 idêntico ao da tag `v1.3.0`:
+
+```
+ai-response-worker.ts    0c097cc60fd98196   (tag e imagem)
+ai-sentiment-worker.ts   824e7e276a1369f6
+media-derive-worker.ts   3b84df05e71847e1
+agent-worker/main.ts     255c9934f84cddaa
+```
+
+O backup precedeu tudo e foi verificado antes de qualquer escrita: dump de 11 MB, `gunzip -t`
+íntegro, 69.523 linhas, 145 `CREATE TABLE`, mais o `.tgz` das sessões do WhatsApp.
+
+#### O que a execução real ensinou, e o ensaio não tinha mostrado
+
+**O pin do WAHA não alcança instalação legada.** O `.env` do parque tem
+`WAHA_IMAGE='devlikeapro/waha'` — sem tag, gravado pelo install antigo —, e o `.env` vence o
+default do compose. O `update.sh` não reescreve essa chave, então a remediação deixa o WAHA
+seguindo `:latest`:
+
+```
+compose (default): ${WAHA_IMAGE:-devlikeapro/waha:latest-2026.7.2}
+.env do cliente:   WAHA_IMAGE='devlikeapro/waha'
+em uso:            devlikeapro/waha          ← sem tag
+```
+
+É o mesmo padrão do defeito que o `install.sh` já teve — o `.env` vencendo o compose — só que
+agora do lado de quem já instalou. Consequência: a cada `dc pull` a instalação recebe qualquer
+versão que o upstream tiver publicado, sem ninguém ter testado, o que o invariante 4 proíbe.
+
+**Ainda não consertado, de propósito.** Reescrever `WAHA_IMAGE` num `.env` alheio troca a
+versão do WhatsApp de uma instalação em produção, e isso merece decisão e ensaio próprios —
+não um remendo no fim de uma remediação que deu certo.
+
 ### O que estes ensaios NÃO cobriram
 
 - **Supabase real.** O `SUPABASE_DB_URL` apontou para um Postgres em contêiner
