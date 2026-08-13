@@ -46,10 +46,11 @@ serviços e cerca de 150 MB por número de WhatsApp conectado —, e isso não m
 
 ### ⚠️ Requer atenção
 
-**Se o seu servidor foi instalado antes desta versão, rode o `update.sh` e depois confira.**
-Medido num ensaio em VPS: a primeira execução atualiza o sistema mas pode não trocar o
-agente, porque quem conduz a atualização é o script que já estava no seu servidor — e ele
-não conhece as peças novas. A segunda execução resolve.
+**Se o seu servidor foi instalado antes desta versão, rode o `update.sh` DUAS vezes.**
+Medido em ensaio numa VPS: a primeira execução traz o agente novo, mas deixa a versão dele
+"solta" — acompanhando o canal em vez de ficar fixa, como o resto do sistema. Isso faria o
+agente saltar sozinho para a versão seguinte num reinício futuro, enquanto o resto do
+servidor continuaria onde está. A segunda execução fixa tudo na mesma versão.
 
 Para saber em que pé você está, sem mexer em nada:
 
