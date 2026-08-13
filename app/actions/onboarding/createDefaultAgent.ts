@@ -11,6 +11,7 @@ import { audit } from "@/lib/audit";
 import { listSelectableChannels, type SelectableChannel } from "@/lib/channels/selectable";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { aiAgentDefaultSchema, type PromptTemplate } from "@/lib/schemas/onboarding";
+import { capacidadesPadraoDoOnboarding } from "@/lib/ai/agents/capacidades-padrao";
 import { requireOnboardingCtx, patchOnboardingState, OnboardingError } from "./_shared";
 
 const PROMPT_BODIES: Record<PromptTemplate, string> = {
@@ -133,6 +134,22 @@ async function publishFirstVersion(
   const modelId = model?.model_id as string | undefined;
   if (!modelId) return { published: false, reason: "no_model", provider };
 
+  // "Em que negócios ele pode mexer". Toda organização nasce com um funil de
+  // entrada, criado por gatilho no INSERT de `organizations`. Sem preencher
+  // isto, `pipeline_ids` fica vazio — e vazio significa NENHUM, então toda
+  // escrita de lead é recusada e o card nunca sai do lugar.
+  //
+  // Falha ou ausência = escopo vazio, nunca um funil chutado: mexer no funil
+  // errado é pior que não mexer em nenhum.
+  const { data: funil } = await admin
+    .from("crm_pipelines")
+    .select("id")
+    .eq("organization_id", orgId)
+    .eq("is_default", true)
+    .eq("is_archived", false)
+    .maybeSingle();
+  const pipelineIds = funil?.id ? [funil.id as string] : [];
+
   const { data: version, error: versionErr } = await admin
     .from("ai_agent_versions")
     .insert({
@@ -145,6 +162,10 @@ async function publishFirstVersion(
       // endpoint não conhece.
       provider,
       model: modelId,
+      // Sem capacidades o turno não monta ferramenta nenhuma: o agente
+      // entregue conversa e não alcança contato, lead nem funil.
+      tool_ids: capacidadesPadraoDoOnboarding(),
+      pipeline_ids: pipelineIds,
       channel_session_id: canal.id,
       status: "published",
       published_at: new Date().toISOString(),

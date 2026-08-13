@@ -137,6 +137,13 @@ interface Mundo {
    * exatamente o estado de uma instalação nova.
    */
   modelosPorProvedor?: Record<string, string>;
+  /**
+   * O funil de entrada da organização. Toda org nasce com um (criado por
+   * gatilho no INSERT de `organizations`); `null` cobre a instalação em que a
+   * consulta não acha nada, e o agente tem de nascer com escopo VAZIO em vez de
+   * chutar um funil.
+   */
+  funilPadrao?: { id: string } | null;
 }
 
 const CANAL = {
@@ -225,6 +232,11 @@ function montarBanco(mundo: Mundo = {}): Estado {
         return { data: { settings: mundo.settings ?? null }, error: null };
       }
       return { data: { onboarding_state: estado.onboardingState, onboarded_at: null }, error: null };
+    }
+
+    if (c.table === "crm_pipelines") {
+      const funil = mundo.funilPadrao === undefined ? { id: "funil-1" } : mundo.funilPadrao;
+      return { data: funil, error: null };
     }
 
     if (c.table === "event_log") {
@@ -444,6 +456,41 @@ describe("onboarding: o agente nasce no provedor que a instalação escolheu", (
 
     expect(res).toBe("redirecionou");
     expect(estado.versoes[0]).toMatchObject({ provider: "anthropic", model: "claude-sonnet-9" });
+  });
+
+  it("nasce podendo mexer no CRM: capacidades ligadas e funil no escopo", async () => {
+    // O defeito: `tool_ids='{}'` faz o turno não montar ferramenta nenhuma, e
+    // `pipeline_ids='{}'` recusa toda escrita de lead (vazio = NENHUM, falha
+    // fechada). Juntos, entregam um funcionário que conversa e não toca no
+    // produto — sem nada na tela dizendo isso.
+    const estado = montarBanco();
+
+    await clicar();
+
+    const versao = estado.versoes[0] as { tool_ids?: string[]; pipeline_ids?: string[] };
+    expect(versao.tool_ids?.length ?? 0).toBeGreaterThan(0);
+    expect(versao.pipeline_ids).toEqual(["funil-1"]);
+  });
+
+  it("as capacidades gravadas são as do padrão — não uma lista paralela", async () => {
+    const { capacidadesPadraoDoOnboarding } = await import("@/lib/ai/agents/capacidades-padrao");
+    const estado = montarBanco();
+
+    await clicar();
+
+    expect((estado.versoes[0] as { tool_ids?: string[] }).tool_ids).toEqual(
+      capacidadesPadraoDoOnboarding(),
+    );
+  });
+
+  it("sem funil de entrada, o escopo nasce VAZIO — nunca um funil chutado", async () => {
+    // Escopo errado é pior que escopo nenhum: o agente mexeria no funil de
+    // outra operação achando que é o dele.
+    const estado = montarBanco({ funilPadrao: null });
+
+    await clicar();
+
+    expect((estado.versoes[0] as { pipeline_ids?: string[] }).pipeline_ids).toEqual([]);
   });
 
   it("não dá para LER o provedor: não publica — publicar com chute é o defeito de origem", async () => {
