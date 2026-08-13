@@ -28,7 +28,11 @@ services:
     # Os NEXT_PUBLIC_* reais vêm em RUNTIME (env_file abaixo) — o browser lê via
     # <PublicEnvScript/> e o servidor via lib/env.ts. Não precisa buildar no VPS.
     # Build local (avançado): docker compose -f docker-compose.prod.yml -f docker-compose.build.yml build
-    image: ${APP_IMAGE:-ghcr.io/melgarafael/deskcommcrm:latest}
+    # `:stable` (última release), não `:latest` (topo da `main`). Quem cai neste
+    # default é quem NÃO tem APP_IMAGE no .env — avaliação, ou um .env que
+    # perdeu a chave. Nenhum desses casos quer código não lançado; quem quiser o
+    # topo da main pede `APP_IMAGE=…:latest` explicitamente.
+    image: ${APP_IMAGE:-ghcr.io/melgarafael/deskcommcrm:stable}
     pull_policy: ${APP_PULL_POLICY:-always}
     restart: unless-stopped
     env_file: .env
