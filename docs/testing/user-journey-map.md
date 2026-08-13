@@ -539,8 +539,14 @@ worker)"*. O fato estava medido; a pergunta é que faltava.
 | U3 `[P0]` | Nenhum serviço de produção fica `build:`-only | coberto — `tests/unit/packaging-artefato-do-cliente.test.ts` |
 | U4 | O crontab do scheduler não perde rota ao mudar de arquivo | coberto — `tests/shell/scheduler-entrypoint.test.sh` + `tests/unit/cron-routes-scheduled.test.ts` |
 | U5 | `/api/v1/health` responde a versão real da imagem | coberto — medido no app real: com `APP_VERSION=9.9.9-teste` responde `9.9.9-teste`; sem ela, `desconhecido` |
-| U6 `[P0]` | **Ensaio de atualização numa VPS real, de uma versão anterior para a nova, e o worker passa a rodar o código novo** | **NÃO coberto** — exige VPS. É o item 11 do checklist de release (`docs/doctrine/packaging.md`) |
+| U6 `[P0]` | **Ensaio de atualização numa VPS real, de uma versão anterior para a nova, e o worker passa a rodar o código novo** | **EXECUTADO 2026-08-13** — estado legado reproduzido do commit `ee520110`, worker migrou para a imagem publicada, nada perdido. **Com ressalva:** a 1ª execução do `update.sh` não conserta enquanto o canal `stable` não existir; a 2ª conserta. Evidência e limites em [`../runbooks/remediar-worker-congelado.md`](../runbooks/remediar-worker-congelado.md) §6 |
 
-U6 é o buraco que sobra, e ele é da mesma família de `vps-fresh-onboarding`: o CI prova que os
-scripts fazem o que dizem, não que a VPS de alguém saiu do estado A para o estado B. A
-diferença é que a jornada de instalação tem uma spec (fora do CI) e esta ainda não tem.
+U6 deixou de ser buraco em 2026-08-13, e o ensaio pagou o próprio custo: revelou que a
+primeira execução do `update.sh` não conserta o worker enquanto o canal `stable` não
+existir — coisa que nenhum teste do CI podia mostrar, porque não é sobre o que os scripts
+fazem, e sim sobre a ORDEM em que o parque encontra as peças.
+
+O que continua fora: o app contra um Supabase real (o ensaio usou Postgres em contêiner),
+uma sessão de WhatsApp pareada de verdade (foi um marcador no volume), e o `install.sh`
+completo da época (exige projeto Supabase). Segue valendo a régua de `vps-fresh-onboarding`:
+o CI prova que os scripts fazem o que dizem, não que a máquina de alguém mudou de estado.

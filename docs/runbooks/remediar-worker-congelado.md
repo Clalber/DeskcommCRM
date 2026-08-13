@@ -1,18 +1,28 @@
 # Runbook — o worker congelado: diagnóstico e remediação
 
-> ## ⚠️ ESTE RUNBOOK NÃO FOI ENSAIADO
+> ## Estado do ensaio: **U6-b EXECUTADO em 2026-08-13, com uma ressalva que muda o procedimento**
 >
-> Nenhum passo abaixo foi executado numa VPS de ponta a ponta. Ele foi escrito a
-> partir de: o código do `update.sh`, o comportamento medido do `docker compose`, e o
-> diagnóstico read-only da instalação de produção. **Isso não é a mesma coisa que ter
-> feito.**
+> O ensaio rodou numa VPS real, com estado legado **reproduzido** (não simulado): clone
+> no commit `ee520110` de 2026-07-31 — o mesmo em que o worker era `build:`-only —,
+> baseline daquela época aplicado, e a stack subida por `docker compose up -d`, que
+> construiu o worker na máquina, como acontece na instalação de um cliente.
 >
-> O ensaio pendente é o **U6-b** (`docs/testing/user-journey-map.md`): reconstruir uma
-> instalação legada numa VPS descartável, confirmar o sintoma, remediar, verificar que
-> nada se perdeu, e rodar o rollback. Enquanto ele não acontecer, cada passo carrega
-> `[NÃO VERIFICADO]` e o espaço da evidência está reservado, vazio, de propósito.
+> **O que passou:** o worker migrou de imagem local (`2174fb4f`) para a publicada
+> (`ghcr.io/…/deskcomm-worker`, `revision=31096584…`); as três imagens ficaram pinadas
+> na mesma versão; o volume do WAHA, a customização do operador no `.env` e o banco
+> sobreviveram (69 → 73 tabelas, a migração esperada).
 >
-> **Não conduza a remediação de um cliente por este documento antes de o U6-b fechar.**
+> **A ressalva, e ela é o motivo de este aviso continuar aqui:** a **primeira** execução
+> do `update.sh` NÃO consertou o worker. Quem executa a transição é o `update.sh` que
+> está no disco do cliente — o antigo —, e ele só sabe gravar `APP_IMAGE`. O worker cai
+> no default do compose novo, e enquanto o canal `stable` não existir no registry esse
+> default não resolve. Só a **segunda** execução, já com o kit novo em disco, pinou as
+> três e trocou a imagem. Ver §5.0.
+>
+> **Ainda não coberto:** o app não subiu contra um Supabase real (o ensaio usou um
+> Postgres em contêiner como `SUPABASE_DB_URL`), então auth, storage e PostgREST não
+> foram exercitados; e a sessão do WhatsApp foi representada por um arquivo marcador no
+> volume, não por um número pareado de verdade.
 
 ---
 
@@ -133,10 +143,45 @@ mais nova. É o que mantém código e schema no mesmo par.
 
 ## 5. Passo a passo — Rota A
 
-Cada passo traz o rollback ao lado. `[NÃO VERIFICADO]` marca o que o ensaio U6-b ainda
-precisa confirmar.
+Cada passo traz o rollback ao lado. `[ENSAIADO]` foi executado no U6-b de 2026-08-13;
+`[NÃO VERIFICADO]` continua sem prova.
 
-### A1. Diagnosticar e registrar o antes `[NÃO VERIFICADO]`
+### 5.0. Leia isto antes: **a primeira execução pode não bastar**
+
+Medido no ensaio, e é o achado que muda o procedimento.
+
+Quem executa a transição é o `update.sh` que está **no disco do cliente** — o antigo. Ele
+faz `git checkout` da tag nova (o que já troca o `docker-compose.prod.yml` pelo novo) e
+só então segue com a própria lógica, que conhece apenas `APP_IMAGE`. O worker cai no
+default do compose novo, `:stable`.
+
+No ensaio, `stable` ainda não existia no registry. Resultado medido, na ordem:
+
+```
+dc pull  → Image ghcr.io/…/deskcommcrm:… Pulled          (o app veio)
+         → Error: ghcr.io/…/deskcomm-worker:stable: not found
+         → Error: ghcr.io/…/deskcomm-scheduler:stable: not found
+up -d    → o worker seguiu no contêiner que já existia
+worker   → antes 2174fb4f · depois 2174fb4f   (NÃO mudou)
+```
+
+A **segunda** execução, já com o kit novo em disco, chamou `gravar_imagens`, pinou as três
+na mesma versão e trocou a imagem do worker pela publicada.
+
+**Consequências práticas:**
+
+1. **A release precisa existir antes de o parque atualizar.** Com `stable` publicado, o
+   default resolve e a primeira execução já traz o worker. A ordem do
+   [runbook de ativação](ativar-packaging.md) — merge → pacotes públicos → check
+   obrigatório → **release** — não é burocracia: é a precondição desta remediação.
+2. **Rode `update.sh` duas vezes** numa instalação legada, e confira com o
+   `diagnostico.sh` entre uma e outra. O README do kit já pedia isso por outro motivo
+   ("a primeira execução ainda é a do script velho"); aqui o motivo é este, e é medido.
+3. **Confirme pelo detector, não pelo fim do script.** A primeira execução termina sem
+   erro fatal — ela puxa o app, aplica o banco e sobe. Nada na tela diz que o worker
+   ficou para trás. Só o `diagnostico.sh` responde isso.
+
+### A1. Diagnosticar e registrar o antes `[ENSAIADO]`
 
 ```bash
 cd /caminho/do/projeto
@@ -161,7 +206,7 @@ docker system df
 Não use `docker system prune --volumes` — ele apaga volumes, e é lá que mora a sessão
 pareada do WhatsApp.
 
-### A3. Rodar o update `[NÃO VERIFICADO]`
+### A3. Rodar o update `[ENSAIADO — ver §5.0: pode exigir duas execuções]`
 
 ```bash
 bash hostgator-setup-kit/update.sh
@@ -184,7 +229,7 @@ docker compose -f docker-compose.prod.yml up -d
 O banco **não** volta com isso. Para voltá-lo, `bash hostgator-setup-kit/restore.sh` com o
 dump que o A3 gerou — e ele pede confirmação digitada, de propósito.
 
-### A4. Verificar que o worker mudou de verdade `[NÃO VERIFICADO]`
+### A4. Verificar que o worker mudou de verdade `[ENSAIADO]`
 
 ```bash
 bash hostgator-setup-kit/diagnostico.sh          # esperado: exit 0, "NÃO está afetada"
@@ -192,7 +237,7 @@ curl -s localhost:3000/api/v1/health | grep -o '"version":"[^"]*"'
 grep -E '^(APP|WORKER|SCHEDULER)_IMAGE=' .env    # as três na MESMA versão
 ```
 
-### A5. Verificar que nada se perdeu `[NÃO VERIFICADO — o item central do U6-b]`
+### A5. Verificar que nada se perdeu `[ENSAIADO em parte — ver a tabela]`
 
 O que precisa estar intacto, e o que responde por cada um:
 
@@ -211,19 +256,70 @@ U6-b precisa confirmar.**
 
 ---
 
-## 6. Evidência do ensaio
+## 6. Evidência do ensaio (U6-b, 2026-08-13)
 
-> **Reservado.** Aqui entram os dois cenários do U6-b quando forem executados numa VPS
-> descartável: comandos, saídas e o que foi observado na tela.
->
-> - **U6-a — instalação nova:** sobe pinada, `/api/v1/health` com a versão certa, nenhum
->   serviço construído localmente.
-> - **U6-b — atualização de legada:** estado legado reconstruído a partir do commit da
->   época, sintoma confirmado antes, `update.sh` novo, worker passa a rodar imagem
->   publicada, nada perdido (§A5), e rollback verificado.
->
-> Enquanto esta seção estiver vazia, o runbook é uma hipótese bem fundamentada — não um
-> procedimento provado.
+**Ambiente.** VPS real, num diretório isolado (`deskcomm-ensaio`, projeto compose próprio,
+sem publicar portas), lado a lado com uma instalação de produção que **não foi tocada** —
+confirmado antes e depois: 7 contêineres, mesmo uptime, Caddy respondendo 308.
+
+**Estado legado reproduzido, não simulado.** Clone no commit `ee520110` (2026-07-31), o
+mesmo em que `docker-compose.prod.yml` tinha o worker `build:`-only; `baseline.sql`
+daquela época aplicado (69 tabelas); `docker compose up -d` construiu o worker na
+máquina — imagem `deskcomm-ensaio-worker` (`2174fb4f`), **sem labels OCI**, diferente da
+imagem da produção, provando que foi construída ali e não reaproveitada.
+
+**Sintoma confirmado antes de consertar:** `diagnostico.sh` → exit 1, "ESTÁ afetada".
+
+| Verificação | Antes | Depois | |
+|---|---|---|---|
+| imagem do worker | `deskcomm-ensaio-worker` (`2174fb4f`, sem labels) | `ghcr.io/…/deskcomm-worker:docs-doutrina-packaging` (`2082c65e`, `revision=31096584…`) | ✅ |
+| `.env` — as três imagens | só `APP_IMAGE` | as três na mesma versão, `pull_policy: missing` | ✅ |
+| marcador no volume `waha-data` | presente | **presente** | ✅ |
+| customização do operador no `.env` | presente | **presente** | ✅ |
+| tabelas no banco | 69 | 73 (a migração esperada) | ✅ |
+| `diagnostico.sh` | exit 1 (afetada) | **exit 0 (não afetada)** | ✅ |
+
+**O que exigiu duas execuções:** ver §5.0. A primeira não trocou o worker.
+
+### O rollback tem um efeito colateral, e ele foi medido
+
+Restaurar o `.env` anterior (sem `WORKER_IMAGE`) e subir **não devolve o estado exato**.
+O compose no disco já é o novo, então o worker volta ao default `:stable`; como `stable`
+não existia, o Compose **construiu localmente e taggeou a imagem como
+`ghcr.io/melgarafael/deskcomm-worker:stable`**.
+
+O resultado é uma imagem local **com nome de registry** — que parece publicada e não é:
+
+```
+revision: []                                          ← vazio: não veio do CI
+source:   [https://github.com/melgarafael/DeskcommCRM] ← veio do LABEL do Dockerfile
+está no registry de verdade? NAO
+```
+
+O `diagnostico.sh` detectou corretamente (exit 1). Vale registrar por quê: esse é
+exatamente o caso que uma sabotagem do detector tinha inventado — imagem local
+retagueada — e que a primeira versão dele, decidindo pelo **nome** da imagem, deixava
+passar. O caso apareceu sozinho, na vida real, produzido pelo próprio rollback.
+
+**Portanto:** depois de um rollback, rode o `diagnostico.sh`. Voltar o `.env` desfaz a
+pinagem, não o estado da imagem.
+
+### O que este ensaio NÃO cobriu
+
+- **Supabase real.** O `SUPABASE_DB_URL` apontou para um Postgres em contêiner
+  (`pgvector/pgvector:pg17`, o mesmo do CI). O `baseline.sql` foi exercitado de verdade;
+  auth, storage e PostgREST não.
+- **Sessão de WhatsApp pareada de verdade.** Foi representada por um arquivo marcador
+  dentro do volume `waha-data`. Prova que o volume sobrevive ao ciclo; não prova que uma
+  sessão pareada continua `WORKING`.
+- **`install.sh` da época de ponta a ponta.** Ele exige um projeto Supabase (bootstrap do
+  owner pela Admin API). O estado legado foi produzido pelo `docker compose up -d` — que
+  é literalmente a linha que o passo 9 do `install.sh` executa, e é a que produz o worker
+  construído localmente.
+- **Uma release de verdade.** O ensaio usou uma tag local (`vdocs-doutrina-packaging`)
+  apontando para as imagens já publicadas da branch. Foi o artifício que permitiu ensaiar
+  o caminho completo antes de haver release — e é por isso que o cenário do `stable`
+  inexistente apareceu.
 
 ## 7. Decisão do operador — sempre
 
