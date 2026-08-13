@@ -37,6 +37,10 @@ describe("passos visíveis", () => {
       "welcome",
       "connect-whatsapp",
       "setup-ai",
+      // Ver o funcionário atender vem DEPOIS de treiná-lo e ANTES de chamar o
+      // time: é a prova de que ele funciona, e ela precisa acontecer enquanto a
+      // pessoa ainda está no wizard.
+      "testar",
       "invite-team",
     ]);
   });
@@ -71,6 +75,7 @@ describe("próximo passo", () => {
       welcome: { accepted_at: "x", timezone: "America/Sao_Paulo", display_name: "N" },
       whatsapp: { status: "WORKING" },
       ai: { agent_id: "a", prompt_template: "p" },
+      teste: { respondeu: true },
       team: { invites_sent: 0, skipped: true },
     };
     expect(proximoPasso(s, SEM_LOJA)).toBeNull();

@@ -80,6 +80,17 @@ export const PASSOS: readonly PassoDoOnboarding[] = [
     pulado: (s) => foiPulado(s.ai),
   },
   {
+    segmento: "testar",
+    // O wizard terminava entregando a pessoa num inbox vazio. Ver o
+    // funcionário responder ANTES de acabar é o que transforma "configurei um
+    // sistema" em "contratei alguém" — e é onde o erro aparece antes do
+    // primeiro cliente real, não depois.
+    rotulo: "Ver ele atender",
+    existe: () => true,
+    cumprido: (s) => marcado(s.teste),
+    pulado: (s) => foiPulado(s.teste),
+  },
+  {
     segmento: "invite-team",
     rotulo: "Quem trabalha com ele",
     existe: () => true,

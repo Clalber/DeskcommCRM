@@ -46,6 +46,9 @@ export type AuditAction =
   | "onboarding.whatsapp_skipped"
   | "onboarding.nuvemshop_skipped"
   | "onboarding.ai_configured"
+  // O passo de ver o funcionário responder antes de terminar o wizard.
+  | "onboarding.agente_testado"
+  | "onboarding.agente_teste_pulado"
   | "onboarding.team_invited"
   | "onboarding.completed"
   | "tenant.onboarded"

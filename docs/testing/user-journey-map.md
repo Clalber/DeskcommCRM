@@ -20,10 +20,12 @@
 
 ## J1 — Onboarding do primeiro usuário `[P0]`
 
-Contexto do código: sem signup público (`app/(public)/login`); primeiro usuário nasce
-do `scripts/bootstrap-owner.ts` (install.sh). Wizard: welcome → whatsapp → (nuvemshop
-se `NUVEMSHOP_ENABLED`) → setup-ai → invite-team → done. Gate: `organizations.onboarded_at`.
-MFA obrigatório pra admin logo após o wizard (`MfaEnrollGate`).
+Contexto do código: primeiro usuário nasce do `scripts/bootstrap-owner.ts`
+(install.sh); quem é convidado e ainda não tem conta entra por `/signup?invite=`.
+Wizard: welcome → whatsapp → (nuvemshop se `NUVEMSHOP_ENABLED`) → setup-ai →
+**testar** → invite-team → done. A ordem, os rótulos e o resumo final saem de uma
+fonte só (`lib/onboarding/passos.ts`) — eram três listas que discordavam. Gate:
+`organizations.onboarded_at`. MFA obrigatório pra admin logo após o wizard.
 
 | # | Caso | Expectativa |
 |---|------|-------------|
@@ -50,6 +52,9 @@ MFA obrigatório pra admin logo após o wizard (`MfaEnrollGate`).
 
 | J1.22 | Convidado que **ainda não tem conta** | a tela de aceite oferece "Ainda não tenho conta", o signup recebe o convite, não pede nome de empresa e trava o e-mail; ao confirmar, a pessoa vai para o aceite em vez de ganhar uma organização própria — antes ela virava **admin de uma empresa fantasma**, com wizard alheio e MFA de administrador · **PASS** (`lib/auth/convite-no-signup.test.ts`, `tests/e2e/invite-lifecycle.spec.ts` casos 10–12) |
 | J1.23 | Convite expirado ou emitido para outro e-mail, no signup | falha FECHADA: não provisiona organização nenhuma e explica no login. Cair no provisionamento aqui devolveria o defeito de J1.22 para quem demorasse entre criar a conta e confirmar o e-mail · **PASS** (`lib/auth/convite-no-signup.test.ts`) |
+
+| J1.24 | Ver o funcionário atender antes de terminar | passo novo entre treinar e chamar o time: ensaio com o runtime real (`is_dry_run`), nada enviado pelo WhatsApp. Trata os três estados — sem agente, agente em rascunho, e o caso normal — e o erro aparece aqui, não com o primeiro cliente de verdade · **PASS** (`tests/e2e/vps-fresh-onboarding.spec.ts`, `lib/onboarding/passos.test.ts`) |
+| J1.25 | O passo 1 mostra o que a instalação já trouxe | provedor contratado, WhatsApp pronto, funil criado — cada linha MEDIDA. E o campo de nome vem vazio quando a organização ainda está com o "Minha Empresa" do instalador, em vez de obrigar a pessoa a apagá-lo · **PASS** (`lib/instalacao/ambiente.test.ts`) |
 
 > **Cobertura em camadas (J1.22/J1.23):** a decisão de *não provisionar* é provada por unitário, porque é uma função pura e roda no gate obrigatório. O caso de tela cobre o caminho visível (CTA → signup com o token → campos certos). O que **não** está coberto ponta a ponta é a volta do link de confirmação de e-mail: exigiria caixa de e-mail no e2e, e a spec que faria isso é a de instalação fresca, que está fora do CI.
 

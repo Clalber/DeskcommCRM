@@ -73,6 +73,17 @@ export const onboardingStateSchema = z.object({
       skipped: z.boolean().optional(),
     })
     .optional(),
+  /**
+   * O passo de ver o funcionário responder. `visto` é o que importa: ninguém é
+   * obrigado a testar, mas o wizard precisa saber que a tela foi encarada para
+   * não voltar a ela para sempre.
+   */
+  teste: z
+    .object({
+      respondeu: z.boolean().optional(),
+      skipped: z.boolean().optional(),
+    })
+    .optional(),
   team: z
     .object({
       invites_sent: z.number(),
