@@ -22,6 +22,13 @@ interface Consulta {
   op: "select" | "insert" | "update";
   payload: Record<string, unknown> | null;
   filtros: Record<string, unknown>;
+  /**
+   * As colunas pedidas no `select`. Existe porque duas leituras diferentes
+   * batem em `organizations` no mesmo fluxo — o estado do onboarding e o
+   * provedor de IA da instalação — e um dublê que responde igual às duas não
+   * consegue exercitar a falha de UMA delas.
+   */
+  colunas: string;
 }
 type ErroDb = { code?: string; message: string } | null;
 interface Resposta {
@@ -64,10 +71,13 @@ import { createDefaultAgent, type CreateAgentResult } from "@/app/actions/onboar
  */
 function clienteFalso() {
   const abrir = (table: string) => {
-    const c: Consulta = { table, op: "select", payload: null, filtros: {} };
+    const c: Consulta = { table, op: "select", payload: null, filtros: {}, colunas: "" };
     const resolver = () => Promise.resolve(responder(c));
     const b = {
-      select: () => b,
+      select: (colunas?: string) => {
+        if (typeof colunas === "string") c.colunas = colunas;
+        return b;
+      },
       insert: (payload: Record<string, unknown>) => {
         c.op = "insert";
         c.payload = payload;
@@ -111,6 +121,22 @@ interface Mundo {
   erroVersao?: ErroDb;
   agentes?: Record<string, unknown>[];
   versoes?: Record<string, unknown>[];
+  /**
+   * O que o instalador gravou em `organizations.settings`. Numa VPS que
+   * escolheu OpenRouter no menu, é `{llm:{provider:"openrouter", ...}}`.
+   * Ausente = organização que nunca passou pelo instalador.
+   */
+  settings?: Record<string, unknown>;
+  /** Erro ao LER o settings da org (só essa leitura, não o estado do wizard). */
+  erroSettings?: ErroDb;
+  /**
+   * O modelo curado (`is_default_for_provider`) de cada provedor. O default
+   * cobre só a Anthropic de propósito: é o retrato do catálogo que o
+   * `baseline.sql` semeia, onde a OpenRouter tem ZERO linhas até o cron diário
+   * rodar. Um dublê que respondesse modelo para qualquer provedor esconderia
+   * exatamente o estado de uma instalação nova.
+   */
+  modelosPorProvedor?: Record<string, string>;
 }
 
 const CANAL = {
@@ -130,9 +156,18 @@ function montarBanco(mundo: Mundo = {}): Estado {
   };
   const canais = mundo.canais ?? { data: [CANAL], error: null };
 
+  const modelos = mundo.modelosPorProvedor ?? { anthropic: "claude-sonnet-9" };
+
   responder = (c) => {
     if (c.table === "channel_sessions") return canais;
-    if (c.table === "ai_models") return { data: { model_id: "claude-sonnet-9" }, error: null };
+    if (c.table === "ai_models") {
+      // Consciente do filtro: antes respondia o MESMO modelo para qualquer
+      // provedor, e por isso um agente publicado em OpenRouter com um id da
+      // Anthropic passava verde aqui.
+      const provider = String(c.filtros.provider ?? "");
+      const modelId = modelos[provider];
+      return { data: modelId ? { model_id: modelId } : null, error: null };
+    }
 
     if (c.table === "ai_agents") {
       if (c.op === "insert") {
@@ -180,6 +215,14 @@ function montarBanco(mundo: Mundo = {}): Estado {
       if (c.op === "update") {
         estado.onboardingState = (c.payload?.onboarding_state as Record<string, unknown>) ?? {};
         return { data: null, error: null };
+      }
+      // A leitura do provedor da instalação é OUTRA consulta, com outras
+      // colunas, e pode falhar sozinha — é o caso em que não se sabe qual
+      // provedor usar, e publicar com um chute seria o defeito original de
+      // roupa nova.
+      if (c.colunas.includes("settings")) {
+        if (mundo.erroSettings) return { data: null, error: mundo.erroSettings };
+        return { data: { settings: mundo.settings ?? null }, error: null };
       }
       return { data: { onboarding_state: estado.onboardingState, onboarded_at: null }, error: null };
     }
@@ -315,5 +358,104 @@ describe("onboarding: publicação impossível não pode terminar em silêncio",
 
     expect(res.ok && res.publish_error).toMatch(/permission denied for table ai_agent_versions/);
     expect(redirects).toEqual([]);
+  });
+});
+
+/**
+ * O PROVEDOR DA INSTALAÇÃO — o passo publicava sempre "anthropic".
+ *
+ * O instalador pergunta qual IA vai atender e grava a escolha em
+ * `organizations.settings.llm.provider`. O onboarding ignorava: buscava o
+ * modelo com `.eq("provider","anthropic")` e gravava `provider:"anthropic"`
+ * literal na versão publicada. Como o provider da VERSÃO vence o da
+ * organização em `resolveOrgLlmConfig`, quem escolheu OpenRouter — a opção [1]
+ * do menu — terminava o wizard com um agente "Publicado" que morria em TODA
+ * mensagem, pedindo uma chave da Anthropic que ele nunca teve.
+ *
+ * O par provider+model vem sempre da MESMA origem. Emprestar só o id do modelo
+ * de outro provedor é o defeito que `lib/ai/pontos/resolver.ts` documenta.
+ */
+describe("onboarding: o agente nasce no provedor que a instalação escolheu", () => {
+  it("instalação em OpenRouter publica em OpenRouter — com o modelo DELE", async () => {
+    const estado = montarBanco({
+      settings: { llm: { provider: "openrouter", default_model: "claude-sonnet-5" } },
+      modelosPorProvedor: { anthropic: "claude-sonnet-9", openrouter: "z-ai/glm-4.7" },
+    });
+
+    const res = await clicar();
+
+    expect(res).toBe("redirecionou");
+    expect(estado.versoes).toHaveLength(1);
+    expect(estado.versoes[0]).toMatchObject({
+      provider: "openrouter",
+      model: "z-ai/glm-4.7",
+      status: "published",
+    });
+  });
+
+  it("o `default_model` do settings NÃO é a fonte do modelo", async () => {
+    // Numa instalação OpenRouter ele vale um id da ANTHROPIC: o gatilho do
+    // banco semeia o default da Anthropic e o instalador só sobrescreve
+    // `{llm,provider}`. Usá-lo mandaria "claude-sonnet-5" ao endpoint da
+    // OpenRouter — texto plausível, nenhum lead criado.
+    // O `default_model` aqui é um id PLAUSÍVEL para a OpenRouter — e não o
+    // curado. Fosse "claude-sonnet-5", este caso passaria por vacuidade: o
+    // código de hoje já grava outro valor, e a implementação errada
+    // ("lê o modelo do settings") não seria reprovada por ele.
+    const estado = montarBanco({
+      settings: { llm: { provider: "openrouter", default_model: "algum/modelo-do-settings" } },
+      modelosPorProvedor: { anthropic: "claude-sonnet-9", openrouter: "z-ai/glm-4.7" },
+    });
+
+    await clicar();
+
+    expect(estado.versoes[0]?.model).toBe("z-ai/glm-4.7");
+    expect(estado.versoes[0]?.model).not.toBe("algum/modelo-do-settings");
+  });
+
+  it("VPS fresca em OpenRouter: sem modelo no catálogo, fica rascunho e DIZ por quê", async () => {
+    // O estado real de uma instalação nova: o baseline semeia zero linhas de
+    // OpenRouter e o catálogo só chega no cron diário. Publicar aqui exigiria
+    // inventar um id de modelo — e um id inventado é o mesmo agente mudo com
+    // outro carimbo.
+    const estado = montarBanco({
+      settings: { llm: { provider: "openrouter" } },
+      modelosPorProvedor: { anthropic: "claude-sonnet-9" },
+    });
+
+    const res = await clicar();
+
+    expect(res).not.toBe("redirecionou");
+    const r = res as CreateAgentResult;
+    expect(r.ok).toBe(true);
+    expect(r.ok && r.publish_blocked_by).toBe("modelo");
+    expect(estado.versoes).toHaveLength(0);
+    expect(estado.agentes[0]?.published_version_id ?? null).toBeNull();
+    // O wizard não avança calado: a tela é a única pista que a pessoa tem.
+    expect(redirects).toEqual([]);
+  });
+
+  it("controle: instalação sem escolha registrada segue na Anthropic, e publica", async () => {
+    // Sem este caso, um conserto que simplesmente parasse de publicar sempre
+    // passaria nos três acima.
+    const estado = montarBanco();
+
+    const res = await clicar();
+
+    expect(res).toBe("redirecionou");
+    expect(estado.versoes[0]).toMatchObject({ provider: "anthropic", model: "claude-sonnet-9" });
+  });
+
+  it("não dá para LER o provedor: não publica — publicar com chute é o defeito de origem", async () => {
+    const estado = montarBanco({
+      erroSettings: { code: "42501", message: "permission denied for table organizations" },
+    });
+
+    const res = await clicar();
+
+    expect(res).not.toBe("redirecionou");
+    const r = res as CreateAgentResult;
+    expect(r.ok && r.publish_error).toMatch(/permission denied for table organizations/);
+    expect(estado.versoes).toHaveLength(0);
   });
 });

@@ -32,6 +32,14 @@ export function SetupAiForm() {
   const [name, setName] = useState("Atendente IA");
   const [template, setTemplate] = useState<PromptTemplate>("ecommerce_friendly");
   const [naoPublicado, setNaoPublicado] = useState<string | null>(null);
+  /**
+   * A causa de o agente ter ficado rascunho. `null` = publicou (ou o wizard já
+   * redirecionou). Existe porque a tela afirmava SEMPRE a causa do canal, e
+   * mandar a pessoa conferir o WhatsApp quando o problema é o catálogo de
+   * modelos é pior do que não explicar nada.
+   */
+  const [causa, setCausa] = useState<"canal" | "modelo" | null>(null);
+  const [provedor, setProvedor] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
   return (
@@ -40,16 +48,25 @@ export function SetupAiForm() {
       action={(formData) => {
         startTransition(async () => {
           setNaoPublicado(null);
+          setCausa(null);
+          setProvedor(null);
           const res = await createDefaultAgent(formData);
           if (res && !res.ok) {
             toast.error(`Falha ao criar agente: ${res.error}`);
             return;
           }
           // Agente criado, publicação não. O caminho completo redireciona no
-          // servidor, então chegar aqui com `publish_error` é a única forma de a
-          // pessoa saber que o atendente ainda não responde — nunca esconder.
+          // servidor, então chegar aqui é a única forma de a pessoa saber que o
+          // atendente ainda não responde — nunca esconder.
+          if (res?.publish_blocked_by === "modelo") {
+            setCausa("modelo");
+            setProvedor(res.provider ?? null);
+            toast.warning("Atendente criado, mas ainda não está no ar.");
+            return;
+          }
           if (res?.publish_error) {
             setNaoPublicado(res.publish_error);
+            setCausa("canal");
             toast.warning("Agente criado, mas ainda não publicado.");
           }
         });
@@ -95,6 +112,36 @@ export function SetupAiForm() {
           ))}
         </div>
       </fieldset>
+
+      {causa === "modelo" && (
+        <div
+          role="alert"
+          className="space-y-3 rounded-md border border-amber-300/60 bg-amber-50 p-4 dark:border-amber-500/30 dark:bg-amber-950/20"
+        >
+          <p className="text-sm font-medium">
+            Seu atendente foi criado, mas ficou como <strong>rascunho</strong>: esta instalação
+            ainda não baixou a lista de modelos
+            {provedor ? ` da ${provedor}` : " da inteligência que você escolheu na instalação"}, e
+            sem saber qual modelo usar ele não entra no ar — rascunho não responde mensagem.
+          </p>
+          <p className="text-sm">
+            A lista é atualizada automaticamente uma vez por dia. Para colocá-lo no ar antes disso,
+            vá em <strong>IA › Credenciais</strong> e cadastre a chave dessa empresa; depois publique
+            em <strong>IA › Agentes</strong>.
+          </p>
+          <div className="flex justify-end">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                window.location.href = "/onboarding/invite-team";
+              }}
+            >
+              Continuar sem publicar
+            </Button>
+          </div>
+        </div>
+      )}
 
       {naoPublicado && (
         <div

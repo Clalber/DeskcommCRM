@@ -77,6 +77,35 @@ describe("setup de IA: o que a tela diz quando o agente fica rascunho", () => {
     expect(toastWarning).not.toHaveBeenCalled();
   });
 
+  /**
+   * A SEGUNDA causa. O agente pode ficar rascunho por dois motivos bem
+   * diferentes: não se sabe qual número ele atenderia (canal), ou não se sabe
+   * qual modelo ele usaria (o provedor escolhido na instalação ainda não tem
+   * catálogo aqui). A tela afirmava sempre o primeiro — e mandar a pessoa
+   * conferir o WhatsApp quando o WhatsApp está certo é pior do que não dizer
+   * nada: ela mexe no que funciona e o rascunho continua rascunho.
+   */
+  it("causa 'modelo': não acusa o WhatsApp, e diz o caminho real", async () => {
+    createDefaultAgentMock.mockResolvedValue({
+      ok: true,
+      agent_id: "agente-1",
+      publish_blocked_by: "modelo",
+      provider: "openrouter",
+    });
+
+    render(<SetupAiForm />);
+    await enviar();
+
+    const aviso = await screen.findByRole("alert");
+    expect(aviso).toHaveTextContent(/rascunho/i);
+    // A causa certa, nomeando o provedor que a pessoa escolheu no instalador.
+    expect(aviso).toHaveTextContent(/openrouter/i);
+    // E NUNCA a causa errada: o número de WhatsApp não tem nada a ver com isto.
+    expect(aviso).not.toHaveTextContent(/números de WhatsApp/i);
+    expect(screen.getByRole("button", { name: /continuar sem publicar/i })).toBeInTheDocument();
+    expect(toastWarning).toHaveBeenCalled();
+  });
+
   it("uma retentativa que dá certo apaga o aviso anterior", async () => {
     createDefaultAgentMock.mockResolvedValueOnce({
       ok: true,

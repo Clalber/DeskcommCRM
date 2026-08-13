@@ -39,7 +39,26 @@ interface AgenteDoOnboarding {
 type PublishOutcome =
   | { published: true }
   | { published: false; reason: "no_channel" }
+  | { published: false; reason: "no_model"; provider: string }
   | { published: false; reason: "failed"; message: string };
+
+/**
+ * O provedor de IA que a instalação escolheu.
+ *
+ * O instalador pergunta "qual inteligência artificial vai atender seus
+ * clientes?" e grava a resposta em `organizations.settings.llm.provider`. Este
+ * passo publicava `"anthropic"` literal, e como o provider da VERSÃO vence o da
+ * organização em `resolveOrgLlmConfig`, quem escolheu outro terminava o wizard
+ * com um agente "Publicado" que morre em toda mensagem pedindo uma chave que
+ * ele nunca teve.
+ *
+ * `settings` é jsonb livre: leitura defensiva, igual à do agent-engine.
+ */
+function provedorDaInstalacao(settings: unknown): string {
+  const llm = (settings as { llm?: unknown } | null)?.llm;
+  const provider = (llm as { provider?: unknown } | null | undefined)?.provider;
+  return typeof provider === "string" && provider.trim() !== "" ? provider : "anthropic";
+}
 
 function mensagemDoErro(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
@@ -87,13 +106,32 @@ async function publishFirstVersion(
   const [canal] = canais;
   if (!canal) return { published: false, reason: "no_channel" };
 
+  // Erro de leitura aqui NÃO pode virar "assume anthropic": publicar sem saber
+  // qual provedor a instalação escolheu é exatamente o defeito de origem, com
+  // outra roupa.
+  const { data: org, error: orgErr } = await admin
+    .from("organizations")
+    .select("settings")
+    .eq("id", orgId)
+    .maybeSingle();
+  if (orgErr) return { published: false, reason: "failed", message: orgErr.message };
+
+  const provider = provedorDaInstalacao(org?.settings);
+
+  // O modelo CURADO daquele provedor. Não existe fallback literal: um id de
+  // outro provedor (ou inventado) produz o pior desfecho do produto — o agente
+  // responde texto plausível e nunca cria o lead nem move o card.
   const { data: model } = await admin
     .from("ai_models")
     .select("model_id")
-    .eq("provider", "anthropic")
+    .eq("provider", provider)
     .eq("is_default_for_provider", true)
+    .is("deprecated_at", null)
     .limit(1)
     .maybeSingle();
+
+  const modelId = model?.model_id as string | undefined;
+  if (!modelId) return { published: false, reason: "no_model", provider };
 
   const { data: version, error: versionErr } = await admin
     .from("ai_agent_versions")
@@ -102,11 +140,11 @@ async function publishFirstVersion(
       agent_id: agent.id,
       version_number: 1,
       system_prompt: systemPrompt,
-      provider: "anthropic",
-      // Fallback do modelo vem da main (catálogo do 0104); o canal vem daqui
-      // (listagem que exclui arquivado). O hunk pedia as DUAS metades: ficar com
-      // um lado só perderia o modelo atual ou o filtro de canal excluído.
-      model: (model?.model_id as string) ?? "claude-sonnet-5",
+      // Provedor e modelo saem SEMPRE da mesma origem — o par é indivisível.
+      // Emprestar só o id do modelo de outro provedor manda um nome que o
+      // endpoint não conhece.
+      provider,
+      model: modelId,
       channel_session_id: canal.id,
       status: "published",
       published_at: new Date().toISOString(),
@@ -158,7 +196,19 @@ export type CreateAgentResult =
    * a parte que podia falhar falhou (`sendOnboardingInvites` → `undelivered`):
    * avançar calado seria a UI mentindo sobre o que o servidor conseguiu fazer.
    */
-  | { ok: true; agent_id: string; publish_error?: string }
+  /**
+   * `publish_blocked_by` diz à tela QUAL causa explicar. Sem ele, o alerta
+   * afirmava sempre a causa do canal ("não consegui ler os números de
+   * WhatsApp") — e afirmar a causa errada é pior que não afirmar nenhuma:
+   * manda a pessoa consertar o que não está quebrado.
+   */
+  | {
+      ok: true;
+      agent_id: string;
+      publish_error?: string;
+      publish_blocked_by?: "canal" | "modelo";
+      provider?: string;
+    }
   | { ok: false; error: "auth_required" | "no_active_org" | "invalid_input" | "db_error"; details?: unknown };
 
 export async function createDefaultAgent(formData: FormData): Promise<CreateAgentResult> {
@@ -274,7 +324,25 @@ export async function createDefaultAgent(formData: FormData): Promise<CreateAgen
   // redirect aqui deixaria como única pista um badge "Rascunho" numa tela que a
   // pessoa ainda não viu.
   if (!publicacao.published && publicacao.reason === "failed") {
-    return { ok: true, agent_id: agent.id, publish_error: publicacao.message };
+    return {
+      ok: true,
+      agent_id: agent.id,
+      publish_error: publicacao.message,
+      publish_blocked_by: "canal",
+    };
+  }
+
+  // Mesma postura, outra causa: o provedor escolhido na instalação ainda não
+  // tem modelo no catálogo desta instalação (o da OpenRouter só chega no cron
+  // diário). Avançar calado deixaria a pessoa achar que o funcionário está no
+  // ar — e ele não responde uma única mensagem.
+  if (!publicacao.published && publicacao.reason === "no_model") {
+    return {
+      ok: true,
+      agent_id: agent.id,
+      publish_blocked_by: "modelo",
+      provider: publicacao.provider,
+    };
   }
 
   redirect("/onboarding/invite-team");

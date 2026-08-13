@@ -186,9 +186,41 @@ test.describe("J1 — onboarding do dono numa instalação fresca", () => {
     await page.waitForURL(/\/onboarding\/invite-team/, { timeout: 20_000 });
     await snap(page, "j1.7-invite-team");
 
-    const { data: agents } = await svc.from("ai_agents").select("name, is_active, is_default");
+    const { data: agents } = await svc
+      .from("ai_agents")
+      .select("id, name, is_active, is_default, published_version_id");
     expect(agents?.length).toBe(1);
     expect(agents?.[0]).toMatchObject({ name: "Tomik QA", is_active: true, is_default: true });
+
+    // A VERSÃO, e não só o agente. Este caso olhava apenas `ai_agents` — e foi
+    // por isso que a regressão do provedor nasceu invisível: o agente ficava
+    // bonito na tabela enquanto a versão publicada apontava para uma empresa de
+    // IA que a instalação não contratou, morrendo em toda mensagem.
+    const { data: versoes } = await svc
+      .from("ai_agent_versions")
+      .select("provider, model, status, channel_session_id")
+      .eq("agent_id", agents?.[0]?.id ?? "");
+    expect(versoes?.length).toBe(1);
+    expect(versoes?.[0]?.status).toBe("published");
+
+    // E o provedor da versão é o MESMO que a instalação escolheu. Comparar com
+    // uma string fixa aqui não provaria nada: o teste passaria justamente na
+    // instalação Anthropic, que é a única em que o defeito não aparecia.
+    const { data: org } = await svc.from("organizations").select("settings").limit(1).maybeSingle();
+    const escolhido =
+      (org?.settings as { llm?: { provider?: string } } | null)?.llm?.provider ?? "anthropic";
+    expect(versoes?.[0]?.provider).toBe(escolhido);
+
+    // O modelo veio do catálogo DAQUELE provedor — nunca um id emprestado.
+    const { data: curado } = await svc
+      .from("ai_models")
+      .select("model_id")
+      .eq("provider", escolhido)
+      .eq("is_default_for_provider", true)
+      .is("deprecated_at", null)
+      .limit(1)
+      .maybeSingle();
+    expect(versoes?.[0]?.model).toBe(curado?.model_id);
   });
 
   test("J1.8 convite SEM Resend: a UI não pode mentir que enviou email", async ({ page }) => {
