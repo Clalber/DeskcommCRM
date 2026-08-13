@@ -218,9 +218,19 @@ echo "==> modo INSTALL: aplicando baseline.sql com ON_ERROR_STOP=1"
 psql_install < "$BASELINE"
 echo "    ✓ install ok"
 
-echo "==> modo UPDATE: re-aplicando baseline.sql sem ON_ERROR_STOP (idempotência)"
-docker exec -i "$CONTAINER" psql -U postgres -d postgres -q -f - < "$BASELINE" >/dev/null
-echo "    ✓ update ok (re-apply terminou; erros tolerados por contrato)"
+# COM `ON_ERROR_STOP=1`, e é isto que torna o passo uma prova (issue #184).
+#
+# Antes ele re-aplicava SEM a flag e chamava o resultado de "idempotência". Não
+# era: sem a flag o psql segue após cada erro, então o passo saía verde com 301
+# erros dentro — inclusive os 4 `policy already exists` que faziam uma mudança de
+# RLS do apêndice NÃO chegar ao clone. O `update.sh` também roda sem a flag e
+# filtra esses erros como benignos, então nem ele nem este gate viam o defeito, e
+# o README dizia "provando idempotência" apontando para cá.
+#
+# A flag é a diferença entre "re-aplicar terminou" e "re-aplicar não errou".
+echo "==> modo UPDATE: re-aplicando baseline.sql COM ON_ERROR_STOP=1 (idempotência de verdade)"
+psql_install < "$BASELINE"
+echo "    ✓ update ok (zero erro na re-aplicação)"
 
 echo "==> invariantes: vitest (tests/invariants)"
 TEST_DB_CONTAINER="$CONTAINER" vitest run --config vitest.db.config.ts "$@"
