@@ -65,7 +65,7 @@ impossível hoje.
 
 | # | Fase | Estado |
 |---|---|---|
-| **0** | **Encoding do `.env` — bloqueador medido** | 🟡 em andamento |
+| **0** | **Encoding do `.env` — bloqueador medido** | ✅ `c3764437` |
 | 1 | Tabela de marca + resolver + **cor por instalação** + reconciliar `white-label.md` | ⬜ |
 | 2 | Marca **por organização** (nome + cor), capturada no `welcome` e editável | ⬜ |
 | 3 | Upload de logo (bucket, policies, 512 KB, delete-on-replace) | ⬜ |
@@ -201,8 +201,182 @@ _(esta seção enche quando eu começar a clicar na tela)_
 
 ---
 
+## Fase 0 — ENTREGUE (`c3764437`)
+
+**O conserto.** `envq` passa a aspas duplas escapando `` \ " $ ` ``; o ramo de aspas
+duplas do `load_env` desfaz esse escape (sentinela `\001` para não reprocessar `\\`).
+O ramo de aspas simples **fica** — clone que atualiza não reescreve o `.env`.
+
+**Prova que eu mesmo rodei**, com o `envq` real do disco (não uma cópia):
+
+| valor | linha gravada | `load_env` | `source` | contêiner |
+|---|---|---|---|---|
+| `Sant'Ana Odontologia` | `APP_NAME="Sant'Ana Odontologia"` | ok | ok | ok (rc=0) |
+| `Casa "Bela" #1` | `APP_NAME="Casa \"Bela\" #1"` | ok | ok | ok (rc=0) |
+| `se$nha P$ss` | `APP_NAME="se\$nha P\$ss"` | ok | ok | ok (rc=0) |
+
+`pnpm test:shell` medido por mim: **EXIT=0 · 232 ✓ · 0 ✗** (era 201). Os casos novos
+cobrem os três consumidores contra uma lista única de 8 valores, mais **controle
+positivo** (o formato antigo é recusado pelo Compose — é isso que prova que o teste
+vigia) e retrocompatibilidade com `.env` no formato velho.
+
+Sabotagem, previsto vs medido: **9/9, 9/9, 1/1, 24/24** (a última é guarda de vacuidade).
+
+**Residual conhecido e documentado:** o parser do Compose não desfaz `` \` `` dentro de
+aspas duplas, então valor com crase chega feio ao contêiner. Mantido de propósito — a
+alternativa é o `source .env` do README **executar** o que está entre crases.
+
+**Revisão que fiz do trabalho do subagente:** ele alterou 7 asserções pré-existentes.
+Conferi uma a uma — são todas troca de aspas na asserção (`grep -qx "X='v'"` →
+`grep -qx 'X="v"'`), acompanhando o formato novo, ainda ancoradas com `-qx`/`^`.
+Nenhuma afrouxada.
+
+> ⚠️ **Ainda não provado:** instalação real numa VPS. Isto cobre o encoding e seus três
+> leitores, não a jornada do comprador ponta a ponta.
+
+---
+
+---
+
+## Decisões das 6 lentes novas (43 achados brutos → 6 aprovados)
+
+### PACKAGING: **NÃO.** Não vira monorepo, não vira pacote npm.
+
+Regra de extração é ≥2 consumidores independentes; medido **1** — os 8 importadores de
+`lib/branding` estão todos em `app/` e `components/`, e o worker não renderiza marca
+nenhuma. Custo do contrário: 2 Dockerfiles (`--frozen-lockfile` quebra em workspace),
+`output: "standalone"` (o artefato vira `.next/standalone/apps/web/server.js` e quebra o
+`COPY`/`CMD`), 2 tsconfig, 2 aliases de vitest, e **53 testes de arquitetura ancorados em
+caminho top-level cujo helper devolve `[]` em diretório inexistente** — ou seja, trocar
+risco de gate vacuamente verde por zero ganho.
+
+**O packaging que de fato falta é outro: um emissor de build-time multi-formato.** A marca
+atravessa 4 fronteiras de processo e **3 não consomem TypeScript**: o `StyleSheet` do
+`@react-pdf` (não lê CSS var), o HTML inline dos e-mails, e os templates Go do Supabase
+Auth. ~80 linhas + um teste que reprova quando o gerado diverge do commitado. Fase 4.
+
+**Imagem Docker por marca fica proibida — agora com prova:** `update.sh:158-159` grava
+`APP_IMAGE` no `.env` **incondicionalmente**, e `set_env_var` faz `grep -v` + append sem
+merge. A imagem do revendedor seria substituída pela upstream num update de rotina, em
+silêncio. O desenho atual (imagem genérica + marca em runtime) está certo — o trabalho é
+**protegê-lo** com um caso em `update-guard.test.sh`.
+
+### Os 6 ângulos aprovados
+
+| # | Ângulo | Fase | Custo |
+|---|---|---|---|
+| 1 | **Forma do que se grava** — jsonb guarda ENTRADA (`{format, algo, semente_hex}`), nunca saída; schema *loose com catchall* (exceção declarada ao `.strict()` do repo); resolvedor **nunca lança** | 1 | ~3h |
+| 2 | **O gate de derivação mede o token errado**, em 3 eixos | 1 | ~1,5d |
+| 3 | **A varredura de marca não alcança onde a marca sai** | 4 (parte na 1) | ~7h |
+| 4 | **Emissor multi-formato** (o packaging real) | 4 | ~2d |
+| 5 | **Diagnóstico emite FORMA, nunca IDENTIDADE** | 1 | ~3h |
+| 6 | **Billing entrega o cliente do revendedor para nós** | 0/1 | ~1d |
+
+**Ângulo 1 — por que é irreversível.** Ninguém tinha medido o que o **código velho** faz
+com o jsonb do código novo. E o rollback põe código velho sobre schema novo *por
+construção*: `update.sh` aplica o baseline antes de puxar a imagem, e `agent.sh` reverte
+só `APP_IMAGE`. Com `.strict()`, chave desconhecida **lança** — e como `branding()` é
+chamado em `app/layout.tsx`, um throw ali é **500 em todas as telas**. O envelope
+`{format, algo}` nasce na Fase 1 mesmo sem tela de import/export: é a única superfície que
+atravessa instalações, e retrofit é impossível (sem ele, toda linha existente vira "algo
+desconhecido").
+
+**Ângulo 2 — a régua ordena invertido.** Simulação de dicromacia (matrizes Machado 2009)
+reproduzida de forma independente:
+
+| par | ΔH | ΔE deuteranopia |
+|---|---|---|
+| oliva `#7f8c3a` × warning | **44,7°** (passa com folga) | **0,0231** |
+| verde-água `#1abc9c` × success | **27,2°** (mal passa) | **0,1264** |
+
+Maior ângulo, pior separação. Troca: **ΔE em OKLab sobre a cor simulada**, piso ≥ 0,05.
+Mais duas correções: **(b)** quem se move são as *nossas* semânticas, nunca o accent — a
+cor da marca é a única que não nos pertence; **(c)** o piso é por **papel × superfície**,
+não pela semente — medido na Sage, `accent-600` vs bg = 5,51 (o que o piso checa) mas o
+anel de foco usa `accent-500` e dá **3,79**; com a semente no piso de 3,0, o anel pousa em
+~2,07 **com o gate verde**. Por isso os pares saem extraídos do `globals.css`, nunca
+listados à mão.
+
+### Os que NÃO valem (isto impede o épico de inchar)
+
+Monorepo · `@deskcomm/tokens` no npm · Turborepo/Nx · style-dictionary · regra eslint de
+fronteira · **regressão visual por screenshot em qualquer volume** (não pega nenhum dos
+defeitos medidos, e custa 136 MB num repo cuja estratégia é otimizar para fork) · Percy /
+Chromatic / Argos (check pago = vermelho permanente em fork) · Storybook (os defeitos são
+de container e tema, não de componente) · `prefers-contrast` · domínio por organização ·
+DSN de Sentry por org · página de status pública · phone-home · cota de logo ·
+"remover o selo é pago" · **seletor de fonte** (Atkinson Hyperlegible foi escolhida pelo
+Braille Institute por legibilidade; trocá-la não muda percepção de marca e só piora a
+leitura do operador).
+
+### Correção de um erro meu
+
+**Eu afirmei que `app/design` é rota pública sem auth. É falso.** Minha sonda procurou em
+`middleware.ts`, que **não existe** — o Next 16 renomeou para `proxy.ts`, que existe e
+está na raiz. `/design` não está em `PUBLIC_PATHS` (`lib/auth/public-paths.ts:5-27`), e
+`proxy.ts:32` redireciona quem não bate na allowlist. A rota é **autenticada**; o
+problema real é vazamento cross-tenant, e o conserto é `notFound()` fora de dev (20 min),
+não remover da build. Grep sobre arquivo inexistente devolve vazio, indistinguível de
+"não achei" — [[feedback_instrumento_quebrado_devolve_zero]] outra vez.
+
+### A pergunta que ninguém tinha feito: **quantas identidades o produto precisa modelar?**
+
+`lib/lgpd/pdf-renderer.tsx:277` imprime, no documento entregue ao **titular de dados**:
+
+> `DeskcommCRM · Relatório LGPD Art. 18 II · DPO: contato via canal oficial do controlador`
+
+Dois defeitos. O primeiro é o vazamento de marca (ângulo 3 pega). O segundo ninguém tocou:
+**o sistema já sabe o DPO e não o imprime** — `lib/env.ts:134` tem `LGPD_DPO_EMAIL` e
+`lib/lgpd/sla-alarm.ts:93` resolve `organizationDpoEmail || env.LGPD_DPO_EMAIL`.
+
+E o buraco que o whitelabel abre: em toda outra superfície, marca = **quem vende**. No
+relatório de Art. 18, a identidade correta é o **controlador** — a empresa cujos dados
+são. Se a Fase 4 tratar esse rodapé como "mais uma saída sem DOM" e trocar o nome pela
+marca do revendedor, ela **piora** o defeito: nomeia o revendedor como controlador num
+documento que responde a um direito legal, quando o controlador é o cliente dele.
+
+**DECIDIDO (2026-08-13): quatro papéis, três identidades de marca, zero campos novos.**
+
+`organizations` **já** separa `legal_name` (NOT NULL) de `display_name` — medido no
+`baseline.sql`. A identidade jurídica já está modelada; ninguém a estava usando.
+
+| Papel | Onde vive | O que carrega |
+|---|---|---|
+| Nós (o produto) | selo removível | só isso |
+| **Instalação** | `platform_branding` | marca visual pré-login |
+| **Organização — marca** | `display_name` + `settings.branding` | o que aparece na tela pós-login |
+| **Organização — controlador** | `legal_name` *(já existe)* | identidade jurídica no PDF de LGPD |
+
+**Por que `controlador` não é campo novo:** DIRC responde **I — Integrar**. O controlador
+de dados é a organização, e a organização já declara sua razão social. Criar
+`controlador_nome` seria duplicação sem source of truth (anti-pattern nº 2 do CLAUDE.md).
+
+**Consequência para a Fase 4:** o rodapé do PDF de LGPD passa a imprimir `legal_name` +
+DPO resolvido (`organizationDpoEmail || env.LGPD_DPO_EMAIL`), **não** a marca. Trocar o
+nome pela marca do revendedor ali pioraria o defeito — nomearia o revendedor como
+controlador num documento que responde a um direito legal.
+
+**O caso previsto:** revendedor hospeda para um cliente que atende sob outra razão social.
+Resolve-se com **uma organização por razão social**, que é o que a tenancy já modela — não
+com um campo a mais. Se algum dia uma organização precisar declarar controlador diferente
+da própria razão social, aí sim é campo novo, e a razão estará escrita aqui.
+
+---
+
+## Achados novos confirmados por mim
+
+| Achado | Evidência |
+|---|---|
+| **Todo projeto Supabase do revendedor nasce chamado "DeskcommCRM"** | `install.sh:918` usa `${APP_NAME:-DeskcommCRM}`; `APP_NAME` só é coletado em `:1024` — **106 linhas depois** |
+| **O primeiro e-mail que o cliente do revendedor recebe diz o nome do nosso produto** | `supabase/templates/confirmation.html:4` e `recovery.html:4`; e **nenhum script sobe esses templates** — só `config.toml` (Supabase local) e um teste |
+| **A tela de dinheiro entrega nosso contato ao cliente do revendedor** | `lib/navigation/registry.ts:453` (porta de 1ª classe, "Billing") → `app/app/settings/billing/page.tsx:26` mostra `suporte@deskcomm.app` |
+
+---
+
 ## Próximo passo exato
 
-Fase 0 em implementação por subagente: trocar o `envq`, patchar o `load_env`, e cobrir
-com fixture de apóstrofo nos **três** consumidores (o teste do `docker compose config`
-é o que não existia). Sabotagem obrigatória para provar que o teste vigia.
+Fase 1, com o escopo revisado acima. Ordem interna: **(a)** forma do dado + envelope
+`{format, algo}` e a decisão das 3-ou-4 identidades; **(b)** `lib/branding/` com
+`rampa.ts` e `contraste.ts` já com os 3 eixos corrigidos; **(c)** `[data-theme="light"]`
+no `globals.css` + rider de `forced-colors`; **(d)** gate de marca case-insensitive com
+dívida congelada. Prova em tela a cada passo.
