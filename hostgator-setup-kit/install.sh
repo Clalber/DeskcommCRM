@@ -429,11 +429,39 @@ ask_one() {
 RAM_MINIMA_KB=3500000
 ram_abaixo_do_recomendado() { [ "${1:-0}" -lt "$RAM_MINIMA_KB" ]; }
 
-# Uma linha de .env com o valor entre aspas simples e as aspas do conteúdo
-# escapadas — o que faz senha com espaço, `#` ou `$` sobreviver à releitura.
+# Uma linha de .env com o valor entre aspas DUPLAS e `\`, `"`, `$` e crase
+# escapados — o que faz nome de empresa e senha sobreviverem à releitura.
+#
+# O encoding tem de servir a TRÊS consumidores, cada um com um parser próprio, e
+# nenhum deles é o mesmo shell: o `load_env` do _common.sh (leitura manual, por
+# onde passa todo script do kit), o `env_file: .env` do docker-compose.prod.yml
+# (:34 e :71) e o `source .env && curl …` que o README ensina (:143).
+#
+# Era aspas SIMPLES, com a aspa do conteúdo escrita como `'\''` — shell válido,
+# e só. O parser de dotenv do Compose não é um shell: ele lê aquela barra como
+# começo de nome de variável e recusa o ARQUIVO INTEIRO. Medido no compose
+# v2.38.2 com `APP_NAME=Sant'Ana Odontologia`:
+#
+#   failed to read .env: line 1: unexpected character "\" in variable name
+#   "\''Ana Odontologia'"
+#   config → rc=1 ; ps → rc=1 ; pull → rc=1   (o mesmo .env sem apóstrofo: rc=0)
+#
+# Nomes assim são comuns aqui — "Sant'Ana", "D'Ávila", "Espaço D'Or" —, APP_NAME
+# é a última pergunta da entrevista e não tem validador. O desfecho era o pior
+# tipo de quebra: Supabase provisionado, schema aplicado, admin criado, e TODO
+# comando docker do kit morto, sem nada apontando para o .env.
+#
+# RESIDUAL MEDIDO, e a escolha por trás dele: o Compose desfaz `\"`, `\\` e `\$`
+# dentro das aspas duplas, mas NÃO desfaz a crase escapada — um valor com crase
+# chega ao contêiner com as barras (medido: `Loja \`date\` Ltda`). Escapá-la
+# assim mesmo é deliberado: sem a barra, o `source .env` do README EXECUTA o que
+# estiver entre crases. Caractere feio no contêiner é preço menor que execução
+# de comando na máquina de quem instala. As duas outras pontas (load_env e
+# source) recebem a crase intacta.
+#
 # Fica aqui em cima (e não junto do bloco que escreve o .env) porque o
 # save_partial abaixo grava durante a ENTREVISTA, muito antes daquele bloco.
-envq() { printf "%s='%s'\n" "$1" "$(printf '%s' "${2-}" | sed "s/'/'\\\\''/g")"; }
+envq() { printf '%s="%s"\n' "$1" "$(printf '%s' "${2-}" | sed 's/[\\"$`]/\\&/g')"; }
 
 # Guarda cada resposta no instante em que ela é aceita. Antes, as 12 respostas
 # só viravam arquivo no FIM: quem travasse na connection string — a pergunta
@@ -1143,11 +1171,13 @@ fi
 step "Escrevendo .env"
 umask 077
 
-# Todo valor sai entre aspas simples, com aspa interna escapada. Sem isso, um
+# Todo valor sai pelo `envq` (definido lá em cima, junto do save_partial): entre
+# aspas DUPLAS, com `\`, `"`, `$` e crase escapados. Sem isso, um
 # `APP_NAME=Loja do João` (ou uma senha com # ou $) quebrava tudo que lê este
 # arquivo com `source` — os scripts do kit e a receita do próprio README
-# (`source .env && curl ...`). O Docker Compose remove as aspas ao carregar,
-# então o contêiner recebe exatamente o valor digitado.
+# (`source .env && curl ...`) —, e a versão de aspas simples que veio antes
+# quebrava o terceiro leitor, o `env_file: .env` do Compose, em todo nome com
+# apóstrofo. O porquê de cada caractere escapado está no comentário do envq.
 
 # ── Preserva o que o instalador NÃO conhece ────────────────────────────────
 #

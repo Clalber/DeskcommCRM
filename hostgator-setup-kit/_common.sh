@@ -258,15 +258,37 @@ load_env() {
     key="${line%%=*}"; val="${line#*=}"
     case "$key" in ''|*[!A-Za-z0-9_]*) continue;; esac
     case "$val" in
-      \"*\") val="${val:1:${#val}-2}";;
-      \'*\')
+      \"*\")
         val="${val:1:${#val}-2}"
-        # envq escreve a aspa simples do CONTEÚDO como '\'' (fecha o literal,
-        # escapa a aspa, reabre) — é o que faz a linha ser shell válido. Só que
-        # tirar as aspas de fora não desfaz isso: sem esta troca, uma senha com
-        # aspa volta da releitura com quatro caracteres a mais, e o erro só
-        # aparece longe daqui (o psql recusa a conexão, o login não bate) sem
-        # nada apontando para o .env. Achado pelo teste de round-trip.
+        # Tirar as aspas não desfaz o escape que o envq pôs lá dentro. Sem estas
+        # quatro trocas, `Loja P$ss` volta da releitura como `Loja P\$ss` — o
+        # valor chega adulterado e o erro só aparece longe daqui (medido).
+        #
+        # O sentinela \001 existe pela ORDEM: um `\\` desfeito para `\` de cara
+        # seria reprocessado pelas trocas seguintes, e `\\$` (barra literal
+        # seguida de cifrão) viraria `$`. Guardando o par escapado num byte que
+        # não ocorre em .env, as trocas de `\"`, `\$` e crase não o enxergam, e
+        # ele só volta a ser barra no fim.
+        val="${val//\\\\/$'\001'}"
+        val="${val//\\\"/\"}"
+        val="${val//\\\$/\$}"
+        val="${val//\\\`/\`}"
+        val="${val//$'\001'/\\}"
+        ;;
+      \'*\')
+        # RETROCOMPATIBILIDADE — não remova. Até 2026-08 o envq gravava com
+        # aspas simples, e atualizar NÃO reescreve o .env: o update.sh só troca
+        # APP_IMAGE e APP_PULL_POLICY (:159 e :165, via set_env_var) e deixa as
+        # outras chaves exatamente como o install antigo as escreveu. Quem
+        # apagar este ramo devolve senha e connection string de toda instalação
+        # velha com quatro caracteres a mais, já na primeira atualização.
+        val="${val:1:${#val}-2}"
+        # O envq daquela época escrevia a aspa simples do CONTEÚDO como '\''
+        # (fecha o literal, escapa a aspa, reabre). Tirar as aspas de fora não
+        # desfaz isso: sem esta troca, uma senha com aspa volta da releitura com
+        # quatro caracteres a mais, e o erro só aparece longe daqui (o psql
+        # recusa a conexão, o login não bate) sem nada apontando para o .env.
+        # Achado pelo teste de round-trip.
         val="${val//"'\\''"/"'"}"
         ;;
     esac

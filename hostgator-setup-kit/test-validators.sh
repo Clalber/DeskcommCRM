@@ -518,7 +518,187 @@ partial_ok "com # (não é comentário)"   'se#nha'
 partial_ok "com \$ (não expande)"       'se$nha$HOME'
 partial_ok "com aspa simples"           "se'nha"
 partial_ok "com aspas duplas"           'se"nha"'
+partial_ok "com barra invertida"        'C:\rota\nova'
+partial_ok "com crase"                  'se`nha`'
 partial_ok "connection string real"     'postgresql://postgres.abc:p%40ss@aws-1-sa-east-1.pooler.supabase.com:5432/postgres'
+
+echo "formato do .env: os TRÊS consumidores leem o que o envq escreve"
+# O .env não tem um leitor, tem três, e cada um traz um parser diferente:
+#
+#   1. `load_env` (_common.sh) — leitura manual, por onde passa todo script do kit
+#   2. `env_file: .env` do docker-compose.prod.yml (:34 e :71)
+#   3. `source .env && curl …` — a receita do README (:143)
+#
+# Até 2026-08 esta suíte só exercitava o (1), e com um fixture sem apóstrofo. O
+# (2) é o buraco por onde o defeito passou: com aspas simples, o envq gravava
+# `APP_NAME='Sant'\''Ana Odontologia'` — shell válido, e recusado INTEIRO pelo
+# parser de dotenv do Compose (medido no v2.38.2):
+#
+#   failed to read .env: line 1: unexpected character "\" in variable name
+#   "\''Ana Odontologia'"
+#
+# Não era um comando: `config`, `ps` e `pull` saíam todos rc=1. O comprador
+# terminava a instalação com Supabase provisionado, schema aplicado, admin
+# criado, e todo comando docker do kit morto — por causa do apóstrofo do nome da
+# clínica dele.
+#
+# Por isso a lista de valores é UMA só e os três blocos abaixo a percorrem
+# inteira: um encoding que agrada dois leitores e quebra o terceiro é
+# exatamente a forma que o defeito teve.
+ENV_CASOS=(
+  "apóstrofo — o caso que quebrava o Compose|Sant'Ana Odontologia"
+  'aspas duplas|Casa "Bela"'
+  'cifrão não expande|Loja P$ss'
+  'cerquilha não é comentário|Loja #1'
+  "combinado, como um nome real|D'Ávila & Cia #2 \$X"
+  'barra invertida|C:\rota\nova'
+  'senha com apóstrofo|se nh@ Sant'"'"'Ana 8'
+  # A crase é o caractere que separa "valor errado" de "comando executado": sem
+  # escape, o `source` do README roda o que estiver entre elas. RESIDUAL MEDIDO:
+  # o parser de dotenv do Compose desfaz `\"`, `\\` e `\$`, mas NÃO desfaz a
+  # crase escapada — o contêiner recebe `Loja \`date\` Ltda`. Escapá-la assim
+  # mesmo é a escolha registrada no comentário do envq (valor feio no contêiner
+  # < execução de comando). Os dois outros consumidores recebem o valor intacto,
+  # e é isso que os casos abaixo exigem deles.
+  'crase (sem escape o source EXECUTA)|Loja `date` Ltda'
+)
+
+# Escreve UM .env com o envq REAL do install.sh, na pasta pedida. Sai do
+# install.sh de verdade (não uma reimplementação): um envq copiado para cá
+# ficaria verde com o install.sh sabotado, que é o modo de falha registrado no
+# bloco `reexec_neg` no fim deste arquivo.
+env_fixture() {  # env_fixture <dir> <dir do kit> <valor>
+  rm -f "$1/.env"
+  ( cd "$1" && KIT="$2" VAL="$3" bash -c '
+      INSTALL_SH_LIB=1 . "$KIT/install.sh"
+      envq APP_NAME "$VAL" > .env
+    ' )
+  # A pasta do bloco do Compose é REUSADA entre os casos: sem esta conferência,
+  # uma geração que falhasse deixaria o .env do caso ANTERIOR no lugar e o caso
+  # seguinte passaria medindo o fixture do vizinho — verde por vacuidade.
+  [ -s "$1/.env" ]
+}
+
+le_ok() {  # le_ok <descrição> <valor>
+  local desc="$1" val="$2" dir out kit="$PWD"
+  dir="$(mktemp -d)"
+  if ! env_fixture "$dir" "$kit" "$val"; then
+    printf '  ✗ %s — o envq não gerou .env nenhum\n' "$desc"; fail=1; rm -rf "$dir"; return
+  fi
+  out="$(cd "$dir" && KIT="$kit" bash -c '
+      . "$KIT/_common.sh"
+      load_env .env
+      printf "%s" "$APP_NAME"
+    ')"
+  rm -rf "$dir"
+  if [ "$out" = "$val" ]; then printf '  ✓ %s\n' "$desc"
+  else printf '  ✗ %s\n     escreveu: [%s]\n     voltou:   [%s]\n' "$desc" "$val" "$out"; fail=1; fi
+}
+
+# Este é o consumidor que NÃO perdoa: `source` é o shell interpretando o
+# arquivo, então uma crase mal escapada não devolve valor errado — EXECUTA. É
+# por isso que o envq escapa a crase mesmo sabendo que o Compose não a desfaz.
+src_ok() {  # src_ok <descrição> <valor>
+  local desc="$1" val="$2" dir out kit="$PWD"
+  dir="$(mktemp -d)"
+  if ! env_fixture "$dir" "$kit" "$val"; then
+    printf '  ✗ %s — o envq não gerou .env nenhum\n' "$desc"; fail=1; rm -rf "$dir"; return
+  fi
+  # Processo separado: se o encoding regredir, quem executa o conteúdo do .env
+  # é este bash descartável, não a suíte.
+  out="$(cd "$dir" && bash -c 'set -a; . ./.env; set +a; printf "%s" "$APP_NAME"' 2>/dev/null)"
+  rm -rf "$dir"
+  if [ "$out" = "$val" ]; then printf '  ✓ %s\n' "$desc"
+  else printf '  ✗ %s\n     escreveu: [%s]\n     voltou:   [%s]\n' "$desc" "$val" "$out"; fail=1; fi
+}
+
+echo "  consumidor 1 — load_env (todo script do kit)"
+for _caso in "${ENV_CASOS[@]}"; do le_ok  "${_caso%%|*}" "${_caso#*|}"; done
+echo "  consumidor 3 — source (a receita do README)"
+for _caso in "${ENV_CASOS[@]}"; do src_ok "${_caso%%|*}" "${_caso#*|}"; done
+unset _caso
+
+echo "  consumidor 2 — docker compose (env_file: .env)"
+# `docker compose config` é 100% client-side: não fala com o daemon nem baixa
+# imagem (medido — com DOCKER_HOST apontando para um socket inexistente ele
+# ainda acusa o erro de parse do .env). Ou seja, cabe no que o cabeçalho deste
+# arquivo promete: sem rede.
+#
+# A asserção é "o Compose CONSEGUE LER o arquivo", e não a igualdade do valor,
+# por uma razão medida: a saída do `config` re-escapa `$` como `$$` (é o
+# encoding de interpolação do próprio compose), então comparar byte a byte
+# reprovaria um arquivo correto. E ler é o que o defeito impedia — rc=1 em
+# config, ps e pull.
+if ! docker compose version >/dev/null 2>&1; then
+  # Pulo em voz alta, nomeando o que ficou sem cobertura: pulo silencioso é
+  # indistinguível de teste que passou.
+  printf '  — pulado: sem `docker compose` nesta máquina\n'
+  printf '     NÃO foi medido: se o .env gerado pelo envq é legível pelo `env_file:` do compose\n'
+  printf '     (é o consumidor pelo qual o defeito do apóstrofo passou; os outros dois acima rodaram)\n'
+else
+  DC_DIR="$(mktemp -d)"
+  cat > "$DC_DIR/docker-compose.yml" <<'YML'
+services:
+  app:
+    image: alpine:3.20
+    env_file: .env
+YML
+  dc_ok() {  # dc_ok <descrição> <valor>
+    local desc="$1" val="$2" err rc kit="$PWD"
+    if ! env_fixture "$DC_DIR" "$kit" "$val"; then
+      printf '  ✗ %s — o envq não gerou .env nenhum\n' "$desc"; fail=1; return
+    fi
+    err="$(cd "$DC_DIR" && docker compose config -q 2>&1)"; rc=$?
+    if [ $rc -eq 0 ]; then printf '  ✓ %s\n' "$desc"
+    else printf '  ✗ %s — o Compose recusou o .env (rc=%s)\n     %s\n' "$desc" "$rc" "$(printf '%s' "$err" | head -1)"; fail=1; fi
+  }
+  for _caso in "${ENV_CASOS[@]}"; do dc_ok "${_caso%%|*}" "${_caso#*|}"; done
+  unset _caso
+
+  # CONTROLE POSITIVO. Sem ele os casos acima passariam por vacuidade: um
+  # `docker compose config` que ignorasse o env_file, ou um .env vazio, também
+  # sairiam rc=0. Aqui o formato ANTIGO é escrito à mão — é o que o kit gravava
+  # antes de 2026-08 — e TEM de ser recusado. Se um dia isto ficar verde, o
+  # Compose passou a aceitar `'\''` e a razão de existir do encoding novo mudou:
+  # releia o comentário do envq antes de mexer em qualquer coisa.
+  cat > "$DC_DIR/.env" <<'EOF'
+APP_NAME='Sant'\''Ana Odontologia'
+EOF
+  if (cd "$DC_DIR" && docker compose config -q >/dev/null 2>&1); then
+    printf '  ✗ controle positivo: o Compose ACEITOU o formato antigo de aspas simples\n'
+    printf '     os casos acima deixaram de distinguir o defeito da correção\n'; fail=1
+  else
+    printf '  ✓ controle positivo: o formato ANTIGO (aspas simples) é recusado pelo Compose\n'
+  fi
+  rm -rf "$DC_DIR"
+fi
+
+echo "retrocompatibilidade: o .env de uma instalação antiga continua legível"
+# Quem instalou antes de 2026-08 tem um .env em aspas simples com `'\''`, e ele
+# NÃO é reescrito ao atualizar: o update.sh só troca APP_IMAGE e APP_PULL_POLICY
+# (:159 e :165) e deixa as outras chaves como estavam. Se o ramo de
+# aspas simples do load_env sumir num "agora é tudo aspas duplas", o kit novo
+# passa a devolver senha e connection string com quatro caracteres a mais, e a
+# instalação antiga quebra na atualização, longe de qualquer pista.
+#
+# O fixture é escrito à mão, no formato ANTIGO, de propósito: gerá-lo com o
+# envq de hoje mediria o formato de hoje e não teria nada de retrocompatível.
+TMP_LEGADO="$(mktemp -d)"
+cat > "$TMP_LEGADO/.env" <<'EOF'
+APP_NAME='Sant'\''Ana Odontologia'
+SENHA_LEGADA='se'\''nha com espaço'
+DB_LEGADA='postgresql://postgres.abc:p%40ss@aws-1-sa-east-1.pooler.supabase.com:5432/postgres'
+CIFRAO_LEGADO='p$ass'
+EOF
+( . ./_common.sh
+  load_env "$TMP_LEGADO/.env"
+  eq() { if [ "$2" = "$3" ]; then printf '  ✓ %s\n' "$1"; else printf '  ✗ %s  esperava [%s] obteve [%s]\n' "$1" "$3" "$2"; exit 1; fi; }
+  eq "nome antigo com apóstrofo"   "$APP_NAME"      "Sant'Ana Odontologia"
+  eq "senha antiga com apóstrofo"  "$SENHA_LEGADA"  "se'nha com espaço"
+  eq "connection string antiga"    "$DB_LEGADA"     'postgresql://postgres.abc:p%40ss@aws-1-sa-east-1.pooler.supabase.com:5432/postgres'
+  eq "cifrão antigo não expande"   "$CIFRAO_LEGADO" 'p$ass'
+) || fail=1
+rm -rf "$TMP_LEGADO"
 
 echo "cron: instalar uma instância não pode silenciar a outra"
 # Fixture = o crontab REAL de uma VPS com produção rodando (o Bearer trocado por
@@ -988,7 +1168,7 @@ exit 0
 STUB
   saida="$(rodar install.sh --yes)"
   chegou_na_deteccao || exit 1
-  if ! grep -qx "REVERSE_PROXY='caddy'" "$VPS_PROJ/.env"; then
+  if ! grep -qx 'REVERSE_PROXY="caddy"' "$VPS_PROJ/.env"; then
     printf '  ✗ a VPS limpa não escolheu o Caddy: %s\n' \
       "$(grep -E '^REVERSE_PROXY=' "$VPS_PROJ/.env" || echo '(ausente)')"; exit 1
   fi
@@ -998,7 +1178,7 @@ STUB
   # não a mensagem de erro: `set -u` fala na língua do shell de quem roda
   # ("unbound variable" aqui, "variável sem associação" num shell em pt-BR), e
   # teste preso a texto de sistema passa em silêncio na máquina errada.
-  if ! grep -qE "^OWNER_PASSWORD='" "$VPS_PROJ/.env"; then
+  if ! grep -qE '^OWNER_PASSWORD="' "$VPS_PROJ/.env"; then
     printf '  ✗ o .env saiu pela metade (parou antes da última linha do bloco)\n'
     printf '     últimas chaves gravadas: %s\n' \
       "$(grep -oE '^[A-Z_]+=' "$VPS_PROJ/.env" | tail -3 | tr '\n' ' ')"; exit 1
@@ -1052,7 +1232,7 @@ STUB
       printf '%s\n' "$saida" | grep 'comando não encontrado\|command not found' | head -2 | sed 's/^/       /'
       exit 1
     fi
-    if ! grep -qE "^OWNER_PASSWORD='" "$raiz/crmia/.env"; then
+    if ! grep -qE '^OWNER_PASSWORD="' "$raiz/crmia/.env"; then
       printf '  ✗ %s — o .env saiu pela metade (parou antes da última linha do bloco)\n' "$desc"
       printf '     últimas chaves gravadas: %s\n' \
         "$(grep -oE '^[A-Z_]+=' "$raiz/crmia/.env" | tail -3 | tr '\n' ' ')"
@@ -1061,13 +1241,19 @@ STUB
     # A escolha precisa SOBREVIVER no .env, senão a 2ª execução re-adivinha —
     # e re-adivinhar é como uma instalação só-OpenRouter volta a ser tratada
     # como Anthropic.
-    if ! grep -qx "AI_PROVIDER='$esperado'" "$raiz/crmia/.env"; then
+    if ! grep -qx "AI_PROVIDER=\"$esperado\"" "$raiz/crmia/.env"; then
       printf '  ✗ %s — AI_PROVIDER não foi gravado como %s: %s\n' "$desc" "$esperado" \
         "$(grep -E '^AI_PROVIDER=' "$raiz/crmia/.env" || echo '(ausente)')"
       exit 1
     fi
     # E a chave que a pessoa tinha continua lá, com o valor dela.
-    if ! grep -qx "$var='$val'" "$raiz/crmia/.env"; then
+    #
+    # O fixture entra no formato ANTIGO (o `"'$val'"` acima, aspas simples) e sai
+    # daqui no formato NOVO: o valor atravessou o load_env de um kit atualizado
+    # lendo o .env de uma instalação velha, que é a rota de quem re-roda o
+    # install.sh depois de atualizar o kit. Por isso a asserção compara o VALOR,
+    # e o formato de entrada difere de propósito do de saída.
+    if ! grep -qx "$var=\"$val\"" "$raiz/crmia/.env"; then
       printf '  ✗ %s — %s não sobreviveu: %s\n' "$desc" "$var" \
         "$(grep -E "^$var=" "$raiz/crmia/.env" || echo '(ausente)')"
       exit 1
@@ -1156,7 +1342,7 @@ STUB
     printf '  ✗ a rede do projeto não foi criada — o "up -d" morreria em "declared as external"\n'
     printf '     chamadas de rede vistas: %s\n' "$(grep '^network' "$LOG" | tr '\n' ' ')"; exit 1
   fi
-  if ! grep -qx "TRAEFIK_NETWORK='crmhost_teste_proxy'" "$PROJ/.env"; then
+  if ! grep -qx 'TRAEFIK_NETWORK="crmhost_teste_proxy"' "$PROJ/.env"; then
     printf '  ✗ TRAEFIK_NETWORK errado no .env: %s\n' "$(grep -E '^TRAEFIK_NETWORK=' "$PROJ/.env" || echo '(ausente)')"
     exit 1
   fi
@@ -1184,7 +1370,7 @@ STUB
   if printf '%s' "$saida" | grep -q 'Não consegui descobrir a rede'; then
     printf '  ✗ com REVERSE_PROXY=traefik no .env o instalador morre sem achar a rede\n'; exit 1
   fi
-  if ! grep -qx "TRAEFIK_NETWORK='crmhost_teste_proxy'" "$PROJ/.env"; then
+  if ! grep -qx 'TRAEFIK_NETWORK="crmhost_teste_proxy"' "$PROJ/.env"; then
     printf '  ✗ REVERSE_PROXY=traefik à mão: TRAEFIK_NETWORK saiu %s\n' \
       "$(grep -E '^TRAEFIK_NETWORK=' "$PROJ/.env" || echo '(ausente)')"; exit 1
   fi
@@ -1225,7 +1411,7 @@ STUB
   if printf '%s' "$saida" | grep -q 'paro aqui em vez de chutar'; then
     printf '  ✗ recusou uma eleição que TEM prova (a coluna Ports diz quem publica)\n'; exit 1
   fi
-  if ! grep -qx "TRAEFIK_NETWORK='coolify'" "$VPS_PROJ/.env"; then
+  if ! grep -qx 'TRAEFIK_NETWORK="coolify"' "$VPS_PROJ/.env"; then
     printf '  ✗ TRAEFIK_NETWORK devia ser a rede do proxy: saiu %s\n' \
       "$(grep -E '^TRAEFIK_NETWORK=' "$VPS_PROJ/.env" || echo '(ausente)')"; exit 1
   fi
