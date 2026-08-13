@@ -37,6 +37,10 @@ describe("passos visíveis", () => {
       "welcome",
       "connect-whatsapp",
       "setup-ai",
+      // O quadro de clientes vem DEPOIS de treinar: a sugestão sai da chave que
+      // a pessoa acabou de confirmar funcionando, e é o mesmo modelo que vai
+      // atender. Pedi-lo antes obrigaria a montá-lo no escuro.
+      "funil",
       // Ver o funcionário atender vem DEPOIS de treiná-lo e ANTES de chamar o
       // time: é a prova de que ele funciona, e ela precisa acontecer enquanto a
       // pessoa ainda está no wizard.
@@ -75,6 +79,7 @@ describe("próximo passo", () => {
       welcome: { accepted_at: "x", timezone: "America/Sao_Paulo", display_name: "N" },
       whatsapp: { status: "WORKING" },
       ai: { agent_id: "a", prompt_template: "p" },
+      funil: { pipeline_id: "f", origem: "ia", etapas: 6 },
       teste: { respondeu: true },
       team: { invites_sent: 0, skipped: true },
     };

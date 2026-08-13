@@ -46,6 +46,14 @@ export type AuditAction =
   | "onboarding.whatsapp_skipped"
   | "onboarding.nuvemshop_skipped"
   | "onboarding.ai_configured"
+  /**
+   * O quadro de clientes montado no wizard. Vale registrar porque é a única
+   * escrita do onboarding que SUBSTITUI dado semeado (as colunas do gatilho) em
+   * vez de acrescentar: quem for entender depois por que o funil mudou de nome
+   * encontra aqui quem fez, quando, e se veio da IA ou de um modelo pronto.
+   */
+  | "onboarding.quadro_montado"
+  | "onboarding.quadro_pulado"
   // O passo de ver o funcionário responder antes de terminar o wizard.
   | "onboarding.agente_testado"
   | "onboarding.agente_teste_pulado"

@@ -6,6 +6,20 @@ import { z } from "zod";
 
 export const welcomeSchema = z.object({
   display_name: z.string().min(2).max(120),
+  /**
+   * O que o negócio faz, na palavra do dono ("clínica odontológica", "vendo
+   * roupa fitness pelo WhatsApp").
+   *
+   * Era o dado que faltava no produto INTEIRO. Sem ele, o funcionário nasce se
+   * apresentando como atendente de uma "loja online" (era o que os três
+   * modelos de prompt diziam) e o quadro de clientes nasce com as colunas de
+   * e-commerce que o gatilho semeia — os dois defeitos têm a mesma origem: uma
+   * instalação que nunca pergunta em que ramo entrou.
+   *
+   * Opcional porque não pode travar o primeiro passo de quem não soube resumir
+   * o próprio negócio em uma linha. Quem pula recebe o quadro genérico.
+   */
+  o_que_faz: z.string().max(280).optional(),
   timezone: z.string().min(1).default("America/Sao_Paulo"),
   accepted_terms_at: z.string().datetime().optional(),
 });
@@ -38,6 +52,7 @@ export const onboardingStepSchema = z.enum([
   "whatsapp",
   "nuvemshop",
   "ai",
+  "funil",
   "team",
   "done",
 ]);
@@ -49,6 +64,8 @@ export const onboardingStateSchema = z.object({
       accepted_at: z.string(),
       timezone: z.string(),
       display_name: z.string(),
+      /** O ramo, na palavra do dono. Alimenta o prompt e o quadro de clientes. */
+      o_que_faz: z.string().optional(),
     })
     .optional(),
   whatsapp: z
@@ -81,6 +98,19 @@ export const onboardingStateSchema = z.object({
   teste: z
     .object({
       respondeu: z.boolean().optional(),
+      skipped: z.boolean().optional(),
+    })
+    .optional(),
+  /**
+   * O quadro de clientes. `origem` registra se as colunas vieram da sugestão da
+   * IA ou de um dos quadros prontos — é o que permite saber, depois, se a chave
+   * da instalação estava funcionando no dia em que a pessoa montou tudo.
+   */
+  funil: z
+    .object({
+      pipeline_id: z.string().optional(),
+      origem: z.enum(["ia", "pacote"]).optional(),
+      etapas: z.number().optional(),
       skipped: z.boolean().optional(),
     })
     .optional(),

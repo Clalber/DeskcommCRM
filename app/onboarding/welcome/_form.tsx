@@ -37,6 +37,7 @@ const FUSOS: { id: string; cidade: string }[] = [
 
 export function WelcomeForm({ defaultOrgName }: { defaultOrgName: string }) {
   const [displayName, setDisplayName] = useState(defaultOrgName);
+  const [oQueFaz, setOQueFaz] = useState("");
   const [timezone, setTimezone] = useState("America/Sao_Paulo");
   const [accepted, setAccepted] = useState(false);
   const [pending, startTransition] = useTransition();
@@ -71,6 +72,29 @@ export function WelcomeForm({ defaultOrgName }: { defaultOrgName: string }) {
         <p className="text-xs text-muted-foreground">
           É o nome que aparece para o seu time e nos relatórios. Pode ser clínica,
           loja, escritório — o que for seu.
+        </p>
+      </div>
+
+      {/*
+        A pergunta que faltava no produto inteiro. Sem ela, o funcionário nasce
+        se apresentando como atendente de uma "loja online" — era o que os três
+        modelos de prompt diziam — e o quadro de clientes nasce com as colunas
+        de e-commerce que o gatilho semeia. Os dois defeitos têm a mesma origem:
+        uma instalação que nunca pergunta em que ramo entrou.
+      */}
+      <div className="space-y-2">
+        <Label htmlFor="o_que_faz">O que vocês fazem?</Label>
+        <Input
+          id="o_que_faz"
+          name="o_que_faz"
+          value={oQueFaz}
+          onChange={(e) => setOQueFaz(e.target.value)}
+          maxLength={280}
+          placeholder="Ex.: clínica odontológica, ou venda de roupa fitness pelo WhatsApp"
+        />
+        <p className="text-xs text-muted-foreground">
+          Uma linha basta. É com isso que seu funcionário aprende com quem ele
+          está falando — e que a gente monta o quadro de clientes do seu jeito.
         </p>
       </div>
 

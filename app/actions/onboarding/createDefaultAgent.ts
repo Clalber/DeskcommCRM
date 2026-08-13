@@ -14,7 +14,12 @@ import { aiAgentDefaultSchema, type PromptTemplate } from "@/lib/schemas/onboard
 import { capacidadesPadraoDoOnboarding } from "@/lib/ai/agents/capacidades-padrao";
 import { publicarMemoriaDaOrg } from "@/lib/ai/memoria-da-org";
 import { escolherModeloDoProvedor } from "@/lib/ai/agents/escolher-modelo";
-import { requireOnboardingCtx, patchOnboardingState, OnboardingError } from "./_shared";
+import {
+  requireOnboardingCtx,
+  patchOnboardingState,
+  loadOnboardingState,
+  OnboardingError,
+} from "./_shared";
 
 /**
  * O jeito de falar do funcionário.
@@ -24,10 +29,17 @@ import { requireOnboardingCtx, patchOnboardingState, OnboardingError } from "./_
  * clínica, imobiliária e infoproduto. Uma clínica terminava o onboarding com um
  * atendente que se apresentava como sendo de uma loja virtual.
  *
- * Recebem o nome do negócio: um funcionário que sabe onde trabalha é o mínimo
- * que se espera de alguém contratado.
+ * Recebem o nome do negócio E o ramo: um funcionário que sabe onde trabalha é o
+ * mínimo que se espera de alguém contratado, e saber o QUE o lugar faz é a
+ * diferença entre "Olá, como posso ajudar?" e uma primeira frase que já mostra
+ * que ele entendeu onde está. O ramo é o que o dono respondeu no primeiro passo;
+ * quem não respondeu recebe a versão sem ele, e não uma inventada.
  */
-const PROMPT_BODIES: Record<PromptTemplate, (negocio: string) => string> = {
+function ondeTrabalha(negocio: string, oQueFaz: string | undefined): string {
+  return oQueFaz ? `${negocio}, que é: ${oQueFaz}` : negocio;
+}
+
+const PROMPT_BODIES: Record<PromptTemplate, (onde: string) => string> = {
   ecommerce_friendly: (n) =>
     `Você atende os clientes de ${n}. Fale de forma calorosa e próxima, como alguém que gosta de ajudar. Cumprimente, entenda o que a pessoa precisa e ofereça opções claras. Confirme os detalhes antes de agir.`,
   ecommerce_professional: (n) =>
@@ -297,7 +309,19 @@ export async function createDefaultAgent(formData: FormData): Promise<CreateAgen
   }
 
   const admin = createAdminClient();
-  const systemPrompt = PROMPT_BODIES[input.prompt_template](ctx.orgName);
+
+  // O ramo que o dono escreveu no primeiro passo. Falha de leitura NÃO derruba o
+  // passo: o funcionário nasce sem essa frase, que é degradação honesta — o
+  // contrário seria travar a contratação por causa de um adjetivo.
+  let oQueFaz: string | undefined;
+  try {
+    const { state } = await loadOnboardingState(ctx.orgId);
+    oQueFaz = state.welcome?.o_que_faz;
+  } catch {
+    oQueFaz = undefined;
+  }
+
+  const systemPrompt = PROMPT_BODIES[input.prompt_template](ondeTrabalha(ctx.orgName, oQueFaz));
 
   // O agente padrão do onboarding é UM por organização, e o banco já garante
   // isso: `ai_agents_one_default_per_org` é índice único parcial em

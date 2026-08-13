@@ -80,6 +80,16 @@ export const PASSOS: readonly PassoDoOnboarding[] = [
     pulado: (s) => foiPulado(s.ai),
   },
   {
+    segmento: "funil",
+    // O quadro vem DEPOIS de treinar de propósito: a sugestão sai da chave que a
+    // pessoa acabou de confirmar funcionando, e é o mesmo cérebro que vai
+    // atender. Pedir o quadro antes obrigaria a montá-lo no escuro.
+    rotulo: "Onde ele organiza",
+    existe: () => true,
+    cumprido: (s) => marcado(s.funil),
+    pulado: (s) => foiPulado(s.funil),
+  },
+  {
     segmento: "testar",
     // O wizard terminava entregando a pessoa num inbox vazio. Ver o
     // funcionário responder ANTES de acabar é o que transforma "configurei um

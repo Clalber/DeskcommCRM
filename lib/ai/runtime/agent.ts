@@ -149,7 +149,7 @@ function buildSentinelRegex(keywords: string[]): RegExp | null {
  * real também não tem ramo de fallback para ele, e prometer aqui um caminho que
  * lá não existe faria o ensaio passar e a mensagem real falhar.
  */
-function chaveDePlataforma(provider: string): string | null {
+export function chaveDePlataforma(provider: string): string | null {
   const nome = { anthropic: "ANTHROPIC_API_KEY", openai: "OPENAI_API_KEY", openrouter: "OPENROUTER_API_KEY" }[
     provider
   ];

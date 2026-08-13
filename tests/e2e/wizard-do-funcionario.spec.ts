@@ -74,6 +74,8 @@ test.afterAll(async () => {
     await svc.from("ai_agents").delete().eq("organization_id", orgId);
     await svc.from("org_memory_pointers").delete().eq("organization_id", orgId);
     await svc.from("org_memory_versions").delete().eq("organization_id", orgId);
+    await svc.from("crm_stages").delete().eq("organization_id", orgId);
+    await svc.from("crm_pipelines").delete().eq("organization_id", orgId);
     await svc.from("user_organizations").delete().eq("organization_id", orgId);
   }
   if (userId) await svc.auth.admin.deleteUser(userId);
@@ -162,7 +164,111 @@ test.describe("o wizard monta um funcionário", () => {
 
     // O passo novo não pode ser pulado no caminho de sucesso — era o que o
     // destino fixo da action fazia.
+    await page.waitForURL(/\/onboarding\/funil/, { timeout: 30_000 });
+  });
+
+  test("o quadro chega montado, venha da IA ou de um modelo pronto", async ({ page }) => {
+    // ⚠️ ESTE CASO VALE NOS DOIS MUNDOS, DE PROPÓSITO. No CI não há chave de
+    // provedor nenhum e a sugestão cai no quadro pronto; na máquina de quem
+    // desenvolve, `next start` carrega o `.env.local` sozinho e a chave real
+    // chega ao servidor sob teste — então a MESMA spec via a IA responder aqui e
+    // o pacote no CI. Fixar uma das duas origens faria o gate vermelhar conforme
+    // a máquina, que é o pior tipo de teste: o que ensina a ignorá-lo.
+    //
+    // O que NÃO varia é o que este passo promete: a pessoa nunca fica sem
+    // quadro, e a tela diz de onde ele veio.
+    await login(page);
+    await page.waitForURL(/\/onboarding\/funil/, { timeout: 30_000 });
+
+    const corpo = page.locator("body");
+    await expect(
+      corpo,
+      "a tela precisa dizer se a sugestão veio da IA ou de um modelo pronto",
+    ).toContainText(/montou este quadro|não consegui pedir uma sugestão/i);
+
+    // O quadro está lá, montado, com o destino de cada coluna visível — que é a
+    // metade invisível do defeito: medido, 312 etapas no banco e 4 com destino,
+    // o que deixa o assistente incapaz de mover um card.
+    const colunas = page.locator('input[aria-label^="Nome da coluna"]');
+    expect(await colunas.count()).toBeGreaterThanOrEqual(4);
+    await expect(corpo).toContainText(/Ele move o cliente para cá quando fechou negócio/i);
+    await expect(corpo).toContainText(/Ele move o cliente para cá quando não fechou/i);
+
+    // As colunas de desfecho não podem ser removidas: sem elas o banco recusa o
+    // quadro inteiro, e descobrir isso no clique de salvar seria pior.
+    await expect(page.getByText("obrigatória").first()).toBeVisible();
+
+    // E o que a instalação trouxe fica à vista, para a troca não parecer mágica.
+    await expect(corpo).toContainText(/Carrinho abandonado/);
+  });
+
+  test("dá para trocar por um modelo pronto sem depender de IA nenhuma", async ({ page }) => {
+    // O caminho determinístico do plano B, que não depende de haver chave: é o
+    // que sobra para quem instalou e ainda não configurou provedor — e para
+    // quem simplesmente não gostou da sugestão.
+    await login(page);
+    await page.waitForURL(/\/onboarding\/funil/, { timeout: 30_000 });
+
+    await page.getByRole("button", { name: /modelo pronto/i }).click();
+    await page.getByRole("button", { name: /clínica, consultório ou salão/i }).click();
+
+    await expect(page.locator("#nome_do_quadro")).toHaveValue("Agendamentos");
+    await expect(page.locator('input[aria-label="Nome da coluna 1"]')).toHaveValue("Novo contato");
+  });
+
+  test("coluna sem nome barra o salvar, em vez de sumir calada", async ({ page }) => {
+    // `normalizarProposta` DESCARTA nome vazio. Sem esta trava, a pessoa
+    // acrescenta uma coluna, esquece de nomeá-la, salva, avança — e a coluna
+    // simplesmente não existe.
+    await login(page);
+    await page.waitForURL(/\/onboarding\/funil/, { timeout: 30_000 });
+
+    await page.getByRole("button", { name: /adicionar coluna/i }).click();
+    await expect(page.getByText(/dê um nome à coluna em branco/i)).toBeVisible();
+    await expect(page.getByRole("button", { name: /usar este quadro/i })).toBeDisabled();
+
+    // Nomeada, o caminho destrava.
+    await page.locator('input[aria-label^="Nome da coluna"]').last().fill("Confirmação da véspera");
+  });
+
+  test("salvar troca o funil de e-commerce e ENSINA o destino de cada coluna", async ({ page }) => {
+    await login(page);
+    await page.waitForURL(/\/onboarding\/funil/, { timeout: 30_000 });
+    await page.getByRole("button", { name: /usar este quadro/i }).click();
     await page.waitForURL(/\/onboarding\/testar/, { timeout: 30_000 });
+
+    const { data: funil } = await svc
+      .from("crm_pipelines")
+      .select("id, name")
+      .eq("organization_id", orgId)
+      .eq("is_default", true)
+      .maybeSingle();
+
+    const { data: etapas } = await svc
+      .from("crm_stages")
+      .select("name, agent_stage_hint, is_won, is_lost")
+      .eq("pipeline_id", funil!.id)
+      .order("position");
+
+    const nomes = (etapas ?? []).map((e) => String(e.name));
+    // O quadro que o gatilho semeia em TODA organização, num produto que se
+    // vende como multi-nicho: a clínica abria o quadro dela e lia isto.
+    expect(nomes).not.toContain("Carrinho abandonado");
+    expect(nomes).not.toContain("Em separação");
+    expect(String(funil!.name)).not.toBe("Pedidos");
+
+    // A metade invisível: sem destino, o funcionário tem o funil no escopo e
+    // não sabe o que significa nenhuma coluna.
+    const comDestino = (etapas ?? []).filter((e) => e.agent_stage_hint !== null);
+    expect(comDestino.length).toBeGreaterThanOrEqual(5);
+    // Uma de ganho e uma de perda, e o destino delas COERENTE com a marcação —
+    // é o que o CHECK `crm_stages_hint_coerente_com_won_lost` cobra.
+    expect((etapas ?? []).filter((e) => e.is_won)).toHaveLength(1);
+    expect((etapas ?? []).filter((e) => e.is_lost)).toHaveLength(1);
+    for (const e of etapas ?? []) {
+      expect(e.is_won, String(e.name)).toBe(e.agent_stage_hint === "won");
+      expect(e.is_lost, String(e.name)).toBe(e.agent_stage_hint === "lost");
+    }
   });
 
   test("as regras da casa viraram memória da organização, não prompt do agente", async () => {
