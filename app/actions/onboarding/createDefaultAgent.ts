@@ -14,6 +14,7 @@ import { aiAgentDefaultSchema, type PromptTemplate } from "@/lib/schemas/onboard
 import { capacidadesPadraoDoOnboarding } from "@/lib/ai/agents/capacidades-padrao";
 import { publicarMemoriaDaOrg } from "@/lib/ai/memoria-da-org";
 import { escolherModeloDoProvedor } from "@/lib/ai/agents/escolher-modelo";
+import { chaveDePlataforma } from "@/lib/ai/runtime/agent";
 import {
   requireOnboardingCtx,
   patchOnboardingState,
@@ -68,6 +69,12 @@ interface AgenteDoOnboarding {
 type PublishOutcome =
   | { published: true }
   | { published: false; reason: "no_channel" }
+  /**
+   * Há provedor e modelo, mas nenhuma chave utilizável: nem credencial validada
+   * da organização, nem chave da instalação no ambiente. Publicar assim entrega
+   * um funcionário que morre em toda mensagem.
+   */
+  | { published: false; reason: "sem_chave"; provider: string }
   | {
       published: false;
       reason: "no_model";
@@ -197,6 +204,31 @@ async function publishFirstVersion(
     .maybeSingle();
   const pipelineIds = funil?.id ? [funil.id as string] : [];
 
+  // QUAL CHAVE ESTA VERSÃO USA — e as duas origens são legítimas.
+  //
+  // Credencial validada da organização vence (quem colou a chave no wizard, ou
+  // cadastrou pela tela); na falta dela, `credential_id: null` significa "a chave
+  // da instalação", que é o caso mais comum do kit. Sem NENHUMA das duas, não se
+  // publica: o agente responderia erro em toda mensagem e o dono só descobriria
+  // com o primeiro cliente.
+  //
+  // `validated_at` não nulo é exigência de `loadCredential`, não capricho: uma
+  // credencial que o provedor ainda não confirmou não é utilizável pelo turno.
+  const { data: credencial } = await admin
+    .from("ai_provider_credentials")
+    .select("id")
+    .eq("organization_id", orgId)
+    .eq("provider", provider)
+    .eq("is_active", true)
+    .not("validated_at", "is", null)
+    .limit(1)
+    .maybeSingle();
+
+  const credentialId = (credencial?.id as string | undefined) ?? null;
+  if (!credentialId && !chaveDePlataforma(provider)) {
+    return { published: false, reason: "sem_chave", provider };
+  }
+
   const { data: version, error: versionErr } = await admin
     .from("ai_agent_versions")
     .insert({
@@ -211,6 +243,7 @@ async function publishFirstVersion(
       model: modelId,
       // Sem capacidades o turno não monta ferramenta nenhuma: o agente
       // entregue conversa e não alcança contato, lead nem funil.
+      credential_id: credentialId,
       tool_ids: capacidadesPadraoDoOnboarding(),
       pipeline_ids: pipelineIds,
       channel_session_id: canal.id,
@@ -274,7 +307,7 @@ export type CreateAgentResult =
       ok: true;
       agent_id: string;
       publish_error?: string;
-      publish_blocked_by?: "canal" | "modelo";
+      publish_blocked_by?: "canal" | "modelo" | "chave";
       provider?: string;
       /** Catálogo vazio e catálogo sem modelo que sirva pedem conselhos opostos. */
       motivo_do_modelo?: "catalogo_vazio" | "nenhum_com_ferramentas";
@@ -355,6 +388,21 @@ export async function createDefaultAgent(formData: FormData): Promise<CreateAgen
         organization_id: ctx.orgId,
         name: input.name,
         system_prompt: systemPrompt,
+        // `mcp_agent`, e não o `rag_bot` que o banco tem como padrão.
+        //
+        // O default do banco é de quando o produto só tinha o formato antigo, e o
+        // onboarding nunca escrevia este campo. O resultado: o funcionário que a
+        // pessoa acabava de montar abria no EDITOR LEGADO — "Temperature",
+        // "Top K", "Similarity threshold" — e as capacidades que ele recebeu
+        // ligadas (mexer no contato, no negócio, no funil) ficavam invisíveis
+        // para o dono. Funcionavam no runtime e não tinham superfície de
+        // configuração, que é o invariante 6 do Sistema Vivo quebrado.
+        //
+        // O que travava a virada era o editor novo exigir `credential_id`, e
+        // instalação pelo kit não ter nenhuma linha em `ai_provider_credentials`.
+        // Isso foi resolvido: a versão aceita `credential_id: null` (= a chave da
+        // instalação) e o seletor oferece essa opção.
+        kind: "mcp_agent",
         is_default: true,
         is_active: true,
         created_by: ctx.userId,
@@ -435,6 +483,18 @@ export async function createDefaultAgent(formData: FormData): Promise<CreateAgen
   // tem modelo no catálogo desta instalação (o da OpenRouter só chega no cron
   // diário). Avançar calado deixaria a pessoa achar que o funcionário está no
   // ar — e ele não responde uma única mensagem.
+  // Sem chave utilizável: o agente fica rascunho e a tela explica. Avançar
+  // calado deixaria a pessoa achar que o funcionário está no ar.
+  if (!publicacao.published && publicacao.reason === "sem_chave") {
+    return {
+      ok: true,
+      agent_id: agent.id,
+      publish_blocked_by: "chave",
+      provider: publicacao.provider,
+      ...(regrasNaoSalvas ? { regras_nao_salvas: regrasNaoSalvas } : {}),
+    };
+  }
+
   if (!publicacao.published && publicacao.reason === "no_model") {
     return {
       ok: true,

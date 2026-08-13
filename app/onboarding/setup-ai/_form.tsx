@@ -56,7 +56,7 @@ export function SetupAiForm({ capacidades, conferencias }: Props) {
   const [jeito, setJeito] = useState<PromptTemplate>("ecommerce_friendly");
   const [regras, setRegras] = useState("");
   const [naoPublicado, setNaoPublicado] = useState<string | null>(null);
-  const [causa, setCausa] = useState<"canal" | "modelo" | null>(null);
+  const [causa, setCausa] = useState<"canal" | "modelo" | "chave" | null>(null);
   const [provedor, setProvedor] = useState<string | null>(null);
   const [motivoDoModelo, setMotivoDoModelo] = useState<
     "catalogo_vazio" | "nenhum_com_ferramentas" | null
@@ -80,6 +80,14 @@ export function SetupAiForm({ capacidades, conferencias }: Props) {
             return;
           }
           if (res?.regras_nao_salvas) setRegrasNaoSalvas(res.regras_nao_salvas);
+          // Sem chave utilizável não há o que publicar — e o conselho é outro:
+          // não é esperar o catálogo nem trocar de provedor, é cadastrar a chave.
+          if (res?.publish_blocked_by === "chave") {
+            setCausa("chave");
+            setProvedor(res.provider ?? null);
+            toast.warning("Atendente criado, mas ainda não está no ar.");
+            return;
+          }
           if (res?.publish_blocked_by === "modelo") {
             setCausa("modelo");
             setProvedor(res.provider ?? null);
@@ -203,6 +211,23 @@ export function SetupAiForm({ capacidades, conferencias }: Props) {
           </p>
           <p className="text-xs text-muted-foreground">
             Erro do banco de dados: <code className="break-all">{regrasNaoSalvas}</code>
+          </p>
+        </div>
+      )}
+
+      {causa === "chave" && (
+        <div
+          role="alert"
+          className="space-y-3 rounded-md border border-amber-300/60 bg-amber-50 p-4 dark:border-amber-500/30 dark:bg-amber-950/20"
+        >
+          <p className="text-sm font-medium">
+            Seu atendente foi criado, mas ficou como <strong>rascunho</strong> — ele ainda
+            não tem com o que pensar.
+          </p>
+          <p className="text-sm">
+            Não achei chave de {provedorLegivel(provedor)} nem cadastrada aqui, nem vinda da
+            instalação. Cole a chave no campo acima («o cérebro dele») e crie o atendente de
+            novo — ou cadastre em <strong>IA › Credenciais</strong>.
           </p>
         </div>
       )}

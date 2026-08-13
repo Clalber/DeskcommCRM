@@ -103,6 +103,12 @@ function clienteFalso() {
         c.filtros[coluna] = valor;
         return b;
       },
+      // A busca da credencial da organização usa `.not("validated_at","is",null)`:
+      // credencial que o provedor ainda não confirmou não é utilizável pelo turno.
+      not: (coluna: string, _op: string, valor: unknown) => {
+        c.filtros[`not:${coluna}`] = valor;
+        return b;
+      },
       order: () => b,
       limit: () => b,
       single: () => resolver(),
@@ -126,6 +132,17 @@ interface Estado {
 }
 
 interface Mundo {
+  /**
+   * A credencial VALIDADA da organização para o provedor escolhido. `null` =
+   * não tem nenhuma, e aí a versão nasce com `credential_id: null`, que
+   * significa "usa a chave da instalação".
+   */
+  credencial?: { id: string } | null;
+  /**
+   * A instalação tem chave deste provedor no ambiente? É o caso mais comum do
+   * kit — a pessoa cola a chave no `.env` e nunca abre a tela de Credenciais.
+   */
+  chaveDaInstalacao?: boolean;
   /** O que a consulta de canais responde — é aqui que mora o defeito. */
   canais?: Resposta;
   /** Erro na gravação da versão (o `return` mudo de antes). */
@@ -179,6 +196,16 @@ function montarBanco(mundo: Mundo = {}): Estado {
   const canais = mundo.canais ?? { data: [CANAL], error: null };
 
   const modelos = mundo.modelosPorProvedor ?? { anthropic: "claude-sonnet-9" };
+
+  // A chave da instalação é lida do `process.env` por `chaveDePlataforma`. O
+  // default é TER a chave, que é o retrato de quem instalou pelo kit — e é a
+  // precondição dos casos que exercitam OUTRA coisa. Um teste que rodasse sem
+  // ela mediria "publicação sem chave" achando que mede o canal.
+  const temChave = mundo.chaveDaInstalacao !== false;
+  for (const v of ["ANTHROPIC_API_KEY", "OPENAI_API_KEY", "OPENROUTER_API_KEY"]) {
+    if (temChave) process.env[v] = "sk-de-teste";
+    else delete process.env[v];
+  }
 
   responder = (c) => {
     if (c.table === "channel_sessions") return canais;
@@ -287,6 +314,10 @@ function montarBanco(mundo: Mundo = {}): Estado {
     }
 
 
+
+    if (c.table === "ai_provider_credentials") {
+      return { data: mundo.credencial ?? null, error: null };
+    }
 
     if (c.table === "crm_pipelines") {
       const funil = mundo.funilPadrao === undefined ? { id: "funil-1" } : mundo.funilPadrao;
@@ -641,5 +672,53 @@ describe("onboarding: o que o funcionário sabe sobre o negócio", () => {
     const prompt = String((estado.versoes[0] as { system_prompt?: string }).system_prompt ?? "");
     expect(prompt).toContain("QA"); // o nome da organização do teste
     expect(prompt).not.toMatch(/loja online|e-commerce/i);
+  });
+});
+
+describe("onboarding: qual chave o funcionário usa", () => {
+  it("sem credencial cadastrada, a versão usa a chave da INSTALAÇÃO", () => {
+    // `credential_id: null` é o contrato de "usa a do `.env`" — o caso mais
+    // comum do kit, e o que fazia o editor novo recusar o formulário antes.
+    const estado = montarBanco({ credencial: null, chaveDaInstalacao: true });
+    return clicar().then(() => {
+      expect(estado.versoes).toHaveLength(1);
+      expect(estado.versoes[0]!.credential_id).toBeNull();
+    });
+  });
+
+  it("com credencial validada da organização, é ELA que a versão aponta", async () => {
+    // Quem colou a chave no wizard tem credencial e pode NÃO ter chave no
+    // ambiente: apontar para a instalação publicaria um agente que morre em
+    // toda mensagem.
+    const estado = montarBanco({ credencial: { id: "cred-9" }, chaveDaInstalacao: false });
+    await clicar();
+    expect(estado.versoes).toHaveLength(1);
+    expect(estado.versoes[0]!.credential_id).toBe("cred-9");
+  });
+
+  it("sem NENHUMA das duas, não publica — e a tela recebe a causa certa", async () => {
+    // Falha fechada na ação, aberta na informação. Publicar aqui entregaria um
+    // funcionário "no ar" que erra em toda mensagem, e o dono só descobriria com
+    // o primeiro cliente de verdade.
+    const estado = montarBanco({ credencial: null, chaveDaInstalacao: false });
+    const r = await clicar();
+    expect(r).not.toBe("redirecionou");
+    const res = r as Exclude<CreateAgentResult, { ok: false }>;
+    expect(res.publish_blocked_by).toBe("chave");
+    expect(res.provider).toBe("anthropic");
+    // O agente EXISTE (o passo aconteceu); o que não existe é a versão.
+    expect(estado.agentes).toHaveLength(1);
+    expect(estado.versoes).toHaveLength(0);
+  });
+
+  it("o funcionário nasce no formato ATUAL do produto, não no legado", async () => {
+    // `ai_agents.kind` tem default 'rag_bot' no banco — de quando o produto só
+    // tinha o formato antigo. Nascendo assim, o agente abria no editor legado
+    // (Temperature, Top K, Similarity threshold) e as capacidades que ele
+    // recebeu ligadas ficavam INVISÍVEIS para o dono.
+    const estado = montarBanco({ credencial: null, chaveDaInstalacao: true });
+    await clicar();
+    expect(estado.agentes).toHaveLength(1);
+    expect(estado.agentes[0]!.kind).toBe("mcp_agent");
   });
 });
