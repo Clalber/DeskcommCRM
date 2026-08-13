@@ -14,6 +14,19 @@ cd "$(dirname "${BASH_SOURCE[0]}")"
 # `veredito_rede_do_proxy` e `garantir_rede_do_proxy` — o install.sh e o update.sh
 # compartilham essas três, e a suíte exercita as três de um lugar só.
 . ./_common.sh
+
+# Lê UMA chave do .env pelo `load_env` do kit, e não por grep de formato.
+#
+# Os três laços de packaging abaixo casavam a LINHA (`^CHAVE='?valor'?$`), o que
+# amarrava a asserção ao encoding do `.env` — e quebrou quando o `envq` passou a
+# escrever aspas duplas para o Docker Compose aceitar apóstrofo (`Sant'Ana`).
+# Comparar VALOR em vez de TEXTO torna o teste imune ao encoding, que é
+# justamente o que ele nunca quis testar. `load_env` roda em subshell: não
+# vaza variável para o caso seguinte.
+valor_no_env() {
+  ( load_env "$1" >/dev/null 2>&1; eval "printf '%s' \"\${$2:-}\"" )
+}
+
 INSTALL_SH_LIB=1 . ./install.sh
 set +e   # os dois ligam `set -e`; aqui esperamos validadores falharem de propósito
 
@@ -1218,11 +1231,11 @@ STUB
   # asserção não é "a tag é 1.2.3": é que as TRÊS imagens saem na MESMA
   # referência e com o pull_policy que combina com ela. É o invariante que
   # sobrevive aos dois caminhos, com rede e sem.
-  img_app="$(grep -oE "^APP_IMAGE='?[^']*" "$VPS_PROJ/.env" | sed "s/^APP_IMAGE='\?//")"
+  img_app="$(valor_no_env "$VPS_PROJ/.env" APP_IMAGE)"
   tag_app="${img_app##*:}"
   for par in "WORKER_IMAGE:deskcomm-worker" "SCHEDULER_IMAGE:deskcomm-scheduler"; do
     chave="${par%%:*}"; repo="${par##*:}"
-    if ! grep -qE "^${chave}='?ghcr\.io/melgarafael/${repo}:${tag_app}'?$" "$VPS_PROJ/.env"; then
+    if [ "$(valor_no_env "$VPS_PROJ/.env" "$chave")" != "ghcr.io/melgarafael/${repo}:${tag_app}" ]; then
       printf '  ✗ %s não acompanha a versão do app (%s): %s\n' "$chave" "$tag_app" \
         "$(grep -E "^${chave}=" "$VPS_PROJ/.env" || echo '(ausente)')"
       printf '     app numa versão e worker em outra é a matriz que ninguém testou.\n'; exit 1
@@ -1233,7 +1246,7 @@ STUB
     *)                  esperado="missing" ;;
   esac
   for chave in APP_PULL_POLICY WORKER_PULL_POLICY SCHEDULER_PULL_POLICY; do
-    if ! grep -qE "^${chave}='?${esperado}'?$" "$VPS_PROJ/.env"; then
+    if [ "$(valor_no_env "$VPS_PROJ/.env" "$chave")" != "$esperado" ]; then
       printf '  ✗ %s devia ser %s para a tag %s: %s\n' "$chave" "$esperado" "$tag_app" \
         "$(grep -E "^${chave}=" "$VPS_PROJ/.env" || echo '(ausente)')"; exit 1
     fi
@@ -1338,14 +1351,14 @@ STUB
 
   for par in "APP_IMAGE:deskcommcrm" "WORKER_IMAGE:deskcomm-worker" "SCHEDULER_IMAGE:deskcomm-scheduler"; do
     chave="${par%%:*}"; repo="${par##*:}"
-    if ! grep -qE "^${chave}='?ghcr\.io/melgarafael/${repo}:1\.10\.0'?$" "$VPS_PROJ/.env"; then
+    if [ "$(valor_no_env "$VPS_PROJ/.env" "$chave")" != "ghcr.io/melgarafael/${repo}:1.10.0" ]; then
       printf '  ✗ %s não foi pinado na versão resolvida (1.10.0): %s\n' "$chave" \
         "$(grep -E "^${chave}=" "$VPS_PROJ/.env" || echo '(ausente)')"
       printf '     instalação de cliente NUNCA nasce em tag móvel — docs/doctrine/packaging.md, invariante 3.\n'
       exit 1
     fi
   done
-  if grep -qE "^APP_PULL_POLICY='?always'?$" "$VPS_PROJ/.env"; then
+  if [ "$(valor_no_env "$VPS_PROJ/.env" APP_PULL_POLICY)" = "always" ]; then
     printf '  ✗ tag imutável com pull_policy=always: o CRM só sobe se o GHCR estiver de pé\n'; exit 1
   fi
   printf '  ✓ com v1.0.0/v1.9.0/v1.10.0 no remoto, o .env nasce pinado em 1.10.0 (as três imagens)\n'

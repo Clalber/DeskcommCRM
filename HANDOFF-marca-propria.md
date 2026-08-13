@@ -637,7 +637,17 @@ com login MFA real, em build de produção:
 
 `#604aa6` é exatamente o tom que a tela anunciou como "Botões no modo claro".
 **A tela não mentiu.** Banco após salvar: `accent_hex=#7a5cd6`, `seeded_from_env=f`.
-Zero jargão técnico, zero rolagem lateral. Evidência em `evidence/marca-*.png`.
+Zero jargão técnico, zero rolagem lateral.
+
+Cada imagem abaixo é lastro de uma afirmação desta seção:
+
+| evidência | o que ela prova |
+|---|---|
+| `evidence/marca-1-inicial.png` | estado inicial: sem cor definida, a tira **não** aparece e "De onde vem cada coisa" diz "padrão do sistema" nas três linhas |
+| `evidence/marca-2-digitado.png` | ao digitar `#7a5cd6` a tira acende com as três marcações e os contrastes 6,9:1 / 7,8:1 |
+| `evidence/marca-3-invalido.png` | hex inválido: borda de erro e **Salvar desabilitado** |
+| `evidence/marca-4-salvo.png` | o run que **reprovou**: `Could not find the table 'public.platform_branding' in the schema cache` — o banco local não tinha a migration |
+| `evidence/marca-5-recarregado.png` | depois de aplicar a 0155: sidebar e botão roxos, "Cor → definido nesta tela", cor persistida no reload |
 
 ### O primeiro run REPROVOU, e o erro apareceu na tela
 
