@@ -79,13 +79,32 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       cssDaOrganizacao = cssDaMarca(marca.cor, ESCOPO_DA_ORGANIZACAO).css;
     }
 
-    // O nome só desce para o menu quando foi a organização que o definiu. Sem
-    // esta condição, `marca.name` seria o nome da instalação (ou o padrão do
-    // produto) e o menu passaria a ler um caminho novo para exibir exatamente o
-    // que já exibia — trocando a fonte sem trocar o valor, que é como se cria
-    // uma regressão invisível.
-    if (marca.origens.nome === "organizacao") {
-      activeOrg = { ...activeOrg, marca: { nome: marca.name } };
+    // Desce para o menu CAMPO A CAMPO, e só o campo que a organização definiu.
+    // Sem a condição por campo, `marca.name` seria o nome da instalação (ou o
+    // padrão do produto) e o menu passaria a ler um caminho novo para exibir
+    // exatamente o que já exibia — trocando a fonte sem trocar o valor, que é
+    // como se cria uma regressão invisível. E, com o logo no mesmo objeto, uma
+    // condição só (a do nome) faria a organização que definiu apenas a cor
+    // arrastar junto um `logoUrl` que ela não escolheu.
+    //
+    // `origens` é a resposta de `primeiroDefinido` (`lib/branding/resolve.ts`),
+    // que ignora valor vazio e desce: quando ele diz "organizacao", o valor é
+    // não-vazio e já veio trimado — por isso a barra lateral nunca recebe `""`
+    // desta origem.
+    //
+    // ⚠️ `origens.logoUrl === "organizacao"` é hoje INALCANÇÁVEL: nenhuma camada
+    // da organização declara logo (medido em `camadaDaOrganizacao`, que não tem
+    // a chave, e em `marcaDaOrganizacaoSchema`, sem `logo_url`). Ele entra aqui
+    // com o consumidor da barra para que o upload por organização seja só o
+    // produtor — e não mais uma passada pela casca inteira.
+    const marcaDoTenant = {
+      ...(marca.origens.nome === "organizacao" ? { nome: marca.name } : {}),
+      ...(marca.origens.logoUrl === "organizacao" && marca.logoUrl !== null
+        ? { logoUrl: marca.logoUrl }
+        : {}),
+    };
+    if (Object.keys(marcaDoTenant).length > 0) {
+      activeOrg = { ...activeOrg, marca: marcaDoTenant };
     }
   }
 

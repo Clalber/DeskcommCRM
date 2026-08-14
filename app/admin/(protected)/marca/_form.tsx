@@ -147,10 +147,14 @@ export function FormularioDaMarca({
 
     const candidato: PlatformBrandingInput = {
       app_name: nome.trim() || null,
-      // O logo volta como está: esta tela ainda não o edita (o menu lateral lê o
-      // logo do arquivo de instalação, não do banco — um campo aqui salvaria um
-      // valor que nenhuma tela mostraria). Mandar o valor gravado é o que
-      // impede o `upsert` de apagá-lo.
+      // O logo volta como está: esta tela ainda não o edita. A razão MUDOU e
+      // vale registrar, porque a antiga ("um campo aqui salvaria um valor que
+      // nenhuma tela mostraria") morreu: o menu lateral e as telas de acesso já
+      // leem o logo RESOLVIDO, com o banco acima do arquivo de instalação. O que
+      // falta é o campo — e ele é um upload (bucket, teto de tamanho, troca com
+      // remoção do anterior), não uma caixa de texto de URL, que seria metade da
+      // feature com o dobro das formas de errar. Mandar o valor gravado é o que
+      // impede o `upsert` de apagá-lo enquanto isso.
       logo_url: gravada.logo_url,
       accent_hex: hexLimpo || null,
       // Idem: `show_powered_by` não tem nenhum consumidor no produto hoje —
@@ -196,20 +200,31 @@ export function FormularioDaMarca({
         />
         {/*
           Esta frase precisa ser VERDADE enquanto a dívida existir, e ela já
-          envelheceu uma vez: dizia que "o menu ainda mostra o nome do arquivo de
-          instalação", o que deixou de valer quando o menu passou a preferir o
-          nome da própria organização (`components/shell/Sidebar.tsx`). O que
-          continua no arquivo são os 8 call sites de `branding()`, que leem
-          `window.__PUBLIC_ENV__` e não o banco — as telas públicas, os dois
-          menus e o nome do arquivo de códigos de recuperação.
+          envelheceu DUAS vezes. Primeiro dizia que "o menu ainda mostra o nome do
+          arquivo de instalação", o que deixou de valer quando o menu passou a
+          preferir o nome da própria organização (`components/shell/Sidebar.tsx`).
+          Depois dizia que os menus e o arquivo de códigos de recuperação
+          continuavam no arquivo de instalação, o que deixou de valer quando o
+          `<PublicEnvScript/>` passou a injetar a marca RESOLVIDA em vez de
+          `env.APP_NAME` cru.
+
+          Medido AGORA, sobre os 8 call sites de `branding()`: 4 são client
+          components (os dois menus, o painel de códigos de recuperação e a tela
+          da Nuvemshop) e leem `window.__PUBLIC_ENV__`, que desde então carrega o
+          banco; 4 são server components (login, cadastro, casca e boas-vindas da
+          configuração inicial) e leem `process.env` direto. São esses 4 que
+          continuam no arquivo de instalação — e o login segue ali de propósito,
+          porque `tests/e2e/icone-da-marca.spec.ts` cruza o título da aba (banco)
+          contra o texto do login (arquivo) e a spec mediria nada se os dois
+          viessem da mesma fonte.
         */}
         <p className="text-xs text-text-muted">
           Deixe em branco para voltar ao nome padrão. Este nome já aparece no título da aba do
-          navegador, nos e-mails que o sistema envia (para as empresas que não definiram um nome
-          próprio) e no aplicativo de verificação em duas etapas. Ainda NÃO chega às telas de
-          entrada e cadastro, aos menus laterais nem ao nome do arquivo de códigos de
-          recuperação: esses continuam com o nome gravado no arquivo de instalação do servidor
-          até a próxima atualização da stack.
+          navegador, nos menus laterais, nos e-mails que o sistema envia (para as empresas que
+          não definiram um nome próprio), no aplicativo de verificação em duas etapas e no
+          arquivo de códigos de recuperação que o usuário baixa. Ainda NÃO chega às telas de
+          entrada e cadastro nem às da configuração inicial: essas continuam com o nome gravado
+          no arquivo de instalação do servidor até a próxima atualização da stack.
         </p>
       </Card>
 

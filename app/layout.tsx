@@ -41,12 +41,12 @@ const plexMono = IBM_Plex_Mono({
 /**
  * A pilha de camadas da marca da instalação: BANCO acima, `.env` embaixo.
  *
- * Uma função só porque `generateMetadata` e `EstiloDaMarca` precisam da MESMA
- * resolução — duas montagens da pilha divergiriam no dia em que a fase seguinte
- * acrescentar a camada da organização, e a divergência apareceria como título da
- * aba com uma marca e cor com outra.
+ * Uma função só porque `generateMetadata`, `EstiloDaMarca` e `MarcaNoNavegador`
+ * precisam da MESMA resolução — montagens separadas da pilha divergiriam, e a
+ * divergência apareceria como título da aba com uma marca, cor com outra e barra
+ * lateral com uma terceira.
  *
- * A leitura do banco é memoizada em `lib/branding/instalacao.ts`, então as duas
+ * A leitura do banco é memoizada em `lib/branding/instalacao.ts`, então as três
  * chamadas por requisição custam UMA consulta a cada TTL.
  */
 async function marcaResolvida(): Promise<{
@@ -204,6 +204,24 @@ async function EstiloDaMarca() {
   return <style id="marca-instalacao" dangerouslySetInnerHTML={{ __html: css }} />;
 }
 
+/**
+ * A marca que atravessa para o NAVEGADOR — a MESMA pilha da aba e do CSS.
+ *
+ * Componente próprio, e não uma chamada dentro do `RootLayout`, pelo mesmo
+ * motivo de `EstiloDaMarca`: só este nó do `<head>` espera o banco, e o resto do
+ * documento não passa a depender de uma consulta que a marca já memoiza.
+ *
+ * Antes desta onda, `<PublicEnvScript/>` lia `env.APP_NAME`/`env.APP_LOGO_URL`
+ * — o arquivo de instalação cru. Era por aqui que a marca GRAVADA parava de
+ * chegar aos client components: o título da aba lia o banco e a barra lateral
+ * lia o `.env`, e `platform_branding.logo_url` não tinha leitor nenhum. Ver o
+ * cabeçalho de `app/public-env-script.tsx`.
+ */
+async function MarcaNoNavegador() {
+  const { marca } = await marcaResolvida();
+  return <PublicEnvScript marca={{ name: marca.name, logoUrl: marca.logoUrl }} />;
+}
+
 export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
@@ -217,8 +235,9 @@ export default function RootLayout({
       <head>
         {/* Primeiro de tudo: a cor da instalação, antes do CSS e do script de tema. */}
         <EstiloDaMarca />
-        {/* Config pública do Supabase em runtime (imagem genérica self-host). */}
-        <PublicEnvScript />
+        {/* Config pública do Supabase + marca resolvida, em runtime (imagem
+            genérica self-host). */}
+        <MarcaNoNavegador />
         <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
       </head>
       <body className="min-h-screen bg-bg font-sans text-text antialiased">

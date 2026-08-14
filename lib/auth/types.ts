@@ -79,20 +79,30 @@ export interface ActiveOrg {
    */
   visibility_mode?: VisibilityMode;
   /**
-   * O nome que ESTA organização definiu para si, quando ela definiu um.
+   * O que ESTA organização definiu para si — CAMPO A CAMPO, e só o que ela
+   * mesma definiu.
    *
    * Opcional pelo mesmo motivo de `visibility_mode`: só o layout de `/app`
-   * preenche, e só quando a resolução da marca diz que o nome veio da camada da
-   * organização. Ausente significa "vale o nome de cima" — o da instalação —,
-   * que é exatamente o que o menu já mostrava.
+   * preenche, e só para o campo cuja resolução aponta a camada da organização.
+   * Campo ausente significa "vale o de cima" — o da instalação —, que é
+   * exatamente o que o menu já mostrava. Por isso `nome` também é opcional: a
+   * organização que definir só o logo não pode arrastar junto um `nome` que
+   * ninguém escolheu ali.
    *
-   * Sem `logoUrl`: a camada da organização não fala de logo nesta fase, e um
-   * campo aqui prometeria à próxima pessoa um dado que ninguém grava.
+   * ⚠️ `logoUrl` existe aqui mas HOJE nenhuma camada o produz: medido,
+   * `camadaDaOrganizacao` (`lib/branding/resolve.ts`) não declara `logoUrl` e
+   * `marcaDaOrganizacaoSchema` (`lib/schemas/settings.ts`) não tem `logo_url` —
+   * o logo POR ORGANIZAÇÃO chega com o upload (bucket + `logo_path`). O
+   * consumidor entra antes do produtor de propósito, e não é campo decorativo
+   * pelo avesso: ele tem teste de comportamento
+   * (`tests/unit/sidebar-nome-da-organizacao.test.tsx`) e o produtor será uma
+   * linha em `app/app/layout.tsx`, sem reabrir a casca.
    *
    * A rota é a que já existe: layout → `AuthProvider` → `useAuth()`. É como o
-   * nome atravessa a fronteira servidor/navegador sem plumbing nova — `branding()`
-   * lê `window.__PUBLIC_ENV__`, não o banco, e por isso nem a marca da instalação
-   * GRAVADA chega ao menu hoje.
+   * valor atravessa a fronteira servidor/navegador sem plumbing nova. A marca da
+   * INSTALAÇÃO atravessa por outro caminho, e desde esta onda também vem do
+   * banco: `app/layout.tsx` resolve a pilha e o `<PublicEnvScript/>` a injeta em
+   * `window.__PUBLIC_ENV__`, de onde `branding()` a lê.
    */
-  marca?: { readonly nome: string };
+  marca?: { readonly nome?: string; readonly logoUrl?: string | null };
 }

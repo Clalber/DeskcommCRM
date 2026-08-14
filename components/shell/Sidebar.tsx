@@ -44,9 +44,22 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
    *
    * `branding()` continua embaixo, e continua lendo o ambiente injetado em
    * runtime (`window.__PUBLIC_ENV__`): a organização que não definiu nome vê
-   * exatamente o que via antes.
+   * exatamente o que via antes. O que mudou nesta onda é o que ENTRA naquele
+   * ambiente — `app/layout.tsx` passa a injetar a marca da instalação já
+   * resolvida (banco acima do `.env`), então o nome e o logo gravados pela tela
+   * chegam até aqui em vez de morrer na tabela.
    */
   const nome = activeOrg?.marca?.nome ?? brand.name;
+  /**
+   * O mesmo desenho para o LOGO — e é este par de linhas que fecha o caminho do
+   * `logo_url` gravado até a tela.
+   *
+   * `||` e não `??`: vazio é AUSÊNCIA de logo, não "logo em branco". É a regra
+   * que `resolveBranding` e `primeiroDefinido` já aplicam nas camadas de baixo, e
+   * com `??` um `""` vindo de cima apagaria o logo do revendedor em vez de
+   * descer para ele — que é o contrário do que a precedência por campo promete.
+   */
+  const logo = activeOrg?.marca?.logoUrl || brand.logoUrl;
 
   return (
     <aside
@@ -56,16 +69,16 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
       )}
     >
       <div className={cn("flex items-center border-b px-4 h-14", collapsed ? "justify-center" : "justify-start")}>
-        {brand.logoUrl && !collapsed ? (
-          // <img> em vez de next/image de propósito: a URL vem do .env de quem hospeda,
-          // e next/image exige allowlist de domínios fechada em build — a imagem
-          // pré-buildada rejeitaria o domínio do self-hoster. Altura fixa e largura
-          // livre porque a arte enviada tem proporção desconhecida; forçar as duas
-          // distorceria o logo de quem configurou.
+        {logo && !collapsed ? (
+          // <img> em vez de next/image de propósito: a URL vem de quem hospeda
+          // (banco ou .env), e next/image exige allowlist de domínios fechada em
+          // build — a imagem pré-buildada rejeitaria o domínio do self-hoster.
+          // Altura fixa e largura livre porque a arte enviada tem proporção
+          // desconhecida; forçar as duas distorceria o logo de quem configurou.
           // eslint-disable-next-line @next/next/no-img-element
           <img
-            src={brand.logoUrl}
-            alt={brand.name}
+            src={logo}
+            alt={nome}
             className="h-7 w-auto max-w-[10rem] object-contain"
           />
         ) : (
