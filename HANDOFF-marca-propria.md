@@ -1306,3 +1306,32 @@ variável (com o arquivo: 1 falha; sem: 11 passam).
 O erro aqui não foi errar o palpite — foi **publicar o palpite com a forma de
 medição**. A frase dizia "de verdade", que é afirmação sobre o conteúdo de um
 arquivo que eu não tinha aberto. Bastava um `cmp`.
+
+### ⚠️ O e2e NÃO prova o conserto do #418 — e quase creditei a ele
+
+Contagem de `Minified React error` nos logs dos três ciclos:
+
+| ciclo | `marca-logo` está | conserto do `branding()` | ocorrências |
+|---|---|---|---|
+| 1 | no TOPO da parte 2 | não | **14** |
+| 3 | no FIM da parte 2 | **não** | **0** |
+| 4 | no FIM da parte 2 | sim | **0** |
+
+O erro desapareceu no ciclo **3**, um ciclo ANTES do conserto existir. Quem o
+eliminou foi a **reordenação**: com a spec por último, nenhuma tela roda com logo
+de instalação gravado, e sem logo no banco as duas pontas leem a mesma coisa —
+o mismatch não tem como acontecer.
+
+Se eu tivesse olhado só o ciclo 4, a leitura natural seria "consertei e o CI
+confirma". Estaria errado. O verde de hoje vem da ordem das specs, não da
+correção — e a ordem é proteção frágil: basta a spec falhar no meio de novo para
+o logo ficar gravado.
+
+**O que sustenta o conserto, então:** a sabotagem (voltar a `branding()` deixa 8
+asserções vermelhas), a igualdade SSR-vs-cliente do HTML renderizado, e o
+`next build`. É prova de MECANISMO. Prova de comportamento — "as 7 telas não
+acusam mais #418 com logo gravado" — **não existe**, e só existirá quando alguma
+spec exercitar tela de `/app` com logo de instalação no banco.
+
+Isso é dívida declarada, não pendência esquecida: o caso que faltaria é
+"navegar em `/app/ai/*` depois de subir logo da instalação e conferir o console".
