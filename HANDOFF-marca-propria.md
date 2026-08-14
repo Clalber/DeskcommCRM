@@ -1235,3 +1235,39 @@ real — por outro caminho, e pior.
 `settings.llm.monthly_budget_cents`, que **não tem UI**; a tela mostra
 `ai_budgets.monthly_limit_cents`, que ninguém aplica. A tela de orçamento do
 tenant é decorativa — o usuário mexe e o código ignora.
+
+### Duas pendências fecharam com prova (2º ciclo do CI, `e3f8d12a`)
+
+| Pendência | Antes | Agora |
+|---|---|---|
+| `tests/invariants/marca-logo.test.ts` | escrito, **nunca executado** | **executado e verde**, 22 casos |
+| baseline `install`/`update` com a **0158** | não provado | **provado** — o job aplica com `ON_ERROR_STOP=1` e reaplica |
+
+`Test Files 104 passed (104)`, e os três arquivos de marca aparecem na lista
+executada. Confirmei o arquivo por nome, não só o total do job: "o job passou"
+não prova que o meu teste rodou.
+
+O ciclo anterior tinha dado o defeito e este confirma o conserto — o CI serviu
+como o banco de provas que a máquina não podia ser.
+
+### O #418 é regressão DESTA branch, e não está em produção
+
+Vale a distinção, porque "hydration mismatch na marca" soa como algo que já
+estaria na mão dos clientes:
+
+| | `PublicEnvScript` injeta | servidor lê | resultado |
+|---|---|---|---|
+| `main` | `env.APP_NAME` / `env.APP_LOGO_URL` | `process.env` | **mesma fonte** — concordam |
+| esta branch | marca **resolvida** (banco acima do `.env`) | `process.env` | **divergem → #418** |
+
+A `main` tem a MESMA assimetria em `branding()` — servidor lê `process.env`,
+cliente lê `window.__PUBLIC_ENV__` — e mesmo assim não quebra, porque lá as duas
+pontas leem o `.env`. A divergência nasceu quando a onda 2 fez o cliente ver o
+banco: **consertou metade da fronteira**. Meia travessia é pior que nenhuma —
+sem a onda 2 o logo do banco não aparecia; com ela, aparece e quebra a
+hidratação de toda tela de `/app`.
+
+Duas hipóteses caíram por medição antes desta, e não vale reabri-las:
+`collapsed` vem de cookie lido no servidor (`app/app/layout.tsx:122`), igual dos
+dois lados; e `activeOrg` chega como **prop do servidor**
+(`hooks/auth/AuthProvider.tsx:25-32`), sem fetch no cliente.
