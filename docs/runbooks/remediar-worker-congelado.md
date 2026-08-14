@@ -193,9 +193,22 @@ mesma versão. Medido: `APP_IMAGE`, `WORKER_IMAGE` e `SCHEDULER_IMAGE` em `1.3.0
 1. **Rode `update.sh` duas vezes** numa instalação legada — sempre. Com release publicada, a
    primeira traz o worker e a segunda o pina; sem release, a primeira não traz nada e a
    segunda faz as duas coisas.
-2. **Confira com o `diagnostico.sh` entre uma e outra.** Ele responde a primeira pergunta
+2. **Desde a 1.3.0, o agente completa parte disso sozinho — em até 5 minutos.** O
+   `agent.sh` (cron do host) é o único que roda depois da 1ª execução já com o kit novo em
+   disco, e ele preenche a chave que faltou usando **a versão que o contêiner já está
+   rodando** — congelamento puro, nada muda de comportamento agora.
+
+   **O que ele nunca faz:** sobrescrever valor que já existe no `.env`. Chave ausente é
+   omissão do script antigo; chave presente é decisão de quem opera, inclusive a de seguir
+   um canal móvel de propósito. Ensaiado com cron real numa VPS: um `.env` com `:stable`
+   escrito à mão sai intacto do ciclo.
+
+   Isso **não dispensa a segunda execução** — o agente congela o que está rodando; a
+   segunda execução alinha as três imagens na versão da release.
+
+3. **Confira com o `diagnostico.sh` entre uma e outra.** Ele responde a primeira pergunta
    ("o worker é publicado?") e, quando o `.env` não fixa a versão, diz isso na saída.
-3. **A release precisa existir antes de o parque atualizar.** É a diferença entre os dois
+4. **A release precisa existir antes de o parque atualizar.** É a diferença entre os dois
    ensaios acima, e é o motivo de a ordem do [runbook de ativação](ativar-packaging.md)
    ser precondição, não burocracia.
 
