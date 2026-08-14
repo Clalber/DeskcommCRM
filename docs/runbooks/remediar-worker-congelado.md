@@ -405,9 +405,38 @@ em uso:            devlikeapro/waha          ← sem tag
 agora do lado de quem já instalou. Consequência: a cada `dc pull` a instalação recebe qualquer
 versão que o upstream tiver publicado, sem ninguém ter testado, o que o invariante 4 proíbe.
 
-**Ainda não consertado, de propósito.** Reescrever `WAHA_IMAGE` num `.env` alheio troca a
-versão do WhatsApp de uma instalação em produção, e isso merece decisão e ensaio próprios —
-não um remendo no fim de uma remediação que deu certo.
+**Ainda não consertado — mas a razão que escrevi aqui estava errada, e a medição a derrubou.**
+
+A versão anterior deste parágrafo dizia que reescrever `WAHA_IMAGE` num `.env` alheio *"troca a
+versão do WhatsApp de uma instalação em produção"*. **Não troca.** Medido em 2026-08-14, direto
+no registry:
+
+```
+devlikeapro/waha:latest          → sha256:65e593e30bb702f891550b9da5d65e9e0eff8a926f5451fac6a582db84d3a323
+devlikeapro/waha:latest-2026.7.2 → sha256:65e593e30bb702f891550b9da5d65e9e0eff8a926f5451fac6a582db84d3a323
+```
+
+As duas tags apontam para a **mesma imagem**. Aplicar o pin hoje não muda um byte do que roda —
+e é por isso que o `dc pull` das duas execuções da remediação não trocou nada: o upstream não
+moveu o `latest` desde 2026-07-29. Foi **sorte de calendário, não desenho**. No dia em que o
+devlikeapro publicar, o próximo `update.sh` de qualquer instalação legada troca a versão do
+WhatsApp sem ninguém pedir — porque `dc pull` sem argumento inclui o `waha`.
+
+O custo real de aplicar o pin é outro, e também está medido: mudar a **string** da imagem muda
+o `config-hash` do serviço, então o `up -d` **recria o contêiner** mesmo com digest idêntico.
+
+```console
+$ WAHA_IMAGE=devlikeapro/waha            docker compose -f docker-compose.prod.yml config --hash=waha
+waha dfdaf2554bc01862779862967927d5701fbcdf3642529e9dd46269cd336b1e0d
+$ WAHA_IMAGE=devlikeapro/waha:latest-2026.7.2 docker compose … --hash=waha
+waha d81a5132fc863c838147bbebddc9d7166aac570285ef6197dc35ef8c51cc3349
+```
+
+Um restart do WhatsApp, não uma troca de versão. **NÃO MEDIDO:** se uma sessão pareada volta
+`WORKING` depois desse restart — o volume sobrevive (provado aqui), a sessão não foi exercitada.
+
+Segue não consertado porque a decisão é de quem opera e a janela ainda está aberta; o
+enquadramento e as opções estão na issue do resíduo.
 
 ### O que estes ensaios NÃO cobriram
 
