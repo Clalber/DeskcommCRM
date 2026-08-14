@@ -429,11 +429,39 @@ ask_one() {
 RAM_MINIMA_KB=3500000
 ram_abaixo_do_recomendado() { [ "${1:-0}" -lt "$RAM_MINIMA_KB" ]; }
 
-# Uma linha de .env com o valor entre aspas simples e as aspas do conteúdo
-# escapadas — o que faz senha com espaço, `#` ou `$` sobreviver à releitura.
+# Uma linha de .env com o valor entre aspas DUPLAS e `\`, `"`, `$` e crase
+# escapados — o que faz nome de empresa e senha sobreviverem à releitura.
+#
+# O encoding tem de servir a TRÊS consumidores, cada um com um parser próprio, e
+# nenhum deles é o mesmo shell: o `load_env` do _common.sh (leitura manual, por
+# onde passa todo script do kit), o `env_file: .env` do docker-compose.prod.yml
+# (:34 e :71) e o `source .env && curl …` que o README ensina (:143).
+#
+# Era aspas SIMPLES, com a aspa do conteúdo escrita como `'\''` — shell válido,
+# e só. O parser de dotenv do Compose não é um shell: ele lê aquela barra como
+# começo de nome de variável e recusa o ARQUIVO INTEIRO. Medido no compose
+# v2.38.2 com `APP_NAME=Sant'Ana Odontologia`:
+#
+#   failed to read .env: line 1: unexpected character "\" in variable name
+#   "\''Ana Odontologia'"
+#   config → rc=1 ; ps → rc=1 ; pull → rc=1   (o mesmo .env sem apóstrofo: rc=0)
+#
+# Nomes assim são comuns aqui — "Sant'Ana", "D'Ávila", "Espaço D'Or" —, APP_NAME
+# é a última pergunta da entrevista e não tem validador. O desfecho era o pior
+# tipo de quebra: Supabase provisionado, schema aplicado, admin criado, e TODO
+# comando docker do kit morto, sem nada apontando para o .env.
+#
+# RESIDUAL MEDIDO, e a escolha por trás dele: o Compose desfaz `\"`, `\\` e `\$`
+# dentro das aspas duplas, mas NÃO desfaz a crase escapada — um valor com crase
+# chega ao contêiner com as barras (medido: `Loja \`date\` Ltda`). Escapá-la
+# assim mesmo é deliberado: sem a barra, o `source .env` do README EXECUTA o que
+# estiver entre crases. Caractere feio no contêiner é preço menor que execução
+# de comando na máquina de quem instala. As duas outras pontas (load_env e
+# source) recebem a crase intacta.
+#
 # Fica aqui em cima (e não junto do bloco que escreve o .env) porque o
 # save_partial abaixo grava durante a ENTREVISTA, muito antes daquele bloco.
-envq() { printf "%s='%s'\n" "$1" "$(printf '%s' "${2-}" | sed "s/'/'\\\\''/g")"; }
+envq() { printf '%s="%s"\n' "$1" "$(printf '%s' "${2-}" | sed 's/[\\"$`]/\\&/g')"; }
 
 # Guarda cada resposta no instante em que ela é aceita. Antes, as 12 respostas
 # só viravam arquivo no FIM: quem travasse na connection string — a pergunta
@@ -908,8 +936,11 @@ fi
 # Cada linha: VARIÁVEL|pergunta|padrão|validador|secret|opcional
 # A ordem importa: a URL do projeto vem antes das chaves porque os validadores
 # das chaves batem contra ela (chave de outro projeto é erro comum e mudo).
-# Marca da instalação (APP_NAME) fica por último de propósito: é opcional, e
-# perguntar no meio das credenciais faria parecer obrigatória.
+# O bloco final (APP_NAME, SUPPORT_EMAIL, RESEND_*) fica por último de
+# propósito: é tudo opcional, e perguntar no meio das credenciais faria parecer
+# obrigatório. Todas as quatro aceitam Enter — e, quando vazias, o produto
+# degrada de forma declarada (marca padrão; tela de suspensão sem endereço;
+# convite mostrando o link de aceite na própria tela).
 # ── Qual IA vai atender ─────────────────────────────────────────────────────
 #
 # Antes daqui o instalador só sabia pedir a chave da Anthropic, e quem já tinha
@@ -1041,6 +1072,9 @@ FIELDS=(
   "OWNER_EMAIL|E-mail do primeiro admin (dono)||v_email||"
   "OWNER_PASSWORD|Senha do primeiro admin (mínimo 8 caracteres)||v_password|secret|"
   "APP_NAME|Nome que aparece na interface (Enter para o padrão)|DeskcommCRM|||"
+  "SUPPORT_EMAIL|E-mail de suporte que SEUS clientes veem (Enter pula)||v_email||opcional"
+  "RESEND_API_KEY|Chave da Resend — envia convite e e-mail de LGPD (resend.com/api-keys, Enter pula)|||secret|opcional"
+  "RESEND_FROM_EMAIL|Remetente dos e-mails, de um domínio verificado na Resend (Enter pula)||v_email||opcional"
 )
 
 field_at() { IFS='|' read -r F_VAR F_PROMPT F_DEF F_VAL F_SEC F_OPT <<< "${FIELDS[$1]}"; }
@@ -1190,11 +1224,13 @@ fi
 step "Escrevendo .env"
 umask 077
 
-# Todo valor sai entre aspas simples, com aspa interna escapada. Sem isso, um
+# Todo valor sai pelo `envq` (definido lá em cima, junto do save_partial): entre
+# aspas DUPLAS, com `\`, `"`, `$` e crase escapados. Sem isso, um
 # `APP_NAME=Loja do João` (ou uma senha com # ou $) quebrava tudo que lê este
 # arquivo com `source` — os scripts do kit e a receita do próprio README
-# (`source .env && curl ...`). O Docker Compose remove as aspas ao carregar,
-# então o contêiner recebe exatamente o valor digitado.
+# (`source .env && curl ...`) —, e a versão de aspas simples que veio antes
+# quebrava o terceiro leitor, o `env_file: .env` do Compose, em todo nome com
+# apóstrofo. O porquê de cada caractere escapado está no comentário do envq.
 
 # ── Preserva o que o instalador NÃO conhece ────────────────────────────────
 #
@@ -1328,6 +1364,19 @@ esac
   printf '# imagem pública para trocar o texto por logo na sidebar. Ver lib/branding.ts.\n'
   envq APP_NAME "$APP_NAME"
   envq APP_LOGO_URL "${APP_LOGO_URL:-}"
+  printf '# Endereço de suporte que o CLIENTE FINAL vê (conta suspensa, cobrança).\n'
+  printf '# Vazio = a tela não mostra endereço nenhum.\n'
+  envq SUPPORT_EMAIL "${SUPPORT_EMAIL:-}"
+  # As três acima e as duas abaixo entram aqui pelo MESMO motivo, e não por
+  # simetria: o .env é escrito com truncamento (`} > .env`, no fecho deste
+  # bloco), então chave que este script não grava é APAGADA na execução
+  # seguinte. Quem pôs a chave da Resend à mão a perdia no primeiro update —
+  # num script que o README vende como idempotente.
+  printf '# E-mail transacional. RESEND_FROM_EMAIL tem de ser de um domínio\n'
+  printf '# VERIFICADO na SUA conta Resend. Vazio = e-mail desligado: o convite\n'
+  printf '# mostra o link de aceite na tela e o export de LGPD fica pendente.\n'
+  envq RESEND_API_KEY "${RESEND_API_KEY:-}"
+  envq RESEND_FROM_EMAIL "${RESEND_FROM_EMAIL:-}"
   printf '# Qual provedor você escolheu na instalação. É o que faz a 2ª execução do\n'
   printf '# install.sh já vir com a sua escolha como padrão, em vez de re-adivinhar\n'
   printf '# pelas chaves presentes. A app não lê esta variável.\n'
@@ -1501,6 +1550,20 @@ if [ -f supabase/baseline.sql ]; then
 else
   c_ylw "⚠ supabase/baseline.sql não encontrado — pulei (aplique o schema manualmente)."
 fi
+
+# ── 7.5 E-mails de acesso (criar conta / recuperar senha) ───────────────────
+# O e-mail de confirmação de conta é o PRIMEIRO artefato que qualquer usuário
+# recebe. Sem este passo ele chega no modelo padrão do Supabase — em inglês,
+# "Confirm Your Signup", sem marca nenhuma — numa instalação em que tudo o mais
+# já está com a marca de quem hospeda.
+#
+# Chamado SEMPRE, com ou sem token: sem `SUPABASE_ACCESS_TOKEN` o script imprime
+# o passo manual do painel e sai 0. É informação que vale mais aqui, no fim da
+# instalação, do que num documento que ninguém vai abrir.
+#
+# `|| true` como cinto de segurança: o script já promete nunca sair diferente de
+# 0, e mesmo assim a instalação não pode morrer por causa do e-mail.
+bash "$KIT_DIR/marca-emails.sh" --projeto "$PROJECT_DIR" || true
 
 # ── 8. Bootstrap do 1º dono (cria no Auth + promove via psql) ───────────────
 step "Criando o primeiro admin (${OWNER_EMAIL})"
