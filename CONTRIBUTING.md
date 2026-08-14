@@ -69,7 +69,7 @@ Ao finalizar um epic:
      migration que não chega lá não chega em quem instalou numa VPS. Nenhum job de CI confere isso
    - **Se você tocou `Dockerfile*`, `docker-compose*.yml` ou `hostgator-setup-kit/`:** a mudança
      alcança quem **já** instalou. Lei em [`docs/doctrine/packaging.md`](docs/doctrine/packaging.md).
-     O CI reprova serviço `build:`-only e instalação em tag móvel (imagem quebrada ainda não bloqueia merge);
+     O CI reprova serviço `build:`-only, instalação em tag móvel e imagem quebrada (`imagens-ok`);
      o que fica com você é o resto: variável nova com default que não quebre `.env` antigo, e a
      atualização não pedindo edição manual de arquivo. **Nenhum bump pode exigir que o operador
      da VPS edite alguma coisa na mão** — se exigir, abra issue com plano de migração em vez de PR
