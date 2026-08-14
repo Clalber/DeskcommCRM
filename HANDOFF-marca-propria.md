@@ -727,7 +727,13 @@ para **qualquer outra sessão** no mesmo banco. Limpo (`null`/`null`). Spec temp
 - Logo e `show_powered_by` não têm controle: `Sidebar.tsx:46` lê o logo do `.env`, e
   `show_powered_by` tem **zero** consumidores. Campo que salva valor que ninguém mostra
   seria controle decorativo.
-- `fallback_at` é hoje inalcançável pela UI (o CHECK do banco barra hex corrompido).
+- `fallback_at` é inalcançável **pela UI** — três guardas, não uma: o botão Salvar
+  desabilitado (`app/admin/(protected)/marca/_form.tsx:313`), o `platformBrandingSchema`
+  na Server Action (`lib/schemas/settings.ts:172`) e o CHECK do banco. **Pelo `.env` é
+  alcançável**, e esse é o caminho que existe: `lib/env.ts:201` é
+  `z.string().optional().default("")`, sem formato — `APP_ACCENT_HEX=verde` desce por
+  `camadaDoAmbiente` e acende o alarme com `semente_invalida`. Coberto por
+  `tests/unit/branding-fallback-alcancavel.test.ts`.
 - **Spec e2e da marca é dívida:** a prova foi por spec temporária, removida porque suja
   o banco compartilhado. Uma spec de verdade precisa de `afterAll` restaurando, e de ser
   declarada em `.github/workflows/e2e.yml` (senão reprova o job **`verify`**, não o `e2e`).
@@ -934,9 +940,9 @@ e2e, imagens-ok`.
 | D2 | `white-label.md` em **EN/ES** | Um gate que reprove tradução defasada. Sem ele, três cópias divergem no primeiro conserto seguinte, e guia comercial errado em inglês é pior que ausente |
 | D3 | **Upload de logo** (saiu do épico) e **fonte/tema** por tenant | Logo: bucket + policies + teto de 512 KB + delete-on-replace, com a cota do Supabase do cliente medida. Fonte/tema: exigiria `Font.register` e o arquivo dentro da imagem — o `next/font` resolve em build |
 | ~~D4~~ | ~~As 120 divergências entre `lib/audit/actions.ts` e o painel~~ | **RESOLVIDA** em `33ce8612`: a lista do painel passou a **derivar** do union e `action-codes.ts` foi apagado. Divergir deixou de ser possível, então a catraca que congelava os 120 foi apagada junto — gate que guarda classe inexistente é ruído. O filtro do painel foi de 89 para 209 códigos |
-| D5 | `docs/design-system/screen-flow/03-screen-inventory.md` — seção M diz "15 telas" e tem **17** linhas | Uma passada no inventário inteiro. Corrigir só uma linha deixa dois totais errados |
+| ~~D5~~ | ~~`docs/design-system/screen-flow/03-screen-inventory.md` — seção M diz "15 telas" e tem **17** linhas~~ | **RESOLVIDA** em 2026-08-14, `214f47f0`. A passada no inventário inteiro achou mais do que a dívida dizia: **9 dos 10 totais do doc estavam errados**, não um (C dizia 3/tinha 2; G dizia 10/tinha 11; M dizia 15/tinha 17; abertura "~70", Resumo "~74", P0 "~32", P1 "~30", P2 "~12", realtime "~22" — contra 94 linhas, 41, 46, 6 e 27). `/admin/marca` virou a linha #90 e o total foi a 95. O doc ganhou a seção "Reconciliação com o disco" (42 rotas planejadas e não construídas, 42 páginas construídas fora do plano, 3 que existem sem `page.tsx`), o instrumento `scripts/inventario-de-telas.ts` e o gate `tests/unit/inventario-de-telas.test.ts` |
 | D6 | `marca-emails.sh` não alcança quem instalou colando as 4 credenciais **sem** `SUPABASE_ACCESS_TOKEN` | Uma forma de o operador autorizar a Management API depois da instalação, sem guardar chave mestra no `.env` do cliente |
-| D7 | `fallback_at` é **inalcançável pela UI** — o CHECK do banco barra o hex corrompido antes | Só aparece para quem edita o banco à mão ou vem de clone com valor legado. É o laço de retorno funcionando com gatilho raro, não ausente |
+| ~~D7~~ | ~~`fallback_at` é **inalcançável pela UI** — o CHECK do banco barra o hex corrompido antes~~ ~~Só aparece para quem edita o banco à mão ou vem de clone com valor legado~~ | **NÃO ERA DÍVIDA, E A RAZÃO ESCRITA ESTAVA ERRADA** (medido 2026-08-14, `214f47f0`). As duas saídas que a frase enumerava não existem: *editar o banco à mão* é barrado pelo próprio CHECK que ela cita (a constraint entrou na `create table` da 0155, não depois), e *clone com valor legado* é impossível pelo mesmo motivo — a coluna nunca existiu sem ela. O caminho que **funciona** ficou de fora: o `.env`. `lib/env.ts:201` é `z.string().optional().default("")`, sem formato; `APP_ACCENT_HEX=verde` acende `semente_invalida`. Agora é caso de teste (`tests/unit/branding-fallback-alcancavel.test.ts`, 5 casos), não dívida |
 | D8 | Prova de **instalação fresca ponta a ponta com marca de revendedor** | Mesma lacuna de `vps-fresh-onboarding`: nenhum job prova a jornada de quem compra. É onde eu apostaria o próximo defeito de marca |
 
 ## Próximo passo exato

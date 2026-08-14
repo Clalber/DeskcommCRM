@@ -100,7 +100,7 @@
   "edges": [
     { "id": "e1", "from": "installsh", "to": "env", "label": "grava a marca no .env — e o arquivo é escrito com truncamento: chave que o script não grava some no update seguinte" },
     { "id": "e2", "from": "env", "to": "platformbranding", "label": "sementeDoAmbiente(): a 1ª leitura semeia a tabela e marca seeded_from_env" },
-    { "id": "e3", "from": "env", "to": "resolver", "label": "camadaDoAmbiente() — a camada mais baixa da pilha" },
+    { "id": "e3", "from": "env", "to": "resolver", "label": "camadaDoAmbiente() — a camada mais baixa da pilha, e a ÚNICA porta por onde um hex torto entra: lib/env.ts:201 não valida formato (o formulário e o CHECK barram os outros dois caminhos)" },
     { "id": "e4", "from": "registry", "to": "orgmarca", "label": "a porta declarada; sem entrada aqui, navegacao-completude.test.ts reprova o build" },
     { "id": "e5", "from": "registry", "to": "telatenant", "label": "porta de 1ª classe do grupo Configurações" },
     { "id": "e6", "from": "registry", "to": "interface", "label": "a sidebar inteira é renderizada a partir do registro" },

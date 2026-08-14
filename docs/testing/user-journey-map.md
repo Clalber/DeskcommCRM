@@ -593,7 +593,7 @@ software que ele não contratou. Não há gravidade média nisso.
 | `M4` `[P1]` | **Cadastro de MFA**: o app autenticador registra a marca da instalação | **ENTREGUE, PROVA CONTRA GoTrue REAL NÃO LOCALIZADA.** `app/actions/auth/enrollMfa.ts:59` passa `issuer: marca.nome` — o campo que de fato grava no celular (`friendlyName` **não** entra na URI `otpauth://`, medido contra GoTrue v2.188.1). O plano exigia repetir o rig de enroll real antes de fechar; não achei registro dessa execução. **Vale só para quem enrolar depois: trocar o `issuer` não reescreve fator já cadastrado** |
 | `M5` `[P1]` | **Export de LGPD**: o PDF nomeia o **controlador** (`legal_name`) e o DPO — **nunca** a marca do revendedor | **COBERTO POR TESTE.** O teste isola o rodapé e exige que o texto entre `Controlador:` e `· Relatório LGPD` seja **exatamente** o `legal_name` (a primeira versão só checava `/deskcomm/i` e teria deixado passar a marca de um revendedor). Vigiado também no mapa de arquitetura, que reprova quem ligar o PDF ao resolvedor de marca. **Armadilha viva:** `legal_name` nasce igual ao nome fantasia — o caso ruim é o valor plausível e errado, e quem resolve é a tela `/app/settings/tenant` |
 | `M6` `[P1]` | **Marca por organização**: a cor da org pinta `/app` e **não** vaza para o `/login` | **PASS na tela** (2026-08-13), com admin de tenant PURO — a precondição falhou primeiro e era a armadilha prevista (`e2e-admin` **era** `platform_admin`; medi `count=1`, revoguei, reafirmei `count=0`, só então testei). `#b3261e` no claro, `#f16051` no escuro, persistido no reload, e **ausente** em `/login` sem sessão. Evidência: `evidence/org-1-tela.png`, `evidence/org-2-digitado.png`, `evidence/org-3-salvo.png`, `evidence/org-4-recarregado.png`, `evidence/org-5-login.png` |
-| `M7` `[P2]` | Cor inválida: cai para o padrão, o estado fica gravado e a tela **mostra** por quê | **PASS na tela** para a recusa (hex inválido → **Salvar desabilitado**, evidência `evidence/marca-3-invalido.png`). `fallback_at`/`fallback_reason` são gravados por `registrarEstadoDaMarca()` e lidos por `/admin/marca`. **Dívida conhecida:** pela UI o caminho é inalcançável — o CHECK do banco barra o hex corrompido antes —, então o estado do degrade só aparece para quem editar o banco à mão ou vier de um clone com valor legado |
+| `M7` `[P2]` | Cor inválida: cai para o padrão, o estado fica gravado e a tela **mostra** por quê | **PASS na tela** para a recusa (hex inválido → **Salvar desabilitado**, evidência `evidence/marca-3-invalido.png`). `fallback_at`/`fallback_reason` são gravados por `registrarEstadoDaMarca()` e lidos por `/admin/marca`. **Corrigido em 2026-08-14 (`214f47f0`) o que esta célula dizia:** ela afirmava que o estado "só aparece para quem editar o banco à mão ou vier de um clone com valor legado" — e nenhuma das duas é possível, porque o CHECK `^#[0-9a-f]{6}$` entrou na `create table` da migration 0155 e a coluna nunca existiu sem ele. O caminho que **existe** é o `.env`: `lib/env.ts:201` não valida formato (`z.string().optional().default("")`, e o docblock explica por quê), então `APP_ACCENT_HEX=verde` acende `semente_invalida`. Coberto por `tests/unit/branding-fallback-alcancavel.test.ts`. **NÃO medido pela tela:** forçar esse caminho no browser exigiria subir a stack com `.env` hostil — o teste roda o código real de resolução, não o render |
 | `M8` `[P0]` | O revendedor **descobre** que dá para trocar a marca | **PASS estrutural.** `/app/settings/marca` está declarada em `lib/navigation/registry.ts` (grupo Configurações, `sidebar:false` — tarefa de uma vez, o hub e o ⌘K garantem a descoberta), e `tests/unit/navegacao-completude.test.ts` reprova tela sem porta. `/admin/marca` é de platform admin e fica fora dessa varredura por construção |
 
 **O que esta jornada ainda NÃO cobre, e é onde eu apostaria o próximo defeito:** a instalação
@@ -602,4 +602,57 @@ fresca ponta a ponta com a marca de um revendedor — `install.sh` numa VPS, res
 ícone, e-mail de acesso, convite, endereço de suporte). É a mesma lacuna de
 `vps-fresh-onboarding`: os testes provam que cada peça faz o que diz, não que a jornada de
 quem compra funciona inteira. Os defeitos de marca que mais custam caro moram exatamente aí,
-porque são vistos primeiro por um terceiro.
+porque são vistos primeiro por um terceiro. **A receita para fechá-la está em J10, abaixo.**
+
+## J10 — Instalação fresca com a marca do revendedor `[P0]` (receita manual)
+
+**Por que isto é receita escrita e não spec.** O lugar natural desses casos seria
+`tests/e2e/vps-fresh-onboarding.spec.ts`, e ela é a **única** spec do repo fora do CI —
+`.github/workflows/e2e.yml`, bloco `FORA_DO_CI`. Nenhum job a invoca. Acrescentar dois
+`expect()` ali produziria asserção que nunca executa, com a aparência de cobertura: pior que
+a ausência, porque a ausência pelo menos se vê. Enquanto a spec não tiver quem a rode, o
+artefato honesto é o procedimento — com os comandos exatos, para que a execução seja
+repetível por outra pessoa e o resultado seja comparável.
+
+**Estado:** `NÃO EXECUTADA`. Quem executar, troque por `PASS`/`FAIL` com data, SHA e as
+evidências, e mova os achados para a tabela de defeitos.
+
+**Pré-condição:** VPS limpa com acesso SSH, um domínio apontado para ela, um projeto
+Supabase novo (ou `SUPABASE_ACCESS_TOKEN` exportado, para o `install.sh` criar), e uma chave
+da Anthropic. **Deliberadamente SEM `RESEND_API_KEY`** — é o estado do primeiro deploy, e é
+onde moram os piores defeitos de primeira impressão (`lib/email/resend.ts:94-108` devolve
+`{ok:false,"not_configured"}` **em silêncio**).
+
+```bash
+# 1. Na VPS, com o kit na pasta corrente
+bash install.sh
+#    Responda com uma marca que NÃO seja a nossa — é o ponto do teste:
+#      APP_NAME        → Vendas Turbo
+#      SUPPORT_EMAIL   → suporte@vendasturbo.exemplo
+#      RESEND_API_KEY  → (Enter, pule)
+#    ⚠️ O instalador NÃO pergunta a cor: `grep -c APP_ACCENT_HEX install.sh` → 0
+#       (medido 2026-08-14, `214f47f0`). A cor entra no passo 3, pela tela.
+
+# 2. Confira que o domínio responde 307 (redirect para o login), não 404
+curl -s -o /dev/null -w '%{http_code}\n' https://<DOMAIN>/
+
+# 3. Logue como o admin criado pelo install, abra /admin/marca e grave a cor
+#    (`#f2c94c` serve). Depois SAIA da sessão.
+```
+
+| # | Caso | O que conferir | Como |
+|---|---|---|---|
+| `J10.1` | **Aba** — quem abre o domínio vê o nome do revendedor | O `<title>` contém `Vendas Turbo` e **não** contém `Deskcomm` | `curl -s https://<DOMAIN>/login \| grep -o '<title>[^<]*</title>'` |
+| `J10.2` | **Ícone** — o favicon carrega **deslogado**, na cor do revendedor | `/icon` responde 200 e o SVG tem o accent DERIVADO (não a semente crua) | `curl -s -o /dev/null -w '%{http_code}\n' https://<DOMAIN>/icon` e abrir a aba no browser |
+| `J10.3` | **E-mail de acesso** — o "confirme sua conta" do GoTrue chega com a marca | Rodar `bash marca-emails.sh` e conferir na caixa real. **Sem `SUPABASE_ACCESS_TOKEN`, o script imprime o passo manual e a instalação segue** — esse ramo também é PASS, e é o caminho da maioria | caixa de entrada de verdade, não log |
+| `J10.4` | **Convite** — sem `RESEND_API_KEY`, a tela mostra o `accept_url` em vez de falhar calada | `/app/team/invite` → convidar → a tela exibe o link | pela tela |
+| `J10.5` | **Endereço de suporte** — o cliente do revendedor nunca vê o nosso | `SUPPORT_EMAIL` (resolvido em `lib/branding/saida.ts:238`) aparece em `/app/settings/billing` e em `/account-suspended`; sem ele, o parágrafo some em vez de mostrar um endereço nosso | pela tela, nas duas rotas |
+
+**Armadilha conhecida (mede-se antes de concluir):** o bloco que escreve o `.env` é
+truncante (`} > .env`) e reescreve o arquivo a partir de uma **lista fechada de `envq`**.
+Chave que o kit não conhece é preservada no fim do arquivo (`PRESERVADAS`, `install.sh:1251`);
+chave que a entrevista **pergunta e a lista de `envq` não tem** é respondida e perdida, sem
+erro. É por isso que perguntar sem gravar é pior que não perguntar. Antes de dar `FAIL` em
+qualquer caso acima, rode `source .env && echo "$APP_NAME|$SUPPORT_EMAIL"` e confirme que o
+que você digitou está no arquivo — sintoma de marca ausente costuma ser isto, não o
+resolvedor.
