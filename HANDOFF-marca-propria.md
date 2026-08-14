@@ -1011,125 +1011,52 @@ pendente estão marcadas como tal**, e prova pendente por infra **não é** prov
 
 ---
 
-## Próximo passo exato
+## Balanço da continuação (2026-08-14)
 
-Ondas de `scratchpad/ondas.md`, em ordem. Prova em tela retoma quando o Docker voltar.
+| Onda | Entrega | Estado |
+|---|---|---|
+| 0 | Alocação de migrations + números podres | ✅ `f424cf9b` |
+| 1 | Identidade do e2e (usuário dedicado, precondição, gate) | ✅ `1860a747` + `66924aad` |
+| 2 | O logo do banco chega à tela | ✅ `7934e0d4` |
+| 3 | `install.sh` pergunta e grava a cor | ✅ `25910ac6` |
+| 5 | A lista de audit do painel **deriva** do union | ✅ `33ce8612` + `a685f721` |
+| 6 | Upload de logo | ✅ `fea8483d` — **`test:db` pendente** |
+| 9 | Inventário de telas + `fallback_at` alcançável | ✅ `c8fc877d` |
+| 10 | `white-label` em EN/ES com selo | ✅ `590ed059` |
+| **4** | **Specs e2e da marca** | ⛔ **não feita** — ver abaixo |
+| **7** | **Alarme de orçamento de IA** | ⛔ **não feita** — ver abaixo |
+| **8** | **Selo dos e-mails de acesso** (migration 0159) | ⛔ **não feita** — ver abaixo |
+
+### Por que as três não foram feitas — e não é falta de tempo
+
+**O daemon do Docker está fora do ar** desde que o disco encheu (`docker info`
+pendurou >10 min sem devolver byte). Isso derruba `test:db`, `e2e` e prova em tela.
+
+- **Onda 4 (specs e2e):** escrever spec que **nunca roda** é produzir `expect()` que
+  não executa — é exatamente o que o plano cortou no caso de `vps-fresh-onboarding`.
+  Escrevê-las agora só para "entregar" seria encenação.
+- **Onda 7 (alarme de orçamento):** é o **RISCO MAIOR** do plano inteiro, e por um
+  motivo só: ela **liga** algo hoje morto cujo efeito é **negar serviço**. Numa
+  instalação em que alguém preencheu `monthly_limit_cents` há meses — com o contador
+  travado em 0 — o primeiro tick **estrangula a IA da organização**, e o cliente
+  descobre por um agente que parou de responder no WhatsApp. Construir isso **sem
+  poder provar no banco** seria imprudência, não velocidade.
+- **Onda 8 (selo dos e-mails):** traz a migration **0159**, e migration sem `test:db`
+  não se merjeia — é o gate que exercita o `baseline.sql` que o self-hoster aplica.
+
+### O que fica pendente de prova, nominalmente
+
+- `tests/invariants/marca-logo.test.ts` — **escrito e nunca executado**.
+- `install`/`update` do baseline **com a 0158** — não provados.
+- Prova em tela das ondas 2 e 6 (logo na sidebar, no `/login` deslogado, e a troca
+  entre camadas) — roteiro pronto no relatório da onda 6.
+
+**Nada disso é afirmado como feito em commit nenhum.** Prova pendente por infra não
+é prova feita.
 
 ---
 
-## Onda 6 — o logo vira ARQUIVO (migration **0158**), 2026-08-14
+## Próximo passo exato
 
-Working tree, **não commitada** (por instrução). Base ao começar: `590ed059`; durante a
-execução outra sessão commitou `a685f721` nesta mesma branch e os arquivos desta onda
-passaram a repousar sobre ele. Os gates foram medidos contra os DOIS pontos, e o par bate:
-`test:unit` de base é **395 arquivos / 4481 testes** em `590ed059` e o MESMO em `a685f721`
-(o commit alheio acrescentou uma guarda de tipo em tempo de compilação, sem `it` novo).
-
-### O que entrou
-
-| Artefato | O que faz |
-|---|---|
-| `supabase/migrations/20260814140000_0158_logo_no_storage.sql` | bucket `brand-logos` + `platform_branding.logo_path` + `fn_definir_logo_da_organizacao` + **forward-fix da 0157** |
-| `supabase/baseline.sql` | **DOIS** blocos de apêndice (ver abaixo — a razão não é estilo) |
-| `supabase/migrations/MANIFEST.md` | a linha da 0158 |
-| `lib/branding/logo.ts` | bucket, teto, prefixos, `urlPublicaDoLogo` (derivada), `caminhoBateComPrefixo`, `logoDaCamada` |
-| `lib/branding/logo-arquivo.ts` | `farejarTipo` (bytes), `pareceSvg`, `extensaoDe`, `podeApagar` |
-| `app/api/v1/marca/logo/route.ts` | POST/DELETE, uma rota para as duas camadas, gate por escopo |
-| `components/branding/CampoDeLogo.tsx` | campo + prévia sobre as DUAS superfícies |
-| `app/admin/(protected)/marca/{page,_form}.tsx`, `app/app/settings/marca/{page,_form}.tsx` | as duas telas |
-| `lib/branding/{resolve,organizacao,instalacao}.ts` | `logo_path` na pilha; **o produtor de `origens.logoUrl === "organizacao"`** |
-| `lib/api/errors.ts` | `logo_svg_recusado`, `unsupported_media_type`, `payload_too_large` |
-| `tests/unit/branding-logo-arquivo.test.ts` (19 casos) · `tests/invariants/marca-logo.test.ts` · `tests/e2e/marca-logo.spec.ts` + linha no `e2e.yml` | as três camadas de prova |
-| `docs/threat-model.md`, `docs/architecture/marca-propria.architecture.json`, `docs/testing/user-journey-map.md` (caso `M9`) | o registro |
-
-### O achado que o plano não tinha: o apêndice da 0158 vai em DOIS blocos
-
-O plano mandava um bloco só, **antes** da linha da varredura `anon`. Medido, isso não
-compila: `platform_branding` é criada no bloco da 0155, que é o **último** do arquivo — ou
-seja, **depois** da varredura. Um bloco único quebra de um dos dois lados:
-
-- **antes da varredura** → `alter table public.platform_branding` roda sobre tabela
-  inexistente e o `install.sh` (`ON_ERROR_STOP=1`) aborta a instalação inteira;
-- **depois da varredura** → as duas funções nascem com `EXECUTE` para `anon` em todo clone
-  que ATUALIZA, que é exatamente o buraco que a varredura fecha.
-
-Solução: **funções antes** (`-- ---- logo da marca: as FUNÇÕES (migration 0158) ----`, hoje
-na linha 11658), **bucket e coluna no fim** (`-- ---- logo da marca: BUCKET e COLUNA ----`,
-hoje na 12095). O segundo bloco não tem `create function` nem `grant … to … anon`, então o
-guarda passa. Confirmado por `grep -n "^-- ---- logo da marca\|^-- ---- VARREDURA anon"`.
-
-### Dívida DECLARADA — o cron de órfãos ficou de fora, com o número
-
-**Não há varredor de logos órfãos.** Um logo tem **≤512 KB** e muda raramente; a cota do
-Supabase do cliente é de **1 GB** (plano gratuito, compartilhada com `whatsapp-media`, que
-também não tem poda). Encher essa cota só com órfãos de logo exige **~2000 uploads que
-falharam entre o upload e a gravação do ponteiro** — a única janela em que o arquivo fica sem
-dono, porque a ordem é *sobe → grava → só então apaga o anterior*. Some-se: **apagar uma
-organização não cascateia no storage**, então o logo dela sobrevive à exclusão. Entregar
-upload sem varredor é aceitável; entregar upload sem render (Onda 2) não seria.
-
-### O outro corte, com a razão medida
-
-**Não há decodificador de PNG nem analisador de luminância** (`logo-luz.ts`, coluna
-`logo_aviso`, campo `aviso` no wire). Seriam ~200 linhas lendo bytes controlados por quem
-sobe, mais guarda de bomba de descompressão, para escrever em português o mesmo fato que a
-**prévia sobre as duas superfícies** já mostra — a imagem real, no navegador, com precisão
-total e zero parser. O analisador seria ainda cego para PNG entrelaçado e para JPEG, e nunca
-bloquearia. **Ficou** `farejarTipo`/`pareceSvg`: isso é *segurança* (decide aceitar ou
-recusar) e é o furo real de `app/api/v1/channels/partner/templates/media/route.ts:62-63`,
-que decide o tipo por `file.type`.
-
-### Gates — a saída real
-
-| Gate | Base | Com esta onda |
-|---|---|---|
-| `pnpm typecheck` | 0 erros | **0 erros** |
-| `pnpm lint` | 0 erros / 243 avisos | **0 erros / 243 avisos** (mesmo número) |
-| `pnpm lint:channels` | ok, 61 de dívida | **ok, 61 de dívida** |
-| `pnpm test:unit` (`.env.local` fora do disco) | 395 arquivos / 4481 testes, EXIT=0 | **396 / 4501, EXIT=0** |
-| `pnpm test:shell` | 272 ✓ / 0 ✗ | **272 ✓ / 0 ✗**, EXIT=0 |
-| `pnpm build` | — | **EXIT=0**, com `ƒ /api/v1/marca/logo` no manifesto de rotas |
-| `pnpm test:db` | — | **NÃO RODOU** — ver abaixo |
-
-O **+20 testes** está inteiramente prestado de contas, e não pega carona: 19 vêm de
-`tests/unit/branding-logo-arquivo.test.ts` e **1** vem de
-`tests/unit/seed-nao-le-env-local-do-disco.test.ts`, que enumera os arquivos de spec e ganhou
-um caso ao ver `tests/e2e/marca-logo.spec.ts` (medido isolando o arquivo: 221 → 222).
-
-### Sabotagem — previsto ANTES, medido depois
-
-| Sabotagem | Previsto | Medido |
-|---|---|---|
-| `caminhoBateComPrefixo` ignora o prefixo (só confere a forma do nome) — o esquecimento natural | 3 | **3** (recusa de outro escopo · travessia · nome fora da forma) |
-| `farejarTipo` devolve `image/png` para qualquer arquivo não-vazio — "confia no que chegou" | 4 | **4** (reconhece · recusa · renomeado · SVG longo) |
-| `TAMANHO_MAXIMO_DO_LOGO` vira 5 MB (o número copiado da rota de mídia de templates) | 1 | **1** (o teto contra o `file_size_limit` do bucket) |
-
-Nenhuma reprovou menos que o previsto. Todas foram feitas no worktree isolado, sobre cópias,
-e desfeitas com `diff -q` contra o original conferindo a restauração.
-
-### O que NÃO foi medido, e por quê
-
-- **`pnpm test:db` não rodou.** O daemon do Docker está fora do ar nesta janela: `docker info`
-  pendura por mais de 60s sem devolver nada (arquivo de saída com 0 byte). Sem ele não há
-  Postgres descartável, não há Supabase local e não há Playwright. `tests/invariants/marca-logo.test.ts`
-  está **escrito e nunca executado**; o `install`/`update` do baseline com a 0158 também não.
-- **Prova de tela: nenhuma.** `tests/e2e/marca-logo.spec.ts` está escrita e inscrita no
-  workflow, e nunca rodou. Prova pendente por infra não é prova feita.
-- **Sem cobertura de teste, declarado:** o `router.refresh()` do `CampoDeLogo`, o 413 e o 429
-  da rota (só a e2e os alcançaria), e o caminho em que o upload sobe mas a gravação falha
-  (o `void remove()` de limpeza é *best effort* e não tem asserção).
-
-### Aviso operacional: este worktree tem OUTRA sessão escrevendo
-
-Durante esta onda, `git status` acusou `app/layout.tsx`, `lib/audit/actions.ts`,
-`tests/unit/audit-lista-do-painel-e-derivada.test.tsx` e `tests/unit/inventario-de-telas.test.ts`
-modificados **por outra sessão** (mtimes de 14:40–14:41, enquanto eu editava
-`lib/branding/`). Não toquei em nenhum deles. Como a edição alheia estava a meio caminho e
-deixava o `typecheck` vermelho (`AuditAction` usado sem import, em
-`audit-lista-do-painel-e-derivada.test.tsx:74`), **todos os números de gate desta onda foram
-medidos num worktree isolado** — criado de `590ed059`, depois movido para `a685f721`, com
-APENAS os arquivos desta onda copiados. Antes de removê-lo eu conferi que os 26 arquivos
-medidos são **byte-idênticos** aos entregues aqui (`diff -q` arquivo a arquivo) e que os
-dois conjuntos de nomes são o mesmo. O worktree foi apagado no fim (`git worktree prune`),
-porque carregava 1,1 GB de `node_modules` num disco que já encheu uma vez nesta sessão.
-Quem for commitar aqui: **liste os arquivos**, não use `git add -A`.
+Com o Docker de volta: `pnpm test:db`, a prova em tela das ondas 2 e 6, e então as
+ondas 4, 7 e 8 — nessa ordem, a 7 com checkpoint próprio pelo risco declarado.
