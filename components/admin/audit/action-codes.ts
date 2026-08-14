@@ -105,4 +105,5 @@ export const ACTION_CODES: string[] = [
   // registrada no handoff desta frente para virar item próprio (o conserto certo
   // é derivar esta lista do union, não copiá-la melhor).
   "platform_branding.updated",
+  "org.branding_updated",
 ];
