@@ -386,7 +386,10 @@ test.describe("ciclo de vida do convite (ponta a ponta + adversarial)", () => {
     });
 
     await page.goto(`/signup?invite=${encodeURIComponent(expirado)}`);
-    await expect(page.getByRole("alert")).toContainText(/expirou|não é mais válido/i);
+    // `.first()`: o Next monta um `<div role="alert" id="__next-route-announcer__">`
+    // vazio em toda navegação de cliente, então `getByRole("alert")` sozinho casa
+    // DOIS elementos e o strict mode reprova — sobre uma tela que está correta.
+    await expect(page.getByRole("alert").first()).toContainText(/expirou|não é mais válido/i);
     // E cai no signup COMUM só depois do aviso — nunca em silêncio.
     await expect(page.getByLabel("Nome da empresa")).toBeVisible();
   });
