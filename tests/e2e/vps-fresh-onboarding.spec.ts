@@ -289,15 +289,27 @@ test.describe("J1 — onboarding do dono numa instalação fresca", () => {
     expect(org.onboarded_at).not.toBeNull();
   });
 
-  test("J1.10 gate MFA: enrola TOTP e VÊ os códigos de recuperação (regressão do bug do gate)", async ({ page }) => {
+  test("J1.10 verificação em duas etapas: ativa pela tela e VÊ os códigos de recuperação", async ({ page }) => {
     await login(page);
     await page.waitForURL(/\/app\//, { timeout: 30_000 });
 
-    // blocker não-dismissível
+    // ⚠️ ESTE CASO MUDOU DE PORTA, e a mudança é o ponto. Ele testava o
+    // BLOQUEADOR não-dismissível que aparecia sozinho para todo admin — e era
+    // exatamente o que fazia a instalação fresca receber um sétimo passo logo
+    // depois do wizard, sem aviso. A verificação virou opcional; o cadastro
+    // agora começa em Configurações › Segurança, por escolha de quem entra.
+    //
+    // O que este caso continua guardando é o que importava nele: o fluxo de
+    // enroll leva até os CÓDIGOS DE RECUPERAÇÃO (a regressão que o nome antigo
+    // citava). Perder isso seria trocar uma tela por nenhuma.
+    await page.goto("/app/settings/security");
+    await expect(page.getByText("Desativada")).toBeVisible({ timeout: 20_000 });
+    await page.getByRole("button", { name: /^ativar$/i }).click();
+
     await expect(
       page.getByRole("heading", { name: /verificação em duas etapas/i }),
     ).toBeVisible({ timeout: 20_000 });
-    await snap(page, "j1.10-mfa-gate");
+    await snap(page, "j1.10-mfa-ativar");
 
     await page.getByRole("button", { name: /iniciar configuração/i }).click();
     await expect(

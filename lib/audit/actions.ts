@@ -59,6 +59,14 @@ export type AuditAction =
   | "onboarding.agente_teste_pulado"
   | "onboarding.team_invited"
   | "onboarding.completed"
+  /**
+   * A verificação em duas etapas deixou de ser obrigatória por papel e passou a
+   * ser escolha de quem administra. Escolha de segurança se registra: quem
+   * auditar depois precisa saber quem afrouxou, quando, e em qual empresa.
+   */
+  | "security.mfa_exigida"
+  | "security.mfa_dispensada"
+  | "security.mfa_desativada"
   | "tenant.onboarded"
   | "conversation.created"
   | "conversation.claimed"
