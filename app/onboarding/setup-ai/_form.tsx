@@ -229,6 +229,25 @@ export function SetupAiForm({ capacidades, conferencias }: Props) {
             instalação. Cole a chave no campo acima («o cérebro dele») e crie o atendente de
             novo — ou cadastre em <strong>IA › Credenciais</strong>.
           </p>
+          {/*
+            ⚠️ SEM ESTA SAÍDA O PASSO É UM BECO. O aviso irmão (o de modelo) já
+            oferecia seguir, e este nasceu sem — quem instala sem chave nenhuma
+            (o caminho que o CI exercita) ficava preso na tela de treinar, com um
+            diagnóstico correto e nenhum botão. O atendente EXISTE como rascunho;
+            o que falta é o cérebro, e isso se resolve depois sem travar o resto
+            do wizard.
+          */}
+          <div className="flex justify-end">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                window.location.href = "/onboarding";
+              }}
+            >
+              Continuar sem publicar
+            </Button>
+          </div>
         </div>
       )}
 

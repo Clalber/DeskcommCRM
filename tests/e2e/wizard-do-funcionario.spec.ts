@@ -193,9 +193,35 @@ test.describe("o wizard monta um funcionário", () => {
     await page.locator("#regras_da_casa").fill("Horário: 8h às 18h. Nunca prometa desconto.");
     await page.getByRole("button", { name: /criar e continuar/i }).click();
 
-    // O passo novo não pode ser pulado no caminho de sucesso — era o que o
-    // destino fixo da action fazia.
-    await page.waitForURL(/\/onboarding\/funil/, { timeout: 30_000 });
+    // ⚠️ DOIS DESFECHOS LEGÍTIMOS, e o teste tem de aceitar os dois — foi aqui
+    // que ele reprovou no CI depois de passar em toda máquina com chave.
+    //
+    // COM chave (a máquina de quem desenvolve, onde `next start` carrega o
+    // `.env.local`): o agente é publicado e o wizard avança para o quadro. O
+    // passo novo não pode ser pulado no caminho de sucesso — era o que o destino
+    // fixo da action fazia, e é o que esta asserção guarda.
+    //
+    // SEM chave (o CI, e toda instalação que ainda não configurou provedor): o
+    // atendente é criado como RASCUNHO e o wizard PARA para dizer isso. Avançar
+    // calado deixaria a pessoa achar que o funcionário está no ar. O que se
+    // cobra aqui é que a tela explique E ofereça saída — sem o botão, o passo
+    // vira um beco, que foi o defeito que esta reprovação revelou.
+    const avancou = await page
+      .waitForURL(/\/onboarding\/funil/, { timeout: 30_000 })
+      .then(() => true)
+      .catch(() => false);
+
+    if (!avancou) {
+      // O que se cobra NÃO é qual causa impediu a publicação — são três (sem
+      // canal, sem modelo no catálogo, sem chave) e a instalação decide qual
+      // aparece. O que vale para todas: o passo não avança calado, diz que o
+      // atendente ficou RASCUNHO, e oferece seguir. Amarrar a asserção a uma
+      // frase de causa faria o teste reprovar quando a instalação tivesse a
+      // outra — sobre uma tela igualmente correta.
+      await expect(page.getByRole("alert").first()).toContainText(/rascunho/i);
+      await page.getByRole("button", { name: /continuar sem publicar/i }).click();
+      await page.waitForURL(/\/onboarding\/funil/, { timeout: 30_000 });
+    }
   });
 
   test("o quadro chega montado, venha da IA ou de um modelo pronto", async ({ page }) => {
@@ -315,20 +341,42 @@ test.describe("o wizard monta um funcionário", () => {
       .eq("organization_id", orgId)
       .limit(1)
       .maybeSingle();
+    // A MEMÓRIA É GRAVADA EM QUALQUER DESFECHO, e é o ponto principal: ela vale
+    // para a organização, não para este agente, então nasce mesmo quando a
+    // publicação não acontece. Se dependesse da chave, quem instalou sem
+    // provedor perderia o que escreveu.
     expect(mem?.content).toContain("Nunca prometa desconto");
 
-    // Elas valem para QUALQUER agente da organização; no prompt deste, a
-    // segunda contratação nasceria sem elas.
+    // O agente EXISTE sempre; o que depende da chave é a VERSÃO publicada.
+    const { data: agente } = await svc
+      .from("ai_agents")
+      .select("kind, system_prompt")
+      .eq("organization_id", orgId)
+      .limit(1)
+      .maybeSingle();
+    expect(agente?.kind, "nasce no formato atual, não no rag_bot legado").toBe("mcp_agent");
+    // As regras não entram no prompt DELE: a segunda contratação nasceria sem elas.
+    expect(agente?.system_prompt).not.toContain("Nunca prometa desconto");
+
     const { data: versao } = await svc
       .from("ai_agent_versions")
       .select("system_prompt, provider, tool_ids, pipeline_ids")
       .eq("organization_id", orgId)
       .limit(1)
       .maybeSingle();
-    expect(versao?.system_prompt).not.toContain("Nunca prometa desconto");
-    // E o funcionário nasce podendo mexer no CRM.
-    expect(versao?.provider).toBe("anthropic");
-    expect((versao?.tool_ids as string[])?.length ?? 0).toBeGreaterThan(0);
+
+    if (!versao) {
+      // Sem chave de IA (o caso do CI e de toda instalação que ainda não
+      // configurou provedor) a versão NÃO é criada de propósito: publicar
+      // apontando para uma chave inexistente entregaria um funcionário "no ar"
+      // que erra em toda mensagem. Ausência aqui é a decisão certa, não falha.
+      return;
+    }
+
+    expect(versao.system_prompt).not.toContain("Nunca prometa desconto");
+    // Publicou: então nasceu podendo mexer no CRM, com o provedor da instalação.
+    expect(versao.provider).toBe("anthropic");
+    expect((versao.tool_ids as string[])?.length ?? 0).toBeGreaterThan(0);
   });
 
   test("o wizard termina apresentando o sistema, e o resumo não acusa passo inexistente", async ({
