@@ -27,20 +27,28 @@
  *
  * O dono do servidor é `e2e-dono@deskcomm.test` (dedicado, `platform_admins`), e
  * o admin de tenant é `e2e-admin@deskcomm.test` — a separação e o porquê estão em
- * `tests/e2e/utils/precondicao.ts`. Os dois têm TOTP: `requiresMfa`
- * (`lib/auth/server.ts`) é verdadeiro para platform admin E para `role === admin`.
+ * `tests/e2e/utils/precondicao.ts`. Os dois entram por `/login/mfa`, e a razão é o
+ * CADASTRO, não o papel: `signInWithPassword.ts:93-97` desvia para o desafio
+ * quando o usuário tem um fator TOTP verificado, e o seed cadastra um para cada um
+ * destes dois (`scripts/seed-e2e-credentials.ts`). Desde a MFA opcional,
+ * `requiresMfa` (`lib/auth/server.ts:176-206`) consulta duas políticas cujo padrão
+ * é NÃO exigir — ela decide quem é obrigado a cadastrar, e não decide nada sobre
+ * quem já cadastrou. Uma versão anterior deste cabeçalho dizia que o gate era
+ * `platform_admin || role === "admin"`; isso descreve a regra que o produto tinha
+ * antes, e quem lesse aqui concluiria que basta despromover para pular o desafio.
  *
- * ⚠️ Esta spec ESCREVE marca. Ela restaura o estado no fim (remove os dois logos)
- * e a restauração é pela ROTA, não por SQL: quem invalida o memo de 30s da marca
- * da instalação é o código do produto (`invalidarMarcaDaInstalacao`), e um
- * `update` direto no banco deixaria a spec seguinte medindo a sobra.
+ * ⚠️ Esta spec ESCREVE marca. A restauração (remover os dois logos) é pela ROTA,
+ * não por SQL: quem invalida o memo de 30s da marca da instalação é o código do
+ * produto (`invalidarMarcaDaInstalacao`), e um `update` direto no banco deixaria a
+ * spec seguinte medindo a sobra. Ela mora num `test.afterAll` — o porquê, medido,
+ * está no comentário do hook lá embaixo.
  */
 import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as zlib from "node:zlib";
 
-import { test, expect, type Page, type Browser } from "@playwright/test";
+import { test, expect, type Page, type Browser, type Locator } from "@playwright/test";
 
 import { generateTotp, msUntilNextTotpWindow } from "./utils/totp";
 
@@ -152,7 +160,9 @@ async function loginComTotp(page: Page, email: string, secret: string): Promise<
   throw new Error(`MFA falhou depois de 2 tentativas para ${email}`);
 }
 
-async function subir(page: Page, escopo: "instalacao" | "organizacao", arquivo: {
+type Escopo = "instalacao" | "organizacao";
+
+async function subir(page: Page, escopo: Escopo, arquivo: {
   nome: string;
   mime: string;
   bytes: Buffer;
@@ -165,31 +175,112 @@ async function subir(page: Page, escopo: "instalacao" | "organizacao", arquivo: 
 }
 
 /**
- * O `src` do logo da barra lateral, MEDIDO por ferramenta, junto da altura.
+ * Remove o logo desta camada SE houver um — a peça da restauração.
  *
- * O par não é zelo: `src` certo com altura 0 é o defeito de uma imagem que o
- * navegador não conseguiu baixar (bucket privado, URL assinada vencida) — e ele
- * é invisível numa asserção que olhe só o atributo.
+ * Tolerante a "não há nada para remover" de propósito: o botão só é renderizado
+ * quando a camada tem logo próprio (`CampoDeLogo.tsx:176`), e o hook precisa poder
+ * rodar tanto depois da spec inteira (onde os casos já removeram) quanto depois de
+ * um estouro no primeiro caso (onde nada chegou a ser subido). Um `click()` cego
+ * nos dois casos esperaria até o timeout e transformaria a limpeza em vermelho.
  */
-async function logoDaBarra(page: Page): Promise<{ src: string; altura: number } | null> {
-  const img = page.locator("aside img").first();
-  if ((await img.count()) === 0) return null;
+async function removerLogoSeHouver(page: Page, tela: string, escopo: Escopo): Promise<void> {
+  await page.goto(tela);
+  const remover = page
+    .locator(`[data-campo-de-logo='${escopo}']`)
+    .getByRole("button", { name: /^remover$/i });
+  if ((await remover.count()) === 0) return;
+  await remover.click();
+  await expect(page.getByText(/logo removido/i)).toBeVisible({ timeout: 15_000 });
+}
+
+/** O que um `<img>` do produto mostra, medido por ferramenta. */
+interface LogoNaTela {
+  readonly src: string;
+  /** A altura pintada. Descritiva — quem prova download é `larguraNatural`. */
+  readonly altura: number;
+  /** A largura do BITMAP decodificado: 0 = o navegador não tem imagem. */
+  readonly larguraNatural: number;
+}
+
+/**
+ * Mede um `<img>` DEPOIS de o navegador terminar com ele.
+ *
+ * ⚠️ Quem prova o download é `naturalWidth`, e NÃO a altura na tela — o contrário
+ * do que esta spec afirmou. Os dois `<img>` de marca do produto têm altura fixada
+ * por CSS (`h-7` em `components/shell/Sidebar.tsx:82`, `h-10` em
+ * `app/(public)/layout.tsx:54`), e altura fixa mede o mesmo para quem baixou e
+ * para quem não baixou. MEDIDO em chromium, dois `<img>` sob `height: 1.75rem`
+ * (o `h-7`), um com PNG válido e outro apontando para um endereço morto:
+ *
+ *   boa={"nat":1,"altura":28}   quebrada={"nat":0,"altura":28}
+ *
+ * `altura > 0` passava nos DOIS — ou seja, passava exatamente no cenário (bucket
+ * privado, URL assinada vencida) que ela alegava cobrir. `naturalWidth` é a
+ * dimensão do bitmap decodificado, e só ele separa os dois casos. Provar este elo
+ * é a razão declarada de esta spec existir em vez de um `curl`.
+ *
+ * A espera pelo `load`/`error` antes de medir não é zelo: sem ela, medir cedo
+ * demais devolve `naturalWidth: 0` de uma imagem que estava só a caminho — um
+ * vermelho por corrida, no lugar de um vermelho por defeito.
+ */
+async function medirImagem(img: Locator): Promise<LogoNaTela> {
   await expect(img).toBeVisible();
+  await img.evaluate(
+    (el) =>
+      new Promise<void>((resolve) => {
+        const imagem = el as HTMLImageElement;
+        // `complete` é true também quando o download FALHOU — que é o caso que
+        // interessa medir. Ele encerra a espera; quem separa sucesso de falha é
+        // o `naturalWidth` logo abaixo.
+        if (imagem.complete) return resolve();
+        imagem.addEventListener("load", () => resolve(), { once: true });
+        imagem.addEventListener("error", () => resolve(), { once: true });
+        // Teto próprio: sem ele um download pendurado consumiria o timeout do
+        // teste inteiro, e a reprovação sairia como "timed out" sem dizer o quê.
+        setTimeout(() => resolve(), 10_000);
+      }),
+  );
   return img.evaluate((el) => ({
     src: (el as HTMLImageElement).src,
     altura: el.getBoundingClientRect().height,
+    larguraNatural: (el as HTMLImageElement).naturalWidth,
   }));
 }
 
-async function logoDoLogin(browser: Browser): Promise<string | null> {
+/** O logo da barra lateral. `null` = a barra está sem `<img>` (nome em texto). */
+async function logoDaBarra(page: Page): Promise<LogoNaTela | null> {
+  const img = page.locator("aside img").first();
+  if ((await img.count()) === 0) return null;
+  return medirImagem(img);
+}
+
+/** O que prova que o logo BAIXOU, e não só que o `src` está escrito. */
+function baixou(logo: LogoNaTela, onde: string): void {
+  expect(
+    logo.larguraNatural,
+    `${onde}: o <img> tem src mas o bitmap veio vazio — o navegador não baixou do bucket público`,
+  ).toBeGreaterThan(0);
+}
+
+/**
+ * O logo da FACHADA (as telas de antes de entrar), visto por quem não entrou.
+ *
+ * O seletor é o `data-testid` do `<img>` de `app/(public)/layout.tsx`, e não "a
+ * primeira imagem da página": a asserção de NEGAÇÃO do caso (3) — a fachada não
+ * mostra o logo da empresa — passaria vacuosamente no dia em que qualquer ícone
+ * entrasse antes do logo no DOM do `/login`.
+ */
+async function logoDoLogin(browser: Browser): Promise<LogoNaTela | null> {
   // Contexto NOVO e sem sessão: é o estado de quem acabou de receber o endereço.
   const contexto = await browser.newContext();
   try {
     const pagina = await contexto.newPage();
     await pagina.goto("/login");
-    const img = pagina.locator("form img, main img, div > img").first();
+    const img = pagina.getByTestId("logo-da-fachada");
+    // Ausência é resposta legítima: sem logo em nenhuma camada, o layout não
+    // renderiza `<img>` nenhum e a fachada aparece com o nome em texto.
     if ((await img.count()) === 0) return null;
-    return img.evaluate((el) => (el as HTMLImageElement).src);
+    return await medirImagem(img);
   } finally {
     await contexto.close();
   }
@@ -207,8 +298,26 @@ function evidencia(nome: string): string {
 test.describe.configure({ mode: "serial" });
 
 test.describe("o logo subido pela tela chega à tela", () => {
-  // Um login por papel no arquivo inteiro: a suíte compartilha o teto de
-  // 60 logins/IP/300s e o CI roda tudo do mesmo 127.0.0.1.
+  /**
+   * TODO CASO QUE PRECISA DE SESSÃO FAZ O PRÓPRIO LOGIN. Não existe "um login por
+   * papel no arquivo": `mode: "serial"` encadeia a ORDEM e o ESTADO DO BANCO, não
+   * a sessão do navegador. As fixtures `context` e `page` são de escopo de TESTE
+   * (medido na fonte do Playwright 1.62.1 instalado,
+   * `playwright/lib/index.js:425` e `:443`: são funções simples, sem o
+   * `{ scope: "worker" }` que fecha a definição de `browser:` — a que começa
+   * na linha 216 e traz a opção na 238), então cada `test` recebe um
+   * BrowserContext novo, com cookies zerados.
+   *
+   * Este comentário já afirmou o contrário, e o custo era invisível: os casos (4)
+   * e (5) começavam deslogados, `page.goto` caía no redirect de `requireAuth()`, o
+   * seletor do campo nunca aparecia — e como `playwright.config.ts` não define
+   * `actionTimeout` (o default do Playwright é 0, `lib/index.js:259`), a espera ia
+   * até estourar os 120s abaixo.
+   *
+   * O teto de login não é razão para economizar sessão aqui: o CI roda com
+   * `AUTH_RATE_LIMIT_LOGIN_IP: "1000"` (`.github/workflows/e2e.yml`), e as specs
+   * vizinhas — `system-update.spec.ts`, seis casos, seis logins — fazem assim.
+   */
   test.setTimeout(120_000);
 
   test("(1) o dono do servidor sobe o logo e ele aparece na barra lateral", async ({ page }) => {
@@ -227,24 +336,33 @@ test.describe("o logo subido pela tela chega à tela", () => {
 
     // A prévia sobre as DUAS superfícies mostra a imagem real — é o que
     // substituiu o analisador de luminância no servidor.
-    await expect(page.locator("[data-previa-do-logo='claro'] img")).toBeVisible();
-    await expect(page.locator("[data-previa-do-logo='escuro'] img")).toBeVisible();
+    //
+    // 15s, e não o default de 5s: a prévia só nasce quando o RSC do
+    // `router.refresh()` volta, e o `refresh` só é disparado DEPOIS do toast
+    // (`CampoDeLogo.tsx:127-132`). Os 5s mediam a máquina de quem escreveu.
+    await expect(page.locator("[data-previa-do-logo='claro'] img")).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect(page.locator("[data-previa-do-logo='escuro'] img")).toBeVisible({
+      timeout: 15_000,
+    });
     await page.screenshot({ path: evidencia("1-admin-marca-previa.png"), fullPage: true });
 
     await page.goto("/app");
     const barra = await logoDaBarra(page);
     expect(barra, "nenhuma <img> na barra lateral depois do upload").not.toBeNull();
     expect(barra!.src).toContain(`${PREFIXO_PUBLICO}platform/`);
-    // Altura > 0 é o que distingue "o `src` está certo" de "o navegador
-    // conseguiu baixar a imagem do bucket público".
-    expect(barra!.altura).toBeGreaterThan(0);
+    baixou(barra!, "barra lateral do dono");
     await page.screenshot({ path: evidencia("2-sidebar-do-dono.png") });
   });
 
   test("(2) quem NÃO entrou vê o logo do dono na tela de acesso — a P0", async ({ browser }) => {
-    const src = await logoDoLogin(browser);
-    expect(src, "a tela de acesso não renderizou logo nenhum").not.toBeNull();
-    expect(src!).toContain(`${PREFIXO_PUBLICO}platform/`);
+    const fachada = await logoDoLogin(browser);
+    expect(fachada, "a tela de acesso não renderizou logo nenhum").not.toBeNull();
+    expect(fachada!.src).toContain(`${PREFIXO_PUBLICO}platform/`);
+    // A P0 é ver o logo, não ter o endereço dele escrito: é aqui que um bucket
+    // privado apareceria, e é a única tela onde ninguém está logado para ver.
+    baixou(fachada!, "tela de acesso");
 
     const contexto = await browser.newContext();
     const pagina = await contexto.newPage();
@@ -272,25 +390,29 @@ test.describe("o logo subido pela tela chega à tela", () => {
 
     await page.goto("/app");
     const barra = await logoDaBarra(page);
-    expect(barra).not.toBeNull();
+    expect(barra, "nenhuma <img> na barra lateral depois do upload da empresa").not.toBeNull();
     expect(barra!.src).toContain(`${PREFIXO_PUBLICO}${creds.org_id}/`);
-    expect(barra!.altura).toBeGreaterThan(0);
+    baixou(barra!, "barra lateral da empresa");
     await page.screenshot({ path: evidencia("4-sidebar-da-empresa.png") });
 
     // A camada de cima NÃO alcança a fachada: quem não entrou continua vendo o
     // logo do revendedor. Sem esta asserção, o caso (1) e o (3) seriam
     // indistinguíveis de "o último upload repinta tudo".
     const noLogin = await logoDoLogin(browser);
-    expect(noLogin!).toContain(`${PREFIXO_PUBLICO}platform/`);
-    expect(noLogin!).not.toContain(`${PREFIXO_PUBLICO}${creds.org_id}/`);
+    expect(noLogin, "a tela de acesso ficou sem logo depois do upload da empresa").not.toBeNull();
+    expect(noLogin!.src).toContain(`${PREFIXO_PUBLICO}platform/`);
+    expect(noLogin!.src).not.toContain(`${PREFIXO_PUBLICO}${creds.org_id}/`);
   });
 
   test("(4) SVG renomeado para .png é recusado pelos BYTES, com a razão dita", async ({ page }) => {
-    await page.goto("/app/settings/marca");
-    const antes = await (async () => {
-      await page.goto("/app");
-      return logoDaBarra(page);
-    })();
+    await loginComTotp(page, creds.users.admin!.email, creds.admin_totp!.secret);
+
+    await page.goto("/app");
+    const antes = await logoDaBarra(page);
+    // O estado de partida é o logo que o caso (3) subiu. A asserção é explícita
+    // porque `antes!.src` lá embaixo, com `antes` nulo, reprova como
+    // "Cannot read properties of null" — que não diz a ninguém o que faltou.
+    expect(antes, "precondição: a barra precisa entrar neste caso COM logo da empresa").not.toBeNull();
 
     await page.goto("/app/settings/marca");
     await subir(page, "organizacao", {
@@ -301,38 +423,113 @@ test.describe("o logo subido pela tela chega à tela", () => {
     });
     // A recusa tem código próprio para a frase falar de SVG, e não "tipo de
     // mídia não suportado": é o formato em que um designer entrega logo.
-    await expect(page.getByText(/SVG não é aceito/i)).toBeVisible({ timeout: 15_000 });
+    //
+    // ⚠️ A âncora é DUPLA de propósito, e nenhuma metade é decorativa. O texto de
+    // ajuda do campo (`CampoDeLogo.tsx:182-186`) diz, o tempo todo e antes de
+    // qualquer upload, "SVG não é aceito: ele pode executar código…" — então
+    // `getByText(/SVG não é aceito/i)` casava aquele `<p>` em t=0 e ficava verde
+    // sem o toast jamais ter existido (e virava violação de strict mode quando o
+    // toast aparecia no mesmo poll, com 2 elementos). O contêiner do toast
+    // (`[data-sonner-toast]`) exclui o texto de ajuda; "aceito COMO LOGO" é a
+    // frase que só a rota escreve (`app/api/v1/marca/logo/route.ts:396`).
+    const recusa = page
+      .locator("[data-sonner-toast]")
+      .filter({ hasText: /SVG não é aceito como logo/i });
+    await expect(recusa).toBeVisible({ timeout: 15_000 });
     await page.screenshot({ path: evidencia("5-svg-recusado.png"), fullPage: true });
 
     await page.goto("/app");
     const depois = await logoDaBarra(page);
+    expect(depois, "a recusa apagou o logo — a gravação não foi atômica").not.toBeNull();
     expect(depois!.src, "a recusa mudou o logo — a gravação não foi atômica").toBe(antes!.src);
   });
 
   test("(5) remover devolve o logo da camada de baixo", async ({ page }) => {
+    await loginComTotp(page, creds.users.admin!.email, creds.admin_totp!.secret);
+
     await page.goto("/app/settings/marca");
-    await page.getByRole("button", { name: /^remover$/i }).click();
+    // O botão só existe quando ESTA camada tem logo próprio (`CampoDeLogo.tsx:176`):
+    // a asserção nomeia a precondição em vez de deixá-la sair como um clique que
+    // esperou até o timeout.
+    const remover = page.locator("[data-campo-de-logo='organizacao']").getByRole("button", {
+      name: /^remover$/i,
+    });
+    await expect(remover, "precondição: a empresa precisa entrar neste caso COM logo próprio").toBeVisible();
+    await remover.click();
     await expect(page.getByText(/logo removido/i)).toBeVisible({ timeout: 15_000 });
 
     await page.goto("/app");
     const barra = await logoDaBarra(page);
     expect(barra, "a barra ficou sem logo — a camada de baixo não assumiu").not.toBeNull();
     expect(barra!.src).toContain(`${PREFIXO_PUBLICO}platform/`);
+    baixou(barra!, "barra lateral depois de remover o logo da empresa");
     await page.screenshot({ path: evidencia("6-volta-ao-da-instalacao.png") });
   });
 
-  test("(6) restaura o estado — o dono remove o logo da instalação", async ({ page, browser }) => {
-    // A restauração é um CASO, e não um `afterAll`: `afterAll` não roda quando a
-    // spec estoura no meio, e o que ficaria para trás é a marca da instalação
-    // trocada para todas as specs seguintes do mesmo banco.
+  test("(6) o dono remove o logo da instalação e a fachada volta ao que era", async ({
+    page,
+    browser,
+  }) => {
+    // Este caso é uma ASSERÇÃO (remover devolve a fachada ao estado anterior), não
+    // a restauração — quem garante a restauração é o `afterAll` abaixo.
     await loginComTotp(page, creds.users.dono!.email, creds.dono_totp!.secret);
     await page.goto("/admin/marca");
-    await page.getByRole("button", { name: /^remover$/i }).click();
+    const remover = page.locator("[data-campo-de-logo='instalacao']").getByRole("button", {
+      name: /^remover$/i,
+    });
+    await expect(
+      remover,
+      "precondição: a instalação precisa entrar neste caso COM logo próprio",
+    ).toBeVisible();
+    await remover.click();
     await expect(page.getByText(/logo removido/i)).toBeVisible({ timeout: 15_000 });
 
     const noLogin = await logoDoLogin(browser);
     // `null` (nenhuma imagem) ou uma URL que não é do bucket (o `APP_LOGO_URL`
     // do `.env`, se houver): o que NÃO pode sobrar é o arquivo desta spec.
-    if (noLogin !== null) expect(noLogin).not.toContain(PREFIXO_PUBLICO);
+    if (noLogin !== null) expect(noLogin.src).not.toContain(PREFIXO_PUBLICO);
+  });
+
+  /**
+   * A RESTAURAÇÃO — e ela é um `afterAll`, ao contrário do que este arquivo
+   * afirmou.
+   *
+   * A versão anterior justificava fazer a limpeza num caso dizendo que "`afterAll`
+   * não roda quando a spec estoura no meio". É o contrário do que o Playwright
+   * faz. MEDIDO com o Playwright 1.62.1 deste repo, num `describe` serial de três
+   * casos (A passa, B lança, C depois) mais um `afterAll` que registra a ordem:
+   *
+   *   MEDIDO ordem=["A","B","afterAll"]
+   *   1 failed · 1 did not run · 1 passed
+   *
+   * O `afterAll` RODOU; o caso seguinte ao estouro NÃO. Ou seja a justificativa
+   * escolhia o mecanismo estritamente pior justamente para o modo de falha que ela
+   * nomeava: se o caso (3) estourasse depois de subir o logo da empresa, uma
+   * limpeza escrita como caso seria pulada com os demais, e a marca ficaria de pé
+   * para as specs seguintes do mesmo banco (as duas partes do job `e2e` rodam
+   * contra o MESMO banco, sem reset — ver `.github/workflows/e2e.yml`).
+   *
+   * Limpa as DUAS camadas, e não só a da instalação: um estouro no meio deixa para
+   * trás o logo da EMPRESA com a mesma facilidade.
+   *
+   * Um login só, e do `dono`, porque ele é platform admin E `admin` da mesma
+   * organização (`scripts/seed-e2e-credentials.ts:79-84`) — alcança `/admin/marca`
+   * e `/app/settings/marca`.
+   */
+  test.afterAll(async ({ browser }) => {
+    // O `test.setTimeout` do topo do `describe` vale para os CASOS; um hook nasce
+    // com o timeout do config (30s). E aqui cabe um login com TOTP, que na
+    // segunda tentativa espera a janela virar (até ~30s em `loginComTotp`) — sem
+    // esta linha a restauração viraria vermelho por relógio, não por defeito.
+    test.setTimeout(120_000);
+    const contexto = await browser.newContext();
+    try {
+      const pagina = await contexto.newPage();
+      await loginComTotp(pagina, creds.users.dono!.email, creds.dono_totp!.secret);
+      await removerLogoSeHouver(pagina, "/app/settings/marca", "organizacao");
+      await removerLogoSeHouver(pagina, "/admin/marca", "instalacao");
+    } finally {
+      await contexto.close();
+    }
   });
 });

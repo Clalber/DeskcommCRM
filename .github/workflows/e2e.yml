@@ -126,8 +126,10 @@ jobs:
       # chamadas, é 63 vs 82), então mover a spec "para a parte mais leve" a
       # mudou para a mais carregada. E o critério era irrelevante desde o
       # começo — o `AUTH_RATE_LIMIT_LOGIN_IP: "1000"` mais abaixo desliga o
-      # teto no CI, e esta spec faz 3 logins. Quem decide a posição é a
-      # contaminação, não a contagem.
+      # teto no CI, e esta spec faz 6 logins (eram 3 até a revisão que descobriu
+      # que dois casos rodavam DESLOGADOS: `page` é fixture de escopo de teste,
+      # não de worker — cada caso precisa do seu login). Quem decide a posição é
+      # a contaminação, não a contagem.
       #
       # (Este comentário mora FORA do bloco `>-` porque dentro dele `#` não é
       # comentário: é conteúdo, e cada palavra viraria argumento do playwright.

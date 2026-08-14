@@ -45,9 +45,15 @@ export default async function PublicLayout({ children }: { children: React.React
               O `alt` é o nome DESTA resolução (`marca.nome`), e não o de
               `branding()`: é a legenda da imagem que está ali, e nomeá-la com a
               marca de outra fonte descreveria uma marca que não é a do logo.
+
+              O `data-testid` é lido por `tests/e2e/marca-logo.spec.ts`, que prova
+              que o logo da EMPRESA não vaza para cá. Sem ele a spec caía na
+              "primeira <img> da página", e uma asserção de negação com seletor
+              largo passa sozinha assim que outra imagem entra na tela.
             */}
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
+              data-testid="logo-da-fachada"
               src={marca.logoUrl}
               alt={marca.nome}
               className="h-10 w-auto max-w-[12rem] object-contain"
