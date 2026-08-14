@@ -195,6 +195,40 @@ escape. O ramo de aspas simples **fica** — clone que atualiza não reescreve o
 
 ---
 
+## A doutrina do repo está velha em dois pontos (medido 2026-08-13)
+
+O `CLAUDE.md` é a lei deste repo, e ele mesmo avisa que um destes números "já apodreceu
+duas vezes". Apodreceu de novo:
+
+| O `CLAUDE.md` diz | Medido |
+|---|---|
+| 4 checks obrigatórios na `main`: `verify, build-and-size, invariants, e2e` | **5** — `gh api …/branches/main/protection` devolve `verify, build-and-size, invariants, e2e, imagens-ok` |
+| "**37 das 39 specs**" Playwright | **45 specs no disco** (`ls tests/e2e/*.spec.ts \| wc -l`) |
+
+Não corrigi aqui: o `CLAUDE.md` é doutrina compartilhada e mexer nele no meio de um épico
+conflita com outras sessões. **Fica como item próprio.** E a régua honesta para "quantas
+rodam" não é contar à mão — é o gate `tests/unit/e2e-cobertura-completa.test.ts`, que
+está **verde**: toda spec do disco está declarada em alguma das três listas.
+
+> Tentei contar as listas com `sed` e obtive `SPECS_PARTE_1: 45` **e** `FORA_DO_CI: 45` —
+> impossível, o delimitador não casou. Não repasso número que não medi.
+
+## Uma armadilha da suíte e2e que vale além deste épico
+
+`scripts/seed-e2e-system-update.ts:52-68` **promove `e2e-admin@deskcomm.test` a
+`platform_admin`** — insere, e reativa se estiver revogado. **Nenhum seed do repo
+revoga**: o único `revoked_at` que existe é em `seed-e2e-agente-mcp.ts`, sobre tokens de
+API. Como as duas partes do job `e2e` compartilham o mesmo banco sem reset, **toda a
+parte 2 roda com esse admin já promovido**.
+
+Consequência para qualquer spec que queira provar comportamento de **admin de tenant**:
+usar o `e2e-admin` mede o produto errado e passa verde. Por isso a Fase 3 cria
+`e2e-marca-admin@deskcomm.test`, sem linha em `platform_admins`, e a spec **afirma a
+precondição** (zero linhas ativas) antes de medir — senão verde é resultado de
+instrumento morto.
+
+---
+
 ## Bugs achados executando
 
 ### 🔴 BUG-01 — o anel de foco perde o contraste no tema escuro com marca escura
@@ -702,10 +736,70 @@ para **qualquer outra sessão** no mesmo banco. Limpo (`null`/`null`). Spec temp
 
 ---
 
+## Fase 3 — ENTREGUE e PROVADA NA TELA
+
+Commits: `0513755c` (RPC atômica + invariante) · `032ba43a` (camada na pilha) ·
+`a8ec1d99` (CSS escopado + layout) · `55b6f6ea` (a tela).
+
+### O que a tela mediu, com admin de tenant PURO
+
+**A precondição falhou primeiro, e era a armadilha prevista:** `e2e-admin@deskcomm.test`
+**era** `platform_admin` (`seed-e2e-system-update.ts:52-68` promove e nada revoga). Medi
+`count = 1`, revoguei, reafirmei `count = 0`, e só então testei. Sem isso o teste teria
+passado verde medindo o produto errado.
+
+| | `--color-accent` | `[data-marca-org]` | `#marca-organizacao` |
+|---|---|---|---|
+| `/app`, org sem marca | `#506d48` Sage | presente | **ausente** |
+| `/app`, depois de salvar `#b3261e` | **`#b3261e`** | presente | **presente** |
+| `/app`, tema escuro | **`#f16051`** | presente | presente |
+| `/login`, sem sessão | `#506d48` | **ausente** | **ausente** |
+
+`persistido = #b3261e` depois do reload — **a issue #144 não se repetiu**: o RPC gravou
+de verdade sob um admin que não é platform admin. O bloco de estilo **só existe quando a
+org tem marca própria**, e no escuro o valor é outro (o claro não sobrevive por herança).
+
+Evidência: `evidence/org-1-tela.png` (a tela), `evidence/org-2-digitado.png` (a tira
+reagindo), `evidence/org-3-salvo.png` (o salvamento), `evidence/org-4-recarregado.png`
+(a persistência), `evidence/org-5-login.png` (o caso de volta, sem sessão).
+
+### O ambiente compartilhado saturou no meio, e isso é registro honesto
+
+Depois das primeiras medições o login parou de completar. **Não era o produto:**
+`auth.audit_log_entries` acusou **93 tentativas em 10 minutos** (teto: 60/IP/300s) e o
+**fator TOTP mudou de ID** — outra sessão re-semeou e invalidou o `.e2e-creds.json`.
+
+Por isso o caso de volta foi medido **sem sessão**: `/login` é rota pública, e a
+comparação usa o `#b3261e` já medido em `/app`. Mesma propriedade, mesmo rigor, sem
+depender de um login que o ambiente não estava entregando.
+
+### Descoberta lateral
+
+**Revogar o `platform_admin` removeu a exigência de MFA** do usuário — o `mfa_required`
+vinha de lá. O helper de login do repo trava esperando a tela de TOTP que deixa de
+aparecer, e o sintoma lê como "MFA quebrou". Fica registrado para a próxima sessão.
+
+### Estado deixado no banco local (compartilhado)
+
+- `e2e-admin@deskcomm.test` segue **revogado** de `platform_admins`. É o estado correto do
+  seed base; quem precisa dele promovido é `seed-e2e-system-update.ts`, que repromove ao
+  rodar. Restaurar seria propagar o defeito.
+- A marca da org de teste (`E2E Test Org`) ficou gravada com `#b3261e`.
+
+### Sem cobertura, declarado
+
+- **A spec e2e permanente não foi escrita** (commit 6 do plano): a prova foi por spec
+  temporária, removida porque suja banco compartilhado. Uma spec de verdade precisa de
+  seed próprio (`e2e-marca-admin`, sem `platform_admins`), `afterAll` restaurando, e
+  declaração em `.github/workflows/e2e.yml` — senão reprova o job **`verify`**, não o `e2e`.
+- **A captura no onboarding** (commit 5) não foi feita.
+- O caso do **portal Radix** (menu aberto herdando a cor da org) não foi medido em pixel —
+  é afirmação por construção, com o teste de fonte guardando o seletor.
+
+---
+
 ## Próximo passo exato
 
-**Fase 3 — marca por ORGANIZAÇÃO.** Reconhecimento em curso sobre as três armadilhas
-conhecidas: a RLS de `organizations` que devolve sucesso casando 0 linhas, a corrida no
-`settings` jsonb (onde mora `visibility_mode`, que é controle de exposição de dado), e a
-precedência pré/pós-login. O caso que só o **segundo admin** exercita é obrigatório —
-o owner do instalador é `platform_admin` e não passa pela policy.
+Fases 4, 5 e 6, com o plano medido em
+`/private/tmp/claude-501/-Users-rafaelmelgaco-DeskcommCRM/111a86e7-0d9c-4fee-bcc5-520b3fff2343/scratchpad/plano-fases-456.md`.
+Depois: PR e merge na `main` — autorizado explicitamente por Rafael em 2026-08-13.
