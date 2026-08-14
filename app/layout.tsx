@@ -3,6 +3,7 @@ import { Atkinson_Hyperlegible, IBM_Plex_Mono } from "next/font/google";
 import { headers } from "next/headers";
 import { Toaster } from "sonner";
 import { coresDaBarraDoNavegador } from "@/lib/branding/barra-do-navegador";
+import { MarcaDaInstalacaoProvider } from "@/lib/branding/contexto";
 import { cssDaMarca } from "@/lib/branding/css";
 import {
   marcaDaInstalacao,
@@ -235,6 +236,40 @@ async function MarcaNoNavegador() {
   return <PublicEnvScript marca={{ name: marca.name, logoUrl: marca.logoUrl }} />;
 }
 
+/**
+ * A marca que os CLIENT COMPONENTS leem — a MESMA pilha, entregue por prop.
+ *
+ * ⚠️ Esta é a peça que impede o hydration mismatch, e o motivo é assimétrico:
+ * `<PublicEnvScript/>` acima entrega a marca ao NAVEGADOR, e o navegador só a
+ * tem depois que o script roda. O SSR de um `"use client"` acontece ANTES disso,
+ * no servidor, onde `branding()` lê `process.env` — o `.env`, sem o banco. Numa
+ * instalação com logo gravado pela tela e `APP_LOGO_URL` vazio, o servidor
+ * renderizava `<span>` com o nome e o cliente hidratava `<img>` com o logo:
+ * troca de TIPO de elemento, que é React #418 em toda tela.
+ *
+ * Passar o valor por prop resolve pela origem, não pela coincidência: o que o
+ * servidor renderiza e o que o cliente hidrata é literalmente o mesmo objeto,
+ * serializado no payload do RSC. Mesma rota que `user`/`activeOrg` já fazem em
+ * `hooks/auth/AuthProvider.tsx`.
+ *
+ * Custa ZERO consulta a mais: `marcaResolvida()` chama `marcaDaInstalacao()`,
+ * memoizada por TTL no módulo, e `<EstiloDaMarca/>` no `<head>` já espera a
+ * mesma resposta antes de o documento ser liberado.
+ */
+async function MarcaDosClientComponents({ children }: { children: React.ReactNode }) {
+  const { marca } = await marcaResolvida();
+  // Só os três campos de `Branding`: `marca` carrega junto `cor`, `origens` e
+  // `motivos`, que são diagnóstico do servidor e não têm leitor no navegador —
+  // mandá-los engordaria o payload do RSC de TODA página com dado que ninguém lê.
+  return (
+    <MarcaDaInstalacaoProvider
+      marca={{ name: marca.name, logoUrl: marca.logoUrl, initial: marca.initial }}
+    >
+      {children}
+    </MarcaDaInstalacaoProvider>
+  );
+}
+
 export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
@@ -255,7 +290,9 @@ export default function RootLayout({
       </head>
       <body className="min-h-screen bg-bg font-sans text-text antialiased">
         <Providers>
-          <ThemeProvider>{children}</ThemeProvider>
+          <MarcaDosClientComponents>
+            <ThemeProvider>{children}</ThemeProvider>
+          </MarcaDosClientComponents>
           <Toaster
             position="top-right"
             richColors

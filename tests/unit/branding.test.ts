@@ -91,7 +91,7 @@ describe("guarda de white-label (self-host)", () => {
     expect(layoutRaiz).toMatch(/marcaResolvida\(\)/);
   });
 
-  it("o layout raiz resolve a marca UMA vez para os três consumidores", () => {
+  it("o layout raiz resolve a marca UMA vez para os quatro consumidores", () => {
     // Guarda de vacuidade das duas de cima: se `marcaResolvida` deixasse de ser
     // a fonte da aba ou do CSS, o casamento de `marcaResolvida()` acima
     // continuaria verdadeiro e mediria um resolvedor que só o script usa — que é
@@ -99,11 +99,27 @@ describe("guarda de white-label (self-host)", () => {
     // cabeçalho daquela função existe para impedir.
     expect(
       layoutRaiz.match(/await marcaResolvida\(\)/g) ?? [],
-      "os três consumidores do layout raiz são `generateMetadata` (aba), " +
-        "`EstiloDaMarca` (cor) e `MarcaNoNavegador` (client components). " +
+      "os quatro consumidores do layout raiz são `generateMetadata` (aba), " +
+        "`EstiloDaMarca` (cor), `MarcaNoNavegador` (`window.__PUBLIC_ENV__`) e " +
+        "`MarcaDosClientComponents` (o contexto que os `\"use client\"` leem). " +
         "Consumidor a mais é legítimo — atualize o número. Consumidor a MENOS " +
         "significa que alguém voltou a montar a pilha por fora.",
-    ).toHaveLength(3);
+    ).toHaveLength(4);
+  });
+
+  it("os client components recebem a marca por PROP, não por fonte só-do-navegador", () => {
+    // POR QUE ESTE CASO EXISTE: a asserção `APP_NAME: marca.name` acima ficou
+    // verde enquanto o produto emitia React #418 em 7 de 7 telas de `/app/ai/*`.
+    // Ela mede o que chega ao NAVEGADOR, e o defeito era o outro lado: o SSR de
+    // um `"use client"` não tem `window`, então `branding()` lia `process.env` e
+    // renderizava `<span>` onde o cliente hidratava `<img>`.
+    //
+    // O que fecha a ponta é a marca atravessar por PROP — a mesma rota de
+    // `user`/`activeOrg`. As duas asserções são o par mínimo: o provedor existe
+    // no layout raiz E ele envolve `children` (um provedor montado ao lado, sem
+    // envolver a árvore, deixaria todo consumidor no padrão do produto).
+    expect(layoutRaiz).toMatch(/<MarcaDaInstalacaoProvider\s+marca=\{/);
+    expect(layoutRaiz).toMatch(/<MarcaDosClientComponents>\s*\n\s*<ThemeProvider>\{children\}/);
   });
 });
 

@@ -92,6 +92,7 @@
 
     { "id": "layout", "lane": "saida", "col": 7, "type": "frontend", "label": "app/layout.tsx", "sublabel": "<EstiloDaMarca/> no <head> + generateMetadata (título com template) + viewport" },
     { "id": "applayout", "lane": "saida", "col": 7, "type": "frontend", "label": "app/app/layout.tsx", "sublabel": "<EstiloDaMarcaDaOrganizacao/> escopado em [data-marca-org] — não alcança /login" },
+    { "id": "marcacliente", "lane": "saida", "col": 8, "type": "frontend", "label": "lib/branding/contexto.tsx", "sublabel": "a marca atravessa por PROP do servidor (useMarcaDaInstalacao) — era branding(), que lê window.__PUBLIC_ENV__ no navegador e process.env no SSR: com logo no banco e APP_LOGO_URL vazio, o servidor desenhava <span> e o cliente <img> (React #418)" },
     { "id": "iconroute", "lane": "saida", "col": 7, "type": "api", "label": "app/icon.tsx", "sublabel": "ImageResponse em runtime · force-dynamic · /icon em PUBLIC_PATHS (sem isso, 307 para /login)" },
     { "id": "invite", "lane": "saida", "col": 7, "type": "service", "label": "lib/email/templates/invite.ts", "sublabel": "assunto + corpo + botão com a marca de quem convidou" },
     { "id": "lgpdemail", "lane": "saida", "col": 7, "type": "service", "label": "lib/lgpd/email-delivery.ts", "sublabel": "diz quem PROCESSOU a solicitação — era 'DeskcommCRM' em 100% dos casos, não em borda" },
@@ -163,7 +164,9 @@
     { "id": "e59", "from": "rotalogo", "to": "fnlogoorg", "label": "escopo=organizacao: RPC com row_count de volta — a catraca da issue #144" },
     { "id": "e60", "from": "fnlogoorg", "to": "orgbranding", "label": "jsonb_set em {branding} preservando app_name/accent_hex — merge no CAMPO, não no objeto" },
     { "id": "e61", "from": "bucketlogos", "to": "resolver", "label": "logoDaCamada(): o ARQUIVO vence a URL colada; urlPublicaDoLogo deriva a URL do caminho + host em runtime" },
-    { "id": "e62", "from": "rotalogo", "to": "auditlog", "label": "reusa platform_branding.updated / org.branding_updated — código de ação novo não responderia pergunta nova" }
+    { "id": "e62", "from": "rotalogo", "to": "auditlog", "label": "reusa platform_branding.updated / org.branding_updated — código de ação novo não responderia pergunta nova" },
+    { "id": "e63", "from": "layout", "to": "marcacliente", "label": "a MESMA marcaResolvida() do título e do CSS desce por prop, no payload do RSC — mesma rota de user/activeOrg" },
+    { "id": "e64", "from": "marcacliente", "to": "interface", "label": "useMarcaDaInstalacao(): SSR e hidratação leem o mesmo objeto, então o logo do revendedor não troca de elemento no meio do caminho" }
   ],
   "cards": [
     {

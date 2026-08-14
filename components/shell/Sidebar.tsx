@@ -9,7 +9,7 @@ import { toggleSidebar } from "@/app/actions/shell/toggleSidebar";
 import { useAuth } from "@/hooks/auth/AuthProvider";
 import { ConnectionHealthDot } from "@/components/connections/ConnectionHealthDot";
 import { VersionFooter } from "@/components/shell/VersionFooter";
-import { branding } from "@/lib/branding";
+import { useMarcaDaInstalacao } from "@/lib/branding/contexto";
 import { GRUPO_NO_RODAPE, NAV_GROUPS, sidebarGroups } from "@/lib/navigation/registry";
 
 /**
@@ -33,7 +33,7 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
   const grupos = todos.filter((g) => g.group.id !== GRUPO_NO_RODAPE);
   const rodape = NAV_GROUPS.find((g) => g.id === GRUPO_NO_RODAPE)?.hub;
 
-  const brand = branding();
+  const brand = useMarcaDaInstalacao();
   /**
    * O CONSUMIDOR do nome por organização.
    *
@@ -42,12 +42,15 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
    * revendedor — o único leitor é o `TenantSwitcher`, e ele devolve `null` com
    * uma organização só.
    *
-   * `branding()` continua embaixo, e continua lendo o ambiente injetado em
-   * runtime (`window.__PUBLIC_ENV__`): a organização que não definiu nome vê
-   * exatamente o que via antes. O que mudou nesta onda é o que ENTRA naquele
-   * ambiente — `app/layout.tsx` passa a injetar a marca da instalação já
-   * resolvida (banco acima do `.env`), então o nome e o logo gravados pela tela
-   * chegam até aqui em vez de morrer na tabela.
+   * A marca da INSTALAÇÃO continua embaixo: a organização que não definiu nome
+   * vê exatamente o que via antes. O que mudou é POR ONDE ela chega — era
+   * `branding()`, que no navegador lê `window.__PUBLIC_ENV__` e no servidor lê
+   * `process.env`, e essas duas fontes passaram a divergir quando o layout raiz
+   * começou a injetar a marca do BANCO. Divergência entre SSR e cliente aqui não
+   * é detalhe: com logo no banco e `APP_LOGO_URL` vazio, o servidor desenhava o
+   * `<span>` de baixo e o cliente desenhava o `<img>` — React #418 em toda tela.
+   * Hoje a marca vem por PROP do servidor (`useMarcaDaInstalacao`), pela mesma
+   * rota de `activeOrg`, e os dois lados leem o mesmo objeto por construção.
    */
   const nome = activeOrg?.marca?.nome ?? brand.name;
   /**
