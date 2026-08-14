@@ -139,10 +139,32 @@ function primeiroDefinido(
  * `app/layout.tsx` a chamaria em TODA requisição para um valor que muda uma vez
  * por deploy. `WeakMap` na régua (e não um `Map` global por hex) porque teste e
  * preview passam réguas diferentes: cachear só pelo hex devolveria a marca de
- * uma régua ao chamador de outra. O tamanho é limitado pelo número de sementes
- * distintas — 1 nesta fase (o `.env`), uma por organização na fase seguinte.
+ * uma régua ao chamador de outra. A chave externa é FRACA; o `Map` interno não
+ * é, e é por isso que ele tem teto — ver `TETO_DE_SEMENTES`.
  */
 const memoria = new WeakMap<Regua, Map<string, Marca>>();
+
+/**
+ * Quantas sementes distintas cada régua guarda.
+ *
+ * O comentário acima dizia, até esta fase, "1 nesta fase (o `.env`), uma por
+ * organização na fase seguinte" — e ESTA é a fase seguinte: é ela que transforma
+ * "uma semente por instalação" em "uma por organização". Um `Map` sem poda passa
+ * a crescer com o número de empresas que abrem uma tela, num processo que a VPS
+ * mantém vivo por semanas, e cada `Marca` carrega a rampa de 11 stops nos dois
+ * temas mais os motivos. Entregar a camada da organização sem o teto seria criar
+ * o vazamento e documentá-lo.
+ *
+ * 64, e não 8: o teto precisa ser maior que a quantidade de organizações que um
+ * mesmo processo pinta em rajada, senão o cache vira despejo e a derivação volta
+ * a rodar por requisição — que é exatamente o custo que ele existe para evitar.
+ *
+ * FIFO e não LRU, de propósito: LRU exige tocar a ordem a cada LEITURA (delete +
+ * set), isto é, escrita no caminho de render mais quente do produto, para ganhar
+ * pouco num cache cujo conteúdo muda uma vez por configuração. Quem cai fora é
+ * rederivado no render seguinte — o custo do erro é uma derivação, não um bug.
+ */
+const TETO_DE_SEMENTES = 64;
 
 function derivarComCache(semente: string, regua: Regua): Marca {
   let porSemente = memoria.get(regua);
@@ -154,6 +176,11 @@ function derivarComCache(semente: string, regua: Regua): Marca {
   if (guardada) return guardada;
   const nova = derivarMarca(semente, regua);
   porSemente.set(semente, nova);
+  if (porSemente.size > TETO_DE_SEMENTES) {
+    // `Map` preserva a ordem de INSERÇÃO, então a primeira chave é a mais antiga.
+    const maisAntiga = porSemente.keys().next().value;
+    if (maisAntiga !== undefined) porSemente.delete(maisAntiga);
+  }
   return nova;
 }
 
@@ -397,4 +424,48 @@ export function camadaDoAmbiente(fonte: {
     logoUrl: fonte.APP_LOGO_URL,
     cor: envelopeDeSemente(hex),
   };
+}
+
+/**
+ * O que fica gravado em `organizations.settings.branding` — a marca do cliente
+ * final do revendedor, como o RESOLVEDOR precisa conhecer.
+ *
+ * Campos opcionais pelo mesmo motivo de `LinhaDaInstalacao` e do `.catchall` do
+ * `schema.ts`: o kit self-host põe código VELHO sobre dado NOVO por construção
+ * (o `update.sh` aplica o baseline antes de puxar a imagem, e o rollback do
+ * `agent.sh` reverte só o `APP_IMAGE`). Um tipo que exigisse as chaves faria o
+ * leitor velho quebrar num jsonb que o novo escreveu — e este código roda no
+ * caminho de render.
+ */
+export type MarcaDaOrganizacao = {
+  readonly app_name?: string | null;
+  readonly accent_hex?: string | null;
+};
+
+/**
+ * A camada da ORGANIZAÇÃO — o cliente do revendedor, acima de tudo.
+ *
+ * Fica no TOPO da pilha porque é a marca que a empresa mostra para os próprios
+ * atendentes; a da instalação continua embaixo e continua valendo campo a campo
+ * (quem definiu só a cor mantém o nome do revendedor).
+ *
+ * Sem `logoUrl` de propósito: upload de logo é a fase seguinte, e uma camada que
+ * declarasse `logoUrl: null` não seria neutra — não apagaria nada, mas ensinaria
+ * a próxima pessoa a achar que o campo já existe.
+ *
+ * Hex vazio devolve camada SEM a chave `cor`, e não `cor: null`: medido em
+ * `resolverCor` (:183-187), `null` emite `cor_ausente` e a chave AUSENTE desce
+ * calada. Uma fábrica que devolvesse `?? null` acenderia aviso em TODA
+ * organização que não configurou marca — o ruído que :180-182 diz querer evitar,
+ * e que é como um operador aprende a ignorar aviso.
+ *
+ * Recebe a marca já lida, e não vai buscá-la: mesmo desenho de
+ * `camadaDaInstalacao` e `camadaDoAmbiente`, e é o que permite testar a
+ * precedência sem banco. Quem lê o jsonb é `lib/branding/organizacao.ts`.
+ */
+export function camadaDaOrganizacao(marca: MarcaDaOrganizacao | null): CamadaDeMarca {
+  if (!marca) return { origem: "organizacao" };
+  const hex = (marca.accent_hex ?? "").trim();
+  if (hex.length === 0) return { origem: "organizacao", nome: marca.app_name };
+  return { origem: "organizacao", nome: marca.app_name, cor: envelopeDeSemente(hex) };
 }
