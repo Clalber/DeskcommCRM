@@ -933,7 +933,7 @@ e2e, imagens-ok`.
 | D1 | Marca no **alarme de orçamento de IA** (`fase: 7` na guarda) | Ganhar rota em `app/api/v1/cron/`, linha no `docker/scheduler/entrypoint.sh` e chamador real de `runBudgetChecker()`. Hoje o efeito de consertar é **zero observável** |
 | D2 | `white-label.md` em **EN/ES** | Um gate que reprove tradução defasada. Sem ele, três cópias divergem no primeiro conserto seguinte, e guia comercial errado em inglês é pior que ausente |
 | D3 | **Upload de logo** (saiu do épico) e **fonte/tema** por tenant | Logo: bucket + policies + teto de 512 KB + delete-on-replace, com a cota do Supabase do cliente medida. Fonte/tema: exigiria `Font.register` e o arquivo dentro da imagem — o `next/font` resolve em build |
-| D4 | As **120 divergências** entre `lib/audit/actions.ts` e o painel | O conserto certo é **derivar** a lista do union, não copiá-la melhor. A catraca nova impede crescer; encolher é item próprio |
+| ~~D4~~ | ~~As 120 divergências entre `lib/audit/actions.ts` e o painel~~ | **RESOLVIDA** em `33ce8612`: a lista do painel passou a **derivar** do union e `action-codes.ts` foi apagado. Divergir deixou de ser possível, então a catraca que congelava os 120 foi apagada junto — gate que guarda classe inexistente é ruído. O filtro do painel foi de 89 para 209 códigos |
 | D5 | `docs/design-system/screen-flow/03-screen-inventory.md` — seção M diz "15 telas" e tem **17** linhas | Uma passada no inventário inteiro. Corrigir só uma linha deixa dois totais errados |
 | D6 | `marca-emails.sh` não alcança quem instalou colando as 4 credenciais **sem** `SUPABASE_ACCESS_TOKEN` | Uma forma de o operador autorizar a Management API depois da instalação, sem guardar chave mestra no `.env` do cliente |
 | D7 | `fallback_at` é **inalcançável pela UI** — o CHECK do banco barra o hex corrompido antes | Só aparece para quem edita o banco à mão ou vem de clone com valor legado. É o laço de retorno funcionando com gatilho raro, não ausente |
@@ -983,7 +983,28 @@ varredura — e o plano original mandava colá-la "no fim do arquivo", o que ter
 
 ---
 
+## Incidente de infraestrutura (2026-08-14) — e o que ele bloqueia
+
+O disco encheu no meio da execução (**166 MB livres, 100%**), com o `.env.local`
+temporariamente movido para `/tmp` por um gate. O arquivo foi recuperado íntegro
+(4361 bytes). Limpei **só o que é meu** — 7,0 GB e 1,3 GB em `/tmp/claude-501` são
+de **outras sessões** e não foram tocados (posse se mede, não se infere pela idade).
+
+Sequela: o **daemon do Docker travou** (`docker ps` pendura sem retorno) e o Postgres
+local caiu. Isso bloqueia, enquanto durar:
+
+- **prova em tela** de qualquer onda (precisa do Supabase local),
+- **`pnpm test:db`** (sobe `pgvector/pgvector:pg17` descartável),
+- **`pnpm test:e2e`**.
+
+**O que NÃO está bloqueado:** `typecheck`, `lint`, `lint:channels`, `test:unit`,
+`build` e `test:shell` — que é onde as ondas seguem correndo.
+
+Registro para não virar afirmação otimista: **as ondas cuja prova em tela ficou
+pendente estão marcadas como tal**, e prova pendente por infra **não é** prova feita.
+
+---
+
 ## Próximo passo exato
 
-Executar as ondas de `scratchpad/ondas.md` na ordem, uma por PR, cada uma com gates
-verdes e prova em tela antes da seguinte.
+Ondas de `scratchpad/ondas.md`, em ordem. Prova em tela retoma quando o Docker voltar.
