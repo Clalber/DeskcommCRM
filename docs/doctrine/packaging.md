@@ -343,6 +343,13 @@ do banco. É o passo que mais trava na estreia de uma imagem nova.
         Tag de branch é artefato de trabalho: se ficar, vira canal órfão que
         alguém pina por engano achando que é release, e ela nunca mais se move.
         O registry já carrega uma dessas (`quebrada-teste`) como lembrete.
+
+        EXIGE ESCOPO QUE O TOKEN PADRÃO DO `gh` NÃO TEM. Medido no corte da
+        1.3.0: com `gist, read:org, repo, workflow` a API devolve 403 tanto para
+        listar quanto para apagar versão de pacote. Antes de chegar aqui:
+            gh auth refresh -h github.com -s read:packages,delete:packages
+        Sem isso o item fica pendente e a tag de ensaio segue viva — foi o que
+        aconteceu na 1.3.0.
 [ ] 12. Ensaio de atualização numa instalação real (não fresca): update.sh a partir da
         versão anterior, e o /api/v1/health responde X.Y.Z
 ```
