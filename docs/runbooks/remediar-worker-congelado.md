@@ -146,40 +146,58 @@ mais nova. É o que mantém código e schema no mesmo par.
 Cada passo traz o rollback ao lado. `[ENSAIADO]` foi executado no U6-b de 2026-08-13;
 `[NÃO VERIFICADO]` continua sem prova.
 
-### 5.0. Leia isto antes: **a primeira execução pode não bastar**
+### 5.0. Leia isto antes: **rode duas vezes, e a razão mudou**
 
-Medido no ensaio, e é o achado que muda o procedimento.
+Duas medições, em ensaios diferentes, e o desfecho não é o mesmo — por isso a instrução
+vale nos dois casos, mas o motivo depende de haver ou não uma release publicada.
 
-Quem executa a transição é o `update.sh` que está **no disco do cliente** — o antigo. Ele
-faz `git checkout` da tag nova (o que já troca o `docker-compose.prod.yml` pelo novo) e
-só então segue com a própria lógica, que conhece apenas `APP_IMAGE`. O worker cai no
-default do compose novo, `:stable`.
-
-No ensaio, `stable` ainda não existia no registry. Resultado medido, na ordem:
+**U6-b (2026-08-13, antes de existir o canal `stable`).** A primeira execução **não trocou
+o worker**. Quem conduz a transição é o `update.sh` que está no disco do cliente — o antigo —
+e ele só sabe gravar `APP_IMAGE`; o worker cai no default do compose novo, `:stable`, que
+naquele momento não resolvia:
 
 ```
-dc pull  → Image ghcr.io/…/deskcommcrm:… Pulled          (o app veio)
-         → Error: ghcr.io/…/deskcomm-worker:stable: not found
-         → Error: ghcr.io/…/deskcomm-scheduler:stable: not found
-up -d    → o worker seguiu no contêiner que já existia
-worker   → antes 2174fb4f · depois 2174fb4f   (NÃO mudou)
+dc pull → Error: ghcr.io/…/deskcomm-worker:stable: not found
+worker  → antes 2174fb4f · depois 2174fb4f   (NÃO mudou)
 ```
 
-A **segunda** execução, já com o kit novo em disco, chamou `gravar_imagens`, pinou as três
-na mesma versão e trocou a imagem do worker pela publicada.
+**U6-c (2026-08-13, já com a v1.3.0 e o `stable` publicados).** A primeira execução **trocou
+o worker**, e o digest bate com o da release:
+
+```
+worker → antes deskcomm-u6c-worker (local, 7f53521f)
+         depois ghcr.io/…/deskcomm-worker:stable
+         sha256:3fe292cad2bd…  revision=9bd59e93  version=1.3.0
+```
+
+**Mas ela deixou o worker SEM PIN**, e é isto que mantém a segunda execução obrigatória:
+
+```
+.env depois da 1ª execução:
+  APP_IMAGE=ghcr.io/melgarafael/deskcommcrm:1.3.0     ← pinado
+  WORKER_IMAGE                                        ← AUSENTE
+```
+
+O app fica numa versão e o worker fica **seguindo um canal móvel**. Na próxima release o
+`stable` se move, e um `up -d` qualquer — com `pull_policy: always`, que é o default para tag
+móvel — levaria o worker para a versão nova enquanto o app permanece na antiga. É uma mistura
+de versões que acontece **sozinha**, e é exatamente o que o invariante 3 da doutrina existe
+para impedir.
+
+A segunda execução, já com o kit novo em disco, chama `gravar_imagens` e pina as três na
+mesma versão. Medido: `APP_IMAGE`, `WORKER_IMAGE` e `SCHEDULER_IMAGE` em `1.3.0`, com
+`pull_policy: missing`.
 
 **Consequências práticas:**
 
-1. **A release precisa existir antes de o parque atualizar.** Com `stable` publicado, o
-   default resolve e a primeira execução já traz o worker. A ordem do
-   [runbook de ativação](ativar-packaging.md) — merge → pacotes públicos → check
-   obrigatório → **release** — não é burocracia: é a precondição desta remediação.
-2. **Rode `update.sh` duas vezes** numa instalação legada, e confira com o
-   `diagnostico.sh` entre uma e outra. O README do kit já pedia isso por outro motivo
-   ("a primeira execução ainda é a do script velho"); aqui o motivo é este, e é medido.
-3. **Confirme pelo detector, não pelo fim do script.** A primeira execução termina sem
-   erro fatal — ela puxa o app, aplica o banco e sobe. Nada na tela diz que o worker
-   ficou para trás. Só o `diagnostico.sh` responde isso.
+1. **Rode `update.sh` duas vezes** numa instalação legada — sempre. Com release publicada, a
+   primeira traz o worker e a segunda o pina; sem release, a primeira não traz nada e a
+   segunda faz as duas coisas.
+2. **Confira com o `diagnostico.sh` entre uma e outra.** Ele responde a primeira pergunta
+   ("o worker é publicado?") e, quando o `.env` não fixa a versão, diz isso na saída.
+3. **A release precisa existir antes de o parque atualizar.** É a diferença entre os dois
+   ensaios acima, e é o motivo de a ordem do [runbook de ativação](ativar-packaging.md)
+   ser precondição, não burocracia.
 
 ### A1. Diagnosticar e registrar o antes `[ENSAIADO]`
 
@@ -304,7 +322,81 @@ passar. O caso apareceu sozinho, na vida real, produzido pelo próprio rollback.
 **Portanto:** depois de um rollback, rode o `diagnostico.sh`. Voltar o `.env` desfaz a
 pinagem, não o estado da imagem.
 
-### O que este ensaio NÃO cobriu
+### U6-c — o reensaio, com a v1.3.0 publicada (2026-08-13)
+
+Mesmo desenho isolado, mesmo commit legado (`ee520110`), estado produzido pelo `up -d`. A
+diferença: o canal `stable` passou a existir. **Uma única execução** do `update.sh` antigo:
+
+| Pergunta | Resposta medida |
+|---|---|
+| O worker trocou numa execução só? | **Sim.** `deskcomm-u6c-worker` (local, `7f53521f`) → `ghcr.io/…/deskcomm-worker:stable`, `sha256:3fe292cad2bd…`, `revision=9bd59e93`, `version=1.3.0` — o digest bate com o da release |
+| O `.env` ficou pinado? | **Não.** `APP_IMAGE=…:1.3.0`, e `WORKER_IMAGE` **ausente** — o worker segue o canal móvel |
+| `diagnostico.sh` | **exit 0** (não afetada), com a nota de que o `.env` ainda não fixa a versão |
+| O rollback produz imagem local disfarçada de registry? | **Não.** Com `stable` existindo, o Compose puxa em vez de construir — o efeito colateral do U6-b desapareceu |
+| Nada se perdeu? | marcador do volume WAHA, customização do `.env` e banco (96 → 102 tabelas) intactos |
+
+**O achado:** a remediação em uma execução **viola o invariante 3** — deixa o worker numa tag
+móvel. Ver §5.0.
+
+**Uma correção de método que o U6-c exigiu:** a primeira tentativa deste ensaio foi
+invalidada por defeito do ambiente, não do produto. O baseline exige os schemas `auth`,
+`storage` e `extensions`, que um Postgres puro não tem, e o `update.sh` abortava neles. O
+ensaio passou a usar o mesmo *prelude* de stubs que `scripts/test-db.sh` aplica no job
+`invariants` — com ele, o baseline da época aplica com `ON_ERROR_STOP=1` e **zero erros**
+(96 tabelas). Sem essa correção, o ensaio estaria medindo o próprio ambiente.
+
+### P4 — a execução real, na produção do projeto (2026-08-13)
+
+Primeira aplicação em instalação de verdade, com dados de verdade. **A produção reproduziu o
+U6-c com exatidão** — o ensaio previu o campo, que é o que dá valor ao ensaio.
+
+| | antes | depois da 1ª | depois da 2ª |
+|---|---|---|---|
+| worker | `deskcommcrm-worker` local, `fb42e47c`, de **31/07** | `deskcomm-worker:stable` `3fe292cad2bd` `version=1.3.0` | `deskcomm-worker:1.3.0` |
+| `.env` | sem `WORKER_IMAGE` | ainda **sem pin** (como o U6-c previu) | as três em `1.3.0`, `pull_policy: missing` |
+| `/api/v1/health` | `0.1.0` | — | **`1.3.0`, healthy** |
+| detector | exit 1 | exit 0 + aviso de tag móvel | **exit 0, sem ressalva** |
+
+**Nada se perdeu, medido item a item:** volume WAHA com **48.607 arquivos** antes e depois,
+sessão `noweb` presente, 4 volumes intactos, **nenhuma** chave do `.env` sumiu (39 → 43: as 4
+novas são as de imagem). De fora da VPS: `HTTP 307`, e o health com `supabase: ok`,
+`redis: ok`, `waha: ok`.
+
+**O código chegou** — prova por hash, não por data. Os arquivos que os 9 commits tocaram, na
+imagem que a produção roda, têm SHA-256 idêntico ao da tag `v1.3.0`:
+
+```
+ai-response-worker.ts    0c097cc60fd98196   (tag e imagem)
+ai-sentiment-worker.ts   824e7e276a1369f6
+media-derive-worker.ts   3b84df05e71847e1
+agent-worker/main.ts     255c9934f84cddaa
+```
+
+O backup precedeu tudo e foi verificado antes de qualquer escrita: dump de 11 MB, `gunzip -t`
+íntegro, 69.523 linhas, 145 `CREATE TABLE`, mais o `.tgz` das sessões do WhatsApp.
+
+#### O que a execução real ensinou, e o ensaio não tinha mostrado
+
+**O pin do WAHA não alcança instalação legada.** O `.env` do parque tem
+`WAHA_IMAGE='devlikeapro/waha'` — sem tag, gravado pelo install antigo —, e o `.env` vence o
+default do compose. O `update.sh` não reescreve essa chave, então a remediação deixa o WAHA
+seguindo `:latest`:
+
+```
+compose (default): ${WAHA_IMAGE:-devlikeapro/waha:latest-2026.7.2}
+.env do cliente:   WAHA_IMAGE='devlikeapro/waha'
+em uso:            devlikeapro/waha          ← sem tag
+```
+
+É o mesmo padrão do defeito que o `install.sh` já teve — o `.env` vencendo o compose — só que
+agora do lado de quem já instalou. Consequência: a cada `dc pull` a instalação recebe qualquer
+versão que o upstream tiver publicado, sem ninguém ter testado, o que o invariante 4 proíbe.
+
+**Ainda não consertado, de propósito.** Reescrever `WAHA_IMAGE` num `.env` alheio troca a
+versão do WhatsApp de uma instalação em produção, e isso merece decisão e ensaio próprios —
+não um remendo no fim de uma remediação que deu certo.
+
+### O que estes ensaios NÃO cobriram
 
 - **Supabase real.** O `SUPABASE_DB_URL` apontou para um Postgres em contêiner
   (`pgvector/pgvector:pg17`, o mesmo do CI). O `baseline.sql` foi exercitado de verdade;
