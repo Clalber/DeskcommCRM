@@ -56,7 +56,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       ?.visibility_mode;
     activeOrg = { ...activeOrg, visibility_mode: mode ?? DEFAULT_VISIBILITY_MODE };
 
-    // `marcaDaInstalacao()` é memoizada por TTL no módulo (`lib/branding/
+    // `marcaDaInstalacao()` é memoizada por TTL no PROCESSO (`lib/branding/
     // instalacao.ts`), e a derivação da cor é cacheada por régua+semente em
     // `resolve.ts` — a marca custa uma consulta a cada 30s e um lookup de Map
     // por render, não uma derivação de rampa por requisição.

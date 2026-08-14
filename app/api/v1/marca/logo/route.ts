@@ -230,8 +230,14 @@ async function gravarCaminho(ctx: Contexto, caminho: string | null): Promise<Rec
       });
       return { codigo: "internal_error", mensagem: "Erro ao gravar o logo.", status: 500 };
     }
-    // No MESMO processo que renderiza (na VPS há um processo de app só): a troca
-    // aparece no próximo render sem esperar o TTL de 30s do memo.
+    // A troca aparece no próximo render sem esperar o TTL de 30s do memo.
+    //
+    // ⚠️ Isto já foi um NO-OP, e o comentário aqui dizia "no MESMO processo que
+    // renderiza (na VPS há um processo de app só)" — verdade sobre o processo,
+    // falsidade sobre o que importa. O Turbopack compila esta rota e as telas em
+    // dois runtimes com caches de módulo próprios, então esta chamada zerava uma
+    // cópia do memo que nenhuma tela lê. O memo passou a morar em `globalThis`;
+    // a medição do build está no comentário dele, em `lib/branding/instalacao.ts`.
     invalidarMarcaDaInstalacao();
     return null;
   }
