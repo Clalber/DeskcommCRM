@@ -13,6 +13,7 @@ import * as path from "node:path";
 
 import { test, expect, type Page } from "@playwright/test";
 
+import { afirmarAdminDeTenantPuro } from "./utils/precondicao";
 import { generateTotp, msUntilNextTotpWindow } from "./utils/totp";
 
 interface E2ECreds {
@@ -26,6 +27,22 @@ const creds = JSON.parse(fs.readFileSync(CREDS_PATH, "utf8")) as E2ECreds;
 const EVIDENCE = path.join(process.cwd(), ".superpowers", "evidence");
 
 fs.mkdirSync(EVIDENCE, { recursive: true });
+
+// ── Precondição de identidade ────────────────────────────────────────────────
+// O menu é `sidebarGroups(isPlatformAdmin, role)` (`registry.ts:510-519`), então
+// a suspeita natural é que promover o `e2e-admin` a dono do servidor inflasse o
+// sidebar que esta spec mede item a item.
+//
+// ⚠️ MEDIDO, e a suspeita não se confirma: `canSee` (`registry.ts:503-507`) é
+// `isPlatformAdmin || ROLE_RANK[role] >= ROLE_RANK[minRole]`; `ROLE_RANK.admin`
+// é 5, o TETO, e o maior `minRole` do registro é `"admin"`. Para um admin de
+// tenant o menu é IDÊNTICO promovido ou não — as asserções de `toHaveText`
+// abaixo não mudariam. Guardar a identidade aqui continua valendo (é a spec de
+// navegação; qualquer destino futuro exclusivo do dono apareceria primeiro
+// nela), mas registrar a diferença entre "muda" e "poderia mudar" é o ponto.
+test.beforeAll(async () => {
+  await afirmarAdminDeTenantPuro(creds.users.admin!.email);
+});
 
 async function login(page: Page, email: string): Promise<void> {
   await page.goto("/login");

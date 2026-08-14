@@ -780,17 +780,40 @@ Por isso o caso de volta foi medido **sem sessão**: `/login` é rota pública, 
 comparação usa o `#b3261e` já medido em `/app`. Mesma propriedade, mesmo rigor, sem
 depender de um login que o ambiente não estava entregando.
 
-### Descoberta lateral
+### Descoberta lateral — ~~correta~~ **REFUTADA por medição** (Onda 1, 2026-08-14)
 
-**Revogar o `platform_admin` removeu a exigência de MFA** do usuário — o `mfa_required`
-vinha de lá. O helper de login do repo trava esperando a tela de TOTP que deixa de
-aparecer, e o sintoma lê como "MFA quebrou". Fica registrado para a próxima sessão.
+> ~~**Revogar o `platform_admin` removeu a exigência de MFA** do usuário — o `mfa_required`
+> vinha de lá. O helper de login do repo trava esperando a tela de TOTP que deixa de
+> aparecer, e o sintoma lê como "MFA quebrou".~~
+
+**Isto é falso, e agir sobre ele levaria a mexer no gate de MFA sem defeito nenhum.**
+
+1. `lib/auth/server.ts:160` — `requiresMfa(role, isPlatformAdmin)` é
+   `isPlatformAdmin || role === "admin"`. `e2e-admin@deskcomm.test` tem role de
+   **tenant** `admin`, então a exigência continua de pé com ou sem a promoção.
+   `platform_admins.mfa_required` é uma coluna da tabela; não é ela que o produto lê
+   nesse caminho.
+2. A causa medida é **rotação do fator TOTP por outra sessão**, que este mesmo
+   documento já registrava duas seções acima ("o fator TOTP mudou de ID"). Medido de
+   novo hoje: `.e2e-creds.json` trazia `factor_id 49c64c17…` e o banco tinha
+   `81ee0438…` — o `seed-e2e-credentials.ts` rotacionou. Com o secret velho, o código
+   é recusado e o login fica preso em `/login/mfa`.
+
+Antes de tocar em código por causa deste sintoma, **meça**:
+
+```sql
+select count(*) from auth.mfa_factors
+ where user_id = (select id from auth.users where email = 'e2e-admin@deskcomm.test')
+   and status = 'verified';
+```
 
 ### Estado deixado no banco local (compartilhado)
 
 - `e2e-admin@deskcomm.test` segue **revogado** de `platform_admins`. É o estado correto do
-  seed base; quem precisa dele promovido é `seed-e2e-system-update.ts`, que repromove ao
-  rodar. Restaurar seria propagar o defeito.
+  seed base. ⚠️ **Atualizado na Onda 1:** a frase "quem precisa dele promovido é
+  `seed-e2e-system-update.ts`, que repromove ao rodar" **deixou de valer** — esse seed
+  agora promove o `e2e-dono@deskcomm.test` e **revoga** o `e2e-admin` a cada execução.
+  Rodá-lo é o conserto de um banco contaminado, não a recontaminação.
 - A marca da org de teste (`E2E Test Org`) ficou gravada com `#b3261e`.
 
 ### Sem cobertura, declarado
