@@ -281,6 +281,38 @@ pelo critério que já estava escrito lá: decisão humana não colapsa.
 
 ---
 
+## J10 — Marca própria: o revendedor põe a cara dele no sistema `[P0]`
+
+Contexto do código: o épico de marca própria (PR #248 e a continuação). São
+**duas camadas** que nunca se misturam — a da INSTALAÇÃO, que o dono do servidor
+define e vale para todo mundo, inclusive nas telas de acesso de quem ainda não
+entrou; e a da ORGANIZAÇÃO, que o admin do tenant define e vale só dentro dela.
+Specs: `tests/e2e/marca-logo.spec.ts`; invariantes de banco em
+`tests/invariants/marca-{logo,da-instalacao,da-organizacao}.test.ts`.
+
+`[P0]` porque é primeira impressão em dois sentidos: é o que o revendedor mostra
+ao cliente dele, e a tela de acesso é a primeira coisa que qualquer usuário vê.
+
+| # | Caso | Expectativa | Resultado |
+|---|------|-------------|-----------|
+| J10.1 | O dono do servidor sobe o logo da instalação | aparece na barra lateral dele, e a prévia mostra sobre fundo claro E escuro | **NÃO EXECUTADO** |
+| J10.2 | Quem NÃO entrou vê o logo do dono na tela de acesso | as 6 telas públicas mostram a marca da instalação, sem sessão | **NÃO EXECUTADO** |
+| J10.3 | O logo da EMPRESA troca a barra dela e não vaza | a camada da organização não alcança a tela de acesso, que é da instalação | **NÃO EXECUTADO** |
+| J10.4 | SVG renomeado para `.png` | recusado **pelos bytes**, com a razão dita em português — SVG executa código quando aberto direto pelo endereço | **NÃO EXECUTADO** |
+| J10.5 | Remover o logo da empresa | devolve o da camada de baixo (a instalação), não "nenhum" | **NÃO EXECUTADO** |
+| J10.6 | O instalador pergunta a cor da marca | `APP_ACCENT_HEX` no `install.sh`, com validação — o revendedor não recebe o verde do produto | PASS (`tests/shell/`) |
+| J10.7 | Nome com apóstrofo (`Sant'Ana Odontologia`) | o `.env` sobrevive: 18/18 nos três consumidores de compose | PASS |
+| J10.8 | Cor escura de marca não quebra o contraste | o anel de foco respeita o piso de 3:1 em ambos os temas | PASS (unit) |
+
+> ⚠️ **Os cinco `NÃO EXECUTADO` são honestos, não pendências esquecidas.** A spec
+> existe, tem 6 casos e está na `SPECS_PARTE_2` do CI — mas nunca rodou: o Docker
+> da máquina de desenvolvimento está com o disco da VM corrompido, e o `e2e` do
+> CI é a primeira execução dela na vida. Um revisor cético mediu a spec na fonte
+> do Playwright e achou 3 defeitos que a reprovariam (testes sem login, e a
+> restauração feita como `test` num `describe` serial — que é justamente o que
+> não roda quando um caso falha). Corrigidos antes da primeira execução; o
+> resultado real entra aqui quando o CI disser.
+
 ## J7 — Exploração completa `[P2]`
 
 Andar por TODAS as rotas navegáveis logado como admin e como agent: settings, contacts,
