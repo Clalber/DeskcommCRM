@@ -304,6 +304,25 @@ ao cliente dele, e a tela de acesso é a primeira coisa que qualquer usuário v�
 | J10.7 | Nome com apóstrofo (`Sant'Ana Odontologia`) | o `.env` sobrevive: 18/18 nos três consumidores de compose | PASS |
 | J10.8 | Cor escura de marca não quebra o contraste | o anel de foco respeita o piso de 3:1 em ambos os temas | PASS (unit) |
 
+**Bug de produto achado ao executar (2026-08-14), e é o que justifica esta jornada
+existir.** O caso J10.1 reprovou no CI, e não por defeito do teste: quem sobe o
+logo lia `"Logo atualizado."` e **a tela não mudava**, por até 30 segundos.
+
+A causa não era a que qualquer um chutaria. `lib/branding/instalacao.ts` é
+instanciado **duas vezes dentro do mesmo processo** — o Turbopack emite um runtime
+de servidor para as 206 rotas de API e outro para as 98 páginas, cada um com o
+próprio cache de módulos. A rota de upload invalidava um memo que **nenhuma tela
+lê**; a troca só aparecia quando o TTL expirasse sozinho.
+
+O que fecha o diagnóstico é o controle: a server action que troca nome e cor
+chama a MESMA função e sempre funcionou, porque é compilada no runtime das
+páginas. Mesma função, mesmo processo, resultados opostos — a variável era o
+runtime.
+
+Isto é exatamente o que a doutrina de QA Visual existe para pegar: nenhum teste
+unitário veria, porque a lógica está certa; o defeito mora em como o bundler
+divide o servidor. Só aparece exercitando o produto pela tela.
+
 > ⚠️ **Os cinco `NÃO EXECUTADO` são honestos, não pendências esquecidas.** A spec
 > existe, tem 6 casos e está na `SPECS_PARTE_2` do CI — mas nunca rodou: o Docker
 > da máquina de desenvolvimento está com o disco da VM corrompido, e o `e2e` do
