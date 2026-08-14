@@ -26,6 +26,21 @@
  * token emitido só no bloco claro venceria, com 0,2,0, o valor escuro do
  * `globals.css` também no tema escuro — a marca vazaria para o tema errado.
  *
+ * ── Por que o ESCOPO é parâmetro, e por que ele é uma união de literais ───────
+ *
+ * A partir da marca por organização há DOIS emissores: a instalação, que pinta o
+ * documento inteiro pela raiz, e a organização, que pinta só o que está dentro
+ * de `/app`. O que muda entre eles é o seletor — a serialização, a allowlist e a
+ * rede de segurança são as mesmas, e duplicar a função para trocar duas strings
+ * criaria duas cópias que divergem na primeira correção de segurança.
+ *
+ * O tipo é a UNIÃO DOS DOIS LITERAIS, jamais `string`: o seletor entra direto em
+ * `montarBloco` sem passar por validação nenhuma — a allowlist abaixo cobre nome
+ * de token e forma de VALOR, e a rede de segurança do fim só pega `<` e `;}`,
+ * não pega um `}` sozinho. Aceitar `string` abriria a única porta deste módulo
+ * por onde texto de usuário (id de organização, slug, nome de empresa) chegaria
+ * a um bloco que o navegador executa.
+ *
  * ── O que NUNCA fazer: `element.style.setProperty` no `<html>` ────────────────
  *
  * Seria mais curto e é uma armadilha. Declaração inline vence `:root` E
@@ -157,6 +172,64 @@ function declaracoesDoTema(cor: CorResolvida, tema: "claro" | "escuro"): Declara
   return saida;
 }
 
+/**
+ * O escopo da INSTALAÇÃO: o documento inteiro, pela raiz.
+ *
+ * `:root` casa exclusivamente o `<html>`, e o `<html>` é do layout raiz — o
+ * mesmo que serve `/login`, a tela de erro e o onboarding. É onde a marca de
+ * quem hospeda tem de valer.
+ */
+export const ESCOPO_DA_INSTALACAO = [
+  [":root:root", "claro"],
+  [':root:root[data-theme="dark"]', "escuro"],
+] as const;
+
+/**
+ * O escopo da ORGANIZAÇÃO: o `<body>`, enquanto existir a subárvore de `/app`.
+ *
+ * ── Por que `<body>`, e não uma div do shell ─────────────────────────────────
+ *
+ * 7 componentes de `components/ui` montam em Radix Portal e NENHUM passa
+ * `container` (`alert-dialog`, `dialog`, `dropdown-menu`, `popover`, `select`,
+ * `sheet`, `tooltip`; `grep -rn "container=" components/ui/*.tsx` = 0), portanto
+ * todos portam para `document.body`. O `Toaster` chega lá por outro caminho, de
+ * `app/layout.tsx`. Ancorado numa div, a PÁGINA mostraria a cor da organização e
+ * o menu aberto por cima mostraria a da instalação — sintoma que passa em
+ * revisão de código e só aparece com o menu aberto.
+ *
+ * ── Por que `:has()`, e não um atributo escrito no `<body>` ──────────────────
+ *
+ * O `<body>` pertence ao layout raiz e sobrevive à navegação client-side do
+ * logout (Server Action + `redirect`, sem full reload). Um atributo escrito nele
+ * teria de ser apagado por alguém, e "alguém" é o que falha. `:has()` deriva o
+ * escopo do DOM: a regra deixa de casar no instante em que o marcador some junto
+ * com a subárvore de `/app` — sem código de limpeza para esquecer.
+ *
+ * ── Por que o gate escuro é combinador DESCENDENTE ───────────────────────────
+ *
+ * `[data-theme="dark"]` só é escrito no `<html>` (`app/layout.tsx`,
+ * `lib/theme.tsx`). Um compound `body[data-theme="dark"]:has(…)` nunca casaria
+ * nada: regra silenciosa, zero erro no console, e a cor da organização
+ * simplesmente ausente no tema escuro.
+ *
+ * ── A especificidade, medida — e por que ela não decide nada ─────────────────
+ *
+ * `body:has([data-marca-org])` = (0,1,1); com o gate escuro, (0,2,1). Contra
+ * (0,2,0) e (0,3,0) da instalação. Os dois conjuntos NUNCA disputam: `:root`
+ * casa só o `<html>` e estes casam só o `<body>`, e especificidade só arbitra
+ * declarações que casam o MESMO elemento. Quem decide para todo elemento pintado
+ * é a PROXIMIDADE de herança — o `<body>` é descendente do `<html>`, então o que
+ * ele declara sombreia o que veio de cima para o documento inteiro. Os números
+ * existem para provar que não há empate a resolver por ordem de documento, que é
+ * o bug que o cabeçalho deste arquivo diz não querer ter.
+ */
+export const ESCOPO_DA_ORGANIZACAO = [
+  ["body:has([data-marca-org])", "claro"],
+  ['[data-theme="dark"] body:has([data-marca-org])', "escuro"],
+] as const;
+
+export type EscopoDaMarca = typeof ESCOPO_DA_INSTALACAO | typeof ESCOPO_DA_ORGANIZACAO;
+
 function montarBloco(seletor: string, decls: readonly Declaracao[]): string {
   const linhas = decls.map(([nome, valor]) => `  ${nome}: ${valor};`);
   return `${seletor} {\n${linhas.join("\n")}\n}`;
@@ -168,8 +241,15 @@ function montarBloco(seletor: string, decls: readonly Declaracao[]): string {
  * `null` NÃO é falha: sem marca configurada não há o que injetar, e o produto
  * fica com a cor dele — que é uma instalação correta. Falha é `null` com motivo
  * de recusa, e aí o motivo diz qual token e que forma foi rejeitada.
+ *
+ * O escopo tem default para os dois call sites que existiam antes da marca por
+ * organização continuarem escrevendo o MESMO texto, byte a byte: a instalação é
+ * quem pinta o documento inteiro, e ela não deveria precisar dizer isso.
  */
-export function cssDaMarca(cor: CorResolvida | null): CssDaMarca {
+export function cssDaMarca(
+  cor: CorResolvida | null,
+  escopo: EscopoDaMarca = ESCOPO_DA_INSTALACAO,
+): CssDaMarca {
   if (!cor) return { css: null, motivos: [] };
 
   const motivos: MotivoDoCss[] = [];
@@ -194,10 +274,7 @@ export function cssDaMarca(cor: CorResolvida | null): CssDaMarca {
   }
 
   const blocos: string[] = [];
-  for (const [seletor, tema] of [
-    [":root:root", "claro"],
-    [':root:root[data-theme="dark"]', "escuro"],
-  ] as const) {
+  for (const [seletor, tema] of escopo) {
     const decls = declaracoesDoTema(cor, tema);
     for (const [nome, valor] of decls) {
       if (!NOME_DE_TOKEN.test(nome)) {
