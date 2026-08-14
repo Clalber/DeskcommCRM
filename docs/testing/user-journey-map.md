@@ -383,8 +383,16 @@ espaço e acento, que era o gatilho do defeito #6.
   alguém passa a escutar, ou o trigger sai. Não inventei consumidor.
 - Tela de Conexões diz "1 número conectado" mesmo com o número **caído** (conta
   sessões, não conectados).
-- O autenticador registra o nome fixo "DeskcommCRM", ignorando o `APP_NAME` que o
-  instalador vende como marca de toda a interface.
+- ~~O autenticador registra o nome fixo "DeskcommCRM", ignorando o `APP_NAME` que o
+  instalador vende como marca de toda a interface.~~ **RESOLVIDO em 2026-08-14** — virou o
+  caso `M4` da jornada de marca própria (no fim deste arquivo). E a justificativa que estava
+  aqui era **falsa em duas metades**: o problema não era "o nome fixo aparece no celular do
+  usuário", porque o `friendlyName` **não entra na URI `otpauth://`** (medido contra GoTrue
+  v2.188.1, e nenhuma tela do produto renderiza `friendly_name`). O campo que de fato grava no
+  aparelho é o `issuer`, que simplesmente **não era passado**. Este item ficou aqui semanas
+  descrevendo o defeito certo pelo mecanismo errado — e, enquanto isso, a mesma coisa constava
+  como dívida da fase 4 na guarda de marca. O mesmo defeito com duas biografias é como uma
+  correção acaba consertando a metade que não importa.
 - `CLAUDE.md` documenta bearer `tok_...`; o token real nasce com prefixo `dsk_`.
 
 ## Segurança — achados após conectar o WhatsApp real (2026-07-30)
@@ -585,3 +593,48 @@ O que continua fora: o app contra um Supabase real (o ensaio usou Postgres em co
 uma sessão de WhatsApp pareada de verdade (foi um marcador no volume), e o `install.sh`
 completo da época (exige projeto Supabase). Segue valendo a régua de `vps-fresh-onboarding`:
 o CI prova que os scripts fazem o que dizem, não que a máquina de alguém mudou de estado.
+
+---
+
+## O cliente do revendedor vê a marca de quem o atende? (2026-08-14)
+
+**Jornada nova, e ela cobre a persona que nenhuma outra cobre: o REVENDEDOR.** Todas as
+jornadas acima olham a instalação pelos olhos de quem a usa. Esta olha pelos olhos de quem a
+**vende** — a agência que instala numa VPS, põe a própria marca e cobra por isso, que é o
+modelo de monetização declarado do produto (`docs/white-label.md`).
+
+Ela nasceu de uma frase falsa em documento público. O `white-label.md` prometia, em texto de
+venda, que "cores, fontes e tema não são configuráveis" e que "a marca é por instalação, não
+por organização" — as duas coisas deixaram de ser verdade no épico de marca própria, e o
+documento seguiu vendendo o limite antigo. O oposto também apareceu: o autenticador registrava
+o nome fixo do nosso produto, e isso morava numa lista de "aberto para decisão do dono" há
+semanas, sem dono.
+
+**Por que quase toda a régua aqui é `[P0]`:** um vazamento de marca não parece um bug para
+quem o comete — a tela funciona, o e-mail chega, o teste passa. Ele só existe aos olhos de um
+terceiro (o cliente do revendedor) que descobre, no meio de uma conversa de venda, o nome de um
+software que ele não contratou. Não há gravidade média nisso.
+
+**Onde o código vive:** `lib/branding/` (resolvedor, rampa, contraste, saída sem DOM),
+`app/admin/(protected)/marca/` e `app/app/settings/marca/` (as duas telas),
+`hostgator-setup-kit/marca-emails.sh` (os e-mails de acesso) e o mapa
+[`../architecture/marca-propria.architecture.json`](../architecture/marca-propria.architecture.json).
+
+| # | Caso | Estado |
+|---|---|---|
+| `M1` `[P0]` | Instalação com a marca do revendedor: a **aba** mostra o nome dele e o **ícone** carrega **deslogado** | **PASS por comportamento** (2026-08-13, build de produção): com `app_name='Vendas Turbo'` e `accent_hex='#f2c94c'` gravados, o ícone virou **V sobre `#6e5c28`** — o accent DERIVADO, não a semente crua — e o título trocou. Spec `tests/e2e/icone-da-marca.spec.ts` no disco **e inscrita** em `SPECS_PARTE_1` (`.github/workflows/e2e.yml:106`). **NÃO medido: a primeira execução dela no CI** |
+| `M2` `[P0]` | O **e-mail de confirmação de conta** chega com a marca do revendedor — ou, sem `SUPABASE_ACCESS_TOKEN`, o passo manual é impresso e a instalação segue | **PARCIAL.** O mecanismo foi medido contra a API real num projeto descartável: `PATCH /v1/projects/{ref}/config/auth` com `mailer_templates_*` **é aceito e PERSISTE sem SMTP customizado** (releitura por `GET`, estado restaurado). Achado do rig: **projeto pausado responde 400 "Project is paused."** — modo de falha que um script confiando em 2xx reportaria como sucesso, e por isso `marca-emails.sh` relê o que gravou. **NÃO medido: um e-mail efetivamente entregue numa caixa de entrada** |
+| `M3` `[P0]` | **Convite de time**: assunto e corpo com a marca; sem `RESEND_*`, a tela mostra o `accept_url` em vez de falhar calada | **COBERTO POR TESTE, NÃO PROVADO NA TELA.** `tests/unit/email-marca-e-remetente.test.ts` e `tests/unit/branding-saida.test.ts` guardam a resolução e o remetente; `RESEND_FROM_EMAIL` vazio passa a significar `not_configured`, que cai no caminho que já existia (`accept_url` na tela, `pending_review` no worker de LGPD). Falta dirigir o browser num ambiente fresco **sem** `RESEND_API_KEY` |
+| `M4` `[P1]` | **Cadastro de MFA**: o app autenticador registra a marca da instalação | **ENTREGUE, PROVA CONTRA GoTrue REAL NÃO LOCALIZADA.** `app/actions/auth/enrollMfa.ts:59` passa `issuer: marca.nome` — o campo que de fato grava no celular (`friendlyName` **não** entra na URI `otpauth://`, medido contra GoTrue v2.188.1). O plano exigia repetir o rig de enroll real antes de fechar; não achei registro dessa execução. **Vale só para quem enrolar depois: trocar o `issuer` não reescreve fator já cadastrado** |
+| `M5` `[P1]` | **Export de LGPD**: o PDF nomeia o **controlador** (`legal_name`) e o DPO — **nunca** a marca do revendedor | **COBERTO POR TESTE.** O teste isola o rodapé e exige que o texto entre `Controlador:` e `· Relatório LGPD` seja **exatamente** o `legal_name` (a primeira versão só checava `/deskcomm/i` e teria deixado passar a marca de um revendedor). Vigiado também no mapa de arquitetura, que reprova quem ligar o PDF ao resolvedor de marca. **Armadilha viva:** `legal_name` nasce igual ao nome fantasia — o caso ruim é o valor plausível e errado, e quem resolve é a tela `/app/settings/tenant` |
+| `M6` `[P1]` | **Marca por organização**: a cor da org pinta `/app` e **não** vaza para o `/login` | **PASS na tela** (2026-08-13), com admin de tenant PURO — a precondição falhou primeiro e era a armadilha prevista (`e2e-admin` **era** `platform_admin`; medi `count=1`, revoguei, reafirmei `count=0`, só então testei). `#b3261e` no claro, `#f16051` no escuro, persistido no reload, e **ausente** em `/login` sem sessão. Evidência: `evidence/org-1-tela.png`, `evidence/org-2-digitado.png`, `evidence/org-3-salvo.png`, `evidence/org-4-recarregado.png`, `evidence/org-5-login.png` |
+| `M7` `[P2]` | Cor inválida: cai para o padrão, o estado fica gravado e a tela **mostra** por quê | **PASS na tela** para a recusa (hex inválido → **Salvar desabilitado**, evidência `evidence/marca-3-invalido.png`). `fallback_at`/`fallback_reason` são gravados por `registrarEstadoDaMarca()` e lidos por `/admin/marca`. **Dívida conhecida:** pela UI o caminho é inalcançável — o CHECK do banco barra o hex corrompido antes —, então o estado do degrade só aparece para quem editar o banco à mão ou vier de um clone com valor legado |
+| `M8` `[P0]` | O revendedor **descobre** que dá para trocar a marca | **PASS estrutural.** `/app/settings/marca` está declarada em `lib/navigation/registry.ts` (grupo Configurações, `sidebar:false` — tarefa de uma vez, o hub e o ⌘K garantem a descoberta), e `tests/unit/navegacao-completude.test.ts` reprova tela sem porta. `/admin/marca` é de platform admin e fica fora dessa varredura por construção |
+
+**O que esta jornada ainda NÃO cobre, e é onde eu apostaria o próximo defeito:** a instalação
+fresca ponta a ponta com a marca de um revendedor — `install.sh` numa VPS, respondendo
+`APP_NAME` com um nome de verdade, e conferindo os **cinco** artefatos que saem dali (aba,
+ícone, e-mail de acesso, convite, endereço de suporte). É a mesma lacuna de
+`vps-fresh-onboarding`: os testes provam que cada peça faz o que diz, não que a jornada de
+quem compra funciona inteira. Os defeitos de marca que mais custam caro moram exatamente aí,
+porque são vistos primeiro por um terceiro.

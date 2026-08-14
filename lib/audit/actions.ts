@@ -267,4 +267,17 @@ export type AuditAction =
   // de código próprio para não somar duas grandezas no mesmo relatório.
   | "followup.scheduled"
   | "followup.cancelled"
-  | "lead.reactivation_proposed";
+  | "lead.reactivation_proposed"
+  // A marca da INSTALAÇÃO (nome, logo, cor, selo) trocada em `platform_branding`
+  // — mutação de plataforma, não de tenant, e por isso sem `organization_id`.
+  // Auditável porque muda a fachada que TODOS os clientes daquela instalação
+  // veem, e a pergunta "quem repintou isto?" só tem resposta aqui: não há
+  // event_log (nenhum handler consumiria o tipo — ver register-handlers.ts).
+  | "platform_branding.updated"
+  // A marca da ORGANIZAÇÃO (nome + cor) trocada em `organizations.settings.branding`
+  // — mutação de TENANT, e por isso COM `organization_id` e com `resource_id` =
+  // o uuid da org. É outra ação, e não `org.updated`, porque a pergunta que a
+  // trilha responde é diferente: "quem repintou a marca desta empresa?" contra
+  // "quem mexeu no cadastro dela?". Fundir as duas obrigaria a ler o metadata
+  // para saber qual das duas coisas aconteceu.
+  | "org.branding_updated";

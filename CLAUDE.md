@@ -95,6 +95,14 @@ DeskcommCRM é um sistema operacional de vendas open source com agentes de IA na
 - Grupos: SKIP CRM binding se `chatId.endsWith('@g.us')`. Sender é `p.author`, não `p.from`
 - Cron `recover-stuck-messages` (`app/api/v1/cron/recover-stuck-messages/route.ts`, agendado no `scheduler` do `docker-compose.prod.yml`): marca `status='sending'` há >5min como `failed` **e abre aviso na Central** (`agent_inbox_items` kind `message_send_stuck`). Não toca em `queued`: esse estado tem dono (o agent-engine reagenda por `SEND_QUEUED_RETRY_MS`), e falhá-lo perderia mensagem que ia sair. Não reenvia — envio em dobro é pior que não-envio
 
+### Marca própria (white-label)
+- **Uma imagem Docker serve todas as marcas.** Nada de `NEXT_PUBLIC_*` para marca, nada de `public/favicon.ico`, nada de imagem por revendedor — a imagem é pré-buildada e o `update.sh` regrava `APP_IMAGE` incondicionalmente
+- **O banco está ACIMA do `.env`.** `platform_branding` (instalação) e `organizations.settings.branding` (organização) são a fonte; `APP_NAME`/`APP_LOGO_URL`/`APP_ACCENT_HEX` são **semente e piso de rollback** (o `agent.sh` reverte a imagem, nunca o banco)
+- **Resolvedor NUNCA lança.** `lib/branding/instalacao.ts` e `lib/branding/saida.ts` degradam para o padrão do produto e seguem: `branding()` roda em `app/layout.tsx`, e um throw ali é 500 em todas as telas
+- **Saída sem DOM usa `marcaDaSaida()`** (`lib/branding/saida.ts`) — e-mail, remetente, ícone, `issuer` do MFA. Um hex e uma frente legível, tema **claro** sempre. Nunca passe `MarcaResolvida` a template de e-mail
+- **O PDF de LGPD NUNCA leva marca.** Ele nomeia o **controlador** (`organizations.legal_name`) e o DPO resolvido. Nomear ali o revendedor — que é operador — inverteria papéis num documento que responde a direito legal. Vigiado em `tests/unit/mapas-de-arquitetura.test.ts`
+- Vazamento de marca no código é vigiado por `tests/unit/branding.test.ts` (varre `app|components|lib|workers|hooks`), com allowlist que **só encolhe**. Contexto de venda em [`docs/white-label.md`](docs/white-label.md); mapa em `docs/architecture/marca-propria.architecture.json`
+
 ### Doutrina DIRC (antes de adicionar campo)
 - **D**uplicar — vive aqui mesmo?
 - **I**ntegrar — vem de outra tabela via FK?
@@ -203,11 +211,11 @@ O não-negociável, em quatro linhas:
    instalar, ele **nunca é atualizado**.
 2. **Publicação é ato do CI.** Nunca da sua máquina: build ARM local não roda
    na VPS amd64 do cliente, e a falha só aparece no `up -d` dele. O job
-   `imagens-ok` reprova quando qualquer uma das três imagens não constrói —
-   mas **ainda não é status check obrigatório** (a branch protection tem
-   `verify, build-and-size, invariants, e2e`). Ativá-lo é o passo final do
-   merge desta doutrina: um required check ausente na base dos PRs abertos
-   travaria todos eles. Confira na fonte antes de confiar nesta linha.
+   `imagens-ok` reprova quando qualquer uma das três imagens não constrói, e
+   **é status check obrigatório desde 2026-08-13** — a branch protection tem
+   `verify, build-and-size, invariants, e2e, imagens-ok`. (Este parágrafo dizia
+   "ainda não é obrigatório" até 2026-08-14; a ativação era o passo final do
+   merge da doutrina e aconteceu.) Confira na fonte antes de confiar nesta linha.
 3. **Instalação de cliente aponta para número de versão, nunca para tag móvel.**
    `latest` aqui significa **topo da `main`**, não última release — quem quer a
    última release usa `stable`. `pull_policy` acompanha a mutabilidade da tag:
@@ -253,18 +261,21 @@ Checks **obrigatórios** na branch protection da `main` (verificado na configura
 - **`verify`** (`ci.yml`) — typecheck + lint + test:unit.
 - **`invariants`** (`ci.yml`) — `pnpm test:db`: sobe `pgvector/pgvector:pg17`, aplica `supabase/baseline.sql` em modo install (`ON_ERROR_STOP=1`) e update (idempotência), e roda os testes de invariante, incluindo o de isolamento RLS entre 2 organizações.
 - **`build-and-size`** (`perf.yml`) — `pnpm build` em Node 22.
-- **`e2e`** (`e2e.yml`) — sobe Supabase local, aplica o `baseline.sql` e roda **37 das 39 specs** Playwright (medido em 2026-08-10; **reconte antes de citar**, com `ls tests/e2e/*.spec.ts | wc -l` e `grep -oE '[a-z0-9-]+\.spec\.ts' .github/workflows/e2e.yml | sort -u | wc -l` — este número já apodreceu duas vezes, e uma delas fui eu copiando o `echo` do próprio workflow em vez de contar os arquivos). As duas de fora: `vps-fresh-onboarding` (precisa de WAHA + Redis + Resend + Nuvemshop) e `agente-papeis-operador`. A primeira é a **P0** da doutrina de QA Visual — ou seja, `e2e` verde **não** prova a jornada de instalação fresca, que é o produto que se vende.
+- **`e2e`** (`e2e.yml`) — sobe Supabase local, aplica o `baseline.sql` e roda **45 das 46 specs** Playwright (medido em 2026-08-14 @ `741c4ec8`; **reconte antes de citar**, com `ls tests/e2e/*.spec.ts | wc -l` e `grep -oE '[a-z0-9-]+\.spec\.ts' .github/workflows/e2e.yml | sort -u | wc -l` — este número já apodreceu **três** vezes, e uma delas foi eu copiando o `echo` do próprio workflow em vez de contar os arquivos). A **única** de fora é `vps-fresh-onboarding` (precisa de WAHA + Redis + Resend + Nuvemshop) — e ela é a **P0** da doutrina de QA Visual, ou seja, `e2e` verde **não** prova a jornada de instalação fresca, que é o produto que se vende.
+- **`imagens-ok`** (`imagens.yml`) — reprova quando qualquer uma das três imagens Docker não constrói. **É obrigatório desde 2026-08-13**; este arquivo dizia o contrário em outro parágrafo (ver a doutrina de packaging acima, já corrigida).
 
-Todos os quatro são **obrigatórios** — medido em 2026-08-08 na branch protection:
+Todos os **cinco** são **obrigatórios** — medido em 2026-08-14 na branch protection:
 
 ```console
 $ gh api repos/melgarafael/DeskcommCRM/branches/main/protection --jq '.required_status_checks.contexts|join(", ")'
-verify, build-and-size, invariants, e2e
+verify, build-and-size, invariants, e2e, imagens-ok
 ```
 
-O `e2e` entrou para a lista depois de este arquivo ter sido escrito. A versão anterior dizia que ele
-"ainda não é obrigatório", e uma triagem que lesse isso mediria contra a régua errada — que é o modo
-de falha nº 1 do procedimento de triagem. Reconfira na fonte antes de confiar em qualquer lista aqui.
+Duas correções que este bloco já pagou: o `e2e` entrou para a lista depois de o arquivo ser escrito, e
+a versão anterior dizia que ele "ainda não é obrigatório"; depois o `imagens-ok` entrou e o arquivo
+seguiu dizendo "quatro". Uma triagem que leia qualquer uma dessas versões mede contra a régua errada —
+que é o modo de falha nº 1 do procedimento de triagem. **Reconfira na fonte antes de confiar em
+qualquer lista aqui**, com o comando acima.
 
 Ao mexer em schema, RLS, RBAC, atribuição, escopo, roteamento, follow-up, webhooks ou automações: rode `pnpm test:db` **localmente** antes de abrir PR. É o único caminho que exercita o `baseline.sql` que o self-hoster realmente aplica.
 
