@@ -39,6 +39,7 @@ import { PROVEDORES } from "@/lib/ai/pontos/provedores";
 
 import { ModelPicker, useModelMeta } from "./ModelPicker";
 import { CHAVE_DA_INSTALACAO, CredentialPicker, findCredential } from "./CredentialPicker";
+import { rotuloDoEstadoDoCanal } from "@/lib/channels/estado";
 import { ToolPicker } from "./ToolPicker";
 import { TriggerEditor, type TriggerValue } from "./TriggerEditor";
 import { HandoffKeywordsInput } from "./HandoffKeywordsInput";
@@ -673,8 +674,16 @@ export function AgentForm(props: Props) {
                 <SelectContent>
                   {props.channelSessions.map((s) => (
                     <SelectItem key={s.id} value={s.id}>
+                      {/*
+                        O estado vinha CRU daqui — a opção lia "org_2dd5e6ea ·
+                        STARTING", juntando o identificador interno da sessão com
+                        o enum em inglês do banco. O nome agora nunca é o
+                        identificador (ver `nomeDoCanal`), e o estado passa pela
+                        mesma tradução que a tela de Conexões usa.
+                      */}
                       {s.display_name}
-                      {s.phone_number ? ` · ${s.phone_number}` : ""} · {s.status}
+                      {s.phone_number ? ` · ${s.phone_number}` : ""} ·{" "}
+                      {rotuloDoEstadoDoCanal(s.status)}
                     </SelectItem>
                   ))}
                   {props.channelSessions.length === 0 ? (
