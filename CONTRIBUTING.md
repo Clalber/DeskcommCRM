@@ -77,10 +77,10 @@ Ao finalizar um epic:
    - `pnpm test:e2e` (subset relevante) — **opcional se você contribui de fora**, ver abaixo
 4. Abrir PR contra `main`. Description deve referenciar o epic e listar evidências (logs/screenshots dos testes).
 5. CI deve passar antes de merge. Obrigatórios: `verify`, `invariants` (isolamento RLS),
-   `build-and-size` e `e2e`.
+   `build-and-size`, `e2e` e `imagens-ok`.
 
-   O job `imagens-ok` (constrói as três imagens que o self-hoster instala) roda em PR e
-   **ainda não bloqueia** — a ativação depende de um passo de administração do repositório.
+   O `imagens-ok` (em `.github/workflows/publish-image.yml`) constrói as três imagens que o
+   self-hoster instala, roda em PR e **bloqueia** desde 2026-08-13.
 
    Verde no `e2e` **não** é "jornada provada": ele mesmo imprime, no resumo, quais specs não
    cobriu — e a que fica de fora é justamente `vps-fresh-onboarding`, a instalação do zero.
