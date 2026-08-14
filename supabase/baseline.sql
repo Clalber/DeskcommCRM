@@ -11526,6 +11526,135 @@ notify pgrst, 'reload schema';
 
 
 
+-- ---- marca por organização (migration 0157) ----
+--
+-- A MARCA DO CLIENTE FINAL SE GRAVA EM UMA INSTRUÇÃO SÓ.
+--
+-- `organizations.settings` tem três donos com gates diferentes (updateTenant =
+-- admin, PATCH de atendimento = manager, régua de atrito = manager) e os três
+-- fazem read-modify-write do jsonb INTEIRO, em round-trips HTTP separados. A
+-- perda é medida, não deduzida: `visibility_mode` volta de 'own' para 'all' sem
+-- erro em lugar nenhum — e essa chave é lida DIRETO pela RLS, dentro de
+-- `fn_can_view_conversation`/`fn_can_view_lead`. Um write de COR reverteria, em
+-- silêncio, uma decisão de exposição de dado de cliente. Um quarto escritor com
+-- o mesmo padrão é inaceitável, então esta escrita passa por função.
+--
+-- Devolve `integer` (linhas afetadas) porque a única policy de escrita de
+-- `organizations` é `orgs_write_platform_admin`: pelo client de sessão o UPDATE
+-- de um admin de TENANT casa 0 linhas e o PostgREST responde 204 — a tela diz
+-- "salvo" e nada foi gravado (issue #144). O `row_count` é o que permite ao
+-- chamador distinguir os dois casos.
+--
+-- A autorização é REPETIDA aqui (o gate da Server Action usa o snapshot de
+-- membership de `loadAuthUser`, não o banco): é o que faz a regra valer para
+-- qualquer chamador futuro e o que impede escalação se o EXECUTE escapar um dia.
+--
+-- Idempotente e auto-curativo: `create or replace function`, revoke/grant
+-- declarativos, e nenhuma constraint nova sobre dado existente — não há o que
+-- deduplicar antes. Termina com `notify pgrst` próprio, como os blocos
+-- vizinhos — o PostgREST guarda o schema em cache e não veria a função nova.
+--
+-- ⚠️ E entra ANTES do bloco da VARREDURA anon, que é de propósito o último do
+-- arquivo: ela mede o privilégio EFETIVO de `authenticated`/`service_role` antes
+-- de revogar e o devolve depois, então os revokes acima só sobrevivem porque
+-- rodam ANTES dela. Colar no fim do arquivo — o movimento natural de quem
+-- adiciona migration — desarmaria a cura para tudo que viesse depois. Vigiado
+-- por `tests/unit/varredura-anon-e-o-ultimo-bloco.test.ts`.
+create or replace function public.fn_definir_marca_da_organizacao(
+  p_org   uuid,
+  p_actor uuid,
+  p_marca jsonb
+) returns integer
+    language plpgsql
+    volatile
+    security definer
+    set search_path to 'public', 'pg_temp'
+as $$
+declare
+  v_linhas integer;
+  v_hex    text;
+  v_limpar boolean;
+begin
+  if p_org is null or p_actor is null then
+    raise exception 'marca_da_organizacao_argumento_nulo'
+      using errcode = '22023';
+  end if;
+
+  -- "Apague a marca" chega por DUAS formas — SQL NULL e o jsonb `'null'` — e as
+  -- duas significam a mesma coisa. NÃO MEDIDO qual delas o PostgREST produz para
+  -- `{"p_marca": null}`; tratar só uma deixaria a limpeza levantando 22023 num
+  -- dos dois transportes.
+  v_limpar := p_marca is null or jsonb_typeof(p_marca) = 'null';
+
+  if not v_limpar and jsonb_typeof(p_marca) <> 'object' then
+    raise exception 'marca_da_organizacao_forma_invalida: %', jsonb_typeof(p_marca)
+      using errcode = '22023';
+  end if;
+
+  -- MESMA regex do CHECK `platform_branding_accent_hex` — que é a forma que
+  -- `normalizarHex` emite. Aceitar `#FFF` criaria duas grafias da mesma cor e a
+  -- pergunta "mudou?" passaria a mentir. Dentro de jsonb não cabe CHECK de
+  -- coluna, então a regra é da função.
+  v_hex := nullif(p_marca ->> 'accent_hex', '');
+  if v_hex is not null and v_hex !~ '^#[0-9a-f]{6}$' then
+    raise exception 'marca_da_organizacao_accent_hex_invalido'
+      using errcode = '22023';
+  end if;
+
+  -- Papel insuficiente falha ALTO (42501) em vez de devolver 0: 0 já significa
+  -- "a organização não existe", e colapsar os dois deixaria o chamador sem saber
+  -- se o problema é papel ou id.
+  if not exists (
+       select 1 from public.user_organizations uo
+        where uo.user_id = p_actor
+          and uo.organization_id = p_org
+          and uo.role = 'admin'
+          and uo.revoked_at is null
+     )
+     and not exists (
+       select 1 from public.platform_admins pa
+        where pa.user_id = p_actor
+          and pa.revoked_at is null
+     )
+  then
+    raise exception 'marca_da_organizacao_sem_permissao'
+      using errcode = '42501';
+  end if;
+
+  update public.organizations o
+     set settings = case
+           when v_limpar
+             then coalesce(o.settings, '{}'::jsonb) - 'branding'
+           else jsonb_set(coalesce(o.settings, '{}'::jsonb), '{branding}', p_marca, true)
+         end
+   where o.id = p_org;
+
+  get diagnostics v_linhas = row_count;
+  return v_linhas;
+end;
+$$;
+
+comment on function public.fn_definir_marca_da_organizacao(uuid, uuid, jsonb) is
+  'Grava organizations.settings.branding com merge ATÔMICO (jsonb_set), sem tocar nas demais chaves do jsonb (llm, routing, visibility_mode, atrito, ai_dispatch_mode, canonical_conversation_tags, lost_reasons_extra, plan). Devolve linhas afetadas: 0 = a organização não existe. Papel insuficiente levanta 42501. Chamador: app/actions/settings/updateMarcaDaOrganizacao.ts.';
+
+-- OS DOIS REVOKES (CLAUDE.md, item 9) — origens DISTINTAS de EXECUTE, e tratar
+-- só uma deixa a função exposta com o gate verde:
+--   (A) `from public`  — o grant que o Postgres dá a PUBLIC ao criar qualquer
+--       função; `revoke ... from anon` não o remove.
+--   (B) `from anon`    — o grant DIRETO do `ALTER DEFAULT PRIVILEGES ... GRANT
+--       ALL ON FUNCTIONS TO anon` (linha ~3972 deste arquivo), que vale para
+--       toda função criada DEPOIS dele — isto é, para todo apêndice, que por
+--       construção nasce no fim. `revoke ... from public` não o remove.
+-- `from authenticated` pelo motivo de (B) e mais um: esta função é VOLÁTIL.
+-- Definer volátil alcançável por qualquer usuário logado é escrita cross-tenant.
+revoke execute on function public.fn_definir_marca_da_organizacao(uuid, uuid, jsonb)
+  from public, anon, authenticated;
+grant  execute on function public.fn_definir_marca_da_organizacao(uuid, uuid, jsonb)
+  to service_role;
+
+notify pgrst, 'reload schema';
+
+
 -- ---- VARREDURA anon: função nova nasce exposta em quem ATUALIZA (migration 0116) ----
 --
 -- ⚠️ ESTE BLOCO É, DE PROPÓSITO, O ÚLTIMO DO ARQUIVO. Apêndice novo entra ANTES

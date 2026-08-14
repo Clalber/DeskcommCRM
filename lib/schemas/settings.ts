@@ -174,3 +174,32 @@ export const platformBrandingSchema = z.object({
   show_powered_by: z.boolean(),
 });
 export type PlatformBrandingInput = z.infer<typeof platformBrandingSchema>;
+
+/**
+ * A marca da ORGANIZAÇÃO (`organizations.settings.branding`) — o cliente final
+ * do revendedor, e o que a Server Action `updateMarcaDaOrganizacao` aceita.
+ *
+ * `.nullable()` pelo mesmo motivo do schema de cima: aqui `null` é um valor com
+ * significado ("apague este campo, quero o que vem da instalação") e ausência
+ * significaria "não mexa". Colapsar os dois deixaria o admin sem como voltar
+ * atrás depois de escolher uma cor.
+ *
+ * SEM `logo_url`: upload é a fase seguinte (bucket, policies, limite de tamanho,
+ * delete-on-replace). Um campo aqui hoje seria contrato oferecido e não
+ * implementado — a precedência por campo garante que o logo da instalação
+ * continua valendo enquanto isso.
+ *
+ * `accent_hex` valida com `ehHexValido` — o MESMO validador do domínio que
+ * `lib/branding/schema.ts` usa — e a action normaliza antes de gravar. Um regex
+ * novo escrito aqui divergiria da regex da função SQL (`^#[0-9a-f]{6}$`) e o
+ * admin receberia um `22023` cru na tela em vez de "essa cor não é válida".
+ */
+export const marcaDaOrganizacaoSchema = z.object({
+  app_name: z.string().trim().min(1).max(120).nullable(),
+  accent_hex: z
+    .string()
+    .trim()
+    .refine(ehHexValido, { message: "Use uma cor no formato #rrggbb" })
+    .nullable(),
+});
+export type MarcaDaOrganizacaoInput = z.infer<typeof marcaDaOrganizacaoSchema>;

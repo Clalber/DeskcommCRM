@@ -250,4 +250,11 @@ export type AuditAction =
   // Auditável porque muda a fachada que TODOS os clientes daquela instalação
   // veem, e a pergunta "quem repintou isto?" só tem resposta aqui: não há
   // event_log (nenhum handler consumiria o tipo — ver register-handlers.ts).
-  | "platform_branding.updated";
+  | "platform_branding.updated"
+  // A marca da ORGANIZAÇÃO (nome + cor) trocada em `organizations.settings.branding`
+  // — mutação de TENANT, e por isso COM `organization_id` e com `resource_id` =
+  // o uuid da org. É outra ação, e não `org.updated`, porque a pergunta que a
+  // trilha responde é diferente: "quem repintou a marca desta empresa?" contra
+  // "quem mexeu no cadastro dela?". Fundir as duas obrigaria a ler o metadata
+  // para saber qual das duas coisas aconteceu.
+  | "org.branding_updated";
