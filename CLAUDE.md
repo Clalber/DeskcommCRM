@@ -377,5 +377,12 @@ Antes de declarar uma task pronta:
 13. **Living System Checklist respondido** (lei em `docs/doctrine/sistema-vivo.md`; racional no manual `docs/doctrine/sistema-vivo/`) — a feature não é ilha: tem entrada + saída, emite atividade/log, aparece na tela, tem porta na navegação, tem mecanismo anti-morte, **declara seu laço de retorno** (invariante 7 — o que muda no sistema quando ela erra), e o mapa vivo (`docs/architecture/`) reflete peça nova com ≥2 arestas. Resposta que não **nomeia o artefato concreto** (consumidor real, tela real, log real) não conta
 14. **Tela nova tem porta** — declarada em `lib/navigation/registry.ts` com seu grupo, ou na allowlist de `tests/unit/navegacao-completude.test.ts` **com justificativa escrita**. Ter tela e ser alcançável são coisas diferentes: o CI reprova tela que existe mas em que só se chega digitando a URL
 15. **Se tocou Dockerfile, compose ou setup kit: a mudança chega a quem já instalou** (lei em `docs/doctrine/packaging.md`) — nenhum serviço de produção ficou `build:`-only; variável nova tem default que não quebra `.env` antigo; a atualização não pede edição manual de arquivo; e, se mudou o que a imagem contém, o `update.sh` alcança essa peça. Rode `pnpm test:shell` — é o único gate que exercita o kit
+16. **Se o PR muda comportamento, procure a afirmação de estado sobre esse comportamento.** Só
+    sobre o que você mudou, e só nos documentos de autoridade — não saia caçando pelo repo. A
+    documentação afirma como o mundo *está*, e uma auditoria de 2026-08-14 achou **227
+    afirmações desatualizadas em 393 medidas**
+    ([`docs/audits/2026-08-14-afirmacoes-de-estado.md`](docs/audits/2026-08-14-afirmacoes-de-estado.md)).
+    Onde a afirmação puder virar **comando**, troque em vez de corrigir: um número corrigido
+    envelhece de novo; um `rode isto para saber` não envelhece nunca
 
 Um staff engineer aprovaria? Se não, itera.

@@ -10,6 +10,31 @@ audited_against: origin/main @ 789dfa6 (v1.0.0, 2026-07-27)
 
 # Auditoria do harness — DeskcommCRM
 
+> # ⚠️ ESTE DOCUMENTO É UM RETRATO, NÃO O ESTADO DE HOJE
+>
+> **Ele descreve `origin/main` no commit `789dfa6` (v1.0.0, 2026-07-29).** Os números,
+> contagens e vereditos abaixo conferem **contra aquele commit** — não contra o que está na
+> `main` agora. Entre um e outro há **1.014 commits e 71 migrations** (medido em 2026-08-14).
+>
+> **Nada aqui é mantido.** É deliberado, e é a alternativa honesta: um retrato datado nunca
+> mente, enquanto um documento atualizado uma vez volta a mentir na semana seguinte — e sem
+> aviso, porque a atualização recente faz o leitor confiar mais.
+>
+> **Antes de agir sobre qualquer linha, remeça.** Uma auditoria de 2026-08-14 encontrou
+> 20 afirmações desatualizadas só neste arquivo — várias dizendo que falta algo que já foi
+> feito. Os comandos de medição de cada uma estão em
+> [`audits/2026-08-14-afirmacoes-de-estado.md`](audits/2026-08-14-afirmacoes-de-estado.md).
+>
+> Precisa do estado de agora? Meça na fonte. Para o que este documento mais cita:
+>
+> ```bash
+> gh api repos/melgarafael/DeskcommCRM/branches/main/protection \
+>   --jq '.required_status_checks.contexts'      # os checks obrigatórios
+> pnpm typecheck && pnpm lint && pnpm lint:channels && pnpm test:unit && pnpm test:shell
+> ```
+
+
+
 "Harness" = a infraestrutura que permite a um humano ou agente instalar, entender,
 alterar e **verificar** o projeto com segurança. Um harness fraco não impede o trabalho;
 ele torna o trabalho não-verificável, e é aí que a regressão entra sem ninguém ver.

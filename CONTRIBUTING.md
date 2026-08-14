@@ -76,7 +76,12 @@ Ao finalizar um epic:
    - Docs atualizadas se mudou contrato (PRD/spec)
    - `pnpm test:e2e` (subset relevante) — **opcional se você contribui de fora**, ver abaixo
 4. Abrir PR contra `main`. Description deve referenciar o epic e listar evidências (logs/screenshots dos testes).
-5. CI deve passar antes de merge. Obrigatórios: `verify`, `invariants` (isolamento RLS),
+5. **Tocou um documento de autoridade?** Corrija as afirmações de estado **daquele** documento —
+   as que dizem o que está ativo, o que falta, o que aponta para onde. Não saia caçando nos
+   outros: a dívida decai sozinha se ninguém a alimentar. Achados medidos, com o comando de cada
+   um, em [`docs/audits/2026-08-14-afirmacoes-de-estado.md`](docs/audits/2026-08-14-afirmacoes-de-estado.md).
+
+6. CI deve passar antes de merge. Obrigatórios: `verify`, `invariants` (isolamento RLS),
    `build-and-size`, `e2e` e `imagens-ok`.
 
    O `imagens-ok` (em `.github/workflows/publish-image.yml`) constrói as três imagens que o
