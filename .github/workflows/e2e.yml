@@ -113,11 +113,24 @@ jobs:
         agente-papeis-operador.spec.ts prova-painel-provedores.spec.ts
         followup-linguagem.spec.ts followup-ramos.spec.ts
         wizard-do-funcionario.spec.ts mfa-opcional.spec.ts
-      # `marca-logo.spec.ts` é a ÚLTIMA da PARTE_2 de propósito. As duas partes
-      # rodam como passos do MESMO job, contra o MESMO banco, sem reset entre
-      # elas — o que uma spec deixa gravado, as seguintes enxergam. Esta sobe
-      # logo de INSTALAÇÃO, que aparece em toda tela pública. Se a restauração
-      # dela falhar, ser a última limita o alcance a zero specs em vez de 23.
+      # ⚠️ A ORDEM DESTA LISTA NÃO DECIDE A ORDEM DE EXECUÇÃO. O Playwright
+      # ordena os arquivos por CAMINHO, não pela ordem em que são passados na
+      # linha de comando. Medido no run 31838253496: `marca-logo.spec.ts` estava
+      # escrita por último aqui e executou em 15º de 23 — a linha de progresso
+      # `···F°°··············` mostra 14 testes completando DEPOIS dela.
+      #
+      # Este comentário afirmava, por três commits, que ela era "a ÚLTIMA de
+      # propósito" e que isso limitava contaminação a zero specs. Era falso, e
+      # a consequência foi pior que o comentário errado: creditei a esse
+      # reposicionamento o desaparecimento do React #418 entre dois ciclos.
+      # Não foi ele — a ordem nunca mudou. Foi o `test.afterAll` da própria
+      # spec, que passou a limpar as DUAS camadas de marca e por isso as specs
+      # seguintes deixaram de ver logo gravado.
+      #
+      # O que continua verdade: as duas partes rodam como passos do MESMO job,
+      # contra o MESMO banco, sem reset entre elas — o que uma spec deixa
+      # gravado, as seguintes enxergam. Quem protege contra isso é a limpeza da
+      # spec, não a posição dela nesta lista.
       #
       # ⚠️ Ela esteve no TOPO desta lista por três commits, pela razão errada.
       # Eu media "carga de login por parte" com um regex que contava a PALAVRA
@@ -128,8 +141,14 @@ jobs:
       # começo — o `AUTH_RATE_LIMIT_LOGIN_IP: "1000"` mais abaixo desliga o
       # teto no CI, e esta spec faz 6 logins (eram 3 até a revisão que descobriu
       # que dois casos rodavam DESLOGADOS: `page` é fixture de escopo de teste,
-      # não de worker — cada caso precisa do seu login). Quem decide a posição é
-      # a contaminação, não a contagem.
+      # não de worker — cada caso precisa do seu login).
+      #
+      # E o desfecho: a movida não teve efeito NENHUM, porque a ordem é por
+      # caminho (ver o bloco acima). Duas medições erradas em sequência levaram
+      # a uma mudança inócua — que eu ainda por cima creditei por um resultado
+      # que veio de outra coisa. Fica escrito porque o erro instrutivo não é o
+      # proxy ruim: é ter medido de novo, com outro instrumento ruim, em vez de
+      # perguntar se o mecanismo suposto existia.
       #
       # (Este comentário mora FORA do bloco `>-` porque dentro dele `#` não é
       # comentário: é conteúdo, e cada palavra viraria argumento do playwright.

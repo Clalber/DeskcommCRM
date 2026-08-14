@@ -247,9 +247,43 @@ async function medirImagem(img: Locator): Promise<LogoNaTela> {
   }));
 }
 
-/** O logo da barra lateral. `null` = a barra está sem `<img>` (nome em texto). */
+/**
+ * O logo da barra lateral. `null` = a barra está sem `<img>` (nome em texto).
+ *
+ * ⚠️ Esta função devolvia `null` para TRÊS estados diferentes, e a asserção que a
+ * consome culpava um QUARTO. Um vermelho real disse "a recusa apagou o logo — a
+ * gravação não foi atômica", e a investigação provou que nada tinha sido apagado:
+ * o `afterAll`, seis segundos depois, clicou "Remover" nas DUAS camadas e recebeu
+ * 200 nas duas — o que só acontece com os dois `logo_path` ainda no banco.
+ *
+ * Os três estados que viravam o mesmo `null`:
+ *   1. a barra existe e está sem `<img>`  — o que a asserção quer medir;
+ *   2. **não há barra nenhuma** — a página redirecionou (`/login`, `/onboarding`,
+ *      `/account-suspended`, `/403`) ou o `MfaEnrollGate` trocou a casca inteira;
+ *   3. mediu antes de a casca montar.
+ *
+ * O (2) é o provável, porque para o (1) acontecer as DUAS camadas de marca teriam
+ * de estar vazias — e a da instalação não foi tocada pelo caso que falhou.
+ *
+ * Agora a casca é provada ANTES: `toHaveURL(/\/app\//)` separa "redirecionou" de
+ * "a barra perdeu o logo" a custo zero, e a espera pelo `<aside>` separa o (3).
+ * Nenhuma asserção ficou mais frouxa: o caso continua vermelho se o logo sumir
+ * de verdade — só passa a dizer QUAL das coisas aconteceu.
+ */
 async function logoDaBarra(page: Page): Promise<LogoNaTela | null> {
-  const img = page.locator("aside img").first();
+  await expect(
+    page,
+    `saiu de /app — ${page.url()}. A barra não sumiu: a PÁGINA é outra ` +
+      `(redirect de auth, onboarding, suspensão, 403 ou o gate de MFA).`,
+  ).toHaveURL(/\/app(\/|$)/, { timeout: 15_000 });
+
+  const casca = page.locator("aside").first();
+  await expect(
+    casca,
+    `a casca do app não montou em /app — ${page.url()}. Sem <aside> não há o que medir.`,
+  ).toBeAttached({ timeout: 15_000 });
+
+  const img = casca.locator("img").first();
   if ((await img.count()) === 0) return null;
   return medirImagem(img);
 }
@@ -413,6 +447,18 @@ test.describe("o logo subido pela tela chega à tela", () => {
     // porque `antes!.src` lá embaixo, com `antes` nulo, reprova como
     // "Cannot read properties of null" — que não diz a ninguém o que faltou.
     expect(antes, "precondição: a barra precisa entrar neste caso COM logo da empresa").not.toBeNull();
+    // E COM O DA EMPRESA, não com o da instalação. `Sidebar.tsx` faz
+    // `activeOrg?.marca?.logoUrl || brand.logoUrl`: se a camada da organização
+    // não resolvesse, a barra cairia no logo da INSTALAÇÃO e este `not.toBeNull()`
+    // ficaria verde do mesmo jeito — e a comparação lá embaixo (`depois === antes`)
+    // viraria tautologia, comparando o logo da instalação consigo mesmo. O caso
+    // se chama "o logo da empresa sobrevive à recusa"; então é o da empresa que
+    // a precondição tem de provar.
+    expect(
+      antes!.src,
+      "precondição: a barra entrou com o logo da INSTALAÇÃO, não o da empresa — " +
+        "o caso (3) não deixou o estado que este caso pressupõe",
+    ).toContain(`${PREFIXO_PUBLICO}${creds.org_id}/`);
 
     await page.goto("/app/settings/marca");
     await subir(page, "organizacao", {
@@ -440,8 +486,19 @@ test.describe("o logo subido pela tela chega à tela", () => {
 
     await page.goto("/app");
     const depois = await logoDaBarra(page);
-    expect(depois, "a recusa apagou o logo — a gravação não foi atômica").not.toBeNull();
-    expect(depois!.src, "a recusa mudou o logo — a gravação não foi atômica").toBe(antes!.src);
+    // ⚠️ As mensagens NÃO acusam mais a gravação. A versão anterior dizia "a
+    // recusa apagou o logo — a gravação não foi atômica", e isso é impossível
+    // por construção: a recusa por bytes sai da rota com 415 em
+    // `route.ts:399-406`, treze linhas ANTES da primeira leitura do banco
+    // (`:419`) e vinte antes do primeiro toque no storage. Uma mensagem que
+    // nomeia uma causa impossível manda o próximo leitor investigar o lugar
+    // errado — foi o que aconteceu, e custou caro.
+    expect(
+      depois,
+      `a barra ficou sem logo depois de uma recusa (a recusa não escreve nada — ` +
+        `se isto reprovar, o logo sumiu por outro caminho)`,
+    ).not.toBeNull();
+    expect(depois!.src, "a recusa trocou o logo por outro").toBe(antes!.src);
   });
 
   test("(5) remover devolve o logo da camada de baixo", async ({ page }) => {

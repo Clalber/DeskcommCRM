@@ -1335,3 +1335,76 @@ spec exercitar tela de `/app` com logo de instalação no banco.
 
 Isso é dívida declarada, não pendência esquecida: o caso que faltaria é
 "navegar em `/app/ai/*` depois de subir logo da instalação e conferir o console".
+
+### Retratação nº 2 sobre o #418 — e agora com o mecanismo medido
+
+Registrei acima que o React #418 sumiu "por causa da reordenação, não do
+conserto". **Também estava errado.** A reordenação nunca teve efeito nenhum:
+
+> **O Playwright ordena os arquivos por CAMINHO, não pela ordem em que são
+> passados na linha de comando.**
+
+Medido no run 31838253496: `marca-logo.spec.ts` estava escrita por ÚLTIMO na
+`SPECS_PARTE_2` e executou em **15º de 23**. A linha de progresso do próprio
+run mostra 14 testes completando depois dela:
+
+    ···F°°··············
+
+Então o que eliminou o #418 foi o **`test.afterAll`** que a revisão acrescentou:
+ele limpa as DUAS camadas de marca, e as 14 specs seguintes deixaram de ver logo
+gravado. O conserto de hidratação continua sem prova de comportamento — isso não
+muda —, mas o crédito agora tem dono certo.
+
+**O erro que se repete aqui não é o proxy ruim.** Foi:
+
+1. medir com um regex que contava a palavra "login" → número errado;
+2. ser corrigido, re-medir com outro instrumento → número certo;
+3. mover a spec com base nele **sem nunca perguntar se mover a spec faz alguma
+   coisa**.
+
+Os passos 1 e 2 são sobre precisão. O passo 3 é a falha real: eu refinei a
+medição de uma grandeza que não tinha efeito no mundo. O comentário no
+`e2e.yml` afirmava "é a última de propósito" — uma frase sobre o comportamento
+do Playwright que eu nunca medi, escrita com a mesma confiança das que eu havia
+medido.
+
+### O caso (4): nada foi apagado, e o instrumento não sabia dizer o que viu
+
+O vermelho dizia "a recusa apagou o logo — a gravação não foi atômica". É
+**impossível por construção**: a recusa por bytes sai da rota com 415 em
+`route.ts:399-406`, treze linhas antes da primeira leitura do banco e vinte
+antes do primeiro toque no storage.
+
+O que de fato aconteceu, por cadeia de eliminação — cada elo medido:
+
+| # | Fato | Como se sabe |
+|---|---|---|
+| a | os DOIS `logo_path` seguiam gravados ~6s depois | o `afterAll` clicou "Remover" nas duas camadas e recebeu 200 nas duas; o botão só existe quando a camada TEM logo |
+| b | `marcaDaInstalacao()` nunca degradou | zero ocorrências do aviso no log do run, e a sonda está viva |
+| c | `collapsed` era `false` | cookie inexistente em contexto novo |
+| d | com `logo` truthy a casca SEMPRE desenha `<img>` | `Sidebar.tsx:65,75-76` |
+| e | não houve exceção do servidor na janela | os dois `⨯` do log são de outros instantes |
+
+De (a)+(b)+(c)+(d): qualquer render de `/app` teria produzido `aside img`. Logo
+**o DOM medido não era a casca do app** — foi redirect ou troca de casca. Qual
+delas, **NÃO MEDIDO**.
+
+E não dava para medir, por um detalhe de configuração que vale mais que este
+caso: `playwright.config.ts` tinha `trace: "on-first-retry"` com `retries: 0`.
+As duas linhas estão certas isoladamente e, juntas, significam **trace nunca
+gravado**. O único artefato do run era um `error-context.md` que fotografou a
+página do `afterAll`, não a que falhou.
+
+**Suspeito nº 1, não medido e fora do escopo:** `lib/auth/server.ts:34-38`
+descarta o erro de `supabase.auth.getUser()`. Qualquer falha transitória contra
+o GoTrue vira "não está logado" → `redirect("/login")` em silêncio — e `/login`
+põe o logo num `<div>`, não num `<aside>`. A MESMA função trata isso corretamente
+sessenta linhas abaixo, com o comentário "degradar permissão em silêncio é o
+pior desfecho possível". É a doutrina "falhar fechado na ação, **aberto na
+informação**" ferida no primeiro dos três pontos.
+
+**Amostra n=2, com resultados opostos:** no run anterior (`b804e207`) o caso (4)
+PASSOU e quem reprovou foi o (5); entre os dois SHAs há um único commit, e ele
+só toca documentação. Mesmo binário, vermelho diferente. Chamar de
+"determinístico" ou de "flake" com essa amostra seria afirmar sem medir — o que
+falta é o trace, e é o que este commit passa a produzir.
