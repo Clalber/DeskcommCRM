@@ -1153,3 +1153,85 @@ precondição está garantida e é independente da ordem entre as partes.
 
 Fica o registro porque a conclusão errada era a acionável: eu teria "consertado"
 uma spec correta.
+
+---
+
+## O CI como banco de provas (2026-08-14, PR #252)
+
+O Docker desta máquina não sobe — o disco da VM corrompeu (`EXT4-fs error:
+Detected aborted journal`, `I/O error on dev vda1`), sequela de um disco cheio
+mais cedo. Consertar exige reset que apaga contêineres e volumes de outras
+sessões, então não foi feito.
+
+Isso parecia bloquear as quatro provas pendentes. **Não bloqueia:** os jobs
+`invariants` (que roda `pnpm test:db`) e `e2e` rodam no CI, com Docker do
+runner. O PR virou o ambiente de prova — e a `main` fica protegida porque os
+dois são checks **obrigatórios** na branch protection.
+
+### O que a primeira execução real revelou
+
+**`tests/invariants/marca-logo.test.ts`: 21 de 22 passaram.** O que falhou foi
+a **guarda de vacuidade** — a que existe para provar que os outros 21 não passam
+à toa. Ela comparava `p.oid::regprocedure::text` com string literal; o cast de
+saída omite o `public.` quando `public` está no `search_path`, então a contagem
+dava 0 num banco onde a função existe.
+
+O sentido do erro é a lição: guarda de vacuidade falhando **lê-se como "o schema
+não chegou ao banco"**, e o passo natural é mexer na migration — que estava
+certa. Quem desmentiu foram os 21 casos do próprio arquivo que CHAMAM as
+funções e passaram. A explicação chata ("a função não está lá") tinha que ser
+descartada por medição antes de eu aceitar a interessante ("o teste está errado").
+
+### O que a revisão cética achou antes de o CI chegar lá
+
+Um revisor mediu a `marca-logo.spec.ts` na fonte do Playwright 1.62.1 instalado
+e achou defeitos **confirmados**, três deles fatais:
+
+| # | Defeito | Por que passa despercebido |
+|---|---|---|
+| 1 | testes (4) e (5) **nunca fazem login** | `page` é fixture de escopo de TESTE — cada `test` tem contexto novo. O comentário do arquivo afirmava "um login por papel no arquivo inteiro" |
+| 2 | restauração é um `test`, em modo serial | o comentário dizia que `afterAll` "não roda quando a spec estoura". **Medido: roda** — quem não roda são os testes seguintes. Foi escolhido o mecanismo pior para o modo de falha que o próprio comentário nomeia |
+| 3 | `getByText(/SVG não é aceito/i)` | casa o texto de AJUDA estático da tela, que está sempre visível. Passa em t=0 sem o toast existir |
+| 4 | `altura > 0` "prova o download" | `h-7` fixa 28px por CSS: imagem quebrada mede igual. A asserção passa no cenário exato que alega cobrir |
+
+Os três primeiros quebrariam o CI; o 4 é pior num aspecto — faz a spec **afirmar
+ter provado** o download do bucket, que é a razão declarada de ela existir em
+vez de um `curl`.
+
+### E o meu número, que estava errado nos dois sentidos
+
+Rebalancei o `e2e.yml` medindo "carga de login por parte" com um regex que
+contava a **palavra** login — comentário, nome de helper, string. Real: a spec
+faz **3** logins, não 13. E por parte: **63 vs 82**, não 162 vs 145 — o proxy
+**inverteu o sinal**, e me fez mover a spec para a parte mais carregada
+acreditando fazer o contrário.
+
+Pior: o critério era irrelevante desde o começo. O próprio workflow define
+`AUTH_RATE_LIMIT_LOGIN_IP: "1000"`, que desliga o teto no CI. Eu otimizei uma
+restrição que não existe, com um instrumento que apontava para o lado errado.
+
+O que decide a posição é **contaminação**: as partes são passos do mesmo job,
+mesmo banco, sem reset. A spec agora é a **última** da PARTE_2 — se a
+restauração falhar, o resíduo alcança zero specs em vez de 23.
+
+⚠️ E o comentário que explica isso mora **fora** do bloco `>-`: dentro dele `#`
+não é comentário, é conteúdo. Medido antes de commitar — a variável ia de 23
+para **205 tokens**, e cada palavra viraria argumento do `playwright test`.
+
+### Onda 7: o risco herdado estava errado nos três termos
+
+Está em `docs/design/onda-7-alarme-de-orcamento.md`. Resumo: o contador não está
+travado (gatilho vivo em `llm_calls` desde a 0095), ninguém precisa "preencher"
+o limite (`DEFAULT 5000 NOT NULL`, toda org tem), e não estrangula nada (os três
+leitores de `is_throttled` estão mortos). O primeiro tick escreveria **"Pausado"**
+na tela de quase toda org enquanto o agente atende normal.
+
+A descoberta que decide o desenho não estava no plano: `runBudgetReset()`
+também está morto e é o **único escritor** de `is_throttled: false`. Ligar o
+checker sem ele cria estado permanente que nem o `update.sh` desfaz. O risco era
+real — por outro caminho, e pior.
+
+**Achado ativo hoje, fora do escopo:** `assertBudget` (o enforcement vivo) lê
+`settings.llm.monthly_budget_cents`, que **não tem UI**; a tela mostra
+`ai_budgets.monthly_limit_cents`, que ninguém aplica. A tela de orçamento do
+tenant é decorativa — o usuário mexe e o código ignora.
