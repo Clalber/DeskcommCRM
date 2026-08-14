@@ -408,6 +408,50 @@ pin_incompleto() {  # pin_incompleto [caminho do .env]
   printf '%s' "${faltando# }"
 }
 
+# Completa o pin AUSENTE no .env, com a versão que a imagem EM EXECUÇÃO declara.
+#
+# A regra que torna isto seguro: **só preenche lacuna, nunca sobrescreve valor
+# explícito.** Chave ausente é omissão do `update.sh` antigo; chave presente é
+# decisão de quem opera — inclusive a decisão de seguir um canal móvel de
+# propósito. Um cron que corrigisse escolha alheia seria pior que o defeito.
+#
+# E a versão gravada é a que o contêiner JÁ está rodando (label
+# `org.opencontainers.image.version` da imagem em uso), não a do app. A diferença
+# importa: se o worker estiver numa versão diferente do app, gravar a do app
+# MUDARIA o que roda no próximo `up -d` — possivelmente um downgrade. Gravando o
+# que já está lá, a operação é congelamento puro: nada muda de comportamento
+# agora, e o próximo `update.sh` alinha as três.
+#
+# Ecoa os serviços corrigidos, separados por espaço. Vazio = nada a fazer.
+completar_pin_ausente() {  # completar_pin_ausente [envfile]
+  local envfile="${1:-.env}" par chave svc repo img ver corrigidos=""
+  [ -f "$envfile" ] || return 0
+  # Esta guarda vale para execução não-root e não custa nada. NÃO é ela que
+  # protege o caso real: o cron roda como root, e root ignora `chmod`. Quem
+  # protege é a atomicidade do `set_env_var` (escreve num `.tmp` e faz `mv`) —
+  # medido com `chattr +i`, que barra até root: a escrita falha, a função sai 0
+  # e o `.env` original chega intacto do outro lado, com as customizações.
+  [ -w "$envfile" ] || return 0
+
+  for par in "WORKER_IMAGE:worker:deskcomm-worker" "SCHEDULER_IMAGE:scheduler:deskcomm-scheduler"; do
+    chave="${par%%:*}"; svc="$(printf '%s' "$par" | cut -d: -f2)"; repo="${par##*:}"
+
+    # LACUNA apenas. Valor explícito (mesmo em canal móvel) é intocável.
+    if { grep -qE "^${chave}=" "$envfile" 2>/dev/null; }; then continue; fi
+
+    img="$(docker inspect "$(nome_do_projeto_atual)-${svc}-1" --format '{{.Config.Image}}' 2>/dev/null)" || img=""
+    [ -n "$img" ] || continue
+    ver="$(docker image inspect "$img" --format '{{index .Config.Labels "org.opencontainers.image.version"}}' 2>/dev/null)" || ver=""
+    # `<no value>` = imagem sem o label (build local). Canal não é versão.
+    case "$ver" in ""|"<no value>"|latest|main|stable) continue ;; esac
+
+    set_env_var "$envfile" "$chave" "${IMG_NS}/${repo}:${ver}"
+    set_env_var "$envfile" "${chave%_IMAGE}_PULL_POLICY" missing
+    corrigidos="$corrigidos $svc"
+  done
+  printf '%s' "${corrigidos# }"
+}
+
 # Escreve no .env as três imagens da MESMA versão + o pull_policy que combina
 # com a mutabilidade da tag.
 #
