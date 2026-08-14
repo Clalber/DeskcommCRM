@@ -24,6 +24,11 @@
 #      isolam cada uma, provado por sabotagem cirúrgica de cada linha.
 set -uo pipefail
 
+# Capturado ANTES de qualquer `cd`: o script muda de diretório várias vezes, e
+# `${BASH_SOURCE[0]}` é relativo ao cwd de quem invocou. Resolvê-lo lá embaixo
+# devolvia string vazia, e o `.` virava `/_common.sh`.
+KIT_DIR_TESTE="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../hostgator-setup-kit" && pwd)"
+
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
@@ -340,5 +345,46 @@ check "e não anuncia versão nenhuma" \
   grep -q '"latest_version":""' "$CURL_LOG"
 
 echo
+
+echo "── 10. Pin pela metade: o estado que a 1ª atualização deixa, e ninguém via"
+# Medido em ensaio e depois na produção: quem executa a primeira atualização de
+# uma instalação legada é o `update.sh` que já estava no disco — o antigo —, e
+# ele só grava APP_IMAGE. O worker cai no default do compose (`:stable`, canal
+# MÓVEL) e o script termina com "Atualização concluída — app no ar e saudável".
+# Nada na tela dizia que o worker ficou solto; na release seguinte o canal se
+# move e um `up -d` levaria o worker sozinho, com o app na versão antiga.
+# A função vive no _common.sh do kit e precisa ser carregada AQUI. Sem isto os
+# casos cujo esperado é vazio passavam por VACUIDADE — "comando não encontrado"
+# devolve string vazia, que casa com o esperado. Três de cinco verdes eram
+# falsos até esta linha existir.
+# shellcheck source=/dev/null
+. "$KIT_DIR_TESTE/_common.sh"
+command -v pin_incompleto >/dev/null || { echo "  ✗ pin_incompleto não carregou — teste inconclusivo"; FAILS=$((FAILS+1)); }
+
+pin_caso() {  # pin_caso <descrição> <conteúdo do .env> <esperado>
+  local d="$1" env="$2" esperado="$3" r
+  printf '%s\n' "$env" > "$PROJ/.env.pin"
+  r="$(cd "$PROJ" && pin_incompleto .env.pin || true)"
+  check "$d" test "$r" = "$esperado"
+}
+pin_caso "app pinado + worker/scheduler AUSENTES → acusa os dois" \
+  "APP_IMAGE=ghcr.io/melgarafael/deskcommcrm:1.3.0" "worker scheduler"
+pin_caso "app pinado + worker em canal móvel → acusa" \
+  "APP_IMAGE=ghcr.io/melgarafael/deskcommcrm:1.3.0
+WORKER_IMAGE=ghcr.io/melgarafael/deskcomm-worker:stable
+SCHEDULER_IMAGE=ghcr.io/melgarafael/deskcomm-scheduler:1.3.0" "worker"
+pin_caso "as três na mesma versão → silêncio" \
+  "APP_IMAGE=ghcr.io/melgarafael/deskcommcrm:1.3.0
+WORKER_IMAGE=ghcr.io/melgarafael/deskcomm-worker:1.3.0
+SCHEDULER_IMAGE=ghcr.io/melgarafael/deskcomm-scheduler:1.3.0" ""
+pin_caso "app num canal deliberado (:latest) → não é 'metade', silêncio" \
+  "APP_IMAGE=ghcr.io/melgarafael/deskcommcrm:latest" ""
+pin_caso "valores entre aspas, como o install grava → silêncio" \
+  "APP_IMAGE='ghcr.io/melgarafael/deskcommcrm:1.3.0'
+WORKER_IMAGE='ghcr.io/melgarafael/deskcomm-worker:1.3.0'
+SCHEDULER_IMAGE='ghcr.io/melgarafael/deskcomm-scheduler:1.3.0'" ""
+rm -f "$PROJ/.env.pin"
+
+
 if [ "$FAILS" -eq 0 ]; then echo "OK — todas as provas passaram."; else echo "FALHOU — $FAILS prova(s)."; fi
 exit $((FAILS > 0))

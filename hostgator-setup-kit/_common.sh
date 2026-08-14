@@ -357,6 +357,57 @@ trio_publicado() {
   return 0
 }
 
+# O .env está com pin PELA METADE? (app fixado numa versão, worker/scheduler não)
+#
+# Este é o estado que a transição produz e que nada denuncia. Medido em ensaio e
+# depois na produção: quem executa a primeira atualização é o `update.sh` que já
+# estava no disco — o antigo —, e ele só sabe gravar `APP_IMAGE`. O worker cai no
+# default do compose (`:stable`, um canal MÓVEL) e o script termina dizendo
+# "Atualização concluída — app no ar e saudável", sem uma palavra sobre isso.
+#
+# Por que importa: na release seguinte o `stable` se move, e um `up -d` qualquer
+# — com `pull_policy: always`, que é o default de tag móvel — levaria o worker
+# sozinho para a versão nova enquanto o app permanece na antiga. Mistura de
+# versões que acontece sem ninguém pedir, e é o que o invariante 3 proíbe.
+#
+# Ecoa os serviços sem pin, separados por espaço. Vazio = está tudo certo.
+valor_do_env() {  # valor_do_env <arquivo> <chave>   (sem aspas ao redor)
+  # O `|| true` não é decorativo: o `_common.sh` roda sob `set -euo pipefail`, e
+  # um `grep` que não casa sai 1 — o que, sem isto, mataria a função inteira
+  # justamente no caso que interessa (a chave AUSENTE). Custou dois casos verdes
+  # de mentira num teste antes de aparecer.
+  { grep -E "^$2=" "$1" 2>/dev/null || true; } | head -1 | cut -d= -f2- | sed "s/^['\"]//; s/['\"]\$//"
+}
+
+tag_da_imagem() {  # tag_da_imagem <referência>  → a tag, ou vazio se não houver
+  local ref="${1##*/}"
+  case "$ref" in *:*) printf '%s' "${ref##*:}" ;; *) printf '' ;; esac
+}
+
+pin_incompleto() {  # pin_incompleto [caminho do .env]
+  local envfile="${1:-.env}" app_ref app_tag faltando="" par chave svc img tag
+  [ -f "$envfile" ] || return 0
+
+  # Sem APP_IMAGE pinado não há "metade" nenhuma — é outra situação (instalação
+  # que nunca rodou update, ou que escolheu um canal de propósito).
+  app_ref="$(valor_do_env "$envfile" APP_IMAGE)"
+  [ -n "$app_ref" ] || return 0
+  app_tag="$(tag_da_imagem "$app_ref")"
+  case "$app_tag" in latest|main|stable|"") return 0 ;; esac
+
+  for par in "WORKER_IMAGE:worker" "SCHEDULER_IMAGE:scheduler"; do
+    chave="${par%%:*}"; svc="${par##*:}"
+    img="$(valor_do_env "$envfile" "$chave")"
+    if [ -z "$img" ]; then
+      faltando="$faltando $svc"                    # ausente: segue o default do compose
+    else
+      tag="$(tag_da_imagem "$img")"
+      case "$tag" in latest|main|stable|"") faltando="$faltando $svc" ;; esac
+    fi
+  done
+  printf '%s' "${faltando# }"
+}
+
 # Escreve no .env as três imagens da MESMA versão + o pull_policy que combina
 # com a mutabilidade da tag.
 #
