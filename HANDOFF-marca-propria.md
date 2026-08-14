@@ -63,18 +63,25 @@ que o comprador percebe primeiro não é upload de logo, é **a interface não p
 nossa** — e cor é o eixo mais barato, mais visível, e o único que a doc de venda declara
 impossível hoje.
 
+> **A numeração divergiu no meio do épico, e esta tabela é a que vale.** A versão anterior
+> reservava a **Fase 3** para "upload de logo" e chamava a marca por organização de Fase 2 —
+> enquanto os commits, o plano de execução e as seções deste arquivo já usavam outra contagem
+> (Fase 2 = a tela `/admin/marca`, Fase 3 = marca por organização). Duas numerações para o mesmo
+> trabalho é como uma sessão conserta a fase errada. **O upload de logo saiu do épico** e virou
+> dívida declarada (D3 abaixo): o logo continua vindo do `.env`, e nenhuma tela o edita.
+
 | # | Fase | Estado |
 |---|---|---|
 | **0** | **Encoding do `.env` — bloqueador medido** | ✅ `c3764437` |
-| 1 | Tabela de marca + resolver + **cor por instalação** + reconciliar `white-label.md` | 🟡 1a `e318d1a7` · 1b `c4395adf`+`f619f23d` · **1c (tabela) na working tree, NÃO commitada** · falta reconciliar `white-label.md` |
-| 2 | Marca **por organização** (nome + cor), capturada no `welcome` e editável | ⬜ |
-| 3 | Upload de logo (bucket, policies, 512 KB, delete-on-replace) | ⬜ |
-| 4 | Vazamentos hardcoded (MFA, convite, alarme, PDF) + ampliar o gate de marca | ⬜ |
-| 5 | Favicon + templates de auth do Supabase | ⬜ |
-| 6 | *(fora do épico, mas ele expôs)* dar `image:` ao worker | ⬜ |
+| **1** | Derivação de cor (rampa + contraste) e a cor da instalação chegando à tela | ✅ 1a `e318d1a7` · 1b `c4395adf` + `f619f23d` · 1c (tabela `platform_branding` + resolvedor) `0872214d` |
+| **2** | Tela `/admin/marca` — ver, mudar, e ver o estado quando a cor não pinta | ✅ `50c20179` |
+| **3** | Marca **por organização** (nome + cor), com tela própria e CSS escopado | ✅ `0513755c` · `032ba43a` · `a8ec1d99` · `55b6f6ea` · `6b33a258` |
+| **4** | As saídas **sem DOM** — e-mail, remetente, PDF de LGPD, autenticador, suporte | ✅ `a6acb9f1` |
+| **5** | Favicon em runtime, barra do navegador, e-mails de acesso do Supabase | ✅ `71616d78` + `741c4ec8` |
+| **6** | Documentação, mapa vivo, jornada, checklist e os números velhos de CI | ✅ *(esta sessão)* |
 
-Fases 0–3 substituem o plano anterior de 6 fases. As tasks do rastreador ainda usam a
-numeração antiga — a correspondência está aqui.
+**Fora do épico, que ele expôs e outra frente resolveu:** dar `image:` ao worker (a atualização
+não alcançava o runtime do agente). Registrado em `docs/runbooks/remediar-worker-congelado.md`.
 
 ---
 
@@ -798,8 +805,120 @@ aparecer, e o sintoma lê como "MFA quebrou". Fica registrado para a próxima se
 
 ---
 
+## Fase 4 — ENTREGUE (`a6acb9f1`): a marca alcança quem não tem DOM
+
+O seam é `lib/branding/saida.ts`: `marcaDaSaida(orgId | null)` devolve **um hex e uma frente
+legível**, tema **claro sempre** (e-mail não tem tema, e `prefers-color-scheme` dentro de
+e-mail não é confiável). O piso vem **importado** de `regua-do-produto.ts`, nunca constante
+nova — seria a quarta cópia de um hex do produto. Contrato: **nunca lança**, porque quem chama
+é o e-mail de LGPD, que responde a direito legal com SLA de D+7.
+
+**O PDF de LGPD não leva marca nenhuma.** Imprime o **controlador** (`legal_name`) e o DPO
+resolvido. Nomear ali o revendedor — que é *operador* — inverteria papéis num documento
+jurídico. Consequência boa: o `StyleSheet` module-level do `@react-pdf` fica como está, e a
+armadilha de ele aceitar `var(--x)`/`oklch()` e descartar a cor **em silêncio** deixa de
+existir para nós.
+
+**O remetente é do operador; o nome de exibição é da marca.** `RESEND_FROM_EMAIL` vazio passa a
+significar `not_configured`, não o nosso domínio — o fallback antigo fazia *todo* envio falhar
+na Resend do revendedor com mensagem opaca. Agora cai no caminho que já existia e já é bom.
+
+8 das 9 dívidas da guarda resolvidas; a 9ª (`ai-budget-alarm`) foi **reclassificada** com
+motivo medido, e um caso novo trava o conjunto **pelo nome**, não pelo tamanho.
+Sabotagem: **1/1, 3/3, 1/1**. Gates: typecheck 0 · lint 0 · lint:channels 0 · test:unit
+386 files / 4399 · test:shell 253 ✓ / 0 ✗ · build 0.
+
+## Fase 5 — ENTREGUE (`71616d78` + `741c4ec8`): a aba, a barra e o primeiro e-mail
+
+**Favicon.** `/favicon.ico` devolvia 404 (19.435 bytes, a `not-found.tsx` inteira) — para nós
+e para todo revendedor. `app/icon.tsx` gera em runtime com `next/og`, zero dependência nova,
+`force-dynamic` (sem isso o build congela o ícone dentro da imagem, defeito invisível em dev,
+em teste e na Vercel, e visível só na VPS). `/^\/icon$/` entrou em `PUBLIC_PATHS`, senão o
+ícone respondia **307 para `/login`** — justamente para quem ainda não entrou.
+
+**A barra do navegador não era defeito de whitelabel**, ao contrário do que a medição anterior
+dizia: `cssDaMarca` emite só `--color-brand` e a família do accent, **nunca `--color-bg`**. O
+defeito real era **duplicação** dos dois hexes em três arquivos. Provado por comportamento:
+com `accent_hex='#f2c94c'`, o ícone virou **V sobre `#6e5c28`** (o accent derivado) e o
+`theme-color` **não** mudou.
+
+**E-mails de acesso.** `hostgator-setup-kit/marca-emails.sh` sobe assunto e corpo pela
+Management API. A medição que destravou a decisão: o `PATCH /config/auth` com
+`mailer_templates_*` **é aceito e persiste sem SMTP customizado**. Achado do rig: **projeto
+pausado responde 400 "Project is paused."** — modo de falha que um script confiando em 2xx
+reportaria como sucesso, e por isso o script **relê** o que gravou.
+
+Sabotagem: **oito, zero divergência**. Gates: typecheck 0 · lint 0 · lint:channels 0 ·
+test:unit **389 files / 4426** · test:shell **265 ✓ / 0 ✗** · build 0 com `/icon` dinâmico.
+
+## Fase 6 — ENTREGUE (esta sessão): a documentação para de mentir
+
+- **`docs/white-label.md` reescrito.** As duas frases mais citadas dele eram falsas depois
+  deste épico ("cores, fontes e tema não são configuráveis" e "a marca é por instalação, não
+  por organização"). Entraram: as duas telas, o banco acima do `.env`, os e-mails (acesso,
+  convite, LGPD, suporte), e uma seção própria explicando por que **o PDF de LGPD não leva a
+  marca do revendedor**. O que **continua** não sendo configurável agora vem com a razão
+  medida: domínio por organização (zero coluna no schema, o desvio por host do `proxy.ts:27` é
+  NOOP declarado, e no Edge não há banco), fonte (`next/font` resolve em build e a imagem é
+  pré-buildada), tema e logo por organização.
+- **Mapa vivo** `docs/architecture/marca-propria.architecture.json` — 37 peças, 54 arestas, 6
+  faixas, com o **PDF declarado FORA da marca** e um caso no gate que reprova quem o ligar ao
+  resolvedor. Duas linhas entraram no `docs/architecture/README.md` (a da marca e a do
+  `indice-de-atrito`, que faltava). As **três** instruções "re-renderize com archify" —
+  `sistema-vivo.md` ×2 e a skill — foram corrigidas: o archify 2.11.0 recusa o formato.
+- **Jornada nova** no `docs/testing/user-journey-map.md`, com a persona que faltava (o
+  revendedor) e 8 casos. O TOTP **deixou de ter duas biografias**.
+- **Catraca nova** `tests/unit/audit-listas-nao-divergem-mais.test.ts` — nasce verde,
+  congela as 120 divergências e reprova acréscimo.
+- **Números de CI corrigidos** em quatro arquivos (ver abaixo).
+
+## Living System Checklist — marca própria (o épico inteiro)
+
+Régua: `docs/doctrine/sistema-vivo.md`. Resposta que não nomeia artefato concreto não vale.
+
+| # | Pergunta | Resposta, com o artefato |
+|---|---|---|
+| 1 | **Quem me alimenta?** | `hostgator-setup-kit/install.sh:1365-1379` grava a marca no `.env` → `sementeDoAmbiente()` (`lib/branding/instalacao.ts`) semeia `public.platform_branding` na primeira leitura. E a mão humana, por duas telas: `app/admin/(protected)/marca/_form.tsx` (instalação) e `app/app/settings/marca/_form.tsx` (organização) |
+| 2 | **Quem eu alimento?** | `app/layout.tsx` (`<EstiloDaMarca/>` + `generateMetadata`), `app/app/layout.tsx` (`<EstiloDaMarcaDaOrganizacao/>`), `app/icon.tsx`, e via `marcaDaSaida()`: `lib/email/templates/invite.ts`, `lib/lgpd/email-delivery.ts`, `lib/lgpd/sla-alarm.ts`, `app/actions/auth/enrollMfa.ts` (`issuer`), `lib/email/resend.ts` (nome do remetente). Fora do processo: `hostgator-setup-kit/marca-emails.sh` → GoTrue |
+| 3 | **Que atividade/log eu emito?** | `audit("platform_branding.updated")` em `app/actions/settings/updateBranding.ts:123` e `audit("org.branding_updated")` em `app/actions/settings/updateMarcaDaOrganizacao.ts:155` — as duas em `api_audit_log`, e **as duas presentes nas duas listas de código** (`lib/audit/actions.ts` e `components/admin/audit/action-codes.ts`). Mais `registrarEstadoDaMarca()`, que grava `fallback_at`/`fallback_reason` na própria tabela, e o `logger.warn` estruturado quando a cor é recusada. **Não há `event_log` de propósito:** nenhum handler consumiria o tipo (anti-pattern nº 3 — evento sem consumidor) |
+| 4 | **Onde apareço na tela?** | `/admin/marca` (valor gravado + `TiraDeTons` com os tons derivados + o estado do degrade em português), `/app/settings/marca`, `/admin/audit` (as duas ações), a aba do navegador (título + ícone), a barra lateral e o corpo de cada e-mail |
+| 5 | **Por qual porta se chega?** | `lib/navigation/registry.ts:453` — `/app/settings/marca`, grupo Configurações, `sidebar:false` (trocar a marca é tarefa de uma vez; o hub e o ⌘K garantem a descoberta). Vigiado por `tests/unit/navegacao-completude.test.ts`. `/admin/marca` é de platform admin e fica fora dessa varredura por construção |
+| 6 | **Mecanismo anti-morte?** | Três, e nenhum é promessa: (a) cor recusada **não apaga a camada de baixo** — `resolverMarca()` continua descendo até o padrão do produto; (b) `marcaDaInstalacao()` e `marcaDaSaida()` **nunca lançam** (um throw em `app/layout.tsx` é 500 em todas as telas; um throw no e-mail de LGPD é descumprimento de prazo legal); (c) tabela ausente (`42P01`) degrada para o `.env` com aviso, que é o estado de um clone que ainda não aplicou a migration |
+| 7 | **Onde se CONFIGURA?** | **Ver:** `/admin/marca` mostra o valor em vigor, de onde ele veio (banco, `.env` ou padrão) e **por que** foi recusado, se foi. **Mudar:** o formulário da mesma tela — e `/app/settings/marca` para a organização. **Faltando:** cai no padrão do produto com `fallback_reason` escrito, nunca num `return` mudo |
+| 8 | **Continuidade IA↔humano?** | **N/A justificado.** A marca não participa de handoff: é configuração de apresentação, não demanda de atendimento. Nenhum turno de agente lê ou escreve marca |
+| 9 | **Qual meu LAÇO DE RETORNO?** (invariante 7) | Quando a cor do operador **não** pinta, o sistema não fica calado: `app/layout.tsx` chama `registrarEstadoDaMarca(motivo)`, que grava `fallback_at` + `fallback_reason` **de volta** em `platform_branding`; `/admin/marca` lê e mostra; e o log estruturado nomeia o token e a forma recusada. É o que distingue "o produto ficou com a cor dele" de "a feature nunca foi instalada" — e é a única razão de isso ser **coluna**, não `logger.warn` |
+| 10 | **Atualizei o mapa vivo?** | `docs/architecture/marca-propria.architecture.json` (37 peças / 54 arestas), linha no `docs/architecture/README.md`, e caso concreto em `tests/unit/mapas-de-arquitetura.test.ts` cobrando **≥2 arestas** de 8 peças nomeadas. **Sem re-render:** o archify 2.11.0 recusa o formato `architecture` — a instrução contrária foi corrigida em três lugares |
+
+## Números de CI corrigidos (2026-08-14 @ `741c4ec8`)
+
+| Onde | Dizia | Medido |
+|---|---|---|
+| `CLAUDE.md` (2 pontos) | "37 das 39 specs"; "Todos os **quatro**"; `imagens-ok` "ainda não é obrigatório" | **45 das 46**; **cinco**; `imagens-ok` **é** obrigatório |
+| `AGENTS.md` (4 pontos) | "os três são checks"; "28 das 32"; "não é obrigatório ainda"; 221 unitários / 67 invariantes / 32 specs | **cinco**; **45 das 46**; **obrigatório desde 2026-08-08**; **257** / **102** / **46** |
+| `docs/harness-audit.md` | "4 das 32 specs fora do CI, não-obrigatório" | **1 das 46**, obrigatório |
+| `docs/current-state.md` (3 pontos) | "28 das 32"; "e2e não é obrigatório"; "`imagens-ok` ainda não está na branch protection" | **45 das 46**; obrigatório; `imagens-ok` entrou |
+
+Comandos: `ls tests/e2e/*.spec.ts | wc -l` → 46 · parse das listas do `e2e.yml` → 45 rodam, 1
+em `FORA_DO_CI` (`vps-fresh-onboarding`), soma == disco · `gh api …/branches/main/protection
+--jq '.required_status_checks.contexts|join(", ")'` → `verify, build-and-size, invariants,
+e2e, imagens-ok`.
+
+## Dívida declarada — depois do épico
+
+| # | Dívida | Condição para sair |
+|---|---|---|
+| D1 | Marca no **alarme de orçamento de IA** (`fase: 7` na guarda) | Ganhar rota em `app/api/v1/cron/`, linha no `docker/scheduler/entrypoint.sh` e chamador real de `runBudgetChecker()`. Hoje o efeito de consertar é **zero observável** |
+| D2 | `white-label.md` em **EN/ES** | Um gate que reprove tradução defasada. Sem ele, três cópias divergem no primeiro conserto seguinte, e guia comercial errado em inglês é pior que ausente |
+| D3 | **Upload de logo** (saiu do épico) e **fonte/tema** por tenant | Logo: bucket + policies + teto de 512 KB + delete-on-replace, com a cota do Supabase do cliente medida. Fonte/tema: exigiria `Font.register` e o arquivo dentro da imagem — o `next/font` resolve em build |
+| D4 | As **120 divergências** entre `lib/audit/actions.ts` e o painel | O conserto certo é **derivar** a lista do union, não copiá-la melhor. A catraca nova impede crescer; encolher é item próprio |
+| D5 | `docs/design-system/screen-flow/03-screen-inventory.md` — seção M diz "15 telas" e tem **17** linhas | Uma passada no inventário inteiro. Corrigir só uma linha deixa dois totais errados |
+| D6 | `marca-emails.sh` não alcança quem instalou colando as 4 credenciais **sem** `SUPABASE_ACCESS_TOKEN` | Uma forma de o operador autorizar a Management API depois da instalação, sem guardar chave mestra no `.env` do cliente |
+| D7 | `fallback_at` é **inalcançável pela UI** — o CHECK do banco barra o hex corrompido antes | Só aparece para quem edita o banco à mão ou vem de clone com valor legado. É o laço de retorno funcionando com gatilho raro, não ausente |
+| D8 | Prova de **instalação fresca ponta a ponta com marca de revendedor** | Mesma lacuna de `vps-fresh-onboarding`: nenhum job prova a jornada de quem compra. É onde eu apostaria o próximo defeito de marca |
+
 ## Próximo passo exato
 
-Fases 4, 5 e 6, com o plano medido em
-`/private/tmp/claude-501/-Users-rafaelmelgaco-DeskcommCRM/111a86e7-0d9c-4fee-bcc5-520b3fff2343/scratchpad/plano-fases-456.md`.
-Depois: PR e merge na `main` — autorizado explicitamente por Rafael em 2026-08-13.
+O épico está fechado no código e na documentação. Falta o que só o dono faz: **PR e merge na
+`main`** — autorizado explicitamente por Rafael em 2026-08-13. Ao abrir o PR, o `e2e` roda pela
+primeira vez a `tests/e2e/icone-da-marca.spec.ts`; se ela reprovar por ambiente, o lugar dela é
+`FORA_DO_CI` **com o motivo medido**, nunca uma exclusão preventiva.
