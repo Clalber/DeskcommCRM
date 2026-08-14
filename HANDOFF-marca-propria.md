@@ -1060,3 +1060,96 @@ pendurou >10 min sem devolver byte). Isso derruba `test:db`, `e2e` e prova em te
 
 Com o Docker de volta: `pnpm test:db`, a prova em tela das ondas 2 e 6, e então as
 ondas 4, 7 e 8 — nessa ordem, a 7 com checkpoint próprio pelo risco declarado.
+
+---
+
+## Merge da `main` (2026-08-14) — `587a494d`
+
+A `main` andou 39 commits enquanto esta branch existia, e uma parte deles é
+**marca própria mergeada por outra sessão**. Convergência independente é o caso
+em que o merge mais engana: os dois lados fizeram a mesma coisa e o git não
+acusa conflito nenhum.
+
+### Três conflitos, e nenhum aceitava escolha de lado
+
+| Arquivo | `ours` perderia | `theirs` perderia | Resolução |
+|---|---|---|---|
+| `lib/audit/actions.ts` | os 8 códigos novos da main | a derivação da onda 5 | **combinado**: 209 + 8 = 217 |
+| `components/admin/audit/action-codes.ts` | — | a deleção | **deleção mantida**, depois de conferir os 8 |
+| `.github/workflows/e2e.yml` | 2 specs da main | `marca-logo.spec.ts` | **combinado**, e rebalanceado |
+
+A ordem importou: **conferi que os 8 códigos da main já estavam no union ANTES
+de manter a deleção**. Na ordem inversa eu teria apagado o arquivo e descoberto
+a perda quando o painel ficasse 8 códigos atrás — que é exatamente o defeito
+que a onda 5 existiu para matar, reintroduzido pelo conserto dele.
+
+### O quarto, que não deu conflito
+
+`app/api/v1/marca/logo/route.ts` chamava `mfaEmDivida(org.role, is_platform_admin)`.
+A main mudou a função para **não receber mais papel**: com a verificação em duas
+etapas agora opcional, consultar a política antes de olhar a sessão faria o fator
+**voluntário** ser ignorado — quem ativasse por vontade própria teria o mesmo
+efeito de não ter ativado. A nova versão é mais estrita: quem TEM fator prova,
+sempre.
+
+Os dois lados mexeram em arquivos diferentes, então **não houve marcador**. Quem
+pegou foi o `typecheck` (TS2554 nas linhas 140 e 169). A irmã
+(`updateMarcaDaOrganizacao.ts`) já tinha sido corrigida pela sessão que mergeou
+na main; a minha ficou para trás porque **nasceu depois**, na onda 6. Vale
+registrar a assimetria: a classe foi tratada, e a instância nova escapou por ser
+nova — não por ser diferente.
+
+### Rebalanceamento do `e2e.yml`, e o número que estava errado
+
+A divisão em `SPECS_PARTE_1`/`PARTE_2` existe por causa do teto de 60 logins por
+IP a cada 300s, compartilhado pela suíte inteira. Medido antes de escolher:
+**175 vs 132** chamadas de login. Como a minha spec tem 13 e a parte 1 era a mais
+carregada, ela foi para a **parte 2**: ficou **162 vs 145**.
+
+⚠️ O número é **proxy** — regex sobre o texto das specs, não login de runtime.
+Serve para equilibrar; não promete que não estoura.
+
+O `CLAUDE.md` dizia **45 de 46**. Agora são **48 de 49** — e a causa do
+apodrecimento estava na própria receita que ele mandava usar:
+
+    grep -oE '[a-z0-9-]+\.spec\.ts' .github/workflows/e2e.yml | sort -u | wc -l
+
+devolve **49**, não 48, porque varre o arquivo inteiro e conta **menções em
+comentário** — inclusive a lista das que ficam de fora, documentada logo abaixo.
+Contava quem é **citado**, não quem é **invocado**, e errava **para cima**: quem
+seguisse a instrução publicaria um número inflado achando ter reconferido.
+Trocada por uma que lê só as `SPECS_PARTE_*`, com controle de sensibilidade
+provado (48 → 49 → 48 ao inserir e remover uma spec fantasma numa **cópia**).
+
+### Gates neste SHA
+
+`typecheck` 0 · `lint` 0 erros · `lint:channels` 0 · `test:shell` 0 ·
+`test:unit` **5 falhas**, todas em `lib/ai/dispatcher/rate-limit.test.ts`.
+
+As 5 são **do disco local, não do merge**, e a medição é esta — uma variável só:
+
+| ambiente | resultado |
+|---|---|
+| com `.env.local` | 5 failed (timeout 15s cada) |
+| sem `.env.local` | 5 passed |
+
+`.env.local` é gitignored: **o CI não o tem**. Nenhum commit desta branch toca
+esse teste. É defeito de DX **herdado**: a suíte prova o fallback em memória
+*para quando o Redis está INALCANÇÁVEL*, e quem tem `UPSTASH_*` de verdade no
+`.env.local` faz o código tentar a rede e estourar. Ou seja, o teste só passa
+para quem **não** configurou Redis — em metade dos ambientes ele mede o oposto
+do que o nome diz. **Registrado, não consertado**: não é escopo desta branch.
+
+### Precondição da `marca-logo.spec.ts` — conferida, e eu estava errado
+
+Achei que a spec presumia o dono já promovido a `platform_admins` e que passaria
+**de carona** no estado deixado por `system-update.spec.ts`. Isso quebraria no
+CI, ainda mais depois de eu ter movido a minha para a outra parte.
+
+Fui conferir: **ela já chama** `seed-e2e-system-update.ts` dentro de
+`loadCreds()`. Meu grep procurou `beforeAll|precondicao|garantir` e a spec faz
+isso no topo do módulo — **o ponto cego era do instrumento, não da spec**. A
+precondição está garantida e é independente da ordem entre as partes.
+
+Fica o registro porque a conclusão errada era a acionável: eu teria "consertado"
+uma spec correta.
