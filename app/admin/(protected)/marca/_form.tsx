@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
 import { updateBranding } from "@/app/actions/settings/updateBranding";
+import { CampoDeLogo } from "@/components/branding/CampoDeLogo";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -23,6 +24,12 @@ import { TiraDeTons, type ItemDaLegenda } from "@/components/branding/TiraDeTons
 export interface MarcaGravada {
   readonly app_name: string | null;
   readonly logo_url: string | null;
+  /**
+   * O ARQUIVO subido pela tela. Não vai no `Salvar`: tem rota própria
+   * (`/api/v1/marca/logo`) porque o que atravessa é multipart e porque o
+   * ponteiro é gravado por escritor próprio.
+   */
+  readonly logo_path: string | null;
   readonly accent_hex: string | null;
   readonly show_powered_by: boolean;
 }
@@ -32,6 +39,14 @@ interface Props {
   readonly gravada: MarcaGravada;
   /** O nome que a instalação exibe HOJE — vira placeholder, nunca texto fixo. */
   readonly nomeEmVigor: string;
+  /**
+   * O logo EM VIGOR nesta instalação, já resolvido pelo servidor (arquivo subido
+   * acima da URL do arquivo de instalação). `null` = nenhuma camada tem logo, e a
+   * interface aparece com o nome em texto.
+   */
+  readonly logoEmVigor: string | null;
+  /** O que apareceria SEM o arquivo subido — a URL colada no `.env`, se houver. */
+  readonly logoDoAmbiente: string | null;
   readonly origens: { readonly nome: string; readonly logoUrl: string; readonly cor: string };
   readonly definidoNestaTela: boolean;
   readonly fallbackEm: string | null;
@@ -51,6 +66,8 @@ const COR_NEUTRA_DO_SELETOR = "#808080";
 export function FormularioDaMarca({
   gravada,
   nomeEmVigor,
+  logoEmVigor,
+  logoDoAmbiente,
   origens,
   definidoNestaTela,
   fallbackEm,
@@ -147,16 +164,19 @@ export function FormularioDaMarca({
 
     const candidato: PlatformBrandingInput = {
       app_name: nome.trim() || null,
-      // O logo volta como está: esta tela ainda não o edita. A razão MUDOU e
-      // vale registrar, porque a antiga ("um campo aqui salvaria um valor que
-      // nenhuma tela mostraria") morreu: o menu lateral e as telas de acesso já
-      // leem o logo RESOLVIDO, com o banco acima do arquivo de instalação. O que
-      // falta é o campo — e ele é um upload (bucket, teto de tamanho, troca com
-      // remoção do anterior), não uma caixa de texto de URL, que seria metade da
-      // feature com o dobro das formas de errar. Mandar o valor gravado é o que
-      // impede o `upsert` de apagá-lo enquanto isso.
+      // `logo_url` volta COMO ESTÁ, e continua não sendo editável aqui: ele é a
+      // URL colada no arquivo de instalação (`APP_LOGO_URL`), que sobrevive como
+      // rede de rollback — o `agent.sh` reverte a imagem, nunca o banco. O que a
+      // tela edita agora é o ARQUIVO (`logo_path`), que vence essa URL dentro da
+      // mesma camada. Mandar o valor gravado é o que impede o `upsert` de
+      // apagá-lo.
       logo_url: gravada.logo_url,
       accent_hex: hexLimpo || null,
+      // `logo_path` NÃO entra aqui, e a ausência é a decisão: quem grava o
+      // arquivo é `/api/v1/marca/logo`, e o `upsert` desta action não inclui a
+      // coluna — então salvar o nome não pode apagar o logo. (Na camada da
+      // ORGANIZAÇÃO o mesmo problema exigiu um forward-fix na função SQL, porque
+      // lá a escrita substitui o objeto `branding` inteiro.)
       // Idem: `show_powered_by` não tem nenhum consumidor no produto hoje —
       // medido, zero ocorrências fora do schema e da tabela. Um interruptor que
       // não muda nada em tela nenhuma é pior que a ausência dele.
@@ -294,6 +314,21 @@ export function FormularioDaMarca({
             Sem cor definida, o sistema usa a cor padrão dele.
           </p>
         )}
+      </Card>
+
+      {/*
+        O logo em cartão PRÓPRIO, e não junto do nome: ele não passa pelo botão
+        Salvar. Misturá-lo aos campos que passam ensinaria que o arquivo só vale
+        depois de salvar — e a pessoa sairia da tela achando que perdeu o upload.
+      */}
+      <Card className="space-y-4 p-6">
+        <CampoDeLogo
+          escopo="instalacao"
+          logoDaCamada={gravada.logo_path ? logoEmVigor : null}
+          logoHerdado={logoDoAmbiente}
+          origemDoHerdado="do arquivo de instalação do servidor"
+          nomeEmVigor={nomeEmVigor}
+        />
       </Card>
 
       <EstadoDaMarca

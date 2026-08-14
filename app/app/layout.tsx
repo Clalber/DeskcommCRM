@@ -92,11 +92,11 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     // não-vazio e já veio trimado — por isso a barra lateral nunca recebe `""`
     // desta origem.
     //
-    // ⚠️ `origens.logoUrl === "organizacao"` é hoje INALCANÇÁVEL: nenhuma camada
-    // da organização declara logo (medido em `camadaDaOrganizacao`, que não tem
-    // a chave, e em `marcaDaOrganizacaoSchema`, sem `logo_url`). Ele entra aqui
-    // com o consumidor da barra para que o upload por organização seja só o
-    // produtor — e não mais uma passada pela casca inteira.
+    // `origens.logoUrl === "organizacao"` passou a ser ALCANÇÁVEL na onda do
+    // upload: `camadaDaOrganizacao` declara o logo a partir de
+    // `settings.branding.logo_path`. A condição foi escrita aqui uma onda ANTES
+    // do produtor existir, de propósito — foi o que fez o upload por organização
+    // ser só a camada, sem mais uma passada pela casca inteira.
     const marcaDoTenant = {
       ...(marca.origens.nome === "organizacao" ? { nome: marca.name } : {}),
       ...(marca.origens.logoUrl === "organizacao" && marca.logoUrl !== null

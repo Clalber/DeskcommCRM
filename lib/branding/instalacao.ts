@@ -80,7 +80,24 @@ export type SementeDoAmbiente = {
   readonly accent_hex: string | null;
 };
 
-const COLUNAS = "app_name, logo_url, accent_hex, show_powered_by, seeded_from_env, fallback_at, fallback_reason";
+/**
+ * ⚠️ Coluna nova aqui é TUDO OU NADA por construção, e isso é escolha declarada.
+ *
+ * Código novo sobre schema velho (o rollback pela outra ponta, e o que acontece
+ * num deploy que sobe a `main` sem ninguém aplicar o baseline) faz o PostgREST
+ * devolver `42703` para a linha inteira — não uma linha com a coluna faltando.
+ * `lerLinha` trata isso como "o banco não falou" e o resolvedor cai no `.env`,
+ * com aviso no log. Ou seja: quem não aplicou a 0158 perde a marca DO BANCO,
+ * não só o logo, até aplicar.
+ *
+ * A alternativa (um segundo `select` só para `logo_path`, tolerando o erro dele)
+ * custaria uma ida ao banco por render para proteger um estado que o `install.sh`
+ * e o `update.sh` já resolvem — os dois aplicam o `baseline.sql` antes de subir a
+ * imagem. Mesma exposição que `fallback_at`/`fallback_reason` já tinham desde a
+ * 0155; tratá-la diferente agora criaria duas regras para o mesmo caso.
+ */
+const COLUNAS =
+  "app_name, logo_url, logo_path, accent_hex, show_powered_by, seeded_from_env, fallback_at, fallback_reason";
 
 /**
  * Códigos de recusa — os que significam "a cor configurada NÃO pintou".

@@ -89,14 +89,13 @@ export interface ActiveOrg {
    * organização que definir só o logo não pode arrastar junto um `nome` que
    * ninguém escolheu ali.
    *
-   * ⚠️ `logoUrl` existe aqui mas HOJE nenhuma camada o produz: medido,
-   * `camadaDaOrganizacao` (`lib/branding/resolve.ts`) não declara `logoUrl` e
-   * `marcaDaOrganizacaoSchema` (`lib/schemas/settings.ts`) não tem `logo_url` —
-   * o logo POR ORGANIZAÇÃO chega com o upload (bucket + `logo_path`). O
-   * consumidor entra antes do produtor de propósito, e não é campo decorativo
-   * pelo avesso: ele tem teste de comportamento
-   * (`tests/unit/sidebar-nome-da-organizacao.test.tsx`) e o produtor será uma
-   * linha em `app/app/layout.tsx`, sem reabrir a casca.
+   * `logoUrl` TEM produtor desde a onda do upload: `camadaDaOrganizacao`
+   * (`lib/branding/resolve.ts`) declara o logo a partir de
+   * `settings.branding.logo_path`, gravado por `/api/v1/marca/logo`. O consumidor
+   * (a barra lateral) entrou uma onda ANTES do produtor, de propósito e
+   * declarado — foi o que permitiu que o upload fosse só a camada, sem reabrir a
+   * casca inteira. Enquanto durou, não era campo decorativo pelo avesso: já
+   * tinha teste de comportamento (`tests/unit/sidebar-nome-da-organizacao.test.tsx`).
    *
    * A rota é a que já existe: layout → `AuthProvider` → `useAuth()`. É como o
    * valor atravessa a fronteira servidor/navegador sem plumbing nova. A marca da
