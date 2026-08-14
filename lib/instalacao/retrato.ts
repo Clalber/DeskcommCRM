@@ -145,7 +145,7 @@ export async function lerRetratoDaInstalacao(
       prontaParaPublicar: origemDaChave !== "nenhuma" && Boolean(modeloCurado),
     },
     whatsapp: {
-      transporteApontado: ambiente.waha.apontado && ambiente.waha.comChave,
+      transporteApontado: ambiente.transporteDeWhatsapp.apontado && ambiente.transporteDeWhatsapp.comChave,
       canais: deps.contarCanais ? await deps.contarCanais() : null,
     },
     email: { configurado: ambiente.email },

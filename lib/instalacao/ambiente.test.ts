@@ -47,19 +47,12 @@ describe("lerAmbiente", () => {
     expect(Object.values(a.chavesDeProvedor).some(Boolean)).toBe(false);
     expect(a.gateway).toBe(false);
     expect(a.email).toBe(false);
-    expect(a.waha).toEqual({ apontado: false, comChave: false });
+    expect(a.transporteDeWhatsapp).toEqual({ apontado: false, comChave: false });
   });
 
-  it("o valor de exemplo do WAHA não conta como configuração", () => {
-    // É o estado "ninguém trocou ainda". Contar como chave faria o diagnóstico
-    // dizer que o WhatsApp está pronto num servidor onde ele nunca subiu.
-    const a = lerAmbiente({
-      WAHA_API_BASE_URL: "http://waha:3000",
-      WAHA_API_KEY: "dev_plaintext_change_me",
-    });
-    expect(a.waha.apontado).toBe(true);
-    expect(a.waha.comChave).toBe(false);
-  });
+  // O caso do placeholder mudou de arquivo: ele precisa nomear as VARIÁVEIS do
+  // transporte, e esse nome só pode viver dentro de `lib/channels/` — ver
+  // `lib/channels/transporte.test.ts`.
 
   it("e-mail configurado é o que decide se o convite sai de verdade", () => {
     // Falso em toda instalação pelo kit hoje: o `install.sh` não coleta essa

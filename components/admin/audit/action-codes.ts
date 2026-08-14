@@ -45,9 +45,23 @@ export const ACTION_CODES: string[] = [
   "onboarding.whatsapp_skipped",
   "onboarding.nuvemshop_skipped",
   "onboarding.ai_configured",
+  // O passo que troca o quadro de e-commerce semeado por um do ramo do negócio,
+  // e o passo de ver o funcionário responder antes de terminar o wizard.
+  "onboarding.quadro_montado",
+  "onboarding.quadro_pulado",
+  "onboarding.agente_testado",
+  "onboarding.agente_teste_pulado",
   "onboarding.team_invited",
   "onboarding.completed",
   "tenant.onboarded",
+  // A verificação em duas etapas deixou de ser imposta por papel: quem exige, e
+  // quem desligou a própria, é escolha auditável.
+  "security.mfa_exigida",
+  "security.mfa_dispensada",
+  "security.mfa_desativada",
+  // O signup que RECUSOU provisionar empresa nova porque o convite não valia —
+  // sem esta linha, o caso mais delicado do fluxo de convite não teria filtro.
+  "auth.signup_provision_recusado",
   "conversation.created",
   "conversation.claimed",
   "conversation.released",
