@@ -64,7 +64,10 @@ DeskcommCRM é um sistema operacional de vendas open source com agentes de IA na
 - Sempre `getUser()` (valida JWT no backend). NUNCA `getSession()` (confia no cookie local)
 - 4 roles dentro do tenant: `viewer` (1) < `agent` (2) < `manager` (3) < `admin` (4)
 - Super-admin de plataforma é uma role transversal — `is_platform_admin` (decisão final na Spec 01)
-- MFA TOTP **forçado** pra `admin` e super-admin
+- MFA TOTP é **opcional e ligado por quem administra** — não é mais forçado por papel. Quem exige são duas políticas independentes que SOMAM: `platform_admins.mfa_required` (para o super-admin) e `organizations.settings.security.mfa_required` (para o `admin` do tenant). O padrão de ambas é **não exigir**, e o `bootstrap-owner.ts` grava `false` explícito. Regra pura em `lib/auth/politica-mfa.ts`
+  - **Por que mudou:** o gate era `isPlatformAdmin || role === "admin"`, sem opção, e o `install.sh` cria o dono como platform admin — então TODA instalação self-host recebia um bloqueador de tela cheia logo depois do onboarding, um passo que o wizard nunca anunciou. Decisão do dono do produto; segurança que expulsa o usuário na primeira tela não protege ninguém
+  - **⚠️ CADASTRAR e PROVAR são perguntas diferentes.** A política decide o cadastro. Já `mfaEmDivida()` — o 403 `mfa_required` das rotas — NÃO consulta a política: quem TEM fator prova na sessão, sempre. Ligá-lo à política faria quem ativa a verificação por vontade própria ter o fator ignorado
+  - Ligar/desligar vive em **Configurações › Segurança**; desligar o próprio fator exige sessão `aal2` (senão uma sessão roubada desliga a proteção com um clique)
 - Permissão por pipeline (`user_pipeline_access`) **NÃO** entra no MVP
 
 ### Audit log
@@ -259,7 +262,7 @@ Checks **obrigatórios** na branch protection da `main` (verificado na configura
 - **`invariants`** (`ci.yml`) — `pnpm test:db`: sobe `pgvector/pgvector:pg17`, aplica `supabase/baseline.sql` em modo install (`ON_ERROR_STOP=1`) e update (idempotência), e roda os testes de invariante, incluindo o de isolamento RLS entre 2 organizações.
 - **`build-and-size`** (`perf.yml`) — `pnpm build` em Node 22.
 - **`e2e`** (`e2e.yml`) — sobe Supabase local, aplica o `baseline.sql` e roda **45 das 46 specs** Playwright (medido em 2026-08-14 @ `741c4ec8`; **reconte antes de citar**, com `ls tests/e2e/*.spec.ts | wc -l` e `grep -oE '[a-z0-9-]+\.spec\.ts' .github/workflows/e2e.yml | sort -u | wc -l` — este número já apodreceu **três** vezes, e uma delas foi eu copiando o `echo` do próprio workflow em vez de contar os arquivos). A **única** de fora é `vps-fresh-onboarding` (precisa de WAHA + Redis + Resend + Nuvemshop) — e ela é a **P0** da doutrina de QA Visual, ou seja, `e2e` verde **não** prova a jornada de instalação fresca, que é o produto que se vende.
-- **`imagens-ok`** (`imagens.yml`) — reprova quando qualquer uma das três imagens Docker não constrói. **É obrigatório desde 2026-08-13**; este arquivo dizia o contrário em outro parágrafo (ver a doutrina de packaging acima, já corrigida).
+- **`imagens-ok`** (`publish-image.yml`) — reprova quando qualquer uma das três imagens Docker não constrói. **É obrigatório desde 2026-08-13**; este arquivo dizia o contrário em outro parágrafo (ver a doutrina de packaging acima, já corrigida).
 
 Todos os **cinco** são **obrigatórios** — medido em 2026-08-14 na branch protection:
 

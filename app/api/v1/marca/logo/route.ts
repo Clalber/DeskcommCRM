@@ -137,7 +137,12 @@ async function abrirContexto(escopo: Escopo): Promise<{ ctx: Contexto } | { recu
         },
       };
     }
-    if (await mfaEmDivida(undefined, true)) {
+    // ⚠️ Sem argumentos desde o merge com a frente que tornou a verificação em
+    // duas etapas opcional — o porquê está por extenso em
+    // `app/actions/settings/updateMarcaDaOrganizacao.ts`. Em uma linha: a função
+    // parou de consultar a política, então quem TEM fator prova sempre. Passar
+    // papel aqui não é só inútil, é o modelo mental errado gravado no código.
+    if (await mfaEmDivida()) {
       return {
         recusa: {
           codigo: "mfa_required",
@@ -166,7 +171,7 @@ async function abrirContexto(escopo: Escopo): Promise<{ ctx: Contexto } | { recu
   }
   // DEPOIS do papel, de propósito — mesma ordem de `updateMarcaDaOrganizacao.ts`:
   // quem nem tem o papel recebe `forbidden_role`, que é a verdade sobre ele.
-  if (await mfaEmDivida(org.role, user.is_platform_admin)) {
+  if (await mfaEmDivida()) {
     return {
       recusa: {
         codigo: "mfa_required",

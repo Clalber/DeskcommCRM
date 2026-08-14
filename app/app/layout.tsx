@@ -146,7 +146,14 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   }
 
   const enrolled = await isMfaEnrolled();
-  const needsMfaGate = requiresMfa(activeOrg?.role, user.is_platform_admin);
+  // A decisão deixou de ser uma constante de papel: ela lê a política de quem
+  // pode exigir (a plataforma e a empresa). Ver `lib/auth/politica-mfa.ts`.
+  const needsMfaGate = await requiresMfa(
+    activeOrg?.role,
+    user.is_platform_admin,
+    user.id,
+    activeOrg?.orgId,
+  );
   const shell = <AppShell sidebarCollapsed={collapsed}>{children}</AppShell>;
 
   return (

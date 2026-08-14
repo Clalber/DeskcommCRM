@@ -11526,6 +11526,116 @@ notify pgrst, 'reload schema';
 
 
 
+-- ---- o quadro de clientes montado no onboarding (migration 0156) ----
+-- O gatilho `trg_seed_default_pipeline_for_org` semeia um funil de e-commerce em
+-- TODA organização, e o passo do onboarding troca esse quadro por um do ramo do
+-- negócio. A troca é DELETE + INSERT das etapas, e o cliente JS não tem
+-- transação: pelo cliente, um DELETE que passa e um INSERT que falha deixariam o
+-- funil sem coluna nenhuma. Aqui os dois vivem na mesma transação da função.
+--
+-- As duas recusas, e a segunda é a silenciosa: `crm_leads_stage_id_fkey` é
+-- RESTRICT (o DELETE falharia), mas `webhook_sources.default_stage_id` é
+-- **CASCADE** — trocar as colunas apagaria a fonte de webhook inteira sem erro
+-- nenhum. Ver o cabeçalho da 0156 para a medição que motivou o passo.
+--
+-- ⚠️ ESTE BLOCO FICA ACIMA DA VARREDURA DE `anon`, e não é arbitrário: o
+-- `ALTER DEFAULT PRIVILEGES` do corpo do baseline faz toda função nova nascer
+-- com EXECUTE para `anon`, e quem cura isso é a varredura — que só alcança o
+-- que veio ANTES dela. É o que `tests/unit/varredura-anon-e-o-ultimo-bloco`
+-- cobra, e foi ele que pegou este apêndice no lugar errado.
+
+create or replace function public.fn_aplicar_quadro_do_onboarding(
+  p_organization_id uuid,
+  p_pipeline_id uuid,
+  p_nome text,
+  p_slug text,
+  p_etapas jsonb
+) returns jsonb
+  language plpgsql
+  security definer
+  set search_path to 'public', 'pg_temp'
+as $$
+declare
+  v_negocios bigint;
+  v_fontes bigint;
+  v_criadas bigint;
+begin
+  -- O funil é DESTA organização? A função roda como `postgres` e passa por cima
+  -- da RLS; o filtro de tenant é responsabilidade dela.
+  perform 1 from public.crm_pipelines
+   where id = p_pipeline_id and organization_id = p_organization_id;
+  if not found then
+    return jsonb_build_object('ok', false, 'motivo', 'funil_nao_encontrado');
+  end if;
+
+  select count(*) into v_negocios
+    from public.crm_leads
+   where pipeline_id = p_pipeline_id
+     and organization_id = p_organization_id;
+
+  if v_negocios > 0 then
+    return jsonb_build_object('ok', false, 'motivo', 'funil_com_negocios', 'quantos', v_negocios);
+  end if;
+
+  -- ON DELETE CASCADE: sem esta recusa, trocar as colunas apaga a fonte inteira.
+  select count(*) into v_fontes
+    from public.webhook_sources w
+    join public.crm_stages s on s.id = w.default_stage_id
+   where s.pipeline_id = p_pipeline_id;
+
+  if v_fontes > 0 then
+    return jsonb_build_object('ok', false, 'motivo', 'etapa_em_uso_por_webhook', 'quantos', v_fontes);
+  end if;
+
+  delete from public.crm_stages
+   where pipeline_id = p_pipeline_id
+     and organization_id = p_organization_id;
+
+  insert into public.crm_stages
+    (organization_id, pipeline_id, name, slug, position, is_won, is_lost, agent_stage_hint)
+  select p_organization_id,
+         p_pipeline_id,
+         e->>'nome',
+         e->>'slug',
+         (e->>'position')::numeric,
+         coalesce((e->>'is_won')::boolean, false),
+         coalesce((e->>'is_lost')::boolean, false),
+         nullif(e->>'agent_stage_hint', '')
+    from jsonb_array_elements(p_etapas) as e;
+  get diagnostics v_criadas = row_count;
+
+  update public.crm_pipelines
+     set name = p_nome,
+         slug = p_slug,
+         updated_at = now()
+   where id = p_pipeline_id
+     and organization_id = p_organization_id;
+
+  return jsonb_build_object('ok', true, 'etapas', v_criadas);
+end$$;
+
+-- TRÊS origens de EXECUTE, e medi as três antes de escrever esta lista — com o
+-- revoke de `public, anon` apenas, `has_function_privilege` ainda respondia
+-- `authenticated, service_role`:
+--
+--   (A) o grant que o Postgres dá a PUBLIC ao criar qualquer função;
+--   (B) `ALTER DEFAULT PRIVILEGES ... GRANT ALL ON FUNCTIONS TO anon` (baseline);
+--   (C) a irmã dela, `... TO authenticated` (baseline, linha seguinte).
+--
+-- Nenhum dos revokes remove os outros dois. E aqui (C) é a perigosa, não (B):
+-- esta função é SECURITY DEFINER, roda como `postgres` por cima da RLS e recebe
+-- `p_organization_id` como ARGUMENTO. Executável por `authenticated`, qualquer
+-- usuário logado de qualquer tenant poderia reescrever o funil de OUTRA
+-- organização passando o id dela — exatamente a classe de furo que a 0149
+-- fechou. O invariante `hardening-definer-varredura` reprova definer volátil
+-- alcançável por `authenticated` fora da allowlist, e esta não entra nela.
+revoke execute on function public.fn_aplicar_quadro_do_onboarding(uuid, uuid, text, text, jsonb)
+  from public, anon, authenticated;
+-- Só o service role: o único chamador é a Server Action do onboarding, que já
+-- resolveu a organização do cookie de sessão. Quem não precisa não recebe.
+grant execute on function public.fn_aplicar_quadro_do_onboarding(uuid, uuid, text, text, jsonb)
+  to service_role;
+
 -- ---- marca por organização (migration 0157) ----
 --
 -- A MARCA DO CLIENTE FINAL SE GRAVA EM UMA INSTRUÇÃO SÓ.

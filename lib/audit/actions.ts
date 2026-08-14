@@ -284,6 +284,23 @@ export const AUDIT_ACTIONS = [
   // "quem mexeu no cadastro dela?". Fundir as duas obrigaria a ler o metadata
   // para saber qual das duas coisas aconteceu.
   "org.branding_updated",
+
+  // ── Vindos da `main` durante a continuação do épico ──────────────────
+  // Chegaram pelo painel (`action-codes.ts`) no mesmo intervalo em que este
+  // arquivo virou a fonte única. O merge pediu COMBINAÇÃO, não escolha de
+  // lado: `ours` perderia estes oito; `theirs` perderia a derivação.
+  "onboarding.quadro_montado",
+  "onboarding.quadro_pulado",
+  // O passo de ver o funcionário responder antes de terminar o wizard.
+  "onboarding.agente_testado",
+  "onboarding.agente_teste_pulado",
+  "security.mfa_exigida",
+  "security.mfa_dispensada",
+  "security.mfa_desativada",
+  // Havia convite no signup e ele não valia (expirado, ou emitido para outro
+  // e-mail). Não é falha de sistema: é a recusa deliberada de abrir organização
+  // nova para quem estava tentando entrar numa existente.
+  "auth.signup_provision_recusado",
 ] as const;
 
 /** Um código de auditoria. Derivado de `AUDIT_ACTIONS` — não redigite a lista. */

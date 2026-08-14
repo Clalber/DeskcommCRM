@@ -185,6 +185,11 @@ step "Baixando a versão nova do app e reiniciando"
 # aqui o alvo é sempre uma tag de versão (imutável), sai `missing`. Isso além de
 # tudo desfaz o "missing" que um rollback anterior deixava para trás — antes ele
 # ficava no .env para sempre, e o `up -d` manual do dono nunca mais puxava nada.
+# Lido ANTES de `gravar_imagens` corrigir — senão a informação some. Este é o
+# estado que a execução ANTERIOR deixou, e o dono nunca soube: o `update.sh`
+# antigo grava só `APP_IMAGE`, e o worker fica seguindo um canal móvel.
+PIN_FALTANDO_ANTES="$(pin_incompleto .env)"
+
 VERSAO_ALVO="${TARGET_TAG#v}"
 export APP_IMAGE="${IMG_APP}:${VERSAO_ALVO}"
 export WORKER_IMAGE="${IMG_WORKER}:${VERSAO_ALVO}"
@@ -249,6 +254,12 @@ ok=""
 wait_app_healthy 20 3 >/dev/null && ok=1
 if [ -n "$ok" ]; then
   c_grn "✓ Atualização concluída — app no ar e saudável."
+  # Dito no fim, e não no início, porque é aqui que o dono lê. Se a execução
+  # anterior deixou o pin pela metade, ele nunca soube — a tela dizia "concluída"
+  # e o worker seguia um canal móvel. Agora ele sabe que existiu e que acabou.
+  if [ -n "$PIN_FALTANDO_ANTES" ]; then
+    c_ylw "  (de quebra: a versão de $PIN_FALTANDO_ANTES estava solta e foi fixada agora)"
+  fi
 else
   c_ylw "⚠ Atualizei, mas o app não respondeu 'ok'. Veja os logs:"
   c_ylw "  docker compose $(dc_files) logs --tail=50 app"
