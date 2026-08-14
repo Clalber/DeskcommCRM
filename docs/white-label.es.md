@@ -1,4 +1,4 @@
-<!-- traduzido-de: docs/white-label.md@2ff17c1b956b -->
+<!-- traduzido-de: docs/white-label.md@e1d374bb48e0 -->
 
 [🇧🇷 Português](white-label.md) · [🇺🇸 English](white-label.en.md) · 🇪🇸 Español
 
@@ -16,13 +16,17 @@ La licencia es MIT: puedes modificarlo, alojarlo para terceros, revenderlo y cob
 
 El color es **derivado**, no aplicado en crudo: de un hex salen once tonos en los dos temas (claro y oscuro), con un piso de contraste calculado por papel y por superficie. Si el color que elegiste quedaría ilegible como texto de botón en el tema oscuro, el sistema recorre los peldaños necesarios y la pantalla **te muestra** en qué tono va a aterrizar cada cosa, antes de guardar. Nada de "elegí amarillo y el botón quedó blanco sobre blanco".
 
-El logo sigue en el `.env`:
+**El logo también.** En la misma pantalla **subes el archivo** — PNG o JPG, hasta 512 KB. Va al almacenamiento de tu propia instalación y pasa a valer al instante, sin reiniciar nada y sin que tengas que alojar la imagen en ningún sitio. Altura fija y ancho libre, para no deformar un arte de cualquier proporción; sin logo, el nombre aparece como texto.
+
+El archivo se acepta **por sus bytes, no por su extensión**. Renombrar un `.svg` a `.png` no engaña: el sistema lee el contenido, lo rechaza y dice por qué. Esto no es quisquillosidad — SVG es XML y puede llevar script, que se ejecutaría si alguien abriera la imagen directamente por su dirección, en un bucket que es público por necesidad.
+
+Quien prefiera alojarlo por su cuenta puede seguir haciéndolo, por el `.env`:
 
 ```bash
 APP_LOGO_URL=https://cdn.tuempresa.com/logo.svg
 ```
 
-Sin ella, el nombre aparece como texto en la barra lateral. Con ella, el logo sustituye al texto — altura fija, ancho libre, para no deformar un arte de cualquier proporción. **Todavía no hay pantalla para el logo:** es el único de los tres ejes que no se cambia desde el panel.
+Entre los dos, **el archivo subido desde la pantalla gana a la URL del `.env`** — quien lo subió expresó la elección más reciente. Y quitar el logo de una organización **devuelve el de la instalación**, no "ninguno": las capas caen una sobre otra en vez de borrarse.
 
 ### Las tres variables del `.env`, y su papel real
 
@@ -32,7 +36,7 @@ APP_LOGO_URL=https://cdn.tuempresa.com/logo.svg
 APP_ACCENT_HEX=#7a5cd6
 ```
 
-El `install.sh` pregunta **dos** de ellas y las graba: el `APP_NAME` (Enter mantiene el valor por defecto) y el `APP_ACCENT_HEX` (Enter usa el color del sistema). `APP_LOGO_URL` la editas a mano en el `.env`.
+El `install.sh` pregunta **dos** de ellas y las graba: el `APP_NAME` (Enter mantiene el valor por defecto) y el `APP_ACCENT_HEX` (Enter usa el color del sistema). No pregunta por `APP_LOGO_URL` — el camino normal del logo es subir el archivo desde la pantalla, y esa clave existe para quien prefiera alojarlo por su cuenta.
 
 > El color se pide con validador: solo pasa `#` + 6 dígitos. Es más estrecho de lo que acepta la pantalla, y es a propósito — los **correos de acceso** (confirmación de cuenta y recuperación de contraseña) leen esa clave del `.env`, y solo reconocen esa forma. Un `#abc` o un `7a5cd6` pintaría la interfaz con tu color y dejaría el verde del producto en el primer correo que abre tu cliente.
 
@@ -55,7 +59,7 @@ La configuración sobrevive a toda actualización. Por eso la marca se lee en ti
 
 ## Marca por organización
 
-**Una instalación atiende a varias organizaciones, y cada una puede tener su propia marca.** El admin de cada organización abre `Configurações → Marca` (`/app/settings/marca`) y define el **nombre** y el **color** de ella — sin necesitarte, y sin ver a las demás.
+**Una instalación atiende a varias organizaciones, y cada una puede tener su propia marca.** El admin de cada organización abre `Configurações → Marca` (`/app/settings/marca`) y define el **nombre**, el **color** y el **logo** de ella — sin necesitarte, y sin ver a las demás.
 
 La frontera, que es deliberada:
 
@@ -77,7 +81,6 @@ Directo, para que no lo descubras delante del cliente. Cada línea trae la razó
 - **Dominio por organización.** Una instalación, un dominio. No hay columna de dominio en el esquema, la bifurcación por host en `proxy.ts` es un NOOP declarado (existe solo como documentación de la topología pretendida), y en el Edge no hay base de datos que consultar antes de decidir a quién pertenece ese host. El cliente que exige su propio dominio pide **instalación dedicada**.
 - **Tipografía.** La tipografía es la misma en toda instalación. `next/font` resuelve en tiempo de **build**, y la imagen que baja tu VPS ya viene construida — un selector de fuente en el panel guardaría un valor que nadie leería. (La fuente es la Atkinson Hyperlegible, elegida por el Braille Institute por legibilidad; cambiarla no altera la percepción de marca y empeora la lectura de quien pasa el día dentro del sistema.)
 - **Tema.** El par claro/oscuro es del design system. Tu marca mueve el **accent** — lo que es acción, destaque y foco — y deliberadamente **no** mueve el fondo de la página: el fondo es el mismo en toda marca, y por eso el color de la barra del navegador también.
-- **Logo por organización.** El logo es de la instalación, y solo por el `.env`.
 - **El informe de LGPD del titular no lleva tu marca — y es a propósito.** Ver la sección propia más abajo.
 - **La alarma de presupuesto de IA** todavía sale con nuestra marca. Es la única fuga conocida, y se queda: hoy esa alarma no tiene ninguna programación conectada, así que arreglar su marca no cambiaría nada que alguien vea. Sale cuando la alarma tenga un cron de verdad.
 - **Dos nombres técnicos no cambian**: la cabecera `X-Deskcomm-Signature` de los webhooks de salida y la cookie de sesión. El primero es un contrato con sistemas de terceros que ya verifican ese nombre; renombrarlo tumbaría la integración de un cliente **en silencio** — el receptor no da error, simplemente deja de reconocer.
