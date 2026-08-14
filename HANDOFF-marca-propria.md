@@ -1271,3 +1271,38 @@ Duas hipóteses caíram por medição antes desta, e não vale reabri-las:
 `collapsed` vem de cookie lido no servidor (`app/app/layout.tsx:122`), igual dos
 dois lados; e `activeOrg` chega como **prop do servidor**
 (`hooks/auth/AuthProvider.tsx:25-32`), sem fetch no cliente.
+
+### Correção: o que eu disse sobre as 5 falhas de `test:unit` estava errado
+
+Escrevi, no commit do merge e no corpo do PR:
+
+> "quem tem `UPSTASH_*` **de verdade** no `.env.local` faz o código tentar a rede
+> e estourar 15s"
+
+**O `.env.local` deste worktree é cópia BYTE-IDÊNTICA do `.env.example`, com
+todos os valores VAZIOS.** Não há `UPSTASH_*` real nenhum. Medido:
+`cmp -s .env.local .env.example` → idêntico; `UPSTASH_REDIS_REST_URL=` vazio.
+
+E o mecanismo que inventei também não se sustenta: `lib/ai/dispatcher/rate-limit.ts:22`
+faz `if (!url || !token)` e cai no fallback — string vazia é falsy, então o
+código **não** tentaria a rede.
+
+O que continua medido, e é só isto:
+
+| ambiente | resultado |
+|---|---|
+| com `.env.local` | falha |
+| sem `.env.local` | passa |
+
+O **mecanismo** fica como **NÃO MEDIDO**. A pista que sobra veio de outra
+medição: o `.env.local` com valores vazios derruba dezenas de arquivos de teste
+a menos que se exporte `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+e `SUPABASE_SERVICE_ROLE_KEY` — porque os placeholders do setup usam `??=`, que
+**não** sobrepõe string vazia (só `undefined`). Com as três exportadas — a
+condição do CI — a suíte fica em **1 falha / 4693 passam**, e a única é
+`messages-handler-canal-intermediado`, isolada pelo mesmo experimento de uma
+variável (com o arquivo: 1 falha; sem: 11 passam).
+
+O erro aqui não foi errar o palpite — foi **publicar o palpite com a forma de
+medição**. A frase dizia "de verdade", que é afirmação sobre o conteúdo de um
+arquivo que eu não tinha aberto. Bastava um `cmp`.
