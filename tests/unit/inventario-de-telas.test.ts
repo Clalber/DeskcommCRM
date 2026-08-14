@@ -75,6 +75,18 @@ const reconciliacao = reconciliar(inventario, rotas);
 
 const COMANDO = "pnpm exec tsx scripts/inventario-de-telas.ts";
 
+/**
+ * Quantas seções o arquivo BRUTO tem, contadas sem passar pelo parser.
+ *
+ * Medido por revisão adversarial: tirar o "(N telas)" do cabeçalho de UMA seção
+ * a faz sumir do parser — e então o doc pode afirmar 93 sobre uma tabela de 95
+ * com os seis casos VERDES. O parser só enxerga o que ele mesmo reconhece;
+ * comparar com a contagem crua é o que separa "não diverge" de "parei de ler".
+ */
+function secoesNoArquivoBruto(texto: string): number {
+  return (texto.match(/^## [A-Z]\./gm) ?? []).length;
+}
+
 describe("inventário de telas", () => {
   it("caso 1 — o instrumento mediu alguma coisa", () => {
     // `conferirVacuidade` lança. Envolver em `expect(...).not.toThrow()` deixaria

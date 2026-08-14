@@ -5,7 +5,7 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import { AuditFiltersAdmin } from "@/components/admin/audit/AuditFiltersAdmin";
-import { AUDIT_ACTIONS } from "@/lib/audit/actions";
+import { AUDIT_ACTIONS, type AuditAction } from "@/lib/audit/actions";
 
 /**
  * O FILTRO DO PAINEL DE AUDITORIA É DERIVADO DO VOCABULÁRIO — NÃO UMA CÓPIA.
@@ -56,6 +56,26 @@ function literais(fonte: string): string[] {
 const FORMA_DE_CODIGO = /^[a-z][a-z0-9_]*(\.[a-z0-9_]+)+$/;
 
 const VOCABULARIO = new Set<string>(AUDIT_ACTIONS);
+
+/**
+ * A guarda que o TYPECHECK faz, e que nenhum caso de runtime faria.
+ *
+ * O tipo `AuditAction` agora DERIVA de `AUDIT_ACTIONS` — e a única coisa que o
+ * segura é o `as const` no fim do array. Medido por uma revisão adversarial:
+ * removendo essas duas palavras, `tsc --noEmit` sai **0** e os 5 casos deste
+ * arquivo passam **verdes**, enquanto o tipo silenciosamente vira `string[]` e
+ * ~200 call sites deixam de ser verificados.
+ *
+ * Antes da derivação isso era irredutível (o union era literal). Agora um
+ * `pnpm format`, um "vou tipar isso direito" (`: string[]`) ou um refactor
+ * desligam a garantia sem acender nada. Esta linha acende.
+ */
+type NaoDegradouParaString<T> = string extends T ? never : true;
+// A regex cobre `export … from` porque re-export arrasta o módulo inteiro
+// para o mesmo grafo — medido: um `export { env } from "@/lib/env"` passava
+// batido pela versão que só olhava `import`/`require`.
+const _tipoNaoDegradou: NaoDegradouParaString<AuditAction> = true;
+void _tipoNaoDegradou;
 
 describe("audit: a lista do painel é derivada do vocabulário", () => {
   it("o vocabulário foi REALMENTE lido (guarda de vacuidade)", () => {
@@ -126,7 +146,7 @@ describe("audit: a lista do painel é derivada do vocabulário", () => {
 
   it("lib/audit/actions.ts não importa nada (é o que o cliente carrega)", () => {
     const fonte = leia("lib/audit/actions.ts");
-    const importa = /^\s*(import|require)\b/m.exec(fonte);
+    const importa = /^\s*(import|require)\b|^\s*export\b[^;]*\bfrom\b/m.exec(fonte);
     expect(
       importa?.[0] ?? null,
       "lib/audit/actions.ts passou a importar algo, e um componente \"use client\" o importa: " +

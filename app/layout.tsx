@@ -148,10 +148,17 @@ const motivosRegistrados = new Set<string>();
  * de rollback continua valendo pela razão de cima, que é sobre VERSÃO, não sobre
  * o instalador. A correção da prosa está no cabeçalho da migration 0155.
  *
- * Os motivos NÃO morrem aqui: enquanto a tela de marca não existe (fase
- * seguinte, `/app/settings/tenant/branding`), o log estruturado é por onde o
- * operador descobre que a cor dele foi deslocada ou recusada — e `resolverMarca`
- * devolve a lista inteira para quem a quiser mostrar.
+ * Os motivos NÃO morrem aqui, e desde 2026-08-13 eles têm DUAS telas:
+ * `/admin/marca` (instalação) e `/app/settings/marca` (organização) mostram os
+ * motivos e o `fallback_at` — é `_estado.tsx` quem os renderiza. O log
+ * estruturado continua sendo o caminho de quem lê servidor, não o único.
+ *
+ * ⚠️ Este parágrafo dizia "enquanto a tela de marca não existe (fase seguinte,
+ * `/app/settings/tenant/branding`)". Era falso em dois pontos: as telas existem,
+ * e aquela rota NUNCA existiu. Ele sobreviveu a uma varredura de comentários
+ * falsos que corrigiu o parágrafo seis linhas acima, no MESMO docblock — a
+ * varredura entrou pelo bloco e parou no parágrafo. Varrer por classe é varrer o
+ * bloco inteiro, não a frase que se veio consertar.
  */
 async function EstiloDaMarca() {
   // `await headers()` força render dinâmico, pelo mesmo motivo do

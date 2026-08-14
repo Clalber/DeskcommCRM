@@ -26,7 +26,7 @@
  * não tiver `import`/`require`, o que vai para o bundle do browser são só as 209
  * strings. Um `import { env } from "@/lib/env"` aqui arrastaria a validação de
  * env — e o que ela lê — para dentro do JavaScript entregue ao cliente.
- * `tests/unit/audit-lista-do-painel-e-derivada.test.ts` reprova quem tentar.
+ * `tests/unit/audit-lista-do-painel-e-derivada.test.tsx` reprova quem tentar.
  */
 export const AUDIT_ACTIONS = [
   "auth.login_success",
