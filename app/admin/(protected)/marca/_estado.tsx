@@ -25,7 +25,7 @@
 import type { Marca, TokensDoTema } from "@/lib/branding/contraste";
 import { Card } from "@/components/ui/card";
 
-import { motivosDoFallback, type Aviso, type Tom } from "./_linguagem";
+import { motivosDoFallback, type Aviso, type Tom } from "@/lib/branding/linguagem";
 
 const CLASSE_DO_TOM: Record<Tom, string> = {
   informativo: "text-text-muted",

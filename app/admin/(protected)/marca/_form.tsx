@@ -17,8 +17,8 @@ import { envelopeDeSemente } from "@/lib/branding/schema";
 import { platformBrandingSchema, type PlatformBrandingInput } from "@/lib/schemas/settings";
 
 import { EstadoDaMarca } from "./_estado";
-import { avisosDaMarca, type DistanciaAteSuaCor } from "./_linguagem";
-import { TiraDeTons, type ItemDaLegenda } from "./_tira";
+import { avisosDaMarca, type DistanciaAteSuaCor } from "@/lib/branding/linguagem";
+import { TiraDeTons, type ItemDaLegenda } from "@/components/branding/TiraDeTons";
 
 export interface MarcaGravada {
   readonly app_name: string | null;
@@ -115,7 +115,7 @@ export function FormularioDaMarca({
 
   // A distância é medida a partir da COR DA PESSOA, que é a referência de quem
   // lê — e não a partir do tom padrão de cada modo, que é a referência do motor.
-  // Ver o comentário de `DistanciaAteSuaCor` em `_linguagem.ts`.
+  // Ver o comentário de `DistanciaAteSuaCor` em `lib/branding/linguagem.ts`.
   const distancia = useMemo<DistanciaAteSuaCor>(() => {
     if (!degraus || degraus.suaCor === null) return { claro: null, escuro: null };
     const suaCor = degraus.suaCor;

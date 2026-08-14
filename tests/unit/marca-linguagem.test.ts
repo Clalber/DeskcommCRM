@@ -5,7 +5,7 @@ import {
   motivosDoFallback,
   TRADUCOES,
   type MotivoLido,
-} from "@/app/admin/(protected)/marca/_linguagem";
+} from "@/lib/branding/linguagem";
 
 /**
  * A guarda da LÍNGUA da tela de marca.

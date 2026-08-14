@@ -1,12 +1,22 @@
 /**
- * O diagnóstico da marca traduzido para a língua de quem instalou o sistema.
+ * O diagnóstico da marca traduzido para a língua de quem usa o sistema.
+ *
+ * ── Por que vive em `lib/branding/`, e não dentro de uma das telas ────────────
+ *
+ * Nasceu em `app/admin/(protected)/marca/_linguagem.ts`, para a tela da marca da
+ * INSTALAÇÃO. Com a marca por ORGANIZAÇÃO passaram a existir duas telas que
+ * traduzem os mesmos códigos do mesmo motor, e a alternativa — a tela do tenant
+ * importar de dentro de `app/admin/` — seria o começo de duas linguagens
+ * divergentes: a primeira frase acrescentada de um lado não chegaria ao outro, e
+ * o mesmo estado do sistema passaria a ter duas explicações.
  *
  * ── Por que um módulo, e não frases soltas no JSX ─────────────────────────────
  *
  * O motor da marca (`lib/branding/`) fala em código: `accent_deslocado`,
- * `valor_fora_da_allowlist`, `marca_acromatica`. Quem lê esta tela é o dono de
- * uma VPS — para ele "o accent foi deslocado" não é informação, é ruído. A
- * tradução mora aqui por duas razões que um `switch` dentro do JSX não daria:
+ * `valor_fora_da_allowlist`, `marca_acromatica`. Quem lê estas telas é o dono de
+ * uma VPS ou o admin de uma empresa — para eles "o accent foi deslocado" não é
+ * informação, é ruído. A tradução mora aqui por duas razões que um `switch`
+ * dentro do JSX não daria:
  *
  *  1. `TRADUCOES` é `Record<CodigoDaMarca, Traducao>`, e `CodigoDaMarca` é a
  *     UNIÃO dos três tipos de código que o motor emite. Código novo lá em cima
@@ -14,7 +24,9 @@
  *     o motor passou a distinguir, que é exatamente como um alarme morre.
  *  2. o vocabulário proibido (rampa, stop, OKLCH, ΔE, token, WCAG) vira asserção
  *     de teste sobre um objeto — `tests/unit/marca-linguagem.test.ts` —, em vez
- *     de disciplina de quem escreve JSX às pressas.
+ *     de disciplina de quem escreve JSX às pressas. Uma guarda sobre um módulo
+ *     cobre as duas telas; a mesma guarda por tela precisaria ser lembrada a
+ *     cada tela nova.
  *
  * ── Por que `silencio` e `com_contexto` carregam um `porque` escrito ──────────
  *

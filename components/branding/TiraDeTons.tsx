@@ -14,6 +14,13 @@
  * cor está ali, o botão é aquele outro degrau, os dois são a mesma cor em
  * intensidades diferentes.
  *
+ * ── Por que em `components/`, e não dentro da tela ────────────────────────────
+ *
+ * Nasceu em `app/admin/(protected)/marca/_tira.tsx`. A tela da marca por
+ * ORGANIZAÇÃO precisa explicar exatamente a mesma coisa para o admin do tenant,
+ * e duas tiras — uma por tela — divergiriam na primeira correção. O componente
+ * não sabe de qual marca são os tons que recebe, e é por isso que serve às duas.
+ *
  * ── Por que a marcação é desenhada com `melhorFrenteSobre` ────────────────────
  *
  * Uma borda de cor fixa some: branca desaparece nos tons claros da escada, preta
