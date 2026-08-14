@@ -46,8 +46,27 @@ export type AuditAction =
   | "onboarding.whatsapp_skipped"
   | "onboarding.nuvemshop_skipped"
   | "onboarding.ai_configured"
+  /**
+   * O quadro de clientes montado no wizard. Vale registrar porque é a única
+   * escrita do onboarding que SUBSTITUI dado semeado (as colunas do gatilho) em
+   * vez de acrescentar: quem for entender depois por que o funil mudou de nome
+   * encontra aqui quem fez, quando, e se veio da IA ou de um modelo pronto.
+   */
+  | "onboarding.quadro_montado"
+  | "onboarding.quadro_pulado"
+  // O passo de ver o funcionário responder antes de terminar o wizard.
+  | "onboarding.agente_testado"
+  | "onboarding.agente_teste_pulado"
   | "onboarding.team_invited"
   | "onboarding.completed"
+  /**
+   * A verificação em duas etapas deixou de ser obrigatória por papel e passou a
+   * ser escolha de quem administra. Escolha de segurança se registra: quem
+   * auditar depois precisa saber quem afrouxou, quando, e em qual empresa.
+   */
+  | "security.mfa_exigida"
+  | "security.mfa_dispensada"
+  | "security.mfa_desativada"
   | "tenant.onboarded"
   | "conversation.created"
   | "conversation.claimed"
@@ -210,6 +229,10 @@ export type AuditAction =
   | "auth.signup_failed"
   | "auth.signup_confirmed"
   | "auth.signup_provision_failed"
+  // Havia convite no signup e ele não valia (expirado, ou emitido para outro
+  // e-mail). Não é falha de sistema: é a recusa deliberada de abrir organização
+  // nova para quem estava tentando entrar numa existente.
+  | "auth.signup_provision_recusado"
   | "auth.email_link_rejected"
   | "auth.password_reset_requested"
   | "auth.password_reset_request_failed"

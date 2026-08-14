@@ -165,9 +165,19 @@ export const NAV_DESTINATIONS: NavDestination[] = [
 
   // ---- CRM — o funil ----
   {
+    // ⚠️ ERA "Kanban", e a URL continua sendo. O nome saiu da interface porque o
+    // produto tinha CINCO vocabulários para a mesma coisa — "Kanban" no menu,
+    // "Pipelines" no título desta tela, "Funis" no menu ao lado, "funil" em todo
+    // o corpo dela e "quadro" no onboarding inteiro. Três deles no mesmo
+    // viewport: o <h1> dizia "Pipelines", o estado vazio dizia "Sem pipelines
+    // configurados" e o botão embaixo dizia "Criar meu primeiro funil".
+    //
+    // Ficou "Funis" porque é o que esta tela É: a lista dos funis, de onde se
+    // abre o quadro de cada um. "Pipeline" é palavra de quem construiu o
+    // sistema; "funil de vendas" é palavra de quem vende.
     href: "/app/kanban",
-    label: "Kanban",
-    description: "O quadro de cards: onde cada negócio está no funil.",
+    label: "Funis",
+    description: "Seus funis de venda — clique em um para abrir o quadro de clientes.",
     icon: Kanban,
     group: "crm",
     sidebar: true,
@@ -183,9 +193,15 @@ export const NAV_DESTINATIONS: NavDestination[] = [
   {
     // Estava enterrado em Configurações e ninguém sabia que existia — o achado
     // que originou esta reorganização. A URL não muda; só o lugar na navegação.
+    //
+    // ⚠️ ERA "Funis", nome que ele DISPUTAVA com o destino acima: os dois
+    // listavam as mesmas linhas de `crm_pipelines`, lado a lado no mesmo grupo,
+    // com nomes que não diziam qual servia para quê. A diferença real é o VERBO,
+    // e é ela que o nome carrega agora: lá se ABRE o funil, aqui se CONFIGURA o
+    // que ele significa.
     href: "/app/settings/tenant/pipelines",
-    label: "Funis",
-    description: "As etapas do seu funil, o vocabulário do negócio e os motivos de perda.",
+    label: "Etapas do funil",
+    description: "As colunas de cada funil, o vocabulário do negócio e os motivos de perda.",
     icon: Funnel,
     group: "crm",
     minRole: "manager",
