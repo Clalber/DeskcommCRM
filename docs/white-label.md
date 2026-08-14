@@ -1,3 +1,5 @@
+🇧🇷 Português · [🇺🇸 English](white-label.en.md) · [🇪🇸 Español](white-label.es.md)
+
 # Instalar para clientes (agências e revendedores)
 
 Guia para quem instala o DeskcommCRM **para outras empresas** — agência, consultoria, revendedor — e cobra por isso.
@@ -190,4 +192,6 @@ Guia completo de instalação: [`hostgator-setup-kit/README.md`](../hostgator-se
 
 *Última atualização: 14 de agosto de 2026 — revisão completa depois do épico de marca própria. As duas frases mais citadas deste documento ("cores, fontes e tema não são configuráveis" e "a marca é por instalação, não por organização") deixaram de ser verdadeiras e foram reescritas com o limite honesto de hoje.*
 
-*Este documento existe em português apenas. Os três READMEs (pt/en/es) apontam todos para ele. Tradução é dívida declarada, com pré-requisito nomeado: sem um gate que reprove tradução defasada, três cópias divergem no primeiro conserto seguinte — e um guia comercial errado em inglês é pior que um guia inexistente.*
+*Este documento existe em três idiomas, e o pré-requisito que a versão anterior deste rodapé nomeava foi pago: as traduções carregam na primeira linha um selo com o hash do original, e editar `docs/white-label.md` sem re-selar reprova `pnpm test:unit`. Depois de traduzir, re-sele com `pnpm exec tsx scripts/selar-traducao.ts --todas`.*
+
+*Os três READMEs ficaram **fora** do selo de propósito. São o arquivo mais editado do repositório: com selo, cada conserto viraria um PR bloqueado até ~490 linhas serem re-traduzidas duas vezes — e o desfecho realista disso não é tradução em dia, é alguém re-selar sem traduzir, que é o único jeito de o selo morrer. Eles entram quando alguém quiser pagar esse custo de olhos abertos.*
