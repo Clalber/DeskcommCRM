@@ -109,11 +109,21 @@ async function ensurePlatformAdmin(userId: string): Promise<void> {
  * chegou a existir.
  */
 async function revogarPlatformAdmin(userId: string, razao: string): Promise<void> {
-  const { data: existing } = await admin
+  // O `error` é checado de propósito: sem isso, um select que falha devolve
+  // `data: null`, a função retorna cedo, NADA é revogado — e o seed ainda
+  // imprime sucesso. É a mesma classe que este arquivo conserta em
+  // `seed-e2e-invite.ts`, e a palavra "auto-cura" só é verdade com o erro lido.
+  const { data: existing, error: erroLeitura } = await admin
     .from("platform_admins")
     .select("user_id, revoked_at")
     .eq("user_id", userId)
     .maybeSingle();
+  if (erroLeitura) {
+    throw new Error(
+      `nao deu para ler platform_admins de ${userId}: ${erroLeitura.message}. ` +
+        "A revogacao NAO aconteceu — nao trate este seed como auto-cura.",
+    );
+  }
   if (!existing) return; // nunca foi promovido — nada a curar
   if ((existing as { revoked_at: string | null }).revoked_at !== null) {
     console.log(`[seed] platform_admin já revogado: ${userId}`);

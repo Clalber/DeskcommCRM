@@ -29,10 +29,29 @@
  * Um gate que só procurasse a co-ocorrência dos dois textos reprovaria o
  * arquivo já corrigido.
  *
- * ⚠️ O QUE ESTE GATE **NÃO** COBRE: ele é estático e por arquivo. Um seed que
- * receba o id por variável de ambiente, leia outro JSON, ou chame um helper de
- * outro módulo escapa da varredura. O que ele garante é que o caminho ÓBVIO —
- * o que já foi percorrido uma vez — não volta em silêncio.
+ * ⚠️ O QUE ESTE GATE **NÃO** COBRE — e a lista agora é MEDIDA, não imaginada.
+ *
+ * Uma revisão adversarial montou um laboratório com os 18 seeds reais e este
+ * arquivo byte-idêntico, com controle positivo vivo, e mediu **quatro** fugas
+ * que a primeira versão deixava passar batido: arrow function
+ * (`const ensureX = async (id) => {…}`), o `insert` escrito inline no corpo de
+ * `main()` (que é chamada sem argumento, então o cruzamento por argumento não
+ * achava nada), destructuring (`const { admin: dono } = creds.users`) e RPC.
+ *
+ * As três primeiras foram fechadas. A sabotagem confirma **1 reprovação para
+ * cada**, e um seed que NÃO promove (controle negativo) **não** reprova.
+ *
+ * Continuam fora, por serem fora do alcance de varredura **estática**:
+ *   - `admin.rpc("fn_que_concede", …)` — o nome da função vive no banco;
+ *   - SQL cru por outro cliente;
+ *   - concessão feita por um helper importado de outro módulo.
+ *
+ * A versão anterior deste comentário afirmava que "o caminho ÓBVIO não volta em
+ * silêncio" e nomeava três fugas exóticas (env var, outro JSON, outro módulo).
+ * As quatro medidas eram **mais ordinárias que as três nomeadas**: escrever o
+ * `insert` inline é mais óbvio que extrair um helper, e arrow function é o
+ * estilo dominante do repo. Declarar o que não se cobre vale mais do que
+ * afirmar uma cobertura que não se mediu.
  */
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -46,6 +65,9 @@ const DIR = path.join(process.cwd(), "scripts");
  * desligado, não uma exceção. Está vazia porque, no commit que criou este
  * arquivo, nenhum seed promove o admin compartilhado.
  */
+// Vazia HOJE, e o teste abaixo assere isso explicitamente: um `it` que itera
+// sobre lista vazia passa sem executar asserção nenhuma, e o vitest não reprova
+// suíte sem asserção — a passagem significaria nada.
 const PERMITIDOS: readonly string[] = [];
 
 function seeds(): string[] {
@@ -81,15 +103,57 @@ function concede(corpo: string): boolean {
   return /\.update\s*\(\s*\{[^}]*revoked_at\s*:\s*null/s.test(corpo);
 }
 
-/** Funções do arquivo cujo corpo concede platform admin. */
+/**
+ * Funções do arquivo cujo corpo concede platform admin.
+ *
+ * Duas formas de declaração, e a segunda foi acrescentada depois de uma revisão
+ * adversarial MEDIR a fuga num laboratório com os 18 seeds reais e o controle
+ * positivo vivo: `const ensureX = async (id) => {…}` passava batido, e arrow
+ * function é o estilo dominante do repo. Cobrir só `function nome(` era cobrir
+ * a forma que o defeito original tinha, não a classe.
+ */
 function funcoesQueConcedem(texto: string): string[] {
   const nomes: string[] = [];
-  const assinatura = /(?:async\s+)?function\s+([A-Za-z_$][\w$]*)\s*\(/g;
-  let m: RegExpExecArray | null;
-  while ((m = assinatura.exec(texto)) !== null) {
-    if (concede(corpoDaFuncao(texto, m.index))) nomes.push(m[1]!);
+  for (const assinatura of [
+    /(?:async\s+)?function\s+([A-Za-z_$][\w$]*)\s*\(/g,
+    /(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*(?::[^=]+)?=\s*(?:async\s*)?\(/g,
+  ]) {
+    let m: RegExpExecArray | null;
+    while ((m = assinatura.exec(texto)) !== null) {
+      if (concede(corpoDaFuncao(texto, m.index))) nomes.push(m[1]!);
+    }
   }
   return nomes;
+}
+
+/**
+ * A concessão escrita DENTRO da própria função, sem helper e sem argumento.
+ *
+ * A mesma revisão mediu que pôr o `insert` inline no corpo de `main()` escapa:
+ * `main` é detectada como concessora, mas ela é chamada como `main()` — sem
+ * argumento —, então o cruzamento por argumento não acha nada. E escrever
+ * inline é MAIS óbvio que extrair um helper, não menos.
+ *
+ * Aqui o teste é outro: o corpo que concede referencia o admin compartilhado
+ * (pelo literal ou por apelido) em qualquer lugar dele.
+ */
+function concedeAoAdminNoProprioCorpo(texto: string, apelidos: string[]): string[] {
+  const achados: string[] = [];
+  for (const assinatura of [
+    /(?:async\s+)?function\s+([A-Za-z_$][\w$]*)\s*\(/g,
+    /(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*(?::[^=]+)?=\s*(?:async\s*)?\(/g,
+  ]) {
+    let m: RegExpExecArray | null;
+    while ((m = assinatura.exec(texto)) !== null) {
+      const corpo = corpoDaFuncao(texto, m.index);
+      if (!concede(corpo)) continue;
+      const tocaOAdmin =
+        REFERENCIA_AO_ADMIN.test(corpo) ||
+        apelidos.some((a) => new RegExp(`\\b${a}\\b`).test(corpo));
+      if (tocaOAdmin) achados.push(m[1]!);
+    }
+  }
+  return achados;
 }
 
 const REFERENCIA_AO_ADMIN = /\.users\.admin\b|\.users\s*\[\s*["']admin["']\s*\]/;
@@ -105,6 +169,16 @@ function apelidosDoAdmin(texto: string): string[] {
   let m: RegExpExecArray | null;
   while ((m = atribuicao.exec(texto)) !== null) {
     if (REFERENCIA_AO_ADMIN.test(m[2]!)) apelidos.push(m[1]!);
+  }
+  // `const { admin: dono } = creds.users` — medido como fuga: a regex acima
+  // exige identificador logo depois do `const`, e `{` não casa.
+  const desestrutura = /(?:const|let|var)\s*\{([^}]*)\}\s*=\s*([^;\n]+)/g;
+  while ((m = desestrutura.exec(texto)) !== null) {
+    if (!/\.users\b|\bcreds\b/.test(m[2]!)) continue;
+    for (const parte of m[1]!.split(",")) {
+      const [chave, alias] = parte.split(":").map((x) => x.trim());
+      if (chave === "admin") apelidos.push(alias || chave);
+    }
   }
   return apelidos;
 }
@@ -128,6 +202,9 @@ function promocoesDoAdminCompartilhado(arquivo: string): Achado[] {
   const texto = fs.readFileSync(path.join(DIR, arquivo), "utf8");
   const apelidos = apelidosDoAdmin(texto);
   const achados: Achado[] = [];
+  for (const funcao of concedeAoAdminNoProprioCorpo(texto, apelidos)) {
+    achados.push({ arquivo, funcao, argumento: "(no corpo da própria função)" });
+  }
   for (const funcao of funcoesQueConcedem(texto)) {
     for (const argumento of argumentosDasChamadas(texto, funcao)) {
       const alcancaOAdmin =
@@ -186,6 +263,11 @@ describe("nenhum seed E2E promove o admin de tenant compartilhado", () => {
   });
 
   it("a allowlist só encolhe — entrada morta não sobrevive", () => {
+    // Com `PERMITIDOS` vazia, o laço abaixo não executa asserção nenhuma e o
+    // vitest não reprova suíte sem asserção: o caso passaria por NÃO FAZER NADA.
+    // Esta linha faz a passagem significar alguma coisa, e vira o registro do
+    // dia em que alguém acrescentar a primeira exceção.
+    expect(PERMITIDOS, "a allowlist deve estar vazia — se não está, diga por quê aqui").toEqual([]);
     const existentes = seeds();
     for (const permitido of PERMITIDOS) {
       expect(existentes, `${permitido} está na allowlist e não existe mais`).toContain(permitido);
