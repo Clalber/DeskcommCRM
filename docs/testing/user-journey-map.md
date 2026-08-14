@@ -628,10 +628,13 @@ onde moram os piores defeitos de primeira impressão (`lib/email/resend.ts:94-10
 bash install.sh
 #    Responda com uma marca que NÃO seja a nossa — é o ponto do teste:
 #      APP_NAME        → Vendas Turbo
+#      APP_ACCENT_HEX  → #f2c94c   (o instalador valida a forma: # + 6 dígitos)
 #      SUPPORT_EMAIL   → suporte@vendasturbo.exemplo
 #      RESEND_API_KEY  → (Enter, pule)
-#    ⚠️ O instalador NÃO pergunta a cor: `grep -c APP_ACCENT_HEX install.sh` → 0
-#       (medido 2026-08-14, `214f47f0`). A cor entra no passo 3, pela tela.
+#    ⚠️ Até `c8fc877d` o instalador NÃO perguntava a cor (`grep -c APP_ACCENT_HEX
+#       install.sh` → 0), e todo revendedor recebia o verde do produto nos e-mails
+#       de acesso. Se a pergunta não aparecer na sua execução, é regressão — o
+#       caso da VPS limpa em `test-validators.sh` a vigia.
 
 # 2. Confira que o domínio responde 307 (redirect para o login), não 404
 curl -s -o /dev/null -w '%{http_code}\n' https://<DOMAIN>/

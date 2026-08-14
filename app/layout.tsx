@@ -138,9 +138,15 @@ const motivosRegistrados = new Set<string>();
  * fonte primária é `platform_branding`; o `.env` continua embaixo como semente —
  * e, para NOME e LOGO, como rede de rollback (ver `lib/branding/instalacao.ts`).
  * Para COR não existe rede: `APP_ACCENT_HEX` nasceu no mesmo épico que a tabela,
- * então nenhuma versão velha o bastante para desconhecê-la pinta accent, e o
- * `install.sh` não grava a chave (medido: 0 ocorrências, contra 7 de APP_NAME).
- * A correção está no cabeçalho da migration 0155.
+ * então nenhuma versão velha o bastante para desconhecê-la pinta accent.
+ *
+ * ⚠️ A segunda metade desta frase mudou em 2026-08-14 e o comentário foi
+ * atualizado junto: o `install.sh` **passou a perguntar e gravar** a chave
+ * (campo em `FIELDS`, validador `v_hex`, `envq` no bloco do `.env`). Antes disso
+ * ele não a gravava — medido na época: 0 ocorrências contra 7 de `APP_NAME` —,
+ * e a semente da cor só existia se alguém a escrevesse à mão. A ausência de rede
+ * de rollback continua valendo pela razão de cima, que é sobre VERSÃO, não sobre
+ * o instalador. A correção da prosa está no cabeçalho da migration 0155.
  *
  * Os motivos NÃO morrem aqui: enquanto a tela de marca não existe (fase
  * seguinte, `/app/settings/tenant/branding`), o log estruturado é por onde o

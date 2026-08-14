@@ -28,9 +28,11 @@ APP_LOGO_URL=https://cdn.suaempresa.com.br/logo.svg
 APP_ACCENT_HEX=#7a5cd6
 ```
 
-O `install.sh` pergunta o `APP_NAME` e o grava (Enter mantém o padrão). `APP_LOGO_URL` e `APP_ACCENT_HEX` você edita à mão no `.env` — **o instalador não pergunta a cor**, porque o caminho normal dela é a tela.
+O `install.sh` pergunta **duas** delas e as grava: o `APP_NAME` (Enter mantém o padrão) e o `APP_ACCENT_HEX` (Enter usa a cor do sistema). `APP_LOGO_URL` você edita à mão no `.env`.
 
-> ⚠️ **`APP_ACCENT_HEX` posta à mão não sobrevive a uma nova execução do `install.sh`.** O instalador reescreve o `.env` inteiro do zero, e só as chaves que ele conhece são regravadas; `APP_ACCENT_HEX` não é uma delas. Isso **não** vale para `bash update.sh`, que edita o arquivo linha a linha e preserva o que você acrescentou. Na prática: defina a cor **pela tela**, que é onde ela persiste de verdade — o `.env` só importa como rede de rollback, e para a cor essa rede é vazia por construção (a variável nasceu neste épico, nenhuma versão anterior pinta accent).
+> A cor é pedida com validador: só `#` + 6 dígitos passa. É mais estreito do que a tela aceita, e de propósito — os **e-mails de acesso** (confirmação de conta e recuperação de senha) leem essa chave do `.env`, e eles só reconhecem essa forma. Um `#abc` ou um `7a5cd6` pintaria a interface com a sua cor e deixaria o verde do produto no primeiro e-mail que o seu cliente abre.
+
+> ⚠️ **Trocar a cor pela tela depois NÃO reescreve os e-mails de acesso.** O texto deles vive dentro do Supabase (GoTrue), não no CRM, e quem o empurra para lá é o `marca-emails.sh` — que lê o **`.env`**, não o banco. Para os e-mails acompanharem uma cor trocada em `/admin/marca`: ajuste também o `APP_ACCENT_HEX` no `.env` e rode `bash hostgator-setup-kit/marca-emails.sh`. É por isso que a entrevista do instalador importa: ela é o único momento em que as duas pontas nascem iguais sem ninguém precisar saber disso.
 
 O que essas variáveis são, exatamente: **semente e piso de rollback.**
 

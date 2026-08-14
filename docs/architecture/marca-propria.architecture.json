@@ -32,7 +32,7 @@
       "col": 0,
       "type": "service",
       "label": "install.sh",
-      "sublabel": "envq APP_NAME/APP_LOGO_URL/SUPPORT_EMAIL/RESEND_* (:1365-1379) · NÃO grava APP_ACCENT_HEX"
+      "sublabel": "envq APP_NAME/APP_LOGO_URL/APP_ACCENT_HEX/SUPPORT_EMAIL/RESEND_* (:1392-1414) · a cor tem validador v_hex na entrevista"
     },
     {
       "id": "env",

@@ -23,12 +23,19 @@
  *     `camadaDoAmbiente` → `resolverMarca` → `motivoDoFallback`, e acende o
  *     alarme.
  *
- * Medido em 2026-08-14, `214f47f0`: `grep -c APP_ACCENT_HEX
- * hostgator-setup-kit/install.sh` → **0**. O instalador nem pergunta a cor, então
- * hoje o único jeito de a chave existir no `.env` é alguém a escrever à mão — que
- * é exatamente o caminho sem validador. Quando o `install.sh` passar a perguntar
- * com validador de forma, o caminho da entrevista fica coberto; o `.env` editado
- * depois continua não sendo, porque quem valida é o instalador, não `lib/env.ts`.
+ * Medido em `214f47f0`: `grep -c APP_ACCENT_HEX hostgator-setup-kit/install.sh` →
+ * **0** — o instalador não perguntava a cor, e o único jeito de a chave existir
+ * no `.env` era alguém escrevê-la à mão. Desde então o `install.sh` **pergunta e
+ * grava**, com o validador `v_hex` (só `#` + 6 dígitos), e esse caminho ficou
+ * coberto.
+ *
+ * **O que isto NÃO fecha, e é por isso que os casos abaixo continuam vivos:**
+ * quem valida a forma é o instalador, não `lib/env.ts`. Um `.env` editado depois
+ * da instalação, um clone que já tinha a chave torta, ou qualquer automação que
+ * escreva o arquivo direto entram sem passar por `v_hex` — e `lib/env.ts:201`
+ * aceita a string inteira. A entrevista estreitou a porta; não a fechou. Um dia
+ * em que este arquivo pareça redundante, a pergunta a fazer é se `lib/env.ts`
+ * passou a validar formato (não passou, e o caso (a2) abaixo é quem vigia isso).
  *
  * ## Por que isto é teste e não nota de rodapé
  *
