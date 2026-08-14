@@ -522,7 +522,7 @@ cd /Users/rafaelmelgaco/DeskcommCRM-packaging && git ls-files 'docs/**/*.md' | w
 Régua declarada pelo próprio índice (`git ls-files 'docs/**/*.md' | wc -l`): 151. Contando também os 10 `.md` da raiz de docs/ (`git ls-files 'docs/*.md' 'docs/**/*.md' | sort -u | wc -l`): 161. docs/index.md:13 ainda diz "Mapa dos **149** arquivos `.md` de `docs/`, espalhados por **24** subpastas" — e `find docs -mindepth 1 -type d | wc -l` devolve 30. O cabeçalho do índice declara `audited_against: origin/main @ 789dfa6 (v1.0.0, 2026-07-27)`.
 ```
 
-**Sugestão:** - [`docs/index.md`](docs/index.md) — índice dos docs de `docs/`, com regra de precedência quando dois docs discordam. Use antes de sair varrendo `docs/`. **O total citado lá dentro está congelado em 2026-07-27** — se precisar do número, conte: `git ls-files 'docs/*.md' 'docs/**/*.md' | sort -u | wc -l`.
+**Sugestão:** - [`docs/index.md`]\(docs/index.md\) — índice dos docs de `docs/`, com regra de precedência quando dois docs discordam. Use antes de sair varrendo `docs/`. **O total citado lá dentro está congelado em 2026-07-27** — se precisar do número, conte: `git ls-files 'docs/*.md' 'docs/**/*.md' | sort -u | wc -l`.
 
 **Vira teste:** tests/unit/doc-index.test.ts: extrair o número em negrito de docs/index.md:13 e comparar com a régua que a própria linha declara; reprovar na divergência.
 
@@ -777,7 +777,7 @@ cd /Users/rafaelmelgaco/DeskcommCRM-packaging && ls tests/e2e/*.spec.ts | wc -l 
 
 ### L7 · FRAGIL · gravidade media · ponteiro
 
-> Identifique o epic de origem em [`docs/stories/epics/MASTER.md`](docs/stories/epics/MASTER.md).
+> Identifique o epic de origem em [`docs/stories/epics/MASTER.md`]\(docs/stories/epics/MASTER.md\).
 
 **Mede com:**
 
@@ -970,7 +970,7 @@ grep -rn 'imagens-ok' .github/workflows/ ; sed -n '160,180p' .github/workflows/p
 
 ### L139 · FALSA · gravidade media · ponteiro
 
-> Veja [`README.md`](README.md) §Como rodar local.
+> Veja [`README.md`]\(README.md\) §Como rodar local.
 
 **Mede com:**
 
@@ -984,7 +984,7 @@ grep -n 'Como rodar local' README.md ; grep -n '^#' README.md
 grep 'Como rodar local' → sem saída (0 ocorrências). Seções reais do README: `## ⚡ Instalar na sua VPS`, `## 🔄 Atualizar`, `## 🧑‍💻 Desenvolvimento (só pra contribuir com o código)` (linha 265), `## 🧪 Testes` (321).
 ```
 
-**Sugestão:** Veja [`README.md`](README.md) §🧑‍💻 Desenvolvimento — inclui a receita de schema (aplique o `baseline.sql`, **não** as `migrations/`).
+**Sugestão:** Veja [`README.md`]\(README.md\) §🧑‍💻 Desenvolvimento — inclui a receita de schema (aplique o `baseline.sql`, **não** as `migrations/`).
 
 **Vira teste:** para cada link markdown com âncora `§<texto>` num doc, assertar que `<texto>` aparece como heading no arquivo apontado
 
@@ -1194,7 +1194,7 @@ git ls-files 'docs/**/*.md' | wc -l ; find docs -name '*.md' | wc -l ; grep -n '
 151 ; 161 ; docs/index.md:13 "Mapa dos **149** arquivos .md de docs/ ... régua: git ls-files 'docs/**/*.md' | wc -l"
 ```
 
-**Sugestão:** (pt-br: trocar o total pela régua.) Texto pronto: "| [`docs/index.md`](docs/index.md) | Index of the `docs/` documents, with a precedence rule for when two docs disagree (the index itself carries the ruler: `git ls-files 'docs/**/*.md' | wc -l`) |"
+**Sugestão:** (pt-br: trocar o total pela régua.) Texto pronto: "| [`docs/index.md`]\(docs/index.md\) | Index of the `docs/` documents, with a precedence rule for when two docs disagree (the index itself carries the ruler: `git ls-files 'docs/**/*.md' | wc -l`) |"
 
 ### L361 · FALSA · gravidade alta · ativo-obrigatorio
 
@@ -1459,7 +1459,7 @@ git ls-files 'docs/**/*.md' | wc -l ; find docs -name '*.md' | wc -l ; grep -n '
 151 ; 161 ; docs/index.md:13 "Mapa dos **149** arquivos .md de docs/ ... régua: git ls-files 'docs/**/*.md' | wc -l"
 ```
 
-**Sugestão:** (pt-br: trocar o total pela régua.) Texto pronto: "| [`docs/index.md`](docs/index.md) | Índice de los documentos de `docs/`, con regla de precedencia cuando dos docs discrepan (el propio índice trae la regla: `git ls-files 'docs/**/*.md' | wc -l`) |"
+**Sugestão:** (pt-br: trocar o total pela régua.) Texto pronto: "| [`docs/index.md`]\(docs/index.md\) | Índice de los documentos de `docs/`, con regla de precedencia cuando dos docs discrepan (el propio índice trae la regla: `git ls-files 'docs/**/*.md' | wc -l`) |"
 
 ### L362 · FALSA · gravidade alta · ativo-obrigatorio
 
@@ -1566,7 +1566,7 @@ hostgator-setup-kit/update.sh:39: [ -n "$TARGET_TAG" ] || TARGET_TAG="$(git tag 
 => o mecanismo ("tag mais nova") está CERTO; o número v1.2.3 nunca existiu — não há tag nem seção no CHANGELOG.
 ```
 
-**Sugestão:** **O alvo é a última versão publicada** — a tag mais nova, a mesma que `git tag -l 'v*' --sort=-v:refname | head -1` devolve —, não o topo da `main`: atualizar leva sempre a uma versão marcada e descrita no [`CHANGELOG.md`](CHANGELOG.md), nunca a um commit não testado.
+**Sugestão:** **O alvo é a última versão publicada** — a tag mais nova, a mesma que `git tag -l 'v*' --sort=-v:refname | head -1` devolve —, não o topo da `main`: atualizar leva sempre a uma versão marcada e descrita no [`CHANGELOG.md`]\(CHANGELOG.md\), nunca a um commit não testado.
 
 **Vira teste:** tests/unit/readme-ponteiros.test.ts: toda string `v<x>.<y>.<z>` citada nos READMEs existe em `git tag -l`
 
@@ -1775,7 +1775,7 @@ docs/index.md:13:Mapa dos **149** arquivos `.md` de `docs/` ... régua: `git ls-
 => 157 não é nenhum dos três números; o próprio índice diz 149 e a régua dele devolve 151.
 ```
 
-**Sugestão:** | [`docs/index.md`](docs/index.md) | Índice dos documentos de `docs/`, com regra de precedência quando dois docs discordam (o próprio índice traz a régua: `git ls-files 'docs/**/*.md' \| wc -l`) |
+**Sugestão:** | [`docs/index.md`]\(docs/index.md\) | Índice dos documentos de `docs/`, com regra de precedência quando dois docs discordam (o próprio índice traz a régua: `git ls-files 'docs/**/*.md' \| wc -l`) |
 
 **Vira teste:** tests/unit/readme-ponteiros.test.ts: nenhum dos READMEs cita um total de docs; ou, se citar, ele é igual a `git ls-files('docs/**/*.md').length`
 
@@ -1865,7 +1865,7 @@ grep -n 'TARGET_TAG="$(git tag' hostgator-setup-kit/update.sh ; gh release list 
 update.sh:39 → `[ -n "$TARGET_TAG" ] || TARGET_TAG="$(git tag -l 'v*' --sort=-v:refname | head -1)"`. Releases: v1.3.0 (2026-08-13), v1.2.1, v1.2.0, v1.1.0, v1.0.0. README:163 → "**O alvo é a última versão publicada** (`v1.2.3`), não o topo da `main`".
 ```
 
-**Sugestão:** O DeskcommCRM é distribuído por **versões marcadas** (`v1.x.y`), publicadas como release e descritas no [`CHANGELOG.md`](CHANGELOG.md). O `update.sh` sempre aponta para a última versão publicada — nunca para o topo da `main`. Correções de segurança entram na próxima versão; mantenha sua instalação atualizada (`bash hostgator-setup-kit/update.sh` em self-host). Para saber qual é a última: `gh release list --limit 1`.
+**Sugestão:** O DeskcommCRM é distribuído por **versões marcadas** (`v1.x.y`), publicadas como release e descritas no [`CHANGELOG.md`]\(CHANGELOG.md\). O `update.sh` sempre aponta para a última versão publicada — nunca para o topo da `main`. Correções de segurança entram na próxima versão; mantenha sua instalação atualizada (`bash hostgator-setup-kit/update.sh` em self-host). Para saber qual é a última: `gh release list --limit 1`.
 
 **Vira teste:** assertar que SECURITY.md não afirma "a partir da branch main" enquanto hostgator-setup-kit/update.sh resolver o alvo por `git tag -l 'v*'`
 
@@ -2457,7 +2457,7 @@ sed -n '1,12p' docs/runbooks/remediar-worker-congelado.md; grep -c '\[ENSAIADO\]
 (marcadores [ENSAIADO] nas seções 5.0/A1/A3/A4/A5)
 ```
 
-**Sugestão:** | [`runbooks/remediar-worker-congelado.md`](runbooks/remediar-worker-congelado.md) | **Incidente: o worker congelado** — diagnóstico (`diagnostico.sh`), impacto medido e as duas rotas de remediação. **Ensaiado em VPS real (U6-b, 2026-08-13)**, com uma ressalva que muda o procedimento: a **primeira** execução do `update.sh` não troca o worker. Leia o cabeçalho do runbook antes de operar |
+**Sugestão:** | [`runbooks/remediar-worker-congelado.md`]\(runbooks/remediar-worker-congelado.md\) | **Incidente: o worker congelado** — diagnóstico (`diagnostico.sh`), impacto medido e as duas rotas de remediação. **Ensaiado em VPS real (U6-b, 2026-08-13)**, com uma ressalva que muda o procedimento: a **primeira** execução do `update.sh` não troca o worker. Leia o cabeçalho do runbook antes de operar |
 
 **Vira teste:** tests/unit/docs-ponteiros.test.ts: it("o índice não declara não-ensaiado um runbook que se declara ensaiado") — se docs/index.md casar /Ainda não ensaiado/ na linha que cita remediar-worker-congelado.md, reprovar quando o runbook contiver /EXECUTADO em \d{4}-\d{2}-\d{2}/
 
@@ -2478,7 +2478,7 @@ docs/index.md:113  … **Ainda não ensaiado**
 docs/testing/user-journey-map.md:585  | U6 `[P0]` | … | **EXECUTADO 2026-08-13** (U6-b, U6-c e **aplicado em produção**) …
 ```
 
-**Sugestão:** | [`runbooks/remediar-worker-congelado.md`](runbooks/remediar-worker-congelado.md) | **Incidente: o worker congelado** — diagnóstico (`diagnostico.sh`), impacto medido e as duas rotas de remediação. **Ensaiado (U6-b/U6-c) e aplicado na produção do projeto em 2026-08-13**; o que os ensaios não cobriram está no §6 |
+**Sugestão:** | [`runbooks/remediar-worker-congelado.md`]\(runbooks/remediar-worker-congelado.md\) | **Incidente: o worker congelado** — diagnóstico (`diagnostico.sh`), impacto medido e as duas rotas de remediação. **Ensaiado (U6-b/U6-c) e aplicado na produção do projeto em 2026-08-13**; o que os ensaios não cobriram está no §6 |
 
 ### L114 · FALSA · gravidade media · pendencia
 
@@ -2497,7 +2497,7 @@ sed -n '1,13p' docs/runbooks/ativar-packaging.md
 > | 1–2. Pacotes públicos | feito | ... | 3. `imagens-ok` obrigatório | feito | ... | 4. Primeira release completa | feito | v1.3.0 | 5. Tag de ensaio apagada | feito |
 ```
 
-**Sugestão:** | [`runbooks/ativar-packaging.md`](runbooks/ativar-packaging.md) | **Ativação da doutrina de packaging — CONCLUÍDA em 2026-08-14.** Histórico: guarda o procedimento e as armadilhas dos passos que não cabiam num PR (pacote público, `imagens-ok` obrigatório, primeira release completa, tag de ensaio apagada) |
+**Sugestão:** | [`runbooks/ativar-packaging.md`]\(runbooks/ativar-packaging.md\) | **Ativação da doutrina de packaging — CONCLUÍDA em 2026-08-14.** Histórico: guarda o procedimento e as armadilhas dos passos que não cabiam num PR (pacote público, `imagens-ok` obrigatório, primeira release completa, tag de ensaio apagada) |
 
 ### L135 · FALSA · gravidade alta · contagem
 
@@ -2515,13 +2515,13 @@ ls HANDOFF*.md
 HANDOFF-conversa-vira-lead.md  HANDOFF-followup-vivo.md  HANDOFF-fv-w1-fila.md  HANDOFF-harness-evolution.md  HANDOFF-ia-360.md  HANDOFF-marca-propria.md  HANDOFF-operacao-visivel.md  HANDOFF-sistema-vivo-consertos.md  HANDOFF-tres-papeis.md  HANDOFF.md   (10 arquivos; a lista do índice cita 3)
 ```
 
-**Sugestão:** - **Raiz (em voo):** a lista não cabe aqui sem apodrecer — o sinal é o arquivo, não esta linha. Liste com `ls HANDOFF*.md`; tudo que aparecer está em voo, e o que foi encerrado migrou para [`handoffs/`](handoffs/).
+**Sugestão:** - **Raiz (em voo):** a lista não cabe aqui sem apodrecer — o sinal é o arquivo, não esta linha. Liste com `ls HANDOFF*.md`; tudo que aparecer está em voo, e o que foi encerrado migrou para [`handoffs/`]\(handoffs/\).
 
 **Vira teste:** tests/unit/docs-ponteiros.test.ts: it("o índice não enumera HANDOFF da raiz") — reprovar se docs/index.md listar por nome um subconjunto próprio de ls('HANDOFF*.md') na seção 8
 
 ### L138 · FRAGIL · gravidade baixa · contagem
 
-> [`superpowers/`](superpowers/) — `plans/` e `specs/` datados por onda, mais `handoffs/`
+> [`superpowers/`]\(superpowers/\) — `plans/` e `specs/` datados por onda, mais `handoffs/`
 
 **Mede com:**
 
@@ -2535,7 +2535,7 @@ ls docs/superpowers/
 handoffs  plans  reports  specs
 ```
 
-**Sugestão:** - [`superpowers/`](superpowers/) — `plans/`, `specs/` e `reports/` datados por onda, mais `handoffs/`
+**Sugestão:** - [`superpowers/`]\(superpowers/\) — `plans/`, `specs/` e `reports/` datados por onda, mais `handoffs/`
 
 ### L146 · FALSA · gravidade media · ponteiro
 
@@ -2646,7 +2646,7 @@ grep -n '^#\+ ' docs/runbooks/ativar-packaging.md
 (a linha 5 da tabela NÃO é o §5 do corpo — "tag de ensaio apagada" é o item 11 do checklist da doutrina; o §5 do corpo, o ensaio na VPS, não tem linha nenhuma na tabela)
 ```
 
-**Sugestão:** > | 5. Ensaio numa VPS real (§5) | feito | U6-c em 2026-08-13: `/api/v1/health` → `1.3.0` na instalação atualizada; evidência em [`remediar-worker-congelado.md`](remediar-worker-congelado.md) §6 | > | Extra: tag de ensaio apagada (item 11 da doutrina) | feito | `docs-doutrina-packaging` → 404 nos três |
+**Sugestão:** > | 5. Ensaio numa VPS real (§5) | feito | U6-c em 2026-08-13: `/api/v1/health` → `1.3.0` na instalação atualizada; evidência em [`remediar-worker-congelado.md`]\(remediar-worker-congelado.md\) §6 | > | Extra: tag de ensaio apagada (item 11 da doutrina) | feito | `docs-doutrina-packaging` → 404 nos três |
 
 **Vira teste:** assert: cada linha numerada da tabela de estado do runbook casa com um heading `## N.` do próprio arquivo
 
@@ -2668,11 +2668,11 @@ grep -rn 'Pendência de ativação' docs/doctrine/packaging.md CLAUDE.md CONTRIB
 116: > verify, build-and-size, invariants, e2e, imagens-ok
 ```
 
-**Sugestão:** Este documento existe porque a entrega da [doutrina de packaging](../doctrine/packaging.md) teve três passos que **não podiam estar dentro do PR**: dois dependiam de administração do repositório e um dependia de as imagens existirem. Os três foram dados, e o texto da doutrina já não carrega ressalva de pendência — o invariante 2 diz **Ativado** (confira com `grep -n 'Ativado' docs/doctrine/packaging.md`).
+**Sugestão:** Este documento existe porque a entrega da [doutrina de packaging]\(../doctrine/packaging.md\) teve três passos que **não podiam estar dentro do PR**: dois dependiam de administração do repositório e um dependia de as imagens existirem. Os três foram dados, e o texto da doutrina já não carrega ressalva de pendência — o invariante 2 diz **Ativado** (confira com `grep -n 'Ativado' docs/doctrine/packaging.md`).
 
 ### L119 · FRAGIL · gravidade baixa · pendencia
 
-> Feito isso, **remova a "Pendência de ativação"** do invariante 2 em [`../doctrine/packaging.md`](../doctrine/packaging.md) e as ressalvas correspondentes em `CLAUDE.md` e `CONTRIBUTING.md`.
+> Feito isso, **remova a "Pendência de ativação"** do invariante 2 em [`../doctrine/packaging.md`]\(../doctrine/packaging.md\) e as ressalvas correspondentes em `CLAUDE.md` e `CONTRIBUTING.md`.
 
 **Mede com:**
 
@@ -2713,7 +2713,7 @@ grep -n '^\[ \] 1[12]\.' docs/doctrine/packaging.md ; grep -n 'O item 12 é o ú
 
 ### L159 · FALSA · gravidade alta · sobre-o-codigo
 
-> É o caso U6 de [`../testing/user-journey-map.md`](../testing/user-journey-map.md), declarado como não coberto de propósito.
+> É o caso U6 de [`../testing/user-journey-map.md`]\(../testing/user-journey-map.md\), declarado como não coberto de propósito.
 
 **Mede com:**
 
@@ -2728,7 +2728,7 @@ grep -n "U6" docs/testing/user-journey-map.md | head -10
 587:U6 deixou de ser buraco em 2026-08-13, e o ensaio pagou o próprio custo
 ```
 
-**Sugestão:** É o caso U6 de [`../testing/user-journey-map.md`](../testing/user-journey-map.md), **executado em 2026-08-13** (U6-b, U6-c e aplicado em produção), com uma ressalva que só o ensaio podia revelar: a 1ª execução do `update.sh` não conserta o worker enquanto o canal `stable` não existir; a 2ª conserta. Evidência e limites em [`remediar-worker-congelado.md`](remediar-worker-congelado.md) §6. Continua fora da cobertura do CI — o que o mapa registra é o ensaio feito à mão, não um gate.
+**Sugestão:** É o caso U6 de [`../testing/user-journey-map.md`]\(../testing/user-journey-map.md\), **executado em 2026-08-13** (U6-b, U6-c e aplicado em produção), com uma ressalva que só o ensaio podia revelar: a 1ª execução do `update.sh` não conserta o worker enquanto o canal `stable` não existir; a 2ª conserta. Evidência e limites em [`remediar-worker-congelado.md`]\(remediar-worker-congelado.md\) §6. Continua fora da cobertura do CI — o que o mapa registra é o ensaio feito à mão, não um gate.
 
 ### L164 · FALSA · gravidade alta · pendencia
 
@@ -2873,7 +2873,7 @@ docs/doctrine/packaging.md:340: [ ] 9. `gh release create vX.Y.Z`
 Medido no GHCR: deskcommcrm:latest revision=840917ed (topo da main) vs deskcommcrm:stable version=1.3.0 revision=9bd59e9.
 ```
 
-**Sugestão:** ``` commit → push → PR → merge na main → CI publica `latest`             → `gh release create vX.Y.Z` → CI publica a versão + `stable` → VPS puxa ```  O merge na `main` NÃO chega a instalação nenhuma. Ele publica `latest`, e ninguém consome `latest`: o `docker-compose.prod.yml` tem `:stable` como default nas três imagens, e o `update.sh` alveja a maior tag `v*` (`git tag -l 'v*' --sort=-v:refname | head -1`). Sem cortar a release, a correção fica parada no registry. O checklist da release está em [`../DEPLOY-CHECKLIST.md`](../DEPLOY-CHECKLIST.md).
+**Sugestão:** ``` commit → push → PR → merge na main → CI publica `latest`             → `gh release create vX.Y.Z` → CI publica a versão + `stable` → VPS puxa ```  O merge na `main` NÃO chega a instalação nenhuma. Ele publica `latest`, e ninguém consome `latest`: o `docker-compose.prod.yml` tem `:stable` como default nas três imagens, e o `update.sh` alveja a maior tag `v*` (`git tag -l 'v*' --sort=-v:refname | head -1`). Sem cortar a release, a correção fica parada no registry. O checklist da release está em [`../DEPLOY-CHECKLIST.md`]\(../DEPLOY-CHECKLIST.md\).
 
 ### L72 · FRAGIL · gravidade media · contagem
 
@@ -5048,7 +5048,7 @@ baseline.sql:2544:CREATE INDEX "lgpd_requests_emergency_idx" ON "public"."lgpd_r
 
 ## `docs/handoffs/HANDOFF-indice-de-atrito.md`:571 · FALSA · gravidade baixa
 
-> Evidência: [caminho feliz](passo4-inbox-demandas.png) · [sob falha](passo4-inbox-demandas-falha.png).
+> Evidência: [caminho feliz]\(passo4-inbox-demandas.png\) · [sob falha]\(passo4-inbox-demandas-falha.png\).
 
 ```bash
 python3 checklinks.py  (resolve todo link markdown relativo de `git ls-files '*.md'` contra o diretorio do arquivo); find . -name passo4-inbox-demandas.png; sed -n '188p' tests/unit/evidencia-citada.test.ts
