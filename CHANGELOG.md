@@ -47,6 +47,11 @@ serviços e cerca de 150 MB por número de WhatsApp conectado —, e isso não m
 ### ⚠️ Requer atenção
 
 **Se o seu servidor foi instalado antes desta versão, rode o `update.sh` DUAS vezes.**
+
+> A partir desta versão o agente de atualização corrige parte disso sozinho, em até 5
+> minutos, sem você fazer nada — ele fixa a versão que já está rodando. O que ele **nunca**
+> faz é mexer numa configuração que você escreveu à mão: se você escolheu acompanhar um
+> canal de propósito, ele respeita e só avisa.
 Medido em ensaio numa VPS: a primeira execução traz o agente novo, mas deixa a versão dele
 "solta" — acompanhando o canal em vez de ficar fixa, como o resto do sistema. Isso faria o
 agente saltar sozinho para a versão seguinte num reinício futuro, enquanto o resto do
