@@ -922,3 +922,45 @@ O épico está fechado no código e na documentação. Falta o que só o dono fa
 `main`** — autorizado explicitamente por Rafael em 2026-08-13. Ao abrir o PR, o `e2e` roda pela
 primeira vez a `tests/e2e/icone-da-marca.spec.ts`; se ela reprovar por ambiente, o lugar dela é
 `FORA_DO_CI` **com o motivo medido**, nunca uma exclusão preventiva.
+---
+
+## Alocação de migrations da continuação (medida 2026-08-14 @ `11d87a11`)
+
+Três blocos de trabalho reivindicavam **0158** ao mesmo tempo. Colisão de número de
+migration **não** se resolve "cada um re-mede na hora": dois construtores medem o mesmo
+minuto e acham o mesmo número livre. A alocação é central e fica aqui.
+
+| Número | Dono | Onda |
+|---|---|---|
+| **0158** | `logo_no_storage` — bucket + `logo_path` + RPC | 6 |
+| **0159** | `selo_dos_emails_de_acesso` | 8 |
+
+Medido em **todas** as refs locais e remotas (`git branch -a` × `git ls-tree`): o maior
+ocupado é **0157**. Reconte antes de usar.
+
+**Uma migration foi CORTADA:** a que existiria só para trocar um `comment on table`.
+Preço desproporcional — arquivo + apêndice + MANIFEST + `test:db` obrigatório (~6 min de
+Docker) + consumir um número disputado, em troca de uma string em `pg_description` que
+ninguém lê em campo. **O comentário do banco fica desalinhado de propósito.** A mesma
+frase falsa está num arquivo que humanos leem — `hostgator-setup-kit/marca-emails.sh:105-109`,
+que o próximo mantenedor do kit lê antes de mexer em `ACCENT` —, e corrigir *essa* custa
+uma linha. Se alguém quiser alinhar o comentário do banco, que vá de carona numa migration
+que exista por outro motivo.
+
+### E a ordem no apêndice do `baseline.sql` — a premissa em circulação era falsa
+
+"O bloco da varredura anon é o último do arquivo" é **falso**: medido, **quatro blocos
+vêm depois dela**. O que o guarda (`tests/unit/varredura-anon-e-o-ultimo-bloco.test.ts`)
+proíbe depois da linha da varredura são exatamente duas coisas: `create function` e
+`grant … to … anon`.
+
+Consequência prática: a **0158 cria duas funções**, então é obrigatoriamente **antes** da
+varredura — e o plano original mandava colá-la "no fim do arquivo", o que teria deixado
+`pnpm test:unit` vermelho num teste que ele nunca citou.
+
+---
+
+## Próximo passo exato
+
+Executar as ondas de `scratchpad/ondas.md` na ordem, uma por PR, cada uma com gates
+verdes e prova em tela antes da seguinte.

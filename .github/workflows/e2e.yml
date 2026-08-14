@@ -128,8 +128,22 @@ jobs:
       # Cada item aqui tem o motivo MEDIDO, não presumido — e o gate cobra que a
       # lista exista e some com as outras duas.
       #
-      # `vps-fresh-onboarding`: 8 referências a WAHA/Resend/Nuvemshop/Redis. É a P0
-      # da doutrina de QA Visual e fica fora por dependência de infra.
+      # `vps-fresh-onboarding` fica fora por DUAS razões, e só a primeira estava
+      # escrita — com o número errado, contradito 8 linhas abaixo neste mesmo
+      # arquivo, que já usava 17 como controle positivo:
+      #
+      #   (1) 17 linhas dependem de WAHA/Resend/Nuvemshop/Redis
+      #       (`grep -ciE "waha|resend|nuvemshop|redis"` → 17 linhas, 22 ocorrências).
+      #
+      #   (2) `orgRow()` (`:41-43`) faz `.limit(1).single()` em `organizations` —
+      #       pressupõe banco de UMA organização só. O banco do CI é compartilhado
+      #       entre as duas partes do job, e `signup-journey.spec.ts:32` cria uma
+      #       segunda org sem cleanup: quando a parte 2 começa há ≥2, e o `.single()`
+      #       falha. Esta razão NÃO se resolve com variável de ambiente — é o desenho
+      #       do rig, e é por isso que "basta dar as credenciais" não destrava.
+      #
+      # Continua sendo a P0 da doutrina de QA Visual: `e2e` verde NÃO prova a
+      # jornada de instalação fresca, que é o produto que se vende.
       #
 # As CINCO specs da missão "Follow-up Vivo" (`followup-linguagem`,
       # `followup-ramos`, `followup-dossie`, `followup-tempo-adaptativo`,
