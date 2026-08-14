@@ -4,7 +4,7 @@ import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
 
 import { audit } from "@/lib/audit";
-import { loadAuthUser, resolveActiveOrg } from "@/lib/auth/server";
+import { loadAuthUser, mfaEmDivida, resolveActiveOrg } from "@/lib/auth/server";
 import { ROLE_RANK } from "@/lib/auth/types";
 import { normalizarHex } from "@/lib/branding/rampa";
 import {
@@ -22,6 +22,7 @@ export type UpdateMarcaDaOrganizacaoResult =
         | "unauthenticated"
         | "forbidden_tenant"
         | "forbidden_role"
+        | "mfa_required"
         | "nao_gravou"
         | "db_error";
       details?: unknown;
@@ -49,14 +50,27 @@ export type UpdateMarcaDaOrganizacaoResult =
  *
  * ── Por que o gate daqui NÃO é o que garante a regra ─────────────────────────
  *
- * Server Action NÃO é rota: ela não passa por `requireRole`, logo não herda o
- * gate de MFA de sessão nem a re-resolução do papel pelo RPC — o papel abaixo
- * vem do SNAPSHOT de membership que `loadAuthUser()` carregou. Nenhuma das
- * actions de `app/actions/` chama `requireRole`, e o gate de MFA das telas mora
- * no layout, que não roda quando a action é invocada por POST direto. É por isso
- * que a autorização está DUPLICADA dentro da função SQL, que a re-resolve do
- * banco e levanta 42501. O gate daqui existe para a tela responder rápido e com
- * a mensagem certa; quem defende o dado é o banco.
+ * Server Action NÃO é rota: ela não passa por `requireRole`, logo não herda a
+ * re-resolução do papel pelo RPC — o papel abaixo vem do SNAPSHOT de membership
+ * que `loadAuthUser()` carregou. Nenhuma das actions de `app/actions/` chama
+ * `requireRole`, e o gate de MFA das telas mora no layout, que não roda quando a
+ * action é invocada por POST direto. É por isso que a autorização de PAPEL está
+ * DUPLICADA dentro da função SQL, que a re-resolve do banco e levanta 42501.
+ *
+ * ── Mas o banco NÃO defende as duas dimensões ────────────────────────────────
+ *
+ * "Quem defende o dado é o banco" vale para PAPEL e só para ele. O AAL é
+ * propriedade da SESSÃO do GoTrue, e o Postgres não tem como enxergá-lo: a
+ * escrita chega pelo `service_role`, e mesmo pelo client de sessão o JWT não
+ * carrega nada que uma policy possa cobrar sobre segundo fator. Ou seja, a
+ * duplicação no SQL não cobre este eixo — sem a linha abaixo, um POST direto na
+ * action com sessão `aal1` de um admin que JÁ cadastrou TOTP passava, que é
+ * exatamente o cenário (senha vazada / phishing) que a MFA existe para conter.
+ *
+ * `mfaEmDivida` é o mesmo predicado que `lib/auth/require-role.ts` aplica em
+ * `/api/v1` — e o call site de lá é o ÚNICO que existia. A classe inteira (as
+ * demais Server Actions sem gate de sessão) NÃO é escopo deste épico; aqui
+ * fecha-se o que este épico abriu.
  *
  * ── Por que NÃO emite `event_log` ────────────────────────────────────────────
  *
@@ -80,6 +94,12 @@ export async function updateMarcaDaOrganizacao(
   if (!activeOrg) return { ok: false, error: "forbidden_tenant" };
   if (!authUser.is_platform_admin && ROLE_RANK[activeOrg.role] < ROLE_RANK.admin) {
     return { ok: false, error: "forbidden_role" };
+  }
+  // DEPOIS do papel, de propósito: quem nem tem o papel recebe `forbidden_role`,
+  // que é a verdade sobre ele. Só quem passaria pelo papel é cobrado pelo
+  // segundo fator — a ordem é o que faz cada código dizer a coisa certa.
+  if (await mfaEmDivida(activeOrg.role, authUser.is_platform_admin)) {
+    return { ok: false, error: "mfa_required" };
   }
 
   const hdrs = await headers();

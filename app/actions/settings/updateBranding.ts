@@ -3,7 +3,7 @@
 import { headers } from "next/headers";
 
 import { audit } from "@/lib/audit";
-import { loadAuthUser } from "@/lib/auth/server";
+import { requirePlatformAdmin } from "@/lib/auth/requirePlatformAdmin";
 import { invalidarMarcaDaInstalacao } from "@/lib/branding/instalacao";
 import { normalizarHex } from "@/lib/branding/rampa";
 import { platformBrandingSchema, type PlatformBrandingInput } from "@/lib/schemas/settings";
@@ -37,10 +37,29 @@ export type UpdateBrandingResult =
  * nada acontece — nem leitura. É deliberado: a tabela é server-side only, e o
  * `service_role` (que é `bypassrls`) é o único caminho.
  *
- * O gate continua sendo o de cima, resolvido de fonte confiável (`loadAuthUser`,
- * que valida o JWT no backend), NUNCA do body. E não há `organization_id` a
- * filtrar porque a tabela não é tenant-aware — o filtro equivalente é `id = 1`,
- * que a constraint `platform_branding_singleton` torna o único valor possível.
+ * O gate continua sendo o de cima, resolvido de fonte confiável (o JWT validado
+ * no backend), NUNCA do body. E não há `organization_id` a filtrar porque a
+ * tabela não é tenant-aware — o filtro equivalente é `id = 1`, que a constraint
+ * `platform_branding_singleton` torna o único valor possível.
+ *
+ * ── Por que `requirePlatformAdmin()` e não `loadAuthUser()` + a flag ─────────
+ *
+ * Server Action NÃO é rota: não passa por `requireRole` (cujo `mfaEmDivida` tem
+ * um call site só, `lib/auth/require-role.ts`, que serve apenas `/api/v1`) e não
+ * passa pelo layout de `/admin` — e não existe `middleware.ts` neste repo para
+ * cobrir a diferença. Um POST direto na action, com uma sessão `aal1` de um
+ * platform admin, entrava: `is_platform_admin` responde "esta pessoa TEM o
+ * papel", que é política de CADASTRO, não de SESSÃO. E, ao contrário da marca
+ * por organização, aqui o banco NÃO tem como fechar o buraco — a escrita vai
+ * pelo `service_role`, e o Postgres não enxerga o AAL de uma sessão do GoTrue.
+ *
+ * `requirePlatformAdmin()` já checa as três coisas (JWT, linha ativa em
+ * `platform_admins`, e `aal2` quando `mfa_required`) e é o MESMO gate do layout
+ * de `/admin` — então, para quem chega pela tela, nada muda: essa pessoa já
+ * passou por ele para ver o formulário. O que muda é o caminho que não passa
+ * pela tela. Ele redireciona em vez de devolver `{ ok: false }`, e o formulário
+ * não embrulha a chamada em `try/catch`, então o `NEXT_REDIRECT` sobe para o
+ * runtime como deve.
  *
  * ── Por que NÃO emite `event_log` ───────────────────────────────────────────
  *
@@ -58,9 +77,7 @@ export async function updateBranding(
     return { ok: false, error: "validation_failed", details: parsed.error.flatten() };
   }
 
-  const authUser = await loadAuthUser();
-  if (!authUser) return { ok: false, error: "unauthenticated" };
-  if (!authUser.is_platform_admin) return { ok: false, error: "forbidden_role" };
+  const { user: authUser } = await requirePlatformAdmin();
 
   const hdrs = await headers();
   const requestId = hdrs.get("x-request-id");

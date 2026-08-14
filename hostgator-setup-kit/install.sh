@@ -936,8 +936,11 @@ fi
 # Cada linha: VARIÁVEL|pergunta|padrão|validador|secret|opcional
 # A ordem importa: a URL do projeto vem antes das chaves porque os validadores
 # das chaves batem contra ela (chave de outro projeto é erro comum e mudo).
-# Marca da instalação (APP_NAME) fica por último de propósito: é opcional, e
-# perguntar no meio das credenciais faria parecer obrigatória.
+# O bloco final (APP_NAME, SUPPORT_EMAIL, RESEND_*) fica por último de
+# propósito: é tudo opcional, e perguntar no meio das credenciais faria parecer
+# obrigatório. Todas as quatro aceitam Enter — e, quando vazias, o produto
+# degrada de forma declarada (marca padrão; tela de suspensão sem endereço;
+# convite mostrando o link de aceite na própria tela).
 # ── Qual IA vai atender ─────────────────────────────────────────────────────
 #
 # Antes daqui o instalador só sabia pedir a chave da Anthropic, e quem já tinha
@@ -1069,6 +1072,9 @@ FIELDS=(
   "OWNER_EMAIL|E-mail do primeiro admin (dono)||v_email||"
   "OWNER_PASSWORD|Senha do primeiro admin (mínimo 8 caracteres)||v_password|secret|"
   "APP_NAME|Nome que aparece na interface (Enter para o padrão)|DeskcommCRM|||"
+  "SUPPORT_EMAIL|E-mail de suporte que SEUS clientes veem (Enter pula)||v_email||opcional"
+  "RESEND_API_KEY|Chave da Resend — envia convite e e-mail de LGPD (resend.com/api-keys, Enter pula)|||secret|opcional"
+  "RESEND_FROM_EMAIL|Remetente dos e-mails, de um domínio verificado na Resend (Enter pula)||v_email||opcional"
 )
 
 field_at() { IFS='|' read -r F_VAR F_PROMPT F_DEF F_VAL F_SEC F_OPT <<< "${FIELDS[$1]}"; }
@@ -1358,6 +1364,19 @@ esac
   printf '# imagem pública para trocar o texto por logo na sidebar. Ver lib/branding.ts.\n'
   envq APP_NAME "$APP_NAME"
   envq APP_LOGO_URL "${APP_LOGO_URL:-}"
+  printf '# Endereço de suporte que o CLIENTE FINAL vê (conta suspensa, cobrança).\n'
+  printf '# Vazio = a tela não mostra endereço nenhum.\n'
+  envq SUPPORT_EMAIL "${SUPPORT_EMAIL:-}"
+  # As três acima e as duas abaixo entram aqui pelo MESMO motivo, e não por
+  # simetria: o .env é escrito com truncamento (`} > .env`, no fecho deste
+  # bloco), então chave que este script não grava é APAGADA na execução
+  # seguinte. Quem pôs a chave da Resend à mão a perdia no primeiro update —
+  # num script que o README vende como idempotente.
+  printf '# E-mail transacional. RESEND_FROM_EMAIL tem de ser de um domínio\n'
+  printf '# VERIFICADO na SUA conta Resend. Vazio = e-mail desligado: o convite\n'
+  printf '# mostra o link de aceite na tela e o export de LGPD fica pendente.\n'
+  envq RESEND_API_KEY "${RESEND_API_KEY:-}"
+  envq RESEND_FROM_EMAIL "${RESEND_FROM_EMAIL:-}"
   printf '# Qual provedor você escolheu na instalação. É o que faz a 2ª execução do\n'
   printf '# install.sh já vir com a sua escolha como padrão, em vez de re-adivinhar\n'
   printf '# pelas chaves presentes. A app não lê esta variável.\n'

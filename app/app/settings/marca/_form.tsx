@@ -60,6 +60,10 @@ const ERRO_EM_PORTUGUES: Record<string, string> = {
   unauthenticated: "Sua sessão expirou. Entre de novo para salvar.",
   forbidden_tenant: "Não consegui identificar sua empresa. Recarregue a página.",
   forbidden_role: "Só quem administra esta empresa pode mudar a marca.",
+  // A sessão está com um fator cadastrado mas não confirmado AGORA. Sem esta
+  // linha o toast mostraria o código cru — a action passou a cobrar o segundo
+  // fator, e o gate de MFA das telas não alcança Server Action.
+  mfa_required: "Confirme o código do seu aplicativo de duas etapas e tente de novo.",
   // NUNCA "salvo com uma ressalva": este código existe justamente porque a
   // gravação não casou nenhuma linha, e a tela dizer "salvo" quando nada foi
   // gravado é a forma exata do defeito que a função SQL veio fechar.
@@ -368,9 +372,26 @@ export function FormularioDaMarcaDaOrganizacao({ gravada, instalacao, ambiente }
             A tela de entrada é sempre a do sistema: quando alguém digita a senha, ainda não dá
             para saber de qual empresa ele é.
           </li>
+          {/*
+            Este item dizia "os e-mails, o PDF de LGPD e o autenticador também
+            usam o nome do sistema", e a Fase 4 tornou as duas primeiras partes
+            falsas: `marcaDaSaida(organizationId)` resolve a organização
+            primeiro, e o relatório de LGPD passou a nomear o CONTROLADOR
+            (razão social) de propósito — nomear a marca ali inverteria os
+            papéis num documento com peso legal.
+          */}
           <li>
-            Os e-mails, o PDF de pedidos de LGPD e o aplicativo de verificação em duas etapas
-            também usam o nome do sistema.
+            Os e-mails que este sistema envia (convite de time, pedidos de LGPD) já saem com o
+            nome da sua empresa.
+          </li>
+          <li>
+            O relatório de LGPD entregue ao cliente traz a RAZÃO SOCIAL da sua empresa, e não o
+            nome aqui de cima — é ela que responde legalmente pelos dados. Confira o campo
+            &quot;Razão social&quot; em Configurações → Organização.
+          </li>
+          <li>
+            O aplicativo de verificação em duas etapas continua registrando o nome do sistema:
+            o cadastro acontece antes de saber de qual empresa a pessoa é.
           </li>
           <li>
             O logo continua sendo o de quem instalou o sistema — e, quando existe um, o menu

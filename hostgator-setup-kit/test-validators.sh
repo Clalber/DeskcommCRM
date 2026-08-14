@@ -367,7 +367,7 @@ echo "sincronia: o install.sh grava as chaves que o .env.hostgator.example prome
 #
 # DÍVIDA: chaves que o install.sh hoje não grava. A lista só pode ENCOLHER; se
 # uma delas passar a ser gravada, o teste manda tirá-la daqui.
-DIVIDA="AGENT_DISPATCH_CONSUMER NUVEMSHOP_APP_ID NUVEMSHOP_CLIENT_ID NUVEMSHOP_CLIENT_SECRET RESEND_API_KEY RESEND_FROM_EMAIL"
+DIVIDA="AGENT_DISPATCH_CONSUMER NUVEMSHOP_APP_ID NUVEMSHOP_CLIENT_ID NUVEMSHOP_CLIENT_SECRET"
 EXEMPLO="${EXEMPLO_ENV:-../.env.hostgator.example}"
 if [ ! -f "$EXEMPLO" ]; then
   # Pular é aceitável (o kit também roda solto, fora do repo), mas em voz alta:
@@ -1162,9 +1162,10 @@ chegou_na_deteccao() {
   return 1
 }
 # As RESPOSTAS do modo interativo, na ordem em que o instalador pergunta: o
-# proxy (o que se testa aqui), depois os 3 campos que o BASE_ENV deixa vazios de
-# propósito (APP_IMAGE, OPENAI_API_KEY, APP_NAME — todos com Enter), a tela de
-# conferência, a telemetria e o aviso de DNS ('c' = seguir assim mesmo).
+# proxy (o que se testa aqui), depois os 6 campos que o BASE_ENV deixa vazios de
+# propósito (APP_IMAGE, OPENAI_API_KEY, APP_NAME, SUPPORT_EMAIL, RESEND_API_KEY,
+# RESEND_FROM_EMAIL — todos com Enter), a tela de conferência, a telemetria e o
+# aviso de DNS ('c' = seguir assim mesmo).
 # As respostas que vêm DEPOIS da do proxy reverso, na ordem em que o install.sh
 # as consome. É uma fila posicional: pergunta nova no meio do script desloca
 # tudo daqui para baixo, e o sintoma NÃO aponta para cá — o cenário simplesmente
@@ -1175,7 +1176,7 @@ chegou_na_deteccao() {
 # que roda depois da pergunta do proxy (:768) e antes da entrevista (:975).
 # Quem acrescentar pergunta interativa ao install.sh acrescenta a resposta aqui,
 # na mesma posição relativa.
-RESTO_DAS_PERGUNTAS=$'\n\n\n\n\n\nc\n'
+RESTO_DAS_PERGUNTAS=$'\n\n\n\n\n\n\n\n\nc\n'
 
 echo "integração: instalação NOVA numa VPS LIMPA (o caminho do Caddy)"
 # O caminho mais percorrido de todos — VPS crua, portas livres, o kit sobe o

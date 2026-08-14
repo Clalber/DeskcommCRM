@@ -232,67 +232,20 @@ const MARCA_CONGELADA: Record<string, EntradaDeMarca> = {
     marcas: ["deskcomm-impersonate"],
   },
 
+  "hooks/ai/useDebugToggle.ts": {
+    categoria: "INFRA",
+    motivo:
+      "chave de localStorage do modo de depuração das citações da IA — irmã de `deskcomm-theme` em lib/theme.tsx. Não é texto de interface: renomear só faz quem já tinha o modo ligado perdê-lo, e o par leitura/escrita teria de mudar junto",
+    marcas: ["deskcomm.show_ai_citations"],
+  },
+
   // ─── DIVIDA — vazamento real. Cada linha declara a fase que a apaga. ───
-  "app/account-suspended/page.tsx": {
-    categoria: "DIVIDA",
-    fase: 4,
-    motivo:
-      "endereço de suporte NOSSO na tela que o cliente do revendedor vê ao ser suspenso — e quem suspendeu foi o revendedor, não nós. `branding()` não resolve: endereço de e-mail não se deriva de um nome, e não existe SUPPORT_EMAIL em lib/env.ts (medido). Precisa da chave nova + coleta no install.sh, que é escopo da Fase 4",
-    marcas: ["support@deskcomm.com.br", "support@deskcomm.com.br"],
-  },
-  "app/app/settings/billing/page.tsx": {
-    categoria: "DIVIDA",
-    fase: 4,
-    motivo:
-      "a tela de dinheiro entrega nosso contato ao cliente do revendedor, e ela tem porta de 1ª classe no menu. Mesmo bloqueio do endereço acima; a tela inteira vira 'Suporte' em fase posterior, então reescrever a cópia agora seria trabalho jogado fora",
-    marcas: ["suporte@deskcomm.app", "suporte@deskcomm.app"],
-  },
-  "app/actions/auth/enrollMfa.ts": {
-    categoria: "DIVIDA",
-    fase: 4,
-    motivo:
-      "o `friendlyName` do TOTP vai para o app autenticador e fica no celular do usuário PARA SEMPRE — nenhuma atualização nossa reescreve o que já está lá. É o vazamento mais duradouro do produto, e depende da marca resolvida do banco, que só existe a partir da Fase 2",
-    marcas: ["deskcommcrm"],
-  },
-  "lib/lgpd/pdf-renderer.tsx": {
-    categoria: "DIVIDA",
-    fase: 4,
-    motivo:
-      "rodapé do relatório entregue ao TITULAR DE DADOS, um documento com peso legal. Trocar pelo nome da marca sem decidir antes quem é o controlador escreveria a entidade errada num documento jurídico — por isso espera a Fase 4",
-    marcas: ["deskcommcrm"],
-  },
-  "lib/lgpd/email-delivery.ts": {
-    categoria: "DIVIDA",
-    fase: 4,
-    motivo:
-      "fallback do nome da organização no e-mail de LGPD. Trocar pela constante não adiantaria: continua sendo o nome do produto; precisa da marca resolvida do banco",
-    marcas: ["deskcommcrm"],
-  },
-  "lib/lgpd/sla-alarm.ts": {
-    categoria: "DIVIDA",
-    fase: 4,
-    motivo: "mesmo fallback do e-mail de LGPD, no alarme de SLA; sai junto na Fase 4",
-    marcas: ["deskcommcrm"],
-  },
-  "lib/email/templates/invite.ts": {
-    categoria: "DIVIDA",
-    fase: 4,
-    motivo:
-      "assunto e corpo do convite — o PRIMEIRO artefato que um usuário novo recebe do sistema, e ele chega com o nome do nosso produto em vez do da instalação que o convidou",
-    marcas: ["deskcomm", "deskcommcrm"],
-  },
   "lib/email/templates/ai-budget-alarm.tsx": {
     categoria: "DIVIDA",
-    fase: 4,
-    motivo: "assunto do alarme de orçamento de IA, enviado ao admin do tenant",
-    marcas: ["deskcommcrm"],
-  },
-  "lib/email/resend.ts": {
-    categoria: "DIVIDA",
-    fase: 4,
+    fase: 7,
     motivo:
-      "remetente padrão. O domínio depende de verificação no Resend, então não é só texto: a Fase 4 tem de decidir o fallback de quem não verificou domínio próprio antes de mexer aqui",
-    marcas: ["deskcomm", "noreply@deskcomm.app"],
+      "template sem caminho de produção: sem rota em app/api/v1/cron/, sem linha no docker/scheduler/entrypoint.sh e sem chamador de runBudgetChecker() fora de scripts/qa-wave-11.ts (medido). Marcar isto não muda nada que um usuário veja, e a única 'prova' possível seria invocar a função à mão — o que prova a função, não o produto. Sai quando o alarme ganhar cron de verdade",
+    marcas: ["deskcommcrm"],
   },
 
   // ─── DEV — fixture de teste; não embarca. ───
@@ -317,9 +270,27 @@ const MARCA_CONGELADA: Record<string, EntradaDeMarca> = {
   },
 };
 
-/** Raízes varridas. `app/design/` fica de fora: é o showcase interno do design
- *  system, a única tela em que o nome do produto é o assunto da página. */
-const RAIZES_VARRIDAS = ["app", "components", "lib", "workers"] as const;
+/**
+ * As raízes varridas — e a FRONTEIRA, escrita, porque foi a ausência dela que
+ * deixou `hooks/` de fora até alguém ir olhar.
+ *
+ * O critério é UM: código que EMBARCA na imagem e cujo texto pode alcançar o
+ * usuário final. Por isso entram `app/`, `components/`, `lib/`, `workers/` —
+ * e `hooks/`, que tem 112 arquivos, é importada por 171 arquivos de `app` e
+ * `components`, e emite `toast` direto na tela. Ficou fora só porque a lista
+ * nasceu enumerando o que alguém lembrou, e enumeração sem critério não avisa
+ * quando fica incompleta.
+ *
+ * Ficam FORA, com motivo:
+ *  - `scripts/` (14 ocorrências, todas fixture de dev e prosa de log) e
+ *    `tests/`: não embarcam na imagem — o `Dockerfile` copia `.next/standalone`,
+ *    `.next/static` e `public/`;
+ *  - `evidence/` e `loop/`: ferramental de sessão, mesma razão;
+ *  - `types/`: um único `.d.ts`, sem string de runtime (medido: 0 ocorrências);
+ *  - `app/design/`: é o showcase interno do design system, a única tela em que
+ *    o nome do produto é o assunto da página.
+ */
+const RAIZES_VARRIDAS = ["app", "components", "hooks", "lib", "workers"] as const;
 
 /**
  * Extrai as marcas de um texto, uma por ocorrência.
@@ -368,7 +339,7 @@ describe("catraca de marca hardcoded", () => {
     if (marcas.length > 0) encontrado.set(arquivo, marcas);
   }
 
-  it("a varredura alcança as quatro raízes — senão o resto não prova nada", () => {
+  it("a varredura alcança as cinco raízes — senão o resto não prova nada", () => {
     // Guarda de vacuidade com nome. `workers/` hoje não tem NENHUMA ocorrência
     // fora de comentário: sem esta asserção, uma varredura que nem descesse lá
     // devolveria a mesma lista vazia e passaria como se estivesse vigiando.
@@ -445,6 +416,23 @@ describe("catraca de marca hardcoded", () => {
       .filter(([, e]) => !validas.includes(e.categoria) || e.motivo.trim().length < 40)
       .map(([f]) => f);
     expect(ruins, `entrada sem categoria válida ou sem justificativa escrita:\n  ${ruins.join("\n  ")}`).toEqual([]);
+  });
+
+  it("a Fase 4 fechou: sobra uma dívida, e ela declara por que sobrou", () => {
+    // As três regras acima forçam a lista a ENCOLHER, mas nada impedia que ela
+    // voltasse a CRESCER: uma `DIVIDA` nova entra sem ninguém notar, porque
+    // acrescentar linha à allowlist é o caminho de menor resistência de quem
+    // está com pressa. Este caso trava o conjunto pelo NOME, não pelo tamanho —
+    // contar só o número deixaria trocar uma dívida por outra em silêncio.
+    const dividas = Object.entries(MARCA_CONGELADA)
+      .filter(([, e]) => e.categoria === "DIVIDA")
+      .map(([arquivo]) => arquivo);
+    expect(
+      dividas,
+      "a Fase 4 zerou as dívidas de marca, exceto o alarme de orçamento de IA " +
+        "(que não tem caminho de produção). Dívida nova aqui precisa de decisão, " +
+        "não de mais uma linha na lista.",
+    ).toEqual(["lib/email/templates/ai-budget-alarm.tsx"]);
   });
 
   it("toda DIVIDA nomeia a fase que a resolve, e só DIVIDA tem fase", () => {

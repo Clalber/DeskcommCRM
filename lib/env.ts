@@ -123,6 +123,32 @@ const schema = z.object({
   // Sentry
   SENTRY_DSN: z.string().optional().default(""),
 
+  /**
+   * Resend — o transporte de TODO e-mail transacional (convite, LGPD, alarme).
+   *
+   * Estavam lidas de `process.env` CRU dentro de `lib/email/resend.ts`, fora do
+   * Zod e fora do `.env.example` (medido: `grep -n RESEND lib/env.ts` → nada;
+   * `grep -c -i resend .env.example` → 0). Duas consequências que só apareciam
+   * na VPS: o `env-example-sync` nunca cobrou a documentação da chave, e o
+   * `install.sh` não a gravava — como o `.env` é escrito com truncamento
+   * (`} > .env`), a chave posta à mão era DESCARTADA na instalação seguinte,
+   * num script que o README vende como idempotente.
+   *
+   * `RESEND_FROM_EMAIL` vazio NÃO cai num domínio nosso: ver `fromAddress()`.
+   */
+  RESEND_API_KEY: z.string().optional().default(""),
+  RESEND_FROM_EMAIL: z.string().optional().default(""),
+
+  /**
+   * E-mail de suporte que a instalação mostra ao CLIENTE FINAL (tela de conta
+   * suspensa, tela de cobrança).
+   *
+   * Vazio = a tela não mostra endereço nenhum. É deliberado: cair no nosso
+   * endereço numa tela de suspensão manda o cliente do revendedor escrever
+   * para quem não suspendeu a conta dele e não tem como resolvê-la.
+   */
+  SUPPORT_EMAIL: z.string().optional().default(""),
+
   // EPIC-11 Impersonate cookie HMAC secret. Optional at boot (route returns
   // 503 at runtime if missing/short); required in prod for the feature to
   // function. Min 32 chars when present is enforced at use site.

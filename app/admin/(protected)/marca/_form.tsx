@@ -194,10 +194,22 @@ export function FormularioDaMarca({
           maxLength={120}
           autoComplete="off"
         />
+        {/*
+          Esta frase precisa ser VERDADE enquanto a dívida existir, e ela já
+          envelheceu uma vez: dizia que "o menu ainda mostra o nome do arquivo de
+          instalação", o que deixou de valer quando o menu passou a preferir o
+          nome da própria organização (`components/shell/Sidebar.tsx`). O que
+          continua no arquivo são os 8 call sites de `branding()`, que leem
+          `window.__PUBLIC_ENV__` e não o banco — as telas públicas, os dois
+          menus e o nome do arquivo de códigos de recuperação.
+        */}
         <p className="text-xs text-text-muted">
-          Deixe em branco para voltar ao nome padrão. Hoje este nome aparece no título da aba do
-          navegador; o menu e a tela de entrada ainda mostram o nome gravado no arquivo de
-          instalação do servidor.
+          Deixe em branco para voltar ao nome padrão. Este nome já aparece no título da aba do
+          navegador, nos e-mails que o sistema envia (para as empresas que não definiram um nome
+          próprio) e no aplicativo de verificação em duas etapas. Ainda NÃO chega às telas de
+          entrada e cadastro, aos menus laterais nem ao nome do arquivo de códigos de
+          recuperação: esses continuam com o nome gravado no arquivo de instalação do servidor
+          até a próxima atualização da stack.
         </p>
       </Card>
 
