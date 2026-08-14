@@ -162,9 +162,37 @@ describe("guarda de vacuidade — o que todo caso abaixo supõe", () => {
     // `create or replace` com um parâmetro a mais criaria uma SEGUNDA função, e
     // os casos abaixo passariam chamando a antiga. O `typecheck` não vê nada
     // disto: o admin client é `SupabaseClient` sem o genérico `<Database>`.
+    //
+    // ⚠️ A primeira versão desta guarda comparava `p.oid::regprocedure::text`
+    // com a string literal — e reprovava SEMPRE, num banco onde as funções
+    // existem. `regprocedure` de saída OMITE o `public.` quando `public` está
+    // no `search_path`, então `'public.fn_x(...)'` nunca casava e a contagem
+    // dava 0. O sentido do erro engana: uma guarda de vacuidade falhando lê-se
+    // como "o schema não chegou ao banco", e o diagnóstico natural é mexer na
+    // migration — que estava certa. Quem desmentiu foram os 21 casos deste
+    // mesmo arquivo que CHAMAM as funções e passaram.
+    //
+    // O sentido certo do cast é o inverso, e é o que o resto do repo usa
+    // (`marca-da-organizacao.test.ts:208`): dar a STRING ao Postgres e deixar
+    // ELE resolver. Se a assinatura não existir, o cast levanta `42883` e o
+    // teste falha com o nome da função na mensagem.
     for (const assinatura of [FN_LOGO, FN_MARCA]) {
-      expect(lastLine(sql(`select count(*) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-         where n.nspname = 'public' and p.oid::regprocedure::text = '${assinatura}';`)), assinatura).toBe("1");
+      expect(
+        lastLine(sql(`select '${assinatura}'::regprocedure::text is not null;`)),
+        `${assinatura} não existe no banco`,
+      ).toBe("t");
+
+      // O cast acima resolve a assinatura EXATA, então ele sozinho não vê uma
+      // sobrecarga nascer ao lado. Esta segunda asserção é a que guarda o caso
+      // original: `nome` sem argumentos, contado no schema. Mais de uma = há
+      // sobrecarga, e os casos abaixo podem estar chamando a outra.
+      const nome = assinatura.slice(assinatura.indexOf(".") + 1, assinatura.indexOf("("));
+      expect(
+        lastLine(sql(`select count(*) from pg_proc p
+                        join pg_namespace n on n.oid = p.pronamespace
+                       where n.nspname = 'public' and p.proname = '${nome}';`)),
+        `${nome}: mais de uma função com este nome — sobrecarga muda quem os casos chamam`,
+      ).toBe("1");
     }
   });
 });

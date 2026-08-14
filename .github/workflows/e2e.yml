@@ -113,8 +113,26 @@ jobs:
         agente-papeis-operador.spec.ts prova-painel-provedores.spec.ts
         followup-linguagem.spec.ts followup-ramos.spec.ts
         wizard-do-funcionario.spec.ts mfa-opcional.spec.ts
+      # `marca-logo.spec.ts` é a ÚLTIMA da PARTE_2 de propósito. As duas partes
+      # rodam como passos do MESMO job, contra o MESMO banco, sem reset entre
+      # elas — o que uma spec deixa gravado, as seguintes enxergam. Esta sobe
+      # logo de INSTALAÇÃO, que aparece em toda tela pública. Se a restauração
+      # dela falhar, ser a última limita o alcance a zero specs em vez de 23.
+      #
+      # ⚠️ Ela esteve no TOPO desta lista por três commits, pela razão errada.
+      # Eu media "carga de login por parte" com um regex que contava a PALAVRA
+      # login — e casava comentário, nome de helper e string. O proxy não só era
+      # impreciso: ele INVERTEU o sinal (dizia 162 vs 145; o real, contando
+      # chamadas, é 63 vs 82), então mover a spec "para a parte mais leve" a
+      # mudou para a mais carregada. E o critério era irrelevante desde o
+      # começo — o `AUTH_RATE_LIMIT_LOGIN_IP: "1000"` mais abaixo desliga o
+      # teto no CI, e esta spec faz 3 logins. Quem decide a posição é a
+      # contaminação, não a contagem.
+      #
+      # (Este comentário mora FORA do bloco `>-` porque dentro dele `#` não é
+      # comentário: é conteúdo, e cada palavra viraria argumento do playwright.
+      # Medido: com o texto dentro, a variável ia de 23 para 205 tokens.)
       SPECS_PARTE_2: >-
-        marca-logo.spec.ts
         agente-novo-e-uso.spec.ts agente-organiza-operacao.spec.ts
         central-de-avisos-capacidades.spec.ts escalacao-ciclo.spec.ts
         navegacao.spec.ts olhar-telas-do-epico.spec.ts pipelines-gestao.spec.ts
@@ -127,6 +145,7 @@ jobs:
         escopo-de-funil-do-agente.spec.ts
         followup-dossie.spec.ts followup-tempo-adaptativo.spec.ts
         gatilho-de-etapa.spec.ts gatilho-de-caso.spec.ts
+        marca-logo.spec.ts
       # Cada item aqui tem o motivo MEDIDO, não presumido — e o gate cobra que a
       # lista exista e some com as outras duas.
       #
