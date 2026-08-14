@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Atkinson_Hyperlegible, IBM_Plex_Mono } from "next/font/google";
 import { headers } from "next/headers";
 import { Toaster } from "sonner";
+import { coresDaBarraDoNavegador } from "@/lib/branding/barra-do-navegador";
 import { cssDaMarca } from "@/lib/branding/css";
 import {
   marcaDaInstalacao,
@@ -96,14 +97,23 @@ export async function generateMetadata(): Promise<Metadata> {
       "multi-tenant",
     ],
     robots: { index: false, follow: false },
+    // Sem esta linha o navegador pede `/favicon.ico`, que não existe: medido em
+    // produção, o 404 é a `app/not-found.tsx` INTEIRA (19.435 bytes de HTML)
+    // servida para um pedido de ícone, em toda navegação sem cache. Declarar
+    // `/icon` faz o pedido ir para `app/icon.tsx`, que desenha a marca da
+    // instalação em runtime — ver o cabeçalho daquele arquivo para por que ele
+    // não pode ser um arquivo estático em `public/`.
+    icons: { icon: "/icon" },
   };
 }
 
+/**
+ * A cor da barra do navegador sai da RÉGUA, não de dois hexes redigitados aqui.
+ * O porquê — inclusive por que isto NÃO deve virar `generateViewport()` lendo o
+ * banco — está no cabeçalho de `lib/branding/barra-do-navegador.ts`.
+ */
 export const viewport: Viewport = {
-  themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#faf9f6" },
-    { media: "(prefers-color-scheme: dark)", color: "#161510" },
-  ],
+  themeColor: coresDaBarraDoNavegador(REGUA_DO_PRODUTO),
 };
 
 // Inline FOUC-prevention. Conteúdo é string literal estática (zero input do usuário),
@@ -125,8 +135,12 @@ const motivosRegistrados = new Set<string>();
  * trocar. Server Component de propósito: a leitura é do BANCO e do `.env` em
  * runtime (a imagem self-host é pré-buildada; ver `lib/branding.ts`), e enviar
  * isso pelo cliente reintroduziria justamente o flash. Desde a migration 0155 a
- * fonte primária é `platform_branding`; o `.env` continua embaixo como semente e
- * rede de segurança de rollback (ver `lib/branding/instalacao.ts`).
+ * fonte primária é `platform_branding`; o `.env` continua embaixo como semente —
+ * e, para NOME e LOGO, como rede de rollback (ver `lib/branding/instalacao.ts`).
+ * Para COR não existe rede: `APP_ACCENT_HEX` nasceu no mesmo épico que a tabela,
+ * então nenhuma versão velha o bastante para desconhecê-la pinta accent, e o
+ * `install.sh` não grava a chave (medido: 0 ocorrências, contra 7 de APP_NAME).
+ * A correção está no cabeçalho da migration 0155.
  *
  * Os motivos NÃO morrem aqui: enquanto a tela de marca não existe (fase
  * seguinte, `/app/settings/tenant/branding`), o log estruturado é por onde o

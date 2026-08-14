@@ -444,3 +444,128 @@ describe("catraca de marca hardcoded", () => {
     expect(semFase, `DIVIDA sem fase, ou fase declarada onde não é dívida:\n  ${semFase.join("\n  ")}`).toEqual([]);
   });
 });
+
+/**
+ * A SEGUNDA varredura: os arquivos que o GoTrue lê, e que a primeira nunca viu.
+ *
+ * A catraca de cima varre `.ts`/`.tsx` de `app|components|hooks|lib|workers` —
+ * o código que embarca na imagem. Ela é cega para `supabase/templates/*.html` e
+ * `supabase/config.toml`, e essa cegueira tinha consequência medida: dava para
+ * zerar a lista de dívidas, ver a suíte inteira verde, e o cliente do
+ * revendedor continuar recebendo "Confirme seu e-mail — DeskcommCRM" no
+ * PRIMEIRO e-mail que ele abre na vida.
+ *
+ * Estes arquivos não são renderizados por nenhum TypeScript nosso: quem os
+ * renderiza é o GoTrue, um processo de terceiro. Não há resolvedor a chamar —
+ * o texto é empurrado por API pelo `hostgator-setup-kit/marca-emails.sh`, que
+ * substitui os `__PLACEHOLDER__`. Por isso a guarda aqui é diferente em
+ * NATUREZA da de cima: lá ela cobra `branding()`; aqui ela cobra placeholder.
+ *
+ * ⚠️ A REGRA DE COMENTÁRIO NÃO SE REAPROVEITA. `marcasNoTexto` ignora linha que
+ * ABRE com `//`, `*` ou `/*`. Comentário de HTML é `<!-- … -->`, atravessa
+ * várias linhas e as linhas do meio não abrem com nada. Copiar a função sem
+ * ajustar faria a marca DENTRO de um comentário contar como vazamento e a marca
+ * de verdade, na mesma linha de um `-->`, passar.
+ */
+describe("catraca de marca no que o GoTrue renderiza", () => {
+  /** Comentário de HTML é um TRECHO, não um prefixo de linha. */
+  function semComentariosHtml(fonte: string): string {
+    return fonte.replace(/<!--[\s\S]*?-->/g, "");
+  }
+
+  /**
+   * TOML: só linha que ABRE com `#`. Um `#` no meio da linha não é tratado como
+   * comentário DE PROPÓSITO — `#506d48` dentro de uma string seria decapitado, e
+   * uma marca depois dele sumiria. Contar demais aqui custa uma linha de
+   * allowlist; contar de menos custa a marca vazando com o gate verde.
+   */
+  function semComentariosToml(fonte: string): string {
+    return fonte
+      .split("\n")
+      .filter((linha) => !linha.trimStart().startsWith("#"))
+      .join("\n");
+  }
+
+  const ALVOS: { arquivo: string; limpar: (f: string) => string }[] = [
+    { arquivo: "supabase/templates/confirmation.html", limpar: semComentariosHtml },
+    { arquivo: "supabase/templates/recovery.html", limpar: semComentariosHtml },
+    { arquivo: "supabase/config.toml", limpar: semComentariosToml },
+  ];
+
+  const CONGELADO_SUPABASE: Record<string, EntradaDeMarca> = {
+    "supabase/config.toml": {
+      categoria: "DEV",
+      motivo:
+        "config do Supabase LOCAL (o `supabase start` de dev e do CI). NÃO embarca na imagem e NÃO alcança clone nenhum: um self-hoster usa um projeto na nuvem do Supabase, cuja config de auth vem do marca-emails.sh, ou um GoTrue próprio, que lê env. `project_id` ainda nomeia os contêineres locais (supabase_auth_deskcomm-crm) e os assuntos são o que a suíte local envia",
+      marcas: ["deskcomm-crm", "deskcommcrm", "deskcommcrm"],
+    },
+  };
+
+  const encontradoAqui = new Map<string, string[]>();
+  for (const { arquivo, limpar } of ALVOS) {
+    const marcas = marcasNoTexto(limpar(fs.readFileSync(path.join(RAIZ, arquivo), "utf8")));
+    if (marcas.length > 0) encontradoAqui.set(arquivo, marcas);
+  }
+
+  it("os arquivos varridos existem e os modelos têm placeholder", () => {
+    // Vacuidade em duas pontas. Se os arquivos sumissem de lugar, a varredura
+    // devolveria vazio e os casos abaixo passariam vigiando o nada; e se os
+    // modelos perdessem o `__APP_NAME__`, "sem marca" passaria a significar
+    // "sem nome nenhum no e-mail", que é outro defeito com o mesmo sintoma.
+    for (const { arquivo } of ALVOS) {
+      expect(fs.existsSync(path.join(RAIZ, arquivo)), `${arquivo} sumiu`).toBe(true);
+    }
+    for (const modelo of ["supabase/templates/confirmation.html", "supabase/templates/recovery.html"]) {
+      const texto = fs.readFileSync(path.join(RAIZ, modelo), "utf8");
+      expect(texto, `${modelo} não substitui a marca`).toContain("__APP_NAME__");
+      expect(texto, `${modelo} não substitui o accent`).toContain("__ACCENT__");
+    }
+  });
+
+  it("comentário de HTML não conta, e `-->` no meio da linha não engole o resto", () => {
+    expect(marcasNoTexto(semComentariosHtml("<!-- fala do DeskcommCRM -->"))).toEqual([]);
+    expect(marcasNoTexto(semComentariosHtml("<!--\n  DeskcommCRM\n  em várias linhas\n-->"))).toEqual([]);
+    // O caso que a regra de `//` erraria: marca REAL depois do fecho.
+    expect(marcasNoTexto(semComentariosHtml("<!-- nota --> Sua conta no DeskcommCRM"))).toEqual([
+      "deskcommcrm",
+    ]);
+    // E a marca fora de comentário nenhum continua contando.
+    expect(marcasNoTexto(semComentariosHtml("<p>conta no DeskcommCRM</p>"))).toEqual(["deskcommcrm"]);
+  });
+
+  it("comentário de TOML não conta, mas `#` dentro de string não vira comentário", () => {
+    expect(marcasNoTexto(semComentariosToml("# Supabase CLI config — DeskcommCRM"))).toEqual([]);
+    expect(marcasNoTexto(semComentariosToml('cor = "#506d48"  # DeskcommCRM'))).toEqual([
+      "deskcommcrm",
+    ]);
+    expect(marcasNoTexto(semComentariosToml('subject = "Olá — DeskcommCRM"'))).toEqual(["deskcommcrm"]);
+  });
+
+  it("nenhum arquivo do GoTrue fixa a marca fora da lista", () => {
+    const novos = [...encontradoAqui.keys()].filter((f) => !(f in CONGELADO_SUPABASE));
+    expect(
+      novos,
+      `Marca hardcoded em arquivo que o GoTrue renderiza.\n` +
+        `Use o placeholder __APP_NAME__ (quem substitui é hostgator-setup-kit/marca-emails.sh):\n` +
+        novos.map((f) => `  ${f}  ${JSON.stringify(encontradoAqui.get(f))}`).join("\n"),
+    ).toEqual([]);
+  });
+
+  it("a lista do GoTrue não guarda arquivo que já não tem marca", () => {
+    const obsoletos = Object.keys(CONGELADO_SUPABASE).filter((f) => !encontradoAqui.has(f));
+    expect(obsoletos, `apague a linha destes de CONGELADO_SUPABASE:\n  ${obsoletos.join("\n  ")}`).toEqual([]);
+  });
+
+  it("arquivo congelado do GoTrue não mudou de conjunto sem a lista acompanhar", () => {
+    for (const [arquivo, entrada] of Object.entries(CONGELADO_SUPABASE)) {
+      expect(encontradoAqui.get(arquivo) ?? [], arquivo).toEqual([...entrada.marcas].sort());
+    }
+  });
+
+  it("os dois modelos de e-mail não têm marca nenhuma — é o estado que se defende", () => {
+    // Explícito, e não só implícito na ausência de linha na allowlist: é ESTE
+    // caso que falha quando alguém reescreve "no DeskcommCRM" num template.
+    expect(encontradoAqui.has("supabase/templates/confirmation.html")).toBe(false);
+    expect(encontradoAqui.has("supabase/templates/recovery.html")).toBe(false);
+  });
+});

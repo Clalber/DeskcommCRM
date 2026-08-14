@@ -804,6 +804,118 @@ case "$senha" in
   *)              printf '  ✓ só alfanuméricos (não parte a connection string)\n';;
 esac
 
+echo "e-mails de acesso: marca-emails.sh"
+# POR QUE ESTE BLOCO EXISTE: o e-mail de confirmação de conta é o PRIMEIRO
+# artefato que um cliente do revendedor recebe, e ele é montado por um processo
+# de TERCEIRO (o GoTrue). Nenhum teste do app o alcança — o único jeito de
+# vigiar isso é exercitar o script que empurra o texto.
+#
+# Os casos abaixo cobrem tudo o que dá para provar SEM rede: renderização,
+# escape, e as três saídas que não podem derrubar a instalação. O caminho com
+# rede (PATCH + releitura) foi medido à mão contra a Management API em
+# 2026-08-14 e está declarado no cabeçalho do script.
+ME_TMP="$(mktemp -d)"
+
+# (1) Sem token, sai 0 e ENSINA o passo manual. Este é o caso comum: quem cria
+#     o projeto no painel e cola as 4 credenciais nunca teve token nenhum.
+saida_me="$(SUPABASE_ACCESS_TOKEN= bash ./marca-emails.sh --env /dev/null 2>&1)"; rc_me=$?
+if [ $rc_me -ne 0 ]; then
+  printf '  ✗ sem token o script saiu %s — ele NÃO pode derrubar o install.sh\n' "$rc_me"; fail=1
+else
+  printf '  ✓ sem token: sai 0 (a instalação continua)\n'
+fi
+if printf '%s' "$saida_me" | grep -q 'SUPABASE_ACCESS_TOKEN'; then
+  printf '  ✓ sem token: diz qual é a chave que falta\n'
+else
+  printf '  ✗ sem token: a mensagem não nomeia SUPABASE_ACCESS_TOKEN\n'; fail=1
+fi
+# O passo manual tem de ensinar `&`. Foi um `?` nesta mesma receita (na doc de
+# deploy) que gravou o link quebrado no projeto de produção.
+if printf '%s' "$saida_me" | grep -q '{{ .RedirectTo }}&token_hash'; then
+  printf '  ✓ sem token: o passo manual ensina o separador & (nunca ?)\n'
+else
+  printf '  ✗ sem token: o passo manual não mostra o link com &\n'; fail=1
+fi
+
+# (2) Supabase PRÓPRIO (self-hosted) não tem Management API: com token e tudo,
+#     o certo é ensinar o caminho do GoTrue, não tentar um PATCH que não existe.
+saida_me="$(SUPABASE_ACCESS_TOKEN=sbp_de_teste NEXT_PUBLIC_SUPABASE_URL=https://supabase.meucliente.com.br \
+            bash ./marca-emails.sh --env /dev/null 2>&1)"; rc_me=$?
+if [ $rc_me -eq 0 ] && printf '%s' "$saida_me" | grep -q 'GOTRUE_MAILER_TEMPLATES'; then
+  printf '  ✓ Supabase próprio: sai 0 e manda para o caminho do GoTrue\n'
+else
+  printf '  ✗ Supabase próprio: rc=%s, mensagem sem GOTRUE_MAILER_TEMPLATES\n' "$rc_me"; fail=1
+fi
+
+# (3) VACUIDADE: os modelos no disco precisam TER o placeholder, senão o caso
+#     (4) compararia a ausência de marca com a ausência de marca e passaria.
+for modelo in ../supabase/templates/confirmation.html ../supabase/templates/recovery.html; do
+  if grep -q '__APP_NAME__' "$modelo"; then
+    printf '  ✓ %s tem __APP_NAME__ para substituir\n' "$(basename "$modelo")"
+  else
+    printf '  ✗ %s NÃO tem __APP_NAME__ — a substituição abaixo não prova nada\n' "$(basename "$modelo")"; fail=1
+  fi
+done
+
+# (4) Renderização com um nome HOSTIL. `&` no lado direito de um `sed` (ou de um
+#     `${x//p/r}` no bash 5.2) vale como "o trecho casado" — medido: `Loja
+#     <b>Top</b> & Cia` saía `Loja <lt;b>gt;Top…`. E `<b>` cru injetaria markup
+#     no corpo do e-mail de todo cliente do revendedor.
+SUPABASE_ACCESS_TOKEN= APP_NAME='Loja <b>Top</b> & Cia' APP_ACCENT_HEX='#f2c94c' \
+  bash ./marca-emails.sh --env /dev/null --render-em "$ME_TMP/render" >/dev/null 2>&1
+rend="$ME_TMP/render/confirmation.html"
+if [ ! -f "$rend" ]; then
+  printf '  ✗ --render-em não escreveu confirmation.html\n'; fail=1
+else
+  if grep -q '__APP_NAME__\|__ACCENT__\|__ACCENT_FG__' "$rend"; then
+    printf '  ✗ sobrou placeholder no HTML renderizado: %s\n' "$(grep -o '__[A-Z_]*__' "$rend" | sort -u | tr '\n' ' ')"; fail=1
+  else
+    printf '  ✓ nenhum placeholder sobrou no HTML renderizado\n'
+  fi
+  if grep -qF 'Loja &lt;b&gt;Top&lt;/b&gt; &amp; Cia' "$rend"; then
+    printf '  ✓ o nome da marca sai escapado (nada de markup injetado no e-mail)\n'
+  else
+    printf '  ✗ o nome da marca NÃO saiu escapado: %s\n' "$(grep -o 'Sua conta no [^.]*' "$rend" | head -1)"; fail=1
+  fi
+  # Amarelo é claro: texto branco em cima seria ilegível. É o caso exato que o
+  # `#ffffff` fixo produzia — e é a marca que um revendedor cola sem avisar.
+  if grep -q 'color: #171f15' "$rend"; then
+    printf '  ✓ accent claro (#f2c94c) escolhe texto ESCURO\n'
+  else
+    printf '  ✗ accent claro não escolheu texto escuro: %s\n' "$(grep -o 'background: #f2c94c[^"]*' "$rend" | head -1)"; fail=1
+  fi
+  # A nota de manutenção do topo do modelo fala de placeholder e de --render-em:
+  # é endereçada a quem edita o repositório, não ao cliente final.
+  if grep -q 'MODELO — os' "$rend"; then
+    printf '  ✗ a nota interna do modelo foi junto para dentro do e-mail\n'; fail=1
+  else
+    printf '  ✓ a nota interna do modelo fica fora do e-mail\n'
+  fi
+fi
+
+# (5) O par claro/escuro: accent escuro tem de escolher BRANCO. Sem este caso,
+#     um `frente_sobre` que devolvesse sempre "#171f15" passaria no caso (4).
+SUPABASE_ACCESS_TOKEN= APP_NAME='Marca Escura' APP_ACCENT_HEX='#0b3d2e' \
+  bash ./marca-emails.sh --env /dev/null --render-em "$ME_TMP/escuro" >/dev/null 2>&1
+if grep -q 'color: #ffffff' "$ME_TMP/escuro/confirmation.html" 2>/dev/null; then
+  printf '  ✓ accent escuro (#0b3d2e) escolhe texto BRANCO\n'
+else
+  printf '  ✗ accent escuro não escolheu texto branco\n'; fail=1
+fi
+
+# (6) Hex inválido no .env não pode virar CSS quebrado no e-mail: cai no accent
+#     do produto, que é o mesmo piso de lib/branding/saida.ts.
+SUPABASE_ACCESS_TOKEN= APP_NAME='Marca Torta' APP_ACCENT_HEX='verde-limão' \
+  bash ./marca-emails.sh --env /dev/null --render-em "$ME_TMP/torto" >/dev/null 2>&1
+if grep -q 'background: #506d48; background: #506d48' "$ME_TMP/torto/confirmation.html" 2>/dev/null; then
+  printf '  ✓ APP_ACCENT_HEX inválido cai no accent do produto\n'
+else
+  printf '  ✗ APP_ACCENT_HEX inválido virou CSS inválido: %s\n' \
+    "$(grep -o 'background: [^;]*;' "$ME_TMP/torto/confirmation.html" 2>/dev/null | head -2 | tr '\n' ' ')"; fail=1
+fi
+
+rm -rf "$ME_TMP"
+
 echo "proxy reverso: quem está com as portas 80/443"
 # A versão anterior só sabia procurar Traefik. Qualquer outro proxy — inclusive o
 # Caddy de OUTRO DeskcommCRM na mesma VPS — caía no ramo "portas livres", e a
@@ -1139,6 +1251,10 @@ STUB
 # esconderia a trava que o dublê de crontab acima existe para não ter (era
 # `cat >/dev/null` incondicional, e num tty a suíte nunca terminava). Com
 # respostas, lê de um arquivo — é o único jeito de exercitar uma PERGUNTA.
+# `SUPABASE_ACCESS_TOKEN=` no `env`: o install.sh chama o marca-emails.sh, e um
+# token EXPORTADO no shell de quem roda a suíte entraria no cenário sem ninguém
+# pedir — o teste passaria a depender da máquina, e faria chamada de rede a
+# partir de um .env de mentira. O cenário declara o próprio ambiente.
 rodar() {
   local script="$1" flags="$2"
   printf '%s\n%s\n' "$BASE_ENV" "${3-}" > "$VPS_PROJ/.env"
@@ -1146,9 +1262,11 @@ rodar() {
   if [ $# -ge 4 ]; then
     printf '%s' "$4" > "$VPS_RAIZ/respostas.txt"
     (cd "$VPS_PROJ" && env PATH="$VPS_RAIZ/bin:$PATH" DOCKER_LOG="$VPS_LOG" CRONTAB_SANDBOX="$CRONTAB_SANDBOX" \
+      SUPABASE_ACCESS_TOKEN= \
       bash "$VPS_RAIZ/$script" $flags <"$VPS_RAIZ/respostas.txt" 2>&1 || true) | sed -E 's/\x1b\[[0-9;]*m//g'
   else
     (cd "$VPS_PROJ" && env PATH="$VPS_RAIZ/bin:$PATH" DOCKER_LOG="$VPS_LOG" CRONTAB_SANDBOX="$CRONTAB_SANDBOX" \
+      SUPABASE_ACCESS_TOKEN= \
       bash "$VPS_RAIZ/$script" $flags 2>&1 || true) | sed -E 's/\x1b\[[0-9;]*m//g'
   fi
 }

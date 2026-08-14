@@ -1551,6 +1551,20 @@ else
   c_ylw "⚠ supabase/baseline.sql não encontrado — pulei (aplique o schema manualmente)."
 fi
 
+# ── 7.5 E-mails de acesso (criar conta / recuperar senha) ───────────────────
+# O e-mail de confirmação de conta é o PRIMEIRO artefato que qualquer usuário
+# recebe. Sem este passo ele chega no modelo padrão do Supabase — em inglês,
+# "Confirm Your Signup", sem marca nenhuma — numa instalação em que tudo o mais
+# já está com a marca de quem hospeda.
+#
+# Chamado SEMPRE, com ou sem token: sem `SUPABASE_ACCESS_TOKEN` o script imprime
+# o passo manual do painel e sai 0. É informação que vale mais aqui, no fim da
+# instalação, do que num documento que ninguém vai abrir.
+#
+# `|| true` como cinto de segurança: o script já promete nunca sair diferente de
+# 0, e mesmo assim a instalação não pode morrer por causa do e-mail.
+bash "$KIT_DIR/marca-emails.sh" --projeto "$PROJECT_DIR" || true
+
 # ── 8. Bootstrap do 1º dono (cria no Auth + promove via psql) ───────────────
 step "Criando o primeiro admin (${OWNER_EMAIL})"
 # 1) Cria o usuário no Supabase Auth. Se já existe, a API responde 422 — ignoramos

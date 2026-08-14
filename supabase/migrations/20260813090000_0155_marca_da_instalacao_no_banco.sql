@@ -19,6 +19,27 @@
 -- `.env` intacto, a marca degrada para o valor da instalação e a tela continua
 -- sendo a do cliente.
 --
+-- ⚠️ CORREÇÃO DE 2026-08-14 — a rede cobre NOME E LOGO, não a cor.
+--
+-- O parágrafo acima foi escrito como se valesse para as três colunas. Vale para
+-- duas. `install.sh` grava `APP_NAME` e `APP_LOGO_URL` no `.env` e NÃO grava
+-- `APP_ACCENT_HEX` (medido: `grep -c APP_ACCENT_HEX hostgator-setup-kit/install.sh`
+-- → 0, contra 7 de `APP_NAME`) — a chave só existe em `.env.example`, e o `.env`
+-- é escrito com truncamento, então quem a puser à mão a perde no install
+-- seguinte.
+--
+-- E, mais fundo que isso: para COR a rede é vazia POR CONSTRUÇÃO, não por
+-- descuido. `APP_ACCENT_HEX` nasceu neste mesmo épico, junto com esta tabela.
+-- Não existe versão do app velha o bastante para desconhecer `platform_branding`
+-- e ainda assim pintar accent a partir do `.env` — quem não conhece a tabela
+-- também não conhece a variável. Gravar a cor no `.env` seria semente e proteção
+-- contra o truncamento do install, não rollback.
+--
+-- O `comment on table` do `supabase/baseline.sql` já carrega a redação
+-- corrigida. Aqui embaixo ele fica como foi aplicado: migration já aplicada não
+-- se reescreve, corrige-se por forward-fix — e nesta linha a diferença é de
+-- redação, não de comportamento.
+--
 -- ─── Singleton, e por que ele é uma linha e não uma coluna em `organizations` ─
 --
 -- DIRC responde **D — Duplicar? Não; vive aqui mesmo**. Esta é a marca da

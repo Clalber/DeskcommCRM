@@ -11848,7 +11848,7 @@ create table if not exists public.platform_branding (
 );
 
 comment on table public.platform_branding is
-  'Marca da INSTALAÇÃO (login, e-mail, 500) — linha única id=1. Semeada do .env na primeira leitura; o .env continua sendo a rede de segurança de rollback. Lida/escrita só server-side (service_role). Ver lib/branding/instalacao.ts.';
+  'Marca da INSTALAÇÃO (login, e-mail, 500) — linha única id=1. Semeada do .env na primeira leitura; para NOME e LOGO o .env continua sendo a rede de segurança de rollback (o agent.sh reverte a imagem, não o banco). Para COR não há rede: APP_ACCENT_HEX nasceu junto com esta tabela e o install.sh não o grava — nenhuma versão que desconheça platform_branding pinta accent. Lida/escrita só server-side (service_role). Ver lib/branding/instalacao.ts.';
 
 comment on column public.platform_branding.seeded_from_env is
   'true = os valores vieram do .env e ninguém os editou pela tela. A escrita humana zera isto, e é o que impede a semeadura de reescrever o que uma pessoa apagou de propósito.';
