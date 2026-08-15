@@ -330,7 +330,28 @@ function literaisDoUnionType(arquivo: string, simbolo: string): string[] {
     );
   }
 
-  const decl = new RegExp(`type\\s+${simbolo}\\s*=([^;]*);`, "s").exec(fonte);
+  // ⚠️ COMENTÁRIOS SAEM ANTES DE PROCURAR A DECLARAÇÃO, e a ordem é o conserto.
+  //
+  // A versão anterior recortava `type X =([^;]*);` do fonte CRU e só então
+  // limpava comentários. Como `[^;]*` para no primeiro ponto e vírgula, um `;`
+  // escrito dentro de um comentário NO MEIO do union truncava a lista — e os
+  // membros abaixo dele sumiam sem que nada estourasse.
+  //
+  // Não é hipotético: aconteceu com `InboxKind`, num comentário que explicava a
+  // diferença entre dois kinds — "um relata que algo ACONTECEU e a IA segue; o
+  // outro, que ela parou". A extração parou em `segue`, devolveu 19 dos 21
+  // membros, e o par reprovou dizendo que o TypeScript não declarava
+  // `budget_warning` nem `other`. Os dois estavam lá, seis linhas abaixo.
+  //
+  // O modo de falha é o pior possível para um gate: ele acusa o CÓDIGO por um
+  // defeito do INSTRUMENTO, com uma mensagem convincente, e manda o próximo
+  // consertar o que estava certo. A guarda de "zero literais" logo abaixo não
+  // pega este caso — a lista truncada não é vazia.
+  //
+  // Prosa em português tem ponto e vírgula. O extrator é que não podia depender
+  // de a prosa não ter.
+  const semComentarios = fonte.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/\/\/[^\n]*/g, " ");
+  const decl = new RegExp(`type\\s+${simbolo}\\s*=([^;]*);`, "s").exec(semComentarios);
   if (!decl) {
     throw new Error(
       `extrator de vocabulário: não achei \`type ${simbolo} = ...;\` em ${arquivo}. ` +
