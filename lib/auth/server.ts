@@ -31,6 +31,33 @@ interface RawMembershipRow {
  * - organizations: id IN fn_user_org_ids()  (orgs_select)
  * - platform_admins: only platform admins read (so non-admins get null — correct)
  */
+/**
+ * "Não havia sessão nenhuma" — o estado NORMAL, não um incidente.
+ *
+ * `getUser()` não devolve `error: null` para quem não está logado. Sem cookie de
+ * sessão, `GoTrueClient._getUser` corta antes de falar com o GoTrue e devolve
+ * `{ data: { user: null }, error: new AuthSessionMissingError() }` (status 400).
+ * Medido em `@supabase/auth-js` 2.112.1, com um cookie store vazio:
+ *
+ *     user  = null
+ *     error = AuthSessionMissingError: Auth session missing! (status=400)
+ *
+ * Isso importa porque **não há `middleware.ts` neste projeto**: o gate de
+ * `/app/*` é o próprio `app/app/layout.tsx`, que chama `loadAuthUser()` e só
+ * então redireciona. Ou seja, todo visitante deslogado — e todo crawler — passa
+ * por aqui sem sessão. Logar esse caso como erro reintroduziria, do lado do log,
+ * exatamente a ambiguidade que o bloco acima existe para desfazer: o estado
+ * normal e a falha transitória voltariam a ser a mesma linha, agora afogadas em
+ * volume de tráfego anônimo.
+ *
+ * Compara por `name` e não por `instanceof`: há DUAS cópias de `@supabase/auth-js`
+ * na árvore (2.111.0 e 2.112.1 em `node_modules/.pnpm`), e `instanceof` só acerta
+ * quando o erro vem da mesma cópia que o teste importou.
+ */
+export function ehSessaoAusente(error: { name?: string } | null | undefined): boolean {
+  return error?.name === "AuthSessionMissingError";
+}
+
 export async function loadAuthUser(): Promise<AuthUser | null> {
   const supabase = await createClient();
   const {
@@ -52,7 +79,12 @@ export async function loadAuthUser(): Promise<AuthUser | null> {
   // logo" foi, por eliminação, uma casca de app que não era a casca do app —
   // e a hipótese nº 1 é justamente um redirect nascido aqui. Com este log, a
   // próxima ocorrência se explica sozinha em vez de custar uma investigação.
-  if (error) {
+  //
+  // ⚠️ MAS NEM TODO `error` AQUI É INCIDENTE — e é por isso que `ehSessaoAusente`
+  // existe. Ver o comentário dela: sem esse filtro, este log dispara em todo
+  // visitante deslogado e refaz, do lado do log, a mesma fusão que este bloco
+  // existe para desfazer.
+  if (error && !ehSessaoAusente(error)) {
     logger.error("[auth] getUser falhou — tratando como não autenticado", {
       codigo: (error as { status?: number }).status ?? null,
       detalhe: error.message,
