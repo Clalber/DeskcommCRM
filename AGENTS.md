@@ -19,12 +19,18 @@ quebra no clone fresco é um bug de produto, não um detalhe de ambiente.
 
 ## Stack (CONFIRMADO em `package.json`)
 
-Next.js 16.3 (App Router) · React 19.2 · TypeScript 6.0 estrito · Tailwind 3.4 ·
+Next.js 16 (App Router) · React 19 · TypeScript 6 estrito · Tailwind 3 ·
 shadcn/ui · Supabase (Postgres + Auth + Realtime + Storage) · Upstash Redis ·
 Vercel AI Gateway (`@ai-sdk/anthropic|openai|google`) · WAHA Plus (engine NOWEB) ·
-Zod 4 · Vitest 4 · Playwright 1.62 · Sentry 10.
-Runtime: **Node ≥22** (`.nvmrc` = 22; o job `ci` roda 22, mas o `perf` ainda builda em 20 —
-divergência com `engines`, registrada como bug). Gerenciador: **pnpm 9.15.9** (`packageManager`).
+Zod 4 · Vitest 4 · Playwright 1 · Sentry 10.
+
+Só a **major**, de propósito: é onde o idioma muda, e é o que
+`tests/unit/agents-md-versoes.test.ts` verifica contra o `package.json`. Declarar a minor
+aqui fazia todo bump do Dependabot reprovar o `verify` (5 dos 8 pacotes) e não cobria nada
+que a major já não cobrisse — issue #235. Para a versão exata, `package.json` é a fonte.
+
+Runtime: **Node ≥22** (`.nvmrc` = 22; os quatro workflows fixam `node-version: 22` —
+`ci` ×2, `perf`, `e2e`). Gerenciador: **pnpm 9.15.9** (`packageManager`).
 Versão do produto: **1.0.0** (`CHANGELOG.md`, SemVer — mudança que afeta quem roda VPS entra lá).
 
 ## Estrutura que importa

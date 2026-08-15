@@ -215,7 +215,7 @@ v_supabase_url() {
     *) echo "A URL precisa começar com https://. Na nuvem ela fica em Settings > API > Project URL (termina em .supabase.co); num Supabase próprio, é o endereço do seu servidor."; return 1;;
   esac
   local code
-  code="$(curl -s -o /dev/null -w '%{http_code}' -m 15 "$1/auth/v1/health" 2>/dev/null || echo 000)"
+  code="$(curl -s -o /dev/null -w '%{http_code}' -m 15 "$1/auth/v1/health" 2>/dev/null)" || code=000
   if [ "$code" = "000" ]; then
     echo "Não consegui alcançar $1 — confira se o projeto existe, está ativo (projeto pausado não responde) e se o VPS tem internet."
     return 1
@@ -248,14 +248,14 @@ v_sb_key() {
     # Rota de administração: a anon leva 401 aqui. É o que separa uma da outra.
     code="$(curl -s -o /dev/null -w '%{http_code}' -m 20 \
       -H "apikey: $key" -H "Authorization: Bearer $key" \
-      "$url/auth/v1/admin/users?page=1&per_page=1" 2>/dev/null || echo 000)"
+      "$url/auth/v1/admin/users?page=1&per_page=1" 2>/dev/null)" || code=000
   else
     # /auth/v1/settings é a rota que a anon PODE abrir. Não use /rest/v1/: ele
     # responde 401 "Only the service_role API key can be used for this endpoint"
     # até para a anon correta — validador que reprova o dado certo é pior que
     # nenhum. Provado nesta VPS: settings dá 200 para as chaves do projeto e 401
     # para lixo e para JWT de outro projeto.
-    code="$(curl -s -o /dev/null -w '%{http_code}' -m 20 -H "apikey: $key" "$url/auth/v1/settings" 2>/dev/null || echo 000)"
+    code="$(curl -s -o /dev/null -w '%{http_code}' -m 20 -H "apikey: $key" "$url/auth/v1/settings" 2>/dev/null)" || code=000
   fi
   case "$code" in
     2*) return 0;;
@@ -324,7 +324,7 @@ v_anthropic() {
   case "$1" in sk-ant-*) ;; *) echo "A chave da Anthropic começa com 'sk-ant-'. Pegue em console.anthropic.com > API Keys."; return 1;; esac
   local code
   code="$(curl -s -o /dev/null -w '%{http_code}' -m 20 https://api.anthropic.com/v1/models \
-    -H "x-api-key: $1" -H "anthropic-version: 2023-06-01" 2>/dev/null || echo 000)"
+    -H "x-api-key: $1" -H "anthropic-version: 2023-06-01" 2>/dev/null)" || code=000
   case "$code" in
     2*) return 0;;
     000) c_ylw "  ⚠ não consegui checar a chave online; sigo com ela."; return 0;;
@@ -344,7 +344,7 @@ v_openrouter() {
   case "$1" in sk-or-*) ;; *) echo "A chave da OpenRouter começa com 'sk-or-'. Pegue em openrouter.ai/keys."; return 1;; esac
   local code
   code="$(curl -s -o /dev/null -w '%{http_code}' -m 20 https://openrouter.ai/api/v1/key \
-    -H "Authorization: Bearer $1" 2>/dev/null || echo 000)"
+    -H "Authorization: Bearer $1" 2>/dev/null)" || code=000
   case "$code" in
     2*) return 0;;
     000) c_ylw "  ⚠ não consegui checar a chave online; sigo com ela."; return 0;;
@@ -358,7 +358,7 @@ v_openai() {
   case "$1" in sk-*) ;; *) echo "A chave da OpenAI começa com 'sk-'. Pegue em platform.openai.com > API keys (ou deixe em branco)."; return 1;; esac
   local code
   code="$(curl -s -o /dev/null -w '%{http_code}' -m 20 https://api.openai.com/v1/models \
-    -H "Authorization: Bearer $1" 2>/dev/null || echo 000)"
+    -H "Authorization: Bearer $1" 2>/dev/null)" || code=000
   case "$code" in
     2*) return 0;;
     000) c_ylw "  ⚠ não consegui checar a chave online; sigo com ela."; return 0;;
