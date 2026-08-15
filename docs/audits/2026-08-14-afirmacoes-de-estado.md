@@ -513,7 +513,7 @@ grep -rl "createAdminClient" app/api --include='route.ts' | wc -l ; git ls-files
 **Mede com:**
 
 ```bash
-cd /Users/rafaelmelgaco/DeskcommCRM-packaging && git ls-files 'docs/**/*.md' | wc -l && git ls-files 'docs/*.md' 'docs/**/*.md' | sort -u | wc -l && sed -n '13p' docs/index.md
+cd "$(git rev-parse --show-toplevel)" && git ls-files 'docs/**/*.md' | wc -l && git ls-files 'docs/*.md' 'docs/**/*.md' | sort -u | wc -l && sed -n '13p' docs/index.md
 ```
 
 **Deu:**
@@ -533,7 +533,7 @@ Régua declarada pelo próprio índice (`git ls-files 'docs/**/*.md' | wc -l`): 
 **Mede com:**
 
 ```bash
-cd /Users/rafaelmelgaco/DeskcommCRM-packaging && sed -n '17,20p' lib/auth/rate-limit.ts && sed -n '4p' lib/ai/dispatcher/rate-limit.ts
+cd "$(git rev-parse --show-toplevel)" && sed -n '17,20p' lib/auth/rate-limit.ts && sed -n '4p' lib/ai/dispatcher/rate-limit.ts
 ```
 
 **Deu:**
@@ -551,7 +551,7 @@ lib/auth/rate-limit.ts:17-19: "Janela FIXA (é o que `checkRateLimit` implementa
 **Mede com:**
 
 ```bash
-cd /Users/rafaelmelgaco/DeskcommCRM-packaging && sed -n '24,34p' lib/ai/gateway.ts
+cd "$(git rev-parse --show-toplevel)" && sed -n '24,34p' lib/ai/gateway.ts
 ```
 
 **Deu:**
@@ -569,7 +569,7 @@ lib/ai/gateway.ts:24-33 — `export type ModelId = "anthropic/claude-sonnet-5" |
 **Mede com:**
 
 ```bash
-cd /Users/rafaelmelgaco/DeskcommCRM-packaging && grep -rln 'export async function POST' app/api/v1/ | wc -l && grep -rln 'Idempotency-Key' app/api/v1/ && grep -rn 'redis|upstash' 'app/api/v1/lgpd/requests/[id]/approve/route.ts'
+cd "$(git rev-parse --show-toplevel)" && grep -rln 'export async function POST' app/api/v1/ | wc -l && grep -rln 'Idempotency-Key' app/api/v1/ && grep -rn 'redis|upstash' 'app/api/v1/lgpd/requests/[id]/approve/route.ts'
 ```
 
 **Deu:**
@@ -587,7 +587,7 @@ cd /Users/rafaelmelgaco/DeskcommCRM-packaging && grep -rln 'export async functio
 **Mede com:**
 
 ```bash
-cd /Users/rafaelmelgaco/DeskcommCRM-packaging && grep -rn 'base64url' app/api/v1/leads/_handler.ts app/api/v1/messages/_handler.ts && for f in app/api/v1/messages/_handler.ts app/api/v1/leads/_handler.ts app/api/v1/admin/inbox/conversations/route.ts; do printf '%s createHmac=' $f; grep -c createHmac $f; done && grep -rln createHmac app/api/v1/
+cd "$(git rev-parse --show-toplevel)" && grep -rn 'base64url' app/api/v1/leads/_handler.ts app/api/v1/messages/_handler.ts && for f in app/api/v1/messages/_handler.ts app/api/v1/leads/_handler.ts app/api/v1/admin/inbox/conversations/route.ts; do printf '%s createHmac=' $f; grep -c createHmac $f; done && grep -rln createHmac app/api/v1/
 ```
 
 **Deu:**
@@ -607,7 +607,7 @@ leads/_handler.ts:125 e messages/_handler.ts:143 decodificam com `JSON.parse(Buf
 **Mede com:**
 
 ```bash
-cd /Users/rafaelmelgaco/DeskcommCRM-packaging && grep -rin 'x-ratelimit' --include='*.ts' --include='*.tsx' . | grep -v node_modules && grep -rn 'Retry-After' --include='*.ts' lib/ app/ | grep -v test
+cd "$(git rev-parse --show-toplevel)" && grep -rin 'x-ratelimit' --include='*.ts' --include='*.tsx' . | grep -v node_modules && grep -rn 'Retry-After' --include='*.ts' lib/ app/ | grep -v test
 ```
 
 **Deu:**
@@ -627,7 +627,7 @@ cd /Users/rafaelmelgaco/DeskcommCRM-packaging && grep -rin 'x-ratelimit' --inclu
 **Mede com:**
 
 ```bash
-cd /Users/rafaelmelgaco/DeskcommCRM-packaging && grep -rln 'NextResponse.json' app/api/v1/ && grep -rln 'from "@/lib/api/wrappers"' app/api/v1/ | wc -l && grep -n 'X-Request-Id' lib/api/wrappers.ts
+cd "$(git rev-parse --show-toplevel)" && grep -rln 'NextResponse.json' app/api/v1/ && grep -rln 'from "@/lib/api/wrappers"' app/api/v1/ | wc -l && grep -n 'X-Request-Id' lib/api/wrappers.ts
 ```
 
 **Deu:**
@@ -647,7 +647,7 @@ lib/api/wrappers.ts seta o header em 3 pontos (linhas 56, 81, 91) — ok()/fail(
 **Mede com:**
 
 ```bash
-cd /Users/rafaelmelgaco/DeskcommCRM-packaging && grep -rin 's3' --include='*.ts' --include='*.sql' lib/ app/api/v1/cron/ supabase/baseline.sql | grep -i 'audit\|cold\|arquiv' && grep -rn 'Retencao 5 anos' supabase/baseline.sql
+cd "$(git rev-parse --show-toplevel)" && grep -rin 's3' --include='*.ts' --include='*.sql' lib/ app/api/v1/cron/ supabase/baseline.sql | grep -i 'audit\|cold\|arquiv' && grep -rn 'Retencao 5 anos' supabase/baseline.sql
 ```
 
 **Deu:**
@@ -665,7 +665,7 @@ Zero ocorrências de arquivamento em S3 ligado ao audit log. O único vestígio 
 **Mede com:**
 
 ```bash
-cd /Users/rafaelmelgaco/DeskcommCRM-packaging && grep -rn 'UNSUBSCRIBE' --include='*.ts' lib/ app/ workers/
+cd "$(git rev-parse --show-toplevel)" && grep -rn 'UNSUBSCRIBE' --include='*.ts' lib/ app/ workers/
 ```
 
 **Deu:**
@@ -685,7 +685,7 @@ lib/channels/pos-entrada.ts:73 — `export const STOP_RX = /(?<![\p{L}\p{N}])(ST
 **Mede com:**
 
 ```bash
-cd /Users/rafaelmelgaco/DeskcommCRM-packaging && python3 -c "import json;print(json.load(open('package.json'))['scripts']['typecheck'])" && ls tsconfig*.json
+cd "$(git rev-parse --show-toplevel)" && python3 -c "import json;print(json.load(open('package.json'))['scripts']['typecheck'])" && ls tsconfig*.json
 ```
 
 **Deu:**
@@ -703,7 +703,7 @@ typecheck = `tsc --noEmit -p tsconfig.typecheck.json`. Existem DOIS tsconfig: ts
 **Mede com:**
 
 ```bash
-cd /Users/rafaelmelgaco/DeskcommCRM-packaging && gh run view --job 94858059457 --log | grep -a 'Test Files\|Tests '
+cd "$(git rev-parse --show-toplevel)" && gh run view --job 94858059457 --log | grep -a 'Test Files\|Tests '
 ```
 
 **Deu:**
@@ -721,7 +721,7 @@ Job `invariants` do run 31828419528 (ci.yml, main, HEAD 840917ed, 2026-08-14T18:
 **Mede com:**
 
 ```bash
-cd /Users/rafaelmelgaco/DeskcommCRM-packaging && sed -n '118,140p' playwright.config.ts
+cd "$(git rev-parse --show-toplevel)" && sed -n '118,140p' playwright.config.ts
 ```
 
 **Deu:**
@@ -739,7 +739,7 @@ playwright.config.ts:118-138 — `webServer: { command: \`pnpm exec next start -
 **Mede com:**
 
 ```bash
-cd /Users/rafaelmelgaco/DeskcommCRM-packaging && grep -n '      - name:' .github/workflows/ci.yml
+cd "$(git rev-parse --show-toplevel)" && grep -n '      - name:' .github/workflows/ci.yml
 ```
 
 **Deu:**
@@ -759,7 +759,7 @@ verify tem 5 passos executáveis: 'Typecheck' (pnpm typecheck), 'Lint' (pnpm lin
 **Mede com:**
 
 ```bash
-cd /Users/rafaelmelgaco/DeskcommCRM-packaging && ls tests/e2e/*.spec.ts | wc -l && python3 -c "import yaml;e=yaml.safe_load(open('.github/workflows/e2e.yml'))['jobs']['e2e']['env'];print('RODOU',len(e['SPECS_PARTE_1'].split())+len(e['SPECS_PARTE_2'].split()),'FORA',len(e['FORA_DO_CI'].split()))"
+cd "$(git rev-parse --show-toplevel)" && ls tests/e2e/*.spec.ts | wc -l && python3 -c "import yaml;e=yaml.safe_load(open('.github/workflows/e2e.yml'))['jobs']['e2e']['env'];print('RODOU',len(e['SPECS_PARTE_1'].split())+len(e['SPECS_PARTE_2'].split()),'FORA',len(e['FORA_DO_CI'].split()))"
 ```
 
 **Deu:**

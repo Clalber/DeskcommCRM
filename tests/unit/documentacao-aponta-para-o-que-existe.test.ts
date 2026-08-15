@@ -61,8 +61,20 @@ const PONTEIROS_MORTOS_ACEITOS = new Set([
   "docs/runbooks/ai-credentials-rotation.md::scripts/rotate-ai-cred-aes-key.ts",
 ]);
 
-/** Nomes ilustrativos: `lib/foo/bar.ts` não é ponteiro, é exemplo. */
-const EH_PLACEHOLDER = /(^|\/)(foo|bar|baz|exemplo|caminho|nome-da-nota|NNNN|\.\.\.|<)/;
+/**
+ * Nomes ilustrativos: `lib/foo/bar.ts` não é ponteiro, é exemplo.
+ *
+ * O segmento tem que terminar ali — `(?=\/|\.|$)`. Sem essa âncora, a alternativa
+ * `bar` casava o começo de `barra-do-navegador`, e `lib/branding/barra-do-navegador.ts`
+ * (arquivo REAL, existe hoje) ficava invisível ao gate: se alguém o renomeasse, o
+ * documento continuaria apontando para o vazio com o gate verde. Uma isenção
+ * larga demais é pior que isenção nenhuma, porque parece cobertura.
+ *
+ * `...`, `<` e `NNNN` seguem sem âncora de propósito: são marcas de reticência e de
+ * placeholder de template (`<timestamp>`, `NNNN_slug.sql`), não nomes de segmento.
+ */
+const EH_PLACEHOLDER =
+  /(^|\/)(?:(?:foo|bar|baz|exemplo|caminho|nome-da-nota)(?=\/|\.|$)|NNNN|\.\.\.|<)/;
 
 const LINK_RELATIVO = /\[[^\]]*\]\((?!https?:|#|mailto:)([^)#\s]+)/g;
 const PATH_EM_CRASE =
@@ -136,17 +148,32 @@ describe("documentação — o que ela aponta existe", () => {
 
     const violacoes: string[] = [];
 
-    for (const doc of docs) {
-      const texto = fs.readFileSync(path.join(RAIZ, doc), "utf8");
-      const semCitacao = texto
-        .split("\n")
-        // Linhas que EXPLICAM o erro passado (citando a frase entre aspas ou em
-        // bloco de nota) são legítimas — o que se proíbe é a afirmação em vigor.
-        .filter((l) => !l.trimStart().startsWith(">") && !l.includes("já disse") && !l.includes("dizia"))
-        .join("\n");
+    /**
+     * A isenção olha o que vem ANTES da frase, não a linha inteira.
+     *
+     * A primeira versão filtrava a linha toda com `!l.includes("dizia")`, e isso
+     * abria um buraco medido: `Nota: o \`imagens-ok\` ainda não é obrigatório, ao
+     * contrário do que a doc dizia.` passava verde — afirmação FALSA e EM VIGOR,
+     * isenta porque a palavra aparecia depois dela. Em prosa pt-br, "dizia" é
+     * palavra comum; vetar a linha por contê-la é vetar quase qualquer parágrafo.
+     *
+     * A distinção que sobrevive é posicional: quem CITA o erro passado põe a marca
+     * antes ("o arquivo dizia \`…\`"); quem AFIRMA põe a frase primeiro. 60
+     * caracteres cobrem a introdução típica sem alcançar a oração seguinte.
+     */
+    const CITA = /(já disse|dizia|dizendo|afirmava|carregou|carregava|["“«])[^"“«]{0,60}$/;
 
-      for (const frase of FRASES_MORTAS) {
-        if (semCitacao.includes(frase)) violacoes.push(`${doc}: "${frase}"`);
+    for (const doc of docs) {
+      const linhas = fs.readFileSync(path.join(RAIZ, doc), "utf8").split("\n");
+
+      for (const linha of linhas) {
+        if (linha.trimStart().startsWith(">")) continue; // bloco de nota
+        for (const frase of FRASES_MORTAS) {
+          const i = linha.indexOf(frase);
+          if (i === -1) continue;
+          if (CITA.test(linha.slice(0, i))) continue;
+          violacoes.push(`${doc}: "${frase}"`);
+        }
       }
     }
 

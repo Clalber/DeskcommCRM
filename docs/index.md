@@ -10,8 +10,12 @@ audited_against: origin/main @ 789dfa6 (v1.0.0, 2026-07-27)
 
 # Índice da documentação — DeskcommCRM
 
-Mapa dos **149** arquivos `.md` de `docs/`, espalhados por **24** subpastas — régua:
-`git ls-files 'docs/**/*.md' | wc -l`. Existe porque a documentação cresceu sem ponto
+Mapa dos **154** arquivos `.md` de `docs/`, espalhados por **20** subpastas — medido em
+2026-08-14, com as réguas ao lado: `git ls-files 'docs/**/*.md' | wc -l` e
+`git ls-files 'docs/**/*.md' | sed 's|^docs/||;s|/.*||' | sort -u | wc -l`. Os dois números
+estavam errados (149 e 24) e a segunda régua nem existia — é a mesma classe que
+[`audits/2026-08-14-afirmacoes-de-estado.md`](audits/2026-08-14-afirmacoes-de-estado.md)
+cataloga. Existe porque a documentação cresceu sem ponto
 de entrada: sem este índice, humano e agente não acham o que já foi decidido e
 reescrevem por cima.
 
@@ -123,6 +127,8 @@ acessibilidade).
 | [`testing/user-journey-map.md`](testing/user-journey-map.md) | **Mapa de jornadas vivo** — casos, prioridade `[P0]`, achados. Atualizar sempre |
 | [`testing/HANDOFF-vps-qa.md`](testing/HANDOFF-vps-qa.md) | Receita do ambiente fresco estilo VPS |
 | [`harness-audit.md`](harness-audit.md) | **Auditoria do harness** — 20 itens + nível de maturidade |
+| [`audits/2026-08-14-afirmacoes-de-estado.md`](audits/2026-08-14-afirmacoes-de-estado.md) | **393 afirmações de estado medidas contra a fonte**, cada uma com o comando que a responde. É o retrato datado que sustenta as correções de doutrina desta data — releia a data antes de citar qualquer número dele |
+| [`audits/2026-08-14-alinhamento-stable-v1.3.0.md`](audits/2026-08-14-alinhamento-stable-v1.3.0.md) | O que a tag `v1.3.0` — que é o kit que roda na VPS, e não a `main` — de fato contém |
 | [`../tests/e2e/README.md`](../tests/e2e/README.md) | Como rodar os E2E |
 
 ## 8. Execução — planos, épicos, handoffs
