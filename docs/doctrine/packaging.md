@@ -104,22 +104,24 @@ OCI — no mínimo `source`, `revision`, `version`, `licenses` — e é constru�
   das três imagens não constrói. Ele existe porque a matriz gera um nome de check por imagem,
   e exigir os três pelo nome faria uma quarta imagem, um dia, escapar do gate em silêncio.
 
-  > **Pendência de ativação — leia antes de citar esta linha como garantia.** `imagens-ok`
-  > **ainda não está** na branch protection. Medido em 2026-08-13:
+  > **Ativado.** `imagens-ok` **é** required check da `main`. Medido em 2026-08-14:
   >
   > ```console
   > $ gh api repos/melgarafael/DeskcommCRM/branches/main/protection \
   >     --jq '.required_status_checks.contexts|join(", ")'
-  > verify, build-and-size, invariants, e2e
+  > verify, build-and-size, invariants, e2e, imagens-ok
   > ```
   >
-  > Enquanto isso valer, este invariante é **conselho, não gate**. A ativação é o último passo
-  > do merge desta doutrina, e não pode vir antes: um required check que não existe na base
-  > dos PRs já abertos bloqueia todos eles até que cada um rebase. O roteiro, com as
-  > verificações de cada passo, está em
-  > [`../runbooks/ativar-packaging.md`](../runbooks/ativar-packaging.md). Uma versão anterior deste
-  > parágrafo afirmava, no presente, que o check já era obrigatório — exatamente o defeito que
-  > esta doutrina existe para impedir, cometido dentro dela.
+  > Este parágrafo já disse as duas coisas erradas, em ordem: primeiro afirmou no presente
+  > que o check era obrigatório quando não era, depois — corrigido — afirmou que "ainda não
+  > está" e **continuou afirmando isso depois da ativação**, que aconteceu no mesmo dia. O
+  > segundo erro é o mais instrutivo: o texto foi escrito *sabendo* que a ativação era o
+  > passo seguinte, e ninguém volta para trocar um "ainda não" por um "já". **Nota de
+  > pendência é dívida com data de vencimento e sem cobrador.** Quem ler qualquer uma das
+  > duas versões mede contra a régua errada — reconfira na fonte, com o comando acima.
+  >
+  > O roteiro da ativação, com as verificações de cada passo, está em
+  > [`../runbooks/ativar-packaging.md`](../runbooks/ativar-packaging.md).
 
   O gate importa porque já falhou: em 2026-08-12 um bump de `next` passou pelos quatro
   obrigatórios e quebrou o build da imagem na `main`, porque o `next build` dentro do
@@ -332,17 +334,46 @@ do banco. É o passo que mais trava na estreia de uma imagem nova.
        for i in deskcommcrm deskcomm-worker deskcomm-scheduler; do
          echo "$i: $(ghcr_status $i X.Y.Z)"; done      → 200 nas três
        403 em alguma? Torne o pacote público ANTES de seguir
-[ ] 8. `stable` aponta para esta versão (mesmo digest de X.Y.Z):
-       ghcr_status deskcommcrm stable              → 200, e o digest bate
-[ ] 9. A imagem reporta a versão certa:
+[ ] 8. A imagem reporta a versão certa:
        docker run --rm ghcr.io/melgarafael/deskcommcrm:X.Y.Z \
          node -e 'console.log(process.env.APP_VERSION)'   → X.Y.Z
-[ ] 10. `gh release create vX.Y.Z` com as notas do CHANGELOG
+[ ] 9. `gh release create vX.Y.Z` com as notas do CHANGELOG
+[ ] 10. SÓ AGORA: `stable` e X.Y.Z são o MESMO digest, nas três imagens:
+        for i in deskcommcrm deskcomm-worker deskcomm-scheduler; do
+          for t in X.Y.Z stable; do
+            echo -n "$i:$t "; docker buildx imagetools inspect \
+              ghcr.io/melgarafael/$i:$t --format '{{.Manifest.Digest}}'; done; done
+        → o par de cada imagem tem que bater
+        Não bateu? Alguma coisa republicou depois do push da tag. NÃO siga:
+        um canal apontando para build diferente da versão é o invariante 3
+        quebrado dentro de casa.
 [ ] 11. Apagar tags de branch dos três pacotes — `docs-doutrina-packaging` e
         qualquer outra que tenha nascido de um `workflow_dispatch` de ensaio.
         Tag de branch é artefato de trabalho: se ficar, vira canal órfão que
         alguém pina por engano achando que é release, e ela nunca mais se move.
         O registry já carrega uma dessas (`quebrada-teste`) como lembrete.
+
+> **Por que a checagem de `stable` é o item 10 e não o 8.** Ela já foi o 8, antes do
+> `gh release create` — e nessa ordem ela não provava nada. Medido na v1.3.0: o
+> `release: published` estava ligado no workflow, `gh release create` disparou um
+> segundo build do mesmo commit, e esse build **moveu `1.3.0` e `1.3`** sem mover
+> `stable`. A conferência do item 8 tinha passado, verde e honesta, cinco minutos
+> antes do ato que a invalidou. **Verificação que roda antes do passo que pode
+> quebrá-la é verificação de nada.** O gatilho foi removido (guarda em
+> `tests/unit/packaging-artefato-do-cliente.test.ts`), e a conferência foi para
+> depois — cinto e suspensório, porque o próximo jeito de republicar uma tag ainda
+> não foi inventado.
+
+        EXIGE ESCOPO QUE O TOKEN PADRÃO DO `gh` NÃO TEM. Medido no corte da
+        1.3.0: com `gist, read:org, repo, workflow` a API devolve 403 tanto para
+        listar quanto para apagar versão de pacote. Antes de chegar aqui:
+            gh auth refresh -h github.com -s read:packages,delete:packages
+        Sem isso o item fica pendente e a tag de ensaio segue viva — foi o que
+        aconteceu na 1.3.0. (Resolvido em 2026-08-14: as três versions foram
+        apagadas e a tag responde 404 nos três pacotes. Apague a **version**, e
+        só depois de conferir que ela não carrega OUTRA tag junto — no GHCR se
+        apaga version, não tag, e uma version com `1.3.0` ao lado levaria a
+        release embora.)
 [ ] 12. Ensaio de atualização numa instalação real (não fresca): update.sh a partir da
         versão anterior, e o /api/v1/health responde X.Y.Z
 ```
