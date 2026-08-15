@@ -11765,6 +11765,224 @@ grant  execute on function public.fn_definir_marca_da_organizacao(uuid, uuid, js
 notify pgrst, 'reload schema';
 
 
+-- ---- logo da marca: as FUNÇÕES (migration 0158) ----
+--
+-- O LOGO SAI DA CAIXA DE TEXTO E VIRA ARQUIVO — a metade que cria função.
+--
+-- ⚠️ POR QUE A 0158 ENTRA NO APÊNDICE EM DOIS PEDAÇOS, E NÃO EM UM.
+--
+-- `tests/unit/varredura-anon-e-o-ultimo-bloco.test.ts` proíbe `create function` e
+-- `grant ... to anon` DEPOIS do bloco da VARREDURA anon (logo abaixo). Mas
+-- `platform_branding` — a tabela que ganha a coluna `logo_path` — é criada no
+-- bloco da 0155, que vem DEPOIS da varredura, no fim do arquivo. Um bloco único
+-- quebraria uma das duas coisas: colado aqui, o `alter table
+-- public.platform_branding` rodaria sobre tabela inexistente e o `install.sh`
+-- (que usa `ON_ERROR_STOP=1`) abortaria a instalação inteira; colado no fim, as
+-- duas funções abaixo nasceriam com EXECUTE para `anon` em todo clone que
+-- ATUALIZA, que é o buraco que a varredura existe para fechar.
+--
+-- Então: FUNÇÕES aqui (antes da varredura), BUCKET e COLUNA no fim do arquivo
+-- (depois da 0155). Os dois blocos são idempotentes e independentes na ordem —
+-- nenhuma das funções abaixo lê `platform_branding`.
+--
+-- ─── Por que uma função PRÓPRIA para o logo ─────────────────────────────────
+--
+-- `fn_definir_marca_da_organizacao` (0157) faz `jsonb_set(settings, '{branding}',
+-- p_marca)` — substitui o objeto INTEIRO. Gravar o logo por ela faria "salvar o
+-- nome" apagar o logo, em silêncio, com a tela dizendo "salvo". Duas escritas
+-- independentes precisam de duas funções que façam merge cada uma no seu campo.
+--
+-- ─── E por que a 0157 é RECRIADA aqui (forward-fix) ─────────────────────────
+--
+-- Pelo mesmo motivo, de volta: ela precisa PRESERVAR `logo_path` ao substituir o
+-- objeto. Sem isso, a ordem natural de quem configura a marca ("sobe o logo,
+-- depois troca o nome") perde o logo.
+--
+-- Idempotente: `create or replace function`, revokes e grants declarativos.
+
+create or replace function public.fn_definir_logo_da_organizacao(
+  p_org   uuid,
+  p_actor uuid,
+  p_path  text
+) returns integer
+    language plpgsql
+    volatile
+    security definer
+    set search_path to 'public', 'pg_temp'
+as $$
+declare
+  v_linhas integer;
+  v_path   text;
+begin
+  if p_org is null or p_actor is null then
+    raise exception 'logo_da_organizacao_argumento_nulo'
+      using errcode = '22023';
+  end if;
+
+  v_path := nullif(btrim(coalesce(p_path, '')), '');
+
+  -- O PREFIXO ASSEVERADO DENTRO DO BANCO — o gate que sobrevive ao segundo
+  -- chamador. A rota monta o caminho a partir da organização resolvida do
+  -- cookie, mas "a rota monta certo" é promessa de UM chamador. Sem esta linha,
+  -- um caminho de outro escopo (o `platform/...` que qualquer pessoa lê no HTML
+  -- da tela de login) entraria como logo da organização — e o delete-on-replace
+  -- da rota, rodando como `service_role`, apagaria o logo da instalação inteira
+  -- na troca seguinte.
+  if v_path is not null
+     and v_path !~ ('^' || p_org::text || '/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.(png|jpg)$')
+  then
+    raise exception 'logo_da_organizacao_caminho_fora_do_escopo'
+      using errcode = '22023';
+  end if;
+
+  if not exists (
+       select 1 from public.user_organizations uo
+        where uo.user_id = p_actor
+          and uo.organization_id = p_org
+          and uo.role = 'admin'
+          and uo.revoked_at is null
+     )
+     and not exists (
+       select 1 from public.platform_admins pa
+        where pa.user_id = p_actor
+          and pa.revoked_at is null
+     )
+  then
+    raise exception 'logo_da_organizacao_sem_permissao'
+      using errcode = '42501';
+  end if;
+
+  -- Merge no CAMPO. `jsonb_set` direto em '{branding,logo_path}' NÃO serviria:
+  -- com `branding` ausente, `create_missing` só cria a ÚLTIMA chave e o caminho
+  -- intermediário faltando devolve o jsonb original intocado — silenciosamente.
+  update public.organizations o
+     set settings = case
+           when v_path is null
+             then jsonb_set(
+                    coalesce(o.settings, '{}'::jsonb), '{branding}',
+                    coalesce(o.settings -> 'branding', '{}'::jsonb) - 'logo_path', true)
+           else jsonb_set(
+                    coalesce(o.settings, '{}'::jsonb), '{branding}',
+                    coalesce(o.settings -> 'branding', '{}'::jsonb)
+                      || jsonb_build_object('logo_path', v_path), true)
+         end
+   where o.id = p_org;
+
+  get diagnostics v_linhas = row_count;
+  return v_linhas;
+end;
+$$;
+
+comment on function public.fn_definir_logo_da_organizacao(uuid, uuid, text) is
+  'Grava (ou apaga) organizations.settings.branding.logo_path com merge no CAMPO — não toca em app_name, accent_hex nem nas demais chaves de settings. Assevera que o caminho começa pelo proprio organization_id: caminho de outro escopo levanta 22023. Papel insuficiente levanta 42501. Devolve linhas afetadas: 0 = a organização não existe. Chamador: app/api/v1/marca/logo/route.ts.';
+
+-- ── O FORWARD-FIX DA 0157 ───────────────────────────────────────────────────
+--
+-- As três linhas de `logo_path` no `case` abaixo são a razão de a 0157 aparecer
+-- de novo. Sem elas, salvar nome/cor pela tela apaga o logo da organização, em
+-- silêncio. Vigiado por `tests/invariants/marca-logo.test.ts`.
+
+create or replace function public.fn_definir_marca_da_organizacao(
+  p_org   uuid,
+  p_actor uuid,
+  p_marca jsonb
+) returns integer
+    language plpgsql
+    volatile
+    security definer
+    set search_path to 'public', 'pg_temp'
+as $$
+declare
+  v_linhas integer;
+  v_hex    text;
+  v_limpar boolean;
+begin
+  if p_org is null or p_actor is null then
+    raise exception 'marca_da_organizacao_argumento_nulo'
+      using errcode = '22023';
+  end if;
+
+  v_limpar := p_marca is null or jsonb_typeof(p_marca) = 'null';
+
+  if not v_limpar and jsonb_typeof(p_marca) <> 'object' then
+    raise exception 'marca_da_organizacao_forma_invalida: %', jsonb_typeof(p_marca)
+      using errcode = '22023';
+  end if;
+
+  v_hex := nullif(p_marca ->> 'accent_hex', '');
+  if v_hex is not null and v_hex !~ '^#[0-9a-f]{6}$' then
+    raise exception 'marca_da_organizacao_accent_hex_invalido'
+      using errcode = '22023';
+  end if;
+
+  if not exists (
+       select 1 from public.user_organizations uo
+        where uo.user_id = p_actor
+          and uo.organization_id = p_org
+          and uo.role = 'admin'
+          and uo.revoked_at is null
+     )
+     and not exists (
+       select 1 from public.platform_admins pa
+        where pa.user_id = p_actor
+          and pa.revoked_at is null
+     )
+  then
+    raise exception 'marca_da_organizacao_sem_permissao'
+      using errcode = '42501';
+  end if;
+
+  update public.organizations o
+     set settings = case
+           -- "Limpar" com logo gravado NÃO apaga o logo: o campo tem controle
+           -- próprio na tela, e limpar nome+cor responde a OUTRA pergunta.
+           when v_limpar and coalesce(o.settings #>> '{branding,logo_path}', '') = ''
+             then coalesce(o.settings, '{}'::jsonb) - 'branding'
+           when v_limpar
+             then jsonb_set(
+                    coalesce(o.settings, '{}'::jsonb), '{branding}',
+                    jsonb_build_object('logo_path', o.settings #> '{branding,logo_path}'), true)
+           -- `p_marca || preservado`: o lado DIREITO vence em `||`, então o
+           -- `logo_path` gravado sobrevive à substituição do objeto.
+           -- `jsonb_strip_nulls` SÓ no fragmento preservado — nunca em `p_marca`,
+           -- cujo `app_name: null` é um valor com significado.
+           else jsonb_set(
+                    coalesce(o.settings, '{}'::jsonb), '{branding}',
+                    p_marca || jsonb_strip_nulls(
+                      jsonb_build_object('logo_path', o.settings #> '{branding,logo_path}')), true)
+         end
+   where o.id = p_org;
+
+  get diagnostics v_linhas = row_count;
+  return v_linhas;
+end;
+$$;
+
+comment on function public.fn_definir_marca_da_organizacao(uuid, uuid, jsonb) is
+  'Grava organizations.settings.branding com merge ATÔMICO (jsonb_set), sem tocar nas demais chaves do jsonb (llm, routing, visibility_mode, atrito, ai_dispatch_mode, canonical_conversation_tags, lost_reasons_extra, plan) e PRESERVANDO branding.logo_path, que tem escritor próprio (fn_definir_logo_da_organizacao, migration 0158). Devolve linhas afetadas: 0 = a organização não existe. Papel insuficiente levanta 42501. Chamador: app/actions/settings/updateMarcaDaOrganizacao.ts.';
+
+-- OS DOIS REVOKES EM CADA FUNÇÃO (CLAUDE.md, item 9) — origens DISTINTAS de
+-- EXECUTE, e tratar uma só deixa a função exposta com o gate verde:
+--   (A) `from public`  — o grant que o Postgres dá a PUBLIC ao criar qualquer
+--       função; `revoke ... from anon` não o remove.
+--   (B) `from anon`    — o grant DIRETO do `ALTER DEFAULT PRIVILEGES ... GRANT
+--       ALL ON FUNCTIONS TO anon` (linha ~3972 deste arquivo), que vale para
+--       toda função criada DEPOIS dele — isto é, para todo apêndice.
+-- `from authenticated` pelo motivo de (B) e mais um: as duas são VOLÁTEIS.
+-- Definer volátil alcançável por qualquer usuário logado é escrita cross-tenant.
+revoke execute on function public.fn_definir_logo_da_organizacao(uuid, uuid, text)
+  from public, anon, authenticated;
+grant  execute on function public.fn_definir_logo_da_organizacao(uuid, uuid, text)
+  to service_role;
+
+revoke execute on function public.fn_definir_marca_da_organizacao(uuid, uuid, jsonb)
+  from public, anon, authenticated;
+grant  execute on function public.fn_definir_marca_da_organizacao(uuid, uuid, jsonb)
+  to service_role;
+
+notify pgrst, 'reload schema';
+
+
 -- ---- VARREDURA anon: função nova nasce exposta em quem ATUALIZA (migration 0116) ----
 --
 -- ⚠️ ESTE BLOCO É, DE PROPÓSITO, O ÚLTIMO DO ARQUIVO. Apêndice novo entra ANTES
@@ -11980,5 +12198,84 @@ drop trigger if exists trg_platform_branding_touch on public.platform_branding;
 create trigger trg_platform_branding_touch
   before update on public.platform_branding
   for each row execute function public.fn_touch_updated_at();
+
+notify pgrst, 'reload schema';
+
+
+-- ---- logo da marca: BUCKET e COLUNA (migration 0158) ----
+--
+-- A segunda metade da 0158. As funções estão ANTES do bloco da VARREDURA anon,
+-- e a razão de a migration entrar em dois pedaços está escrita lá: este pedaço
+-- depende de `platform_branding`, criada no bloco da 0155, que é o último do
+-- arquivo — e aquele pedaço cria função, o que a varredura proíbe depois dela.
+--
+-- ─── Por que o bucket é PÚBLICO — o primeiro do repositório ─────────────────
+--
+-- Os quatro que já existiam (`ai-policy`, `lgpd-exports`, `skill-assets`,
+-- `whatsapp-media`) nascem `public = false`. Este não, e a razão é medida: o logo
+-- é renderizado num `<img>` da tela de LOGIN (`app/(public)/layout.tsx`), servida
+-- a quem NÃO tem sessão. URL assinada exige um segredo por requisição e VENCE — a
+-- marca da instalação sumiria da fachada no dia do vencimento, sem ninguém tocar
+-- em nada, e "o logo sumiu" não apontaria para a causa.
+--
+-- O que mantém a exceção contida, e o que `tests/invariants/marca-logo.test.ts`
+-- mede:
+--   * bucket EXCLUSIVO de logo — nada de conversa, export ou base de conhecimento
+--     mora aqui, então "público" não vaza histórico de cliente nenhum;
+--   * ZERO policy em `storage.objects` para ele. `public = true` no Supabase abre
+--     a LEITURA pelo endpoint `/object/public/...`; não abre INSERT nem DELETE,
+--     que continuam só pelo `service_role`, pela rota, depois dos gates;
+--   * caminho não-enumerável (`<prefixo>/<uuid v4>.<png|jpg>`);
+--   * `allowed_mime_types` é BACKSTOP, não a defesa — o Storage compara com o
+--     header que QUEM SOBE escolheu. Quem decide é o farejador de bytes em
+--     `lib/branding/logo-arquivo.ts`.
+--
+-- Registrado em `docs/threat-model.md` ao lado da linha de `whatsapp-media`.
+--
+-- ─── Por que 512 KB ────────────────────────────────────────────────────────
+--
+-- `next.config.ts` roda com `images.unoptimized` e os dois renders do logo usam
+-- `<img>` cru (a URL é de quem hospeda; `next/image` exige allowlist fechada em
+-- BUILD e a imagem é pré-buildada). O arquivo vai INTEIRO para o navegador em
+-- toda página. E a cota do Supabase é do CLIENTE — 1 GB no plano gratuito,
+-- compartilhado com `whatsapp-media`, que não tem poda.
+--
+-- Idempotente e auto-curativo: `on conflict do update` no bucket (o `update.sh`
+-- de um clone precisa CONVERGIR, não só criar), `add column if not exists`, e o
+-- BACKFILL vem antes da constraint — o `update.sh` roda SEM `ON_ERROR_STOP`, e
+-- uma constraint que estourasse deixaria a coluna sem validação em silêncio.
+
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('brand-logos', 'brand-logos', true, 524288, array['image/png', 'image/jpeg'])
+on conflict (id) do update
+  set public             = excluded.public,
+      file_size_limit    = excluded.file_size_limit,
+      allowed_mime_types = excluded.allowed_mime_types;
+
+alter table public.platform_branding
+  add column if not exists logo_path text;
+
+comment on column public.platform_branding.logo_path is
+  'Caminho do arquivo de logo em storage/brand-logos, sempre platform/<uuid>.<png|jpg>. Caminho e NÃO url: a url é função determinística do caminho + host do projeto (DIRC-C), e gravá-la amarraria a marca ao host de hoje. Vence logo_url, que continua como rede de rollback do .env. Escrito por app/api/v1/marca/logo/route.ts.';
+
+update public.platform_branding
+   set logo_path = null
+ where logo_path is not null
+   and logo_path !~ '^platform/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.(png|jpg)$';
+
+-- `drop if exists` + `add`, e não `add ... if not exists` (que o Postgres não tem
+-- para constraint): é o que torna a REGRA idempotente, e não só a criação.
+alter table public.platform_branding
+  drop constraint if exists platform_branding_logo_path;
+alter table public.platform_branding
+  add constraint platform_branding_logo_path check (
+    logo_path is null
+    or logo_path ~ '^platform/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.(png|jpg)$'
+  );
+
+-- ⚠️ CHECK de REGEX, não de conjunto: fica FORA da lista `PARES` de
+-- `tests/invariants/vocabulario-banco-x-typescript.test.ts`, cujo extrator só
+-- reconhece `= ANY (ARRAY[...])` e estoura sobre regex. Mesma razão de
+-- `platform_branding_accent_hex`.
 
 notify pgrst, 'reload schema';

@@ -203,6 +203,23 @@ Não avaliado por falta de execução/instância:
 - Se `next.config.ts` define CSP / security headers.
 - Storage: se o bucket `whatsapp-media` está privado de fato e se a expiração das signed
   URLs é adequada.
+- Storage, e este é MEDIDO e DECLARADO em vez de "não avaliado": `brand-logos` (migration
+  0158) é o **único bucket público** do repositório — os outros quatro nascem
+  `public = false`. A exceção existe porque o logo é renderizado num `<img>` da tela de
+  **login**, servida a quem não tem sessão, e URL assinada **vence**: a marca da instalação
+  sumiria da fachada sozinha no dia do vencimento. O que a contém, e o que
+  `tests/invariants/marca-logo.test.ts` reprova quando deixa de valer: bucket **exclusivo**
+  de logo (nada de conversa, export ou base de conhecimento mora nele, então "público" não
+  vaza histórico de cliente), **zero policy** em `storage.objects` citando o bucket
+  (`public = true` abre a LEITURA pelo endpoint `/object/public/...`; INSERT e DELETE
+  continuam só no `service_role`), caminho **não-enumerável** (`<prefixo>/<uuid v4>.<ext>`)
+  e teto de 512 KB. O que entra é decidido pelos **bytes** (`lib/branding/logo-arquivo.ts`),
+  nunca pelo `Content-Type` — `allowed_mime_types` do bucket e `file.type` na rota leem a
+  mesma string que quem sobe escolhe. **SVG é banido**: este repo não define CSP (ver o item
+  acima sobre `next.config.ts`), e SVG navegado direto do endereço da imagem executa script.
+  O que NÃO está coberto: um logo subido é **público para sempre até ser trocado** — quem
+  subir por engano uma arte confidencial precisa removê-la pela tela, e a URL antiga deixa
+  de existir junto com o arquivo (a rota apaga o anterior na troca).
 - Escopo do service role key no Supabase e rotação de chaves.
 - Efetividade do `beforeSend` do Sentry contra PII real.
 

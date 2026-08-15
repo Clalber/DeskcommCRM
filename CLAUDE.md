@@ -261,7 +261,19 @@ Checks **obrigatórios** na branch protection da `main` (verificado na configura
 - **`verify`** (`ci.yml`) — typecheck + lint + test:unit.
 - **`invariants`** (`ci.yml`) — `pnpm test:db`: sobe `pgvector/pgvector:pg17`, aplica `supabase/baseline.sql` em modo install (`ON_ERROR_STOP=1`) e update (idempotência), e roda os testes de invariante, incluindo o de isolamento RLS entre 2 organizações.
 - **`build-and-size`** (`perf.yml`) — `pnpm build` em Node 22.
-- **`e2e`** (`e2e.yml`) — sobe Supabase local, aplica o `baseline.sql` e roda **45 das 46 specs** Playwright (medido em 2026-08-14 @ `741c4ec8`; **reconte antes de citar**, com `ls tests/e2e/*.spec.ts | wc -l` e `grep -oE '[a-z0-9-]+\.spec\.ts' .github/workflows/e2e.yml | sort -u | wc -l` — este número já apodreceu **três** vezes, e uma delas foi eu copiando o `echo` do próprio workflow em vez de contar os arquivos). A **única** de fora é `vps-fresh-onboarding` (precisa de WAHA + Redis + Resend + Nuvemshop) — e ela é a **P0** da doutrina de QA Visual, ou seja, `e2e` verde **não** prova a jornada de instalação fresca, que é o produto que se vende.
+- **`e2e`** (`e2e.yml`) — sobe Supabase local, aplica o `baseline.sql` e roda **48 das 49 specs** Playwright (medido em 2026-08-14 @ `587a494d`; **reconte antes de citar** — este número já apodreceu **quatro** vezes). A **única** de fora é `vps-fresh-onboarding` (precisa de WAHA + Redis + Resend + Nuvemshop) — e ela é a **P0** da doutrina de QA Visual, ou seja, `e2e` verde **não** prova a jornada de instalação fresca, que é o produto que se vende.
+
+  **A receita antiga de recontagem estava errada** e é provavelmente uma das quatro causas do apodrecimento. `grep -oE '[a-z0-9-]+\.spec\.ts' .github/workflows/e2e.yml | sort -u | wc -l` devolve **49**, não 48: ele conta menções em COMENTÁRIOS do workflow — inclusive a lista dos que ficam de fora, que o arquivo documenta logo abaixo. Medir o arquivo inteiro mede quem é citado, não quem é invocado. O que roda são as variáveis `SPECS_PARTE_*`:
+
+  ```bash
+  ls tests/e2e/*.spec.ts | wc -l                    # 49 em disco
+  python3 - <<'PY'                                  # 48 que o CI invoca
+  import re
+  y = open(".github/workflows/e2e.yml", encoding="utf-8").read()
+  print(len({s for _, c in re.findall(r'(SPECS_PARTE_\d+):\s*>-\n((?:[ ]{8,}.*\n)+)', y)
+               for s in re.findall(r'[a-z0-9-]+\.spec\.ts', c)}))
+  PY
+  ```
 - **`imagens-ok`** (`publish-image.yml`) — reprova quando qualquer uma das três imagens Docker não constrói. **É obrigatório desde 2026-08-13**; este arquivo dizia o contrário em outro parágrafo (ver a doutrina de packaging acima, já corrigida).
 
 Todos os **cinco** são **obrigatórios** — medido em 2026-08-14 na branch protection:
