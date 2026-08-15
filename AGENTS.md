@@ -171,12 +171,19 @@ Medido em 2026-08-14 @ `741c4ec8`, com o comando ao lado de cada número:
   instalação fresca, que é o produto que se vende, continua sem gate. Se você mexeu nela, a
   prova é sua. *(Corrigido em 2026-08-14; a redação anterior — "4 das 32, não-obrigatório" —
   mudava a régua de qualquer triagem que a lesse.)*
-- Rate limit HTTP existe em **2** pontos do código (webhook de captação e dispatcher de IA);
-  login, signup, aceite de convite, crons e MCP estão sem. Não há lockout por conta no login.
+- Rate limit HTTP: `lib/auth/rate-limit.ts` cobre **login, signup, recuperação de senha e
+  aceite de convite** (contando por IP **e** por identificador hasheado); `checkRateLimit` cobre
+  o webhook de captação e o dispatcher de IA. **Crons e MCP seguem sem.** Meça antes de agir:
+  `grep -rln 'authRateLimited\|checkRateLimit(' app lib --include='*.ts' --include='*.tsx'`.
+  Esta linha dizia "existe em 2 pontos; login e signup estão sem" — era o estado anterior à
+  issue #64, e o `docs/threat-model.md` ainda carrega a versão velha, com nota de reauditoria.
 - Fallback do rate limit é **em memória** — sem Upstash configurado o limite é por processo.
 - `Idempotency-Key` implementado em **1** rota, apesar de o contrato prometer nos POSTs de criação.
-- **6 vars de `lib/env.ts` faltam no `.env.example`**, incluindo 3 secrets. Se você adicionar
-  env var, adicione nos dois lugares (item 9 do DoD).
+- **`.env.example` está completo** — medido em 2026-08-14: das 45 chaves de `lib/env.ts`, a
+  única ausente é `NODE_ENV`, que não é configuração do operador. Esta linha dizia que faltavam
+  6, "incluindo 3 secrets"; os três (`IMPERSONATE_COOKIE_SECRET`, `INTERNAL_CRON_SECRET`,
+  `LGPD_SIGNING_KEY`) estão lá. Se você adicionar env var, adicione nos dois lugares (item 9 do
+  DoD) — a regra continua valendo, o que caiu foi a dívida.
 - `lib/auth/invite-token.ts` cai em `"dev-fallback"` como secret HMAC se nenhum secret existir
   (inalcançável em produção, porque `INTERNAL_SECRET` é obrigatório e derruba o boot).
 - **89 dos 169 handlers de `app/api/**` usam service role** — sem gate automático para o filtro de
@@ -212,7 +219,7 @@ Lei completa em [`docs/doctrine/packaging.md`](docs/doctrine/packaging.md). O n�
 
 ## Critério de conclusão
 
-Vale a **Definition of Done de 15 itens em [`CLAUDE.md`](CLAUDE.md)**. Não declare pronto
+Vale a **Definition of Done em [`CLAUDE.md`](CLAUDE.md)** — conte lá em vez de confiar num número aqui (`sed -n '/^## Definition of Done/,/^Um staff engineer/p' CLAUDE.md | grep -cE '^[0-9]+\. '`; esta linha já disse 15 e o DoD tem 16). A régua tem que DELIMITAR a seção: a primeira versão desta linha oferecia `grep -c '^[0-9]\+\. \*\*' CLAUDE.md`, que devolve **25** — casa toda linha numerada em negrito do arquivo (anti-patterns, packaging, higiene de branches, migrations) e perde os itens 1–10 do próprio DoD, que não são negrito. Trocar o número pelo comando só ajuda se o comando responder à pergunta. Não declare pronto
 sem: typecheck/lint zerados, testes relevantes verdes, RLS testada se tocou tabela
 tenant-aware, migration + baseline + MANIFEST se mudou schema, prova visual se mudou UI, e a
 regra de packaging acima se mudou o artefato que o self-hoster instala.

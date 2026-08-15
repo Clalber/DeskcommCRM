@@ -118,7 +118,7 @@ sucesso" um site mudo. Detalhes em [`hostgator-setup-kit/README.md`](hostgator-s
 ### Primeiro acesso
 
 Abra `https://<seu-domínio>` (o cadeado leva ~1 min pra aparecer), entre com o admin, e tenha o
-**Google Authenticator** ou **Authy** à mão — o primeiro login de admin exige MFA. No onboarding,
+**Google Authenticator** ou **Authy** à mão *se* você quiser ligar a verificação em duas etapas — ela é **opcional** e fica em Configurações › Segurança; o primeiro login **não** a exige. No onboarding,
 escaneie o QR code com o WhatsApp do seu número.
 
 ### 🤖 Prefere que uma IA instale pra você?
@@ -336,12 +336,14 @@ pnpm test:db       # Postgres efêmero + baseline install/update + invariantes
 pnpm test:e2e      # Playwright (requer dev server)
 ```
 
-**Cinco checks são obrigatórios** pra mergear na `main` — todos verificados na branch protection, não só no papel. A régua, para reconferir em vez de acreditar nesta lista:
+**Estes checks são obrigatórios** pra mergear na `main`. A lista abaixo já disse "quatro" e depois "cinco" — **meça, não confie nela**:
 
-```console
-$ gh api repos/melgarafael/DeskcommCRM/branches/main/protection --jq '.required_status_checks.contexts|join(", ")'
-verify, build-and-size, invariants, e2e, imagens-ok
+```bash
+gh api repos/melgarafael/DeskcommCRM/branches/main/protection \
+  --jq '.required_status_checks.contexts|join(", ")'
+# em 2026-08-14: verify, build-and-size, invariants, e2e, imagens-ok
 ```
+
 
 | Check | O que faz |
 |---|---|
@@ -397,9 +399,12 @@ git commit -m "feat(escopo): descrição"
 # abre PR — o template já traz o checklist de Definition of Done
 ```
 
-Essa linha é a lista **completa** dos gates obrigatórios, de propósito: rodar só metade e descobrir o
-resto como surpresa vermelha depois de horas de espera é a pior primeira experiência que este
-repositório sabe entregar.
+Essas duas linhas são **tudo o que dá para rodar na sua máquina**, de propósito: rodar só metade e
+descobrir o resto como surpresa vermelha depois de horas de espera é a pior primeira experiência
+que este repositório sabe entregar.
+
+Dois gates obrigatórios **não** cabem aí e só rodam no CI: o `e2e` (precisa de Supabase local) e
+o `imagens-ok` (constrói as três imagens Docker). Verde na sua máquina não é verde no merge.
 
 **Definition of Done:** typecheck zero, lint zero, testes relevantes verdes, RLS testada se toca tabela tenant-aware, audit log emitido em mutações, migration versionada **+ apêndice no `baseline.sql`** se muda schema (senão a mudança não chega em quem se auto-hospeda). Detalhes em [`CLAUDE.md`](CLAUDE.md#definition-of-done).
 
