@@ -253,6 +253,65 @@ ok "aceita OpenAI vazia (é opcional)"           pass   v_openai    ""
 ok "rejeita senha curta"                        reject v_password  "1234567"        "muito curta"
 ok "aceita senha de 8+"                         pass   v_password  "12345678"
 
+echo "rede fora do ar: o sentinela 000 (issue #190)"
+# O dublê de curl das outras seções é `printf 200` INCONDICIONAL, então o ramo
+# `000` de todos os seis validadores nunca era exercitado por nenhum caso — e foi
+# assim que ele passou 6 versões sendo código morto.
+#
+# O dublê aqui imita o curl DE VERDADE quando a rede falha: `-w '%{http_code}'`
+# faz ele IMPRIMIR `000` e sair com código de erro. Era essa dupla que quebrava o
+# `|| echo 000` de dentro da substituição de comando: o echo CONCATENAVA com o
+# que o curl já tinha impresso e a variável virava `000000`, que não casa com
+# nenhum ramo. Os dois desfechos eram errados, em direções opostas — e os dois
+# estão cobertos abaixo, porque consertar um e não medir o outro deixaria metade
+# do defeito viva.
+rede_morta() {  # rede_morta <descrição> <pass|reject> <validador> <valor> [trecho esperado]...
+  local desc="$1" expect="$2" fn="$3" val="$4" out rc want
+  shift 4
+  out="$(bash -c '
+      INSTALL_SH_LIB=1 . ./install.sh
+      NEXT_PUBLIC_SUPABASE_URL="https://abcdefghijklmnop.supabase.co"
+      set +e
+      # curl real com -w: imprime 000 E devolve exit != 0.
+      curl() { printf 000; return 6; }
+      "$1" "$2"' _ "$fn" "$val" 2>&1)"; rc=$?
+  if [ "$expect" = pass ] && [ $rc -ne 0 ]; then
+    printf '  ✗ %s  (esperava seguir, barrou: %s)\n' "$desc" "$(printf '%s' "$out" | head -1)"; fail=1; return
+  fi
+  if [ "$expect" = reject ] && [ $rc -eq 0 ]; then
+    printf '  ✗ %s  (esperava barrar, seguiu)\n' "$desc"; fail=1; return
+  fi
+  for want in "$@"; do
+    if ! printf '%s' "$out" | grep -qi -- "$want"; then
+      printf '  ✗ %s  (a mensagem não fala de: %s)\n     disse: %s\n' \
+        "$desc" "$want" "$(printf '%s' "$out" | head -1)"; fail=1; return
+    fi
+  done
+  printf '  ✓ %s\n' "$desc"
+}
+
+# LADO 1 — o relatado: a URL inalcançável era ACEITA. `v_supabase_url` é o único
+# dos seis que exige resposta online, e o `000` dele era inalcançável: medido em
+# f9abedd0, `rc=0` e saída vazia para um host que não resolve.
+rede_morta "URL de Supabase inalcançável é RECUSADA" reject v_supabase_url \
+  "https://abcdefghijklmnop.supabase.co" "não consegui alcançar"
+
+# LADO 2 — o oposto, e pior para quem instala: com a rede fora, a chave CERTA
+# caía no ramo `*)` e era RECUSADA com "Confira a chave e o projeto" — o erro
+# acusando quem configurou, num laço do qual não se sai digitando certo. O código
+# sempre quis avisar e seguir; era a variável `000000` que não deixava.
+rede_morta "chave service_role correta SEGUE com aviso" pass v_service \
+  "$(mkjwt service_role abcdefghijklmnop)" "não consegui checar" "sigo com ela"
+rede_morta "chave anon correta SEGUE com aviso"         pass v_anon \
+  "$(mkjwt anon abcdefghijklmnop)"         "sigo com ela"
+
+# Os três de IA já seguiam (o `*)` deles também é tolerante), mas a mensagem
+# mostrava `000000` ao usuário. Aqui se cobra o ramo certo, não só o desfecho:
+# sem checar o texto, um `*)` disfarçado de `000` passaria.
+rede_morta "chave Anthropic segue pelo ramo 000"  pass v_anthropic  "sk-ant-abc123" "não consegui checar"
+rede_morta "chave OpenRouter segue pelo ramo 000" pass v_openrouter "sk-or-abc123"  "não consegui checar"
+rede_morta "chave OpenAI segue pelo ramo 000"     pass v_openai     "sk-abc123"     "não consegui checar"
+
 echo "leitura do .env (load_env)"
 . ./_common.sh
 set +e

@@ -1,20 +1,36 @@
 name: e2e
 
 # Issue #63: as specs de tests/e2e/ não rodavam em lugar nenhum. Este job fecha o
-# buraco com o subconjunto que não depende de serviço externo — hoje 29 de 33.
+# buraco com o subconjunto que não depende de serviço externo.
+#
+# NÃO conte aqui quantas são: o summary do job CONTA em vez de afirmar, e
+# `tests/unit/e2e-cobertura-completa.test.ts` reprova o build quando uma spec do
+# disco não está em nenhuma das três listas abaixo. Um número escrito nesta linha
+# é a quarta fonte da mesma verdade, e as três anteriores já divergiram — este
+# cabeçalho dizia "29 de 33" quando o disco tinha 45 e o job rodava 44.
 #
 # A execução é dividida em DUAS invocações do playwright de propósito: o
 # limitador de login do produto é por IP (60/300s) e no CI todos os specs vêm do
 # mesmo 127.0.0.1. Ver o comentário do passo "E2E — parte 1 de 2".
 #
-# NÃO-BLOQUEANTE por ausência, não por mordaça: `e2e` não está na lista de
-# checks obrigatórios da branch protection, então falhar aqui não segura merge.
-# O job em si falha honestamente — a primeira versão deste arquivo usava
-# `continue-on-error: true` no job inteiro e reportou VERDE com o `supabase
-# start` quebrado e zero teste executado. Verde que não distingue "passou" de
-# "nem rodou" é pior que vermelho.
+# É CHECK OBRIGATÓRIO. A régua, para reconferir em vez de acreditar nesta linha:
+#   $ gh api repos/melgarafael/DeskcommCRM/branches/main/protection \
+#       --jq '.required_status_checks.contexts|join(", ")'
+#   verify, build-and-size, invariants, e2e, imagens-ok   # medido em 2026-08-14
 #
-# Quando N execuções seguidas passarem limpas, adicionar `e2e` aos obrigatórios.
+# São CINCO. A versão anterior deste bloco colava a saída de 2026-08-12, com
+# quatro — `imagens-ok` virou obrigatório em 2026-08-13, um dia depois. Trocar
+# uma afirmação vencida por outra vencida é o mesmo defeito, e o commit
+# bcd88c30 desta branch existe justamente por causa dele: quem lê aqui para
+# saber contra o que medir concluiria que imagem quebrada não segura merge.
+# Este cabeçalho afirmou o contrário ("NÃO-BLOQUEANTE por ausência… quando N
+# execuções seguidas passarem limpas, adicionar aos obrigatórios") por tempo
+# demais depois de a promoção ter acontecido — e quem lesse isso mediria o custo
+# de uma mudança contra a régua errada.
+#
+# O job falha honestamente: a primeira versão usava `continue-on-error: true` no
+# job inteiro e reportou VERDE com o `supabase start` quebrado e zero teste
+# executado. Verde que não distingue "passou" de "nem rodou" é pior que vermelho.
 on:
   pull_request:
     branches: [main]

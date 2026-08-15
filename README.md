@@ -283,6 +283,14 @@ docker compose up -d        # WAHA local (opcional em dev sem WhatsApp)
 # O schema real vive no baseline.sql, o mesmo que o install.sh aplica na VPS.
 # `supabase db push` "passa" e deixa o banco vazio.
 supabase link --project-ref <seu-ref>
+
+# Num projeto Supabase NOVO, habilite antes as extensões que o schema usa —
+# sem elas o baseline para em `type public.vector does not exist`.
+psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -c \
+  'create extension if not exists vector with schema public;
+   create extension if not exists citext with schema public;
+   create extension if not exists pg_trgm with schema public;'
+
 psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -f supabase/baseline.sql
 
 pnpm dev
@@ -340,9 +348,10 @@ gh api repos/melgarafael/DeskcommCRM/branches/main/protection \
 | Check | O que faz |
 |---|---|
 | `verify` | typecheck + lint + `lint:channels` + `test:unit` + `test:shell` |
-| `invariants` | sobe um Postgres limpo, aplica o `baseline.sql` em modo **install** (`ON_ERROR_STOP=1`) e depois em modo **update** (provando idempotência), e roda **618 invariantes em 98 arquivos** — RBAC, atribuição, escopo, roteamento, follow-up, webhooks e automações |
+| `invariants` | sobe um Postgres limpo, aplica o `baseline.sql` em modo **install** e depois em modo **update** — as duas passadas com `ON_ERROR_STOP=1`, que é o que torna a segunda uma prova de idempotência e não só um "terminou" —, e roda os invariantes de RBAC, atribuição, escopo, roteamento, follow-up, webhooks e automações |
 | `build-and-size` | `pnpm build` em Node 22 |
-| `e2e` | sobe Supabase local, aplica o `baseline.sql` e roda **44 das 45 specs** Playwright pelo frontend |
+| `e2e` | sobe Supabase local, aplica o `baseline.sql` e roda **48 das 49 specs** Playwright pelo frontend |
+| `imagens-ok` | reprova quando qualquer uma das três imagens Docker (`app`, `worker`, `scheduler`) não constrói — é o artefato que o self-hoster instala |
 
 A única spec fora do `e2e` é `vps-fresh-onboarding` — ela precisa de WAHA + Redis + Resend + Nuvemshop de verdade. Ela é a **P0** da nossa doutrina de QA visual, então `e2e` verde **não** prova a jornada de instalação fresca; essa se prova numa VPS.
 
