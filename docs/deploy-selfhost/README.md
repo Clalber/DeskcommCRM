@@ -114,7 +114,20 @@ O app tem signup self-service (`/signup`) e recuperação de senha
 (`/login/forgot`). Os dois dependem do e-mail transacional do Supabase Auth
 chegando com link para `https://SEU_DOMINIO/auth/confirm`.
 
-**Supabase hospedado (recomendado):** no Dashboard →
+**O caminho automático (recomendado):** com um Personal Access Token exportado,
+
+```bash
+export SUPABASE_ACCESS_TOKEN=sbp_...      # supabase.com/dashboard/account/tokens
+bash hostgator-setup-kit/marca-emails.sh
+```
+
+Ele sobe assunto e corpo dos dois e-mails **com a marca da sua instalação**
+(`APP_NAME` do `.env`), configura `Site URL` e `Redirect URLs`, e **relê o que
+gravou** para provar que a API aceitou. O `install.sh` já o chama sozinho
+quando o token está no ambiente. Sem o token, ele imprime o passo manual e sai
+sem quebrar nada.
+
+**O caminho manual:** no Dashboard →
 
 1. **Authentication → Sign In / Up**: habilite *Allow new users to sign up* e
    mantenha *Confirm email* ligado.
@@ -125,13 +138,26 @@ chegando com link para `https://SEU_DOMINIO/auth/confirm`.
 
    ```html
    <!-- Confirm signup -->
-   <a href="{{ .RedirectTo }}?token_hash={{ .TokenHash }}&type=signup">Confirmar e-mail</a>
+   <a href="{{ .RedirectTo }}&token_hash={{ .TokenHash }}">Confirmar e-mail</a>
    <!-- Reset password -->
-   <a href="{{ .RedirectTo }}?token_hash={{ .TokenHash }}&type=recovery">Redefinir senha</a>
+   <a href="{{ .RedirectTo }}&token_hash={{ .TokenHash }}">Redefinir senha</a>
    ```
+
+   ⚠️ **`&`, nunca `?`.** O app já manda `.RedirectTo` com o `?type=` embutido
+   (`app/actions/auth/signUp.ts` e `requestPasswordReset.ts`), então um `?`
+   aqui produz `...?type=signup?token_hash=...`: o navegador para de reconhecer
+   `token_hash` como parâmetro (ele vira parte do valor de `type`) e
+   `/auth/confirm` manda o usuário para `/login?error=link_invalido` — com o
+   link correto. Esta seção ensinava a forma com `?` até 2026-08-14, e o
+   projeto Supabase de produção estava com ela gravada: quem seguiu a receita
+   reproduziu o defeito.
 
 4. **SMTP próprio** (Authentication → SMTP): o sender embutido do Supabase tem
    limite baixo (~2 e-mails/h) — configure Resend/SES/etc. para produção.
+   Isto é sobre VOLUME de envio: editar o corpo do e-mail **não** exige SMTP
+   próprio (medido em 2026-08-14: `PATCH /v1/projects/{ref}/config/auth` com
+   `mailer_templates_*` responde 200 e persiste num projeto com
+   `smtp_host: null`).
 
 **GoTrue self-hosted:** equivalente por env:
 `GOTRUE_DISABLE_SIGNUP=false`, `GOTRUE_MAILER_AUTOCONFIRM=false`,
@@ -140,6 +166,19 @@ chegando com link para `https://SEU_DOMINIO/auth/confirm`.
 `GOTRUE_SMTP_{HOST,PORT,USER,PASS}` e
 `GOTRUE_MAILER_TEMPLATES_{CONFIRMATION,RECOVERY}` apontando para os templates
 de `supabase/templates/` (mesmo link `token_hash` acima).
+
+⚠️ **Não aponte para os arquivos do repositório direto.** Eles são MODELOS: o
+nome da marca e a cor do botão são `__APP_NAME__` / `__ACCENT__`, e o cliente
+receberia isso literalmente. Renderize antes e aponte para o resultado:
+
+```bash
+bash hostgator-setup-kit/marca-emails.sh --render-em /opt/deskcomm/emails
+# GOTRUE_MAILER_TEMPLATES_CONFIRMATION=/opt/deskcomm/emails/confirmation.html
+# GOTRUE_MAILER_TEMPLATES_RECOVERY=/opt/deskcomm/emails/recovery.html
+```
+
+Num Supabase próprio não existe Management API, então este é o único caminho —
+e é preciso repetir o comando quando a marca mudar.
 
 ## 4. Conectar o WhatsApp
 

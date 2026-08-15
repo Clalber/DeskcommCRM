@@ -329,7 +329,7 @@ Among the invariants is the **RLS isolation test**: it creates 2 organizations, 
 | [`VISION.md`](VISION.md) | **Vision & positioning** — what the project is, what it believes, where it's going |
 | [`CHANGELOG.md`](CHANGELOG.md) | What changed in each version — **read your target version's section before updating** |
 | [`docs/SETUP.md`](docs/SETUP.md) | Development setup, step by step, for every integration |
-| [`docs/white-label.md`](docs/white-label.md) | **Installing for clients** — rebranding, one-install-per-client vs shared, reseller operations |
+| [`docs/white-label.en.md`](docs/white-label.en.md) | **Installing for clients** — rebranding, one-install-per-client vs shared, reseller operations |
 | [`docs/runbooks/waha-hostgator.md`](docs/runbooks/waha-hostgator.md) | Production runbook for WAHA (sizing, recovery) |
 | [`CLAUDE.md`](CLAUDE.md) | Non-negotiable conventions (required reading to contribute) |
 | [`ARCHITECTURE.md`](ARCHITECTURE.md) | One-page architecture overview |
