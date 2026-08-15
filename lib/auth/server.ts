@@ -85,9 +85,20 @@ export async function loadAuthUser(): Promise<AuthUser | null> {
   // visitante deslogado e refaz, do lado do log, a mesma fusão que este bloco
   // existe para desfazer.
   if (error && !ehSessaoAusente(error)) {
+    // As chaves são as MESMAS do outro `logger.error` desta função (linha ~134):
+    // `code` e `message`. Dois nomes para o mesmo conceito, dentro da mesma
+    // função, obrigariam quem consulta o agregador a escrever duas buscas — num
+    // conserto cujo objeto é diagnóstico.
+    //
+    // `name` viaja junto porque é o que separa as CLASSES: `AuthRetryableFetchError`
+    // (rede, GoTrue fora do ar) de `AuthApiError` (token ilegível). Ambas podem
+    // chegar com o mesmo `status`, e a mensagem vem em inglês do upstream — sem o
+    // nome, distinguir as duas viraria regex sobre texto que muda entre versões.
     logger.error("[auth] getUser falhou — tratando como não autenticado", {
-      codigo: (error as { status?: number }).status ?? null,
-      detalhe: error.message,
+      name: error.name,
+      code: error.code ?? null,
+      status: error.status ?? null,
+      message: error.message,
     });
   }
   if (!user) return null;

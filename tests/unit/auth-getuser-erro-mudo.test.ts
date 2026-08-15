@@ -36,7 +36,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 interface RespostaGetUser {
   data: { user: unknown };
-  error: { name?: string; message: string; status?: number } | null;
+  error: { name?: string; message: string; status?: number; code?: string } | null;
 }
 
 const resposta: { atual: RespostaGetUser } = {
@@ -72,18 +72,30 @@ beforeEach(() => {
 });
 
 describe("loadAuthUser — o erro do getUser deixa rastro", () => {
-  it("falha transitória do GoTrue REGISTRA, com código e detalhe", async () => {
+  it("falha transitória do GoTrue REGISTRA, com a classe e o código", async () => {
     resposta.atual = {
       data: { user: null },
-      error: { name: "AuthRetryableFetchError", message: "fetch failed", status: 503 },
+      error: {
+        name: "AuthRetryableFetchError",
+        code: "over_request_rate_limit",
+        message: "fetch failed",
+        status: 503,
+      },
     };
 
     expect(await loadAuthUser()).toBeNull(); // a ação não muda: falha fechado
     expect(erros).toHaveLength(1);
     expect(erros[0]!.msg).toMatch(/getUser falhou/);
-    // Sem o código e o detalhe a linha não diagnostica nada — seria só um
-    // "algo deu errado" que manda investigar do zero, que é o custo original.
-    expect(erros[0]!.ctx).toMatchObject({ codigo: 503, detalhe: "fetch failed" });
+    // Sem estes campos a linha não diagnostica nada — seria um "algo deu errado"
+    // que manda investigar do zero, que é o custo que o conserto veio evitar.
+    // `name` é o que separa rede (AuthRetryableFetchError) de token ilegível
+    // (AuthApiError); as chaves são as mesmas do log irmão da própria função.
+    expect(erros[0]!.ctx).toMatchObject({
+      name: "AuthRetryableFetchError",
+      code: "over_request_rate_limit",
+      status: 503,
+      message: "fetch failed",
+    });
   });
 
   it("visitante SEM SESSÃO não registra nada — é o estado normal, não incidente", async () => {
