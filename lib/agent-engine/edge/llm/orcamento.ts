@@ -57,6 +57,65 @@ export const PURPOSES_ISENTOS = [
 export type ModoDeOrcamento = 'off' | 'avisar' | 'bloquear';
 
 /**
+ * A CÓPIA DOS DOIS ITENS DA CENTRAL mora aqui, e não no emissor, porque há DOIS
+ * emissores: o statement do engine (`SQL_ORCAMENTO`, que recebe título e corpo
+ * do aviso por parâmetro) e o guard do caminho legado
+ * (`workers/ai-response-worker.ts`). Duas cópias do mesmo texto viram dois
+ * textos, e o usuário lê os dois na mesma tela sem saber que são a mesma coisa.
+ *
+ * `warn` vs `critical` é deliberado: o aviso diz que o gasto passou do ponto que
+ * a pessoa escolheu e a IA CONTINUA respondendo; a parada diz que algo parou.
+ */
+export const AVISO_TITULO = 'O gasto de IA passou do aviso que você definiu';
+export const AVISO_CORPO =
+  'A IA continua respondendo normalmente — isto é o aviso, não a parada. ' +
+  'Veja quanto já foi gasto e ajuste o limite em Uso de IA › Orçamento.';
+export const BLOQUEIO_TITULO = 'O limite de gasto com IA foi atingido';
+
+/**
+ * Razão gravada em `conversations.last_handoff_reason` quando o teto de gasto
+ * interrompe o atendimento. Constante exportada porque quem for procurar "por
+ * que esta conversa foi parar na fila humana" busca por este valor no banco.
+ *
+ * ⚠️ MORA AQUI, e não no emissor, pela MESMA razão dos textos acima: há DOIS
+ * caminhos que devolvem a conversa ao humano por orçamento — a escolta do engine
+ * (`lib/agent-engine/agent/inbound-turn.ts`) e o guard do caminho legado
+ * (`workers/ai-response-worker.ts`, que não pode importar o engine sem arrastar
+ * `pg` e o SDK para o bundle do Next). Dois literais seriam duas razões no banco
+ * para o mesmo fato, e quem filtrasse por uma acharia metade das conversas.
+ */
+export const HANDOFF_REASON_ORCAMENTO = 'orcamento_de_ia';
+
+/** Escreve dólar, porque o número É dólar (`pricing.ts` calcula em USD). */
+function emDolares(cents: number): string {
+  return `US$ ${(cents / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+/**
+ * ⚠️ ESTE TEXTO JÁ MENTIU UMA VEZ, e a mentira era exatamente do tipo que este
+ * trabalho existe para matar. Ele dizia "as respostas automáticas estão
+ * suspensas até você aumentar o limite, desligar a parada, ou o mês virar" —
+ * descrevendo uma recuperação AUTOMÁTICA que não acontece. Quem para o turno
+ * chama `performHumanHandoff` (engine) ou `triggerHandoff` (caminho legado), e
+ * os dois gravam `contacts.force_human = true` + `conversations.bot_silenced_until
+ * = 'infinity'`. O ÚNICO escritor de `force_human = false` em todo o repositório
+ * é `lib/escalacao/retomada.ts`, acionado por um botão POR CONVERSA. Subir o
+ * teto evita paradas NOVAS; ele não devolve a IA a nenhuma conversa já parada.
+ */
+export function corpoDoBloqueio(gastoCents: number, tetoCents: number): string {
+  const pct = tetoCents > 0 ? Math.round((gastoCents / tetoCents) * 100) : 0;
+  return (
+    `O gasto de IA deste mês chegou a ${emDolares(gastoCents)} de um limite de ${emDolares(tetoCents)} (${pct}%), ` +
+    'e você escolheu que a IA parasse ao chegar nele. ' +
+    'As conversas que estavam sendo atendidas foram para a FILA DE ATENDIMENTO HUMANO — ' +
+    'ninguém ficou sem próximo passo, mas alguém precisa responder. ' +
+    'Aumentar o limite ou desligar a parada em Uso de IA › Orçamento evita paradas NOVAS; ' +
+    'cada conversa já parada volta ao automático pelo botão "Devolver ao automático" ' +
+    'no cabeçalho dela.'
+  );
+}
+
+/**
  * Fallback do `alarm_threshold_pct` quando a coluna volta nula — o que só
  * acontece se a organização não tem linha em `ai_budgets`, porque a coluna é
  * `not null default 80` (`supabase/baseline.sql:1055`). Existe como constante
@@ -303,19 +362,38 @@ avisado_antes as (
 -- subiu o teto. Retrata os dois avisos. Sem isto o alerta CRÍTICO fica aceso
 -- para sempre: o único auto-resolvedor do produto é o de circuit.ts, escopado
 -- por ref_kind próprio, e o item de orçamento nunca teve ref_kind.
+-- As TRÊS condições que retratam. A primeira é a do laço normal (o gasto caiu
+-- abaixo do limiar); as outras duas fecham o item quando o gate PERDEU a
+-- capacidade de reabri-lo — teto apagado ou derrubado abaixo do piso —, porque
+-- \`decidirOrcamento\` devolve 'seguir' nesses dois casos e o alerta ficaria
+-- aceso para sempre afirmando uma parada que não existe mais.
 retrata as (
   update agent_inbox_items set status = 'resolved'
    where organization_id = $1
      and kind in ('budget_exceeded','budget_warning')
      and status = 'open'
-     and (select spent from gasto)
-         < (select teto * limiar_pct / 100.0 from orc)
+     and (
+       (select teto from orc) is null
+       or (select teto from orc) < ${PISO_DE_TETO_CENTS}
+       or (select spent from gasto) < (select teto * limiar_pct / 100.0 from orc)
+     )
   returning 1
 ),
+-- ⚠️ O \`teto >= piso\` NÃO é zelo: sem ele, teto 0 torna a condição do limiar
+-- \`spent >= 0\` — SEMPRE verdadeira, já na primeira chamada, com gasto zero —, e
+-- a CTE \`retrata\` acima exigia \`spent < 0\` para fechar. O par produzia um aviso
+-- PERMANENTE e FALSO na Central, no caminho de primeira impressão (organização
+-- nova, sem linha em \`ai_budgets\`, admin escolhendo "Me avisar" sem digitar
+-- teto). Espelha as recusas 'sem_teto' e 'teto_abaixo_do_piso' de
+-- \`decidirOrcamento\`: o efeito colateral não pode aplicar uma régua que a
+-- decisão pura não aplica. A porta de escrita (PATCH /api/v1/ai/budget) recusa
+-- o mesmo estado com 422 — isto aqui é a segunda camada, para a linha que
+-- chegou por outro caminho.
 avisa as (
   insert into agent_inbox_items (organization_id, kind, severity, title, body, ref_kind, ref_id)
   select $1, 'budget_warning', 'warn', $2, $3, 'ai_budget', $1
    where (select modo from orc) in ('avisar','bloquear')
+     and (select teto from orc) >= ${PISO_DE_TETO_CENTS}
      and (select spent from gasto) >= (select teto * limiar_pct / 100.0 from orc)
      and not exists (
        select 1 from agent_inbox_items

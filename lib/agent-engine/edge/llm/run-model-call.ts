@@ -25,6 +25,10 @@ import type { Logger } from '../../obs/logger';
 import { decidirParaOSeam } from './binding-do-ponto';
 import { resolveOrgLlmConfig, type LlmEdgeConfig, type OrcamentoDaOrg } from './credentials';
 import {
+  AVISO_CORPO,
+  AVISO_TITULO,
+  BLOQUEIO_TITULO,
+  corpoDoBloqueio,
   decidirOrcamento,
   normalizarModoDeOrcamento,
   LIMIAR_PADRAO_PCT,
@@ -129,26 +133,11 @@ export interface RunModelCallDeps {
  * sobe. O statement do gate insere este item de dentro do banco, junto com a
  * leitura, e por isso os números do momento ainda não existem em JS quando o
  * texto é montado — a escolha do ponteiro transforma essa limitação em acerto.
+ *
+ * A cópia mora em `./orcamento` porque o caminho legado
+ * (`workers/ai-response-worker.ts`) abre os MESMOS dois itens e não pode
+ * importar este arquivo (ele arrastaria `pg` e o SDK para o bundle do Next).
  */
-const AVISO_TITULO = 'O gasto de IA passou do aviso que você definiu';
-const AVISO_CORPO =
-  'A IA continua respondendo normalmente — isto é o aviso, não a parada. ' +
-  'Veja quanto já foi gasto e ajuste o limite em Uso de IA › Orçamento.';
-
-/** Escreve dólar, porque o número É dólar (`pricing.ts` calcula em USD). */
-function emDolares(cents: number): string {
-  return `US$ ${(cents / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-}
-
-function corpoDoBloqueio(gastoCents: number, tetoCents: number): string {
-  const pct = tetoCents > 0 ? Math.round((gastoCents / tetoCents) * 100) : 0;
-  return (
-    `O gasto de IA deste mês chegou a ${emDolares(gastoCents)} de um limite de ${emDolares(tetoCents)} (${pct}%), ` +
-    'e você escolheu que a IA parasse ao chegar nele. ' +
-    'As respostas automáticas estão suspensas até você aumentar o limite, desligar a parada em ' +
-    'Uso de IA › Orçamento, ou o mês virar. Nada foi perdido: as conversas continuam na caixa de entrada.'
-  );
-}
 
 /** O que o statement do gate devolve — uma ida ao banco, um snapshot. */
 interface LinhaDoOrcamento {
@@ -278,7 +267,7 @@ async function aplicarOrcamento(d: {
        select 1 from agent_inbox_items
        where organization_id = $1 and kind = 'budget_exceeded' and status = 'open'
      )`,
-    [d.organizationId, 'O limite de gasto com IA foi atingido', corpoDoBloqueio(gastoCents, tetoCents)],
+    [d.organizationId, BLOQUEIO_TITULO, corpoDoBloqueio(gastoCents, tetoCents)],
   );
   // A recusa vira LINHA em llm_calls. A tela /app/ai/runs nasceu porque
   // "llm_calls só registrava sucesso — a tabela ficava vazia exatamente no caso

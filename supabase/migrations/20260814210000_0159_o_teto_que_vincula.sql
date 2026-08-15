@@ -107,7 +107,7 @@ as $$
 $$;
 
 comment on function public.fn_gasto_de_ia_do_mes(uuid) is
-  'Gasto de IA da organização no mês corrente, em centavos de DÓLAR (llm_calls.cost_cents vem de pricing.ts, que calcula em USD). É a ÚNICA definição de gasto do produto: o gate a chama dentro de SQL_ORCAMENTO (lib/agent-engine/edge/llm/orcamento.ts), a tela a chama por RPC e os painéis de admin a chamam. Query inline de sum(cost_cents) em outro lugar é uma segunda régua, e a segunda régua sempre diverge — vigiado por tests/unit/orcamento-uma-regua-de-gasto.test.ts. security invoker: recebe a organização por argumento e não valida membership, então definer aqui seria leitura cross-tenant.';
+  'Gasto de IA da organização no mês corrente, em centavos de DÓLAR (llm_calls.cost_cents vem de pricing.ts, que calcula em USD). É a ÚNICA definição de gasto do produto: o gate a chama dentro de SQL_ORCAMENTO (lib/agent-engine/edge/llm/orcamento.ts), a tela a chama por RPC e o painel de saúde por tenant a chama. O dashboard de plataforma (app/api/v1/admin/dashboard/kpis) AINDA lê ai_budgets.current_month_consumed_cents, um contador acumulado que nada zera, e por isso pode divergir — a divergência está declarada naquele arquivo e o alerta de lá nunca é critical. Query inline de sum(cost_cents) em outro lugar é uma segunda régua, e a segunda régua sempre diverge — vigiado por tests/unit/orcamento-uma-regua-de-gasto.test.ts. security invoker: recebe a organização por argumento e não valida membership, então definer aqui seria leitura cross-tenant.';
 
 revoke execute on function public.fn_gasto_de_ia_do_mes(uuid)
   from public, anon, authenticated;
@@ -291,10 +291,18 @@ alter table public.ai_budgets
 -- >= 100. O CHECK é o backstop de "armado sem valor útil" tentando renascer pela
 -- porta da frente — a régua da vez é o 422 da rota, não ele.
 --
--- ⚠️ Os dois são CHECK cross-coluna / de domínio, não de VOCABULÁRIO com par em
--- TypeScript, e por isso ficam FORA da lista `PARES` de
+-- ⚠️ SÓ `ai_budgets_bloquear_precisa_de_teto` é CHECK cross-coluna / de domínio,
+-- e por isso fica FORA da lista `PARES` de
 -- `tests/invariants/vocabulario-banco-x-typescript.test.ts` — mesma classificação
 -- que os CHECKs de regex da 0155/0157/0158.
+--
+-- `ai_budgets_enforcement_mode_check` É de vocabulário: um conjunto fechado com
+-- par em TypeScript (`ModoDeOrcamento`, em
+-- `lib/agent-engine/edge/llm/orcamento.ts`), lido no caminho quente. Ele ESTÁ em
+-- `PARES`. Classificá-lo como domínio — o que este comentário e o MANIFEST
+-- fizeram — deixava a coluna fora do único gate que pega a classe: um valor novo
+-- entra num lado só, passa em typecheck/lint/unit, e aparece como 23514 em
+-- produção.
 
 -- (6) INFORMAÇÃO, nunca alarme. Item `info` para as organizações cujo
 --     `is_disabled` foi posto à mão (HIPÓTESE: conjunto vazio — nenhum escritor

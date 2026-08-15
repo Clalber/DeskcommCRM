@@ -10,7 +10,9 @@
  *   * `ai_budgets.current_month_consumed_cents` é o que a TELA mostra — um
  *     contador materializado pelo gatilho `fn_update_budget_consumption`, que soma
  *     `NEW.cost_cents` **sem olhar a data** e nunca zera (o `runBudgetReset` nunca
- *     foi agendado). O único recomputo em produção é o apêndice da 0140, que só
+ *     foi agendado, e a onda de limpeza desta feature apagou o arquivo inteiro —
+ *     zerar incondicionalmente no meio de um mês trocaria erro-para-mais por
+ *     erro-para-menos). O único recomputo em produção é o apêndice da 0140, que só
  *     roda no `install.sh`/`update.sh`: numa instalação que não atualiza há três
  *     meses, o card compara três meses de gasto contra um teto MENSAL.
  *

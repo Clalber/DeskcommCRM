@@ -12053,7 +12053,7 @@ as $$
 $$;
 
 comment on function public.fn_gasto_de_ia_do_mes(uuid) is
-  'Gasto de IA da organização no mês corrente, em centavos de DÓLAR (llm_calls.cost_cents vem de pricing.ts, que calcula em USD). É a ÚNICA definição de gasto do produto: o gate a chama dentro de SQL_ORCAMENTO (lib/agent-engine/edge/llm/orcamento.ts), a tela a chama por RPC e os painéis de admin a chamam. Query inline de sum(cost_cents) em outro lugar é uma segunda régua, e a segunda régua sempre diverge — vigiado por tests/unit/orcamento-uma-regua-de-gasto.test.ts. security invoker: recebe a organização por argumento e não valida membership, então definer aqui seria leitura cross-tenant.';
+  'Gasto de IA da organização no mês corrente, em centavos de DÓLAR (llm_calls.cost_cents vem de pricing.ts, que calcula em USD). É a ÚNICA definição de gasto do produto: o gate a chama dentro de SQL_ORCAMENTO (lib/agent-engine/edge/llm/orcamento.ts), a tela a chama por RPC e o painel de saúde por tenant a chama. O dashboard de plataforma (app/api/v1/admin/dashboard/kpis) AINDA lê ai_budgets.current_month_consumed_cents, um contador acumulado que nada zera, e por isso pode divergir — a divergência está declarada naquele arquivo e o alerta de lá nunca é critical. Query inline de sum(cost_cents) em outro lugar é uma segunda régua, e a segunda régua sempre diverge — vigiado por tests/unit/orcamento-uma-regua-de-gasto.test.ts. security invoker: recebe a organização por argumento e não valida membership, então definer aqui seria leitura cross-tenant.';
 
 revoke execute on function public.fn_gasto_de_ia_do_mes(uuid)
   from public, anon, authenticated;
@@ -12480,10 +12480,18 @@ alter table public.ai_budgets
 -- >= 100. O CHECK é o backstop de "armado sem valor útil" tentando renascer pela
 -- porta da frente — a régua da vez é o 422 da rota, não ele.
 --
--- ⚠️ Os dois são CHECK cross-coluna / de domínio, não de VOCABULÁRIO com par em
--- TypeScript, e por isso ficam FORA da lista `PARES` de
+-- ⚠️ SÓ `ai_budgets_bloquear_precisa_de_teto` é CHECK cross-coluna / de domínio,
+-- e por isso fica FORA da lista `PARES` de
 -- `tests/invariants/vocabulario-banco-x-typescript.test.ts` — mesma classificação
 -- que os CHECKs de regex da 0155/0157/0158.
+--
+-- `ai_budgets_enforcement_mode_check` É de vocabulário: um conjunto fechado com
+-- par em TypeScript (`ModoDeOrcamento`, em
+-- `lib/agent-engine/edge/llm/orcamento.ts`), lido no caminho quente. Ele ESTÁ em
+-- `PARES`. Classificá-lo como domínio — o que este comentário e o MANIFEST
+-- fizeram — deixava a coluna fora do único gate que pega a classe: um valor novo
+-- entra num lado só, passa em typecheck/lint/unit, e aparece como 23514 em
+-- produção.
 
 -- (6) INFORMAÇÃO, nunca alarme. Item `info` para as organizações cujo
 --     `is_disabled` foi posto à mão (HIPÓTESE: conjunto vazio — nenhum escritor
@@ -12504,5 +12512,32 @@ select b.organization_id, 'budget_warning', 'info',
       where i.organization_id = b.organization_id
         and i.kind = 'budget_warning' and i.status = 'open'
    );
+
+notify pgrst, 'reload schema';
+
+
+-- ---- ai_budgets só se escreve pela rota (migration 0160) ----
+--
+-- A 0159 pôs em `ai_budgets` os dois campos que decidem se (e quando) a IA para
+-- de responder. Toda a regra que os protege — escada `off → avisar → bloquear`,
+-- carência de 72h, piso de US$ 1,00 e linha em `api_audit_log` — mora na rota
+-- `PATCH /api/v1/ai/budget`, que usa service role. Mas o corpo deste dump traz
+-- `GRANT ALL ON TABLE public.ai_budgets TO anon` e `TO authenticated`, e a 0159
+-- termina com `notify pgrst, 'reload schema'`: as colunas novas passaram a ser
+-- SERVIDAS pelo PostgREST para a chave anon, que vai ao browser. Um PATCH direto
+-- na REST do Supabase, com o JWT de um admin do tenant, armava a parada sem
+-- escada, sem carência, sem piso e sem auditoria — o comentário da coluna dizia
+-- "escrito só por PATCH /api/v1/ai/budget" e era verdade sobre o CÓDIGO, falso
+-- sobre o SCHEMA.
+--
+-- Medido antes de revogar: TODO escritor de `ai_budgets` no repositório usa
+-- service role (a rota, `lib/ai/budget/check.ts`, os painéis de admin, os
+-- workers e `scripts/qa-wave-11.ts`). Nenhum caminho de produto escreve esta
+-- tabela com o JWT do usuário.
+--
+-- SELECT fica: ler o próprio orçamento pelo PostgREST continua escopado pela
+-- policy de SELECT da 0150. `revoke` é idempotente por natureza — este bloco
+-- pode ser re-aplicado à vontade pelo `update.sh`.
+revoke insert, update, delete on table public.ai_budgets from authenticated, anon;
 
 notify pgrst, 'reload schema';

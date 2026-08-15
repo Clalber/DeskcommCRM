@@ -187,6 +187,26 @@ const PARES: Array<{
     arquivo: "hooks/followup/useFollowupQueue.ts",
     simbolo: "FollowupEnrollmentStatus",
   },
+  {
+    tabela: "ai_budgets",
+    coluna: "enforcement_mode",
+    // lib/agent-engine/edge/llm/orcamento.ts → ModoDeOrcamento.
+    //
+    // Nasce com um erro de classificação já cometido: a 0159 e o MANIFEST
+    // declararam `ai_budgets_enforcement_mode_check` como "cross-coluna / de
+    // domínio, não de vocabulário", e por isso a coluna ficou de fora daqui. É
+    // falso — `check (enforcement_mode in ('off','avisar','bloquear'))` é
+    // vocabulário puro de conjunto, e o par em TypeScript não só existe como
+    // roda no caminho quente (é ele que decide se a IA responde).
+    //
+    // A OUTRA constraint da mesma coluna, `ai_budgets_bloquear_precisa_de_teto`
+    // (`enforcement_mode <> 'bloquear' or monthly_limit_cents >= 100`), essa sim
+    // é cross-coluna: `literaisSeDefine` a recusa por não casar
+    // `col = ANY (ARRAY[...])`, então continua havendo UMA definidora só e o
+    // extrator não precisa escolher.
+    arquivo: "lib/agent-engine/edge/llm/orcamento.ts",
+    simbolo: "ModoDeOrcamento",
+  },
 ];
 
 /** Tira um nível de parênteses externos, se ele envolver a expressão inteira. */

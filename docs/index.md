@@ -90,6 +90,8 @@ Detalham schema SQL e payloads exatos. **Consulte antes de modelar qualquer cois
 | [`doctrine/packaging.md`](doctrine/packaging.md) | **Doutrina de Packaging — a LEI.** 7 invariantes + política de canais + checklist de release (item 15 do DoD) |
 | [`adr/0001-packaging-e-distribuicao.md`](adr/0001-packaging-e-distribuicao.md) | ADR do packaging: namespace, os 3 packages, e o que foi recusado |
 | [`architecture/agent-turn.html`](architecture/agent-turn.html) | Diagrama do turno do agente (inbound → guardrails → outbound) |
+| [`architecture/teto-de-orcamento.architecture.json`](architecture/teto-de-orcamento.architecture.json) | **Mapa vivo do teto de gasto com IA** — quem alimenta o gate, o que a parada NÃO desfaz sozinha, e o laço de retorno (invariante 7) |
+| [`release/teto-de-orcamento.md`](release/teto-de-orcamento.md) | **Nota de release para quem opera uma VPS** — o que muda, o que fazer (nada), a troca de rótulo de R$ para US$ e como ligar a proteção |
 | [`research/architecture-diagrams.md`](research/architecture-diagrams.md) | Diagramas de arquitetura |
 | [`research/reference-synthesis.md`](research/reference-synthesis.md) | Arquitetura herdada da referência WAHA |
 | [`research/followup-reference-mining.md`](research/followup-reference-mining.md) | Pesquisa do motor de follow-up |
@@ -164,8 +166,13 @@ anterior à v1.0.0; regenere (`/graphify .`) antes de confiar em detalhe fino.
   "Próximo", apesar de o gatilho (`loop/checkpoints/G6.approved`) existir.
 - `docs/diagrams/` não tem `.md` e não foi inventariado. `docs/evidence/` é evidência visual
   (18 PNGs), não documentação de leitura.
-- `docs/architecture/` contém só o diagrama do agent-turn; a doutrina (`CLAUDE.md`, DoD item 13)
-  pede que o "mapa vivo" da arquitetura reflita toda peça nova com ≥2 arestas — **NÃO IDENTIFICADO**
-  se isso está sendo cumprido, e é a lacuna documental mais relevante que sobrou.
+- `docs/architecture/` tem **13 entradas** — 10 `*.architecture.json`, 1 `*.workflow.json`, 1
+  `.html` e o `README.md` (medido em 2026-08-15: `ls docs/architecture/ | wc -l` = 13,
+  `ls docs/architecture/*.architecture.json | wc -l` = 10). A frase anterior deste índice dizia
+  "só o diagrama do agent-turn"
+  e envelheceu. Só dois deles estão listados na tabela acima; os demais entraram com as features
+  que descrevem. A doutrina (`CLAUDE.md`, DoD item 13) pede que o "mapa vivo" reflita toda peça
+  nova com ≥2 arestas, e `tests/unit/mapas-de-arquitetura.test.ts` cobra a forma de TODOS —
+  o que continua **NÃO IDENTIFICADO** é se toda feature entregue tem o seu.
 - `docs/growth/` (3 docs) e `docs/brand/` (1) não foram lidos em detalhe — classificados por
   nome de pasta, portanto **INFERIDO**.

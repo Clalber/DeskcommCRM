@@ -994,6 +994,46 @@ independentes; se reprovar mais, há acoplamento que precisa ser entendido antes
 
 Regra: resposta que não **nomeia o artefato concreto** não conta.
 
+> **AS-BUILT (2026-08-15, fechamento da entrega).** As respostas abaixo eram do DESENHO. Cinco
+> delas mudaram na construção, e a lista das mudanças vem primeiro para que ninguém leia o
+> texto antigo achando que é o disco:
+>
+> 1. **(2) Saída — a escolta subiu.** O desenho a punha em volta das duas chamadas diretas de
+>    `runModelCall`. Errado: o turno faz outras chamadas de modelo ANTES delas, por auxiliares
+>    (`classifyStage` — que roda em TODO turno — e `maybeCompact`/flush), nenhuma com try/catch.
+>    Com o teto estourado, o erro subia do classificador, `performHumanHandoff` NUNCA rodava, e
+>    o worker cancelava o job com o lead no vácuo. A escolta agora envolve o TURNO INTEIRO, em
+>    `runAgentTurn` (`lib/agent-engine/agent/inbound-turn.ts`), que é o único ponto por onde os
+>    três kinds de turno passam. Guarda: `tests/unit/handoff-por-orcamento.test.ts` conta os
+>    call sites de `executarTurnoDoAgente` (não exportada) e verifica que os auxiliares vivem
+>    DENTRO dela — a versão anterior contava `runModelCall(` no texto e tinha ponto cego
+>    exatamente no defeito.
+> 2. **(2) Saída — o caminho legado ganhou a mesma resposta.**
+>    `workers/ai-response-worker.ts` chama `triggerHandoff` com a MESMA razão
+>    (`HANDOFF_REASON_ORCAMENTO`, agora em `orcamento.ts` para os dois emissores a lerem). E o
+>    veto SAIU de `buildContext`: ele barrava G1 ("quero falar com um atendente"), G4 legal e
+>    G4 stage, porque `processMessageReceived` retorna no primeiro skip. Um lead que PEDIA um
+>    humano recebia silêncio.
+> 3. **(7) Configuração — o piso guarda `avisar` também.** `avisar` com teto 0 era salvável e
+>    produzia um `budget_warning` PERMANENTE e falso (a CTE `avisa` virava `gasto >= 0`, e a
+>    `retrata` exigia `gasto < 0`). Recusado no servidor (`route.ts`), espelhado na tela e
+>    guardado no próprio `SQL_ORCAMENTO` (`and teto >= PISO`).
+> 4. **(9) Laço — a coluna da carência é zerada ao desarmar.** Sem isso a carência ficava
+>    pré-gasta e a próxima armada valeria no ato.
+> 5. **(4/5) Tela — três textos eram falsos e viraram guarda.** O rótulo do período
+>    contradizia o número ao lado dele; a razão do degrau bloqueado prometia uma janela de
+>    tempo que o servidor não exige; e o corpo do `budget_exceeded` mandava usar um botão
+>    chamado "Retomar atendimento automático" — que **não existe**: o rótulo real, medido em
+>    `components/inbox/ConversationHeader.tsx`, é **"Devolver ao automático"**. Guardas:
+>    `tests/unit/budget-card-promessas.test.tsx` e o bloco de contrato de rótulo em
+>    `tests/unit/handoff-por-orcamento.test.ts` (que LÊ o rótulo do componente, nunca uma
+>    cópia).
+>
+> **O mapa vivo (invariante 10) é `docs/architecture/teto-de-orcamento.architecture.json`:** 26
+> nós, 43 arestas, e o card "O laço de retorno" responde o invariante 7 nos quatro modos de
+> erro (bloquear quem não devia · não bloquear quem devia · não saber medir · instalação com o
+> kill switch afrouxado).
+
 1. **Entrada.** O radio de três estados em `components/ai/BudgetCard.tsx` (`EditBudgetDialog`)
    → `PATCH /api/v1/ai/budget` → `ai_budgets.enforcement_mode`. Consumidor real:
    `lib/agent-engine/edge/llm/credentials.ts` (`left join`), lido por `aplicarOrcamento` em
