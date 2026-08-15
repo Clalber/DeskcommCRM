@@ -57,6 +57,15 @@ export const PURPOSES_ISENTOS = [
 export type ModoDeOrcamento = 'off' | 'avisar' | 'bloquear';
 
 /**
+ * Fallback do `alarm_threshold_pct` quando a coluna volta nula — o que só
+ * acontece se a organização não tem linha em `ai_budgets`, porque a coluna é
+ * `not null default 80` (`supabase/baseline.sql:1055`). Existe como constante
+ * nomeada, e não como `?? 80` solto, para que o dia em que o DEFAULT do banco
+ * mudar haja UM lugar a conferir.
+ */
+export const LIMIAR_PADRAO_PCT = 80;
+
+/**
  * Valor efetivo de `AI_BUDGET_ENFORCEMENT`, já normalizado. A chave só sabe
  * AFROUXAR: `'off'` cala tudo, `'avisar'` rebaixa qualquer `bloquear`, `'on'`
  * apenas respeita o que cada organização escolheu — `on` não liga nada.
@@ -234,6 +243,24 @@ export function normalizarChaveDeOrcamento(v: string | undefined): ChaveDeOrcame
   if (GRAFIAS_DE_DESLIGADO.has(bruto)) return 'off';
   if (bruto === 'avisar' || bruto === 'warn') return 'avisar';
   return 'on';
+}
+
+/**
+ * `ai_budgets.enforcement_mode` cru (vindo do banco) → o tipo do domínio.
+ * QUALQUER coisa fora dos três valores — inclusive `null`, que é o que o
+ * `left join` devolve para organização SEM linha em `ai_budgets` — vira `'off'`.
+ *
+ * ⚠️ É a irmã de `normalizarChaveDeOrcamento`, e as duas moram juntas de
+ * propósito: são os dois pontos por onde um valor de fora entra na decisão, e
+ * as duas resolvem o desconhecido para o lado que NÃO bloqueia. O CHECK
+ * `ai_budgets_enforcement_mode_check` (migration 0159) já barra lixo na
+ * escrita; isto é a segunda camada, para o caso do clone cujo `update.sh`
+ * engoliu o erro do CHECK e deixou a coluna sem validação — o `update.sh` roda
+ * **sem** `ON_ERROR_STOP`, então esse caso não é hipotético.
+ */
+export function normalizarModoDeOrcamento(v: string | null | undefined): ModoDeOrcamento {
+  if (v === 'avisar' || v === 'bloquear') return v;
+  return 'off';
 }
 
 /**

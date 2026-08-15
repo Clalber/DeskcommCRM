@@ -35,15 +35,19 @@
  *   * `scripts/` fica fora da varredura: é ferramenta de desenvolvimento, não o
  *     produto que o self-hoster instala.
  *
- * ## A dívida CONGELADA, e por que ela não é uma allowlist confortável
+ * ## A dívida CONGELADA — e ela foi PAGA
  *
- * `run-model-call.ts` ainda tem a query inline nesta onda — a troca por
- * `SQL_ORCAMENTO` é a onda seguinte. Um gate que nascesse vermelho seria
- * desligado antes de pegar o primeiro defeito de verdade, então a dívida entra
- * declarada. O que a torna uma catraca e não um esconderijo: o teste cobra que
- * cada arquivo listado AINDA tenha a dívida. No dia em que a onda seguinte
- * remover a query, esta lista fica vermelha até alguém apagar a linha — a lista
- * só encolhe, e não envelhece em silêncio.
+ * Quando este arquivo nasceu, `run-model-call.ts` ainda somava `llm_calls`
+ * inline: um gate que nascesse vermelho seria desligado antes de pegar o
+ * primeiro defeito de verdade, então a dívida entrou declarada, com a onda que
+ * a removeria. O que a tornava catraca e não esconderijo é que o teste cobrava
+ * que cada arquivo listado AINDA tivesse a dívida.
+ *
+ * A onda seguinte trocou `assertBudget` por `SQL_ORCAMENTO`, e a asserção "a
+ * dívida só encolhe" ficou vermelha até esta lista esvaziar — que é exatamente
+ * o desenho funcionando. A lista fica aqui, vazia: um `Record` vazio continua
+ * cobrando as duas direções, e a próxima duplicação temporária tem onde ser
+ * declarada sem ninguém precisar reinventar o mecanismo.
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join, posix } from "node:path";
@@ -64,11 +68,7 @@ const RAIZES_VARRIDAS = ["app", "components", "hooks", "lib", "workers"] as cons
  * Cada entrada é cobrada duas vezes: não pode haver arquivo fora da lista com a
  * dívida, e não pode haver entrada na lista sem a dívida.
  */
-const DIVIDA_CONGELADA: Record<string, string> = {
-  "lib/agent-engine/edge/llm/run-model-call.ts":
-    "assertBudget ainda soma llm_calls inline. Sai quando o gate passar a executar " +
-    "SQL_ORCAMENTO (que já chama fn_gasto_de_ia_do_mes) — onda seguinte desta feature.",
-};
+const DIVIDA_CONGELADA: Record<string, string> = {};
 
 function arquivosVarridos(dir: string): string[] {
   const alvos: string[] = [];
