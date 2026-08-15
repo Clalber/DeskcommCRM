@@ -336,7 +336,9 @@ export function FormularioDaMarca({
       <Card className="space-y-4 p-6">
         <CampoDeLogo
           escopo="instalacao"
-          logoDaCamada={gravada.logo_path ? logoEmVigor : null}
+          // Literal, nunca memoizado: a identidade deste objeto é o que diz ao
+          // campo que houve render NOVO do servidor. Ver os Props de CampoDeLogo.
+          logoDaCamada={{ url: gravada.logo_path ? logoEmVigor : null }}
           logoHerdado={logoDoAmbiente}
           origemDoHerdado="do arquivo de instalação do servidor"
           nomeEmVigor={nomeEmVigor}

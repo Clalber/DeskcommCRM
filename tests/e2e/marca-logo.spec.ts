@@ -178,7 +178,7 @@ async function subir(page: Page, escopo: Escopo, arquivo: {
  * Remove o logo desta camada SE houver um — a peça da restauração.
  *
  * Tolerante a "não há nada para remover" de propósito: o botão só é renderizado
- * quando a camada tem logo próprio (`CampoDeLogo.tsx:176`), e o hook precisa poder
+ * quando a camada tem logo próprio (`CampoDeLogo.tsx:252`), e o hook precisa poder
  * rodar tanto depois da spec inteira (onde os casos já removeram) quanto depois de
  * um estouro no primeiro caso (onde nada chegou a ser subido). Um `click()` cego
  * nos dois casos esperaria até o timeout e transformaria a limpeza em vermelho.
@@ -371,9 +371,26 @@ test.describe("o logo subido pela tela chega à tela", () => {
     // A prévia sobre as DUAS superfícies mostra a imagem real — é o que
     // substituiu o analisador de luminância no servidor.
     //
-    // 15s, e não o default de 5s: a prévia só nasce quando o RSC do
-    // `router.refresh()` volta, e o `refresh` só é disparado DEPOIS do toast
-    // (`CampoDeLogo.tsx:127-132`). Os 5s mediam a máquina de quem escreveu.
+    // ⚠️ ESTA ASSERÇÃO JÁ FOI INTERMITENTE, E O DEFEITO ERA DO PRODUTO. O
+    // comentário anterior dizia "15s, e não o default de 5s: a prévia só nasce
+    // quando o RSC do `router.refresh()` volta… os 5s mediam a máquina de quem
+    // escreveu" — ou seja, tratava como lentidão o que era uma tela que nunca
+    // atualizava. Subir 5s→15s não mudou nada (ela reprovou nos dois), o que já
+    // era a pista: não se espera mais por quem não vem.
+    //
+    // O trace do run 31888655412 mostrou o porquê: o POST voltou 200 com o
+    // `logo_url`, o `GET /admin/marca?_rsc=…` do refresh voltou `ERR_ABORTED`
+    // (descartado na rajada de prefetch RSC da barra lateral), e não houve
+    // retentativa — nenhum pacote nos 14s seguintes. A tela ficou no render
+    // anterior com o toast de sucesso na frente.
+    //
+    // O conserto é no produto: `CampoDeLogo` aplica o corpo da resposta na
+    // prévia e mantém o `refresh()` só para reconciliar o resto da página
+    // (`CampoDeLogo.tsx:109-152`, guardado por
+    // `tests/unit/marca-previa-do-logo-sem-refresh.test.tsx`). A asserção não
+    // foi afrouxada em nada — continua exigindo `<img>` na prévia; o que mudou é
+    // que o produto passou a prometê-la de forma determinística. Os 15s ficam
+    // como folga de máquina carregada, não como aposta no refresh.
     await expect(page.locator("[data-previa-do-logo='claro'] img")).toBeVisible({
       timeout: 15_000,
     });
@@ -471,7 +488,7 @@ test.describe("o logo subido pela tela chega à tela", () => {
     // mídia não suportado": é o formato em que um designer entrega logo.
     //
     // ⚠️ A âncora é DUPLA de propósito, e nenhuma metade é decorativa. O texto de
-    // ajuda do campo (`CampoDeLogo.tsx:182-186`) diz, o tempo todo e antes de
+    // ajuda do campo (`CampoDeLogo.tsx:258-262`) diz, o tempo todo e antes de
     // qualquer upload, "SVG não é aceito: ele pode executar código…" — então
     // `getByText(/SVG não é aceito/i)` casava aquele `<p>` em t=0 e ficava verde
     // sem o toast jamais ter existido (e virava violação de strict mode quando o
@@ -505,7 +522,7 @@ test.describe("o logo subido pela tela chega à tela", () => {
     await loginComTotp(page, creds.users.admin!.email, creds.admin_totp!.secret);
 
     await page.goto("/app/settings/marca");
-    // O botão só existe quando ESTA camada tem logo próprio (`CampoDeLogo.tsx:176`):
+    // O botão só existe quando ESTA camada tem logo próprio (`CampoDeLogo.tsx:252`):
     // a asserção nomeia a precondição em vez de deixá-la sair como um clique que
     // esperou até o timeout.
     const remover = page.locator("[data-campo-de-logo='organizacao']").getByRole("button", {
