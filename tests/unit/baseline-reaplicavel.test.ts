@@ -99,6 +99,40 @@ describe("baseline.sql é re-aplicável", () => {
     ).toEqual([]);
   });
 
+  it("todo `add constraint` do APÊNDICE está guardado — e é lá que schema novo entra", () => {
+    // A asserção acima usa `/^\s+ADD CONSTRAINT /`: caixa ALTA e indentado, que é a
+    // forma do pg_dump — o CORPO. O apêndice é escrito à mão, em caixa baixa, e
+    // escapava inteiro da régua. É o pior lugar para um ponto cego: o corpo é
+    // gerado e estável, o apêndice é onde toda mudança de schema nova aterrissa.
+    //
+    // As formas de guarda aceitas são as quatro que o arquivo de fato usa, e não
+    // uma só: o Postgres NÃO tem `add constraint if not exists`, então a forma
+    // canônica aqui é `drop constraint if exists` + `add` — o que torna idempotente
+    // a REGRA, não só a criação (o comentário do próprio baseline em
+    // `platform_branding_logo_path` explica isso).
+    const semGuarda: string[] = [];
+    for (let i = 0; i < LINHAS.length; i++) {
+      const m = (LINHAS[i] ?? "").match(/^\s*add constraint\s+([A-Za-z0-9_]+)/);
+      if (!m) continue;
+      const nome = m[1]!;
+      const janela = LINHAS.slice(Math.max(0, i - 10), i).join("\n");
+      const guardado =
+        // 1. drop+add do MESMO nome — a forma canônica do apêndice
+        new RegExp(`drop constraint if exists\\s+${nome}\\b`, "i").test(janela) ||
+        // 2. bloco anônimo que engole a duplicata
+        /exception when duplicate_object/.test(LINHAS.slice(i, i + 12).join("\n")) ||
+        // 3. consulta explícita ao catálogo
+        /from pg_constraint/.test(janela) ||
+        // 4. a guarda gerada do corpo, caso o apêndice a use
+        janela.includes("DO $baseline_guard$ BEGIN");
+      if (!guardado) semGuarda.push(`${i + 1}: ${(LINHAS[i] ?? "").trim().slice(0, 60)}`);
+    }
+    expect(
+      semGuarda,
+      "add constraint sem drop-if-exists nem guarda: o update.sh do clone erra 'already exists'",
+    ).toEqual([]);
+  });
+
   it("toda CREATE POLICY está guardada — e cada zona com a forma que lhe cabe", () => {
     const problemas: string[] = [];
     let guardadasNoCorpo = 0;

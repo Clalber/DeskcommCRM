@@ -336,14 +336,20 @@ pnpm test:db       # Postgres efêmero + baseline install/update + invariantes
 pnpm test:e2e      # Playwright (requer dev server)
 ```
 
-**Quatro checks são obrigatórios** pra mergear na `main` — todos verificados na branch protection, não só no papel:
+**Cinco checks são obrigatórios** pra mergear na `main` — todos verificados na branch protection, não só no papel. A régua, para reconferir em vez de acreditar nesta lista:
+
+```console
+$ gh api repos/melgarafael/DeskcommCRM/branches/main/protection --jq '.required_status_checks.contexts|join(", ")'
+verify, build-and-size, invariants, e2e, imagens-ok
+```
 
 | Check | O que faz |
 |---|---|
 | `verify` | typecheck + lint + `lint:channels` + `test:unit` + `test:shell` |
 | `invariants` | sobe um Postgres limpo, aplica o `baseline.sql` em modo **install** e depois em modo **update** — as duas passadas com `ON_ERROR_STOP=1`, que é o que torna a segunda uma prova de idempotência e não só um "terminou" —, e roda os invariantes de RBAC, atribuição, escopo, roteamento, follow-up, webhooks e automações |
 | `build-and-size` | `pnpm build` em Node 22 |
-| `e2e` | sobe Supabase local, aplica o `baseline.sql` e roda **44 das 45 specs** Playwright pelo frontend |
+| `e2e` | sobe Supabase local, aplica o `baseline.sql` e roda **48 das 49 specs** Playwright pelo frontend |
+| `imagens-ok` | reprova quando qualquer uma das três imagens Docker (`app`, `worker`, `scheduler`) não constrói — é o artefato que o self-hoster instala |
 
 A única spec fora do `e2e` é `vps-fresh-onboarding` — ela precisa de WAHA + Redis + Resend + Nuvemshop de verdade. Ela é a **P0** da nossa doutrina de QA visual, então `e2e` verde **não** prova a jornada de instalação fresca; essa se prova numa VPS.
 

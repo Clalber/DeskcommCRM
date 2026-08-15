@@ -190,6 +190,18 @@ export async function peekRateLimit(bucket: string, windowSec: number): Promise<
     // caem juntas para a memória e o teto sobrevive por processo. O estado
     // perigoso é o PARCIAL — e é o que falha aberto se a leitura confiar só no
     // Redis. Aqui a política é falhar FECHADO: contar o maior, nunca o menor.
+    //
+    // O CASO QUE ISTO CUSTA, para a escolha ficar consciente: Redis que cai e
+    // VOLTA dentro da mesma janela. Se 5 falhas do usuário X foram registradas
+    // na memória enquanto o Redis estava fora, o contador compartilhado dele
+    // segue em 0 quando volta — e o `max` mantém a conta trancada pelo resto da
+    // janela (300s no login), mesmo com a senha certa. É deliberado e é o lado
+    // certo de errar: as 5 falhas contadas foram falhas REAIS, o teto por conta
+    // é o único que barra força bruta distribuída por muitos IPs, e o balde em
+    // memória expira junto com a janela — o bloqueio tem fim, o vazamento não
+    // teria. Com o Redis saudável nada disso ocorre: `checkRateLimit` só escreve
+    // em `_memBuckets` no ramo de fallback, então `emMemoria()` devolve 0 e o
+    // `max` é no-op.
     return Math.max(noRedis, emMemoria());
   } catch {
     return emMemoria();
