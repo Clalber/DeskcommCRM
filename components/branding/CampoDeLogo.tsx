@@ -58,10 +58,22 @@ export type EscopoDoLogo = "instalacao" | "organizacao";
 interface Props {
   readonly escopo: EscopoDoLogo;
   /**
-   * O logo que ESTA camada gravou, já como URL pública. `null` = esta camada não
-   * tem logo próprio — e aí quem aparece é `logoHerdado`.
+   * O logo que ESTA camada gravou, já como URL pública. `url: null` = esta
+   * camada não tem logo próprio — e aí quem aparece é `logoHerdado`.
+   *
+   * ⚠️ É um OBJETO, e não a string solta, e isso NÃO é enfeite: quem repõe o
+   * estado local (lá embaixo) precisa distinguir "o servidor não falou" de "o
+   * servidor falou e repetiu o mesmo valor". Com `string | null`, identidade é
+   * igualdade — um render novo dizendo `null` para uma camada que já estava
+   * `null` seria indistinguível de nenhum render, e a prévia ficaria grudada no
+   * que o cliente escreveu. Com um objeto criado no call site, TODO render novo
+   * do servidor traz identidade nova e volta ao comando.
+   *
+   * Consequência para quem mexe: passe um literal (`{ url: … }`) no JSX. Guardar
+   * este objeto num `useMemo` ou num módulo devolveria o defeito em silêncio —
+   * é o que `tests/unit/marca-previa-do-logo-sem-refresh.test.tsx` (3) vigia.
    */
-  readonly logoDaCamada: string | null;
+  readonly logoDaCamada: { readonly url: string | null };
   /**
    * O que o produto mostra quando esta camada não tem nada. `null` = ninguém tem
    * logo, e a interface aparece com o NOME em texto.
@@ -94,7 +106,69 @@ export function CampoDeLogo({
   const [enviando, setEnviando] = useState(false);
   const [, startTransition] = useTransition();
 
-  const emVigor = logoDaCamada ?? logoHerdado;
+  /**
+   * ⚠️ O LOGO DESTA CAMADA VEM DO SERVIDOR E É ATUALIZADO PELO CORPO DA RESPOSTA.
+   *
+   * `router.refresh()` NÃO é confiável para reexibir o resultado da própria ação
+   * nesta base — a barra lateral dispara prefetch RSC de todos os links e o
+   * refresh é descartado no meio da rajada. MEDIDO no trace do run 31888655412
+   * (Playwright `trace: retain-on-failure`, o caso (1) de `marca-logo.spec.ts`):
+   *
+   *   POST /api/v1/marca/logo            14:18:45.983  200  {logo_url: "…/platform/4f9c…png"}
+   *   GET  /admin/marca?_rsc=3gU9L6A6…   14:18:46.497  net::ERR_ABORTED  bodySize=-1
+   *   …e mais NADA na rede pelos 14s seguintes, até a asserção estourar.
+   *
+   * O refresh saiu uma vez, morreu no meio, e ninguém tentou de novo: a tela
+   * ficou com o render ANTERIOR (a prévia mostrando o nome em texto, a seção "De
+   * onde vem cada coisa" dizendo "padrão do sistema") logo depois de o toast
+   * dizer "Logo atualizado". Não é lentidão — subir o timeout de 5s para 15s já
+   * tinha sido tentado, e o elemento nunca aparece. Para quem usa, é pior que um
+   * erro: a confirmação diz que deu certo e a tela diz que não.
+   *
+   * O comentário que morava aqui defendia o contrário ("a prévia mostra a URL
+   * RESOLVIDA pelo servidor, com a precedência entre camadas aplicada"). A
+   * premissa era boa e a conclusão não seguia: a precedência entre camadas é
+   * `logoDaCamada ?? logoHerdado` — ESTAS DUAS LINHAS, aqui no cliente —, e o
+   * que a rota devolve é exatamente o primeiro operando dela (`logo_url` do
+   * arquivo recém-gravado no POST, `null` no DELETE). Aplicar o corpo não
+   * diverge do render seguinte: reproduz a mesma regra com o mesmo dado.
+   *
+   * O `router.refresh()` continua sendo disparado — é ele que reconcilia o resto
+   * da página (a seção de origens) e o servidor na próxima navegação. O que
+   * mudou é que a prévia não DEPENDE mais dele.
+   *
+   * Reposição pela prop DURANTE o render (não em efeito): é o padrão do React
+   * para "a prop mudou, reponha o estado", e mantém o servidor no comando quando
+   * é ele que traz novidade — navegação, refresh que chegou, outra aba. Mesmo
+   * padrão de `app/app/kanban/_client.tsx:72-80`, pela mesma medição. Lá o
+   * discriminador é a identidade do ARRAY de funis; aqui é a do objeto
+   * `logoDaCamada`, e o tipo dele existe por essa razão (ver os Props).
+   */
+  const [logoGravado, setLogoGravado] = useState<string | null>(logoDaCamada.url);
+  const [ultimoDoServidor, setUltimoDoServidor] = useState(logoDaCamada);
+  if (logoDaCamada !== ultimoDoServidor) {
+    setUltimoDoServidor(logoDaCamada);
+    setLogoGravado(logoDaCamada.url);
+  }
+
+  const emVigor = logoGravado ?? logoHerdado;
+
+  /**
+   * O `logo_url` que a rota acabou de gravar para ESTA camada.
+   *
+   * Três respostas distintas, e a diferença entre as duas últimas é o que faz o
+   * DELETE funcionar: `string` = esta camada passou a ter logo próprio; `null` =
+   * esta camada ficou SEM logo próprio (e quem aparece é o herdado); `undefined`
+   * = a resposta não trouxe o campo, e aí o corpo não manda em nada — a prop do
+   * servidor segue no comando. Colapsar `null` e `undefined` num `??` faria o
+   * DELETE não apagar a prévia.
+   */
+  async function logoDaResposta(resposta: Response): Promise<string | null | undefined> {
+    const corpo = (await resposta.json().catch(() => null)) as
+      | { data?: { logo_url?: string | null } }
+      | null;
+    return corpo?.data?.logo_url;
+  }
 
   /**
    * A mensagem da rota, quando ela souber nomear a recusa.
@@ -125,10 +199,8 @@ export function CampoDeLogo({
         return;
       }
       toast.success("Logo atualizado.");
-      // `router.refresh()` e não estado local: a prévia mostra a URL RESOLVIDA
-      // pelo servidor, com a precedência entre camadas aplicada. Pintar a tela
-      // com o que acabamos de mandar faria a prévia divergir do que o produto
-      // mostra no render seguinte.
+      const gravado = await logoDaResposta(resposta);
+      if (gravado !== undefined) setLogoGravado(gravado);
       startTransition(() => router.refresh());
     } finally {
       setEnviando(false);
@@ -147,6 +219,10 @@ export function CampoDeLogo({
         return;
       }
       toast.success("Logo removido.");
+      // A rota devolve `logo_url: null` — "esta camada ficou sem logo próprio" —,
+      // e é isso que faz a prévia cair no herdado sem esperar o refresh.
+      const gravado = await logoDaResposta(resposta);
+      if (gravado !== undefined) setLogoGravado(gravado);
       startTransition(() => router.refresh());
     } finally {
       setEnviando(false);
@@ -173,7 +249,7 @@ export function CampoDeLogo({
             }}
             className="max-w-xs text-sm file:mr-3 file:cursor-pointer file:rounded-sm file:border file:border-border file:bg-surface-elevated file:px-3 file:py-1.5 file:text-sm"
           />
-          {logoDaCamada ? (
+          {logoGravado ? (
             <Button type="button" variant="outline" onClick={() => void remover()} disabled={enviando}>
               Remover
             </Button>
@@ -188,7 +264,12 @@ export function CampoDeLogo({
 
       <div className="space-y-2">
         <p className="text-sm text-text-muted">
-          {logoDaCamada
+          {/*
+            `logoGravado`, e não a prop: com a prop, a tela diria "Sem logo
+            próprio" LOGO ACIMA da prévia mostrando o logo que a pessoa acabou de
+            subir, até o refresh chegar (ou para sempre, quando ele é abortado).
+          */}
+          {logoGravado
             ? "Como o logo aparece nas duas aparências do sistema:"
             : `Sem logo próprio, o sistema usa o logo ${origemDoHerdado}. Assim ele aparece:`}
         </p>

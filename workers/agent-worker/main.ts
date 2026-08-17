@@ -44,6 +44,7 @@ import {
   type CacheAlertKnobs,
 } from '@/lib/agent-engine/obs/metrics';
 import {
+  cancelJob,
   claimJobs,
   completeJob,
   failJob,
@@ -61,6 +62,45 @@ export type JobHandler = (job: JobRow, pool: pg.Pool, ctx: JobHandlerContext) =>
 function errMsg(err: unknown): string {
   const message = err instanceof Error ? err.message : String(err);
   return (message.split('\n', 1)[0] ?? '').slice(0, 300);
+}
+
+/**
+ * VETO PERMANENTE DE NEGÓCIO × INCIDENTE DE SISTEMA — a fila precisa distinguir.
+ *
+ * O erro é lido pela PROPRIEDADE `terminal`, e não pela classe, porque o
+ * contrato é da fila e não do seam que o produziu: quem sabe que "tentar de novo
+ * daqui a um minuto dá o mesmo resultado" é quem lança. Hoje o único produtor é
+ * `LlmBudgetExceededError` (`lib/agent-engine/edge/llm/run-model-call.ts`), que
+ * declara a propriedade com a razão escrita ao lado.
+ *
+ * Sem esta distinção, um bloqueio por orçamento ia para `failJob`, que reagenda
+ * até `max_attempts` (5) e então insere um `job_dead` **crítico por job, sem
+ * dedup**: N conversas × 5 tentativas viravam N alertas críticos rotulados "Uma
+ * tarefa do assistente falhou", afogando o único `budget_exceeded` — que é o
+ * alerta que explica. O precedente está escrito no próprio `queue.ts`: "Caso
+ * real desta VPS: 16 alertas críticos idênticos".
+ *
+ * ⚠️ ESTA DECISÃO SÓ É SEGURA PORQUE O TRABALHO NÃO FICA ÓRFÃO — e essa parte
+ * mora em OUTRO arquivo, então ela é dita aqui com o escopo exato:
+ *
+ *   * `inbound_turn`, `followup_turn` e `case_reply_turn` passam por
+ *     `runAgentTurn` (`lib/agent-engine/agent/inbound-turn.ts`), que envolve o
+ *     turno INTEIRO em `comHandoffSeOrcamentoAcabar`. Qualquer chamada de modelo
+ *     do turno — inclusive as indiretas (`classifyStage`, `maybeCompact`), que
+ *     rodam ANTES da principal — cai na escolta, e a conversa é devolvida à fila
+ *     humana antes do relance. Nesses três, o job termina porque OUTRA PESSOA
+ *     assumiu, não porque foi descartado. (A versão anterior desta frase era
+ *     falsa: a escolta cobria só as duas chamadas diretas, o classificador
+ *     estourava primeiro, e este `cancelJob` descartava o job com o lead no
+ *     vácuo — a frase falsa era a justificativa da decisão irreversível.)
+ *   * `operator_turn` NÃO tem handoff, e não deve ter: o lead já foi respondido
+ *     pelo Conversador, e o Operador é retaguarda. O que se perde ali é o
+ *     `registrarDesfecho` daquele turno — perda real, limitada e sem conserto
+ *     por retry (o teto continua estourado no minuto seguinte). O sinal que
+ *     sobra é o `budget_exceeded` na Central, que é o alerta que explica.
+ */
+function ehVetoPermanenteDeNegocio(err: unknown): boolean {
+  return typeof err === 'object' && err !== null && (err as { terminal?: unknown }).terminal === true;
 }
 
 /**
@@ -276,11 +316,26 @@ export async function startWorker(
         log.error('métricas do run não registradas', { job_id: job.id, error: errMsg(metricsErr) });
       }
     } catch (err) {
-      log.error('job falhou', { job_id: job.id, kind: job.kind, error: errMsg(err) });
+      const terminal = ehVetoPermanenteDeNegocio(err);
+      // `warn`, não `error`: veto de negócio é o sistema funcionando como
+      // configurado. Rotulá-lo de erro treina quem opera a ignorar o painel.
+      if (terminal) {
+        log.warn('job cancelado por veto permanente de negócio', {
+          job_id: job.id,
+          kind: job.kind,
+          error: errMsg(err),
+        });
+      } else {
+        log.error('job falhou', { job_id: job.id, kind: job.kind, error: errMsg(err) });
+      }
       try {
-        await failJob(pool, job.id, workerId, err);
+        if (terminal) {
+          await cancelJob(pool, job.id, workerId, errMsg(err));
+        } else {
+          await failJob(pool, job.id, workerId, err);
+        }
       } catch (failErr) {
-        log.error('failJob indisponível — lease expira via reaper', {
+        log.error('disposição do job indisponível — lease expira via reaper', {
           job_id: job.id,
           error: errMsg(failErr),
         });

@@ -936,7 +936,7 @@ e2e, imagens-ok`.
 
 | # | Dívida | Condição para sair |
 |---|---|---|
-| D1 | Marca no **alarme de orçamento de IA** (`fase: 7` na guarda) | Ganhar rota em `app/api/v1/cron/`, linha no `docker/scheduler/entrypoint.sh` e chamador real de `runBudgetChecker()`. Hoje o efeito de consertar é **zero observável** |
+| D1 | Marca no **alarme de orçamento de IA** (`fase: 7` na guarda) | **Condição reescrita em 2026-08-15** — a anterior apontava para `runBudgetChecker()`, função que deixou de existir: `workers/ai-budget-checker.cron.ts` foi apagado no épico do teto de orçamento (0159/0160) por nunca ter tido agendador. Depois disso `lib/email/templates/ai-budget-alarm.tsx` ficou **sem chamador nenhum**. Sai quando o alarme ganhar cron de verdade (rota em `app/api/v1/cron/` + linha no `docker/scheduler/entrypoint.sh` + um chamador) **ou** quando o template for apagado junto. Redação canônica em `tests/unit/branding.test.ts` (entrada `lib/email/templates/ai-budget-alarm.tsx`) e em `docs/architecture/marca-propria.architecture.json` — os três descrevem a MESMA dívida e agora dizem a mesma coisa. Hoje o efeito de consertar continua sendo **zero observável** |
 | D2 | `white-label.md` em **EN/ES** | Um gate que reprove tradução defasada. Sem ele, três cópias divergem no primeiro conserto seguinte, e guia comercial errado em inglês é pior que ausente |
 | D3 | **Upload de logo** (saiu do épico) e **fonte/tema** por tenant | Logo: bucket + policies + teto de 512 KB + delete-on-replace, com a cota do Supabase do cliente medida. Fonte/tema: exigiria `Font.register` e o arquivo dentro da imagem — o `next/font` resolve em build |
 | ~~D4~~ | ~~As 120 divergências entre `lib/audit/actions.ts` e o painel~~ | **RESOLVIDA** em `33ce8612`: a lista do painel passou a **derivar** do union e `action-codes.ts` foi apagado. Divergir deixou de ser possível, então a catraca que congelava os 120 foi apagada junto — gate que guarda classe inexistente é ruído. O filtro do painel foi de 89 para 209 códigos |
@@ -1227,9 +1227,15 @@ leitores de `is_throttled` estão mortos). O primeiro tick escreveria **"Pausado
 na tela de quase toda org enquanto o agente atende normal.
 
 A descoberta que decide o desenho não estava no plano: `runBudgetReset()`
-também está morto e é o **único escritor** de `is_throttled: false`. Ligar o
-checker sem ele cria estado permanente que nem o `update.sh` desfaz. O risco era
-real — por outro caminho, e pior.
+também estava morto e era o **único escritor** de `is_throttled: false`. Ligar o
+checker sem ele criaria estado permanente que nem o `update.sh` desfaz. O risco
+era real — por outro caminho, e pior.
+
+**Desfecho (2026-08-15):** os dois crons foram APAGADOS
+(`workers/ai-budget-checker.cron.ts`, `workers/ai-budget-reset.cron.ts`) no épico
+do teto de orçamento, e `is_throttled` foi saneado pela migration 0159. As duas
+funções não existem mais; o parágrafo acima é história do diagnóstico, não estado
+atual do disco.
 
 **Achado ativo hoje, fora do escopo:** `assertBudget` (o enforcement vivo) lê
 `settings.llm.monthly_budget_cents`, que **não tem UI**; a tela mostra

@@ -66,6 +66,20 @@ const envSchema = z.object({
   // 'engine' (default) = o drain deste worker consome; 'native' = o dispatcher
   // EPIC-13 consome e o drain daqui NÃO liga. Nunca os dois.
   AGENT_DISPATCH_CONSUMER: z.enum(['engine', 'native']).default('engine'),
+  // Kill switch do teto de gasto de IA. `on` (ausente = on) não liga nada:
+  // respeita o que cada organização escolheu. A chave só AFROUXA — 'avisar'
+  // rebaixa bloqueio a aviso, 'off' (e as grafias falsas comuns) cala tudo.
+  //
+  // ⚠️ ESTA LINHA É O QUE FAZ A ALAVANCA CHEGAR A QUEM GASTA. `loadEnv` devolve
+  // `parsed.data`, e o Zod REMOVE o que o schema não declara: a chave estaria no
+  // `.env`, sumiria no boot do worker, e o operador que puxasse a alavanca veria
+  // a IA continuar bloqueada sem nenhuma pista do porquê. É a mesma família de
+  // defeito das três chaves de provedor acima — a quarta irmã.
+  //
+  // `z.string()` cru e NUNCA `z.enum`: um valor inesperado aqui derrubaria o
+  // worker no boot, e derrubar o worker é o oposto do que um kill switch faz.
+  // Quem normaliza é `normalizarChaveDeOrcamento` (edge/llm/orcamento.ts).
+  AI_BUDGET_ENFORCEMENT: z.string().min(1).optional(),
   // Modo do gate de disclosure: 'inject' (default conservador) ou 'veto'.
   DISCLOSURE_MODE: z.enum(['inject', 'veto']).default('inject'),
   // Resposta 'queued' (sessão ≠ WORKING): job reagendado com este atraso, SEM

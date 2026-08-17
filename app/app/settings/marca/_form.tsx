@@ -336,9 +336,11 @@ export function FormularioDaMarcaDaOrganizacao({ gravada, instalacao, ambiente }
         */}
         <CampoDeLogo
           escopo="organizacao"
-          logoDaCamada={
-            resolvida.origens.logoUrl === "organizacao" ? resolvida.logoUrl : null
-          }
+          // Literal, nunca memoizado: a identidade deste objeto é o que diz ao
+          // campo que houve render NOVO do servidor. Ver os Props de CampoDeLogo.
+          logoDaCamada={{
+            url: resolvida.origens.logoUrl === "organizacao" ? resolvida.logoUrl : null,
+          }}
           logoHerdado={semAOrganizacao.logoUrl}
           origemDoHerdado="de quem instalou o sistema"
           nomeEmVigor={resolvida.name}

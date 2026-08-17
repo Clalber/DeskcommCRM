@@ -301,6 +301,26 @@ export const AUDIT_ACTIONS = [
   // e-mail). Não é falha de sistema: é a recusa deliberada de abrir organização
   // nova para quem estava tentando entrar numa existente.
   "auth.signup_provision_recusado",
+
+  // ── O teto de gasto de IA (migration 0159) ──────────────────────────────
+  // Até aqui `PATCH /api/v1/ai/budget` não emitia NENHUMA linha de auditoria —
+  // `grep -c "lib/audit" app/api/v1/ai/budget/route.ts` devolvia 0, e nenhum
+  // dos códigos acima falava de orçamento. Um endpoint que mexe em dinheiro e
+  // decide se a IA para de responder não deixava rastro de quem mexeu.
+  //
+  // São TRÊS e não um: "quem armou a parada" e "quem a desarmou" viram filtro
+  // único e permanente no painel de auditoria. Efeito colateral que fecha uma
+  // porta para sempre: a partir daqui, "este teto foi escolhido por um humano?"
+  // é uma query em `api_audit_log` — nenhuma sessão futura precisa inventar um
+  // `limit_set_at` para adivinhar intenção a partir do valor.
+  //
+  // Uma mutação = UMA linha: a transição para/de `bloquear` escolhe entre
+  // `armed`/`disarmed`, e todo o resto (teto, limiar, off↔avisar) cai em
+  // `limit_changed`. O metadata carrega antes/depois dos três campos, então o
+  // que mudou está sempre na linha, qualquer que seja o código.
+  "ai.budget_limit_changed",
+  "ai.budget_enforcement_armed",
+  "ai.budget_enforcement_disarmed",
 ] as const;
 
 /** Um código de auditoria. Derivado de `AUDIT_ACTIONS` — não redigite a lista. */
