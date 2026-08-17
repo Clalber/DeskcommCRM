@@ -5,10 +5,15 @@
  * WAHA real; como o envio exige WORKING no espelho, respostas ficam `queued`
  * para sempre.
  *
- * Dois deveres, um tick:
+ * Três deveres, um tick:
  *   1. RECONCILIADOR: lê o status REAL das sessões na API do WAHA e corrige o
  *      espelho quando divergir (a fonte da verdade do status é o WAHA);
- *   2. REDRIVE: mensagens `sent_via='ai'` presas em `queued` cuja sessão está
+ *   2. RETOMA: sessão STOPPED que ainda é nossa (não arquivada) volta a subir.
+ *      Restart de container, OOM e sono do Docker deixam a credencial no disco
+ *      e a sessão parada — o envio exige WORKING, então inbound e auto-resposta
+ *      morrem até alguém clicar Reconectar. FAILED não entra: pode ser banimento,
+ *      e religar sozinho piora; SCAN_QR_CODE também não — tem gente no celular.
+ *   3. REDRIVE: mensagens `sent_via='ai'` presas em `queued` cuja sessão está
  *      WORKING são reenviadas pelo WAHA (com espaçamento anti-rajada) e marcadas
  *      `sent` — nunca dropadas, nunca duplicadas (só linhas ainda `queued`).
  *
@@ -40,6 +45,33 @@ interface WahaSession {
   status: string;
 }
 
+/**
+ * Só STOPPED: a credencial no disco ainda vale e o start a reaproveita.
+ * FAILED pode ser banimento — religar sozinho é o que o vigia de saúde recusa.
+ * SCAN_QR_CODE tem alguém no celular; STARTING já está subindo.
+ */
+export function deveRetomarSessao(status: string): boolean {
+  return status.toUpperCase() === 'STOPPED';
+}
+
+async function startWahaSession(cfg: WatchdogConfig, name: string): Promise<boolean> {
+  try {
+    const res = await fetch(
+      `${cfg.wahaBaseUrl}/api/sessions/${encodeURIComponent(name)}/start`,
+      {
+        method: 'POST',
+        headers: { 'X-Api-Key': cfg.wahaApiKey, 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+        signal: AbortSignal.timeout(15_000),
+      },
+    );
+    // 422/409 = já está subindo ou WORKING — o efeito que queremos.
+    return res.ok || res.status === 422 || res.status === 409;
+  } catch {
+    return false;
+  }
+}
+
 async function fetchWahaSessions(cfg: WatchdogConfig): Promise<WahaSession[] | null> {
   try {
     const res = await fetch(`${cfg.wahaBaseUrl}/api/sessions?all=true`, {
@@ -54,7 +86,7 @@ async function fetchWahaSessions(cfg: WatchdogConfig): Promise<WahaSession[] | n
   }
 }
 
-/** Corrige o espelho channel_sessions para o status REAL do WAHA. */
+/** Corrige o espelho channel_sessions para o status REAL do WAHA e retoma STOPPED. */
 export async function reconcileSessions(
   pool: pg.Pool,
   cfg: WatchdogConfig,
@@ -67,19 +99,42 @@ export async function reconcileSessions(
   }
   let fixed = 0;
   for (const s of sessions) {
+    const wahaStatus = (s.status ?? '').toUpperCase();
+    // Arquivada não é nossa: a exclusão desloga o aparelho. Uma sessão STOPPED
+    // órfã no transporte não pode voltar a receber mensagem num canal que a UI
+    // já não mostra.
+    const { rows: nossas } = await pool.query<{ id: string; status: string }>(
+      `select id, status from channel_sessions
+       where waha_session_name = $1 and archived_at is null`,
+      [s.name],
+    );
+    if (nossas.length === 0) continue;
+
+    let nextStatus = wahaStatus;
+    if (deveRetomarSessao(wahaStatus)) {
+      const started = await startWahaSession(cfg, s.name);
+      if (started) {
+        nextStatus = 'STARTING';
+        log.info('watchdog: sessão parada retomada', {
+          channel_session_id: nossas[0]!.id,
+          waha_session: s.name,
+        });
+      }
+    }
+
     const { rows } = await pool.query<{ id: string; status: string }>(
       `update channel_sessions
        set status = $2, updated_at = now()
-       where waha_session_name = $1 and status is distinct from $2
+       where waha_session_name = $1 and archived_at is null and status is distinct from $2
        returning id, status`,
-      [s.name, s.status],
+      [s.name, nextStatus],
     );
     for (const row of rows) {
       fixed += 1;
       log.warn('watchdog: espelho de sessão reconciliado com o WAHA real', {
         channel_session_id: row.id,
         waha_session: s.name,
-        status: s.status,
+        status: nextStatus,
       });
     }
   }
