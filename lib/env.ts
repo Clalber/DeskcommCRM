@@ -103,6 +103,27 @@ const schema = z.object({
   // duplicado ou perdido (bug real da fusão).
   AGENT_DISPATCH_CONSUMER: z.enum(["engine", "native"]).optional().default("engine"),
 
+  /**
+   * Kill switch do teto de gasto de IA — a alavanca que o operador da VPS puxa
+   * às 2h da manhã quando a IA parou e ele não sabe SQL.
+   *
+   * `on` (default) NÃO LIGA NADA: significa "respeite o que cada organização
+   * escolheu na tela". A chave só sabe AFROUXAR — `avisar` rebaixa qualquer
+   * bloqueio a aviso, e `off|false|0|no|nao|não|disabled` cala a proteção
+   * inteira. É essa monotonicidade que a torna um kill switch de verdade.
+   *
+   * ⚠️ `z.string()` E JAMAIS `z.enum`, e o motivo é o modo de falha deste
+   * arquivo: `safeParse` abaixo LANÇA quando o schema recusa, e no Next isso
+   * acontece na primeira requisição — com healthcheck TCP puro, o contêiner
+   * fica `healthy` com 100% das requisições em 500. Um `z.enum` transformaria a
+   * alavanca de EMERGÊNCIA no derrubador do app inteiro no dia em que o
+   * operador escrevesse `false`. A normalização (que aceita as grafias falsas
+   * comuns como desligado, e resolve lixo para o lado seguro) mora em
+   * `normalizarChaveDeOrcamento`, em lib/agent-engine/edge/llm/orcamento.ts.
+   * Mesmo raciocínio de APP_ACCENT_HEX, algumas linhas abaixo.
+   */
+  AI_BUDGET_ENFORCEMENT: z.string().optional().default("on"),
+
   // Workers — opt-in via env so dev doesn't run loops. Production cron sets it.
   EVENT_LOG_WORKER_ENABLED: z
     .enum(["true", "false"])

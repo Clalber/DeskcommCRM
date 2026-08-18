@@ -253,6 +253,65 @@ ok "aceita OpenAI vazia (é opcional)"           pass   v_openai    ""
 ok "rejeita senha curta"                        reject v_password  "1234567"        "muito curta"
 ok "aceita senha de 8+"                         pass   v_password  "12345678"
 
+echo "rede fora do ar: o sentinela 000 (issue #190)"
+# O dublê de curl das outras seções é `printf 200` INCONDICIONAL, então o ramo
+# `000` de todos os seis validadores nunca era exercitado por nenhum caso — e foi
+# assim que ele passou 6 versões sendo código morto.
+#
+# O dublê aqui imita o curl DE VERDADE quando a rede falha: `-w '%{http_code}'`
+# faz ele IMPRIMIR `000` e sair com código de erro. Era essa dupla que quebrava o
+# `|| echo 000` de dentro da substituição de comando: o echo CONCATENAVA com o
+# que o curl já tinha impresso e a variável virava `000000`, que não casa com
+# nenhum ramo. Os dois desfechos eram errados, em direções opostas — e os dois
+# estão cobertos abaixo, porque consertar um e não medir o outro deixaria metade
+# do defeito viva.
+rede_morta() {  # rede_morta <descrição> <pass|reject> <validador> <valor> [trecho esperado]...
+  local desc="$1" expect="$2" fn="$3" val="$4" out rc want
+  shift 4
+  out="$(bash -c '
+      INSTALL_SH_LIB=1 . ./install.sh
+      NEXT_PUBLIC_SUPABASE_URL="https://abcdefghijklmnop.supabase.co"
+      set +e
+      # curl real com -w: imprime 000 E devolve exit != 0.
+      curl() { printf 000; return 6; }
+      "$1" "$2"' _ "$fn" "$val" 2>&1)"; rc=$?
+  if [ "$expect" = pass ] && [ $rc -ne 0 ]; then
+    printf '  ✗ %s  (esperava seguir, barrou: %s)\n' "$desc" "$(printf '%s' "$out" | head -1)"; fail=1; return
+  fi
+  if [ "$expect" = reject ] && [ $rc -eq 0 ]; then
+    printf '  ✗ %s  (esperava barrar, seguiu)\n' "$desc"; fail=1; return
+  fi
+  for want in "$@"; do
+    if ! printf '%s' "$out" | grep -qi -- "$want"; then
+      printf '  ✗ %s  (a mensagem não fala de: %s)\n     disse: %s\n' \
+        "$desc" "$want" "$(printf '%s' "$out" | head -1)"; fail=1; return
+    fi
+  done
+  printf '  ✓ %s\n' "$desc"
+}
+
+# LADO 1 — o relatado: a URL inalcançável era ACEITA. `v_supabase_url` é o único
+# dos seis que exige resposta online, e o `000` dele era inalcançável: medido em
+# f9abedd0, `rc=0` e saída vazia para um host que não resolve.
+rede_morta "URL de Supabase inalcançável é RECUSADA" reject v_supabase_url \
+  "https://abcdefghijklmnop.supabase.co" "não consegui alcançar"
+
+# LADO 2 — o oposto, e pior para quem instala: com a rede fora, a chave CERTA
+# caía no ramo `*)` e era RECUSADA com "Confira a chave e o projeto" — o erro
+# acusando quem configurou, num laço do qual não se sai digitando certo. O código
+# sempre quis avisar e seguir; era a variável `000000` que não deixava.
+rede_morta "chave service_role correta SEGUE com aviso" pass v_service \
+  "$(mkjwt service_role abcdefghijklmnop)" "não consegui checar" "sigo com ela"
+rede_morta "chave anon correta SEGUE com aviso"         pass v_anon \
+  "$(mkjwt anon abcdefghijklmnop)"         "sigo com ela"
+
+# Os três de IA já seguiam (o `*)` deles também é tolerante), mas a mensagem
+# mostrava `000000` ao usuário. Aqui se cobra o ramo certo, não só o desfecho:
+# sem checar o texto, um `*)` disfarçado de `000` passaria.
+rede_morta "chave Anthropic segue pelo ramo 000"  pass v_anthropic  "sk-ant-abc123" "não consegui checar"
+rede_morta "chave OpenRouter segue pelo ramo 000" pass v_openrouter "sk-or-abc123"  "não consegui checar"
+rede_morta "chave OpenAI segue pelo ramo 000"     pass v_openai     "sk-abc123"     "não consegui checar"
+
 echo "leitura do .env (load_env)"
 . ./_common.sh
 set +e
@@ -916,6 +975,30 @@ fi
 
 rm -rf "$ME_TMP"
 
+# (7) O VALIDADOR da cor, no install.sh — a outra ponta dos casos (4)-(6).
+#     `v_hex` é estreito de propósito: aceita SÓ `#` + 6 dígitos, que é a única
+#     forma que o `case` de `marca-emails.sh:125` reconhece. O `ehHexValido` do app
+#     (`lib/branding/rampa.ts:49`) aceita mais quatro (`#abc`, `abc`, `aabbcc`),
+#     e deixá-las passar aqui produziria o pior desfecho: a cor do revendedor na
+#     tela e o verde do produto no primeiro e-mail — split-brain que ninguém
+#     percebe, porque cada metade parece certa sozinha.
+ok "cor em hex de 6 dígitos"                pass   v_hex "#7a5cd6"
+ok "cor vazia (Enter) — o campo é opcional" pass   v_hex ""
+ok "nome de cor não é hex"                  reject v_hex "verde-limão" "6 dígitos"
+ok "hex de 3 dígitos: o e-mail não o lê"    reject v_hex "#7a5"        "6 dígitos"
+
+# (8) REGRESSÃO DO LAÇO. O caso de integração da VPS limpa já prova o
+#     comportamento (a cor respondida volta pelo `load_env`); este aqui existe
+#     para NOMEAR a linha que falta quando aquele reprova — "a cor não voltou"
+#     não diz a quem lê que o buraco é a lista de `envq`.
+if grep -qE '^[[:space:]]*envq APP_ACCENT_HEX' install.sh; then
+  printf '  ✓ o install.sh grava APP_ACCENT_HEX no .env\n'
+else
+  printf '  ✗ o install.sh NÃO grava APP_ACCENT_HEX: perguntar sem gravar faz a pessoa\n'
+  printf '     responder e perder a resposta na mesma execução (o bloco fecha com `} > .env`,\n'
+  printf '     que trunca a partir da lista de envq).\n'; fail=1
+fi
+
 echo "proxy reverso: quem está com as portas 80/443"
 # A versão anterior só sabia procurar Traefik. Qualquer outro proxy — inclusive o
 # Caddy de OUTRO DeskcommCRM na mesma VPS — caía no ramo "portas livres", e a
@@ -1280,10 +1363,10 @@ chegou_na_deteccao() {
   return 1
 }
 # As RESPOSTAS do modo interativo, na ordem em que o instalador pergunta: o
-# proxy (o que se testa aqui), depois os 6 campos que o BASE_ENV deixa vazios de
-# propósito (APP_IMAGE, OPENAI_API_KEY, APP_NAME, SUPPORT_EMAIL, RESEND_API_KEY,
-# RESEND_FROM_EMAIL — todos com Enter), a tela de conferência, a telemetria e o
-# aviso de DNS ('c' = seguir assim mesmo).
+# proxy (o que se testa aqui), depois os 7 campos que o BASE_ENV deixa vazios de
+# propósito (APP_IMAGE, OPENAI_API_KEY, APP_NAME, APP_ACCENT_HEX, SUPPORT_EMAIL,
+# RESEND_API_KEY, RESEND_FROM_EMAIL — todos com Enter), a tela de conferência,
+# a telemetria e o aviso de DNS ('c' = seguir assim mesmo).
 # As respostas que vêm DEPOIS da do proxy reverso, na ordem em que o install.sh
 # as consome. É uma fila posicional: pergunta nova no meio do script desloca
 # tudo daqui para baixo, e o sintoma NÃO aponta para cá — o cenário simplesmente
@@ -1294,7 +1377,24 @@ chegou_na_deteccao() {
 # que roda depois da pergunta do proxy (:768) e antes da entrevista (:975).
 # Quem acrescentar pergunta interativa ao install.sh acrescenta a resposta aqui,
 # na mesma posição relativa.
-RESTO_DAS_PERGUNTAS=$'\n\n\n\n\n\n\n\n\nc\n'
+#
+# Contagem de Enters antes do 'c', medida com
+#   eval "$(grep -m1 '^RESTO_DAS_PERGUNTAS=' test-validators.sh)"
+#   printf '%s' "${RESTO_DAS_PERGUNTAS%%c*}" | grep -c ''
+# → era 9 antes de APP_ACCENT_HEX entrar em FIELDS, é 10 agora.
+RESTO_DAS_PERGUNTAS=$'\n\n\n\n\n\n\n\n\n\nc\n'
+
+# A posição da cor DENTRO da fila acima — 1 provedor + APP_IMAGE + OPENAI +
+# APP_NAME e ela é a 5ª. Fica numa variável porque a fila com a cor RESPONDIDA
+# (abaixo) é DERIVADA da de cima em vez de copiada: duas filas posicionais
+# mantidas à mão desincronizam no primeiro campo novo, e aí uma passa e a outra
+# reprova com um nome que não é o dela.
+POSICAO_DA_COR=5
+COR_DE_TESTE='#f2c94c'
+# fila_com <fila> <posição> <valor> → a mesma fila, com uma resposta no lugar de
+# um Enter. `awk` porque a substituição é por NÚMERO DE LINHA: um `sed s///`
+# casaria a primeira linha vazia, que é outra pergunta.
+fila_com() { printf '%s' "$1" | awk -v n="$2" -v v="$3" 'NR==n{print v; next} {print}'; }
 
 echo "integração: instalação NOVA numa VPS LIMPA (o caminho do Caddy)"
 # O caminho mais percorrido de todos — VPS crua, portas livres, o kit sobe o
@@ -1333,6 +1433,22 @@ STUB
       "$(grep -oE '^[A-Z_]+=' "$VPS_PROJ/.env" | tail -3 | tr '\n' ' ')"; exit 1
   fi
   printf '  ✓ portas livres → Caddy, e o .env sai inteiro mesmo sem proxy externo\n'
+
+  # `--yes` não pergunta nada, e campo sem default e sem `opcional` morre em
+  # `die` — a linha acima já provaria isso pela metade (o .env sairia truncado).
+  # O que ESTA asserção acrescenta é a diferença entre AUSENTE e DECLARADA E
+  # VAZIA, que `valor_no_env` não enxerga: `lib/branding/resolve.ts:416` chama a
+  # chave vazia de "estado de fábrica do install.sh" e trata a camada como
+  # silenciosa sobre cor. Chave ausente é a mesma coisa para o resolvedor, mas
+  # não para quem abre o .env procurando onde trocar a cor.
+  if ! grep -qE '^APP_ACCENT_HEX=' "$VPS_PROJ/.env"; then
+    printf '  ✗ em --yes o APP_ACCENT_HEX nem apareceu no .env (esperado: declarado e vazio)\n'; exit 1
+  fi
+  if [ -n "$(valor_no_env "$VPS_PROJ/.env" APP_ACCENT_HEX)" ]; then
+    printf '  ✗ em --yes o APP_ACCENT_HEX veio com valor: [%s] — ninguém respondeu nada\n' \
+      "$(valor_no_env "$VPS_PROJ/.env" APP_ACCENT_HEX)"; exit 1
+  fi
+  printf '  ✓ em --yes a cor sai DECLARADA e vazia (o "estado de fábrica" do resolve.ts)\n'
 
   # ── A regra de ouro da doutrina de packaging, no ponto onde ela vale ───────
   # Uma instalação nova gravava `APP_IMAGE=…:latest`, e `latest` aqui significa
@@ -1389,6 +1505,49 @@ STUB
     printf '     versão que o upstream publicar — sem ninguém ter testado.\n'; exit 1
   fi
   printf '  ✓ o WAHA sai pinado no .env (%s), não em :latest\n' "$img_waha"
+
+  # ── A cor da marca sai da ENTREVISTA e chega ao .env ───────────────────────
+  # Este é o caso que prova o defeito que o épico da marca deixou aberto: o
+  # revendedor punha o nome dele e recebia o VERDE DO PRODUTO em todo e-mail de
+  # acesso, porque `install.sh` nunca perguntava nem gravava `APP_ACCENT_HEX`
+  # (medido em `c8fc877d`: `grep -c APP_ACCENT_HEX install.sh` → 0).
+  #
+  # Tem de ser INTERATIVO, e num `.env` que NÃO traz a chave. Duas armadilhas do
+  # próprio kit tornam qualquer atalho vacuoso:
+  #   1. `ask_one` devolve na primeira linha se a variável já tem valor, e o
+  #      `load_env .env` de `install.sh:757` roda ANTES da entrevista — semear o .env
+  #      faria o teste passar sem a pergunta nunca existir;
+  #   2. enquanto a chave esteve fora da lista de `envq`, ela também estava fora
+  #      de `CONHECIDAS`, então um valor posto à mão voltava pelo laço de
+  #      PRESERVAÇÃO — verde medindo a preservação, não a entrevista.
+  # Com a entrevista respondendo e o .env nascendo sem a chave, o único caminho
+  # que produz o valor de volta é `FIELDS` + `envq`, os dois.
+  saida="$(rodar install.sh "" "" "$(fila_com "$RESTO_DAS_PERGUNTAS" "$POSICAO_DA_COR" "$COR_DE_TESTE")")"
+  chegou_na_deteccao || exit 1
+  cor_gravada="$(valor_no_env "$VPS_PROJ/.env" APP_ACCENT_HEX)"
+  if [ "$cor_gravada" != "$COR_DE_TESTE" ]; then
+    printf '  ✗ a cor respondida na entrevista não chegou ao .env: [%s]\n' "$cor_gravada"
+    # As duas metades falham com a MESMA cara — medido sabotando cada uma: sem o
+    # `envq` a resposta é colhida e descartada; sem o campo em `FIELDS` a
+    # pergunta nem acontece e o `#f2c94c` cai no campo seguinte. Quem lê precisa
+    # das duas pontas, senão conserta a que já estava certa.
+    printf '     esperava [%s]. São dois pontos, e o sintoma é o mesmo nos dois:\n' "$COR_DE_TESTE"
+    printf '       (a) o campo APP_ACCENT_HEX em FIELDS — sem ele a pergunta não existe;\n'
+    printf '       (b) o `envq APP_ACCENT_HEX` no bloco que fecha com `} > .env` — ele TRUNCA\n'
+    printf '           a partir da lista de envq, então responder sem gravar perde a resposta.\n'
+    printf '     últimas chaves gravadas: %s\n' \
+      "$(grep -oE '^[A-Z_]+=' "$VPS_PROJ/.env" | tail -5 | tr '\n' ' ')"; exit 1
+  fi
+  # Vacuidade da fila: se a pergunta da cor tivesse saído de FIELDS, a resposta
+  # `#f2c94c` cairia no campo seguinte (SUPPORT_EMAIL, com v_email) e o
+  # instalador rejeitaria — a fila inteira desanda a partir dali. Sem esta
+  # asserção o caso acima ainda passaria pelo laço de preservação num .env que
+  # alguém venha a semear.
+  if [ "$(valor_no_env "$VPS_PROJ/.env" SUPPORT_EMAIL)" != "" ]; then
+    printf '  ✗ a fila de respostas desandou: SUPPORT_EMAIL ficou [%s], devia estar vazio\n' \
+      "$(valor_no_env "$VPS_PROJ/.env" SUPPORT_EMAIL)"; exit 1
+  fi
+  printf '  ✓ a cor respondida na entrevista (%s) chega ao .env, e a fila não desandou\n' "$COR_DE_TESTE"
 ) || fail=1
 rm -rf "$TMP3B"
 

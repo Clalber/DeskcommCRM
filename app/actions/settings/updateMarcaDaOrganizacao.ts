@@ -98,7 +98,13 @@ export async function updateMarcaDaOrganizacao(
   // DEPOIS do papel, de propósito: quem nem tem o papel recebe `forbidden_role`,
   // que é a verdade sobre ele. Só quem passaria pelo papel é cobrado pelo
   // segundo fator — a ordem é o que faz cada código dizer a coisa certa.
-  if (await mfaEmDivida(activeOrg.role, authUser.is_platform_admin)) {
+  //
+  // ⚠️ `mfaEmDivida()` DEIXOU DE RECEBER PAPEL, no merge com a frente que tornou
+  // a verificação em duas etapas opcional. Ele consultava a política antes de
+  // olhar a sessão; agora não consulta — quem TEM fator prova, qualquer que seja
+  // o papel. A cobrança aqui fica MAIS abrangente, não menos: um manager com
+  // fator e sessão `aal1` passava por este ponto e agora é barrado.
+  if (await mfaEmDivida()) {
     return { ok: false, error: "mfa_required" };
   }
 

@@ -185,6 +185,25 @@ v_email() {
   return 1
 }
 
+# A cor da marca. Aceita SÓ `#` + 6 dígitos hex, e essa estreiteza é medida, não
+# gosto: o `marca-emails.sh:125` reconhece exatamente essa forma e cai calado no
+# verde do produto em qualquer outra (`case "$ACCENT" in \#[0-9a-fA-F]x6`),
+# enquanto o `ehHexValido` de `lib/branding/rampa.ts:49` aceita mais quatro
+# formas (`#abc`, `abc`, `aabbcc` além de `#aabbcc`) e pinta a tela com elas. Um
+# validador frouxo produziria o pior desfecho possível: a cor do revendedor na
+# TELA e o verde do produto no PRIMEIRO e-mail que o cliente dele recebe — e
+# split-brain de marca ninguém percebe, porque cada metade parece certa sozinha.
+#
+# Vazio passa porque o campo é opcional. Na entrevista o `ask_one` sequer chama
+# o validador nesse caso (ele trata `-z "$input"` antes), então o `''` aqui é
+# para quem reusar a função fora dela — e para que tirar o `opcional` do campo
+# amanhã não vire uma instalação travada em quem não quer cor nenhuma.
+v_hex() {
+  case "$1" in ''|'#'[0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F]) return 0;; esac
+  echo "Use um código de cor como #7a5cd6 — cerquilha e 6 dígitos —, ou Enter para a cor do sistema"
+  return 1
+}
+
 v_supabase_url() {
   case "$1" in
     https://*.supabase.co) ;;
@@ -196,7 +215,7 @@ v_supabase_url() {
     *) echo "A URL precisa começar com https://. Na nuvem ela fica em Settings > API > Project URL (termina em .supabase.co); num Supabase próprio, é o endereço do seu servidor."; return 1;;
   esac
   local code
-  code="$(curl -s -o /dev/null -w '%{http_code}' -m 15 "$1/auth/v1/health" 2>/dev/null || echo 000)"
+  code="$(curl -s -o /dev/null -w '%{http_code}' -m 15 "$1/auth/v1/health" 2>/dev/null)" || code=000
   if [ "$code" = "000" ]; then
     echo "Não consegui alcançar $1 — confira se o projeto existe, está ativo (projeto pausado não responde) e se o VPS tem internet."
     return 1
@@ -229,14 +248,14 @@ v_sb_key() {
     # Rota de administração: a anon leva 401 aqui. É o que separa uma da outra.
     code="$(curl -s -o /dev/null -w '%{http_code}' -m 20 \
       -H "apikey: $key" -H "Authorization: Bearer $key" \
-      "$url/auth/v1/admin/users?page=1&per_page=1" 2>/dev/null || echo 000)"
+      "$url/auth/v1/admin/users?page=1&per_page=1" 2>/dev/null)" || code=000
   else
     # /auth/v1/settings é a rota que a anon PODE abrir. Não use /rest/v1/: ele
     # responde 401 "Only the service_role API key can be used for this endpoint"
     # até para a anon correta — validador que reprova o dado certo é pior que
     # nenhum. Provado nesta VPS: settings dá 200 para as chaves do projeto e 401
     # para lixo e para JWT de outro projeto.
-    code="$(curl -s -o /dev/null -w '%{http_code}' -m 20 -H "apikey: $key" "$url/auth/v1/settings" 2>/dev/null || echo 000)"
+    code="$(curl -s -o /dev/null -w '%{http_code}' -m 20 -H "apikey: $key" "$url/auth/v1/settings" 2>/dev/null)" || code=000
   fi
   case "$code" in
     2*) return 0;;
@@ -305,7 +324,7 @@ v_anthropic() {
   case "$1" in sk-ant-*) ;; *) echo "A chave da Anthropic começa com 'sk-ant-'. Pegue em console.anthropic.com > API Keys."; return 1;; esac
   local code
   code="$(curl -s -o /dev/null -w '%{http_code}' -m 20 https://api.anthropic.com/v1/models \
-    -H "x-api-key: $1" -H "anthropic-version: 2023-06-01" 2>/dev/null || echo 000)"
+    -H "x-api-key: $1" -H "anthropic-version: 2023-06-01" 2>/dev/null)" || code=000
   case "$code" in
     2*) return 0;;
     000) c_ylw "  ⚠ não consegui checar a chave online; sigo com ela."; return 0;;
@@ -325,7 +344,7 @@ v_openrouter() {
   case "$1" in sk-or-*) ;; *) echo "A chave da OpenRouter começa com 'sk-or-'. Pegue em openrouter.ai/keys."; return 1;; esac
   local code
   code="$(curl -s -o /dev/null -w '%{http_code}' -m 20 https://openrouter.ai/api/v1/key \
-    -H "Authorization: Bearer $1" 2>/dev/null || echo 000)"
+    -H "Authorization: Bearer $1" 2>/dev/null)" || code=000
   case "$code" in
     2*) return 0;;
     000) c_ylw "  ⚠ não consegui checar a chave online; sigo com ela."; return 0;;
@@ -339,7 +358,7 @@ v_openai() {
   case "$1" in sk-*) ;; *) echo "A chave da OpenAI começa com 'sk-'. Pegue em platform.openai.com > API keys (ou deixe em branco)."; return 1;; esac
   local code
   code="$(curl -s -o /dev/null -w '%{http_code}' -m 20 https://api.openai.com/v1/models \
-    -H "Authorization: Bearer $1" 2>/dev/null || echo 000)"
+    -H "Authorization: Bearer $1" 2>/dev/null)" || code=000
   case "$code" in
     2*) return 0;;
     000) c_ylw "  ⚠ não consegui checar a chave online; sigo com ela."; return 0;;
@@ -1072,6 +1091,11 @@ FIELDS=(
   "OWNER_EMAIL|E-mail do primeiro admin (dono)||v_email||"
   "OWNER_PASSWORD|Senha do primeiro admin (mínimo 8 caracteres)||v_password|secret|"
   "APP_NAME|Nome que aparece na interface (Enter para o padrão)|DeskcommCRM|||"
+  # Sem default, e `opcional`: em `--yes` o `ask_one` devolve 0 sem associar a
+  # variável (campo sem default e sem `opcional` morre em `die`), e o `envq` lá
+  # embaixo usa `${APP_ACCENT_HEX:-}`. Enter = a cor do produto, que é o
+  # comportamento de sempre para quem não tem marca própria.
+  "APP_ACCENT_HEX|Cor da sua marca em hex, ex.: #7a5cd6 (Enter usa a cor do sistema)||v_hex||opcional"
   "SUPPORT_EMAIL|E-mail de suporte que SEUS clientes veem (Enter pula)||v_email||opcional"
   "RESEND_API_KEY|Chave da Resend — envia convite e e-mail de LGPD (resend.com/api-keys, Enter pula)|||secret|opcional"
   "RESEND_FROM_EMAIL|Remetente dos e-mails, de um domínio verificado na Resend (Enter pula)||v_email||opcional"
@@ -1261,7 +1285,7 @@ if [ -f .env ]; then
   #
   # NÃO recarregue o .env aqui. Havia um `set -a; . ./.env; set +a` neste ponto,
   # justificado por "carregar o .env atual primeiro faz `${X:-}` cair de volta no
-  # valor que já existia" — e essa premissa é FALSA: `install.sh:674` já faz
+  # valor que já existia" — e essa premissa é FALSA: `install.sh:757` já faz
   # `load_env .env` antes da entrevista, e `_common.sh:266` faz `printf -v` +
   # `export` incondicionalmente. O arquivo já está carregado e exportado aqui.
   #
@@ -1362,8 +1386,19 @@ esac
   envq NEXT_PUBLIC_ADMIN_URL "$NEXT_PUBLIC_ADMIN_URL"
   printf '# Marca da instalação (white-label). Preencha APP_LOGO_URL com a URL de uma\n'
   printf '# imagem pública para trocar o texto por logo na sidebar. Ver lib/branding.ts.\n'
+  printf '# APP_ACCENT_HEX é a SEMENTE da cor: o banco (platform_branding) manda depois\n'
+  printf '# da primeira leitura, mas é daqui que sai a cor dos e-mails de acesso, que o\n'
+  printf '# marca-emails.sh empurra para o GoTrue e o banco não alcança.\n'
   envq APP_NAME "$APP_NAME"
   envq APP_LOGO_URL "${APP_LOGO_URL:-}"
+  # Perguntar sem gravar seria PIOR que não perguntar: este bloco fecha com
+  # `} > .env`, que TRUNCA o arquivo a partir da lista fechada de `envq` acima e
+  # abaixo — a pessoa responderia a cor e a perderia em silêncio, na mesma
+  # execução. Enquanto a chave esteve fora desta lista, ela também não entrava em
+  # `CONHECIDAS` (o grep de `envq` logo acima), então uma cor posta à mão no .env
+  # sobrevivia por acaso, pelo laço de preservação — e não é de acaso que a
+  # entrevista precisa.
+  envq APP_ACCENT_HEX "${APP_ACCENT_HEX:-}"
   printf '# Endereço de suporte que o CLIENTE FINAL vê (conta suspensa, cobrança).\n'
   printf '# Vazio = a tela não mostra endereço nenhum.\n'
   envq SUPPORT_EMAIL "${SUPPORT_EMAIL:-}"

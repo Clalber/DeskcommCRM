@@ -57,7 +57,7 @@ export async function sendOnboardingInvites(payload: InvitePayload): Promise<Sen
       organizationId: ctx.orgId,
       metadata: { skipped: true, count: 0 },
     });
-    redirect("/onboarding/done");
+    redirect("/onboarding");
   }
 
   let input;
@@ -150,5 +150,5 @@ export async function sendOnboardingInvites(payload: InvitePayload): Promise<Sen
     return { ok: true, sent, failed, undelivered };
   }
 
-  redirect("/onboarding/done");
+  redirect("/onboarding");
 }

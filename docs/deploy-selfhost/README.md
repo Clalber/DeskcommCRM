@@ -11,7 +11,7 @@
 |---|---|
 | VPS Linux (2 vCPU / 4 GB+) com Docker | qualquer provedor |
 | Um domínio apontando para a VPS (registro A) | seu DNS |
-| Projeto **Supabase** (o plano free serve) | supabase.com — é o Postgres+Auth+Storage do CRM |
+| Projeto **Supabase** (o plano free serve; acompanhe a cota em Settings → Usage — ver [runbook de custo](../runbooks/custo-e-cota-do-supabase.md)) | supabase.com — é o Postgres+Auth+Storage do CRM |
 | Chave **Anthropic** (ou cadastre BYOK depois na tela) | console.anthropic.com |
 | Um número de WhatsApp para o agente | qualquer chip/celular |
 
@@ -65,13 +65,20 @@ psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -f supabase/baseline.sql
 ```
 
 O `baseline.sql` é idempotente — cria o CRM inteiro + as tabelas do agente
-(migrations 0001→atual).
+(migrations 0001→atual). Para **atualizar** uma instalação existente, rode o mesmo
+comando de novo, **com a mesma flag**: re-aplicar não erra.
+
+Isso passou a ser verdade em 2026-08-13 (issue #184). Antes o arquivo era
+idempotente só em parte — as tabelas tinham `IF NOT EXISTS`, índices, constraints e
+policies não —, e re-aplicar com `ON_ERROR_STOP=1` parava em
+`multiple primary keys for table "ai_agent_runs"`. Sem a flag saía "verde" com 301
+erros dentro, e quatro deles faziam uma mudança de RLS **não chegar** ao clone.
+O gate que prova isso é o job `invariants`, que agora re-aplica com a flag.
 
 > **Usando Postgres próprio em vez de Supabase?** Aplique ANTES o
 > `scripts/selfhost-prelude.sql` (roles/schemas/extensões que o dump supõe).
 > Limite: auth/storage viram stubs — o login do app exige Supabase real; o
-> worker/agente funcionam integralmente. Para ATUALIZAR uma instalação existente, rode o mesmo
-comando de novo (sem a flag `ON_ERROR_STOP`): só o que falta é aplicado.
+> worker/agente funcionam integralmente.
 
 Crie também a role dedicada do worker (mais seguro que usar o superusuário):
 
