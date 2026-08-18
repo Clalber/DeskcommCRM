@@ -79,7 +79,15 @@ export function createDefaultRegistry(opts?: { allowedHosts?: string[] }): Provi
      */
     openrouter: (apiKey, modelId, baseUrl) => {
       const endpoint = baseUrl ?? OPENROUTER_ENDPOINT;
-      return createOpenAI({ apiKey, baseURL: endpoint, fetch: contain(endpoint) })(modelId);
+      return createOpenAI({
+        apiKey,
+        baseURL: endpoint,
+        headers: {
+          'HTTP-Referer': 'https://crm.murilloalves.com.br',
+          'X-Title': 'DeskcommCRM',
+        },
+        fetch: contain(endpoint),
+      })(modelId);
     },
   };
 }

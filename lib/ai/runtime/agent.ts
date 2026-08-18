@@ -172,7 +172,14 @@ export function buildModel(provider: string, apiKey: string, modelId: string): L
     // `unsupported_provider` — enquanto a mensagem de verdade seria respondida
     // normalmente pelo worker. Erro no ensaio lê-se como produto quebrado.
     case "openrouter":
-      return createOpenAI({ apiKey, baseURL: OPENROUTER_ENDPOINT })(modelId);
+      return createOpenAI({
+        apiKey,
+        baseURL: OPENROUTER_ENDPOINT,
+        headers: {
+          "HTTP-Referer": "https://crm.murilloalves.com.br",
+          "X-Title": "DeskcommCRM",
+        },
+      })(modelId);
     default:
       throw new Error(`unsupported_provider: ${provider}`);
   }
