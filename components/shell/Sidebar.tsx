@@ -12,6 +12,12 @@ import { VersionFooter } from "@/components/shell/VersionFooter";
 import { branding } from "@/lib/branding";
 import { GRUPO_NO_RODAPE, NAV_GROUPS, sidebarGroups } from "@/lib/navigation/registry";
 
+interface SidebarContentProps {
+  collapsed: boolean;
+  showCollapseControl?: boolean;
+  onNavigate?: () => void;
+}
+
 /**
  * Navegação principal, agrupada por objetivo.
  *
@@ -20,7 +26,11 @@ import { GRUPO_NO_RODAPE, NAV_GROUPS, sidebarGroups } from "@/lib/navigation/reg
  * itens e sete `usePermission()` viviam aqui — e divergiam do hub de
  * Configurações e das abas de IA, que mantinham suas próprias listas.
  */
-export function Sidebar({ collapsed }: { collapsed: boolean }) {
+export function SidebarContent({
+  collapsed,
+  showCollapseControl = true,
+  onNavigate,
+}: SidebarContentProps) {
   // A barra lateral aparece em TODA tela — traduzi-la aqui é o que faz a
   // escolha de idioma virar algo visível no primeiro clique.
   const t = useT();
@@ -49,12 +59,7 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
   const nome = activeOrg?.marca?.nome ?? brand.name;
 
   return (
-    <aside
-      className={cn(
-        "fixed inset-y-0 left-0 z-30 flex flex-col border-r bg-card transition-[width] duration-200",
-        collapsed ? "w-16" : "w-60",
-      )}
-    >
+    <>
       <div className={cn("flex items-center border-b px-4 h-14", collapsed ? "justify-center" : "justify-start")}>
         {brand.logoUrl && !collapsed ? (
           // <img> em vez de next/image de propósito: a URL vem do .env de quem hospeda,
@@ -110,6 +115,7 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
                         href={item.href}
                         title={collapsed ? t(item.label) : undefined}
                         aria-current={isActive ? "page" : undefined}
+                        onClick={onNavigate}
                         className={cn(
                           "relative flex items-center gap-3 rounded-md px-3 py-1.5 text-sm transition-colors",
                           isActive
@@ -135,6 +141,7 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
                       href={group.hub.href}
                       title={collapsed ? t(group.hub.label) : undefined}
                       aria-current={pathname === group.hub.href ? "page" : undefined}
+                      onClick={onNavigate}
                       className={cn(
                         "flex items-center gap-3 rounded-md px-3 py-1.5 text-sm transition-colors",
                         pathname === group.hub.href
@@ -159,6 +166,7 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
             href={rodape.href}
             title={collapsed ? t(rodape.label) : undefined}
             aria-current={pathname.startsWith(rodape.href) ? "page" : undefined}
+            onClick={onNavigate}
             className={cn(
               "mb-1 flex items-center gap-3 rounded-md px-3 py-1.5 text-sm transition-colors",
               pathname.startsWith(rodape.href)
@@ -172,20 +180,35 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
           </Link>
         )}
         <VersionFooter collapsed={collapsed} />
-        <button
-          type="button"
-          onClick={() => startTransition(() => toggleSidebar(collapsed))}
-          disabled={isPending}
-          className={cn(
-            "flex w-full items-center gap-2 rounded-md px-3 py-2 text-xs text-muted-foreground hover:bg-accent/50 hover:text-foreground",
-            collapsed && "justify-center px-2",
-          )}
-          aria-label={collapsed ? "Expandir sidebar" : "Recolher sidebar"}
-        >
-          {collapsed ? <CaretDoubleRight size={14} aria-hidden /> : <CaretDoubleLeft size={14} aria-hidden />}
-          {!collapsed && <span>Recolher</span>}
-        </button>
+        {showCollapseControl && (
+          <button
+            type="button"
+            onClick={() => startTransition(() => toggleSidebar(collapsed))}
+            disabled={isPending}
+            className={cn(
+              "flex w-full items-center gap-2 rounded-md px-3 py-2 text-xs text-muted-foreground hover:bg-accent/50 hover:text-foreground",
+              collapsed && "justify-center px-2",
+            )}
+            aria-label={collapsed ? "Expandir sidebar" : "Recolher sidebar"}
+          >
+            {collapsed ? <CaretDoubleRight size={14} aria-hidden /> : <CaretDoubleLeft size={14} aria-hidden />}
+            {!collapsed && <span>Recolher</span>}
+          </button>
+        )}
       </div>
+    </>
+  );
+}
+
+export function Sidebar({ collapsed }: { collapsed: boolean }) {
+  return (
+    <aside
+      className={cn(
+        "fixed inset-y-0 left-0 z-30 flex flex-col border-r bg-card transition-[width] duration-200",
+        collapsed ? "w-16" : "w-60",
+      )}
+    >
+      <SidebarContent collapsed={collapsed} />
     </aside>
   );
 }
