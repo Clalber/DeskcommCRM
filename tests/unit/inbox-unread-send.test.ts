@@ -22,6 +22,7 @@ vi.mock("@/lib/audit", () => ({ audit: vi.fn(async () => {}) }));
 
 function makeSupabase(conversation: Record<string, unknown>) {
   let conversationPatch: Record<string, unknown> | null = null;
+  let contactPatch: Record<string, unknown> | null = null;
 
   const client = {
     from(table: string) {
@@ -34,6 +35,14 @@ function makeSupabase(conversation: Record<string, unknown>) {
           }),
           update: (patch: Record<string, unknown>) => {
             conversationPatch = patch;
+            return { eq: async () => ({ error: null }) };
+          },
+        };
+      }
+      if (table === "contacts") {
+        return {
+          update: (patch: Record<string, unknown>) => {
+            contactPatch = patch;
             return { eq: async () => ({ error: null }) };
           },
         };
@@ -61,9 +70,13 @@ function makeSupabase(conversation: Record<string, unknown>) {
     },
     rpc: async () => ({ error: null }),
     getConversationPatch: () => conversationPatch,
+    getContactPatch: () => contactPatch,
   };
 
-  return client as unknown as SupabaseClient & { getConversationPatch: () => Record<string, unknown> | null };
+  return client as unknown as SupabaseClient & {
+    getConversationPatch: () => Record<string, unknown> | null;
+    getContactPatch: () => Record<string, unknown> | null;
+  };
 }
 
 const ctx: HandlerCtx = { organization_id: ORG, actor: { type: "user", id: USER }, requestId: "req-1" };
@@ -97,6 +110,9 @@ describe("sendMessageHandler — unread zera ao responder", () => {
     expect(supabase.getConversationPatch()).toMatchObject({
       unread_count_for_assignee: 0,
       last_outbound_at: expect.any(String),
+    });
+    expect(supabase.getContactPatch()).toMatchObject({
+      last_activity_at: expect.any(String),
     });
   });
 });

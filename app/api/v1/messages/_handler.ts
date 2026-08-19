@@ -21,6 +21,7 @@ import {
 import { ARCHIVED_AT, queryTolerantToMissingArchived } from "@/lib/channels/archived";
 import { conferirDefinicao } from "@/lib/channels/conferir-definicao";
 import { isMediaPathOwnedBy } from "@/lib/messaging/media/upload-validation";
+import { wahaContactPayload } from "@/lib/messaging/contact-card";
 import type { ListMessagesQuery, SendMessageInput } from "@/lib/schemas";
 import { sendTemplateForSession } from "@/lib/channels/meta/send-template-for-session";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -226,6 +227,7 @@ function previewFrom(input: {
   type?: string;
 }): string {
   if (input.body) return input.body.slice(0, 280);
+  if (input.type === "contact") return "[contato]";
   if (input.media_url || input.media_storage_path) return `[${input.type ?? "media"}]`;
   return "";
 }
@@ -316,6 +318,70 @@ export async function sendMessageHandler(
     );
   }
 
+  let outboundBody = input.body ?? null;
+  let outboundMetadata: Record<string, unknown> = { ...(input.metadata ?? {}) };
+
+  if (input.type === "contact") {
+    const sharedId = input.metadata?.shared_contact_id;
+    if (typeof sharedId !== "string") {
+      throw new ApiError(
+        422,
+        "invalid_payload",
+        undefined,
+        ctx.requestId,
+        "metadata.shared_contact_id é obrigatório para type contact.",
+      );
+    }
+    const { data: shared, error: sharedErr } = await supabase
+      .from("contacts")
+      .select("id, display_name, name, phone_number, is_anonymized, is_blocked")
+      .eq("id", sharedId)
+      .eq("organization_id", ctx.organization_id)
+      .maybeSingle();
+    if (sharedErr) {
+      throw new ApiError(500, "internal_error", undefined, ctx.requestId, sharedErr.message);
+    }
+    if (!shared) {
+      throw new ApiError(404, "not_found", undefined, ctx.requestId, "Contato não encontrado.");
+    }
+    const row = shared as {
+      id: string;
+      display_name: string | null;
+      name: string | null;
+      phone_number: string | null;
+      is_anonymized: boolean;
+      is_blocked: boolean;
+    };
+    if (row.is_anonymized) {
+      throw new ApiError(
+        422,
+        "contact_anonymized",
+        undefined,
+        ctx.requestId,
+        "Contato anonimizado não pode ser compartilhado.",
+      );
+    }
+    if (!row.phone_number) {
+      throw new ApiError(
+        422,
+        "missing_phone_number",
+        undefined,
+        ctx.requestId,
+        "Contato sem telefone para envio como cartão.",
+      );
+    }
+    const displayName = row.display_name ?? row.name ?? row.phone_number;
+    outboundBody = displayName;
+    outboundMetadata = {
+      ...outboundMetadata,
+      shared_contact: {
+        contact_id: row.id,
+        name: displayName,
+        phone_number: row.phone_number,
+      },
+    };
+  }
+
   const now = new Date().toISOString();
   const insertRow = {
     organization_id: c.organization_id,
@@ -325,7 +391,7 @@ export async function sendMessageHandler(
     type: input.type,
     direction: "outbound" as const,
     status: "queued",
-    body: input.body ?? null,
+    body: outboundBody,
     media_url: input.media_url ?? null,
     media_mime: input.media_mime ?? null,
     media_storage_path: input.media_storage_path ?? null,
@@ -334,7 +400,7 @@ export async function sendMessageHandler(
     sent_by_user_id: ctx.actor.type === "user" ? ctx.actor.id : null,
     sent_at: now,
     metadata: {
-      ...(input.metadata ?? {}),
+      ...outboundMetadata,
       ...(ctx.actor.type === "ai_agent" ? { ai_actor_id: ctx.actor.id } : {}),
     },
   };
@@ -499,8 +565,24 @@ export async function sendMessageHandler(
             url: signed.signedUrl,
             mime: input.media_mime ?? "application/octet-stream",
             filename,
-            caption: input.body ?? null,
+            caption: outboundBody ?? null,
           },
+        }));
+      } else if (input.type === "contact") {
+        const sc = outboundMetadata.shared_contact as
+          | { name: string; phone_number: string }
+          | undefined;
+        if (!sc?.phone_number) {
+          throw new Error("contact_payload_missing");
+        }
+        const payload = wahaContactPayload(sc.name, sc.phone_number);
+        ({ externalId } = await adapter.send({
+          sessionRef: resolveSessionRef(c.channel_sessions),
+          to: chatId,
+          providerConversationId: c.provider_conversation_id,
+          kind: "contact",
+          body: outboundBody ?? sc.name,
+          contact: payload,
         }));
       } else {
         ({ externalId } = await adapter.send({
@@ -508,7 +590,7 @@ export async function sendMessageHandler(
           to: chatId,
           providerConversationId: c.provider_conversation_id,
           kind: input.type,
-          body: input.body ?? "",
+          body: outboundBody ?? "",
         }));
       }
       await removerEcoDoProprioEnvio(
@@ -591,7 +673,7 @@ export async function sendMessageHandler(
     last_outbound_at: now,
     last_message_at: now,
     last_message_preview: previewFrom({
-      body: input.body,
+      body: outboundBody ?? input.body,
       media_url: input.media_url,
       media_storage_path: input.media_storage_path,
       type: input.type,
@@ -606,6 +688,13 @@ export async function sendMessageHandler(
   }
 
   await supabase.from("conversations").update(conversationUpdate).eq("id", c.id);
+
+  // Envio pelo CRM não passa por fn_mark_conversation_message — carimba o contato
+  // aqui para /app/contacts refletir a resposta (migration 0162).
+  await supabase
+    .from("contacts")
+    .update({ last_activity_at: now })
+    .eq("id", c.contact_id);
 
   const a = actorAuditPayload(ctx.actor);
   await audit({
