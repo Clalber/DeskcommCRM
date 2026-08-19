@@ -404,8 +404,8 @@ export function RouterEditorClient({
           </Card>
 
           {canManage && (
-            <div className="flex justify-end">
-              <Button onClick={handleSave} disabled={!dirty || !isValid || saving}>
+            <div className="flex sm:justify-end">
+              <Button onClick={handleSave} disabled={!dirty || !isValid || saving} className="w-full sm:w-auto">
                 {saving ? "Salvando…" : "Salvar"}
               </Button>
             </div>

@@ -129,8 +129,8 @@ export function InviteTeamForm() {
               </li>
             ))}
           </ul>
-          <div className="flex justify-end">
-            <Button type="button" onClick={() => (window.location.href = "/onboarding")}>
+          <div className="flex sm:justify-end">
+            <Button type="button" onClick={() => (window.location.href = "/onboarding")} className="w-full sm:w-auto">
               Continuar
             </Button>
           </div>

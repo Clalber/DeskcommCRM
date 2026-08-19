@@ -92,12 +92,13 @@ export function ActivityTab() {
 
   return (
     <div className="space-y-4 pt-4">
-      <div className="flex justify-end">
+      <div className="flex sm:justify-end">
         <Button
           type="button"
           variant="secondary"
           onClick={() => refetch()}
           disabled={isRefetching}
+          className="w-full sm:w-auto"
         >
           <ArrowsClockwise className={cn(isRefetching && "animate-spin")} /> Atualizar
         </Button>

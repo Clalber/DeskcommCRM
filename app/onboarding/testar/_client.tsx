@@ -120,8 +120,13 @@ export function TestarClient({ nome, agenteId, versaoId }: Props) {
               maxLength={4000}
             />
           </div>
-          <div className="flex justify-end">
-            <Button type="button" onClick={ensaiar} disabled={carregando || mensagem.trim() === ""}>
+          <div className="flex sm:justify-end">
+            <Button
+              type="button"
+              onClick={ensaiar}
+              disabled={carregando || mensagem.trim() === ""}
+              className="w-full sm:w-auto"
+            >
               {carregando ? "Ele está pensando..." : "Mandar mensagem"}
             </Button>
           </div>
