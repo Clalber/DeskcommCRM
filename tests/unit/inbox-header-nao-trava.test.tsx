@@ -69,7 +69,7 @@ function renderHeader() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={client}>
-      <ConversationHeader conversation={conversation} />
+      <ConversationHeader conversation={conversation} onBack={() => {}} onOpenCrmPanel={() => {}} />
     </QueryClientProvider>,
   );
 }
