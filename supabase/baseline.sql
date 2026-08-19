@@ -13491,3 +13491,23 @@ notify pgrst, 'reload schema';
 revoke insert, update, delete on table public.ai_budgets from authenticated, anon;
 
 notify pgrst, 'reload schema';
+
+
+-- ---- crm_leads.external_id vira chave de idempotência (migration 0161) ----
+--
+-- A coluna já existia para leads que nascem em outro sistema (import, CRM
+-- externo, ferramenta de prospecção), mas sem UNIQUE nada impedia um upsert
+-- rodado duas vezes de criar dois leads para o mesmo `external_id` — o mesmo
+-- padrão que a doutrina já usa para mensagem/evento externo
+-- (`unique (organization_id, external_id)`) só que não tinha chegado aqui.
+--
+-- Índice COMPLETO, não parcial: PostgREST só infere o alvo do `ON CONFLICT`
+-- de um `on_conflict=col,col` quando o índice único não tem predicado — um
+-- parcial (`where external_id is not null`) exigiria `WHERE` explícito no
+-- conflict, que o upsert da REST não gera. NULL nunca colide com NULL num
+-- UNIQUE comum, então lead sem `external_id` (a maioria, criado à mão) segue
+-- livre.
+create unique index if not exists "crm_leads_org_external_id_key"
+  on "public"."crm_leads" ("organization_id", "external_id");
+
+notify pgrst, 'reload schema';
