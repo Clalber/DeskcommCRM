@@ -70,9 +70,12 @@ const USO = {
   outputTokens: { total: 1, text: 1, reasoning: 0 },
 };
 
-/** Modelo fake que chama `send_message` `n` vezes seguidas (corpos DIFERENTES — não
- * dá pro gate `spinning` interceptar) e só então encerra com o checkpoint. */
-function modeloQueInsisteEmMandar(n: number) {
+/** Modelo fake que chama `send_message` `n` vezes seguidas e só então encerra com o
+ * checkpoint. `rotulo` PRECISA ser único por teste: os 3 casos compartilham a mesma
+ * conversa/sessão, e o gate `spinning` (mass_identical) veta corpo REPETIDO entre
+ * turnos — sem o rótulo, o 2º e 3º teste mandariam os MESMOS textos do 1º e o gate
+ * (corretamente) bloquearia por um motivo que não é o desta suíte. */
+function modeloQueInsisteEmMandar(n: number, rotulo: string) {
   let chamadas = 0;
   return async (opts: { prompt?: unknown }) => {
     const msgs = (opts.prompt ?? []) as Array<{ role: string; content?: unknown }>;
@@ -90,7 +93,7 @@ function modeloQueInsisteEmMandar(n: number) {
             type: "tool-call" as const,
             toolCallId: `c${chamadas}`,
             toolName: "send_message",
-            input: JSON.stringify({ body: `pergunta de qualificação número ${chamadas}` }),
+            input: JSON.stringify({ body: `pergunta de qualificação número ${chamadas} (${rotulo})` }),
           },
         ],
         finishReason: { unified: "tool-calls" as const, raw: undefined },
@@ -227,14 +230,14 @@ beforeEach(() => {
 
 describe("turno completo — send_message chamado repetidamente pelo modelo", () => {
   it("o modelo insiste 5x e só as 2 primeiras (o teto) saem pro canal", async () => {
-    const erro = await rodaTurno(montaHandler(modeloQueInsisteEmMandar(5), 2));
+    const erro = await rodaTurno(montaHandler(modeloQueInsisteEmMandar(5, "caso-a"), 2));
     expect(erro).toBeNull();
 
     // O teto é o que decide QUANTAS mensagens físicas chegam ao lead — não o modelo.
     expect(enviados).toHaveLength(2);
     expect(enviados.map((e) => e.body)).toEqual([
-      "pergunta de qualificação número 1",
-      "pergunta de qualificação número 2",
+      "pergunta de qualificação número 1 (caso-a)",
+      "pergunta de qualificação número 2 (caso-a)",
     ]);
 
     // E o modelo RECEBEU o motivo do bloqueio — sem isto, "bloqueou" não distingue de
@@ -246,13 +249,15 @@ describe("turno completo — send_message chamado repetidamente pelo modelo", ()
 
   it("sem o knob explícito, o teto padrão (DEFAULT_MAX_SENDS_PER_TURN) ainda protege", async () => {
     const { DEFAULT_MAX_SENDS_PER_TURN } = await import("@/lib/agent-engine/agent/inbound-turn");
-    const erro = await rodaTurno(montaHandler(modeloQueInsisteEmMandar(DEFAULT_MAX_SENDS_PER_TURN + 3)));
+    const erro = await rodaTurno(
+      montaHandler(modeloQueInsisteEmMandar(DEFAULT_MAX_SENDS_PER_TURN + 3, "caso-b")),
+    );
     expect(erro).toBeNull();
     expect(enviados).toHaveLength(DEFAULT_MAX_SENDS_PER_TURN);
   });
 
   it("dentro do teto, nada é bloqueado — a rede não aperta quem manda pouco", async () => {
-    const erro = await rodaTurno(montaHandler(modeloQueInsisteEmMandar(2), 3));
+    const erro = await rodaTurno(montaHandler(modeloQueInsisteEmMandar(2, "caso-c"), 3));
     expect(erro).toBeNull();
     expect(enviados).toHaveLength(2);
     expect(JSON.stringify(resultadosVistos)).not.toMatch(/max_sends_per_turn/);
