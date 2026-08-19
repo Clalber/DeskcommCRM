@@ -88,7 +88,7 @@ beforeAll(async () => {
   );
   await pool.query(
     `insert into channel_sessions (id, organization_id, waha_session_name, webhook_secret_encrypted, status)
-     values ($1, $2, 'sessao-hold', '\x00'::bytea, 'WORKING') on conflict (id) do nothing`,
+     values ($1, $2, 'sessao-hold', '\\x00'::bytea, 'WORKING') on conflict (id) do nothing`,
     [SESSAO, ORG],
   );
 });
