@@ -1157,22 +1157,21 @@ async function executarTurnoDoAgente(
     });
   }
   // Horário de funcionamento da versão publicada (spec da tela: TriggerEditor).
-  // Vale SÓ para o turno inbound: a janela do lojista é sobre QUANDO ele atende
-  // quem chega, e adiar por ela um follow-up já prometido ao lead atrasaria uma
-  // promessa que não é dele. O que segura o follow-up é a janela anti-ban logo
-  // acima (`pacing/engine.ts`), que vale para os dois.
+  // Modificado a pedido do usuário: vale SÓ para os disparos em massa (followup_turn).
+  // A IA deve responder ao cliente em tempo real (inbound_turn) 24/7, mas os
+  // disparos em massa da base fria só devem acontecer dentro da janela comercial.
   //
   // Adia, não descarta: o job volta a 'pending' na abertura, SEM consumir
-  // attempts (`rescheduleJob`) — quem escreveu 22h é atendido às 8h. O throw é
+  // attempts (`rescheduleJob`) — o disparo agendado às 22h é enviado às 8h. O throw é
   // o contrato de `JobSettledError`: o run já dispôs do job, main.ts no-opa.
-  if (job.kind === 'inbound_turn' && agentConfig?.janelaDeAtendimento != null) {
+  if (job.kind === 'followup_turn' && agentConfig?.janelaDeAtendimento != null) {
     const esperaMs = msAteAJanelaAbrir(agentConfig.janelaDeAtendimento, new Date());
     if (esperaMs !== null) {
       await rescheduleJob(pool, job.id, ctx.workerId, {
         delayMs: esperaMs,
-        reason: 'fora do horário de funcionamento do agente — turno adiado para a abertura da janela',
+        reason: 'fora do horário de funcionamento do agente — disparo adiado para a abertura da janela',
       });
-      runLog.info('turno adiado — fora do horário de funcionamento configurado na versão publicada', {
+      runLog.info('disparo adiado — fora do horário de funcionamento configurado na versão publicada', {
         agent_id: agentConfig.agentId,
         espera_ms: esperaMs,
         janela: `${agentConfig.janelaDeAtendimento.start}-${agentConfig.janelaDeAtendimento.end}`,
