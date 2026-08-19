@@ -137,7 +137,7 @@ export function InviteTeamForm() {
         </div>
       )}
 
-      <div className="flex justify-between gap-2 pt-2">
+      <div className="flex flex-wrap justify-between gap-2 pt-2">
         <Button type="button" variant="ghost" disabled={pending} onClick={() => submit(true)}>
           Pular por enquanto
         </Button>
