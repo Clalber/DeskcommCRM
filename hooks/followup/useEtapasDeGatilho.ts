@@ -68,7 +68,7 @@ export function useEtapasDeGatilho(habilitado = true): EtapasDeGatilho {
 
   const etapas: EtapaDeGatilho[] = [];
   lista.forEach((funil, i) => {
-    for (const etapa of porFunil[i]?.data?.data.etapas ?? []) {
+    for (const etapa of porFunil[i]?.data?.data?.etapas ?? []) {
       etapas.push({
         stageId: etapa.id,
         stageName: etapa.name,
