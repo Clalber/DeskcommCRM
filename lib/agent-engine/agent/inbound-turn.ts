@@ -290,6 +290,19 @@ export const AGENT_TOOL_DEFS = {
 export const MAX_VETOS_DE_VOCABULARIO_INTERNO = 2;
 
 /**
+ * Teto de mensagens FÍSICAS enviadas ao lead por turno quando `knobs.maxSendsPerTurn`
+ * está ausente (testes) — produção sempre recebe o knob do env (MAX_SENDS_PER_TURN).
+ *
+ * Existe porque NENHUM gate de before-send limita CONTAGEM por turno — `pacing` só
+ * limita RITMO (tempo entre envios), não quantidade. Sem este teto, um modelo que
+ * decida tratar uma lista de perguntas de qualificação como uma mensagem por pergunta
+ * (em vez de perguntar uma e esperar a resposta) só para no teto genérico de STEPS do
+ * loop de tools (AGENT_MAX_STEPS) — e esse teto conta QUALQUER tool, não só envio.
+ * Medido em produção: um lead recebeu 8 mensagens seguidas do mesmo turno.
+ */
+export const DEFAULT_MAX_SENDS_PER_TURN = 3;
+
+/**
  * Job já saiu de 'running' por decisão do próprio run (ex.: cancelJob no veto
  * is_blocked) — o worker NÃO deve completar nem re-tentar. main.ts trata via
  * failJob, que no-opa (lease já não é dele) — estado final é o que o run deixou.
@@ -520,6 +533,13 @@ export interface InboundTurnKnobs {
   notesIndexMaxTokens: number;
   /** teto de steps do loop de tools por run (AGENT_MAX_STEPS) — circuit breaker fino é F2-15 */
   maxSteps: number;
+  /**
+   * Teto de mensagens FÍSICAS enviadas ao lead neste turno (MAX_SENDS_PER_TURN),
+   * send_message + send_template somados, bolhas incluídas. Ausente = usa
+   * `DEFAULT_MAX_SENDS_PER_TURN` — main.ts sempre o preenche pelo knob do env;
+   * testes que não exercitam o teto o omitem sem custo.
+   */
+  maxSendsPerTurn?: number;
   /** atraso do reagendamento em veto/queued herdado da F2-06 (SEND_QUEUED_RETRY_MS) */
   queuedRetryDelayMs: number;
   /** circuit breaker de tools por run (F2-15) — env TOOL_BREAKER_* */
@@ -1393,6 +1413,11 @@ async function executarTurnoDoAgente(
 
   // Estado do RUN — vive só neste closure (isolamento por construção, acc 3).
   let seq = 0;
+  // Teto de mensagens físicas por turno (F2-15b) — `seq` JÁ é a contagem certa: ele só
+  // avança quando o envio de fato sai pro canal (send_message + send_template, bolhas
+  // incluídas), nunca em veto de gate. Checar `seq` antes de tentar o próximo envio
+  // barra o modelo sem gastar uma chamada de before-send à toa.
+  const maxSendsPerTurn = deps.knobs.maxSendsPerTurn ?? DEFAULT_MAX_SENDS_PER_TURN;
   // F3-11: estágio que o MODELO confirmou via update_lead_state neste turno (a máquina
   // F2-10 é a única porta). Comparado com a sugestão do classificador no fim → divergência.
   let confirmedStage: LeadStage | null = null;
@@ -1541,6 +1566,17 @@ async function executarTurnoDoAgente(
     send_template: tool({
       ...AGENT_TOOL_DEFS.send_template,
       execute: async ({ template_name, language, values }) => {
+        if (seq >= maxSendsPerTurn) {
+          return {
+            ok: false,
+            error: {
+              code: 'max_sends_per_turn',
+              message:
+                `você já enviou ${seq} mensagens neste turno (teto: ${maxSendsPerTurn}). ` +
+                'NÃO envie mais nada agora — encerre o turno e espere a resposta do lead.',
+            },
+          };
+        }
         // O texto RENDERIZADO vai como `body` da cadeia: os gates de promessa,
         // spinning e disclosure avaliam exatamente o que o contato vai ler. Sem
         // isso, "usar template" seria a forma de escapar dos guardrails de conteúdo.
@@ -1673,6 +1709,17 @@ async function executarTurnoDoAgente(
     send_message: tool({
       ...AGENT_TOOL_DEFS.send_message,
       execute: async ({ body }) => {
+        if (seq >= maxSendsPerTurn) {
+          return {
+            ok: false,
+            error: {
+              code: 'max_sends_per_turn',
+              message:
+                `você já enviou ${seq} mensagens neste turno (teto: ${maxSendsPerTurn}). ` +
+                'NÃO envie mais nada agora — encerre o turno e espere a resposta do lead.',
+            },
+          };
+        }
         // F4-04: sinaliza (independente do gate F4-01/F4-08) se ESTA candidata é uma
         // promessa fora de tabela — usado só para correlacionar com o jailbreak no fim do
         // turno. A detecção é determinística (decidePromise); sem tabela do tenant = no-op.
