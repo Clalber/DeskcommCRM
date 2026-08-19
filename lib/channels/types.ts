@@ -63,6 +63,14 @@ export interface RecipientInput {
   waLid?: string | null | undefined;
 }
 
+/** Contato compartilhado (vcard) — só `kind: "contact"`. */
+export interface OutboundContact {
+  fullName: string;
+  phoneNumber: string;
+  whatsappId: string;
+  vcard: string;
+}
+
 export interface OutboundEnvelope {
   /** Identificador da sessão/número no provider (WAHA: nome da sessão). */
   sessionRef: string;
@@ -71,6 +79,8 @@ export interface OutboundEnvelope {
   kind: OutboundKind;
   body?: string;
   media?: OutboundMedia;
+  /** Cartão de contato — preenchido quando `kind === "contact"`. */
+  contact?: OutboundContact;
   /**
    * Id que o PROVIDER dá a esta thread, quando ele endereça por thread própria
    * em vez de por telefone (`conversations.provider_conversation_id`).

@@ -263,6 +263,7 @@ export function InboxLayout({ initialSelectedId = null }: InboxLayoutProps = {})
               janelaFechada={motivoDaJanela}
               disabled={selectedConversation.status === "closed"}
               contactName={selectedConversation.contacts?.name ?? null}
+              currentContactId={selectedConversation.contact_id}
             />
           </>
         ) : selectionNotFound ? (

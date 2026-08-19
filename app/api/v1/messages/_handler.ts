@@ -21,7 +21,7 @@ import {
 import { ARCHIVED_AT, queryTolerantToMissingArchived } from "@/lib/channels/archived";
 import { conferirDefinicao } from "@/lib/channels/conferir-definicao";
 import { isMediaPathOwnedBy } from "@/lib/messaging/media/upload-validation";
-import { wahaContactPayload } from "@/lib/messaging/contact-card";
+import { parseDialablePhone, wahaContactPayload } from "@/lib/messaging/contact-card";
 import type { ListMessagesQuery, SendMessageInput } from "@/lib/schemas";
 import { sendTemplateForSession } from "@/lib/channels/meta/send-template-for-session";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -323,63 +323,86 @@ export async function sendMessageHandler(
 
   if (input.type === "contact") {
     const sharedId = input.metadata?.shared_contact_id;
-    if (typeof sharedId !== "string") {
+    const inline = input.metadata?.shared_contact;
+
+    if (typeof sharedId === "string" && sharedId.length > 0) {
+      const { data: shared, error: sharedErr } = await supabase
+        .from("contacts")
+        .select("id, display_name, name, phone_number, is_anonymized, is_blocked")
+        .eq("id", sharedId)
+        .eq("organization_id", ctx.organization_id)
+        .maybeSingle();
+      if (sharedErr) {
+        throw new ApiError(500, "internal_error", undefined, ctx.requestId, sharedErr.message);
+      }
+      if (!shared) {
+        throw new ApiError(404, "not_found", undefined, ctx.requestId, "Contato não encontrado.");
+      }
+      const row = shared as {
+        id: string;
+        display_name: string | null;
+        name: string | null;
+        phone_number: string | null;
+        is_anonymized: boolean;
+        is_blocked: boolean;
+      };
+      if (row.is_anonymized) {
+        throw new ApiError(
+          422,
+          "contact_anonymized",
+          undefined,
+          ctx.requestId,
+          "Contato anonimizado não pode ser compartilhado.",
+        );
+      }
+      if (!row.phone_number) {
+        throw new ApiError(
+          422,
+          "missing_phone_number",
+          undefined,
+          ctx.requestId,
+          "Contato sem telefone para envio como cartão.",
+        );
+      }
+      const displayName = row.display_name ?? row.name ?? row.phone_number;
+      outboundBody = displayName;
+      outboundMetadata = {
+        ...outboundMetadata,
+        shared_contact: {
+          contact_id: row.id,
+          name: displayName,
+          phone_number: row.phone_number,
+        },
+      };
+    } else if (inline && typeof inline === "object" && !Array.isArray(inline)) {
+      const o = inline as Record<string, unknown>;
+      const rawPhone = typeof o.phone_number === "string" ? o.phone_number : "";
+      const phone = parseDialablePhone(rawPhone);
+      if (!phone) {
+        throw new ApiError(
+          422,
+          "invalid_payload",
+          undefined,
+          ctx.requestId,
+          "Telefone inválido para envio como cartão.",
+        );
+      }
+      const nameRaw = typeof o.name === "string" ? o.name.trim() : "";
+      const displayName = nameRaw || phone;
+      outboundBody = displayName;
+      outboundMetadata = {
+        ...outboundMetadata,
+        shared_contact: { name: displayName, phone_number: phone },
+      };
+    } else {
       throw new ApiError(
         422,
         "invalid_payload",
         undefined,
         ctx.requestId,
-        "metadata.shared_contact_id é obrigatório para type contact.",
+        "Informe metadata.shared_contact_id ou metadata.shared_contact com telefone.",
       );
     }
-    const { data: shared, error: sharedErr } = await supabase
-      .from("contacts")
-      .select("id, display_name, name, phone_number, is_anonymized, is_blocked")
-      .eq("id", sharedId)
-      .eq("organization_id", ctx.organization_id)
-      .maybeSingle();
-    if (sharedErr) {
-      throw new ApiError(500, "internal_error", undefined, ctx.requestId, sharedErr.message);
-    }
-    if (!shared) {
-      throw new ApiError(404, "not_found", undefined, ctx.requestId, "Contato não encontrado.");
-    }
-    const row = shared as {
-      id: string;
-      display_name: string | null;
-      name: string | null;
-      phone_number: string | null;
-      is_anonymized: boolean;
-      is_blocked: boolean;
-    };
-    if (row.is_anonymized) {
-      throw new ApiError(
-        422,
-        "contact_anonymized",
-        undefined,
-        ctx.requestId,
-        "Contato anonimizado não pode ser compartilhado.",
-      );
-    }
-    if (!row.phone_number) {
-      throw new ApiError(
-        422,
-        "missing_phone_number",
-        undefined,
-        ctx.requestId,
-        "Contato sem telefone para envio como cartão.",
-      );
-    }
-    const displayName = row.display_name ?? row.name ?? row.phone_number;
-    outboundBody = displayName;
-    outboundMetadata = {
-      ...outboundMetadata,
-      shared_contact: {
-        contact_id: row.id,
-        name: displayName,
-        phone_number: row.phone_number,
-      },
-    };
   }
 
   const now = new Date().toISOString();

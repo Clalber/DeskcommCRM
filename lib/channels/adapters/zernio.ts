@@ -156,6 +156,9 @@ export const zernioAdapter: ChannelAdapter = {
   },
 
   async send(envelope: OutboundEnvelope): Promise<{ externalId: string | null }> {
+    if (envelope.kind === "contact") {
+      throw new Error("zernio_contact_not_supported: envio de cartão de contato não suportado neste canal.");
+    }
     const admin = createAdminClient();
     const creds = await resolveZernioCreds(admin, envelope.sessionRef);
     // LANÇA, não devolve null: com `isConfigured` sempre true, quem desiste é
