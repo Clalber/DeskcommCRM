@@ -53,7 +53,15 @@ export function AppShell({ sidebarCollapsed, children }: AppShellProps) {
       */}
       <div className={cn("flex min-h-screen min-w-0 flex-1 flex-col transition-[margin] duration-200", sidebarCollapsed ? "lg:ml-16" : "lg:ml-60")}>
         <TopBar onOpenMobileNav={() => setMobileNavOpen(true)} />
-        <main className="flex-1 overflow-auto p-4 sm:p-6">{children}</main>
+        {/* `overflow-x-hidden`: rede de segurança, não a correção em si — se
+            algum filho ainda estourar a largura (uma linha de botões sem
+            `flex-wrap`, por exemplo), o certo é a PÁGINA nunca rolar de lado;
+            quem precisa de scroll horizontal é o componente específico
+            (tabela, kanban), contido nele mesmo. Antes, `overflow-auto`
+            deixava esse estouro virar "a tela inteira rola pro lado" sem
+            nenhum aviso — foi assim que a lista de Funis passou despercebida
+            até alguém ver na tela real. */}
+        <main className="flex-1 overflow-y-auto overflow-x-hidden p-4 sm:p-6">{children}</main>
       </div>
     </div>
   );
