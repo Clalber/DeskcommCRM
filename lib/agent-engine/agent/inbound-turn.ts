@@ -1137,9 +1137,10 @@ async function executarTurnoDoAgente(
     });
   }
   // Horário de funcionamento da versão publicada (spec da tela: TriggerEditor).
-  // Vale SÓ para o turno inbound: follow-up e re-entrada têm o próprio pacing
-  // (janela anti-ban 7h–22h em `guardrails/messaging-window.ts`), e um deles
-  // adiado por aqui atrasaria promessa já feita ao lead.
+  // Vale SÓ para o turno inbound: a janela do lojista é sobre QUANDO ele atende
+  // quem chega, e adiar por ela um follow-up já prometido ao lead atrasaria uma
+  // promessa que não é dele. O que segura o follow-up é a janela anti-ban logo
+  // acima (`pacing/engine.ts`), que vale para os dois.
   //
   // Adia, não descarta: o job volta a 'pending' na abertura, SEM consumir
   // attempts (`rescheduleJob`) — quem escreveu 22h é atendido às 8h. O throw é
