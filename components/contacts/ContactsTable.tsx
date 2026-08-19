@@ -1,6 +1,6 @@
 "use client";
 import Link from "next/link";
-import { formatRelative } from "date-fns";
+import { format, formatRelative, isToday, isYesterday } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { CaretDown, CaretUp, ChatCircle } from "@/lib/ui/icons";
 import {
@@ -26,6 +26,15 @@ interface Props {
 
 function displayName(c: Contact): string {
   return rotuloDoContato(c);
+}
+
+/** Hoje/ontem: relativo ("há 2 horas", "ontem"). Mais antigo: data, não dia da semana. */
+function formatUltimaAtividade(iso: string, now = new Date()): string {
+  const d = new Date(iso);
+  if (isToday(d) || isYesterday(d)) {
+    return formatRelative(d, now, { locale: ptBR });
+  }
+  return format(d, "dd/MM/yyyy", { locale: ptBR });
 }
 
 function SortableHead({
@@ -138,7 +147,7 @@ export function ContactsTable({ contacts, orderBy, orderDir, onSort }: Props) {
             </TableCell>
             <TableCell className="text-muted-foreground text-sm">
               {c.last_activity_at
-                ? formatRelative(new Date(c.last_activity_at), new Date(), { locale: ptBR })
+                ? formatUltimaAtividade(c.last_activity_at)
                 : "—"}
             </TableCell>
             <TableCell>
