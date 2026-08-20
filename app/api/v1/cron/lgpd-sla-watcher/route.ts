@@ -7,7 +7,9 @@
  *   - redact / store_redact → alarm if received_at <= now - 10 days (D+10)
  *
  * Auth: `Authorization: Bearer <INTERNAL_CRON_SECRET|INTERNAL_SECRET>` (fail-closed).
- * Audit: emits lgpd.sla_watcher_run after processing.
+ * Audit: emite `lgpd.sla_watcher_run` quando houve alarme, dedup ou erro — tick
+ *   de instalação sem solicitação vencida NÃO audita (ver a guarda "cron que não
+ *   fez nada não audita", vigiada por `cron-audita-so-quando-ha-efeito.test.ts`).
  *
  * MVP: calendar-day approximation for SELECT is intentional and acceptable
  * (D+5 corridos ≈ D+5 úteis in short windows). Precision via computeDueAt

@@ -204,7 +204,7 @@ describe("os pisos do TypeScript e os do SQL são os mesmos números", () => {
     const { readFileSync } = await import("node:fs");
     const { join } = await import("node:path");
     const sql = readFileSync(join(__dirname, "..", "..", "supabase", "baseline.sql"), "utf8");
-    const bloco = sql.slice(sql.indexOf("-- ---- poda da fila e expurgo do audit (migration 0162)"));
+    const bloco = sql.slice(sql.indexOf("-- ---- poda da fila e expurgo do audit (migration 0167)"));
     expect(bloco.length).toBeGreaterThan(500);
     expect(bloco).toContain(`greatest(coalesce(p_retencao_dias, ${RETENCAO_FILA_DIAS_PADRAO}), ${RETENCAO_FILA_DIAS_PISO})`);
     expect(bloco).toContain(
