@@ -591,7 +591,7 @@ exposes:
 
 #### Contexto
 
-Admin upload PDF/MD via UI (multipart), arquivo vai pra Storage `ai-policy/{org}/{uuid}.pdf` (privado). `pdf-parse` extrai texto, fallback `pdfjs-dist` se layout complexo. Chunker 400 tokens overlap 50, semantic-aware por heading markdown (`#`, `##`). Emite `knowledge_source.updated`. Versão registrada em `source_metadata.version` + `uploaded_by`.
+Admin upload PDF/MD via UI (multipart), arquivo vai pra Storage `ai-policy/{org}/{uuid}.pdf` (privado). `pdfjs-dist` extrai texto — engine única desde a issue #238, sem fallback: se ela falhar, a extração falha. Chunker 400 tokens overlap 50, semantic-aware por heading markdown (`#`, `##`). Emite `knowledge_source.updated`. Versão registrada em `source_metadata.version` + `uploaded_by`.
 
 #### Files to create
 
@@ -602,13 +602,13 @@ Admin upload PDF/MD via UI (multipart), arquivo vai pra Storage `ai-policy/{org}
 
 #### Files to modify
 
-- `package.json` — `pdf-parse`, `pdfjs-dist`, `unified`, `remark-parse`
+- `package.json` — `pdfjs-dist` (o `pdf-parse` foi REMOVIDO na issue #238; o `unified`/`remark-parse` desta lista nunca chegou a ser instalado — o extractor de markdown lê raw). Para saber o que está instalado hoje: `grep pdf package.json`
 
 #### Implementation steps (sequential)
 
 1. Endpoint multipart valida `Content-Type` (pdf/md), max 20MB
 2. Upload pra `ai-policy/{org_id}/{uuid}.{ext}` privado
-3. Extract: `pdf-parse(buffer)` → fallback `pdfjs-dist` se erro
+3. Extract: `extractPdfText(buffer)` — uma tentativa, pdfjs-dist; se falhar, lança `PdfExtractError` (→ 422). Não há segunda engine (issue #238)
 4. Chunker 400/50 com `splitOnHeadings=true`
 5. Insere `ai_knowledge_sources` com `source_metadata={filename, version, uploaded_by, blob_path}`
 6. Emite `knowledge_source.updated`
