@@ -20,7 +20,7 @@
  *    o outro canal converte por nós, este não.
  */
 import { createAdminClient } from "@/lib/supabase/admin";
-import { metaContactsPayload } from "@/lib/messaging/contact-card";
+import { metaContactsPayload } from "@/lib/channels/meta/contact-card";
 import { resolveMetaCreds } from "../meta/credentials";
 import type { ChannelAdapter, ChannelHealth, OutboundEnvelope, RecipientInput } from "../types";
 
