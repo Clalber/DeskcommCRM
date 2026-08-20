@@ -26,9 +26,9 @@
  *
  * `lib/agent-engine/edge/crm/session-reconciler.ts` religa — e as duas regras
  * não se contradizem porque falam de estados diferentes. Ele retoma APENAS
- * `STOPPED`, que é a sessão que o WAHA não iniciou (contêiner reiniciado, com a
- * credencial intacta no volume), e NUNCA `FAILED` nem `SCAN_QR_CODE`, que são
- * justamente os estados de sessão derrubada pela plataforma ou deslogada. É
+ * `STOPPED`, que é a sessão que o transporte não iniciou (contêiner reiniciado,
+ * com a credencial intacta no volume), e NUNCA `FAILED` nem `SCAN_QR_CODE`, que
+ * são justamente os estados de sessão derrubada pela plataforma ou deslogada. É
  * sobre esses dois que o parágrafo acima fala, e sobre eles nada religa sozinho.
  *
  * Se alguém for afrouxar aquele filtro, é este parágrafo que precisa cair
