@@ -232,7 +232,6 @@ function previewFrom(input: {
   type?: string;
 }): string {
   if (input.body) return input.body.slice(0, 280);
-  if (input.type === "contact") return "[contato]";
   if (input.media_url || input.media_storage_path) return `[${input.type ?? "media"}]`;
   return "";
 }
@@ -419,7 +418,7 @@ export async function sendMessageHandler(
     type: input.type,
     direction: "outbound" as const,
     status: "queued",
-    body: outboundBody,
+    body: input.body ?? null,
     media_url: input.media_url ?? null,
     media_mime: input.media_mime ?? null,
     media_storage_path: input.media_storage_path ?? null,
@@ -428,7 +427,7 @@ export async function sendMessageHandler(
     sent_by_user_id: ctx.actor.type === "user" ? ctx.actor.id : null,
     sent_at: now,
     metadata: {
-      ...outboundMetadata,
+      ...(input.metadata ?? {}),
       ...(ctx.actor.type === "ai_agent" ? { ai_actor_id: ctx.actor.id } : {}),
     },
   };
@@ -593,7 +592,7 @@ export async function sendMessageHandler(
             url: signed.signedUrl,
             mime: input.media_mime ?? "application/octet-stream",
             filename,
-            caption: outboundBody ?? null,
+            caption: input.body ?? null,
           },
         }));
       } else if (input.type === "contact") {
@@ -629,7 +628,7 @@ export async function sendMessageHandler(
           to: chatId,
           providerConversationId: c.provider_conversation_id,
           kind: input.type,
-          body: outboundBody ?? "",
+          body: input.body ?? "",
         }));
       }
       await removerEcoDoProprioEnvio(
@@ -712,7 +711,7 @@ export async function sendMessageHandler(
     last_outbound_at: now,
     last_message_at: now,
     last_message_preview: previewFrom({
-      body: outboundBody ?? input.body,
+      body: input.body,
       media_url: input.media_url,
       media_storage_path: input.media_storage_path,
       type: input.type,
@@ -728,8 +727,16 @@ export async function sendMessageHandler(
 
   await supabase.from("conversations").update(conversationUpdate).eq("id", c.id);
 
-  // Envio pelo CRM não passa por fn_mark_conversation_message — carimba o contato
-  // aqui para /app/contacts refletir a resposta (migration 0162).
+  // Envio pelo CRM não passa por `fn_mark_conversation_message` — carimba o
+  // contato aqui para /app/contacts refletir a resposta (migration 0162).
+  //
+  // O `organization_id` entra explícito, e não é redundância: este handler
+  // também é chamado pelo agent-engine com o client de SERVICE ROLE, que
+  // BYPASSA RLS (`lib/agent-engine/edge/crm/mcp-client.ts` diz isso no próprio
+  // cabeçalho: "todo uso filtra organization_id manualmente"). Sem o filtro, a
+  // única coisa entre esta escrita e outro tenant seria a confiança em
+  // `c.contact_id` — e o anti-pattern nº 10 do CLAUDE.md existe justamente
+  // porque essa confiança já falhou antes.
   await supabase
     .from("contacts")
     .update({ last_activity_at: now })
