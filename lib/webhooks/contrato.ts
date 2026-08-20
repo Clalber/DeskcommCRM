@@ -9,11 +9,19 @@
  *
  * ─── Por que a recusa carrega CAMPOS e não a mensagem do Zod ────────────────
  *
- * `error.message` do Zod embute o VALOR recebido. Num webhook de WhatsApp o
- * valor é dado do cliente — telefone, texto de mensagem — e pode ter megabytes.
- * O caminho (`payload.from`) responde "o que mudou no fio?", que é a pergunta de
- * quem depura, sem levar nada de pessoal para o log nem para o corpo da
- * resposta.
+ * **NÃO é porque a mensagem vazaria o valor.** Medido no Zod 4 desta versão:
+ * `error.message` de um `invalid_type` é "Invalid input: expected string,
+ * received number" — o TIPO, nunca o dado —, e nem `JSON.stringify(error)`
+ * carrega o input. Escrever aqui que vazaria seria inventar uma razão para uma
+ * decisão que se sustenta sozinha.
+ *
+ * A razão real são três. O caminho (`payload.from`) responde "o que mudou no
+ * fio?", que é a pergunta de quem depura, e a mensagem não — ela descreve o
+ * erro, não o campo. A mensagem é texto do Zod, muda entre versões e não é
+ * contrato de ninguém; o caminho é o nome do campo, que é o contrato. E a
+ * garantia que se quer ("nada de dado de cliente sai daqui") passa a vir da
+ * NOSSA construção em vez de depender de uma escolha de formatação de
+ * biblioteca — que é o tipo de dependência que só se descobre quebrada depois.
  */
 import type { z } from "zod";
 
