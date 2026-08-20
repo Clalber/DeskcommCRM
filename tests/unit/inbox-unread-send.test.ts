@@ -5,6 +5,15 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+/**
+ * `.eq()` do duble: encadeável E aguardável. Precisa de nome próprio porque a
+ * função se referencia dentro do próprio inicializador — sem a anotação, o
+ * `tsc --noEmit` do `verify` reprova com TS7022 (implicit any).
+ */
+interface Encadeavel extends PromiseLike<{ error: null }> {
+  eq: (col: string, val: unknown) => Encadeavel;
+}
+
 import { sendMessageHandler } from "@/app/api/v1/messages/_handler";
 import type { HandlerCtx } from "@/lib/api/handlers/types";
 import type { SendMessageInput } from "@/lib/schemas";
@@ -50,9 +59,7 @@ function makeSupabase(conversation: Record<string, unknown>) {
             // `.eq()` faz o segundo estourar `.eq is not a function` — e um que
             // ignora o encadeamento deixaria o filtro de tenant sumir sem
             // ninguém notar. Por isso ele REGISTRA os filtros.
-            const encadeavel = (): PromiseLike<{ error: null }> & {
-              eq: (col: string, val: unknown) => ReturnType<typeof encadeavel>;
-            } => ({
+            const encadeavel = (): Encadeavel => ({
               eq: (col: string, val: unknown) => {
                 contactFilters[col] = val;
                 return encadeavel();
