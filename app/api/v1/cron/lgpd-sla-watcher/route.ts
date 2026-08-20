@@ -177,18 +177,28 @@ export async function GET(req: NextRequest): Promise<Response> {
   // ────────────────────────────────────────────────────────────────────────
   // Master audit entry (fire-and-forget)
   // ────────────────────────────────────────────────────────────────────────
-  void audit({
-    action: "lgpd.sla_watcher_run",
-    requestId,
-    bypassedRls: true,
-    metadata: {
-      scanned,
-      alarmed: alarmedCount,
-      deduped: dedupedCount,
-      errors: errorsCount,
-      duration_ms: durationMs,
-    },
-  });
+  // Varredura que não achou solicitação vencida não é mutação e não ocupa linha
+  // de auditoria (mesmo critério do snooze-watcher e do recover-stuck-messages).
+  //
+  // `deduped` ENTRA na condição, e aqui a régua é mais generosa que nos irmãos
+  // de propósito: dedup significa que existe prazo LGPD estourado sendo
+  // reencontrado, e num caminho de compliance o registro de que o alarme
+  // continua de pé vale mais que a linha economizada. O que sai é só o tick de
+  // uma instalação sem nenhuma solicitação vencida — que é o caso normal.
+  if (alarmedCount > 0 || dedupedCount > 0 || errorsCount > 0) {
+    void audit({
+      action: "lgpd.sla_watcher_run",
+      requestId,
+      bypassedRls: true,
+      metadata: {
+        scanned,
+        alarmed: alarmedCount,
+        deduped: dedupedCount,
+        errors: errorsCount,
+        duration_ms: durationMs,
+      },
+    });
+  }
 
   return ok(
     { scanned, alarmed: alarmedCount, deduped: dedupedCount, errors: errorsCount },

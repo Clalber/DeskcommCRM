@@ -148,11 +148,12 @@ owner: Rafael Melgaço
 - **Enforcement**: DB.
 - **Exceção**: Nenhuma.
 
-### L-10 — Audit log é append-only e retém 5 anos
+### L-10 — Audit log é append-only e retém 5 anos por padrão
 - **Origem**: Sub-PRD 01 §3.5
 - **Tipo**: Hard constraint
-- **Regra**: GIVEN tabela `api_audit_log`; WHEN qualquer operação UPDATE/DELETE é tentada via API ou ORM; THEN retorna 405. Retenção em hot storage 90 dias; cold storage S3 com lifecycle policy de 5 anos.
-- **Enforcement**: DB (sem RLS de UPDATE/DELETE; permission revogada do role da app) + worker de archive.
+- **Regra**: GIVEN tabela `api_audit_log`; WHEN qualquer operação UPDATE/DELETE é tentada via API ou ORM; THEN é recusada — nenhum papel tem o GRANT (nem `service_role`). Retenção **default de 5 anos**, expurgada na fronteira; o operador da instalação pode encurtá-la por `AUDIT_LOG_RETENTION_DAYS`, **nunca abaixo de 90 dias** (piso dentro da função do banco).
+- **Enforcement**: DB (sem GRANT de UPDATE/DELETE; RLS só com policy de INSERT/SELECT) + `public.fn_expurgar_auditoria_vencida` (`security definer`, sem seletor de linha, revogada de anon/authenticated, concedida só a `service_role`) chamada em lotes pelo cron `app/api/v1/cron/data-retention`. Cada rodada que apaga algo grava `retention.sweep_run` com a contagem — a trilha registra a própria erosão.
+- **Não existe camada cold/S3.** Esta linha prometia "hot 90 dias + cold storage S3 com lifecycle" e **nada disso jamais foi construído** (auditoria de 2026-08-14: zero ocorrência de arquivamento ligada ao audit log; o único vestígio era um `COMMENT ON TABLE`). Num produto self-host não há para onde arquivar: o Storage do cliente é a mesma cota de 1 GB, já dividida com `whatsapp-media`.
 - **Exceção**: DBA pode deletar manualmente apenas com double-confirmation e audit duplo (raro: erro de coleta de PII que precisa ser purgado).
 
 ---
