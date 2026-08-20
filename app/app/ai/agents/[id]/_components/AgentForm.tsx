@@ -285,8 +285,14 @@ export function AgentForm(props: Props) {
     if (form.name.length > 120) errors.name = "O nome pode ter até 120 caracteres.";
     if (form.system_prompt.trim().length < 10)
       errors.system_prompt = "Escreva as instruções do agente (pelo menos uma frase).";
-    if (form.system_prompt.length > 20000)
-      errors.system_prompt = "As instruções passaram de 20.000 caracteres.";
+    // `.trim()` porque é o que o servidor mede: `z.string().trim().max(20000)`
+    // em lib/ai/agents/validation.ts — o trim roda ANTES do max. Duas réguas
+    // diferentes barrariam aqui um texto que o servidor aceitaria.
+    const tamanhoDoPrompt = form.system_prompt.trim().length;
+    if (tamanhoDoPrompt > 20000)
+      errors.system_prompt =
+        `As instruções têm ${tamanhoDoPrompt.toLocaleString("pt-BR")} caracteres, e o máximo é 20.000. ` +
+        `Corte ${(tamanhoDoPrompt - 20000).toLocaleString("pt-BR")} para conseguir salvar.`;
     if (!form.model) errors.model = "Escolha o modelo de inteligência artificial.";
     if (!form.credential_id)
       errors.credential_id = "Escolha a chave de acesso da empresa de inteligência artificial.";
@@ -779,18 +785,46 @@ export function AgentForm(props: Props) {
           <Card className="space-y-2 p-4">
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-medium">As instruções dele</h3>
-              <TokenCounter
-                text={form.system_prompt}
-                contextWindow={modelMeta?.context_window ?? null}
-                className="text-xs"
-              />
+              <div className="flex items-center gap-2">
+                {/* O contador é o aviso que chega ANTES do erro: quem cola um
+                    texto grande vê na hora que ele não vai caber, em vez de
+                    descobrir depois — ou nunca. */}
+                <span
+                  data-testid="contador-do-prompt"
+                  className={
+                    form.system_prompt.trim().length > 20000
+                      ? "text-xs text-destructive"
+                      : "text-xs text-muted-foreground"
+                  }
+                >
+                  {form.system_prompt.trim().length.toLocaleString("pt-BR")}/20.000
+                </span>
+                <TokenCounter
+                  text={form.system_prompt}
+                  contextWindow={modelMeta?.context_window ?? null}
+                  className="text-xs"
+                />
+              </div>
             </div>
             <Textarea
               value={form.system_prompt}
               onChange={(e) => patch({ system_prompt: e.target.value })}
               disabled={disabled}
               rows={12}
-              maxLength={20000}
+              /**
+               * SEM `maxLength`, e é o conserto — não um esquecimento.
+               *
+               * O navegador aplica o atributo na COLAGEM, sem evento e sem
+               * aviso: o que passa do limite não entra no campo. Cinco versões
+               * de um agente em produção foram salvas com exatamente 19.999
+               * caracteres, a última cortada no meio de uma frase, e o aviso
+               * logo acima — "passaram de 20.000" — era inalcançável, porque o
+               * estado nunca podia exceder o teto que o atributo já impunha.
+               *
+               * Sem ele o texto inteiro entra, a validação dispara e o autor lê
+               * quanto precisa cortar. Limite que recusa é honesto; limite que
+               * corta em silêncio faz o autor publicar o que não escreveu.
+               */
               spellCheck={false}
               className="font-mono text-xs"
               aria-invalid={!!validation.system_prompt}
