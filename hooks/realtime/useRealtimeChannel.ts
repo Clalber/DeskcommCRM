@@ -108,7 +108,8 @@ export function authenticateRealtime(supabase: ReturnType<typeof createClient>):
 }
 
 /**
- * Espera o token, mas com teto: assinar 1,5s depois é aceitável; NÃO assinar
+ * Espera o token, mas com teto (`AUTH_TIMEOUT_MS`): assinar depois dele é
+ * aceitável; NÃO assinar
  * porque a rota está lenta (ou não existe, como no jsdom dos testes) deixaria a
  * tela sem realtime para sempre. Prazo estourado = canal anônimo, que é o
  * comportamento de antes desta correção, não uma regressão nova.
@@ -277,7 +278,7 @@ export function useRealtimeChannel(opts: UseRealtimeChannelOpts): {
         });
 
         if (!noPrazo) {
-          // O teto de 1,5s venceu a corrida: este canal acabou de assinar com
+          // O teto (`AUTH_TIMEOUT_MS`) venceu a corrida: este canal acabou de assinar com
           // o que o socket tinha até agora — pode ter sido anônimo. Se o token
           // REALMENTE chegar depois (a mesma promessa memoizada que perdeu a
           // corrida, resolvendo mais tarde), este canal já subiu com a
@@ -296,6 +297,14 @@ export function useRealtimeChannel(opts: UseRealtimeChannelOpts): {
             // de uma lacuna: incrementa ANTES de montar de novo, pra que o
             // SUBSCRIBED do canal novo dispare a entrega sintética acima e
             // feche o buraco do que chegou enquanto este estava anônimo.
+            // A retomada do recuo exponencial pode estar armada (o canal pode
+            // ter errado antes de o token chegar). Sem cancelar, ela dispara
+            // depois desta remontagem e monta um segundo canal por cima —
+            // exatamente o que o caminho de erro acima já evita.
+            if (retomada) {
+              clearTimeout(retomada);
+              retomada = null;
+            }
             tentativas++;
             if (active) supabase.removeChannel(active);
             montar();
