@@ -33,7 +33,7 @@
  */
 import { z } from "zod";
 
-import { lerEnvelope, type LeituraDeEnvelope } from "@/lib/webhooks/contrato";
+import { conferirEnvelope, lerEnvelope, type LeituraDeEnvelope } from "@/lib/webhooks/contrato";
 
 /** Texto do fio: string, ausente ou `null`. Nunca outro tipo. */
 const texto = z.string().nullish();
@@ -104,6 +104,39 @@ export const wahaEnvelopeSchema = z.looseObject({
 export type WahaPayload = z.infer<typeof wahaPayloadSchema>;
 export type WahaEnvelope = z.infer<typeof wahaEnvelopeSchema>;
 
-export function lerEnvelopeWaha(rawBody: string): LeituraDeEnvelope<WahaEnvelope> {
-  return lerEnvelope(rawBody, wahaEnvelopeSchema);
+/**
+ * ─── Por que a conferência acontece em DOIS momentos ────────────────────────
+ *
+ * `docs/prd/03-prd-whatsapp-waha.md` §3.3 tem um AC explícito: "webhook com
+ * HMAC válido grava raw em `webhook_events_log` mesmo se o parse falhar
+ * depois". Conferir o contrato inteiro antes de arquivar destruiria justamente
+ * a evidência que se quer guardar — o corpo cru de um payload cujo formato
+ * mudou é o artefato que responde O QUE mudou.
+ *
+ * Então o estágio 1 confere só o que a rota precisa ANTES de poder arquivar:
+ * a sessão (que resolve a organização) e o id da mensagem (que vai numa coluna
+ * do próprio arquivo). O estágio 2 confere o resto, depois do INSERT.
+ */
+export const wahaRoteamentoSchema = z.looseObject({
+  event: texto,
+  session: texto,
+  payload: z.looseObject({ id: texto }).nullish(),
+});
+
+export type WahaRoteamento = z.infer<typeof wahaRoteamentoSchema>;
+
+/** Estágio 1 — o mínimo para resolver o tenant e arquivar o corpo. */
+export function lerRoteamentoWaha(rawBody: string): LeituraDeEnvelope<WahaRoteamento> {
+  return lerEnvelope(rawBody, wahaRoteamentoSchema);
+}
+
+/**
+ * Estágio 2 — o contrato completo, sobre o que o estágio 1 já desserializou.
+ *
+ * Reconferir o objeto do estágio 1 equivale a reconferir o corpo original: o
+ * schema é `loose` em todo nível, então o que ele devolve tem as MESMAS chaves
+ * que entraram. Provado em `contrato-do-webhook-waha.test.ts`.
+ */
+export function conferirContratoWaha(roteado: WahaRoteamento): LeituraDeEnvelope<WahaEnvelope> {
+  return conferirEnvelope(roteado, wahaEnvelopeSchema);
 }

@@ -56,7 +56,7 @@ vi.mock("@/lib/waha/ingest", async (original) => ({
   },
 }));
 
-import { lerEnvelopeWaha } from "@/lib/waha/envelope";
+import { conferirContratoWaha, lerRoteamentoWaha } from "@/lib/waha/envelope";
 import { parseChatId } from "@/lib/waha/ingest";
 import { POST } from "@/app/api/v1/webhooks/waha/route";
 
@@ -89,6 +89,16 @@ const REAL = {
       message: { conversation: "oi, tudo bem?" },
     },
   },
+};
+
+/**
+ * A rota confere o contrato em DOIS estágios (roteamento antes do arquivo,
+ * conteúdo depois — ver o AC do PRD §3.3). Compor os dois aqui mede o mesmo
+ * que a rota mede, sem repetir o `if` em cada caso.
+ */
+const lerEnvelopeWaha = (rawBody: string) => {
+  const r = lerRoteamentoWaha(rawBody);
+  return r.ok ? conferirContratoWaha(r.envelope) : r;
 };
 
 const pedido = (corpo: unknown) =>
@@ -152,11 +162,19 @@ describe("o payload fora do contrato é recusado, e o campo é nomeado", () => {
   });
 
   it("nomeia TODOS os campos recusados, não só o primeiro", () => {
-    expect(recusa({ id: 1, from: 2, timestamp: "agora" })).toEqual([
+    expect(recusa({ id: "x", from: 2, timestamp: "agora", body: 7 })).toEqual([
+      "payload.body",
       "payload.from",
-      "payload.id",
       "payload.timestamp",
     ]);
+  });
+
+  it("o estágio 1 recusa o que ele mesmo lê — a sessão e o id que vão para o arquivo", () => {
+    // Estes dois não podem esperar pelo estágio 2: um resolve a organização, o
+    // outro é coluna do próprio arquivo.
+    const r = lerRoteamentoWaha(JSON.stringify({ session: 1, payload: { id: 2 } }));
+    if (r.ok) throw new Error("o estágio de roteamento ACEITOU o que devia recusar");
+    expect([...r.campos].sort()).toEqual(["payload.id", "session"]);
   });
 
   it("recusa dentro de `_data.key`, onde mora o telefone do cliente", () => {
@@ -203,6 +221,26 @@ describe("a rota — o desfecho que o provider enxerga", () => {
       error: { code: "validation_failed", details: { campos: ["payload.from"] } },
     });
     expect(despachados).toHaveLength(0);
+  });
+
+  it("o corpo cru é ARQUIVADO mesmo quando o contrato reprova — é o AC do PRD §3.3", async () => {
+    // "Webhook com HMAC válido grava raw em `webhook_events_log` mesmo se o
+    // parse falhar depois". Conferir o contrato inteiro antes do INSERT
+    // destruiria exatamente a evidência de que o fio mudou. Por isso a rota
+    // confere em dois estágios, e este caso é o que segura essa ordem.
+    despachados.length = 0;
+    arquivados.length = 0;
+    const corpo = { event: "message", session: "default", payload: { id: "wamid.X", from: 5 } };
+
+    const res = await POST(pedido(corpo));
+
+    expect(res.status).toBe(400);
+    expect(arquivados, "o corpo cru se perdeu — a evidência do formato novo sumiu").toHaveLength(1);
+    expect(arquivados[0]).toMatchObject({
+      raw_body: JSON.stringify(corpo),
+      event_type: "message",
+      external_id: "wamid.X",
+    });
   });
 
   it("json quebrado segue devolvendo o mesmo 400 de sempre", async () => {

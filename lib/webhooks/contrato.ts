@@ -37,6 +37,23 @@ export function camposForaDoContrato(erro: z.ZodError): string[] {
   return [...vistos];
 }
 
+/**
+ * Confere um valor JÁ desserializado.
+ *
+ * Existe separado de `lerEnvelope` porque uma rota pode precisar conferir o
+ * contrato em DOIS momentos: o mínimo para saber de quem é o payload (antes de
+ * resolver o tenant) e o resto depois de arquivar o corpo cru. O webhook do
+ * canal por QR faz exatamente isso — ver o AC de `docs/prd/03-prd-whatsapp-waha.md`
+ * §3.3: "grava raw em `webhook_events_log` mesmo se o parse falhar depois".
+ */
+export function conferirEnvelope<T>(valor: unknown, schema: z.ZodType<T>): LeituraDeEnvelope<T> {
+  const r = schema.safeParse(valor);
+  if (!r.success) {
+    return { ok: false, motivo: "contrato_violado", campos: camposForaDoContrato(r.error) };
+  }
+  return { ok: true, envelope: r.data };
+}
+
 export function lerEnvelope<T>(rawBody: string, schema: z.ZodType<T>): LeituraDeEnvelope<T> {
   let cru: unknown;
   try {
@@ -44,10 +61,5 @@ export function lerEnvelope<T>(rawBody: string, schema: z.ZodType<T>): LeituraDe
   } catch {
     return { ok: false, motivo: "json_invalido", campos: [] };
   }
-
-  const r = schema.safeParse(cru);
-  if (!r.success) {
-    return { ok: false, motivo: "contrato_violado", campos: camposForaDoContrato(r.error) };
-  }
-  return { ok: true, envelope: r.data };
+  return conferirEnvelope(cru, schema);
 }

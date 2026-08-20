@@ -18,7 +18,7 @@ import { audit } from "@/lib/audit";
 import { ARCHIVED_AT, queryTolerantToMissingArchived } from "@/lib/channels/archived";
 import { logger } from "@/lib/logger";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { lerEnvelopeWaha } from "@/lib/waha/envelope";
+import { conferirContratoWaha, lerRoteamentoWaha } from "@/lib/waha/envelope";
 import { dispatchWahaEvent } from "@/lib/waha/ingest";
 import { authenticateWahaWebhook } from "@/lib/waha/webhook-auth";
 
@@ -29,37 +29,42 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   const requestId = randomUUID();
 
   const rawBody = await req.text();
-  // ─── O contrato do fio, ANTES de qualquer leitura ─────────────────────────
+  // ─── O contrato do fio, em DOIS momentos ─────────────────────────────────
   //
   // Isto era `JSON.parse(rawBody) as WahaEnvelope`: um cast, que não checa nada
   // em tempo de execução. Um `payload.from` não-string fazia `parseChatId`
   // lançar lá dentro, o `catch` do dispatch engolia, e a rota devolvia **200** —
   // o provider riscava o evento da fila achando que entregou.
   //
-  // O desfecho agora é 400 com os CAMPOS recusados (nunca os valores: são dado
-  // de cliente e podem ter megabytes), mais uma linha no log estruturado. 400 e
-  // não 200 porque payload fora do contrato não é "evento que não interessa": é
-  // o fio ter mudado, e isso precisa ser barulhento. 400 e não 500 porque o
-  // corpo é do chamador, não uma falha nossa — e 5xx aqui mandaria o provider
-  // reentregar em backoff um payload que nunca vai passar.
+  // O estágio 1 confere só o que é preciso para RESOLVER O TENANT e ARQUIVAR o
+  // corpo. O contrato completo vem depois do INSERT, porque o AC do
+  // `docs/prd/03-prd-whatsapp-waha.md` §3.3 manda gravar o raw "mesmo se o
+  // parse falhar depois" — e o corpo cru de um payload cujo formato mudou é
+  // justamente o artefato que responde o que mudou.
   //
-  // O schema é LOOSE: campo desconhecido passa intacto. A recusa exige um campo
-  // que a gente LÊ vir com o tipo errado. Ver lib/waha/envelope.ts.
-  const leitura = lerEnvelopeWaha(rawBody);
-  if (!leitura.ok) {
-    if (leitura.motivo === "json_invalido") {
+  // Desfecho da recusa: 400 com os CAMPOS (nunca os valores: são dado de
+  // cliente e podem ter megabytes) e uma linha no log estruturado. Não 200,
+  // porque payload fora do contrato não é "evento que não interessa" — é o fio
+  // ter mudado, e isso precisa ser barulhento. Não 500, porque o corpo é do
+  // chamador, e 5xx mandaria o provider reentregar o que nunca vai passar.
+  //
+  // O schema é LOOSE: campo desconhecido passa intacto. Ver lib/waha/envelope.ts.
+  const roteamento = lerRoteamentoWaha(rawBody);
+  if (!roteamento.ok) {
+    if (roteamento.motivo === "json_invalido") {
       return fail("invalid_request", "invalid_json", 400, { requestId });
     }
     logger.error("[waha.webhook] payload fora do contrato do canal", {
       request_id: requestId,
-      campos: leitura.campos,
+      estagio: "roteamento",
+      campos: roteamento.campos,
     });
     return fail("validation_failed", "payload fora do contrato do canal", 400, {
       requestId,
-      details: { campos: leitura.campos },
+      details: { campos: roteamento.campos },
     });
   }
-  const envelope = leitura.envelope;
+  const envelope = roteamento.envelope;
 
   const sessionName = envelope.session;
   if (!sessionName) {
@@ -152,8 +157,22 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     attempts: 0,
   });
 
+  // Estágio 2: o resto do contrato, agora que o corpo cru já está arquivado.
+  const contrato = conferirContratoWaha(envelope);
+  if (!contrato.ok) {
+    logger.error("[waha.webhook] payload fora do contrato do canal", {
+      request_id: requestId,
+      estagio: "conteudo",
+      campos: contrato.campos,
+    });
+    return fail("validation_failed", "payload fora do contrato do canal", 400, {
+      requestId,
+      details: { campos: contrato.campos },
+    });
+  }
+
   try {
-    await dispatchWahaEvent(admin, session, envelope, requestId);
+    await dispatchWahaEvent(admin, session, contrato.envelope, requestId);
   } catch (err) {
     console.error("[waha.webhook] handler failed", err);
   }
