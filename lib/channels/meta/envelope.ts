@@ -20,7 +20,7 @@
  * "um objeto", com as chaves passando intactas.
  *
  * O que se ganha, então: `entry` e `changes` passam a ser **arrays de verdade**
- * antes do `for...of`, que é exatamente o 500 descrito acima.
+ * antes do `for...of`, que é exatamente a exceção descrita acima.
  */
 import { z } from "zod";
 
