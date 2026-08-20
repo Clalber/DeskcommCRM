@@ -47,10 +47,18 @@ const wahaMediaSchema = z.looseObject({
 });
 
 /**
- * A chave do Baileys. Só `remoteJidAlt`/`participantAlt` ganham tipo: são os
- * dois que `telefoneAlternativoDe` mede com `.length` e `.endsWith` sem guarda.
- * `remoteJid`, `participant`, `addressingMode`, `fromMe` e `id` chegam nos
- * payloads reais e seguem intactos pelo loose — ninguém os lê.
+ * A chave do Baileys — e o achado que o passo 2 da spec 17 mediu.
+ *
+ * Quando o chat é `@lid`, o WhatsApp NÃO esconde o telefone: ele o manda em
+ * `remoteJidAlt` (chat 1:1) ou `participantAlt` (grupo). Medido em
+ * `webhook_events_log` da produção: **76 de 76** payloads @lid com `key` trazem
+ * o número. A leitura de que "@lid é opaco por privacidade" valia para o
+ * `from`, não para o payload inteiro.
+ *
+ * Só esses dois ganham tipo: são os que `telefoneAlternativoDe` mede com
+ * `.length` e `.endsWith` sem guarda própria. `remoteJid`, `participant`,
+ * `addressingMode`, `fromMe` e `id` chegam nos payloads reais e seguem intactos
+ * pelo loose — ninguém os lê.
  */
 const wahaKeySchema = z.looseObject({
   remoteJidAlt: texto,
