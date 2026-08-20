@@ -13057,6 +13057,90 @@ where unread_count_for_assignee <> coalesce((
 
 notify pgrst, 'reload schema';
 
+-- ---- contato: última atividade carimbada por mensagem (migration 0162) ----
+-- ============================================================================
+-- 0162 — Mensagem de conversa carimba `contacts.last_activity_at`.
+--
+-- A lista /app/contacts mostra "Última atividade" de `contacts.last_activity_at`,
+-- denormalizado hoje só pelo trigger de `crm_lead_activities`. Mensagens de
+-- WhatsApp/Meta/Zernio passam por `fn_mark_conversation_message` e atualizam
+-- `conversations.last_message_at` — mas o contato ficava parado (— ou data velha).
+--
+-- O relógio do LEAD continua na lista positiva da 0079; aqui só o contato.
+-- ============================================================================
+
+create or replace function public.fn_mark_conversation_message(
+  p_conv uuid, p_direction text, p_preview text, p_at timestamptz
+) returns void language plpgsql security definer set search_path = public as $$
+begin
+  update public.conversations set
+    last_message_at = p_at, last_message_preview = p_preview,
+    last_inbound_at  = case when p_direction = 'inbound'  then p_at else last_inbound_at  end,
+    last_outbound_at = case when p_direction = 'outbound' then p_at else last_outbound_at end,
+    unread_count_for_assignee = case
+      when p_direction = 'inbound'  then unread_count_for_assignee + 1
+      when p_direction = 'outbound' then 0
+      else unread_count_for_assignee
+    end,
+    updated_at = now()
+  where id = p_conv;
+
+  update public.contacts c
+     set last_activity_at = greatest(coalesce(c.last_activity_at, '-infinity'::timestamptz), p_at)
+    from public.conversations v
+   where v.id = p_conv
+     and c.id = v.contact_id;
+end; $$;
+
+comment on function public.fn_mark_conversation_message is
+  'Atualiza agregados da conversa (inbound incrementa unread; outbound zera) e carimba contacts.last_activity_at.';
+
+-- Contatos que já conversaram mas nunca tiveram atividade de lead.
+update public.contacts c
+   set last_activity_at = sub.max_at
+  from (
+    select contact_id, max(last_message_at) as max_at
+      from public.conversations
+     where last_message_at is not null
+     group by contact_id
+  ) sub
+ where c.id = sub.contact_id
+   and coalesce(c.last_activity_at, '-infinity'::timestamptz) < sub.max_at;
+
+notify pgrst, 'reload schema';
+
+-- ---- atribuição de anúncio: de qual campanha um contato do WhatsApp veio (migration 0164) ----
+--
+-- ⚠️ ENTRA ANTES DO BLOCO DA VARREDURA anon, pelo mesmo motivo das funções
+-- acima: `tests/unit/varredura-anon-e-o-ultimo-bloco.test.ts` proíbe `create
+-- function` depois dele.
+create or replace function public.fn_estampar_atribuicao_de_anuncio(
+  p_contact uuid,
+  p_platform text,
+  p_metadata jsonb
+) returns void
+  language plpgsql
+  security definer
+  set search_path to 'public'
+as $$
+begin
+  update public.contacts
+  set
+    source = p_platform,
+    source_metadata = source_metadata || p_metadata,
+    updated_at = now()
+  where id = p_contact
+    and source_metadata->>'ad_platform' is null;
+end;
+$$;
+
+comment on function public.fn_estampar_atribuicao_de_anuncio(uuid, text, jsonb) is
+  'Grava de qual anúncio (Meta Ads / Google Ads) um contato veio — só na primeira vez. `source_metadata = source_metadata || p_metadata` faz merge, nunca sobrescreve o que fn_upsert_wa_contact já gravou (waha_lid, waha_chat_id, notify_name). A guarda `source_metadata->>''ad_platform'' is null` é o primeiro-toque: clicar em outro anúncio meses depois, numa conversa já aberta, não reescreve de onde a pessoa veio originalmente — o UPDATE casa zero linhas, silenciosamente. security definer + revoke de anon/authenticated: só o backend (admin client no ingest de canal) chama isto.';
+
+revoke execute on function public.fn_estampar_atribuicao_de_anuncio(uuid, text, jsonb) from public, anon, authenticated;
+grant  execute on function public.fn_estampar_atribuicao_de_anuncio(uuid, text, jsonb) to service_role;
+
+notify pgrst, 'reload schema';
 -- ---- VARREDURA anon: função nova nasce exposta em quem ATUALIZA (migration 0116) ----
 --
 -- ⚠️ ESTE BLOCO É, DE PROPÓSITO, O ÚLTIMO DO ARQUIVO. Apêndice novo entra ANTES
@@ -13573,6 +13657,80 @@ create index if not exists webhook_events_log_a_esvaziar_idx
 
 notify pgrst, 'reload schema';
 
+
+-- ---- índice do cap global do claim da fila (migration 0166) ----
+--
+-- O QUÊ: um índice parcial em `job_queue (status) where status = 'running'`.
+--
+-- POR QUÊ: `claimJobs` (lib/agent-engine/queue/queue.ts) abre TODA rodada com
+-- `select count(*) from job_queue where status = 'running'` — o cap global de
+-- concorrência — e nenhum dos quatro índices da tabela serve esse predicado. O
+-- parcial das lanes (`uniq_job_queue_one_running_per_contact`) chega perto e não
+-- vale: o predicado dele é mais ESTREITO (exclui `contact_id is null`, que é
+-- todo `watchdog`/`flywheel`), então o planejador não pode responder por ele.
+-- Medido em pg17 com este baseline, 50.000 linhas `done` + 4 `running`:
+-- Seq Scan / 715 buffers → Index Only Scan / 3 buffers. E o custo NÃO depende de
+-- linha viva: com as 50.004 apagadas na mesma transação o Seq Scan ainda lê os
+-- mesmos 715 buffers, porque ele visita página e não tupla. Fila é escrita o
+-- tempo todo e nada no produto a poda.
+--
+-- O bloco `do $$` existe porque `create index if not exists` casa por NOME e não
+-- por definição — medido em pg17, um homônimo com outra definição vira `NOTICE:
+-- ... already exists, skipping`, que nem chega ao filtro `ERROR|FATAL` do
+-- `update.sh`. Homônimo NOSSO em `job_queue` é derrubado e recriado; homônimo em
+-- outro objeto NÃO é apagado (não é nosso) — a atualização grita com a razão, o
+-- que é o comportamento certo num script que roda sem `ON_ERROR_STOP`.
+--
+-- O `comment on index` é o DELATOR: índice ausente levanta `relation ... does
+-- not exist`, texto que NÃO casa com nenhum termo da lista benigna do
+-- `update.sh` e portanto aparece ao operador — enquanto `already exists` seria
+-- engolido. Aditivo e idempotente: sem constraint, sem backfill, sem dado tocado.
+do $$
+declare
+  v_relkind "char";
+  v_def     text;
+  v_tabela  text;
+begin
+  select c.relkind,
+         case when c.relkind in ('i', 'I') then pg_get_indexdef(c.oid) end,
+         t.relname
+    into v_relkind, v_def, v_tabela
+    from pg_class c
+    join pg_namespace n on n.oid = c.relnamespace
+    left join pg_index i on i.indexrelid = c.oid
+    left join pg_class t on t.oid = i.indrelid
+   where n.nspname = 'public'
+     and c.relname = 'idx_job_queue_running';
+
+  if v_relkind is null then
+    return;
+  end if;
+
+  if v_relkind not in ('i', 'I') or v_tabela is distinct from 'job_queue' then
+    raise exception
+      'o nome idx_job_queue_running já está tomado em public (relkind=%, tabela=%). '
+      'Nome de índice é único por SCHEMA, então o create index if not exists desta '
+      'atualização vira no-op silencioso e o claim da fila continua varrendo a tabela '
+      'inteira a cada rodada. Não apago o objeto porque ele não é nosso: renomeie-o e '
+      'rode a atualização de novo.', v_relkind, coalesce(v_tabela, '(nenhuma)');
+  end if;
+
+  if v_def !~ 'USING btree \(status\)' or v_def !~ 'WHERE \(status = ''running''' then
+    execute 'drop index public.idx_job_queue_running';
+  end if;
+end
+$$;
+
+create index if not exists idx_job_queue_running
+  on job_queue (status) where status = 'running';
+
+comment on index idx_job_queue_running is
+  'Cap global do claim: select count(*) from job_queue where status = ''running'' '
+  '(lib/agent-engine/queue/queue.ts). Sem ele o claim faz Seq Scan a cada rodada — '
+  '715 buffers com 50 mil linhas, e o mesmo custo com zero linha viva, porque Seq '
+  'Scan visita página e não tupla. Este COMMENT é o delator do bloco: índice ausente '
+  'vira "relation does not exist", que NÃO casa com o filtro benigno do update.sh e '
+  'chega ao operador; "already exists" seria engolido.';
 
 -- ---- identificador de canal único entre os ATIVOS (migration 0165) ----
 --
