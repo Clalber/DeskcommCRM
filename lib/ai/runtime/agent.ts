@@ -29,7 +29,10 @@ import { generateText, stepCountIs, type LanguageModel, type StopCondition, type
 
 // Fonte única do endpoint — a mesma constante que o registry de produção usa.
 // Repetir a URL aqui criaria dois lugares para consertar quando ela mudar.
-import { OPENROUTER_ENDPOINT } from "@/lib/agent-engine/edge/llm/providers";
+import {
+  cabecalhosDeAtribuicaoOpenRouter,
+  OPENROUTER_ENDPOINT,
+} from "@/lib/agent-engine/edge/llm/providers";
 import { CredentialUnavailableError, loadCredential } from "@/lib/ai/credentials";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { audit } from "@/lib/audit";
@@ -175,10 +178,7 @@ export function buildModel(provider: string, apiKey: string, modelId: string): L
       return createOpenAI({
         apiKey,
         baseURL: OPENROUTER_ENDPOINT,
-        headers: {
-          "HTTP-Referer": "https://crm.murilloalves.com.br",
-          "X-Title": "DeskcommCRM",
-        },
+        headers: cabecalhosDeAtribuicaoOpenRouter(),
       })(modelId);
     default:
       throw new Error(`unsupported_provider: ${provider}`);
