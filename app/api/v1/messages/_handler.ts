@@ -21,7 +21,12 @@ import {
 import { ARCHIVED_AT, queryTolerantToMissingArchived } from "@/lib/channels/archived";
 import { conferirDefinicao } from "@/lib/channels/conferir-definicao";
 import { isMediaPathOwnedBy } from "@/lib/messaging/media/upload-validation";
-import { parseDialablePhone, wahaContactPayload } from "@/lib/messaging/contact-card";
+import {
+  buildVcard,
+  normalizePhoneForDisplay,
+  parseDialablePhone,
+  phoneToWhatsappId,
+} from "@/lib/messaging/contact-card";
 import type { ListMessagesQuery, SendMessageInput } from "@/lib/schemas";
 import { sendTemplateForSession } from "@/lib/channels/meta/send-template-for-session";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -598,14 +603,25 @@ export async function sendMessageHandler(
         if (!sc?.phone_number) {
           throw new Error("contact_payload_missing");
         }
-        const payload = wahaContactPayload(sc.name, sc.phone_number);
+        // O envelope leva o cartão em formato AGNÓSTICO (vCard é formato, não
+        // provider). Quem traduz para o payload do transporte é o adapter — o
+        // de QR inclusive REESCREVE `whatsappId` e `vcard` depois de resolver o
+        // wa_id real, então montá-los aqui com o nome do provider seria, além
+        // de proibido pelo invariante 1, trabalho jogado fora.
+        const telefone = normalizePhoneForDisplay(sc.phone_number);
+        const nome = sc.name?.trim() || telefone;
         ({ externalId } = await adapter.send({
           sessionRef: resolveSessionRef(c.channel_sessions),
           to: chatId,
           providerConversationId: c.provider_conversation_id,
           kind: "contact",
-          body: outboundBody ?? sc.name,
-          contact: payload,
+          body: outboundBody ?? nome,
+          contact: {
+            fullName: nome,
+            phoneNumber: telefone,
+            whatsappId: phoneToWhatsappId(telefone),
+            vcard: buildVcard(nome, telefone),
+          },
         }));
       } else {
         ({ externalId } = await adapter.send({
@@ -717,7 +733,8 @@ export async function sendMessageHandler(
   await supabase
     .from("contacts")
     .update({ last_activity_at: now })
-    .eq("id", c.contact_id);
+    .eq("id", c.contact_id)
+    .eq("organization_id", c.organization_id);
 
   const a = actorAuditPayload(ctx.actor);
   await audit({

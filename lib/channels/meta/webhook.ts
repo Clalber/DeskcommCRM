@@ -17,7 +17,8 @@
  */
 import { createHmac, timingSafeEqual } from "node:crypto";
 
-import { parseMetaInboundContact, type SharedContact } from "@/lib/messaging/contact-card";
+import { parseMetaInboundContact } from "@/lib/channels/meta/contact-card";
+import type { SharedContact } from "@/lib/messaging/contact-card";
 
 /** Assinatura da Meta: `sha256=<hex>` no header `X-Hub-Signature-256`. */
 export function verifyMetaSignature(

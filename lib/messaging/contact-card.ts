@@ -1,6 +1,11 @@
 /**
- * Cartão de contato compartilhado no WhatsApp (vcard).
- * Usado na saída (montar payload WAHA) e na entrada (parse do body).
+ * Cartão de contato compartilhado (vCard) — a parte AGNÓSTICA.
+ *
+ * vCard é formato, não provider: montar e ler o cartão vale para qualquer
+ * transporte. O PAYLOAD de cada canal, esse sim, mora na pasta do canal dele —
+ * procure por `contact-card.ts` dentro das pastas de canal. Nomear provider
+ * fora delas é o que o invariante 1 da doutrina de restrição de canal proíbe, e
+ * o `pnpm lint:channels` reprova.
  */
 
 export interface SharedContact {
@@ -64,7 +69,7 @@ export function parseDialablePhone(raw: string): string | null {
   return normalizePhoneForDisplay(trimmed.startsWith("+") ? trimmed : `+${digits}`);
 }
 
-/** Só dígitos — whatsappId do WAHA / wa_id da Meta. */
+/** Só dígitos: é assim que os transportes endereçam o número. */
 export function phoneToWhatsappId(phone: string): string {
   return phone.replace(/\D/g, "");
 }
@@ -77,7 +82,7 @@ export function normalizePhoneForDisplay(raw: string): string {
   return digits.length >= 8 ? `+${digits}` : trimmed;
 }
 
-/** Monta vCard mínimo aceito pelo WAHA sendContactVcard. */
+/** Monta um vCard mínimo — o formato que os transportes aceitam no envio. */
 export function buildVcard(name: string, phone: string, whatsappId?: string): string {
   const waid = whatsappId ?? phoneToWhatsappId(normalizePhoneForDisplay(phone));
   const telDisplay = whatsappId ? `+${waid}` : normalizePhoneForDisplay(phone);
@@ -89,68 +94,4 @@ export function buildVcard(name: string, phone: string, whatsappId?: string): st
     `TEL;type=CELL;type=VOICE;waid=${waid}:${telDisplay}`,
     "END:VCARD",
   ].join("\n");
-}
-
-/** Payload de um contato para POST /api/sendContactVcard. */
-export function wahaContactPayload(name: string, phone: string, whatsappId?: string) {
-  const waid = whatsappId ?? phoneToWhatsappId(normalizePhoneForDisplay(phone));
-  const telDisplay = whatsappId ? `+${waid}` : normalizePhoneForDisplay(phone);
-  const safeName = name.replace(/\n/g, " ").trim() || telDisplay;
-  return {
-    fullName: safeName,
-    phoneNumber: telDisplay,
-    whatsappId: waid,
-    vcard: buildVcard(safeName, telDisplay, waid),
-  };
-}
-
-/** Cartão de contato no formato da WhatsApp Cloud API (`type: "contacts"`). */
-export function metaContactsPayload(name: string, phone: string) {
-  const display = normalizePhoneForDisplay(phone);
-  const waid = phoneToWhatsappId(display);
-  const safeName = name.replace(/\n/g, " ").trim() || display;
-  const sp = safeName.indexOf(" ");
-  const firstName = sp > 0 ? safeName.slice(0, sp) : safeName;
-  const lastName = sp > 0 ? safeName.slice(sp + 1).trim() : undefined;
-  return [
-    {
-      name: {
-        formatted_name: safeName,
-        first_name: firstName,
-        ...(lastName ? { last_name: lastName } : {}),
-      },
-      phones: [{ phone: display, type: "CELL", wa_id: waid }],
-    },
-  ];
-}
-
-/** Extrai o primeiro contato de um payload inbound da Meta (`type: "contacts"`). */
-export function parseMetaInboundContact(raw: Record<string, unknown>): SharedContact | null {
-  const arr = raw.contacts;
-  if (!Array.isArray(arr) || arr.length === 0) return null;
-  const first = arr[0];
-  if (!first || typeof first !== "object") return null;
-  const o = first as Record<string, unknown>;
-  const nameObj = o.name;
-  const formatted =
-    nameObj && typeof nameObj === "object"
-      ? (
-          (nameObj as Record<string, unknown>).formatted_name ??
-          (nameObj as Record<string, unknown>).first_name
-        )
-      : null;
-  const safeName = typeof formatted === "string" ? formatted.trim() : "";
-  const phones = Array.isArray(o.phones) ? o.phones : [];
-  const phoneEntry = phones[0];
-  let phone = "";
-  if (phoneEntry && typeof phoneEntry === "object") {
-    const p = phoneEntry as Record<string, unknown>;
-    if (typeof p.phone === "string" && p.phone.trim()) {
-      phone = normalizePhoneForDisplay(p.phone.trim());
-    } else if (typeof p.wa_id === "string" && p.wa_id.trim()) {
-      phone = normalizePhoneForDisplay(p.wa_id.trim());
-    }
-  }
-  if (!safeName && !phone) return null;
-  return { name: safeName || phone, phone_number: phone };
 }

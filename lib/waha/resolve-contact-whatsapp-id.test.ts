@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { wahaContactPayload } from "@/lib/messaging/contact-card";
+import { wahaContactPayload } from "@/lib/waha/contact-card";
 import {
   resolveWhatsappIdForContactCard,
   whatsappIdFromCheckResult,
