@@ -104,8 +104,13 @@ export async function reconcileSessions(
     // órfã no transporte não pode voltar a receber mensagem num canal que a UI
     // já não mostra.
     const { rows: nossas } = await pool.query<{ id: string; status: string }>(
-      `select id, status from channel_sessions
-       where waha_session_name = $1 and archived_at is null`,
+      // `to_jsonb(cs) ->> 'archived_at'` em vez de `cs.archived_at`, como em
+      // `agent/followup-turn.ts:254` e pelo mesmo motivo: a coluna nasce na
+      // migration 0106 e, num clone que subiu o código sem aplicá-la,
+      // referenciá-la direto derruba o tick INTEIRO com 42703 — levando junto o
+      // redrive das mensagens em fila, que roda depois desta função.
+      `select cs.id, cs.status from channel_sessions cs
+       where cs.waha_session_name = $1 and to_jsonb(cs) ->> 'archived_at' is null`,
       [s.name],
     );
     if (nossas.length === 0) continue;
@@ -115,17 +120,19 @@ export async function reconcileSessions(
       const started = await startWahaSession(cfg, s.name);
       if (started) {
         nextStatus = 'STARTING';
-        log.info('watchdog: sessão parada retomada', {
-          channel_session_id: nossas[0]!.id,
-          waha_session: s.name,
-        });
+        // O info sai só quando o espelho REALMENTE muda (logo abaixo, no
+        // `returning`). Aqui ele sairia a cada tick de 60 s enquanto a sessão
+        // continuasse parada — 1440 linhas por dia repetindo a mesma boa
+        // notícia é o caminho mais curto para o operador parar de ler o log.
       }
     }
 
     const { rows } = await pool.query<{ id: string; status: string }>(
       `update channel_sessions
-       set status = $2, updated_at = now()
-       where waha_session_name = $1 and archived_at is null and status is distinct from $2
+          set status = $2, updated_at = now()
+        where waha_session_name = $1
+          and to_jsonb(channel_sessions) ->> 'archived_at' is null
+          and status is distinct from $2
        returning id, status`,
       [s.name, nextStatus],
     );

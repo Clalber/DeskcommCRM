@@ -158,7 +158,7 @@ services:
       # pareado em /app/.sessions, mas nada entra nem sai até alguém clicar
       # Reconectar. True retoma as que já existiam — não reloga, não pede QR.
       # Default do WAHA é False.
-      WHATSAPP_RESTART_ALL_SESSIONS: "True"
+      WHATSAPP_RESTART_ALL_SESSIONS: "${WHATSAPP_RESTART_ALL_SESSIONS:-True}"
     volumes:
       - waha-data:/app/.sessions          # sessões pareadas (QR) — perder = re-parear
       - waha-media:/app/.media
