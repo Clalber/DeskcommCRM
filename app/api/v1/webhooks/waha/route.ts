@@ -64,9 +64,12 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       details: { campos: roteamento.campos },
     });
   }
-  const envelope = roteamento.envelope;
+  // Nome deliberado: isto ainda NÃO é o envelope conferido. É o que o estágio
+  // 1 garante — sessão e id —, e só. Chamá-lo de `envelope` convidaria a ler
+  // `payload.from` daqui, que é justamente o campo ainda não conferido.
+  const roteado = roteamento.envelope;
 
-  const sessionName = envelope.session;
+  const sessionName = roteado.session;
   if (!sessionName) {
     return fail("invalid_request", "missing session field", 400, { requestId });
   }
@@ -122,7 +125,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       metadata: {
         provider: "waha",
         session: session.waha_session_name,
-        event: envelope.event,
+        event: roteado.event,
         reason: auth.reason,
         had_signature: Boolean(sigHeader),
       },
@@ -131,8 +134,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   }
   const validSignature = auth.signatureVerified;
 
-  const eventType = envelope.event ?? "unknown";
-  const externalId = envelope.payload?.id ?? null;
+  const eventType = roteado.event ?? "unknown";
+  const externalId = roteado.payload?.id ?? null;
 
   const headersJson: Record<string, string> = {};
   req.headers.forEach((value, key) => {
@@ -148,7 +151,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     http_method: "POST",
     headers: headersJson,
     raw_body: rawBody,
-    payload_parsed: envelope as unknown as Record<string, unknown>,
+    payload_parsed: roteado as unknown as Record<string, unknown>,
     signature_header: sigHeader ?? null,
     valid_signature: validSignature,
     event_type: eventType,
@@ -158,7 +161,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   });
 
   // Estágio 2: o resto do contrato, agora que o corpo cru já está arquivado.
-  const contrato = conferirContratoWaha(envelope);
+  const contrato = conferirContratoWaha(roteado);
   if (!contrato.ok) {
     logger.error("[waha.webhook] payload fora do contrato do canal", {
       request_id: requestId,
