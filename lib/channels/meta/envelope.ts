@@ -4,9 +4,12 @@
  * A rota entregava `JSON.parse(rawBody)` a `parseMetaWebhook` com um
  * `as Parameters<typeof parseMetaWebhook>[0]`: cast puro, zero verificação em
  * tempo de execução. O parser então faz `for (const entry of envelope.entry ?? [])`
- * — e `for...of` sobre um número **lança**. Sem `try/catch` em volta, um corpo
- * bem assinado com `entry: 3` derruba a requisição em 500, e a Meta reentrega o
- * mesmo payload em backoff, para sempre.
+ * — e `for...of` sobre um número **lança** (medido em
+ * `contrato-do-webhook-meta.test.ts`). Não há `try/catch` em volta na rota, e o
+ * `for...of` roda antes de qualquer resposta: a exceção sobe sem ninguém
+ * tratá-la, o framework responde 5xx, e a Meta reentrega em backoff o mesmo
+ * corpo — que nunca vai melhorar. **O status exato não foi medido**; o que foi
+ * medido é o throw e a ausência de tratamento.
  *
  * ─── A REGRA deste arquivo (leia antes de acrescentar campo) ────────────────
  *

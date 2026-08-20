@@ -69,9 +69,9 @@ export async function POST(req: NextRequest, ctx: RouteCtx): Promise<NextRespons
   //
   // Isto era `JSON.parse(rawBody)` seguido de um `as`: cast, que não confere
   // nada em execução. `parseMetaWebhook` então faz `for (const entry of
-  // envelope.entry ?? [])` — e `for...of` sobre um número LANÇA. Sem try/catch
-  // em volta, um corpo bem assinado com `entry: 3` virava 500, e a Meta
-  // reentregava o mesmo payload em backoff.
+  // envelope.entry ?? [])` — e `for...of` sobre um número LANÇA. Não há
+  // try/catch em volta: a exceção subia sem ninguém tratá-la (o framework
+  // responde 5xx) e a Meta reentregava em backoff um corpo que nunca melhora.
   //
   // 400 e não 200: o 200 generoso desta rota existe para EVENTO QUE NÃO NOS
   // INTERESSA (a Meta reentrega o que não recebe 2xx), e um payload fora do
