@@ -23,6 +23,7 @@ vi.mock("@/lib/audit", () => ({ audit: vi.fn(async () => {}) }));
 function makeSupabase(conversation: Record<string, unknown>) {
   let conversationPatch: Record<string, unknown> | null = null;
   let contactPatch: Record<string, unknown> | null = null;
+  const contactFilters: Record<string, unknown> = {};
 
   const client = {
     from(table: string) {
@@ -43,7 +44,22 @@ function makeSupabase(conversation: Record<string, unknown>) {
         return {
           update: (patch: Record<string, unknown>) => {
             contactPatch = patch;
-            return { eq: async () => ({ error: null }) };
+            // `.eq()` encadeável E aguardável: o carimbo do contato filtra por
+            // `id` E por `organization_id` (o handler também roda com o client
+            // de service role, que bypassa RLS). Um duble que só aceita um
+            // `.eq()` faz o segundo estourar `.eq is not a function` — e um que
+            // ignora o encadeamento deixaria o filtro de tenant sumir sem
+            // ninguém notar. Por isso ele REGISTRA os filtros.
+            const encadeavel = (): PromiseLike<{ error: null }> & {
+              eq: (col: string, val: unknown) => ReturnType<typeof encadeavel>;
+            } => ({
+              eq: (col: string, val: unknown) => {
+                contactFilters[col] = val;
+                return encadeavel();
+              },
+              then: (resolve) => Promise.resolve({ error: null }).then(resolve),
+            });
+            return encadeavel();
           },
         };
       }
@@ -71,11 +87,13 @@ function makeSupabase(conversation: Record<string, unknown>) {
     rpc: async () => ({ error: null }),
     getConversationPatch: () => conversationPatch,
     getContactPatch: () => contactPatch,
+    getContactFilters: () => contactFilters,
   };
 
   return client as unknown as SupabaseClient & {
     getConversationPatch: () => Record<string, unknown> | null;
     getContactPatch: () => Record<string, unknown> | null;
+    getContactFilters: () => Record<string, unknown>;
   };
 }
 
@@ -113,6 +131,13 @@ describe("sendMessageHandler — unread zera ao responder", () => {
     });
     expect(supabase.getContactPatch()).toMatchObject({
       last_activity_at: expect.any(String),
+    });
+    // Anti-pattern nº 10 do CLAUDE.md: este handler também é chamado com o
+    // client de SERVICE ROLE (agent-engine), que bypassa RLS — a escrita no
+    // contato precisa filtrar a organização de fonte confiável, não só o id.
+    expect(supabase.getContactFilters()).toMatchObject({
+      id: expect.any(String),
+      organization_id: expect.any(String),
     });
   });
 });
