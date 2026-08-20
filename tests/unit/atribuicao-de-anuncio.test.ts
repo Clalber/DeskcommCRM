@@ -1,10 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 
-import {
-  estamparAtribuicaoDoContato,
-  extrairAtribuicaoMeta,
-  extrairAtribuicaoWaha,
-} from "@/lib/leads/atribuicao-de-anuncio";
+import { extrairAtribuicaoMeta } from "@/lib/channels/atribuicao-de-anuncio-oficial";
+import { estamparAtribuicaoDoContato } from "@/lib/leads/atribuicao-de-anuncio";
+import { extrairAtribuicaoWaha } from "@/lib/waha/atribuicao-de-anuncio";
 
 describe("extrairAtribuicaoMeta — referral do webhook oficial", () => {
   it("extrai um referral de anúncio na forma documentada (snake_case)", () => {
@@ -97,6 +95,34 @@ describe("extrairAtribuicaoWaha — externalAdReplyInfo do Baileys", () => {
     expect(
       extrairAtribuicaoWaha({ extendedTextMessage: { text: "oi", contextInfo: {} } }),
     ).toBeNull();
+  });
+
+  it("post ORGÂNICO compartilhado não é anúncio — o mesmo filtro do irmão oficial", () => {
+    // Sem este filtro, o primeiro compartilhamento de um post carimba
+    // `meta_ads` no contato — e a guarda de primeiro toque torna isso
+    // irreversível pelo caminho normal. O extrator da API oficial já filtrava
+    // por `source_type`; este não, e a assimetria não tinha razão escrita.
+    expect(
+      extrairAtribuicaoWaha({
+        extendedTextMessage: {
+          text: "oi",
+          contextInfo: {
+            externalAdReplyInfo: { sourceType: "post", title: "Promo", ctwaClid: "x" },
+          },
+        },
+      }),
+    ).toBeNull();
+
+    expect(
+      extrairAtribuicaoWaha({
+        extendedTextMessage: {
+          text: "oi",
+          contextInfo: {
+            externalAdReplyInfo: { sourceType: "ad", title: "Promo", ctwaClid: "x" },
+          },
+        },
+      }),
+    ).toMatchObject({ plataforma: "meta_ads", sourceId: "x", titulo: "Promo" });
   });
 
   it("nulo pra payload ausente/tipo errado", () => {

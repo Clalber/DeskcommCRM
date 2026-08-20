@@ -24,7 +24,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { logger } from "@/lib/logger";
 
-import { estamparAtribuicaoDoContato, extrairAtribuicaoMeta } from "@/lib/leads/atribuicao-de-anuncio";
+import { extrairAtribuicaoMeta } from "@/lib/channels/atribuicao-de-anuncio-oficial";
+import { estamparAtribuicaoDoContato } from "@/lib/leads/atribuicao-de-anuncio";
 
 import { aplicarEfeitosPosEntrada } from "../pos-entrada";
 

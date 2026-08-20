@@ -1,4 +1,4 @@
--- 0161 — atribuição de anúncio: de qual campanha um contato do WhatsApp veio.
+-- 0164 — atribuição de anúncio: de qual campanha um contato do WhatsApp veio.
 --
 -- `contacts.source`/`source_metadata` já existiam (nasceram genéricos, tipo
 -- 'whatsapp'); esta migration não cria coluna, só a função que os preenche

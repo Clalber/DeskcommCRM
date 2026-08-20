@@ -1,38 +1,34 @@
 /**
- * Atribuição de anúncio — de qual campanha um contato do WhatsApp veio.
+ * Atribuição de anúncio — de qual campanha um contato veio.
  *
- * Meta Ads tem dois caminhos de entrada, e o dado do anúncio chega diferente
- * em cada um:
+ * Este arquivo é a parte AGNÓSTICA: o formato do dado atribuído e a gravação
+ * dele no contato. Quem sabe ler o payload é o transporte, cada um no seu
+ * módulo — é a doutrina de restrição de canal (`docs/doctrine/restricao-de-canal.md`,
+ * invariante 1: nenhuma feature nomeia um provider), e o `pnpm lint:channels`
+ * reprova quem a quebra.
  *
- *  - **API oficial** (canal `zernio`): o webhook de mensagem inclui um objeto
- *    `referral` no PRÓPRIO evento — documentado pela plataforma, com
- *    `source_id`/`ctwa_clid`, `headline`, `body`. É o caminho confiável, e o
- *    que a instalação de referência (a clínica já usa API oficial noutro
- *    sistema) prova que funciona.
- *  - **WAHA** (Baileys, protocolo do WhatsApp Web): o MESMO dado do anúncio
- *    vai embutido na própria mensagem que o app do cliente manda ao apertar
- *    "Enviar" — em `contextInfo.externalAdReplyInfo`, no nível do protocolo,
- *    não só na API oficial. Mas o WAHA nunca documentou isto, e esta
- *    instalação nunca recebeu um clique real de anúncio para confirmar o
- *    formato exato. Best-effort: se a forma divergir, simplesmente não
- *    atribui (silencioso, não derruba o inbound) — e o `bruto` gravado é o
- *    que permite ajustar o parser quando um clique real acontecer, em vez de
- *    adivinhar de novo.
+ * Os extratores vivem um por transporte, cada um na pasta do seu canal —
+ * `atribuicao-de-anuncio-oficial.ts` para o `referral` do webhook da API
+ * oficial, e o homônimo na pasta do transporte por QR para o mesmo dado quando
+ * ele vem embutido na própria mensagem. Procure por `extrairAtribuicao` para
+ * achar os dois; citar o caminho aqui é justamente o que o invariante proíbe.
  *
- * Google Ads não tem mecanismo nativo equivalente pro WhatsApp — a
- * atribuição depende de uma landing page que capture `gclid` e embuta um
- * código de rastreio na mensagem pré-preenchida. Esse caminho ainda não
- * existe (aguardando a LP), e por isso não há extrator aqui ainda.
+ * Não há extrator de Google Ads: não existe mecanismo nativo equivalente para
+ * WhatsApp. Aquele caminho depende de uma landing page que capture o `gclid` e
+ * embuta um código de rastreio na mensagem pré-preenchida, e essa LP ainda não
+ * existe.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
+
+import { logger } from "@/lib/logger";
 
 export type PlataformaDeAnuncio = "meta_ads" | "google_ads";
 
 export interface AtribuicaoDeAnuncio {
   plataforma: PlataformaDeAnuncio;
-  /** `ctwa_clid` (Meta) — identifica o clique específico que abriu a conversa. */
+  /** `ctwa_clid` — identifica o clique específico que abriu a conversa. */
   sourceId: string | null;
-  /** Título/headline do anúncio, quando o provider manda. */
+  /** Título/headline do anúncio, quando o payload o traz. */
   titulo: string | null;
   corpo: string | null;
   sourceUrl: string | null;
@@ -40,87 +36,11 @@ export interface AtribuicaoDeAnuncio {
   bruto: Record<string, unknown>;
 }
 
-type Bruto = Record<string, unknown>;
-const obj = (v: unknown): Bruto | null =>
+export type Bruto = Record<string, unknown>;
+export const obj = (v: unknown): Bruto | null =>
   v && typeof v === "object" && !Array.isArray(v) ? (v as Bruto) : null;
-const str = (v: unknown): string | null => (typeof v === "string" && v.trim() !== "" ? v : null);
-
-/**
- * O objeto `referral` do webhook oficial da Meta (Cloud API, ou um BSP que
- * repassa o payload original). Campos documentados pela plataforma:
- * `source_id`, `source_url`, `source_type` (`"ad"` | `"post"`), `headline`,
- * `body`, `ctwa_clid`.
- *
- * NÃO VERIFICADO contra o BSP real desta instalação (canal `zernio`) — o
- * parser aceita tanto snake_case (forma documentada da Cloud API) quanto
- * camelCase (caso o agregador normalize), e ignora silenciosamente o que não
- * reconhece em vez de lançar. `"post"` é orgânico compartilhado, não anúncio
- * pago — só `"ad"` (ou ausência do campo) conta como atribuição.
- */
-export function extrairAtribuicaoMeta(referral: unknown): AtribuicaoDeAnuncio | null {
-  const r = obj(referral);
-  if (!r) return null;
-  const tipo = str(r.source_type) ?? str(r.sourceType);
-  if (tipo && tipo !== "ad") return null;
-
-  const sourceId =
-    str(r.ctwa_clid) ?? str(r.ctwaClid) ?? str(r.source_id) ?? str(r.sourceId);
-  const titulo = str(r.headline);
-  const sourceUrl = str(r.source_url) ?? str(r.sourceUrl);
-  // Sem NENHUM campo que identifique o anúncio, não há o que atribuir — um
-  // `referral` vazio (ou só com `body`) não distingue "veio de anúncio" de
-  // "o provider mandou um objeto vazio por engano".
-  if (!sourceId && !titulo && !sourceUrl) return null;
-
-  return {
-    plataforma: "meta_ads",
-    sourceId,
-    titulo,
-    corpo: str(r.body),
-    sourceUrl,
-    bruto: r,
-  };
-}
-
-/**
- * `contextInfo.externalAdReplyInfo` do Baileys — o mesmo dado do anúncio,
- * embutido na PRÓPRIA mensagem que o app do cliente manda ao clicar num
- * anúncio "Clique para o WhatsApp". `messageRaw` é `_data.message` do payload
- * do WAHA (NOWEB) — a forma bruta do Baileys, sem normalização.
- *
- * O ad-reply pode chegar em qualquer tipo de mensagem com `contextInfo`
- * (o clique manda texto na maioria dos casos, daí `extendedTextMessage` vir
- * primeiro na lista de candidatos), então a busca varre os tipos comuns em
- * vez de assumir um só.
- */
-export function extrairAtribuicaoWaha(messageRaw: unknown): AtribuicaoDeAnuncio | null {
-  const m = obj(messageRaw);
-  if (!m) return null;
-
-  const candidatos = [
-    obj(m.extendedTextMessage)?.contextInfo,
-    obj(m.imageMessage)?.contextInfo,
-    obj(m.videoMessage)?.contextInfo,
-    obj(m.conversation) ? null : m.contextInfo,
-  ];
-  const contextInfo = candidatos.map(obj).find((c): c is Bruto => c !== null);
-  const ad = obj(contextInfo?.externalAdReplyInfo);
-  if (!ad) return null;
-
-  const sourceId = str(ad.ctwaClid) ?? str(ad.sourceId);
-  const titulo = str(ad.title);
-  const sourceUrl = str(ad.sourceUrl);
-  if (!sourceId && !titulo && !sourceUrl) return null;
-
-  return {
-    plataforma: "meta_ads",
-    sourceId,
-    titulo,
-    corpo: str(ad.body),
-    sourceUrl,
-    bruto: ad,
-  };
-}
+export const str = (v: unknown): string | null =>
+  typeof v === "string" && v.trim() !== "" ? v : null;
 
 /**
  * Grava a atribuição no CONTATO — só na primeira vez.
@@ -153,6 +73,14 @@ export async function estamparAtribuicaoDoContato(
   } as never);
 
   if (error) {
-    console.error("[atribuicao-de-anuncio] falha ao estampar contato", error.message);
+    // `logger.error`, não `console.error`: o DoD proíbe console em código
+    // mergeado, e um erro que só existe no stdout do contêiner não chega a
+    // ninguém. A falha é tolerada de propósito — perder a atribuição não pode
+    // derrubar a entrada da mensagem — mas ela precisa aparecer.
+    logger.error("[atribuicao-de-anuncio] falha ao estampar contato", {
+      contact_id: contactId,
+      plataforma: atribuicao.plataforma,
+      detail: error.message.slice(0, 200),
+    });
   }
 }

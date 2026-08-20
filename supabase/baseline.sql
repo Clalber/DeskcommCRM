@@ -13013,7 +13013,7 @@ grant  execute on function public.fn_gasto_de_ia_do_mes(uuid)
 notify pgrst, 'reload schema';
 
 
--- ---- atribuição de anúncio: de qual campanha um contato do WhatsApp veio (migration 0161) ----
+-- ---- atribuição de anúncio: de qual campanha um contato do WhatsApp veio (migration 0164) ----
 --
 -- ⚠️ ENTRA ANTES DO BLOCO DA VARREDURA anon, pelo mesmo motivo das funções
 -- acima: `tests/unit/varredura-anon-e-o-ultimo-bloco.test.ts` proíbe `create
