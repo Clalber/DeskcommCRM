@@ -195,7 +195,7 @@ export function SidebarContent({
             {!collapsed && <span className="truncate">{rodape.label}</span>}
           </Link>
         )}
-        <VersionFooter collapsed={collapsed} />
+        <VersionFooter collapsed={collapsed} onNavigate={onNavigate} />
         {showCollapseControl && (
           <button
             type="button"

@@ -63,6 +63,15 @@ async function expectSemOverflowHorizontal(page: Page, contexto: string): Promis
   ).toBeLessThanOrEqual(m.clientWidth + 1);
 }
 
+// `loginComoAdmin` espera a virada da janela TOTP entre logins consecutivos
+// (o servidor recusa código repetido), e essa espera sozinha pode consumir os
+// 30 s do teto global do playwright.config.ts. Toda spec da casa que usa o
+// helper sobe o teto — 240 s em `agente-novo-e-uso`, `agente-papeis-operador`,
+// `escopo-de-funil-do-agente` e `capacidades-do-agente`; 90 s em
+// `prova-painel-provedores`. Esta era a única que faltava, e por isso dois
+// testes que já estavam verdes passaram a estourar 30 s.
+test.describe.configure({ timeout: 120_000 });
+
 test.describe("navegação agrupada", () => {
   test("o sidebar tem hierarquia: grupos na ordem de uso", async ({ page }) => {
     await loginAdmin(page);
@@ -207,7 +216,7 @@ test.describe("navegação agrupada", () => {
         fullPage: true,
       });
 
-      await sidebar(page).getByRole("link", { name: "Kanban" }).click();
+      await sidebar(page).getByRole("link", { name: "Funis", exact: true }).click();
       await page.waitForURL(/\/app\/kanban/);
       await expect(page.getByRole("dialog")).toHaveCount(0);
       await expectSemOverflowHorizontal(page, "shell mobile após navegar pelo drawer");
