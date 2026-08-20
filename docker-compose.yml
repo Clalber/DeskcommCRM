@@ -44,7 +44,7 @@ services:
       # Sem isto o container volta (ou o Docker Desktop acorda) e as sessões
       # ficam STOPPED — o front abre em "Conectando…" e as mensagens do período
       # fora não chegam. True retoma as que já existiam; não pede QR de novo.
-      WHATSAPP_RESTART_ALL_SESSIONS: "True"
+      WHATSAPP_RESTART_ALL_SESSIONS: "${WHATSAPP_RESTART_ALL_SESSIONS:-True}"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
