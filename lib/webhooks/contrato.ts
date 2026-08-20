@@ -42,9 +42,11 @@ export function camposForaDoContrato(erro: z.ZodError): string[] {
  *
  * Existe separado de `lerEnvelope` porque uma rota pode precisar conferir o
  * contrato em DOIS momentos: o mínimo para saber de quem é o payload (antes de
- * resolver o tenant) e o resto depois de arquivar o corpo cru. O webhook do
- * canal por QR faz exatamente isso — ver o AC de `docs/prd/03-prd-whatsapp-waha.md`
- * §3.3: "grava raw em `webhook_events_log` mesmo se o parse falhar depois".
+ * resolver o tenant) e o resto depois de arquivar o corpo cru. Um canal que
+ * arquiva o corpo precisa exatamente disso — conferir tudo antes do INSERT
+ * apagaria a evidência que o arquivo existe para guardar. O canal que faz esse
+ * corte declara o porquê no seu próprio módulo de envelope; este arquivo não
+ * pergunta de quem é o payload (doutrina restricao-de-canal, invariante 1).
  */
 export function conferirEnvelope<T>(valor: unknown, schema: z.ZodType<T>): LeituraDeEnvelope<T> {
   const r = schema.safeParse(valor);
