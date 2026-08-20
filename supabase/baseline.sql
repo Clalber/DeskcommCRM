@@ -13605,3 +13605,77 @@ create index if not exists webhook_events_log_a_esvaziar_idx
 
 notify pgrst, 'reload schema';
 
+
+-- ---- índice do cap global do claim da fila (migration 0166) ----
+--
+-- O QUÊ: um índice parcial em `job_queue (status) where status = 'running'`.
+--
+-- POR QUÊ: `claimJobs` (lib/agent-engine/queue/queue.ts) abre TODA rodada com
+-- `select count(*) from job_queue where status = 'running'` — o cap global de
+-- concorrência — e nenhum dos quatro índices da tabela serve esse predicado. O
+-- parcial das lanes (`uniq_job_queue_one_running_per_contact`) chega perto e não
+-- vale: o predicado dele é mais ESTREITO (exclui `contact_id is null`, que é
+-- todo `watchdog`/`flywheel`), então o planejador não pode responder por ele.
+-- Medido em pg17 com este baseline, 50.000 linhas `done` + 4 `running`:
+-- Seq Scan / 715 buffers → Index Only Scan / 3 buffers. E o custo NÃO depende de
+-- linha viva: com as 50.004 apagadas na mesma transação o Seq Scan ainda lê os
+-- mesmos 715 buffers, porque ele visita página e não tupla. Fila é escrita o
+-- tempo todo e nada no produto a poda.
+--
+-- O bloco `do $$` existe porque `create index if not exists` casa por NOME e não
+-- por definição — medido em pg17, um homônimo com outra definição vira `NOTICE:
+-- ... already exists, skipping`, que nem chega ao filtro `ERROR|FATAL` do
+-- `update.sh`. Homônimo NOSSO em `job_queue` é derrubado e recriado; homônimo em
+-- outro objeto NÃO é apagado (não é nosso) — a atualização grita com a razão, o
+-- que é o comportamento certo num script que roda sem `ON_ERROR_STOP`.
+--
+-- O `comment on index` é o DELATOR: índice ausente levanta `relation ... does
+-- not exist`, texto que NÃO casa com nenhum termo da lista benigna do
+-- `update.sh` e portanto aparece ao operador — enquanto `already exists` seria
+-- engolido. Aditivo e idempotente: sem constraint, sem backfill, sem dado tocado.
+do $$
+declare
+  v_relkind "char";
+  v_def     text;
+  v_tabela  text;
+begin
+  select c.relkind,
+         case when c.relkind in ('i', 'I') then pg_get_indexdef(c.oid) end,
+         t.relname
+    into v_relkind, v_def, v_tabela
+    from pg_class c
+    join pg_namespace n on n.oid = c.relnamespace
+    left join pg_index i on i.indexrelid = c.oid
+    left join pg_class t on t.oid = i.indrelid
+   where n.nspname = 'public'
+     and c.relname = 'idx_job_queue_running';
+
+  if v_relkind is null then
+    return;
+  end if;
+
+  if v_relkind not in ('i', 'I') or v_tabela is distinct from 'job_queue' then
+    raise exception
+      'o nome idx_job_queue_running já está tomado em public (relkind=%, tabela=%). '
+      'Nome de índice é único por SCHEMA, então o create index if not exists desta '
+      'atualização vira no-op silencioso e o claim da fila continua varrendo a tabela '
+      'inteira a cada rodada. Não apago o objeto porque ele não é nosso: renomeie-o e '
+      'rode a atualização de novo.', v_relkind, coalesce(v_tabela, '(nenhuma)');
+  end if;
+
+  if v_def !~ 'USING btree \(status\)' or v_def !~ 'WHERE \(status = ''running''' then
+    execute 'drop index public.idx_job_queue_running';
+  end if;
+end
+$$;
+
+create index if not exists idx_job_queue_running
+  on job_queue (status) where status = 'running';
+
+comment on index idx_job_queue_running is
+  'Cap global do claim: select count(*) from job_queue where status = ''running'' '
+  '(lib/agent-engine/queue/queue.ts). Sem ele o claim faz Seq Scan a cada rodada — '
+  '715 buffers com 50 mil linhas, e o mesmo custo com zero linha viva, porque Seq '
+  'Scan visita página e não tupla. Este COMMENT é o delator do bloco: índice ausente '
+  'vira "relation does not exist", que NÃO casa com o filtro benigno do update.sh e '
+  'chega ao operador; "already exists" seria engolido.';
