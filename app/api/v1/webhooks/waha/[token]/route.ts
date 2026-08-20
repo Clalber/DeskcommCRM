@@ -15,8 +15,10 @@ import type { NextRequest, NextResponse } from "next/server";
 import { fail, ok } from "@/lib/api/wrappers";
 import { audit } from "@/lib/audit";
 import { ARCHIVED_AT, queryTolerantToMissingArchived } from "@/lib/channels/archived";
+import { logger } from "@/lib/logger";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { dispatchWahaEvent, type WahaEnvelope } from "@/lib/waha/ingest";
+import { lerEnvelopeWaha } from "@/lib/waha/envelope";
+import { dispatchWahaEvent } from "@/lib/waha/ingest";
 import { authenticateWahaWebhook } from "@/lib/waha/webhook-auth";
 
 export const dynamic = "force-dynamic";
@@ -35,12 +37,37 @@ export async function POST(req: NextRequest, ctx: RouteCtx): Promise<NextRespons
   }
 
   const rawBody = await req.text();
-  let envelope: WahaEnvelope;
-  try {
-    envelope = JSON.parse(rawBody) as WahaEnvelope;
-  } catch {
-    return fail("invalid_request", "invalid_json", 400, { requestId });
+  // ─── O contrato do fio, ANTES de qualquer leitura ─────────────────────────
+  //
+  // Isto era `JSON.parse(rawBody) as WahaEnvelope`: um cast, que não checa nada
+  // em tempo de execução. Um `payload.from` não-string fazia `parseChatId`
+  // lançar lá dentro, o `catch` do dispatch engolia, e a rota devolvia **200** —
+  // o provider riscava o evento da fila achando que entregou.
+  //
+  // O desfecho agora é 400 com os CAMPOS recusados (nunca os valores: são dado
+  // de cliente e podem ter megabytes), mais uma linha no log estruturado. 400 e
+  // não 200 porque payload fora do contrato não é "evento que não interessa": é
+  // o fio ter mudado, e isso precisa ser barulhento. 400 e não 500 porque o
+  // corpo é do chamador, não uma falha nossa — e 5xx aqui mandaria o provider
+  // reentregar em backoff um payload que nunca vai passar.
+  //
+  // O schema é LOOSE: campo desconhecido passa intacto. A recusa exige um campo
+  // que a gente LÊ vir com o tipo errado. Ver lib/waha/envelope.ts.
+  const leitura = lerEnvelopeWaha(rawBody);
+  if (!leitura.ok) {
+    if (leitura.motivo === "json_invalido") {
+      return fail("invalid_request", "invalid_json", 400, { requestId });
+    }
+    logger.error("[waha.webhook] payload fora do contrato do canal", {
+      request_id: requestId,
+      campos: leitura.campos,
+    });
+    return fail("validation_failed", "payload fora do contrato do canal", 400, {
+      requestId,
+      details: { campos: leitura.campos },
+    });
   }
+  const envelope = leitura.envelope;
 
   const admin = createAdminClient();
 
