@@ -34,6 +34,33 @@ const required = (name: string) =>
 
 const requiredAlways = (name: string) => z.string().min(1, `${name} é obrigatória`);
 
+/**
+ * Knob de retenção em dias: NUNCA derruba o app.
+ *
+ * `z.coerce.number().int().positive()` lança para `=0`, que é justamente o que
+ * o operador da VPS escreve quando quer desligar a poda — e `lib/env.ts` roda
+ * no import do Next, então o throw vira 500 em TODAS as telas, com o contêiner
+ * `healthy` e nada dizendo o porquê. Falha fechada na AÇÃO (o valor inválido
+ * não vale) e aberta na INFORMAÇÃO (o app sobe e diz alto o que ignorou).
+ *
+ * Desligar a poda não é isto: se tiver de existir, é decisão de produto e vem
+ * com nome próprio, não com um zero que o schema recusa.
+ */
+const diasDeRetencao = (nome: string, padrao: number) =>
+  z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(padrao)
+    .catch(({ error }) => {
+      console.warn(
+        `[env] ${nome} inválida (${JSON.stringify(process.env[nome])}) — usando o padrão ${padrao} dias. ` +
+          `Só número inteiro maior que zero vale aqui; "0" não desliga a poda. ` +
+          `(${error.issues[0]?.message ?? "valor recusado"})`,
+      );
+      return padrao;
+    });
+
 const schema = z.object({
   // Node
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
@@ -57,14 +84,14 @@ const schema = z.object({
    * estável fica em ~160 MB de corpo mais ~11 MB de índice forense; com 14 já
    * não cabe. Quem tem plano pago sobe o número e fica com mais corpo à mão.
    */
-  WEBHOOK_LOG_BODY_RETENTION_DAYS: z.coerce.number().int().positive().default(7),
+  WEBHOOK_LOG_BODY_RETENTION_DAYS: diasDeRetencao("WEBHOOK_LOG_BODY_RETENTION_DAYS", 7),
   /**
    * Quando a LINHA some, e não só o corpo. Horizonte longo de propósito: até
    * aqui a linha custa ~200 B e ainda responde "quantos eventos de que tipo
    * chegaram, quando, e a assinatura conferia?", que é a pergunta de depois do
    * incidente.
    */
-  WEBHOOK_LOG_ROW_RETENTION_DAYS: z.coerce.number().int().positive().default(90),
+  WEBHOOK_LOG_ROW_RETENTION_DAYS: diasDeRetencao("WEBHOOK_LOG_ROW_RETENTION_DAYS", 90),
 
   // Encryption keys (pgcrypto)
   CPF_ENCRYPTION_KEY: required("CPF_ENCRYPTION_KEY"),

@@ -13490,7 +13490,7 @@ notify pgrst, 'reload schema';
 -- pode ser re-aplicado à vontade pelo `update.sh`.
 revoke insert, update, delete on table public.ai_budgets from authenticated, anon;
 
--- ---- o arquivo do webhook pode perder o corpo (migration 0161) ----
+-- ---- o arquivo do webhook pode perder o corpo (migration 0163) ----
 --
 -- `webhook_events_log` guarda o payload cru de todo webhook e NUNCA era podado.
 -- Medido numa instalação real em 20/08/2026: o banco inteiro em 545 MB, dos
