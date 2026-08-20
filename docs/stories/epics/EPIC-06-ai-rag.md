@@ -597,7 +597,7 @@ Admin upload PDF/MD via UI (multipart), arquivo vai pra Storage `ai-policy/{org}
 
 - `app/api/v1/ai/knowledge/sources/upload/route.ts` — multipart handler
 - `lib/ai/rag/ingest/policy.ts` — extract + chunk
-- `lib/ai/rag/extractors/pdf.ts` — `pdf-parse` + fallback `pdfjs-dist`
+- `lib/ai/rag/extractors/pdf.ts` — `pdfjs-dist` (engine única desde a issue #238)
 - `lib/ai/rag/extractors/markdown.ts` — leitura raw
 
 #### Files to modify
@@ -625,9 +625,10 @@ And rag-indexer cria N chunks 400-token com overlap 50
 
 ```gherkin
 Given PDF com layout corrompido
-When pdf-parse falha
-Then fallback pdfjs-dist é tentado
-And se ambos falham, retorna 422 + mensagem clara
+When a extração pelo pdfjs-dist falha
+Then retorna 422 + mensagem clara
+# Havia aqui um "fallback pdf-parse é tentado". Removido na issue #238: o
+# pdf-parse@1 embute o próprio pdf.js de 2018 — era a mesma engine duas vezes.
 ```
 
 #### QA test cases
