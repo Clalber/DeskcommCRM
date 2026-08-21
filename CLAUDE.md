@@ -89,7 +89,16 @@ DeskcommCRM é um sistema operacional de vendas open source com agentes de IA na
 - Auth: env do WAHA recebe **hash SHA512 hex** da api key; cliente envia plaintext em `X-Api-Key`
 - Webhooks: HMAC SHA512 com `crypto.timingSafeEqual`
 - Anti-banimento: throttle 1 msg/1.2s + jitter ≤800ms. Campanha 1 msg/5s. Warm-up 7-14d. Spinning de copy. Janela 7h-22h (domingo LIBERADO por default desde 2026-08-20; a janela é knob por canal)
-- STOP detection: regex `/STOP|PARAR|SAIR|UNSUBSCRIBE/i` no inbound → `is_blocked=true` automaticamente
+- STOP detection: a regra mora em `lib/opt-out/deteccao.ts` e é a MESMA nos dois lados —
+  a ingestão (que grava `is_blocked=true`) e o runtime do agente. **Não é mais a palavra
+  solta:** só bloqueia palavra ISOLADA (mensagem inteira = a palavra) ou verbo de cessação
+  com OBJETO DE COMUNICAÇÃO ("parar de me mandar", "sair da lista"). Enquanto eram duas
+  regras, a ingestão bloqueava paciente que perguntou "tem como parar a dor?" — medido em
+  clínica, 12 falsos positivos num corpus de 32 frases de nicho.
+  Para ver o vocabulário em vigor sem confiar nesta linha:
+  `grep -n 'PALAVRAS_DE_OPT_OUT' -A20 lib/opt-out/deteccao.ts`, e as frases de controle em
+  `tests/unit/opt-out-deteccao.test.ts`. **Espanhol ainda NÃO é coberto** (`baja`, `salir`,
+  `no quiero recibir`) — ver PR #275.
 - Mídia: subir pro Supabase Storage primeiro, passar URL ao WAHA (não inline base64)
 - Multi-device: assinar `message.any` (não só `message`); tratar `fromMe=true` sem duplicar
 - Grupos: SKIP CRM binding se `chatId.endsWith('@g.us')`. Sender é `p.author`, não `p.from`
