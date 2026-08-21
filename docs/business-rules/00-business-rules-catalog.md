@@ -166,11 +166,15 @@ owner: Rafael Melgaço
 - **Enforcement**: Worker de envio (acquireSendLock).
 - **Exceção**: Nenhuma. Vale inclusive pra envio "manual" do atendente.
 
-### W-02 — Detecção STOP automática bloqueia contact
+### W-02 — Pedido de descadastro bloqueia o contato (era: "detecção STOP por regex")
 - **Origem**: Sub-PRD 03 §3.7
 - **Tipo**: Hard constraint
-- **Regra**: GIVEN mensagem inbound text; WHEN body matches regex `/STOP|PARAR|SAIR|UNSUBSCRIBE|CANCELAR/i`; THEN `contacts.is_blocked=true` + emitir activity `system.contact_blocked_by_stop`.
-- **Enforcement**: Worker de webhook (após persist da message).
+- **Regra**: GIVEN mensagem inbound text; WHEN `ehPedidoDeOptOut(body)` — **palavra ISOLADA** (mensagem inteira = a palavra) **ou** verbo de cessação com **objeto de comunicação** ("parar de me mandar", "sair da lista", "cancelar inscrição"); THEN `contacts.is_blocked=true` + emitir activity `system.contact_blocked_by_stop`.
+- **Por que deixou de ser regex de palavra solta** (2026-08-21): caçar a PALAVRA em qualquer posição bloqueava frase inocente na INGESTÃO, antes do modelo — e o bloqueio some a pessoa da conversa sem ninguém saber, com `blocked_reason='stop_keyword'` parecendo legítimo. Medido num corpus de 79 frases: a regra antiga produzia **12 falsos positivos** de nicho ("tem como parar a dor?", "posso sair antes das 15h?", "preciso sair mais cedo da consulta") e deixava passar **21 de 33 pedidos reais** ("não quero mais receber nada", "me tira da lista", "cancelar inscrição"). A regra nova: 0 falsos positivos, 33 de 33 pedidos.
+- **Onde ela mora, para não envelhecer aqui**: `lib/opt-out/deteccao.ts`. O vocabulário em vigor sai de `grep -n 'PALAVRAS_DE_OPT_OUT' -A20 lib/opt-out/deteccao.ts`; as frases de controle, de `tests/unit/opt-out-deteccao.test.ts`.
+- **Dois níveis, e a diferença importa**: `ehPedidoDeOptOut` (inequívoco) autoriza gravar `is_blocked`, que só uma pessoa desfaz. `ehOptOutProvavel` soma os ambíguos ("me deixa em paz") e é o sinal do runtime — para de responder e escala à Central, **sem** bloquear.
+- **Lacuna conhecida**: espanhol não é coberto (`baja`, `salir`, `no quiero recibir`). Medido: 0 de 9. Ver PR #275.
+- **Enforcement**: Worker de webhook (após persist da message), via `lib/channels/pos-entrada.ts`.
 - **Override**: Tenant admin pode desbloquear manualmente; ação auditada.
 
 ### W-03 — Contact bloqueado nunca recebe outbound automatizado

@@ -46,15 +46,18 @@ function adminStub(agente: { kind: string; is_default: boolean; archived_at: str
     eq: () => chainUpdate,
     then: (r: (v: { error: null }) => unknown) => r({ error: null }),
   };
+  const chainSelect: Record<string, unknown> = {
+    eq: () => chainSelect,
+    maybeSingle: async () => ({ data: { id: AGENTE, ...agente }, error: null }),
+  };
   return {
     from: () => ({
-      select: () => ({
-        eq: () => ({
-          eq: () => ({
-            maybeSingle: async () => ({ data: { id: AGENTE, ...agente }, error: null }),
-          }),
-        }),
-      }),
+      // Encadeável SEM LIMITE, como o dublê do UPDATE logo abaixo — e não é
+      // estilo. Um dublê que fixa a QUANTIDADE de `.eq()` quebra no dia em que a
+      // consulta ganhar um filtro novo, com "maybeSingle is not a function":
+      // um erro que não fala nada do comportamento que este arquivo vigia.
+      // Já mordeu três vezes nesta casa nesta mesma rodada de triagem.
+      select: () => chainSelect,
       update: (payload: Record<string, unknown>) => {
         updatePayload = payload;
         return chainUpdate;

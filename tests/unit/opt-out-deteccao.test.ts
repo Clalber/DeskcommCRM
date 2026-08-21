@@ -120,3 +120,33 @@ describe("ehOptOutProvavel — soma o ambíguo, para parar de responder e escala
     expect(ehOptOutProvavel("não quero receber ligação, prefiro mensagem")).toBe(false);
   });
 });
+
+/**
+ * ═══ O CALL SITE, e não só a regra ═══
+ *
+ * `detectAmbiguousOptOut` (o runtime do agente) e a ingestão respondiam a MESMA
+ * pergunta com DUAS regras diferentes — e a divergência é o defeito que este PR
+ * conserta: a ingestão bloqueava paciente que perguntou como parar a dor.
+ *
+ * Medido: revertendo SÓ `lib/agent-engine/agent/human-handoff.ts` para a versão
+ * antiga (que reintroduz as constantes inline), a suíte INTEIRA fica verde —
+ * 458 arquivos, 5123 casos, exit 0. Ou seja: nada guardava a religação, e a
+ * divergência podia voltar sem um único vermelho.
+ *
+ * Os casos abaixo são de COMPORTAMENTO, não de texto: as duas frases só
+ * respondem certo pela regra nova. Um `expect(fonte).toContain("import")` casaria
+ * o símbolo e não o comportamento — e símbolo não é comportamento.
+ */
+describe("o runtime do agente usa a MESMA regra da ingestão", () => {
+  it("'parar de receber' é opt-out provável — a regra antiga do runtime não pegava", async () => {
+    const { detectAmbiguousOptOut } = await import("@/lib/agent-engine/agent/human-handoff");
+    expect(detectAmbiguousOptOut("parar de receber")).toBe(true);
+    expect(detectAmbiguousOptOut("pare de me mandar mensagem")).toBe(true);
+  });
+
+  it("'tem como parar a dor?' NÃO é opt-out — é o falso positivo que motivou o conserto", async () => {
+    const { detectAmbiguousOptOut } = await import("@/lib/agent-engine/agent/human-handoff");
+    expect(detectAmbiguousOptOut("tem como parar a dor?")).toBe(false);
+    expect(detectAmbiguousOptOut("posso sair antes das 15h?")).toBe(false);
+  });
+});
