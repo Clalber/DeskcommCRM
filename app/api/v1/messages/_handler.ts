@@ -558,6 +558,7 @@ export async function sendMessageHandler(
         externalId = adapter.sendTemplate
           ? (
               await adapter.sendTemplate({
+                organizationId: ctx.organization_id,
                 sessionRef: resolveSessionRef(c.channel_sessions),
                 to: chatId,
                 providerConversationId: c.provider_conversation_id,
@@ -584,6 +585,7 @@ export async function sendMessageHandler(
         }
         const filename = input.media_storage_path.split("/").pop() ?? undefined;
         ({ externalId } = await adapter.send({
+          organizationId: ctx.organization_id,
           sessionRef: resolveSessionRef(c.channel_sessions),
           to: chatId,
           providerConversationId: c.provider_conversation_id,
@@ -610,6 +612,7 @@ export async function sendMessageHandler(
         const telefone = normalizePhoneForDisplay(sc.phone_number);
         const nome = sc.name?.trim() || telefone;
         ({ externalId } = await adapter.send({
+          organizationId: ctx.organization_id,
           sessionRef: resolveSessionRef(c.channel_sessions),
           to: chatId,
           providerConversationId: c.provider_conversation_id,
@@ -624,6 +627,7 @@ export async function sendMessageHandler(
         }));
       } else {
         ({ externalId } = await adapter.send({
+          organizationId: ctx.organization_id,
           sessionRef: resolveSessionRef(c.channel_sessions),
           to: chatId,
           providerConversationId: c.provider_conversation_id,
