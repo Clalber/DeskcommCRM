@@ -109,6 +109,7 @@ async function findContactByVariants(
 /** Prévia curta para a lista de conversas. Mídia vira rótulo, nunca URL. */
 function previewOf(e: InboundMessageEvent): string {
   if (e.type === "text") return (e.text ?? "").slice(0, 120);
+  if (e.type === "contact") return e.sharedContact?.name ? `👤 ${e.sharedContact.name}` : "[contato]";
   if (e.type === "audio") return e.media?.voice ? "🎤 Mensagem de voz" : "🎵 Áudio";
   if (e.type === "image") return "📷 Imagem";
   if (e.type === "video") return "🎬 Vídeo";
@@ -174,12 +175,16 @@ export async function ingestMetaInbound(
       contact_id: contactId as string,
       direction: "inbound",
       status: "delivered",
+      // A Meta manda `contacts` (plural); o CHECK do banco espera `contact`.
       type: e.type === "text" ? "text" : e.type,
-      body: e.text,
+      body: e.type === "contact" ? (e.sharedContact?.name ?? e.text) : e.text,
       external_id: e.externalId,
       media_mime: e.media?.mime ?? null,
       sent_at: e.sentAt.toISOString(),
-      metadata: e.media ? { meta_media_id: e.media.id, voice: e.media.voice } : {},
+      metadata: {
+        ...(e.media ? { meta_media_id: e.media.id, voice: e.media.voice } : {}),
+        ...(e.sharedContact ? { shared_contact: e.sharedContact } : {}),
+      },
     })
     .select("id")
     .maybeSingle();
