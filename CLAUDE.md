@@ -104,7 +104,7 @@ DeskcommCRM é um sistema operacional de vendas open source com agentes de IA na
 - Engine NOWEB default; WEBJS apenas se precisar stickers animados / botões
 - Auth: env do WAHA recebe **hash SHA512 hex** da api key; cliente envia plaintext em `X-Api-Key`
 - Webhooks: HMAC SHA512 com `crypto.timingSafeEqual`
-- Anti-banimento: throttle 1 msg/1.2s + jitter ≤800ms. Campanha 1 msg/5s. Warm-up 7-14d. Spinning de copy. Janela 7h-22h, evitar domingo
+- Anti-banimento: throttle 1 msg/1.2s + jitter ≤800ms. Campanha 1 msg/5s. Warm-up 7-14d. Spinning de copy. Janela 7h-22h (domingo LIBERADO por default desde 2026-08-20; a janela é knob por canal)
 - STOP detection: regex `/STOP|PARAR|SAIR|UNSUBSCRIBE/i` no inbound → `is_blocked=true` automaticamente
 - Mídia: subir pro Supabase Storage primeiro, passar URL ao WAHA (não inline base64)
 - Multi-device: assinar `message.any` (não só `message`); tratar `fromMe=true` sem duplicar

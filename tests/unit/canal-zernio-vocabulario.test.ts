@@ -96,7 +96,13 @@ describe("o envelope carrega a thread do provider", () => {
   it("OutboundEnvelope aceita providerConversationId e é OPCIONAL", () => {
     // Opcional é o ponto: os dois adapters existentes derivam o destinatário do
     // contato e não mudam uma linha por causa deste campo.
-    const semThread: OutboundEnvelope = { sessionRef: "s", to: "t", kind: "text", body: "x" };
+    const semThread: OutboundEnvelope = {
+      organizationId: "00000000-0000-4000-8000-000000000236",
+      sessionRef: "s",
+      to: "t",
+      kind: "text",
+      body: "x",
+    };
     const comThread: OutboundEnvelope = { ...semThread, providerConversationId: "6a35" };
     expect(semThread.providerConversationId).toBeUndefined();
     expect(comThread.providerConversationId).toBe("6a35");

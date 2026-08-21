@@ -13874,3 +13874,86 @@ comment on index idx_job_queue_running is
   'Scan visita página e não tupla. Este COMMENT é o delator do bloco: índice ausente '
   'vira "relation does not exist", que NÃO casa com o filtro benigno do update.sh e '
   'chega ao operador; "already exists" seria engolido.';
+
+-- ---- identificador de canal único entre os ATIVOS (migration 0165) ----
+--
+-- O QUÊ: dois índices únicos PARCIAIS — um em `meta_phone_number_id`, outro em
+-- `zernio_account_id` —, ambos com `where archived_at is null`, precedidos da
+-- deduplicação dos dados que os violariam.
+--
+-- POR QUÊ: `waha_session_name` e `webhook_path_token` são UNIQUE desde o
+-- snapshot; os dois identificadores que chegaram depois (0087 e 0131) nasceram
+-- sem trava, e é por eles que o código resolve credencial de envio e a
+-- ORGANIZAÇÃO dona de uma mensagem que acabou de entrar. Com duas linhas
+-- casando, o PostgREST devolve `data: null` com `PGRST116` (não "a primeira
+-- linha"), e o `error` era descartado nos três sítios: os dois resolvedores
+-- caíam no fallback do `.env` — a mensagem saía pela conta de OUTRA instalação
+-- — e a ingestão do canal oficial descartava a mensagem recebida para as DUAS
+-- organizações, respondendo 200 (issue #236). A colisão é atingível por
+-- CONFIGURAÇÃO LEGÍTIMA (agência, migração de conta entre organizações), não só
+-- por abuso.
+--
+-- PARCIAL, e não total, pelo precedente da 0107: canal arquivado é canal
+-- excluído pelo usuário e a linha só sobrevive como âncora das FKs RESTRICT.
+-- Trava total impediria reconectar o mesmo número depois de excluí-lo. O recorte
+-- é o MESMO que as consultas de `lib/channels/` passam a usar.
+--
+-- AUTO-CURATIVO: o `update.sh` de um clone roda SEM `ON_ERROR_STOP` e engoliria
+-- o 23505 da criação do índice, deixando o clone sem trava e sem aviso. Por isso
+-- a deduplicação vem ANTES. Ela NÃO apaga nem arquiva a linha perdedora — apagar
+-- sessão de canal de um cliente é destrutivo, arquivar faria o canal sumir da
+-- tela sem ninguém pedir: ela RENOMEIA o identificador da perdedora para
+-- `<original>-conflito-<id da sessão>`. A linha continua visível, e como o
+-- identificador novo não existe no provider, a varredura de saúde
+-- (`app/api/v1/cron/channel-health`) grava `FAILED`/`STOPPED` na próxima passada
+-- e ABRE aviso na Central (os três estados estão em `STATUS_QUE_AVISAM`), que é
+-- o operador sendo avisado em vez de descobrir pelo cliente que não recebeu.
+-- Fica com o identificador a sessão ativa MAIS RECENTE: criá-la exigiu provar
+-- posse da conta na tela de conexão, então é a intenção mais recente.
+--
+-- IDEMPOTENTE: o sufixo carrega o `id` da sessão (único), então depois da
+-- primeira passada não sobra duplicata e a segunda casa zero linhas — não há
+-- como sufixar duas vezes. Os nomes dos índices são novos neste arquivo, então
+-- o `if not exists` (que casa por NOME) não vira no-op em cima de um homônimo.
+
+with ativos as (
+  select id,
+         row_number() over (
+           partition by meta_phone_number_id
+           order by created_at desc nulls last, id desc
+         ) as posicao
+    from public.channel_sessions
+   where archived_at is null
+     and meta_phone_number_id is not null
+)
+update public.channel_sessions s
+   set meta_phone_number_id = s.meta_phone_number_id || '-conflito-' || s.id::text
+  from ativos a
+ where a.id = s.id
+   and a.posicao > 1;
+
+create unique index if not exists channel_sessions_meta_phone_number_id_ativo_unique
+  on public.channel_sessions (meta_phone_number_id)
+  where archived_at is null and meta_phone_number_id is not null;
+
+with ativos as (
+  select id,
+         row_number() over (
+           partition by zernio_account_id
+           order by created_at desc nulls last, id desc
+         ) as posicao
+    from public.channel_sessions
+   where archived_at is null
+     and zernio_account_id is not null
+)
+update public.channel_sessions s
+   set zernio_account_id = s.zernio_account_id || '-conflito-' || s.id::text
+  from ativos a
+ where a.id = s.id
+   and a.posicao > 1;
+
+create unique index if not exists channel_sessions_zernio_account_id_ativo_unique
+  on public.channel_sessions (zernio_account_id)
+  where archived_at is null and zernio_account_id is not null;
+
+notify pgrst, 'reload schema';
