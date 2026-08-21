@@ -13141,6 +13141,149 @@ revoke execute on function public.fn_estampar_atribuicao_de_anuncio(uuid, text, 
 grant  execute on function public.fn_estampar_atribuicao_de_anuncio(uuid, text, jsonb) to service_role;
 
 notify pgrst, 'reload schema';
+
+
+-- ---- poda da fila e expurgo do audit (migration 0167) ----
+--
+-- Nada no produto apagava job terminal (`grep -rn "from job_queue" … | grep -i
+-- delete` devolvia zero linhas), e a retenção de 5 anos do `api_audit_log`
+-- existia só no COMMENT e na documentação — sem expurgo e sem o "cold storage
+-- S3" que seis documentos prometiam. As duas tabelas cresciam desde a
+-- instalação, e são as candidatas naturais a estourar os 500 MB do plano free
+-- do Supabase antes de qualquer tabela de negócio.
+--
+-- O QUE TEM DONO NÃO SAI. `pending` (trabalho que ainda vai sair) e `running`
+-- (com worker agora; o reaper o devolve se o worker morrer) NUNCA são tocados —
+-- terminais são só `done`, `failed` e `dead`. E `dead` com AVISO ABERTO na
+-- Central também tem dono: um humano que ainda não olhou. O `not exists` fica
+-- ANTES do `limit` de propósito — filtrar depois faria um lote inteiro de jobs
+-- protegidos devolver 0, o laço do cron pararia achando que acabou, e a poda
+-- morreria de fome com backlog na frente.
+--
+-- CASCATA DECLARADA: apagar um job leva junto `send_ledger` e
+-- `before_send_traces` daquele run (FK `on delete cascade`) — as duas também
+-- crescem sem poda, então isso é parte do conserto. `llm_calls`,
+-- `lead_checkpoints` e `lead_state_transitions` são `set null`: o histórico
+-- fica, só perde o ponteiro. Os dois consumidores de `send_ledger` sem janela
+-- (`countPriorAcceptedSends` → disclosure de IA e gate LGPD de 1º toque) falham
+-- FECHADO quando a linha some: disclosure a mais e veto a mais, nunca a menos.
+--
+-- POR QUE `security definer` NO EXPURGO DO AUDIT, E POR QUE NÃO É UMA PORTA: a
+-- tabela é append-only NO SCHEMA (o baseline não concede DELETE/UPDATE a
+-- ninguém, nem a service_role), então o expurgo não sai pelo admin client. A
+-- função (a) não tem seletor de linha — nenhum parâmetro de org, ator, ação ou
+-- id, e o único predicado é `created_at < now() - N dias`, ou seja ela só sabe
+-- apagar pela ponta mais velha; (b) carrega o PISO de 90 dias dentro do corpo,
+-- então nem quem tem a service key remove rastro recente; (c) é revogada das
+-- duas origens de EXECUTE e concedida só a service_role; (d) não amplia o raio
+-- de quem já tem a chave (service_role já tem TRUNCATE nesta tabela) — dá forma
+-- estreita e auditável a um poder que já existia; (e) registra a própria erosão,
+-- porque o cron grava `retention.sweep_run` com a contagem, e essa linha é nova
+-- demais para a chamada seguinte alcançar.
+--
+-- Idempotente e auto-curativo: `create or replace`, `create index if not
+-- exists`, `revoke` (no-op quando o privilégio já não existe). Sem constraint
+-- nova ⇒ sem dado a deduplicar antes.
+
+create index if not exists idx_job_queue_poda
+  on public.job_queue (created_at)
+  where status in ('done', 'failed', 'dead');
+
+-- Nome próprio da poda de propósito: `create index if not exists` casa por NOME,
+-- e um nome genérico (`idx_audit_created_at`) poderia já existir num clone com
+-- outra definição e virar no-op silencioso. Nenhum dos cinco índices que a
+-- tabela já tem começa por `created_at`.
+create index if not exists idx_audit_expurgo_created_at
+  on public.api_audit_log (created_at);
+
+create index if not exists idx_agent_inbox_items_ref_aberto
+  on public.agent_inbox_items (ref_kind, ref_id)
+  where status = 'open';
+
+create or replace function public.fn_podar_fila_de_jobs(
+  p_retencao_dias int default null,
+  p_limite int default null
+) returns int
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  -- Piso de 7 dias: abaixo disso a cascata em `send_ledger` mexeria no horizonte
+  -- em que "1º outbound" ainda diz algo sobre um lead vivo.
+  v_dias int := greatest(coalesce(p_retencao_dias, 90), 7);
+  v_limite int := least(greatest(coalesce(p_limite, 1000), 1), 10000);
+  v_apagados int;
+begin
+  with candidatos as (
+    select j.id
+      from public.job_queue j
+     where j.status in ('done', 'failed', 'dead')
+       and j.created_at < now() - make_interval(days => v_dias)
+       and not exists (
+         select 1
+           from public.agent_inbox_items i
+          where i.ref_kind = 'job_queue'
+            and i.ref_id = j.id
+            and i.status = 'open'
+       )
+     order by j.created_at
+     limit v_limite
+  )
+  delete from public.job_queue j
+   using candidatos c
+   where j.id = c.id;
+  get diagnostics v_apagados = row_count;
+  return v_apagados;
+end;
+$$;
+
+create or replace function public.fn_expurgar_auditoria_vencida(
+  p_retencao_dias int default null,
+  p_limite int default null
+) returns int
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  -- 1825 dias = os 5 anos da regra L-10; o piso de 90 impede que o knob vire
+  -- apagador de rastro recente.
+  v_dias int := greatest(coalesce(p_retencao_dias, 1825), 90);
+  v_limite int := least(greatest(coalesce(p_limite, 1000), 1), 10000);
+  v_apagadas int;
+begin
+  with vencidas as (
+    select a.id
+      from public.api_audit_log a
+     where a.created_at < now() - make_interval(days => v_dias)
+     order by a.created_at
+     limit v_limite
+  )
+  delete from public.api_audit_log a
+   using vencidas v
+   where a.id = v.id;
+  get diagnostics v_apagadas = row_count;
+  return v_apagadas;
+end;
+$$;
+
+revoke execute on function public.fn_podar_fila_de_jobs(int, int)
+  from public, anon, authenticated;
+grant  execute on function public.fn_podar_fila_de_jobs(int, int)
+  to service_role;
+
+revoke execute on function public.fn_expurgar_auditoria_vencida(int, int)
+  from public, anon, authenticated;
+grant  execute on function public.fn_expurgar_auditoria_vencida(int, int)
+  to service_role;
+
+comment on table public.api_audit_log is
+  'L-10: append-only (sem GRANT de UPDATE/DELETE a ninguém). Retenção default 5 anos, '
+  'expurgada por public.fn_expurgar_auditoria_vencida (piso de 90 dias) a partir do cron '
+  'app/api/v1/cron/data-retention. Não há camada cold/S3.';
+
+notify pgrst, 'reload schema';
 -- ---- VARREDURA anon: função nova nasce exposta em quem ATUALIZA (migration 0116) ----
 --
 -- ⚠️ ESTE BLOCO É, DE PROPÓSITO, O ÚLTIMO DO ARQUIVO. Apêndice novo entra ANTES
