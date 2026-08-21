@@ -86,8 +86,16 @@ interface BaseProps {
 interface EditProps extends BaseProps {
   mode: "edit";
   agent: AgentRow;
+  /** Rascunho VIGENTE (mais novo que a publicada) — `null` se não há. */
   draft: AgentVersionRow | null;
   published: AgentVersionRow | null;
+  /**
+   * A versão de onde o formulário se hidrata: rascunho vigente > publicada >
+   * última que existiu. Decidida em `lib/ai/agents/versoes-da-tela.ts`.
+   */
+  base?: AgentVersionRow | null;
+  /** Rascunho anterior à publicada — mostrado como aviso, nunca aberto. */
+  draftObsoleto?: AgentVersionRow | null;
 }
 
 interface CreateProps extends BaseProps {
@@ -239,7 +247,10 @@ export function AgentForm(props: Props) {
 
   const baseline = React.useMemo(() => {
     if (isEdit) {
-      const ref = props.draft ?? props.published;
+      // `base` já traz a regra (rascunho vigente > publicada > última versão).
+      // O fallback existe para chamadores que ainda não a passam; sem ele, um
+      // agente pausado abriria no texto padrão e o prompt "sumiria".
+      const ref = props.base ?? props.draft ?? props.published;
       return buildState({ agent: props.agent, version: ref });
     }
     return buildState({ version: null });
@@ -417,8 +428,25 @@ export function AgentForm(props: Props) {
         </Badge>
       );
     }
-    if (pubN) return <Badge variant="default">Publicado v{pubN}</Badge>;
+    if (pubN) {
+      // O rascunho anterior à publicada não abre nem publica — mas some da tela
+      // sem explicação se ninguém o nomear, e aí o autor procura por um trabalho
+      // que acha ter perdido. Ele continua no Histórico.
+      const obsoleta = props.draftObsoleto?.version_number;
+      return (
+        <Badge variant="default" title={obsoleta ? `O rascunho v${obsoleta} é anterior a esta versão e foi superado por ela — ele continua no Histórico.` : undefined}>
+          Publicado v{pubN}
+          {obsoleta ? ` (rascunho v${obsoleta} superado)` : ""}
+        </Badge>
+      );
+    }
     if (draftN) return <Badge variant="outline">Rascunho v{draftN}</Badge>;
+    // Sem rascunho e sem publicada: o formulário abriu da última versão que
+    // existiu (props.base), e não do texto padrão. Dizer isso é o que impede o
+    // autor de achar que o prompt sumiu — e de salvar por cima achando que não.
+    if (props.base) {
+      return <Badge variant="outline">Pausado · editando a v{props.base.version_number}</Badge>;
+    }
     return <Badge variant="outline">Sem versão</Badge>;
   })();
 
