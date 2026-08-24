@@ -28,7 +28,8 @@
  */
 import { describe, expect, it } from "vitest";
 
-import { desfechoDoEnvio, motivoLegivel } from "@/lib/automation/desfecho-do-envio";
+import { desfechoDoEnvio } from "@/lib/automation/desfecho-do-envio";
+import { fraseDaFalhaDeCanal } from "@/lib/channels/frases-de-falha";
 
 describe("desfechoDoEnvio — o run conta o que aconteceu com a mensagem", () => {
   it("mensagem enviada vira sucesso", () => {
@@ -112,10 +113,12 @@ describe("desfechoDoEnvio — o run conta o que aconteceu com a mensagem", () =>
     );
   });
 
-  it("motivoLegivel devolve null para código desconhecido (o chamador é quem decide o fallback)", () => {
-    expect(motivoLegivel("nao_existe")).toBeNull();
-    expect(motivoLegivel(null)).toBeNull();
-    expect(motivoLegivel("channel_archived")).toContain("excluído");
+  it("a tradução devolve null para código desconhecido — quem chama decide o texto de reserva", () => {
+    // Uma frase genérica inventada no lugar do `null` apagaria a mensagem
+    // original do provedor, que às vezes é a única pista real.
+    expect(fraseDaFalhaDeCanal("nao_existe")).toBeNull();
+    expect(fraseDaFalhaDeCanal(null)).toBeNull();
+    expect(fraseDaFalhaDeCanal("channel_archived")).toContain("excluído");
   });
 });
 

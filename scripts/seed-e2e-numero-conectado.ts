@@ -29,7 +29,7 @@ import * as path from "node:path";
 
 import { createClient } from "@supabase/supabase-js";
 
-import { carregarEnvLocal } from "./lib/env-de-teste";
+import { anunciarDestino, credenciaisSupabaseDeTeste } from "./lib/env-de-teste";
 
 const CREDS_PATH = path.join(process.cwd(), ".e2e-creds.json");
 const SESSION_NAME = "e2e-numero-conectado";
@@ -40,12 +40,15 @@ interface Creds {
 }
 
 async function main(): Promise<void> {
-  const env = carregarEnvLocal();
-  const admin = createClient(
-    env.NEXT_PUBLIC_SUPABASE_URL!,
-    env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { persistSession: false } },
-  );
+  // `process.env` VENCE o `.env.local` (ver scripts/lib/env-de-teste.ts), e o
+  // destino é ANUNCIADO: um seed que escreve na nuvem por engano acha os mesmos
+  // dados de teste de sempre e termina dizendo "pronto". A linha impressa é o
+  // que torna o estrago visível ANTES dele.
+  const credenciais = credenciaisSupabaseDeTeste();
+  anunciarDestino("seed-e2e-numero-conectado", credenciais);
+  const admin = createClient(credenciais.url, credenciais.serviceRole, {
+    auth: { persistSession: false },
+  });
 
   const creds = JSON.parse(fs.readFileSync(CREDS_PATH, "utf8")) as Creds;
   const orgId = creds.org_id;

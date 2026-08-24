@@ -19,10 +19,15 @@ export function WebhooksClient() {
   );
 
   if (!mounted) {
-    // Mesma altura do TabsList (h-9) e largura medida da tablist — zero layout shift.
+    // Mesma altura do TabsList (h-9) e largura MEDIDA da tablist — zero layout
+    // shift. 432px é a medida com QUATRO abas (`getBoundingClientRect` em
+    // 1440px, aba "Leads recebidos" incluída); eram 306px com três, e um
+    // skeleton estreito demais faz a página saltar no primeiro paint.
+    // Ao acrescentar ou renomear aba, MEDIR de novo — este número não se
+    // estima a olho.
     return (
       <div className="flex-1">
-        <Skeleton className="h-9 w-[306px]" />
+        <Skeleton className="h-9 w-[432px]" />
       </div>
     );
   }

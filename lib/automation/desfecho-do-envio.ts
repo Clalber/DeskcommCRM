@@ -9,11 +9,12 @@
  * o Inbox, que renderiza a bolha com o estado dela.
  *
  * A ação da automação só olhava se houve exceção. Resultado medido neste repo,
- * com WAHA fora do ar e a regra ligada exatamente como a tela a monta:
+ * com o transporte de WhatsApp fora do ar e a regra ligada exatamente como a
+ * tela a monta:
  *
  *     automation_rule_runs.status = 'success'   ← ✓ verde na aba Atividade
  *     messages.status             = 'failed'    ← o cliente não recebeu nada
- *     messages.error_code         = 'waha_error'
+ *     messages.error_code         = <o código de falha do adapter>
  *
  * Uma tela que afirma sucesso é pior que uma tela silenciosa: quem a lê para de
  * procurar. O status do run passa a ser DERIVADO do estado real da mensagem.
@@ -28,6 +29,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { logger } from "@/lib/logger";
 import type { ActionResultDetail } from "@/lib/automation/types";
+import { fraseDaFalhaDeCanal } from "@/lib/channels/frases-de-falha";
 
 /** O subconjunto de `messages` de que a tradução precisa. */
 export interface MensagemEnviada {
@@ -41,33 +43,6 @@ export interface MensagemEnviada {
 /** Estados em que a mensagem SAIU. `sent` é o que o adapter confirma. */
 const SAIU = new Set(["sent", "delivered", "read"]);
 
-/**
- * Por que a mensagem ficou parada, em português de gente.
- *
- * As chaves são os `queued_reason` que `sendMessageHandler` grava, mais o
- * `error_code` que ele carimba na falha. Texto de tela, não de log: quem lê é
- * quem montou a automação, e a frase precisa dizer o que fazer.
- */
-const MOTIVO_LEGIVEL: Record<string, string> = {
-  channel_session_not_working:
-    "O número escolhido não está conectado no momento. Reconecte em Conexões — a mensagem sai sozinha quando ele voltar.",
-  waha_not_configured:
-    "A conexão de WhatsApp ainda não foi configurada nesta instalação.",
-  meta_not_configured:
-    "A conexão de WhatsApp ainda não foi configurada nesta instalação.",
-  channel_archived:
-    "Esse número foi excluído da Central de Conexões. Escolha outro número nesta automação.",
-  missing_phone_number: "O contato não tem telefone para receber a mensagem.",
-  waha_error:
-    "Não conseguimos falar com o serviço de WhatsApp. Confira se ele está no ar.",
-  storage_sign_failed:
-    "Não conseguimos preparar o arquivo para envio.",
-};
-
-export function motivoLegivel(codigo: string | null | undefined): string | null {
-  if (!codigo) return null;
-  return MOTIVO_LEGIVEL[codigo] ?? null;
-}
 
 /**
  * Traduz o estado REAL da mensagem no desfecho que a automação registra.
@@ -99,7 +74,7 @@ export function desfechoDoEnvio(
         ...base,
         reason: motivo,
         explicacao:
-          motivoLegivel(motivo) ??
+          fraseDaFalhaDeCanal(motivo) ??
           "A mensagem está na fila e sai assim que o canal aceitar.",
       },
     };
@@ -112,7 +87,7 @@ export function desfechoDoEnvio(
     type: tipo,
     status: "failed",
     error:
-      motivoLegivel(mensagem.error_code) ??
+      fraseDaFalhaDeCanal(mensagem.error_code) ??
       mensagem.error_message ??
       `A mensagem não saiu (${codigo}).`,
     detail: { ...base, error_code: mensagem.error_code ?? null, status: mensagem.status },
