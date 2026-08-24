@@ -179,23 +179,43 @@ test.describe("a automação conta o que aconteceu de verdade", () => {
       );
       expect(envio.status()).toBe(200);
 
-      await drenar(request, page);
+      // ── PRIMEIRO o backend, DEPOIS a tela ────────────────────────────────
+      //
+      // Drena até a execução EXISTIR, medindo pela rota que a aba consome. A
+      // versão anterior contava texto na tela dentro de um laço de 12 cliques
+      // em "Atualizar", e ficou intermitente pelo motivo errado: quando a
+      // execução ainda não existia, a falha dizia "a automação não registrou
+      // nenhuma execução" — acusando o produto por um teste que olhou cedo
+      // demais. Medido: no run vermelho a rota devolvia a execução `failed`
+      // corretamente e a tela também a mostrava, segundos depois.
+      //
+      // Separar as duas perguntas mantém as duas asserções e tira o ruído: se
+      // a automação não rodar, este laço falha nomeando isso; se ela rodar e a
+      // tela não mostrar, falha a asserção de baixo.
+      let execucoes = 0;
+      for (let tentativa = 0; tentativa < 10 && execucoes === 0; tentativa++) {
+        await drenar(request, page);
+        const resposta = await page.request.get(
+          `${APP_URL}/api/v1/automation-rules/runs?limit=50`,
+        );
+        expect(resposta.ok()).toBeTruthy();
+        const corpo = (await resposta.json()) as {
+          data: Array<{ automation_rules: { name: string } | null }>;
+        };
+        execucoes = corpo.data.filter((r) => r.automation_rules?.name === RULE_NAME).length;
+      }
+      expect(
+        execucoes,
+        "a automação não registrou execução nenhuma — a regra não rodou",
+      ).toBeGreaterThan(0);
 
       // ── A TELA: o que a aba Atividade diz ────────────────────────────────
       await page.getByRole("tab", { name: "Atividade" }).click();
-
       const cartao = cardDe(page.getByText(RULE_NAME, { exact: true }).first());
-
-      let apareceu = false;
-      for (let tentativa = 0; tentativa < 12; tentativa++) {
-        if ((await page.getByText(RULE_NAME, { exact: true }).count()) > 0) {
-          apareceu = true;
-          break;
-        }
-        await page.getByRole("button", { name: "Atualizar" }).click();
-        await page.waitForTimeout(1000);
-      }
-      expect(apareceu, "a automação não registrou nenhuma execução na aba Atividade").toBe(true);
+      await expect(
+        page.getByText(RULE_NAME, { exact: true }).first(),
+        "a execução existe no banco mas a aba Atividade não a mostra",
+      ).toBeVisible({ timeout: 20_000 });
 
       // ═══ A ASSERÇÃO QUE ESTE ARQUIVO EXISTE PARA FAZER ═══
       //
