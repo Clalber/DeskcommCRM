@@ -309,6 +309,7 @@ describe("os dois canais usam o mesmo passo", () => {
         organizationId: "org-1",
         contactId: "contato-1",
         messageId: "msg-1",
+        texto: "oi, tudo bem?",
       }),
     );
   });

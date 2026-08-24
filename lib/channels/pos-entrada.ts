@@ -123,6 +123,7 @@ export async function aplicarEfeitosPosEntrada(
     organizationId: entrada.organizationId,
     contactId: entrada.contactId,
     messageId: entrada.messageId,
+    texto: entrada.texto,
   });
 }
 

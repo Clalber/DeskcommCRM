@@ -400,6 +400,22 @@ export const ESPERA_PELA_RESPOSTA = {
   minimoMinutos: MINIMO_MINUTOS_DE_ESPERA,
 } as const;
 
+export const SE_INFORMACAO_JA_EXISTIR = {
+  rotulo: "Se a informação já existir",
+  ajuda: "A captação ou a ficha podem já ter o nome (ou o campo). Escolha se o fluxo pula, pergunta de novo ou pede confirmação.",
+  skip: "Pular este passo",
+  overwrite: "Perguntar de novo e substituir",
+  confirm: "Confirmar com o usuário",
+} as const;
+
+export function fraseDeConfirmacao(valor: string, destino: "contact_name" | "lead_custom"): string {
+  const v = valor.trim();
+  if (destino === "contact_name") {
+    return `O nome que temos é ${v}. Responda SIM para confirmar ou envie o nome correto.`;
+  }
+  return `Temos "${v}" neste campo. Responda SIM para confirmar ou envie o valor correto.`;
+}
+
 export const ALVOS_DA_CLASSIFICACAO: Record<AlvoDaClassificacao, string> = {
   last_reply: "Última resposta",
   summary: "Resumo",

@@ -17,17 +17,20 @@ import { flowGraphSchema, type FlowGraph, type FlowNode, type ReplySaveTo } from
 import {
   ACTION_RECHECK_MS,
   BACKOFF_MS,
+  ehConfirmacao,
   latestRepeatIndex,
   occupancyEventCount,
   processNode,
   repeatTakenFromEvents,
   repeatTotalFromEvents,
   resolveWaitPhase,
+  selectEdge,
   type EnrollmentEventRef,
   type EnrollmentOutcome,
   type EnrollmentRow,
   type EnrollmentStatus,
   type LeadFacts,
+} from "./node-handlers";
   type NodeResult,
 } from "./node-handlers";
 import { coletarEsperasAdaptativas, type EsperaAdaptativa, type TimingPlan } from "./timing-plan";
@@ -83,7 +86,12 @@ export interface FollowupJobRequest {
 export interface AdminClient {
   claimDueEnrollments(limit: number, leaseSeconds: number): Promise<EnrollmentRow[]>;
   loadFlowGraph(orgId: string, versionId: string): Promise<FlowGraph | null>;
-  loadLeadFacts(orgId: string, contactId: string): Promise<{ lead_stage: string | null; tags: string[] }>;
+  loadLeadFacts(orgId: string, contactId: string): Promise<{
+    lead_stage: string | null;
+    tags: string[];
+    contact_name?: string | null;
+    custom_fields?: Record<string, unknown>;
+  }>;
   loadEnrollmentEvents(enrollmentId: string): Promise<EnrollmentEventRef[]>;
   /** Latest inbound `messages.body` for the contact (optionally scoped to the enrollment conversation). */
   loadLastInboundBody(
@@ -353,7 +361,9 @@ async function applyResult(
         !isReplay &&
         respostaParaGravar &&
         node.type === "match_reply" &&
-        node.config.save_to
+        node.config.save_to &&
+        (node.config.if_exists ?? "overwrite") !== "skip" &&
+        !((node.config.if_exists ?? "overwrite") === "confirm" && ehConfirmacao(respostaParaGravar))
       ) {
         await db.persistirRespostaFollowup({
           organization_id: enrollment.organization_id,
@@ -381,22 +391,11 @@ async function applyResult(
       // node.type narrado (union discriminada de FlowNode) — sem cast: dentro
       // do `if`, node.config já é o config do ai_classify de verdade.
       const graceMs =
-        result.purpose === "classify" && node.type === "ai_classify"
+        node.type === "ai_classify" || node.type === "match_reply"
           ? node.config.grace_timeout_ms
           : ACTION_RECHECK_MS;
       patch.next_eval_at = new Date(clock().getTime() + graceMs).toISOString();
       if (!isReplay) {
-        // At-most-once: o job só é disparado na aplicação FRESCA do resultado —
-        // um replay (23505) nunca reenfileira turno (doutrina de envio). Se
-        // enqueueJob falhar aqui (rede/fila fora do ar), o evento JÁ foi
-        // commitado — updateEnrollment abaixo não roda nesta tentativa, então
-        // o enrollment continua claimable e o tick seguinte reprocessa o
-        // MESMO passo: o insert do evento bate 23505 (replay), enqueueJob é
-        // pulado de novo (nunca reenvia) e o enrollment converge pro
-        // next_eval_at normal (5min ação / grace do classify). Efeito líquido
-        // de uma falha transitória no enqueue: atraso limitado ao próximo
-        // recheck, nunca um envio duplicado — self-healing, sem retry
-        // agressivo de envio.
         await enqueueJob({
           organization_id: enrollment.organization_id,
           contact_id: enrollment.contact_id,
@@ -405,6 +404,7 @@ async function applyResult(
             node_id: node.id,
             purpose: result.purpose,
             ...turnPayloadExtras(node, smartWaits, events),
+            ...(result.fixed_body ? { fixed_body: result.fixed_body } : {}),
           },
         });
       }
@@ -425,7 +425,25 @@ async function applyResult(
   if (!isReplay) tallyOutcome(result, summary);
 }
 
-async function processEnrollment(deps: TickDeps, enrollment: EnrollmentRow, summary: TickSummary): Promise<void> {
+/**
+ * Resposta do WhatsApp neste request — não espera claim/cron.
+ * `inboundBody` é o texto desta mensagem (substitui nome já gravado na captação).
+ */
+export async function aplicarRespostaInbound(
+  deps: TickDeps,
+  enrollment: EnrollmentRow,
+  inboundBody: string,
+): Promise<void> {
+  const summary: TickSummary = { claimed: 0, advanced: 0, scheduled: 0, failed: 0, dead: 0 };
+  await processEnrollment(deps, enrollment, summary, inboundBody);
+}
+
+async function processEnrollment(
+  deps: TickDeps,
+  enrollment: EnrollmentRow,
+  summary: TickSummary,
+  inboundBodyOverride?: string,
+): Promise<void> {
   const { db, clock } = deps;
 
   if (enrollment.steps_taken > MAX_STEPS) {
@@ -439,13 +457,18 @@ async function processEnrollment(deps: TickDeps, enrollment: EnrollmentRow, summ
 
   const node = graph.nodes.find((n) => n.id === enrollment.current_node_id);
   if (!node) throw new Error("node_not_found");
+  if (inboundBodyOverride !== undefined && node.type !== "match_reply" && node.type !== "wait") {
+    return;
+  }
 
   const leadRow = await db.loadLeadFacts(enrollment.organization_id, enrollment.contact_id);
   const lead: LeadFacts = {
     lead_stage: leadRow.lead_stage,
     tags: leadRow.tags,
     steps_taken: enrollment.steps_taken,
-    last_outcome: null, // onda 5: ai_classify ainda não persiste resultado pra condicionar
+    last_outcome: null,
+    contact_name: leadRow.contact_name ?? null,
+    custom_fields: leadRow.custom_fields,
   };
 
   let waitElapsed: boolean | undefined;
@@ -488,6 +511,10 @@ async function processEnrollment(deps: TickDeps, enrollment: EnrollmentRow, summ
       actionRecheckCount = occupancyEventCount(events, node.id);
     }
   }
+  const textoInbound = inboundBodyOverride?.trim() ?? "";
+  if (textoInbound && (node.type === "match_reply" || node.type === "wait")) {
+    wokeEarly = true;
+  }
 
   if (node.type === "repeat") {
     repeatTaken = repeatTakenFromEvents(events, node.id);
@@ -495,7 +522,9 @@ async function processEnrollment(deps: TickDeps, enrollment: EnrollmentRow, summ
   }
 
   let lastInboundBody: string | undefined;
-  if ((node.type === "match_reply" && wokeEarly) || (node.type === "repeat" && repeatTotal == null)) {
+  if (textoInbound && node.type === "match_reply") {
+    lastInboundBody = textoInbound;
+  } else if ((node.type === "match_reply" && wokeEarly) || (node.type === "repeat" && repeatTotal == null)) {
     lastInboundBody =
       (await db.loadLastInboundBody(
         enrollment.organization_id,
@@ -514,6 +543,9 @@ async function processEnrollment(deps: TickDeps, enrollment: EnrollmentRow, summ
     }
   }
 
+  const nextAlways = selectEdge(graph.edges, node.id, { type: "always" });
+  const proximo = nextAlways ? (graph.nodes.find((n) => n.id === nextAlways.target) ?? null) : null;
+
   const result = processNode({
     node,
     edges: graph.edges,
@@ -530,6 +562,7 @@ async function processEnrollment(deps: TickDeps, enrollment: EnrollmentRow, summ
     planRecheckCount,
     repeatTaken,
     repeatTotal,
+    proximo,
   });
   await applyResult(
     deps,
@@ -607,16 +640,29 @@ export function createSupabaseAdminClient(admin: SupabaseClient): AdminClient {
       return flowGraphSchema.parse(data.graph);
     },
     async loadLeadFacts(orgId, contactId) {
-      const { data, error } = await admin
-        .from("crm_leads")
-        .select("stage_id, tags")
-        .eq("organization_id", orgId)
-        .eq("contact_id", contactId)
-        .order("updated_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      if (error) throw new Error(error.message);
-      return { lead_stage: data?.stage_id ?? null, tags: data?.tags ?? [] };
+      const [{ data: lead, error: leadErr }, { data: contact, error: contactErr }] = await Promise.all([
+        admin
+          .from("crm_leads")
+          .select("stage_id, tags, custom_fields")
+          .eq("organization_id", orgId)
+          .eq("contact_id", contactId)
+          .order("updated_at", { ascending: false })
+          .limit(1)
+          .maybeSingle(),
+        admin.from("contacts").select("name").eq("organization_id", orgId).eq("id", contactId).maybeSingle(),
+      ]);
+      if (leadErr) throw new Error(leadErr.message);
+      if (contactErr) throw new Error(contactErr.message);
+      const custom =
+        lead?.custom_fields && typeof lead.custom_fields === "object" && !Array.isArray(lead.custom_fields)
+          ? (lead.custom_fields as Record<string, unknown>)
+          : {};
+      return {
+        lead_stage: lead?.stage_id ?? null,
+        tags: lead?.tags ?? [],
+        contact_name: contact?.name ?? null,
+        custom_fields: custom,
+      };
     },
     async loadLastInboundBody(orgId, contactId, conversationId) {
       let q = admin

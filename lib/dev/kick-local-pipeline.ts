@@ -15,9 +15,11 @@ import { ensureConversation, sessaoProntaParaEnvio } from "@/lib/automation/star
 import { drainEventLog } from "@/lib/event-log/drain";
 import { ensureHandlersRegistered } from "@/lib/event-log/register-handlers";
 import {
+  aplicarRespostaInbound,
   createSupabaseAdminClient,
   runFollowupTick,
   type FollowupJobRequest,
+  type TickDeps,
 } from "@/lib/followup/engine";
 import type { EnrollmentRow } from "@/lib/followup/node-handlers";
 import { applyReactivityEvent, createSupabaseReactivityClient } from "@/lib/followup/reactivity";
@@ -28,23 +30,27 @@ export type SinalDeInbound = {
   organizationId: string;
   contactId: string;
   messageId?: string | null;
+  texto?: string | null;
 };
 
-async function tickFollowupAteParar(admin: SupabaseClient): Promise<number> {
-  const enqueueJob = async (job: FollowupJobRequest): Promise<void> => {
-    const { error } = await admin.from("job_queue").insert({
-      organization_id: job.organization_id,
-      contact_id: job.contact_id,
-      kind: "followup_turn",
-      payload: job.payload,
-    });
-    if (error) throw new Error(error.message);
-  };
-  const tickDeps = {
+function tickDepsDe(admin: SupabaseClient): TickDeps {
+  return {
     db: createSupabaseAdminClient(admin),
     clock: () => new Date(),
-    enqueueJob,
+    enqueueJob: async (job) => {
+      const { error } = await admin.from("job_queue").insert({
+        organization_id: job.organization_id,
+        contact_id: job.contact_id,
+        kind: "followup_turn",
+        payload: job.payload,
+      });
+      if (error) throw new Error(error.message);
+    },
   };
+}
+
+async function tickFollowupAteParar(admin: SupabaseClient): Promise<number> {
+  const tickDeps = tickDepsDe(admin);
   let claimed = 0;
   for (let i = 0; i < 8; i++) {
     const tick = await runFollowupTick(tickDeps);
@@ -52,6 +58,22 @@ async function tickFollowupAteParar(admin: SupabaseClient): Promise<number> {
     if (!tick.claimed) break;
   }
   return claimed;
+}
+
+async function aplicarTextoNosFollowups(admin: SupabaseClient, sinal: SinalDeInbound): Promise<void> {
+  const texto = sinal.texto?.trim() ?? "";
+  if (!texto) return;
+  const { data, error } = await admin
+    .from("followup_enrollments")
+    .select("*")
+    .eq("organization_id", sinal.organizationId)
+    .eq("contact_id", sinal.contactId)
+    .in("status", ["waiting_reply", "active"]);
+  if (error) throw new Error(error.message);
+  const deps = tickDepsDe(admin);
+  for (const row of data ?? []) {
+    await aplicarRespostaInbound(deps, row as EnrollmentRow, texto);
+  }
 }
 
 function ponteSupabase(admin: SupabaseClient): TurnBridgeAdminClient {
@@ -165,6 +187,7 @@ export async function acelerarPipelineDeEventos(
   try {
     if (inbound) {
       await acordarFollowupPorInbound(admin, inbound);
+      await aplicarTextoNosFollowups(admin, inbound);
       for (let i = 0; i < 6; i++) {
         const claimed = await tickFollowupAteParar(admin);
         const enviados = await enviarTextoFixoPendente(admin);

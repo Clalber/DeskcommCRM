@@ -143,7 +143,9 @@ export function describeNodeConfig(type: NodeType, config: FlowNode["config"]): 
     case "match_reply": {
       const c = config as ConfigOf<"match_reply">;
       return `${c.branches.length} regras · grace ${Math.round(c.grace_timeout_ms / 60_000)}min${
-        c.save_to ? " · grava resposta" : ""
+        c.save_to
+          ? ` · grava resposta${c.if_exists === "skip" ? " · pula se já existir" : c.if_exists === "confirm" ? " · confirma se já existir" : ""}`
+          : ""
       }`;
     }
     case "repeat": {

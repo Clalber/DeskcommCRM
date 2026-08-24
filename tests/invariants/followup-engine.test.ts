@@ -99,13 +99,26 @@ function pgAdminClient(opts?: { failInboxTimes?: number }): AdminClient {
       return flowGraphSchema.parse(rows[0]!.graph);
     },
     async loadLeadFacts(orgId, contactId) {
-      const { rows } = await pool.query<{ stage_id: string | null; tags: string[] }>(
-        `select stage_id, tags from crm_leads where organization_id = $1 and contact_id = $2
+      const { rows: leads } = await pool.query<{
+        stage_id: string | null;
+        tags: string[];
+        custom_fields: Record<string, unknown> | null;
+      }>(
+        `select stage_id, tags, custom_fields from crm_leads where organization_id = $1 and contact_id = $2
          order by updated_at desc limit 1`,
         [orgId, contactId],
       );
-      if (rows.length === 0) return { lead_stage: null, tags: [] };
-      return { lead_stage: rows[0]!.stage_id, tags: rows[0]!.tags };
+      const { rows: contacts } = await pool.query<{ name: string | null }>(
+        `select name from contacts where organization_id = $1 and id = $2`,
+        [orgId, contactId],
+      );
+      const lead = leads[0];
+      return {
+        lead_stage: lead?.stage_id ?? null,
+        tags: lead?.tags ?? [],
+        contact_name: contacts[0]?.name ?? null,
+        custom_fields: lead?.custom_fields ?? {},
+      };
     },
     async loadLastInboundBody(orgId, contactId, conversationId) {
       const params: unknown[] = [orgId, contactId];

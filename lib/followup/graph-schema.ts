@@ -136,6 +136,10 @@ export const replySaveToSchema = z.discriminatedUnion('kind', [
 ]);
 export type ReplySaveTo = z.infer<typeof replySaveToSchema>;
 
+/** O que fazer quando o destino de `save_to` já tem valor (captação, ficha…). */
+export const ifExistsSchema = z.enum(["skip", "overwrite", "confirm"]);
+export type IfExists = z.infer<typeof ifExistsSchema>;
+
 /**
  * Text-match node: parks in `waiting_reply` like `ai_classify`, then routes on
  * the last inbound body without calling a model. v2 `branches` only.
@@ -145,10 +149,11 @@ export const matchReplyConfigSchema = z
     branches: z.array(matchReplyBranchSchema).min(1).max(8),
     grace_timeout_ms: z.number().int().min(900_000),
     save_to: replySaveToSchema.optional(),
+    if_exists: ifExistsSchema.optional(),
   })
   .refine((c) => new Set(c.branches.map((b) => b.id)).size === c.branches.length, {
-    message: 'branches[].id must be unique within the node',
-    path: ['branches'],
+    message: "branches[].id must be unique within the node",
+    path: ["branches"],
   });
 
 /**

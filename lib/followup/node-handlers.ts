@@ -4,9 +4,10 @@
  * this node + these facts, what happens next" so it's testable without Postgres.
  */
 import { NO_REPLY_BRANCH_ID, REPEAT_BODY_BRANCH_ID, REPEAT_DONE_BRANCH_ID, nodeBranches } from "./graph-schema";
-import type { FlowEdge, FlowNode } from "./graph-schema";
+import type { FlowEdge, FlowNode, ReplySaveTo } from "./graph-schema";
 import { parseReplyCount } from "./parse-count";
 import { clampEspera, esperaPlanejadaDe, type EsperaAdaptativa } from "./timing-plan";
+import { fraseDeConfirmacao } from "./vocabulario";
 
 export type EnrollmentStatus =
   | "active"
@@ -58,6 +59,8 @@ export interface LeadFacts {
   tags: string[];
   steps_taken: number;
   last_outcome: string | null;
+  contact_name?: string | null;
+  custom_fields?: Record<string, unknown>;
 }
 
 /** Reference to a `followup_enrollment_events` row — only what `resolveWaitPhase` needs. */
@@ -79,6 +82,7 @@ export type NodeResult =
       kind: "enqueue_turn";
       purpose: "send_message" | "classify" | "plan_timing";
       wake_status: "active" | "waiting_reply";
+      fixed_body?: string;
     }
   // action recheck: the send turn is already in flight; stay put WITHOUT re-enqueuing (anti-dup-send).
   | { kind: "recheck"; next_eval_at: Date }
@@ -125,6 +129,23 @@ export const MAX_ACTION_RECHECKS = 14;
  * curtos), janela fechada volta em horas (e aí não faz sentido perguntar de 5
  * em 5 minutos por 9 horas).
  */
+export function destinoJaPreenchido(lead: LeadFacts, saveTo: ReplySaveTo): boolean {
+  if (saveTo.kind === "contact_name") return Boolean(lead.contact_name?.trim());
+  const v = lead.custom_fields?.[saveTo.key];
+  if (typeof v === "string") return v.trim().length > 0;
+  return v !== undefined && v !== null && v !== "";
+}
+
+/** Resposta que MANTÉM o valor já gravado no modo `confirm`. */
+export function ehConfirmacao(body: string): boolean {
+  const t = body.trim().toLowerCase();
+  return /^(sim|s|yes|ok|isso|correto|confirmo|confirmar|pode)([.!]?)$/.test(t) || t === "isso mesmo";
+}
+
+function modoSeJaExiste(node: Extract<FlowNode, { type: "match_reply" }>): "skip" | "overwrite" | "confirm" {
+  return node.config.if_exists ?? "overwrite";
+}
+
 export function atrasoDoRecheck(rechecksJaFeitos: number): number {
   const passo = Math.max(0, rechecksJaFeitos);
   return Math.min(ACTION_RECHECK_MS * 2 ** passo, ACTION_RECHECK_MAX_MS);
@@ -331,6 +352,8 @@ export function processNode(input: {
   repeatTaken?: number;
   /** `repeat`: N armado na primeira visita; null = ainda precisa parsear lastInboundBody. */
   repeatTotal?: number | null;
+  /** Próximo nó pela aresta `always` — a ação olha o `match_reply` seguinte para pular o envio. */
+  proximo?: FlowNode | null;
 }): NodeResult {
   const {
     node,
@@ -348,6 +371,7 @@ export function processNode(input: {
     planRecheckCount,
     repeatTaken,
     repeatTotal,
+    proximo,
   } = input;
 
   switch (node.type) {
@@ -456,6 +480,31 @@ export function processNode(input: {
 
     case "match_reply": {
       if (!waitElapsed && !wokeEarly) {
+        if (node.config.save_to && destinoJaPreenchido(lead, node.config.save_to)) {
+          const modo = modoSeJaExiste(node);
+          if (modo === "skip") {
+            const edge = selectEdge(edges, node.id, { type: "always" });
+            if (!edge) {
+              return { kind: "fail", error: `match_reply node "${node.id}" has no fallback edge to skip` };
+            }
+            return { kind: "advance", next_node_id: edge.target, next_eval_at: clock() };
+          }
+          if (modo === "confirm") {
+            const valor =
+              node.config.save_to.kind === "contact_name"
+                ? (lead.contact_name ?? "").trim()
+                : String(lead.custom_fields?.[node.config.save_to.key] ?? "").trim();
+            return {
+              kind: "enqueue_turn",
+              purpose: "send_message",
+              wake_status: "waiting_reply",
+              fixed_body: fraseDeConfirmacao(
+                valor,
+                node.config.save_to.kind === "contact_name" ? "contact_name" : "lead_custom",
+              ),
+            };
+          }
+        }
         return {
           kind: "wait",
           next_eval_at: new Date(clock().getTime() + node.config.grace_timeout_ms),
@@ -464,11 +513,14 @@ export function processNode(input: {
       }
       if (wokeEarly) {
         const body = (lastInboundBody ?? "").trim().toLowerCase();
-        const hit = node.config.branches.find((b) => {
-          const needle = b.pattern.trim().toLowerCase();
-          if (needle.length === 0) return false;
-          return b.op === "eq" ? body === needle : body.includes(needle);
-        });
+        const hit =
+          node.config.save_to !== undefined
+            ? undefined
+            : node.config.branches.find((b) => {
+                const needle = b.pattern.trim().toLowerCase();
+                if (needle.length === 0) return false;
+                return b.op === "eq" ? body === needle : body.includes(needle);
+              });
         const edge = hit
           ? selectEdge(edges, node.id, { type: "branch", branch_id: hit.id })
           : selectEdge(edges, node.id, { type: "always" });
@@ -532,6 +584,18 @@ export function processNode(input: {
       // `${node}:${steps}` idempotency_key was a FRESH key each tick → a 2nd job → a 2nd
       // real send that the send sink's (job_id,seq) dedup can't catch).
       if (!actionEnqueued) {
+        if (
+          proximo?.type === "match_reply" &&
+          proximo.config.save_to &&
+          destinoJaPreenchido(lead, proximo.config.save_to)
+        ) {
+          const modo = modoSeJaExiste(proximo);
+          if (modo === "skip" || modo === "confirm") {
+            const edge = selectEdge(edges, node.id, { type: "always" });
+            if (!edge) return { kind: "fail", error: `action node "${node.id}" has no outbound edge` };
+            return { kind: "advance", next_node_id: edge.target, next_eval_at: clock() };
+          }
+        }
         return { kind: "enqueue_turn", purpose: "send_message", wake_status: "active" };
       }
       // Dead-man: the turn never completed. Rechecks count THIS occupancy only

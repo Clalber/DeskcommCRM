@@ -794,6 +794,83 @@ describe("processNode — match_reply", () => {
     expect(result).toMatchObject({ kind: "advance", next_node_id: "escape" });
   });
 
+  it("wokeEarly + save_to: qualquer texto segue o Sempre (nome já na ficha não importa)", () => {
+    const node: FlowNode = {
+      ...matchNode(),
+      config: { ...matchNode().config, save_to: { kind: "contact_name" } },
+    };
+    const result = processNode({
+      node,
+      edges,
+      enrollment: enrollment(),
+      lead: lead(),
+      clock,
+      waitElapsed: true,
+      wokeEarly: true,
+      lastInboundBody: "Ian Couto",
+    });
+    expect(result).toMatchObject({ kind: "advance", next_node_id: "escape" });
+  });
+
+  it("if_exists skip: nome já na ficha avança na hora", () => {
+    const node: FlowNode = {
+      ...matchNode(),
+      config: { ...matchNode().config, save_to: { kind: "contact_name" }, if_exists: "skip" },
+    };
+    const result = processNode({
+      node,
+      edges,
+      enrollment: enrollment(),
+      lead: lead({ contact_name: "Ian" }),
+      clock,
+    });
+    expect(result).toMatchObject({ kind: "advance", next_node_id: "escape" });
+  });
+
+  it("if_exists confirm: nome já na ficha enfileira pergunta de confirmação", () => {
+    const node: FlowNode = {
+      ...matchNode(),
+      config: { ...matchNode().config, save_to: { kind: "contact_name" }, if_exists: "confirm" },
+    };
+    const result = processNode({
+      node,
+      edges,
+      enrollment: enrollment(),
+      lead: lead({ contact_name: "Ian" }),
+      clock,
+    });
+    expect(result.kind).toBe("enqueue_turn");
+    if (result.kind === "enqueue_turn") {
+      expect(result.purpose).toBe("send_message");
+      expect(result.wake_status).toBe("waiting_reply");
+      expect(result.fixed_body).toContain("Ian");
+      expect(result.fixed_body).toMatch(/SIM/i);
+    }
+  });
+
+  it("action não envia a pergunta se o próximo match_reply vai pular ou confirmar", () => {
+    const ask: FlowNode = {
+      id: "ask",
+      type: "action",
+      label: "Perguntar",
+      position: { x: 0, y: 0 },
+      config: { mode: "text", body: "qual seu nome?" },
+    };
+    const nxt: FlowNode = {
+      ...matchNode(),
+      config: { ...matchNode().config, save_to: { kind: "contact_name" }, if_exists: "confirm" },
+    };
+    const result = processNode({
+      node: ask,
+      edges: [edge({ source: "ask", target: "mr1", condition: { type: "always" } })],
+      enrollment: enrollment({ current_node_id: "ask" }),
+      lead: lead({ contact_name: "Ian" }),
+      clock,
+      proximo: nxt,
+    });
+    expect(result).toMatchObject({ kind: "advance", next_node_id: "mr1" });
+  });
+
   it("timeout (waitElapsed, not wokeEarly) routes no_reply", () => {
     const result = processNode({
       node: matchNode(),

@@ -625,11 +625,12 @@ describe('graph-schema', () => {
       expect(result.success).toBe(true);
     });
 
-    it('accepts match_reply with save_to', () => {
+    it('accepts match_reply with save_to and if_exists', () => {
       const result = matchReplyConfigSchema.safeParse({
         branches: [{ id: 'br_sim', label: 'Sim', op: 'contains', pattern: 'sim' }],
         grace_timeout_ms: 900_000,
         save_to: { kind: 'lead_custom', key: 'endereco' },
+        if_exists: 'confirm',
       });
       expect(result.success).toBe(true);
     });
