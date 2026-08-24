@@ -31,6 +31,31 @@ export const RETENCAO_FILA_DIAS_PISO = 7;
 export const RETENCAO_AUDITORIA_DIAS_PADRAO = 1825;
 /** Piso da auditoria: o knob nunca vira apagador de rastro recente. */
 export const RETENCAO_AUDITORIA_DIAS_PISO = 90;
+/**
+ * 365 dias para o HISTÓRICO de leads captados (`webhook_lead_captures`).
+ *
+ * Muito mais longo que a fila e mais curto que a auditoria, e as duas pontas
+ * têm razão: a linha não é despejo de depuração (é o que a aba "Leads
+ * recebidos" mostra, e a pergunta útil — "de qual campanha veio quem fechou?" —
+ * é de meses atrás), mas também não é rastro legal de 5 anos. Um ano fiscal
+ * inteiro, a ~1 kB por formulário: 300 leads/dia dão ~110 MB.
+ */
+export const RETENCAO_CAPTACAO_DIAS_PADRAO = 365;
+/**
+ * Piso da captação: o knob nunca vira apagador de ORIGEM.
+ *
+ * A tabela guarda de onde o contato veio — a página, o IP, a campanha, o
+ * consentimento implícito de ter preenchido. Trinta dias é o mínimo em que essa
+ * pergunta ainda tem chance de ser feita.
+ *
+ * ⚠️ DIFERENÇA DECLARADA em relação aos dois pisos acima: aqueles moram DENTRO
+ * de uma função do banco (`greatest(..., piso)`), o que os faz valer até para
+ * um `psql` na mão. Este mora no TypeScript que apaga
+ * (`lib/webhooks/retencao-da-captacao.ts`), porque a poda da captação é um
+ * DELETE do admin client, não uma `security definer` — não há função onde
+ * enfiá-lo. O alcance é menor e está escrito aqui em vez de presumido.
+ */
+export const RETENCAO_CAPTACAO_DIAS_PISO = 30;
 
 export interface RetencaoInterpretada {
   /** Dias a pedir ao banco. Nunca abaixo do piso, nunca `NaN`. */

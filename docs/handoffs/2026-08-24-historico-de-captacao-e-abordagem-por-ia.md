@@ -126,14 +126,44 @@ passo de follow-up, que já provou funcionar.
 automação, com janela, opt-out e throttle. Dar a ferramenta ao modelo faria
 dele o remetente, e as guardas ficariam dependendo de ele obedecer.
 
+## A poda, que era dívida e foi paga
+
+O cabeçalho da migration 0169 já DESCREVIA a poda quando ela ainda não existia
+— uma afirmação de estado falsa dentro do próprio artefato, que é o defeito que
+o DoD 16 combate. Ela agora existe:
+`lib/webhooks/retencao-da-captacao.ts`, chamada no MESMO tique do cron
+`webhook-log-retention`.
+
+Três decisões que valem reler:
+
+  * **Um horizonte só, sem "esvaziar mantendo a linha".** No arquivo forense o
+    corpo é 97% do peso e ninguém o lê depois de uma semana, então esvaziar e
+    manter a linha faz sentido. Aqui a linha É o produto: ou o registro serve
+    inteiro, ou não serve.
+  * **A política vem do módulo canônico**, `lib/retencao/politica.ts` — o mesmo
+    que a poda da fila e o expurgo da auditoria usam. A primeira versão desta
+    poda tinha um `Math.max(dias, 30)` próprio, o que é duplicação sem fonte
+    declarada: duas cópias do piso divergem no primeiro ajuste. E o módulo
+    canônico devolve algo que a versão caseira jogava fora — o AVISO. Sem ele, o
+    operador que escreveu `LEAD_CAPTURE_RETENTION_DAYS=1` veria o número ser
+    elevado em silêncio e descobriria pela ausência de efeito: falha fechada na
+    ação e fechada também na informação, que é o pior dos dois mundos.
+  * **O módulo estava mais certo que eu, e o teste registra isso.** Escrevi o
+    caso do `0` esperando que caísse no piso de 30; `interpretarRetencao` trata
+    `<= 0` como LIXO e resolve para o PADRÃO (365). Está certo: cair no piso
+    encurtaria a retenção de um ano para um mês por causa de um zero digitado.
+    O caso do valor NEGATIVO entrou junto — sem a guarda, `-30` daria um limite
+    30 dias no FUTURO e o `lt(received_at, …)` apagaria o histórico inteiro,
+    inclusive o de hoje.
+  * **Mesmo cron, e não um novo.** Uma rota a mais seria mais uma linha no
+    `entrypoint.sh` do scheduler para alguém esquecer de agendar — o defeito que
+    já custou meses ao `risk-watcher` e ao `routing-worker`.
+
+Guardado por `tests/unit/retencao-do-historico-de-captacao.test.ts` (10 casos).
+Sabotado: removendo o `Math.max` do piso, 2 casos reprovam.
+
 ## O que NÃO foi feito (dívida declarada)
 
-- **A poda de `webhook_lead_captures` não existe.** Uma linha por formulário,
-  ~1 kB; um cliente de 300 leads/dia gera ~110 MB/ano. Não é o arquivo bruto
-  (23 MB/DIA, medido), mas num plano de 500 MB também não é nada. O cabeçalho
-  da migration 0169 descreve a poda pretendida
-  (`LEAD_CAPTURE_RETENTION_DAYS`, 365, no mesmo cron do arquivo) — ela NÃO foi
-  implementada nesta entrega.
 - **O agente da abordagem não lê a base de conhecimento (RAG).** `draft-reply`
   também não lê; a via limpa usa `runModelCall` sem tools. Se a mensagem
   precisar citar material do negócio, isso é frente própria.
