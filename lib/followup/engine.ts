@@ -30,7 +30,6 @@ import {
   type EnrollmentRow,
   type EnrollmentStatus,
   type LeadFacts,
-} from "./node-handlers";
   type NodeResult,
 } from "./node-handlers";
 import { coletarEsperasAdaptativas, type EsperaAdaptativa, type TimingPlan } from "./timing-plan";
