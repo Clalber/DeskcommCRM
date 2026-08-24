@@ -52,6 +52,7 @@ export const AUDIT_ACTIONS = [
   "lead.bulk_action",
   "contact.created",
   "contact.updated",
+  "contacts.imported",
   "contact.anonymized",
   "contact.merge_pending",
   "contact.merged",
@@ -322,6 +323,16 @@ export const AUDIT_ACTIONS = [
   "ai.budget_enforcement_armed",
   "ai.budget_enforcement_disarmed",
   "contact.deleted",
+
+  // A poda do histórico (issue #261). UMA linha por rodada que de fato
+  // apagou algo — rodada que não apagou nada não é mutação e não ocupa
+  // trilha (o mesmo critério do snooze-watcher e do recover-stuck-messages).
+  //
+  // Esta linha é o que impede o expurgo de virar apagamento silencioso de
+  // auditoria: ela guarda quantas linhas saíram, sob que retenção, e é NOVA
+  // demais para a chamada seguinte do expurgo alcançar — a trilha registra
+  // a própria erosão em vez de encolher sem deixar marca.
+  "retention.sweep_run",
 ] as const;
 
 /** Um código de auditoria. Derivado de `AUDIT_ACTIONS` — não redigite a lista. */
