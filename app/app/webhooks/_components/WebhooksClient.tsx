@@ -5,6 +5,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { SourcesTab } from "./SourcesTab";
 import { RulesTab } from "./RulesTab";
 import { ActivityTab } from "./ActivityTab";
+import { CapturasTab } from "./CapturasTab";
 
 export function WebhooksClient() {
   // Radix Tabs gera ids via useId; com SSR streamado (Next 15) os ids divergem
@@ -30,10 +31,12 @@ export function WebhooksClient() {
     <Tabs defaultValue="sources" className="flex-1">
       <TabsList>
         <TabsTrigger value="sources">Receber dados</TabsTrigger>
+        <TabsTrigger value="capturas">Leads recebidos</TabsTrigger>
         <TabsTrigger value="rules">Automações</TabsTrigger>
         <TabsTrigger value="activity">Atividade</TabsTrigger>
       </TabsList>
       <TabsContent value="sources"><SourcesTab /></TabsContent>
+      <TabsContent value="capturas"><CapturasTab /></TabsContent>
       <TabsContent value="rules"><RulesTab /></TabsContent>
       <TabsContent value="activity"><ActivityTab /></TabsContent>
     </Tabs>

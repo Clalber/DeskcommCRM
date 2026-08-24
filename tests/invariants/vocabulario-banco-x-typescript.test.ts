@@ -207,6 +207,34 @@ const PARES: Array<{
     arquivo: "lib/agent-engine/edge/llm/orcamento.ts",
     simbolo: "ModoDeOrcamento",
   },
+  {
+    tabela: "webhook_lead_captures",
+    coluna: "outcome",
+    // lib/schemas/lead-captures.ts → DESFECHOS_DA_CAPTACAO.
+    //
+    // A tela pinta um badge por valor ("Virou lead" / "Reenvio" / "Não entrou")
+    // e filtra por ele. Um desfecho novo só no CHECK viraria linha sem rótulo e
+    // opção de filtro que não existe; só no TypeScript viraria `23514` num
+    // INSERT que roda dentro da rota PÚBLICA de captação — e ali o registro é
+    // fire-and-forget, ou seja, o histórico simplesmente não apareceria.
+    arquivo: "lib/schemas/lead-captures.ts",
+    simbolo: "DESFECHOS_DA_CAPTACAO",
+  },
+  {
+    tabela: "automation_rule_runs",
+    coluna: "status",
+    // hooks/webhooks/useAutomationRules.ts → AutomationRunStatus.
+    //
+    // O par aponta para o tipo da TELA porque é ela quem precisa conhecer TODOS
+    // os estados: `statusBadgeLabel` mapeia cada um para um texto em português,
+    // e um valor sem entrada cai no rótulo de "Parcial" — dizendo que algo
+    // falhou quando nada foi sequer tentado.
+    //
+    // Nasce com a 0170, que acrescentou `adiado` (a espera é um estado; sem ele
+    // a aba Atividade não mostrava NADA enquanto a regra aguardava a janela).
+    arquivo: "hooks/webhooks/useAutomationRules.ts",
+    simbolo: "AutomationRunStatus",
+  },
 ];
 
 /** Tira um nível de parênteses externos, se ele envolver a expressão inteira. */

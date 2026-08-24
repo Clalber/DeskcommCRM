@@ -52,7 +52,7 @@ export async function POST(_req: NextRequest, ctx: RouteCtx): Promise<Response> 
 
   const { data: rule, error: ruleErr } = await supabase
     .from("automation_rules")
-    .select("id, actions")
+    .select("id, name, actions")
     .eq("id", run.rule_id)
     .eq("organization_id", activeOrg.orgId)
     .maybeSingle();
@@ -87,6 +87,7 @@ export async function POST(_req: NextRequest, ctx: RouteCtx): Promise<Response> 
       admin: adminForActions,
       organizationId: activeOrg.orgId,
       ruleId: rule.id,
+      ruleName: (rule.name as string) ?? "Automação",
       event: typedEvent,
       context,
       requestId,
