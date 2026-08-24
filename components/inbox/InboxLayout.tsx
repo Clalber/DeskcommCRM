@@ -23,10 +23,36 @@ import { CRMSidePanel } from "./CRMSidePanel";
 import type { Message as ConversationMensagem } from "@/lib/types/messaging";
 import { InboxKeyboardShortcuts } from "./InboxKeyboardShortcuts";
 import { ShortcutsHelpDialog } from "./ShortcutsHelpDialog";
-import { ChevronLeft, PanelRight } from "lucide-react";
+// ADR-05: ícone de feature sai do mapa canônico, nunca do pacote direto.
+import { CaretLeft, IdentificationCard } from "@/lib/ui/icons";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
+
+/**
+ * QUAL COLUNA APARECE NO CELULAR — as duas saem da MESMA pergunta.
+ *
+ * Abaixo do `md` só cabe uma coluna por vez, então a lista e a conversa se
+ * alternam. O defeito que esta função existe para tornar impossível é as duas
+ * decidirem por dados DIFERENTES: a lista somia com `selectedId` (o id) e a
+ * conversa aparecia com `selectedConversation` (o objeto já carregado). Entre
+ * uma coisa e a outra existe uma janela em que nenhuma das duas aparece — e
+ * essa janela tem dois casos reais no telefone:
+ *
+ *   1. o deep-link `/inbox/<id>`, enquanto a busca única ainda responde;
+ *   2. a conversa fora do acesso, que é estado PERMANENTE — e cuja mensagem
+ *      ("Conversa não encontrada") ficava escondida junto, deixando o dono
+ *      numa tela branca sem nem o botão de voltar.
+ *
+ * Com uma pergunta só, "as duas escondidas" deixa de ser representável.
+ * `md:flex` em ambas: no desktop as duas colunas convivem e a regra não vale.
+ */
+export function colunasDoCelular(temSelecao: boolean): { lista: string; conversa: string } {
+  return {
+    lista: temSelecao ? "hidden md:flex" : "flex",
+    conversa: temSelecao ? "flex" : "hidden md:flex",
+  };
+}
 
 /**
  * O QUE CADA ABA SIGNIFICA. Exportada porque é a definição em si — o defeito
@@ -142,6 +168,8 @@ export function InboxLayout({ initialSelectedId = null }: InboxLayoutProps = {})
   const selectedConversation: ConversationWithContact | null = inList ?? single.data ?? null;
   const selectionNotFound =
     needsFetch && !single.isPending && !single.data && isNotFound(single.error);
+
+  const colunas = colunasDoCelular(Boolean(selectedId));
 
   const claim = useClaimConversation();
   const close = useCloseConversation();
@@ -272,7 +300,7 @@ export function InboxLayout({ initialSelectedId = null }: InboxLayoutProps = {})
       <div
         className={cn(
           "h-full min-h-0 flex-col border-r border-border md:flex",
-          selectedId ? "hidden" : "flex",
+          colunas.lista,
         )}
       >
         <InboxFilters value={filterValue} onChange={setFilterValue} />
@@ -288,40 +316,47 @@ export function InboxLayout({ initialSelectedId = null }: InboxLayoutProps = {})
         </div>
       </div>
 
+      {/*
+        AS DUAS COLUNAS DECIDEM PELO MESMO DADO — `selectedId`, não o objeto.
+
+        A da lista some quando há `selectedId`; se esta aparecesse só quando a
+        conversa já está CARREGADA, a janela entre as duas coisas não mostra
+        nenhuma das colunas. No celular isso é a tela em branco, e ela tem dois
+        casos reais: o instante do deep-link `/inbox/<id>`, enquanto a busca
+        única ainda responde; e o estado permanente de conversa fora do acesso,
+        cuja mensagem ("Conversa não encontrada") é justamente o que ficava
+        escondido — deixando o dono numa tela vazia, sem sequer o botão de
+        voltar, porque ele morava dentro do ramo da conversa carregada.
+      */}
       <div
         className={cn(
           "h-full min-h-0 flex-col md:flex",
-          selectedConversation ? "flex" : "hidden md:flex",
+          colunas.conversa,
         )}
       >
-        {selectedConversation ? (
-          <>
-            {/*
-              A barra que só existe no celular: o caminho de VOLTA e a porta
-              para a ficha.
-
-              Sem o voltar, quem abre uma conversa no telefone fica preso nela —
-              a lista está escondida e não há gesto que a traga. E a ficha do
-              contato mora numa coluna que só aparece a partir do `xl`, então no
-              telefone ela seria inalcançável; aqui ela vira painel deslizante,
-              com o mesmo componente da coluna (nada de uma segunda versão que
-              diverge na primeira mudança).
-            */}
-            <div className="flex items-center gap-1 border-b border-border px-1 py-1 md:hidden">
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-9 gap-1 px-2"
-                onClick={() => handleSelect(null)}
-              >
-                <ChevronLeft className="size-4" />
-                Conversas
-              </Button>
-              <div className="flex-1" />
+        {/*
+          A barra do celular vive FORA do ramo da conversa carregada: o caminho
+          de volta tem de existir inclusive quando não há o que mostrar — é aí
+          que ele é a única saída. A porta da ficha, essa sim, depende da
+          conversa, e só aparece quando há uma.
+        */}
+        {selectedId && (
+          <div className="flex items-center gap-1 border-b border-border px-1 py-1 md:hidden">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-9 gap-1 px-2"
+              onClick={() => handleSelect(null)}
+            >
+              <CaretLeft size={16} />
+              Conversas
+            </Button>
+            <div className="flex-1" />
+            {selectedConversation && (
               <Sheet open={fichaAberta} onOpenChange={setFichaAberta}>
                 <SheetTrigger asChild>
                   <Button variant="ghost" size="sm" className="h-9 gap-1 px-2 xl:hidden">
-                    <PanelRight className="size-4" />
+                    <IdentificationCard size={16} />
                     Ficha
                   </Button>
                 </SheetTrigger>
@@ -330,7 +365,11 @@ export function InboxLayout({ initialSelectedId = null }: InboxLayoutProps = {})
                   <CRMSidePanel conversation={selectedConversation} />
                 </SheetContent>
               </Sheet>
-            </div>
+            )}
+          </div>
+        )}
+        {selectedConversation ? (
+          <>
             <ConversationHeader conversation={selectedConversation} />
             <div className="min-h-0 flex-1 overflow-hidden">
               <ChatThread conversationId={selectedConversation.id} onResponder={setRespondendo} />

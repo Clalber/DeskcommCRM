@@ -133,7 +133,21 @@ export function MessageBubble({ message, debugCitations, onResponder, citada }: 
             <div className="font-medium opacity-80">
               {citada.direction === "outbound" ? "Você" : "Cliente"}
             </div>
-            <div className="line-clamp-2 opacity-70">{citada.body?.trim() || "(sem texto)"}</div>
+            {/*
+              A CITADA PODE TER SIDO APAGADA — e aí o texto dela não volta aqui.
+
+              A bolha principal já trata isto (`apagada`, acima): "mostrá-lo
+              seria expor justamente o que o cliente pediu para tirar do ar". A
+              citação é o mesmo texto, num segundo lugar da tela — sem esta
+              linha, o "apagar para todos" do cliente sumia da bolha original e
+              continuava legível dentro de cada resposta que a citou. O fio
+              permanece (a citação some, não a resposta); o conteúdo, não.
+            */}
+            <div className={cn("line-clamp-2 opacity-70", citada.revoked_at && "italic")}>
+              {citada.revoked_at
+                ? "Esta mensagem foi apagada"
+                : citada.body?.trim() || "(sem texto)"}
+            </div>
           </div>
         )}
         {senderLabel && (
