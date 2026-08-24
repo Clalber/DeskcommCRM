@@ -1,3 +1,4 @@
+import { normalizePhoneBR } from "@/lib/webhooks/inbound";
 /**
  * Parser de CSV para importação de contatos — RFC 4180, zero dependências.
  *
@@ -169,33 +170,49 @@ export interface LinhaNormalizada {
 }
 
 /**
- * Telephone → E.164 (`+` + 8–15 dígitos). Regra igual à de cima da API:
- * aceita "+55 11 99999-8888", "(11) 99999-8888", "5511999998888".
- * Sem DDI explícito e com comprimento plausível, assume que os dígitos já são
- * E.164 sem o "+" — nunca inventa DDI do país, porque chute errado aqui vira
- * mensagem para pessoa errada.
+ * Telephone → E.164 **assumindo Brasil quando não há DDI**.
+ *
+ * A regra NÃO mora aqui: é `normalizePhoneBR` (`lib/webhooks/inbound.ts`), a
+ * mesma que a ingestão de webhook usa desde sempre. Reusar em vez de reescrever
+ * é o ponto — a versão anterior deste arquivo tinha uma TERCEIRA regra, e ela
+ * produzia número quebrado: `"(11) 99999-8888"` virava `+11999998888`, em que o
+ * `11` (que é DDD) ocupava o lugar do DDI. Um `+11` é os Estados Unidos, e o
+ * resto do número não existe lá — mensagem para pessoa errada, ou para ninguém.
+ *
+ * O que a regra da casa faz: 10 ou 11 dígitos sem `+` são DDD + número e ganham
+ * `+55`; 12 ou 13 dígitos precisam começar com `55`; quem já vem com `+` é
+ * respeitado como está (internacional continua possível, é só escrever o DDI).
+ *
+ * Decisão do dono do produto, 2026-08-24: o público é brasileiro, então assumir
+ * `+55` é a leitura certa de uma planilha sem DDI — e é o que a ingestão já fazia.
  */
 export function normalizaTelefone(raw: string): string | null {
-  const trimmed = raw.trim();
-  if (trimmed === "") return null;
-  const temDdi = trimmed.startsWith("+");
-  const digits = trimmed.replace(/\D/g, "");
-  if (temDdi) {
-    return /^\+\d{8,15}$/.test(`+${digits}`) && digits.length >= 8 && digits.length <= 15
-      ? `+${digits}`
-      : null;
-  }
-  return digits.length >= 10 && digits.length <= 13 ? `+${digits}` : null;
+  return normalizePhoneBR(raw);
 }
 
-/** Data → ISO `YYYY-MM-DD`. Aceita ISO nativo e BR `DD/MM/YYYY` (o do Excel). */
+/**
+ * Data → ISO `YYYY-MM-DD`. Aceita ISO nativo e BR `DD/MM/YYYY` (o do Excel).
+ *
+ * A data é VALIDADA de verdade, não só casada por formato: `31/02/1990` tem a
+ * forma certa e o dia não existe. Sem a conferência ele virava `1990-02-31` e
+ * chegava ao Postgres, que recusa a linha inteira com erro cru — a planilha
+ * falhava com uma mensagem de banco em vez de "dia inválido nesta linha", que é
+ * o que a tela promete ao dizer "desfecho por linha".
+ */
+function ehDataReal(ano: number, mes: number, dia: number): boolean {
+  const d = new Date(Date.UTC(ano, mes - 1, dia));
+  return d.getUTCFullYear() === ano && d.getUTCMonth() === mes - 1 && d.getUTCDate() === dia;
+}
+
 export function normalizaData(raw: string): string | null {
   const t = raw.trim();
   if (t === "") return null;
   const iso = /^(\d{4})-(\d{2})-(\d{2})$/.exec(t);
-  if (iso) return t;
+  if (iso) return ehDataReal(+iso[1]!, +iso[2]!, +iso[3]!) ? t : null;
   const br = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(t);
-  if (br) return `${br[3]}-${br[2]}-${br[1]}`;
+  if (br) {
+    return ehDataReal(+br[3]!, +br[2]!, +br[1]!) ? `${br[3]}-${br[2]}-${br[1]}` : null;
+  }
   return null;
 }
 

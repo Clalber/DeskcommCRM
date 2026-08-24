@@ -86,13 +86,18 @@ describe("normalizaTelefone", () => {
   it.each([
     ["+5511999998888", "+5511999998888"],
     ["+55 11 99999-8888", "+5511999998888"],
-    ["(11) 99999-8888", "+11999998888"],
+    // ⚠️ ERA `+11999998888` — número quebrado: o `11` é DDD e estava ocupando o
+    // lugar do DDI (`+11` são os Estados Unidos). Decisão do dono, 2026-08-24:
+    // planilha sem DDI é brasileira, e a regra é a mesma da ingestão de webhook.
+    ["(11) 99999-8888", "+5511999998888"],
+    ["11999998888", "+5511999998888"],
+    ["(11) 3333-4444", "+551133334444"],
     ["5511999998888", "+5511999998888"],
   ])("%s → %s", (raw, esperado) => {
     expect(normalizaTelefone(raw)).toBe(esperado);
   });
 
-  it.each(["123", "abc", "+5511"])("recusa %s", (raw) => {
+  it.each(["123", "abc", "+5511", "999998888"])("recusa %s", (raw) => {
     expect(normalizaTelefone(raw)).toBeNull();
   });
 
@@ -155,5 +160,22 @@ describe("limites declarados", () => {
     // que alguém mudar um lado sem ver o outro.
     expect(CSV_MAX_BYTES).toBe(5 * 1024 * 1024);
     expect(CSV_MAX_DATA_ROWS).toBe(500);
+  });
+});
+
+describe("normalizaData recusa data com forma certa e dia inexistente", () => {
+  it.each(["31/02/1990", "30/02/2020", "31/04/2021", "1990-02-31", "2021-13-01"])(
+    "recusa %s",
+    (raw) => {
+      // Sem esta conferência a data passava por FORMATO e morria no Postgres com
+      // erro cru — a planilha inteira falhava com mensagem de banco, em vez de a
+      // LINHA falhar com "dia inválido", que é o que a tela promete.
+      expect(normalizaData(raw)).toBeNull();
+    },
+  );
+
+  it("29/02 em ano BISSEXTO continua valendo — a guarda não pode ser larga demais", () => {
+    expect(normalizaData("29/02/2024")).toBe("2024-02-29");
+    expect(normalizaData("29/02/2023")).toBeNull();
   });
 });
