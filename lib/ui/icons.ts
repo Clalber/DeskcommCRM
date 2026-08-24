@@ -40,6 +40,7 @@ export {
   ArrowsClockwise,
   Dot,
   // actions
+  ArrowBendUpLeft,
   List,
   Bell,
   PaperPlaneTilt,
@@ -115,4 +116,6 @@ export {
   Key,
   UserCircle,
   ClockCounterClockwise,
+  // inbox no celular: voltar para a lista e abrir a ficha do contato
+  IdentificationCard,
 } from "@phosphor-icons/react/dist/ssr";
