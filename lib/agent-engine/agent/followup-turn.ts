@@ -24,7 +24,6 @@ import { getLeadContext, type LeadContext } from '../edge/crm/get-lead-context';
 import { WahaChannelAdapter } from '../edge/channel/waha-adapter';
 import { applySendOutcome } from '../edge/crm/send-message';
 import { runBeforeSend } from '../guardrails/before-send';
-import { classifyPromise } from '../guardrails/promise/semantic';
 import { scheduleCronJob } from '../cron/scheduler';
 import {
   JobSettledError,
@@ -34,7 +33,6 @@ import {
   type LeadCheckpointRow,
 } from './inbound-turn';
 import { isLeadInHandoff } from './human-handoff';
-import { camadaLigada, lerCamadasDaOrg } from '../guardrails/camadas-da-org';
 import type { LeadStateRow } from './lead-state';
 import { loadReentryTemplate, pickReentryVariant } from './reentry-template';
 import {
@@ -241,44 +239,9 @@ export function createFollowupTurnHandler(deps: FollowupTurnDeps) {
     }
     const payload = followupTurnPayloadSchema.parse(job.payload);
 
-    // Ids de envio resolvidos da conversa 1:1 mais recente do contato (fonte
-    // confiável, mesmo banco — a tabela-espelho leads morreu na fusão). Um follow-up
-    // só existe para contato que já conversou; ausência é anomalia → dead-letter.
-    //
-    // `to_jsonb(cs) ->> 'archived_at'` em vez de `cs.archived_at`: a coluna nasce na
-    // migration 0106 e, num clone que subiu o código sem aplicá-la, referenciá-la
-    // direto derrubaria TODO follow-up com 42703. `to_jsonb` de uma linha sem a
-    // chave devolve NULL — que é o valor certo, porque sem a coluna nada está
-    // arquivado.
-    const { rows } = await pool.query<{
-      id: string;
-      channel_session_id: string | null;
-      channel_archived_at: string | null;
-    }>(
-      `select c.id,
-              c.channel_session_id,
-              to_jsonb(cs) ->> 'archived_at' as channel_archived_at
-         from conversations c
-         left join channel_sessions cs
-           on cs.id = c.channel_session_id and cs.organization_id = c.organization_id
-        where c.organization_id = $1 and c.contact_id = $2 and c.is_group = false
-        order by c.last_message_at desc nulls last limit 1`,
-      [tenantId, leadId],
-    );
-    const conv = rows[0];
-    if (conv === undefined || conv.channel_session_id === null) {
-      throw new Error('followup_turn sem conversa/número do contato — impossível retomar o contato');
-    }
-    // Canal excluído pelo usuário: o número já foi deslogado no transporte. O envio
-    // seria recusado lá na frente pelo handler, mas o turno inteiro (chamada de
-    // modelo inclusive) já teria sido pago para produzir um texto que não sai.
-    // Dead-letter com o motivo escrito, em vez de fila retentando contra o vazio.
-    if (conv.channel_archived_at !== null) {
-      throw new Error('followup_turn para canal arquivado — o número foi excluído da Central de Conexões');
-    }
+    const target = await resolveSendTarget(pool, tenantId, leadId);
 
     const clock = deps.clock ?? ((): Date => new Date());
-    const target: ReentrySendTarget = { tenantId, leadId, channelSessionId: conv.channel_session_id, conversationId: conv.id };
 
     // Onda 5 (Task 5.1): turno DIRIGIDO POR FLUXO — guard exclusivo, nunca cai nos
     // caminhos legados abaixo (F3-03/F3-04 seguem intocados quando o campo falta).
@@ -306,15 +269,15 @@ export function createFollowupTurnHandler(deps: FollowupTurnDeps) {
       await runDeterministicReentry(deps, job, pool, ctx, clock, {
         tenantId,
         leadId,
-        channelSessionId: conv.channel_session_id,
-        conversationId: conv.id,
+        channelSessionId: target.channelSessionId,
+        conversationId: target.conversationId,
       });
       return;
     }
 
     await runAgentTurn(deps, job, pool, ctx, {
-      channelSessionId: conv.channel_session_id,
-      conversationId: conv.id,
+      channelSessionId: target.channelSessionId,
+      conversationId: target.conversationId,
       buildOpening: ({ previous, leadState, context, notesIndexBlock, projeta }) => {
         const temporalBlock = buildTemporalBlock({
           now: clock(),
@@ -334,6 +297,89 @@ interface ReentrySendTarget {
   leadId: string;
   channelSessionId: string;
   conversationId: string;
+}
+
+/**
+ * Conversa 1:1 + sessão de envio. Captação por webhook não passa pelo WAHA, então
+ * o contato chega sem thread — o follow-up de recepção é o primeiro outbound e
+ * precisa ABRIR a conversa no número WORKING da org (mesmo papel de
+ * `ensureConversation` na ação send_whatsapp).
+ *
+ * `to_jsonb(cs) ->> 'archived_at'` em vez de `cs.archived_at`: clone sem a
+ * migration 0106 não pode tomar 42703 em todo follow-up.
+ */
+async function resolveSendTarget(
+  pool: pg.Pool,
+  tenantId: string,
+  contactId: string,
+): Promise<ReentrySendTarget> {
+  const { rows } = await pool.query<{
+    id: string;
+    channel_session_id: string | null;
+    channel_archived_at: string | null;
+  }>(
+    `select c.id,
+            c.channel_session_id,
+            to_jsonb(cs) ->> 'archived_at' as channel_archived_at
+       from conversations c
+       left join channel_sessions cs
+         on cs.id = c.channel_session_id and cs.organization_id = c.organization_id
+      where c.organization_id = $1 and c.contact_id = $2 and c.is_group = false
+      order by c.last_message_at desc nulls last limit 1`,
+    [tenantId, contactId],
+  );
+  const conv = rows[0];
+  if (conv !== undefined && conv.channel_session_id !== null) {
+    if (conv.channel_archived_at !== null) {
+      throw new Error('followup_turn para canal arquivado — o número foi excluído da Central de Conexões');
+    }
+    return {
+      tenantId,
+      leadId: contactId,
+      channelSessionId: conv.channel_session_id,
+      conversationId: conv.id,
+    };
+  }
+
+  const session = await pool.query<{ id: string }>(
+    `select cs.id
+       from channel_sessions cs
+      where cs.organization_id = $1
+        and (to_jsonb(cs) ->> 'archived_at') is null
+      order by case when cs.status = 'WORKING' then 0 else 1 end, cs.created_at asc
+      limit 1`,
+    [tenantId],
+  );
+  const channelSessionId = session.rows[0]?.id;
+  if (channelSessionId === undefined) {
+    throw new Error('followup_turn sem conversa/número do contato — impossível retomar o contato');
+  }
+
+  try {
+    const inserted = await pool.query<{ id: string }>(
+      `insert into conversations (organization_id, contact_id, channel_session_id, channel, status, is_group, metadata)
+       values ($1, $2, $3, 'whatsapp', 'open', false, jsonb_build_object('created_by', 'followup_turn'))
+       returning id`,
+      [tenantId, contactId, channelSessionId],
+    );
+    const conversationId = inserted.rows[0]?.id;
+    if (conversationId === undefined) {
+      throw new Error('followup_turn sem conversa/número do contato — impossível retomar o contato');
+    }
+    return { tenantId, leadId: contactId, channelSessionId, conversationId };
+  } catch (err) {
+    const code = (err as { code?: string } | null)?.code;
+    if (code !== '23505') throw err;
+    const winner = await pool.query<{ id: string }>(
+      `select id from conversations
+        where organization_id = $1 and contact_id = $2 and channel_session_id = $3 and is_group = false
+        order by created_at desc limit 1`,
+      [tenantId, contactId, channelSessionId],
+    );
+    const conversationId = winner.rows[0]?.id;
+    if (conversationId === undefined) throw err;
+    return { tenantId, leadId: contactId, channelSessionId, conversationId };
+  }
 }
 
 /**
@@ -509,7 +555,10 @@ async function resolveFlowSendBody(
   return interpolarVoltaDoPayload(body, input.voltaIndex, input.voltaTotal);
 }
 
-/** Envia `body` pela cadeia de guardrails, sem LLM. `true` = o sink aceitou. */
+/** Envia `body` pela cadeia de guardrails, sem LLM. `true` = o sink aceitou.
+ *  Texto do fluxo (`action.mode=text`) é do operador — não passa pela
+ *  classificação semântica de promessa (que exige LLM e barrava o 1º outbound
+ *  de captação sem BYOK). STOP / anti-ban / spinning continuam na cadeia. */
 async function sendFixedOutbound(
   deps: InboundTurnDeps,
   job: JobRow,
@@ -526,8 +575,6 @@ async function sendFixedOutbound(
     runLog.info('envio fixo pulado — lead silenciado (handoff/opt-out)', { kind: job.kind });
     return false;
   }
-
-  const camadasDaOrg = await lerCamadasDaOrg(pool, tenantId);
 
   const context = await getLeadContext(pool, deps.crmCfg, { tenantId, leadId }, {
     historyLimit: deps.knobs.historyLimit,
@@ -554,18 +601,6 @@ async function sendFixedOutbound(
     sleep: deps.sleep,
     lgpd: context.lgpd,
     ...(deps.knobs.disclosureMode !== undefined ? { disclosureMode: deps.knobs.disclosureMode } : {}),
-    ...(camadaLigada(camadasDaOrg.promessa_semantica, deps.knobs.promiseSemantic?.enabled === true)
-      ? {
-          classifyPromiseSemantic: (candidate: string) =>
-            classifyPromise(
-              pool,
-              deps.llmCfg,
-              { tenantId, leadId, jobId: job.id },
-              { candidate, ...(deps.knobs.promiseSemantic?.model !== undefined ? { model: deps.knobs.promiseSemantic.model } : {}) },
-              { ...(deps.registry !== undefined ? { registry: deps.registry } : {}), log: runLog },
-            ),
-        }
-      : {}),
     send: (finalBody) => channel.send({ tenantId, leadId, jobId: job.id, seq: 1, conversationId, body: finalBody }),
   });
 

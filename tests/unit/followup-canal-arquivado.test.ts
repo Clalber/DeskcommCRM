@@ -163,13 +163,32 @@ describe("followup_turn — canal arquivado", () => {
     expect(consultas[0]).toMatch(/from conversations/);
   });
 
-  it("contato sem conversa/número: dead-letter, não turno contra o vazio", async () => {
+  it("contato sem conversa e sem número na org: dead-letter, não turno contra o vazio", async () => {
     runAgentTurn.mockClear();
     const { pool, query } = fakePool();
-    query.mockResolvedValueOnce({ rows: [] });
+    query.mockImplementation(async (sql: string) => {
+      if (/from conversations/.test(sql) && /select c\.id/.test(sql)) return { rows: [] };
+      if (/from channel_sessions/.test(sql)) return { rows: [] };
+      return { rows: [] };
+    });
     const run = handler();
 
     await expect(run(job(), pool, ctx)).rejects.toThrow(/impossível retomar o contato/i);
     expect(runAgentTurn).not.toHaveBeenCalled();
+  });
+
+  it("contato sem conversa, org com número: abre a thread e segue o turno", async () => {
+    runAgentTurn.mockClear();
+    const { pool, query } = fakePool();
+    query.mockImplementation(async (sql: string) => {
+      if (/from conversations/.test(sql) && /select c\.id/.test(sql)) return { rows: [] };
+      if (/from channel_sessions/.test(sql)) return { rows: [{ id: CANAL }] };
+      if (/insert into conversations/.test(sql)) return { rows: [{ id: CONVERSA }] };
+      return { rows: [] };
+    });
+    const run = handler();
+
+    await run(job(), pool, ctx);
+    expect(runAgentTurn).toHaveBeenCalledTimes(1);
   });
 });

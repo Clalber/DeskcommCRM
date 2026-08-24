@@ -5,7 +5,12 @@
  * `followup-flow-worker`. `next dev` não tem crontab — sem isto o lead
  * nasce e o gatilho fica para sempre em `event_log.status=pending`.
  *
- * Só corre com NODE_ENV=development. Falha nunca vira 5xx do webhook.
+ * Corre em `next dev` e no deploy Vercel (`VERCEL=1`): o Hobby não agenda
+ * event-log-drain/followup-flow-worker (só 1 cron/dia). Sem isto o lead nasce
+ * e o gatilho fica em `event_log.status=pending`. Falha nunca vira 5xx.
+ *
+ * O envio WhatsApp ainda é o `agent-worker` (job_queue). Sem worker, o job
+ * fica `pending`.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 
@@ -18,8 +23,12 @@ import {
 } from "@/lib/followup/engine";
 import { logger } from "@/lib/logger";
 
+function deveAcionarPipelineInline(): boolean {
+  return process.env.NODE_ENV === "development" || process.env.VERCEL === "1";
+}
+
 export async function kickLocalPipeline(admin: SupabaseClient): Promise<void> {
-  if (process.env.NODE_ENV !== "development") return;
+  if (!deveAcionarPipelineInline()) return;
 
   try {
     ensureHandlersRegistered();
