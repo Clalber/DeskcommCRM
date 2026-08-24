@@ -479,7 +479,7 @@ async function processEnrollment(deps: TickDeps, enrollment: EnrollmentRow, summ
 
   if (node.type === "wait" || node.type === "ai_classify" || node.type === "match_reply" || node.type === "action") {
     waitElapsed = resolveWaitPhase(events, node.id, enrollment.steps_taken);
-    if (node.type === "ai_classify" || node.type === "match_reply") {
+    if (node.type === "ai_classify" || node.type === "match_reply" || node.type === "wait") {
       const wakeKey = `${node.id}:${enrollment.steps_taken}:wake`;
       wokeEarly = events.some((e) => e.node_id === node.id && e.idempotency_key === wakeKey);
     }

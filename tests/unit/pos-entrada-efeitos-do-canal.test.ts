@@ -37,6 +37,10 @@ vi.mock("@/lib/leads/nascimento-do-lead", () => ({
 vi.mock("@/lib/logger", () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
+vi.mock("@/lib/dev/kick-local-pipeline", () => ({
+  acelerarPipelineDeEventos: vi.fn(async () => {}),
+  kickLocalPipeline: vi.fn(async () => {}),
+}));
 
 /** A sequência do que ACONTECEU — é o que os casos de ordem inspecionam. */
 let sequencia: string[] = [];

@@ -43,6 +43,7 @@ import { garantirLeadDaConversa } from "@/lib/leads/nascimento-do-lead";
 import { logger } from "@/lib/logger";
 import type { createAdminClient } from "@/lib/supabase/admin";
 import { ehPedidoDeOptOut } from "@/lib/opt-out/deteccao";
+import { acelerarPipelineDeEventos } from "@/lib/dev/kick-local-pipeline";
 
 type Admin = ReturnType<typeof createAdminClient>;
 
@@ -115,6 +116,7 @@ export async function aplicarEfeitosPosEntrada(
   await aplicarOptOut(admin, entrada);
   await abrirDemanda(admin, entrada);
   await pedirDespachoDoAgente(admin, entrada);
+  await acelerarPipelineDeEventos(admin);
 }
 
 /**

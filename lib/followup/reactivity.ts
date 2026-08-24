@@ -33,9 +33,8 @@
  *      emitir este evento — mesma request, sequencial): cancela TUDO
  *      (`opted_out`). Senão, para enrollments `waiting_reply` do contato:
  *      `cancel_on_reply` no `trigger_config` do pointer → cancela
- *      (`replied`); senão, acorda (marker `inbound_woke` + `next_eval_at=now`)
- *      — o marker é o sinal PRÓPRIO que `node-handlers.ts`/`engine.ts`
- *      (Task 5.2) usam pra desempatar contra o "no_reply" da Task 5.1.
+ *      (`replied`); senão, acorda (marker `inbound_woke` + `next_eval_at=now`).
+ *      Inscrições `active` no nó `wait` também acordam — a resposta corta o timer.
  *   2. `ai.handoff_triggered` (handoff aberto) — já emitido em produção por
  *      `lib/ai/handoff/orchestrator.ts` (triggerHandoff, chamado por
  *      workers/ai-response-worker.ts, workers/ai-handoff-from-sentiment.handler.ts,
@@ -201,6 +200,7 @@ async function reactToInbound(
   }
 
   const waitingReply = live.filter((e) => e.status === "waiting_reply");
+  const esperaAtiva = live.filter((e) => e.status === "active");
   let reacted = 0;
   for (const e of waitingReply) {
     if (parseCancelOnReply(e.trigger_config)) {
@@ -218,26 +218,33 @@ async function reactToInbound(
       continue;
     }
 
-    // Acorda: marker de step próprio (`${node}:${steps}:wake`) — NÃO o
-    // idempotency_key de step (`${node}:${steps-1}`) que resolveWaitPhase
-    // checa. Vale para `ai_classify` e `match_reply` (ambos estacionam em
-    // `waiting_reply`). `cancel_on_reply` acima cancela a inscrição inteira.
-    const wakeKey = `${e.current_node_id}:${e.steps_taken}:wake`;
-    // `next_eval_at` vem do BANCO; `updated_at` continua do processo de
-    // propósito — ele é carimbo de auditoria, ninguém o compara com `now()`.
-    const agora = await db.agoraNoBanco();
-    const applied = await applyStep(
-      db,
-      row.organization_id,
-      e,
-      wakeKey,
-      "inbound_woke",
-      {},
-      { next_eval_at: agora, updated_at: clock().toISOString() },
-    );
-    if (applied) reacted++;
+    if (await acordarPorInbound(db, clock, row, e)) reacted++;
+  }
+  // Nó `wait` fica `active` com timer — sem isto a resposta do lead não corta
+  // a espera de 5min (o motor só acordava `waiting_reply`).
+  for (const e of esperaAtiva) {
+    if (await acordarPorInbound(db, clock, row, e)) reacted++;
   }
   return { matched: true, reacted };
+}
+
+async function acordarPorInbound(
+  db: ReactivityAdminClient,
+  clock: () => Date,
+  row: EventRow,
+  e: LiveEnrollmentRef,
+): Promise<boolean> {
+  const wakeKey = `${e.current_node_id}:${e.steps_taken}:wake`;
+  const agora = await db.agoraNoBanco();
+  return applyStep(
+    db,
+    row.organization_id,
+    e,
+    wakeKey,
+    "inbound_woke",
+    {},
+    { next_eval_at: agora, updated_at: clock().toISOString() },
+  );
 }
 
 // ---- reação 2: ai.handoff_triggered (aberto) -------------------------------

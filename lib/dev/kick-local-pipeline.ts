@@ -27,41 +27,46 @@ function deveAcionarPipelineInline(): boolean {
   return process.env.NODE_ENV === "development" || process.env.VERCEL === "1";
 }
 
-export async function kickLocalPipeline(admin: SupabaseClient): Promise<void> {
-  if (!deveAcionarPipelineInline()) return;
+async function tickFollowupAteParar(admin: SupabaseClient): Promise<void> {
+  const enqueueJob = async (job: FollowupJobRequest): Promise<void> => {
+    const { error } = await admin.from("job_queue").insert({
+      organization_id: job.organization_id,
+      contact_id: job.contact_id,
+      kind: "followup_turn",
+      payload: job.payload,
+    });
+    if (error) throw new Error(error.message);
+  };
+  const tickDeps = {
+    db: createSupabaseAdminClient(admin),
+    clock: () => new Date(),
+    enqueueJob,
+  };
+  const ticks = [];
+  for (let i = 0; i < 8; i++) {
+    const tick = await runFollowupTick(tickDeps);
+    ticks.push(tick);
+    if (!tick.claimed) break;
+  }
+  logger.info("[dev.pipeline] followup-tick", { ticks });
+}
 
+/** Drena event_log e avança follow-up agora. Usado na ingestão inbound (resposta
+ *  do lead) — não espera o cron de 1 min. Falha nunca derruba a ingestão. */
+export async function acelerarPipelineDeEventos(admin: SupabaseClient): Promise<void> {
   try {
     ensureHandlersRegistered();
     const drain = await drainEventLog(admin);
     logger.info("[dev.pipeline] event-log-drain", { ...drain });
-
-    const enqueueJob = async (job: FollowupJobRequest): Promise<void> => {
-      const { error } = await admin.from("job_queue").insert({
-        organization_id: job.organization_id,
-        contact_id: job.contact_id,
-        kind: "followup_turn",
-        payload: job.payload,
-      });
-      if (error) throw new Error(error.message);
-    };
-
-    const tickDeps = {
-      db: createSupabaseAdminClient(admin),
-      clock: () => new Date(),
-      enqueueJob,
-    };
-    // Um nó por tick: o primeiro só sai do trigger (advanced=1, scheduled=0).
-    // Sem loop a ação de envio nunca entra na job_queue neste POST.
-    const ticks = [];
-    for (let i = 0; i < 8; i++) {
-      const tick = await runFollowupTick(tickDeps);
-      ticks.push(tick);
-      if (!tick.claimed) break;
-    }
-    logger.info("[dev.pipeline] followup-tick", { ticks });
+    await tickFollowupAteParar(admin);
   } catch (err) {
-    logger.warn("[dev.pipeline] kick falhou (lead já foi criado)", {
+    logger.warn("[dev.pipeline] acelerar falhou (mensagem já gravada)", {
       error: err instanceof Error ? err.message : String(err),
     });
   }
+}
+
+export async function kickLocalPipeline(admin: SupabaseClient): Promise<void> {
+  if (!deveAcionarPipelineInline()) return;
+  await acelerarPipelineDeEventos(admin);
 }

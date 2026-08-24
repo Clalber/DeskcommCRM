@@ -167,6 +167,19 @@ describe("processNode — wait (fixed)", () => {
     expect(result).toEqual({ kind: "advance", next_node_id: "n2", next_eval_at: NOW });
   });
 
+  it("resposta do lead (wokeEarly) corta o timer e avança na hora", () => {
+    const result = processNode({
+      node,
+      edges,
+      enrollment: enrollment(),
+      lead: lead(),
+      clock,
+      waitElapsed: false,
+      wokeEarly: true,
+    });
+    expect(result).toEqual({ kind: "advance", next_node_id: "n2", next_eval_at: NOW });
+  });
+
   it("elapsed but no outbound edge: fails", () => {
     const result = processNode({ node, edges: [], enrollment: enrollment(), lead: lead(), clock, waitElapsed: true });
     expect(result.kind).toBe("fail");

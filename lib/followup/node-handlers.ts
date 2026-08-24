@@ -378,6 +378,13 @@ export function processNode(input: {
     }
 
     case "wait": {
+      // Resposta do lead corta a espera: o timer é teto (ninguém respondeu),
+      // não um atraso obrigatório depois de cada envio.
+      if (wokeEarly) {
+        const edge = selectEdge(edges, node.id, { type: "always" });
+        if (!edge) return { kind: "fail", error: `wait node "${node.id}" has no outbound edge after elapsing` };
+        return { kind: "advance", next_node_id: edge.target, next_eval_at: clock() };
+      }
       if (!waitElapsed) {
         // Adaptativo: o instante vem do plano decidido no acionamento. Sem plano
         // legível para ESTE nó (enrollment anterior à feature, fluxo v1, jsonb
