@@ -39,7 +39,27 @@ export async function POST(_req: NextRequest, ctx: RouteCtx): Promise<Response> 
   const now = new Date().toISOString();
   const { data, error } = await supabase
     .from("conversations")
-    .update({ status: "closed", status_changed_at: now })
+    .update({
+      status: "closed",
+      status_changed_at: now,
+      // FECHAR DEVOLVE O COMANDO AO AUTOMÁTICO — e sem esta linha a 0173 vazaria.
+      //
+      // Desde a 0173, assumir grava `bot_silenced_until='infinity'`. Fechar NÃO
+      // solta o dono (de propósito: "quem atendeu é histórico"), e a ingestão
+      // reusa a MESMA linha de conversa quando o cliente escreve de novo
+      // (`fn_upsert_wa_conversation`, `on conflict do update`). Sem limpar o
+      // silêncio aqui, o fim NORMAL de um atendimento (Assumir → Fechar) deixaria
+      // o automático mudo para sempre naquele cliente — que é exatamente o
+      // defeito que fez a alternativa via `assignee_kind` ser reprovada.
+      //
+      // Limpar aqui é seguro para a escalação de verdade: quem escalou também
+      // gravou `contacts.force_human`, que continua barrando os três guards. A
+      // trava durável é aquela; esta é a do episódio.
+      //
+      // Só esta coluna. `last_handoff_at`/`last_handoff_reason` ficam: eles contam
+      // o que aconteceu, e a tela só os mostra enquanto há silêncio vigente.
+      bot_silenced_until: null,
+    })
     .eq("id", id)
     .select(SELECT_COLS)
     .maybeSingle();

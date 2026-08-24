@@ -49,6 +49,16 @@ export interface ChannelSummary {
 export type ConversationWithContact = Conversation & {
   contacts?: ContactSummary | null;
   channel_sessions?: ChannelSummary | null;
+  /**
+   * O nome de quem atende, resolvido no servidor.
+   *
+   * Opcional e nulável, e as duas coisas significam algo diferente: ausente é
+   * resposta em cache de antes deste campo existir; `null` é um estado DECLARADO
+   * — self-host sem service role, ou lookup que falhou (ver
+   * `lib/users/nome-do-atendente.ts`). Nenhum dos dois quer dizer "sem
+   * responsável": o dono é o `assigned_to_user_id`, o nome é a cortesia.
+   */
+  assigned_to_user_name?: string | null;
 };
 
 export interface ConversationsFilters {
