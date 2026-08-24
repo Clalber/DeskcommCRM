@@ -12,6 +12,8 @@ import type { Lead } from "@/lib/types/leads";
 import { updateLeadSchema, type UpdateLeadInput } from "@/lib/schemas/leads";
 import { parseReaisToCents } from "@/lib/money";
 import { CustomFieldsEditor, type CustomFieldDef } from "@/components/contacts/CustomFieldsEditor";
+import { EcoDoValor } from "./EcoDoValor";
+import { EcoDoValor } from "./EcoDoValor";
 
 interface FormShape {
   title: string;

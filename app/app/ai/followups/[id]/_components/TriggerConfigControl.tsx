@@ -67,6 +67,7 @@ const KIND_LABEL: Record<TriggerKind, string> = {
   manual: "Manual",
   silence: "Silêncio",
   stage_change: "Etapa do funil",
+  case_opened: "Pedido de ajuda",
   webhook: "Automação (Webhooks)",
 };
 

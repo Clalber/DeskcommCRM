@@ -99,20 +99,7 @@ export async function runAutomationForEvent(
 
   const expectedKind = EXPECTED_ENTITY_KIND[row.event_type];
   if (expectedKind && row.entity_kind !== expectedKind) {
-    // #region agent log
-    fetch("http://127.0.0.1:7701/ingest/87ca3154-89cc-4a8f-92e3-eaa13aed4946", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "a1ee90" },
-      body: JSON.stringify({
-        sessionId: "a1ee90",
-        hypothesisId: "C",
-        location: "lib/automation/engine.ts:kind-mismatch",
-        message: "entity_kind_mismatch",
-        data: { eventType: row.event_type, entityKind: row.entity_kind, expectedKind },
-        timestamp: Date.now(),
-      }),
-    }).catch(() => {});
-    // #endregion
+  
     return { consumer_key: AUTOMATION_CONSUMER_KEY, status: "skipped", detail: "entity_kind_mismatch" };
   }
 
@@ -128,47 +115,12 @@ export async function runAutomationForEvent(
   }
   const matched = (rules ?? []) as unknown as RuleRow[];
   if (!matched.length) {
-    // #region agent log
-    fetch("http://127.0.0.1:7701/ingest/87ca3154-89cc-4a8f-92e3-eaa13aed4946", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "a1ee90" },
-      body: JSON.stringify({
-        sessionId: "a1ee90",
-        hypothesisId: "C",
-        location: "lib/automation/engine.ts:no-rules",
-        message: "no active rules for event",
-        data: { eventType: row.event_type, rulesError: error?.message ?? null },
-        timestamp: Date.now(),
-      }),
-    }).catch(() => {});
-    // #endregion
     return { consumer_key: AUTOMATION_CONSUMER_KEY, status: "ok", detail: "no_rules" };
   }
 
   const context = await buildContext(admin, row);
   const applicable = matched.filter((r) => evaluateConditions(r.conditions ?? [], context));
   if (!applicable.length) {
-    const lead = context.lead as { title?: unknown; contact_id?: unknown } | undefined;
-    // #region agent log
-    fetch("http://127.0.0.1:7701/ingest/87ca3154-89cc-4a8f-92e3-eaa13aed4946", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "a1ee90" },
-      body: JSON.stringify({
-        sessionId: "a1ee90",
-        hypothesisId: "C",
-        location: "lib/automation/engine.ts:no-match",
-        message: "rules exist but conditions failed",
-        data: {
-          eventType: row.event_type,
-          ruleCount: matched.length,
-          conditions: matched.map((r) => r.conditions),
-          leadTitle: typeof lead?.title === "string" ? lead.title : null,
-          hasContactId: Boolean(lead?.contact_id),
-        },
-        timestamp: Date.now(),
-      }),
-    }).catch(() => {});
-    // #endregion
     return { consumer_key: AUTOMATION_CONSUMER_KEY, status: "ok", detail: "no_match" };
   }
 

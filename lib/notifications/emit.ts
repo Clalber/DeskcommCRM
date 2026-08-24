@@ -50,7 +50,7 @@ export function emitNotification(input: EmitNotificationInput): void {
   const marca = absUrl("/icon");
   const icon = absUrl(input.icon || marca);
   const href = input.href ? absUrl(input.href) : "";
-  const opts: NotificationOptions = {
+  const opts: NotificationOptions & { renotify?: boolean } = {
     body,
     tag,
     silent: false,
