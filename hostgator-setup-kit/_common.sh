@@ -80,14 +80,29 @@ donos_do_projeto_em_execucao() {  # → um diretório por linha, sem repetir
     | grep -v '^$' | sort -u
 }
 
-# Imprime as árvores ALHEIAS que já mandam neste projeto; sai 0 quando existe ao
-# menos uma. Sem contêiner no ar não há dono, e uma instalação nova assume
+# Imprime as árvores ALHEIAS que ainda são instalações VIVAS; sai 0 quando existe
+# ao menos uma. Sem contêiner no ar não há dono, e uma instalação nova assume
 # legitimamente — por isso o silêncio aqui é "pode seguir", não "não sei".
+#
+# "Viva" é o filtro que impede este guarda de nascer vermelho em quem não fez
+# nada de errado: quem MOVEU a instalação de pasta deixa contêineres apontando
+# para um caminho que não existe mais. Esse não é um rival disputando o parque —
+# é o endereço antigo desta mesma instalação, e recusar ali travaria as
+# atualizações para sempre, num log que ninguém lê. Só conta como rival a árvore
+# que ainda está no disco COM um compose: aquela de onde um segundo cron
+# realmente consegue rodar `up -d`.
 projeto_pertence_a_outra_arvore() {
-  local alheias
-  alheias="$(donos_do_projeto_em_execucao | grep -vxF "${PROJECT_DIR:-$PWD}" || true)"
-  [ -n "$alheias" ] || return 1
-  printf '%s' "$alheias"
+  local dir vivas=""
+  while IFS= read -r dir; do
+    [ -n "$dir" ] || continue
+    [ "$dir" != "${PROJECT_DIR:-$PWD}" ] || continue
+    [ -f "$dir/$COMPOSE" ] || continue
+    vivas="${vivas}${vivas:+$'\n'}${dir}"
+  done <<EOF
+$(donos_do_projeto_em_execucao)
+EOF
+  [ -n "$vivas" ] || return 1
+  printf '%s' "$vivas"
 }
 
 # O guarda que o agent.sh e o update.sh chamam antes de tocar em contêiner.

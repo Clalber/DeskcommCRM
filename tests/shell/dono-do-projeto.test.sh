@@ -45,6 +45,17 @@ STUB
 chmod +x "$WORK/bin/docker"
 PATH="$WORK/bin:$PATH"
 
+# ── Duas árvores de verdade no disco ─────────────────────────────────────────
+# Precisam existir COM um compose: o guarda só conta como rival a instalação que
+# ainda está no disco — quem apenas moveu a pasta deixa contêineres apontando
+# para um caminho morto, e travar esse caso seria um gate nascendo vermelho em
+# quem não fez nada de errado.
+PROD="$WORK/root/DeskcommCRM"
+TESTE="$WORK/root/apagar6/DeskcommCRM"
+MUDOU_DE_PASTA="$WORK/root/endereco-antigo"   # de propósito: NÃO é criado
+mkdir -p "$PROD" "$TESTE"
+touch "$PROD/docker-compose.prod.yml" "$TESTE/docker-compose.prod.yml"
+
 # `recusar_...` roda numa subshell para que o `set -e` do _common.sh e um
 # eventual `exit` não derrubem este arquivo de teste.
 guarda() {  # guarda <PROJECT_DIR> [DONOS...] → exit code; mensagem no stdout
@@ -59,25 +70,37 @@ guarda() {  # guarda <PROJECT_DIR> [DONOS...] → exit code; mensagem no stdout
 
 printf '\n▶ o guarda em si\n'
 
-saida="$(guarda /root/DeskcommCRM)"; rc=$?
+saida="$(guarda "$PROD")"; rc=$?
 check "sem contêiner no ar, a instalação nova assume (rc=0)" test "$rc" -eq 0
 
-saida="$(guarda /root/DeskcommCRM /root/DeskcommCRM)"; rc=$?
+saida="$(guarda "$PROD" "$PROD")"; rc=$?
 check "parque criado pela MESMA árvore segue (rc=0)" test "$rc" -eq 0
 
-saida="$(guarda /root/DeskcommCRM /root/apagar6/DeskcommCRM)"; rc=$?
+saida="$(guarda "$PROD" "$TESTE")"; rc=$?
 check "parque criado por OUTRA árvore é recusado (rc≠0)" test "$rc" -ne 0
 check "a recusa nomeia a árvore intrusa" grep -q "apagar6" <<<"$saida"
-check "a recusa nomeia a árvore corrente" grep -q "/root/DeskcommCRM" <<<"$saida"
+check "a recusa nomeia a árvore corrente" grep -qF "$PROD" <<<"$saida"
 check "a recusa ensina a saída (crontab)" grep -q "crontab" <<<"$saida"
 
 # O caso REAL da VPS: app/waha de uma árvore, redis/srh da outra. Uma checagem
 # que olhasse só o PRIMEIRO contêiner daria o parque por são.
-saida="$(guarda /root/DeskcommCRM /root/DeskcommCRM /root/apagar6/DeskcommCRM /root/DeskcommCRM)"; rc=$?
+saida="$(guarda "$PROD" "$PROD" "$TESTE" "$PROD")"; rc=$?
 check "parque MISTO (o caso medido) é recusado" test "$rc" -ne 0
 
-saida="$(DESKCOMM_ASSUMIR_PROJETO=1 guarda /root/DeskcommCRM /root/apagar6/DeskcommCRM)"; rc=$?
+saida="$(DESKCOMM_ASSUMIR_PROJETO=1 guarda "$PROD" "$TESTE")"; rc=$?
 check "DESKCOMM_ASSUMIR_PROJETO=1 é a saída explícita (rc=0)" test "$rc" -eq 0
+
+# O gate não pode nascer vermelho em quem só mudou a instalação de pasta: os
+# contêineres seguem apontando para o endereço antigo, que já não existe. Aquilo
+# não é um rival — é esta mesma instalação, no endereço de ontem.
+saida="$(guarda "$PROD" "$MUDOU_DE_PASTA")"; rc=$?
+check "instalação MOVIDA de pasta não é rival (rc=0)" test "$rc" -eq 0
+
+# Mas se a árvore antiga ainda está lá com um compose, ela PODE rodar um segundo
+# cron — e aí é rival de novo.
+saida="$(guarda "$PROD" "$TESTE" "$MUDOU_DE_PASTA")"; rc=$?
+check "árvore morta + árvore VIVA: a viva ainda faz recusar" test "$rc" -ne 0
+check "e a recusa não cita o endereço morto" bash -c '! grep -qF "$1" <<<"$2"' _ "$MUDOU_DE_PASTA" "$saida"
 
 printf '\n▶ os call sites (guardar a função não basta se ninguém a chama)\n'
 
