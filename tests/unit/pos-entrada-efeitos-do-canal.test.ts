@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { EntradaDeMensagem } from "@/lib/channels/pos-entrada";
+import { acelerarPipelineDeEventos } from "@/lib/dev/kick-local-pipeline";
 
 /**
  * OS EFEITOS QUE TRANSFORMAM UMA MENSAGEM EM TRABALHO.
@@ -109,6 +110,7 @@ beforeEach(() => {
   audit.mockClear();
   garantirLeadDaConversa.mockClear();
   garantirLeadDaConversa.mockResolvedValue({ criado: true, leadId: "lead-1" } as never);
+  vi.mocked(acelerarPipelineDeEventos).mockClear();
 });
 
 describe("a ordem dos três efeitos", () => {
@@ -296,6 +298,18 @@ describe("os dois canais usam o mesmo passo", () => {
     // a que diverge é sempre a que ninguém lembra que existe.
     expect(WAHA, "o canal por QR voltou a ter regex própria de STOP").not.toMatch(
       /STOP\|PARAR\|SAIR\|UNSUBSCRIBE/,
+    );
+  });
+
+  it("acorda o follow-up do contato ANTES do drain genérico", async () => {
+    await rodar();
+    expect(acelerarPipelineDeEventos).toHaveBeenCalledWith(
+      admin,
+      expect.objectContaining({
+        organizationId: "org-1",
+        contactId: "contato-1",
+        messageId: "msg-1",
+      }),
     );
   });
 

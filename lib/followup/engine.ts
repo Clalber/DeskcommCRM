@@ -502,6 +502,16 @@ async function processEnrollment(deps: TickDeps, enrollment: EnrollmentRow, summ
         enrollment.contact_id,
         enrollment.conversation_id,
       )) ?? "";
+    // Captação abre uma conversa; o WhatsApp pode gravar a resposta em outra
+    // 1:1 do mesmo contato. Sem o fallback o match_reply acorda e lê vazio.
+    if (!lastInboundBody.trim() && enrollment.conversation_id) {
+      lastInboundBody =
+        (await db.loadLastInboundBody(
+          enrollment.organization_id,
+          enrollment.contact_id,
+          null,
+        )) ?? "";
+    }
   }
 
   const result = processNode({

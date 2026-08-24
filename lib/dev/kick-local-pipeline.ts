@@ -20,8 +20,15 @@ import {
   type FollowupJobRequest,
 } from "@/lib/followup/engine";
 import type { EnrollmentRow } from "@/lib/followup/node-handlers";
+import { applyReactivityEvent, createSupabaseReactivityClient } from "@/lib/followup/reactivity";
 import { completeTurnForEnrollment, type TurnBridgeAdminClient } from "@/lib/followup/turn-bridge";
 import { logger } from "@/lib/logger";
+
+export type SinalDeInbound = {
+  organizationId: string;
+  contactId: string;
+  messageId?: string | null;
+};
 
 async function tickFollowupAteParar(admin: SupabaseClient): Promise<number> {
   const enqueueJob = async (job: FollowupJobRequest): Promise<void> => {
@@ -136,11 +143,43 @@ async function enviarTextoFixoPendente(admin: SupabaseClient): Promise<number> {
   return enviados;
 }
 
-export async function acelerarPipelineDeEventos(admin: SupabaseClient): Promise<void> {
+async function acordarFollowupPorInbound(admin: SupabaseClient, sinal: SinalDeInbound): Promise<void> {
+  const db = createSupabaseReactivityClient(admin);
+  await applyReactivityEvent(db, () => new Date(), {
+    id: sinal.messageId ?? `inbound:${sinal.contactId}`,
+    organization_id: sinal.organizationId,
+    event_type: "message.received",
+    entity_kind: "message",
+    entity_id: sinal.messageId ?? null,
+    payload: { contact_id: sinal.contactId },
+    metadata: { source: "kick-local-pipeline" },
+    consumed_by: [],
+    attempts: 0,
+  });
+}
+
+export async function acelerarPipelineDeEventos(
+  admin: SupabaseClient,
+  inbound?: SinalDeInbound,
+): Promise<void> {
   try {
+    if (inbound) {
+      await acordarFollowupPorInbound(admin, inbound);
+      for (let i = 0; i < 6; i++) {
+        const claimed = await tickFollowupAteParar(admin);
+        const enviados = await enviarTextoFixoPendente(admin);
+        if (!claimed && !enviados) break;
+      }
+    }
     ensureHandlersRegistered();
-    const drain = await drainEventLog(admin);
-    logger.info("[dev.pipeline] event-log-drain", { ...drain });
+    try {
+      const drain = await drainEventLog(admin);
+      logger.info("[dev.pipeline] event-log-drain", { ...drain });
+    } catch (err) {
+      logger.warn("[dev.pipeline] drain falhou; tick do follow-up segue", {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
     for (let i = 0; i < 6; i++) {
       const claimed = await tickFollowupAteParar(admin);
       const enviados = await enviarTextoFixoPendente(admin);

@@ -116,7 +116,14 @@ export async function aplicarEfeitosPosEntrada(
   await aplicarOptOut(admin, entrada);
   await abrirDemanda(admin, entrada);
   await pedirDespachoDoAgente(admin, entrada);
-  await acelerarPipelineDeEventos(admin);
+  // Acorda o follow-up DESTE contato antes do drain genérico: o drain de
+  // `message.received` ainda puxa sentimento/LLM e no Hobby estoura o tempo
+  // da request — o enrollment ficava `waiting_reply` com next_eval no passado.
+  await acelerarPipelineDeEventos(admin, {
+    organizationId: entrada.organizationId,
+    contactId: entrada.contactId,
+    messageId: entrada.messageId,
+  });
 }
 
 /**
