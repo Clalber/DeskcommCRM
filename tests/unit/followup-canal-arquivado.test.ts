@@ -70,7 +70,8 @@ interface PoolOpts {
 /** Pool que responde como o Postgres responderia, inclusive quando erra. */
 function fakePool(opts: PoolOpts = {}) {
   const consultas: string[] = [];
-  const query = vi.fn(async (sql: string) => {
+  // Cada SQL devolve um shape diferente; o dublê não tenta unificar colunas.
+  const query = vi.fn(async (sql: string): Promise<{ rows: Array<Record<string, unknown>> }> => {
     consultas.push(sql);
     // Regra do Postgres: referência DIRETA a coluna inexistente é 42703. A
     // expressão `to_jsonb(cs) ->> 'archived_at'` não referencia coluna nenhuma —
