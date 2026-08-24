@@ -80,6 +80,19 @@ export interface ComandoDaConversa {
   comando: Comando;
   /** O automático responderia a próxima mensagem do cliente? */
   automaticoAtivo: boolean;
+  /**
+   * Existe uma TRAVA vigente a devolver — silêncio na conversa ou `force_human`
+   * no contato.
+   *
+   * Não é o mesmo que `!automaticoAtivo`, e a diferença decide um botão. Uma
+   * conversa ENCERRADA tem `automaticoAtivo: false` sem ter trava nenhuma: se o
+   * botão de devolver saísse de `!automaticoAtivo`, ele apareceria em TODA
+   * conversa fechada, e clicá-lo reabriria uma conversa que ninguém pediu para
+   * reabrir. E o contrário também importa — a conversa fechada que ficou com uma
+   * trava pendurada é justamente onde a volta mais falta, porque "Liberar" só
+   * existe para o dono e a rota recusa quem não é.
+   */
+  travaVigente: boolean;
   /** Por que ele está calado. `null` quando está ativo. */
   motivo: MotivoDoSilencio | null;
   /**
@@ -96,21 +109,32 @@ const INFINITO = "infinity";
 const STATUS_ENCERRADOS = new Set(["closed", "archived"]);
 
 /**
- * `"infinity"` NÃO passa por `new Date()` (devolve Invalid Date, e comparar
- * Invalid Date é sempre falso — o silêncio durável leria como "já venceu", que é
- * o oposto). Este é o mesmo cuidado que `extendBotSilence` documenta no envio.
+ * O silêncio, lido do jeito que o Postgres o entrega.
+ *
+ * ## Um ramo só, e a razão é uma sabotagem que não pegou
+ *
+ * A primeira versão tinha DOIS caminhos: um `if (valor === INFINITO)` explícito e,
+ * depois, um fallback para data ilegível. Apagar o primeiro deixou os 20 casos
+ * VERDES — porque `new Date("infinity")` já é `Invalid Date` (medido), então o
+ * fallback devolvia exatamente o mesmo resultado. Dois caminhos para uma saída é
+ * um ramo que nenhum teste consegue distinguir: a guarda parecia existir e não
+ * existia.
+ *
+ * Com um ramo só, a asserção de que `'infinity'` cala o automático volta a ter
+ * dentes — trocá-la por "data ilegível = sem silêncio" reprova na hora.
+ *
+ * E a direção da falha é deliberada: valor que não sabemos ler é tratado como
+ * CALADO. Dizer "o automático está ativo" em cima de um dado ilegível é a frase
+ * tranquilizadora que a doutrina proíbe — falha fechada na ação, aberta na
+ * informação. `INFINITO` fica nomeado porque é quem o leitor vem procurar.
  */
 function silencioVigente(
   valor: string | null | undefined,
   agora: Date,
 ): { vigente: boolean; duravel: boolean; ate: Date | null } {
   if (valor === null || valor === undefined) return { vigente: false, duravel: false, ate: null };
-  if (valor === INFINITO) return { vigente: true, duravel: true, ate: null };
   const ate = new Date(valor);
-  if (Number.isNaN(ate.getTime())) {
-    // Valor que não sabemos ler: falha FECHADA no que é ação (tratar como
-    // calado) em vez de afirmar que o automático está ativo. Dizer "ativo" sobre
-    // um dado ilegível é a frase tranquilizadora que a doutrina proíbe.
+  if (valor === INFINITO || Number.isNaN(ate.getTime())) {
     return { vigente: true, duravel: true, ate: null };
   }
   return { vigente: ate.getTime() > agora.getTime(), duravel: false, ate };
@@ -161,6 +185,7 @@ export function comandoDaConversa(fatos: FatosDoComando, agora: Date = new Date(
   return {
     comando: comandoFinal,
     automaticoAtivo,
+    travaVigente: travado || silencio.vigente,
     motivo,
     silencioAte: motivo === "resposta_humana_recente" ? silencio.ate : null,
   };

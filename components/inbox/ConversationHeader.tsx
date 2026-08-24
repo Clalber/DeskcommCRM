@@ -32,7 +32,11 @@ const STATUS_LABEL: Record<string, string> = {
   // quem escreve este estado é o motor, e a tela precisa saber lê-lo.
   pending: "Aguardando atendente",
   claimed: "Em atendimento",
-  ai_handling: "IA atendendo",
+  // "Automático", não "IA": com o selo de comando ao lado dizendo quem manda, o
+  // header mostrava DUAS palavras para o MESMO ator na mesma linha ("IA
+  // atendendo" + "Automático"). A palavra do estado já é contrato em quatro
+  // arquivos e no dicionário; a que sobrava era esta.
+  ai_handling: "Automático atendendo",
   closed: "Fechada",
   archived: "Arquivada",
 };
@@ -64,7 +68,7 @@ export function ConversationHeader({ conversation }: Props) {
    * leituras divergiram em primeiro lugar. A regra mora em `lib/inbox`,
    * espelhando os gates que o MOTOR lê, e esta tela só a consome.
    */
-  const { comando, automaticoAtivo, motivo } = comandoDaConversa({
+  const { comando, automaticoAtivo, travaVigente, motivo } = comandoDaConversa({
     status,
     assigned_to_user_id: conversation.assigned_to_user_id,
     assigned_to_user_name: conversation.assigned_to_user_name ?? null,
@@ -82,8 +86,14 @@ export function ConversationHeader({ conversation }: Props) {
    * porta — "Liberar" só existe para o próprio dono e a rota recusa quem não é.
    * `devolverAtendimentoAoAgente` funciona nesse estado (o status fechado está na
    * lista de reativáveis), então esconder o botão escondia uma ação que existe.
+   *
+   * A condição é `travaVigente`, e NÃO `!automaticoAtivo`: conversa encerrada tem
+   * o automático inativo sem ter trava nenhuma, e sair do segundo faria o botão
+   * aparecer em toda conversa fechada — clicá-lo REABRIRIA uma conversa que
+   * ninguém pediu para reabrir. Oferecer uma ação que não deveria acontecer é
+   * pior que não oferecer nenhuma.
    */
-  const podeDevolver = !automaticoAtivo && comando.quem !== "automatico";
+  const podeDevolver = travaVigente;
   /**
    * PAUSAR só aparece quando pausar é um gesto DIFERENTE de assumir.
    *

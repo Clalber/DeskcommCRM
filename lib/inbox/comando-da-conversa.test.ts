@@ -138,6 +138,44 @@ describe("comandoDaConversa — conversa encerrada", () => {
   });
 });
 
+describe("travaVigente — o fato que decide o botão de volta", () => {
+  it("conversa encerrada LIMPA não tem trava: o botão de devolver não deve aparecer", () => {
+    // O defeito que este caso existe para impedir: derivar o botão de
+    // `!automaticoAtivo` o faria aparecer em TODA conversa fechada, e clicá-lo
+    // reabriria uma conversa que ninguém pediu para reabrir.
+    const r = comandoDaConversa(
+      fatos({ status: "closed", assigned_to_user_id: ATENDENTE }),
+      AGORA,
+    );
+    expect(r.automaticoAtivo).toBe(false);
+    expect(r.travaVigente).toBe(false);
+  });
+
+  it("conversa encerrada COM trava pendurada: o botão de devolver PRECISA aparecer", () => {
+    // O beco sem saída medido: o atendente assume, fecha e some. "Liberar" só
+    // existe para o próprio dono e a rota recusa quem não é — sem esta porta,
+    // nenhum colega consegue devolver o atendimento.
+    for (const f of [
+      fatos({ status: "closed", assigned_to_user_id: ATENDENTE, bot_silenced_until: "infinity" }),
+      fatos({ status: "archived", force_human: true }),
+    ]) {
+      expect(comandoDaConversa(f, AGORA).travaVigente).toBe(true);
+    }
+  });
+
+  it("dono humano SEM trava (a conversa que o rodízio distribuiu) não tem o que devolver", () => {
+    // O rodízio atribui sem calar, de propósito. Aqui o gesto certo é pausar, não
+    // devolver — e oferecer "devolver" seria oferecer o desfazer de algo que não
+    // foi feito.
+    const r = comandoDaConversa(
+      fatos({ status: "claimed", assigned_to_user_id: ATENDENTE }),
+      AGORA,
+    );
+    expect(r.automaticoAtivo).toBe(true);
+    expect(r.travaVigente).toBe(false);
+  });
+});
+
 describe("o espelho entre a tela e o motor", () => {
   /**
    * Os gates que calam o automático vivem em DOIS arquivos de produção. Se um

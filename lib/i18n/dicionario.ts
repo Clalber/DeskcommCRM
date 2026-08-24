@@ -90,6 +90,7 @@ export const DICIONARIO: Traducoes = {
   Fechada: { es: "Cerrada" },
   "Em atendimento": { es: "En atención" },
   "Aguardando atendente": { es: "Esperando agente" },
+  "Automático atendendo": { es: "Automático atendiendo" },
   "Automático pausado": { es: "Automático pausado" },
   // Os motivos do silêncio (lib/inbox/comando-da-conversa.ts). "Automático
   // pausado" sozinho respondia a três situações que pedem ações diferentes:

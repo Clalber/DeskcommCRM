@@ -229,6 +229,48 @@ Bugs desta jornada estão detalhados em `HANDOFF-ia-360.md` (BUG-01 a BUG-05).
 
 ---
 
+## J11 — Saber quem está no comando da conversa `[P0]`
+
+**Por que P0:** é a leitura que o atendente faz ANTES de qualquer ação, em toda
+conversa que abre. J5.5 cobre transferir e J8 cobre a passagem IA↔humano; nenhuma
+das duas cobria *ler o estado* — e foi exatamente aí que o dono do produto
+relatou as quatro confusões.
+
+**A causa não era de tela.** Medido no HEAD 927dfa51: `lib/agent-engine/` nunca
+lê `assignee_kind` nem `assigned_to_user_id` (`grep -rn` → rc=1) e
+`fn_conversation_assign` nunca tocava `bot_silenced_until`. Um atendente clicava
+"Assumir" e o atendimento automático continuava respondendo o MESMO cliente — ele
+só calava por 5 minutos deslizantes quando a pessoa ENVIAVA (`extendBotSilence`).
+Nenhum selo de "você está no comando" podia ser verdade enquanto isso valesse.
+
+Spec: `tests/e2e/inbox-quem-manda.spec.ts` (seed próprio, conversa nova a cada
+execução). Evidência: `.superpowers/evidence/inbox-quem-manda/`.
+Regra na tela: `lib/inbox/comando-da-conversa.ts` (+ 17 casos unitários).
+Regra no banco: `tests/invariants/comando-cala-o-automatico.test.ts` (6 casos).
+
+| # | Caso | Expectativa | Resultado |
+|---|------|-------------|-----------|
+| J11.1 | Conversa normal diz quem manda | selo de comando mostra o automático — não a mesma cara de uma conversa largada na fila | PASS |
+| J11.2 | Assumir muda o selo para a PESSOA, com nome | `OwnerBadge` com as iniciais e o nome do atendente | PASS |
+| J11.3 | Assumir **para** o automático de verdade | `bot_silenced_until='infinity'` no banco — a tela mudar de cor não prova que o motor parou | PASS |
+| J11.4 | O selo diz o PORQUÊ, não só que está pausado | "alguém assumiu" / "pausado para este cliente" / "volta em instantes" pedem ações diferentes e tinham a mesma frase | PASS |
+| J11.5 | Existe caminho para DESLIGAR pela tela | botão "Pausar o automático" — antes só existia o de ligar | PASS |
+| J11.6 | A volta existe e limpa o silêncio | "Devolver ao automático" → `bot_silenced_until` nulo | PASS |
+| J11.7 | A troca de comando aparece na linha do tempo | "Assumiu a conversa" com o NOME de quem agiu, não "Você/time" | PASS |
+| J11.8 | O rodízio NÃO cala o automático | `reason='routing'` não mexe no silêncio — senão uma org em round_robin perde a IA inteira | PASS (invariante) |
+| J11.9 | Fechar devolve o comando | o silêncio é limpo ao fechar, senão vaza para o próximo episódio (a ingestão reusa a MESMA linha de conversa) | PASS (invariante) |
+
+**Achado NÃO corrigido nesta rodada (medido, com dono):** a conversa que o
+automático escalou fica em `status='pending'`, e nenhuma aba do inbox a mostra —
+"Fila" filtra `status='open'`, "Minhas" exige dono, "IA" filtra `ai_handling`, e
+"Todas" é escondida do papel `agent` fora do modo `all`. Consertar exige aceitar
+`pending` no `conversationStatusSchema` e um filtro de status com mais de um
+valor, que é contrato compartilhado com as tools MCP — peso próprio, PR próprio.
+Atenuante medido: a escalação abre item na Central de Avisos e o caminho por
+`/app/ai/cases` funciona (J8.1), então não é buraco negro, é aba faltando.
+
+---
+
 ## J9 — Ver o que o follow-up já fez, e intervir sem matá-lo `[P1]`
 
 Contexto do código: o dossiê do enrollment (`/app/ai/followups/enrollments/[id]`,

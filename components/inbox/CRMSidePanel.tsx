@@ -51,6 +51,14 @@ interface ActivityRow {
   /** 0071 — o porquê legível e quem agiu. */
   reason: string | null;
   actor_kind: string | null;
+  /**
+   * O NOME de quem agiu. `actor_kind` responde "uma pessoa ou o agente?"; esta
+   * responde "qual pessoa?" — e é a diferença entre "Transferiu a conversa ·
+   * Você/time" e "Transferiu a conversa · Maria Silva", que é a pergunta que o
+   * painel existe para responder. `null` é estado declarado (sem service role),
+   * e aí a linha volta ao rótulo genérico.
+   */
+  performed_by_name?: string | null;
 }
 
 /**
@@ -552,7 +560,7 @@ export function CRMSidePanel({ conversation }: Props) {
                 </div>
                 {a.reason && <div className="mt-0.5 truncate text-muted-foreground">{a.reason}</div>}
                 <div className="text-muted-foreground">
-                  {actorLabel(a.actor_kind)} · {shortDate(a.performed_at)}
+                  {a.performed_by_name ?? actorLabel(a.actor_kind)} · {shortDate(a.performed_at)}
                 </div>
               </li>
             ))}
