@@ -20,30 +20,38 @@ import { Composer, type ComposerHandle } from "./Composer";
 import { ConversationHeader } from "./ConversationHeader";
 import { RetentionNotice } from "./RetentionNotice";
 import { CRMSidePanel } from "./CRMSidePanel";
+import type { Message as ConversationMensagem } from "@/lib/types/messaging";
 import { InboxKeyboardShortcuts } from "./InboxKeyboardShortcuts";
 import { ShortcutsHelpDialog } from "./ShortcutsHelpDialog";
-import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
+// ADR-05: ícone de feature sai do mapa canônico, nunca do pacote direto.
+import { CaretLeft, IdentificationCard } from "@/lib/ui/icons";
 import { Button } from "@/components/ui/button";
-import { CaretLeft } from "@/lib/ui/icons";
+import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 
-/** A volta pra lista quando a conversa não tem `ConversationHeader` montado
- * (carregando ou não encontrada) — ver os dois usos abaixo. */
-function BarraDeVoltarMobile({ onBack }: { onBack: () => void }) {
-  return (
-    <div className="flex h-14 shrink-0 items-center border-b border-border px-2 md:hidden">
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon"
-        className="h-11 w-11"
-        onClick={onBack}
-        aria-label="Voltar para a lista de conversas"
-      >
-        <CaretLeft size={18} aria-hidden />
-      </Button>
-    </div>
-  );
+/**
+ * QUAL COLUNA APARECE NO CELULAR — as duas saem da MESMA pergunta.
+ *
+ * Abaixo do `md` só cabe uma coluna por vez, então a lista e a conversa se
+ * alternam. O defeito que esta função existe para tornar impossível é as duas
+ * decidirem por dados DIFERENTES: a lista somia com `selectedId` (o id) e a
+ * conversa aparecia com `selectedConversation` (o objeto já carregado). Entre
+ * uma coisa e a outra existe uma janela em que nenhuma das duas aparece — e
+ * essa janela tem dois casos reais no telefone:
+ *
+ *   1. o deep-link `/inbox/<id>`, enquanto a busca única ainda responde;
+ *   2. a conversa fora do acesso, que é estado PERMANENTE — e cuja mensagem
+ *      ("Conversa não encontrada") ficava escondida junto, deixando o dono
+ *      numa tela branca sem nem o botão de voltar.
+ *
+ * Com uma pergunta só, "as duas escondidas" deixa de ser representável.
+ * `md:flex` em ambas: no desktop as duas colunas convivem e a regra não vale.
+ */
+export function colunasDoCelular(temSelecao: boolean): { lista: string; conversa: string } {
+  return {
+    lista: temSelecao ? "hidden md:flex" : "flex",
+    conversa: temSelecao ? "flex" : "hidden md:flex",
+  };
 }
 
 /**
@@ -115,7 +123,15 @@ export function InboxLayout({ initialSelectedId = null }: InboxLayoutProps = {})
   const [selectedId, setSelectedId] = useState<string | null>(initialSelectedId);
   const [visibleIds, setVisibleIds] = useState<string[]>([]);
   const [helpOpen, setHelpOpen] = useState(false);
-  const [crmPanelOpen, setCrmPanelOpen] = useState(false);
+  /** A ficha do contato como painel deslizante — só existe abaixo do `xl`. */
+  const [fichaAberta, setFichaAberta] = useState(false);
+  /**
+   * A mensagem escolhida para responder "em cima".
+   *
+   * Mora aqui, e não no composer, porque quem ESCOLHE é a lista de mensagens e
+   * quem MOSTRA é o composer — são irmãos, e o estado comum é do pai.
+   */
+  const [respondendo, setRespondendo] = useState<ConversationMensagem | null>(null);
   const composerRef = useRef<ComposerHandle | null>(null);
 
   const filters: ConversationsFilters = useMemo(
@@ -153,15 +169,32 @@ export function InboxLayout({ initialSelectedId = null }: InboxLayoutProps = {})
   const selectionNotFound =
     needsFetch && !single.isPending && !single.data && isNotFound(single.error);
 
+  const colunas = colunasDoCelular(Boolean(selectedId));
+
   const claim = useClaimConversation();
   const close = useCloseConversation();
 
+  // A leitura da conversa aberta é do upstream e fica: sem ela o contador de
+  // não-lidas nunca zera para quem abre a conversa.
   useMarkAsRead(
     selectedConversation?.id ?? null,
     selectedConversation?.unread_count_for_assignee ?? 0,
   );
 
-  const handleSelect = useCallback((id: string) => setSelectedId(id), []);
+  // Aceita `null`: é o VOLTAR do celular, que limpa a seleção e devolve a lista.
+  // É um SUPERCONJUNTO do `handleSelect` do upstream — o tipo dele não aceita
+  // `null`, e sem isso o botão de voltar não teria o que chamar.
+  //
+  // A seleção NÃO vive na URL (só o `?filter=` vive) — então este voltar é
+  // estado local, e o botão de voltar do navegador não desfaz a seleção. É a
+  // limitação conhecida deste caminho; trocar por URL mudaria o deep-link de
+  // conversa, que hoje entra por `initialSelectedId` vindo da rota.
+  const handleSelect = useCallback((id: string | null) => {
+    setSelectedId(id);
+    // Sem isto, escolher "responder" numa conversa e trocar para outra levaria
+    // a citação junto — e a resposta sairia citando mensagem de outro cliente.
+    setRespondendo(null);
+  }, []);
   const handleVisibleChange = useCallback((ids: string[]) => setVisibleIds(ids), []);
   const handleFocusReply = useCallback(() => composerRef.current?.focus(), []);
   const handleClaim = useCallback(() => {
@@ -251,17 +284,23 @@ export function InboxLayout({ initialSelectedId = null }: InboxLayoutProps = {})
   // deixava. Margem de 2px não é margem, é sorte.
   return (
     <div className="grid h-[calc(100dvh-3.5rem-2*var(--space-6))] w-full grid-cols-1 md:grid-cols-[300px_1fr] xl:grid-cols-[272px_1fr_296px] 2xl:grid-cols-[300px_1fr_320px]">
-      {/* Abaixo de `md` (768px) as duas colunas viram a MESMA coluna do grid —
-          sem alternar visibilidade, lista e conversa brigavam pela mesma altura
-          fixa (`h-[calc(100dvh-...)]`), uma em cima da outra. `selectedId` já
-          existia como estado; só faltava usá-lo pra decidir qual painel ocupa a
-          tela — o padrão de qualquer app de mensagem (lista OU conversa, nunca
-          as duas no celular). De `md` pra cima os dois voltam a ficar lado a
-          lado sempre. */}
+      {/*
+        NO CELULAR, UMA COISA POR VEZ.
+
+        Antes as duas colunas caíam empilhadas em `grid-cols-1`: a lista inteira
+        primeiro e a conversa DEPOIS dela. Para responder era preciso rolar a
+        lista toda até o fim, e o composer ficava fora da tela — que é o
+        "incômodo" relatado por quem atende do telefone.
+
+        Sem media query em JavaScript de propósito: `useMediaQuery` decide DEPOIS
+        da hidratação, então a primeira pintura mostra o layout errado e pisca. A
+        classe condicional é resolvida pelo CSS, na primeira pintura, e some no
+        `md` — onde as duas colunas cabem juntas e a regra não se aplica.
+      */}
       <div
         className={cn(
-          "flex h-full min-h-0 flex-col border-r border-border",
-          selectedId && "hidden md:flex",
+          "h-full min-h-0 flex-col border-r border-border md:flex",
+          colunas.lista,
         )}
       >
         <InboxFilters value={filterValue} onChange={setFilterValue} />
@@ -277,16 +316,63 @@ export function InboxLayout({ initialSelectedId = null }: InboxLayoutProps = {})
         </div>
       </div>
 
-      <div className={cn("flex h-full min-h-0 flex-col", !selectedId && "hidden md:flex")}>
+      {/*
+        AS DUAS COLUNAS DECIDEM PELO MESMO DADO — `selectedId`, não o objeto.
+
+        A da lista some quando há `selectedId`; se esta aparecesse só quando a
+        conversa já está CARREGADA, a janela entre as duas coisas não mostra
+        nenhuma das colunas. No celular isso é a tela em branco, e ela tem dois
+        casos reais: o instante do deep-link `/inbox/<id>`, enquanto a busca
+        única ainda responde; e o estado permanente de conversa fora do acesso,
+        cuja mensagem ("Conversa não encontrada") é justamente o que ficava
+        escondido — deixando o dono numa tela vazia, sem sequer o botão de
+        voltar, porque ele morava dentro do ramo da conversa carregada.
+      */}
+      <div
+        className={cn(
+          "h-full min-h-0 flex-col md:flex",
+          colunas.conversa,
+        )}
+      >
+        {/*
+          A barra do celular vive FORA do ramo da conversa carregada: o caminho
+          de volta tem de existir inclusive quando não há o que mostrar — é aí
+          que ele é a única saída. A porta da ficha, essa sim, depende da
+          conversa, e só aparece quando há uma.
+        */}
+        {selectedId && (
+          <div className="flex items-center gap-1 border-b border-border px-1 py-1 md:hidden">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-9 gap-1 px-2"
+              onClick={() => handleSelect(null)}
+            >
+              <CaretLeft size={16} />
+              Conversas
+            </Button>
+            <div className="flex-1" />
+            {selectedConversation && (
+              <Sheet open={fichaAberta} onOpenChange={setFichaAberta}>
+                <SheetTrigger asChild>
+                  <Button variant="ghost" size="sm" className="h-9 gap-1 px-2 xl:hidden">
+                    <IdentificationCard size={16} />
+                    Ficha
+                  </Button>
+                </SheetTrigger>
+                <SheetContent side="right" className="w-[min(22rem,90vw)] overflow-y-auto p-0">
+                  <SheetTitle className="sr-only">Ficha do contato</SheetTitle>
+                  <CRMSidePanel conversation={selectedConversation} />
+                </SheetContent>
+              </Sheet>
+            )}
+          </div>
+        )}
         {selectedConversation ? (
           <>
-            <ConversationHeader
-              conversation={selectedConversation}
-              onBack={() => setSelectedId(null)}
-              onOpenCrmPanel={() => setCrmPanelOpen(true)}
-            />
+            <ConversationHeader conversation={selectedConversation} />
             <div className="min-h-0 flex-1 overflow-hidden">
-              <ChatThread conversationId={selectedConversation.id} />
+              <ChatThread conversationId={selectedConversation.id} onResponder={setRespondendo} />
             </div>
             <RetentionNotice conversationId={selectedConversation.id} />
             {motivoDaJanela && (
@@ -303,27 +389,18 @@ export function InboxLayout({ initialSelectedId = null }: InboxLayoutProps = {})
               janelaFechada={motivoDaJanela}
               disabled={selectedConversation.status === "closed"}
               contactName={selectedConversation.contacts?.name ?? null}
+              respondendo={respondendo}
+              onCancelarResposta={() => setRespondendo(null)}
               currentContactId={selectedConversation.contact_id}
             />
           </>
         ) : selectionNotFound ? (
-          <div className="flex h-full flex-col">
-            <BarraDeVoltarMobile onBack={() => setSelectedId(null)} />
-            <div className="flex flex-1 items-center justify-center px-6 text-center text-sm text-muted-foreground">
-              Conversa não encontrada ou fora do seu acesso.
-            </div>
+          <div className="flex h-full items-center justify-center px-6 text-center text-sm text-muted-foreground">
+            Conversa não encontrada ou fora do seu acesso.
           </div>
         ) : (
-          <div className="flex h-full flex-col">
-            {/* Só aparece com `selectedId` setado: é o instante de carregamento
-                entre escolher a conversa e `selectedConversation` resolver — sem
-                isto, quem estava no celular ficava preso aqui até os dados
-                chegarem, porque o botão de voltar de verdade mora dentro do
-                `ConversationHeader`, que só monta com a conversa já carregada. */}
-            {selectedId && <BarraDeVoltarMobile onBack={() => setSelectedId(null)} />}
-            <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
-              Selecione uma conversa
-            </div>
+          <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+            Selecione uma conversa
           </div>
         )}
       </div>
@@ -331,17 +408,6 @@ export function InboxLayout({ initialSelectedId = null }: InboxLayoutProps = {})
       <div className="hidden h-full min-h-0 xl:block">
         <CRMSidePanel conversation={selectedConversation} />
       </div>
-
-      {/* Mesmo painel, dentro de um Sheet — a porta pra contexto do cliente
-          abaixo de 1280px (onde a coluna fixa acima não existe). Substitui o
-          antigo link "Ver contato" que navegava pra fora da conversa: mesmo
-          conteúdo, sem perder o lugar no atendimento. */}
-      <Sheet open={crmPanelOpen} onOpenChange={setCrmPanelOpen}>
-        <SheetContent side="right" className="w-96 max-w-[90vw] gap-0 overflow-y-auto p-0 xl:hidden">
-          <SheetTitle className="sr-only">Contexto do cliente</SheetTitle>
-          <CRMSidePanel conversation={selectedConversation} />
-        </SheetContent>
-      </Sheet>
 
       <InboxKeyboardShortcuts
         visibleIds={visibleIds}
