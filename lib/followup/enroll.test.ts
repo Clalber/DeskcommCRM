@@ -42,6 +42,7 @@ function fakeDb(pointer: Row) {
         insert(obj: Row) {
           mode = "insert";
           payload = obj;
+          expect(obj).not.toHaveProperty("next_eval_at");
           return b;
         },
         eq(col: string, val: unknown) {

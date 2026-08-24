@@ -289,7 +289,8 @@ export async function POST(req: NextRequest, ctx: RouteCtx): Promise<NextRespons
     metadata: { webhook_source_id: source.id },
   });
 
-  // localhost: sem crontab. Prod não entra aqui (NODE_ENV=production).
+  // Captação: drena lead.created e inscreve no fluxo neste mesmo request.
+  // Sem isto, em prod (Vercel Hobby sem cron de 1 min) o gatilho fica pending.
   await kickLocalPipeline(admin);
 
   return respondWithLead(String(lead.id));

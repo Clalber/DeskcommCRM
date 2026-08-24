@@ -23,10 +23,6 @@ import {
 } from "@/lib/followup/engine";
 import { logger } from "@/lib/logger";
 
-function deveAcionarPipelineInline(): boolean {
-  return process.env.NODE_ENV === "development" || process.env.VERCEL === "1";
-}
-
 async function tickFollowupAteParar(admin: SupabaseClient): Promise<void> {
   const enqueueJob = async (job: FollowupJobRequest): Promise<void> => {
     const { error } = await admin.from("job_queue").insert({
@@ -67,6 +63,7 @@ export async function acelerarPipelineDeEventos(admin: SupabaseClient): Promise<
 }
 
 export async function kickLocalPipeline(admin: SupabaseClient): Promise<void> {
-  if (!deveAcionarPipelineInline()) return;
+  // Sempre: o webhook de captação em Vercel/Hobby não tem cron de 1 min.
+  // Na VPS o crontab continua; drenar neste request só antecipa o mesmo trabalho.
   await acelerarPipelineDeEventos(admin);
 }

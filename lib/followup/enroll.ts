@@ -107,7 +107,6 @@ export async function enrollFollowupFlow(
     );
   }
 
-  const now = new Date().toISOString();
   const { data: created, error: insErr } = await supabase
     .from("followup_enrollments")
     .insert({
@@ -117,7 +116,8 @@ export async function enrollFollowupFlow(
       contact_id: contactId,
       current_node_id: triggerNode.id,
       status: "active",
-      next_eval_at: now,
+      // next_eval_at omite: default now() do banco (migration 0147). new Date()
+      // do processo fica 17–34 ms à frente e o claim `<= now()` pula o tick.
       agent_id: agentId,
     })
     .select(ENROLLMENT_LIST_COLUMNS)
