@@ -146,21 +146,33 @@ describe("webhook_lead_captures — isolamento e gate de papel", () => {
 
   it("ninguém com sessão consegue ESCREVER: não há policy de insert", () => {
     // A escrita é do service role (a rota pública de captação), que bypassa RLS.
-    // Um `authenticated` que consiga inserir aqui forjaria histórico de origem.
-    const erro = sql(`
+    // Um `authenticated` que consiga inserir aqui forjaria histórico de origem —
+    // e origem é o que este histórico existe para responder.
+    //
+    // A prova é por CONTAGEM, não por capturar a mensagem do erro: `raise
+    // notice` sai em stderr, e o `execFileSync` acima lê só stdout. A primeira
+    // versão deste caso fazia isso e passava a impressão de medir — o teste
+    // reprovou por instrumento cego, não por RLS frouxa. Contar a linha depois
+    // não tem esse ponto cego: ou ela existe, ou não.
+    sql(`
       set role authenticated;
       select set_config('request.jwt.claims', '{"sub":"${MANAGER_A}"}', false);
       do $$
       begin
         insert into public.webhook_lead_captures (organization_id, source_name, outcome)
-          values ('${ORG_A}', 'forjada', 'criado');
-        raise notice 'INSERIU';
-      exception when insufficient_privilege or others then
-        raise notice 'RECUSADO';
+          values ('${ORG_A}', 'forjada pela sessão', 'criado');
+      exception when others then
+        null; -- a recusa é o esperado; quem decide é a contagem abaixo
       end
       $$;
-      select 1;
     `);
-    expect(erro).toContain("RECUSADO");
+
+    // Conta como superusuário (reset role): se a linha entrou, ela está lá,
+    // mesmo que a sessão que a inseriu não conseguisse relê-la.
+    const forjadas = sql(`
+      reset role;
+      select count(*) from public.webhook_lead_captures where source_name = 'forjada pela sessão';
+    `);
+    expect(forjadas.split("\n").pop()).toBe("0");
   });
 });

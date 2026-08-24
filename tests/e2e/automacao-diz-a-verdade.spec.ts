@@ -26,7 +26,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { execFileSync } from "node:child_process";
 
-import { test, expect, type Page, type APIRequestContext } from "@playwright/test";
+import { test, expect, type Page, type Locator, type APIRequestContext } from "@playwright/test";
 import { carregarEnvLocal } from "../../scripts/lib/env-de-teste";
 
 const APP_URL = `http://localhost:${process.env.E2E_PORT ?? "3001"}`;
@@ -41,6 +41,10 @@ function loadCreds(): Creds {
   if (!fs.existsSync(CREDS_PATH)) {
     execFileSync("npx", ["tsx", "scripts/seed-e2e-credentials.ts"], { stdio: "inherit" });
   }
+  // Um número CONECTADO é pré-condição: a tela desabilita todo número que não
+  // esteja `WORKING`, e o seed base não cria nenhum. Conectar de verdade exige
+  // ler QR no celular, o que não existe num rig — ver o cabeçalho do seed.
+  execFileSync("npx", ["tsx", "scripts/seed-e2e-numero-conectado.ts"], { stdio: "inherit" });
   return JSON.parse(fs.readFileSync(CREDS_PATH, "utf8")) as Creds;
 }
 
@@ -55,6 +59,20 @@ const ts = Date.now();
 const SOURCE_NAME = `E2E Verdade ${ts}`;
 const RULE_NAME = `E2E Abordar ${ts}`;
 const LEAD_NAME = `Carlos Verdade ${ts}`;
+
+/**
+ * Sobe do texto até o CARD do design system (o container com `border-border`).
+ *
+ * Mesmo helper de `webhooks.spec.ts`, e a razão de ele existir foi medida aqui:
+ * `locator("div").filter({ has: texto }).last()` devolve o div mais INTERNO que
+ * contém o título — que não contém o badge de status, irmão dele na árvore. A
+ * asserção reprovava com a tela certa na frente.
+ */
+function cardDe(locator: Locator): Locator {
+  return locator.locator(
+    "xpath=ancestor::div[contains(concat(' ', normalize-space(@class), ' '), ' border-border ')][1]",
+  );
+}
 
 async function login(page: Page, email: string): Promise<void> {
   await page.goto(`${APP_URL}/login`);
@@ -122,15 +140,21 @@ test.describe("a automação conta o que aconteceu de verdade", () => {
       await editor.getByRole("combobox").filter({ hasText: "Adicionar ação" }).click();
       await page.getByRole("option", { name: "Enviar mensagem no WhatsApp" }).click();
 
-      // O número: o seed cria uma sessão; se nenhuma estiver WORKING o teste
-      // não teria o que provar, então a ausência é falha explícita.
+      // O número: o seed garante uma sessão WORKING; se não houvesse, o teste
+      // não teria o que provar — daí a espera EXPLÍCITA antes de contar.
+      //
+      // `count()` não tem auto-wait: perguntado logo depois do clique, ele
+      // responde 0 porque o dropdown do Radix ainda não montou, e o teste
+      // reprova dizendo "nenhum número no seed" com o número lá. Instrumento
+      // cego acusando o alvo errado — o `expect(...).toBeVisible()` é que
+      // espera de verdade.
       const seletorDeNumero = editor.getByRole("combobox").filter({ hasText: /Escolha o número/ });
       await seletorDeNumero.click();
       const numeros = page.getByRole("option");
-      expect(
-        await numeros.count(),
-        "nenhum número de WhatsApp no seed — a spec não teria o que medir",
-      ).toBeGreaterThan(0);
+      await expect(
+        numeros.first(),
+        "nenhum número de WhatsApp WORKING — rode scripts/seed-e2e-numero-conectado.ts",
+      ).toBeVisible({ timeout: 10_000 });
       await numeros.first().click();
 
       await editor.getByRole("textbox").last().fill(`Olá {{nome}}, vi que você se cadastrou.`);
@@ -160,10 +184,7 @@ test.describe("a automação conta o que aconteceu de verdade", () => {
       // ── A TELA: o que a aba Atividade diz ────────────────────────────────
       await page.getByRole("tab", { name: "Atividade" }).click();
 
-      const cartao = page
-        .locator("div")
-        .filter({ has: page.getByText(RULE_NAME, { exact: true }) })
-        .last();
+      const cartao = cardDe(page.getByText(RULE_NAME, { exact: true }).first());
 
       let apareceu = false;
       for (let tentativa = 0; tentativa < 12; tentativa++) {

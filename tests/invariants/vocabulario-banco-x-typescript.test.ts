@@ -379,12 +379,28 @@ function literaisDoUnionType(arquivo: string, simbolo: string): string[] {
   // Prosa em português tem ponto e vírgula. O extrator é que não podia depender
   // de a prosa não ter.
   const semComentarios = fonte.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/\/\/[^\n]*/g, " ");
-  const decl = new RegExp(`type\\s+${simbolo}\\s*=([^;]*);`, "s").exec(semComentarios);
+
+  // DUAS FORMAS, e as duas são vocabulário legítimo neste repo:
+  //
+  //   type X = "a" | "b";                 ← union puro
+  //   const X = ["a", "b"] as const;      ← tupla congelada
+  //
+  // A segunda existe porque o Zod precisa do ARRAY em runtime (`z.enum(X)`), e
+  // escrever o union ao lado seria a terceira lista — exatamente o que este
+  // invariante existe para proibir. O extrator lia só a primeira e mandava
+  // "ENSINE O EXTRATOR"; esta é a lição aprendida, e não uma exceção aberta:
+  // as duas formas caem no MESMO caminho de comparação abaixo.
+  const decl =
+    new RegExp(`type\\s+${simbolo}\\s*=([^;]*);`, "s").exec(semComentarios) ??
+    new RegExp(`const\\s+${simbolo}\\s*=\\s*(\\[[^\\]]*\\])\\s*as\\s+const`, "s").exec(
+      semComentarios,
+    );
   if (!decl) {
     throw new Error(
-      `extrator de vocabulário: não achei \`type ${simbolo} = ...;\` em ${arquivo}. ` +
-        `Se o tipo virou \`const ... as const\` ou mudou de nome, ENSINE O EXTRATOR — ` +
-        `deixar isto falhar em silêncio devolveria lista vazia e o par passaria sem ler nada.`,
+      `extrator de vocabulário: não achei \`type ${simbolo} = ...;\` nem ` +
+        `\`const ${simbolo} = [...] as const\` em ${arquivo}. Se o símbolo mudou de nome ou ` +
+        `de forma, ENSINE O EXTRATOR — deixar isto falhar em silêncio devolveria lista vazia ` +
+        `e o par passaria sem ler nada.`,
     );
   }
 

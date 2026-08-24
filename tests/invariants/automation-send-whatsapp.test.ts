@@ -354,8 +354,24 @@ describe("send_whatsapp_message — execute (Task 11)", () => {
       template: "Oi {{contact.name}}",
     });
 
-    expect(result.status).toBe("success");
-    expect(result.detail?.queued_reason).toBe("waha_not_configured");
+    // ⚠️ ESTA ASSERÇÃO DIZIA `success`, E ERA ELA QUE CODIFICAVA O DEFEITO.
+    //
+    // O próprio caso já sabia que a mensagem NÃO tinha saído — ele afirmava
+    // `queued_reason: "waha_not_configured"` na linha seguinte. Ou seja: o
+    // invariante congelava "a automação chama de sucesso uma mensagem que
+    // ficou na fila", que é exatamente o que um usuário relatou em 2026-08-24
+    // (aba Atividade com ✓ verde, cliente sem receber nada).
+    //
+    // `postponed` é o desfecho honesto para `queued`: não saiu AINDA, e pode
+    // sair — o watchdog resgata `sent_via='ai'` em `queued` quando o canal
+    // volta. `failed` seria a mentira oposta, e faria quem lê desistir de uma
+    // mensagem que está a caminho.
+    //
+    // O que a mudança NÃO afrouxa: a mensagem continua sendo criada, com o
+    // corpo renderizado, e o motivo continua sendo cobrado — abaixo, na chave
+    // `reason`, que é onde `desfechoDoEnvio` o publica.
+    expect(result.status).toBe("postponed");
+    expect(result.detail?.reason).toBe("waha_not_configured");
     const messageId = String(result.detail?.message_id);
     expect(messageId).toBeTruthy();
 
