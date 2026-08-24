@@ -52,7 +52,7 @@ async function main(): Promise<void> {
       organization_id: orgId,
       waha_session_name: `repro-${ts}`,
       webhook_secret_encrypted: "00",
-      phone_number: "+553198966398",
+      phone_number: `+5531${String(ts).slice(-8)}`,
       status: "WORKING",
       provider: "waha",
     }),

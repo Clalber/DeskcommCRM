@@ -223,22 +223,24 @@ export function CapturasTab() {
                 {linhas.map((row) => {
                   const t = quando(row.received_at);
                   return (
-                    <TableRow
-                      key={row.id}
-                      className="cursor-pointer"
-                      onClick={() => setAberta(row)}
-                      tabIndex={0}
-                      role="button"
-                      aria-label={`Abrir captação de ${identidade(row)}`}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" || e.key === " ") {
-                          e.preventDefault();
-                          setAberta(row);
-                        }
-                      }}
-                    >
+                    // A linha continua sendo `row` para quem usa leitor de tela:
+                    // um `role="button"` na <tr> a TIRA da tabela, e o leitor
+                    // deixa de anunciar "linha 3 de 12" e o cabeçalho de cada
+                    // célula — que é justamente o que torna uma tabela legível
+                    // sem enxergar. Quem carrega o papel de botão é a primeira
+                    // célula, que também é o alvo de teclado.
+                    <TableRow key={row.id} className="cursor-pointer" onClick={() => setAberta(row)}>
                       <TableCell className="max-w-[220px] truncate font-medium">
-                        {identidade(row)}
+                        <button
+                          type="button"
+                          className="text-left underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setAberta(row);
+                          }}
+                        >
+                          {identidade(row)}
+                        </button>
                       </TableCell>
                       <TableCell className="text-sm text-muted-foreground">
                         {row.captured_phone ?? row.captured_email ?? "—"}

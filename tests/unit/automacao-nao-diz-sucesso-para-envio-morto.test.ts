@@ -134,10 +134,21 @@ describe("as duas ações de envio usam o MESMO tradutor", () => {
     const culpadas: string[] = [];
     for (const arquivo of acoes) {
       const src = readFileSync(join(dir, arquivo), "utf8");
-      // Quem chama o handler de envio TEM que passar pelo tradutor. Uma ação
-      // que chame `sendMessageHandler` e monte o resultado à mão está
-      // replantando o defeito.
-      if (src.includes("sendMessageHandler(") && !src.includes("reportarEnvio")) {
+      // Quem chama o handler de envio TEM que passar o RETORNO dele pelo
+      // tradutor. Uma ação que chame `sendMessageHandler` e monte o resultado à
+      // mão está replantando o defeito.
+      //
+      // A checagem é pela CHAMADA (`reportarEnvio(`), não pela menção do nome:
+      // medido por sabotagem, a versão anterior — `src.includes("reportarEnvio")`
+      // — passava VERDE com o desfecho montado à mão e um `void reportarEnvio;`
+      // sobrando no arquivo, que é exatamente a forma que um refactor
+      // apressado deixaria.
+      //
+      // PONTO CEGO DECLARADO: chamar `reportarEnvio(...)` e ignorar o retorno
+      // ainda engana esta varredura. Fechar isso exigiria AST, e o custo não se
+      // paga aqui — os casos de comportamento acima é que provam a tradução; a
+      // varredura existe para pegar a ação NOVA que nasce sem ela.
+      if (/\bsendMessageHandler\s*\(/.test(src) && !/\breportarEnvio\s*\(/.test(src)) {
         culpadas.push(arquivo);
       }
     }
