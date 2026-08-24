@@ -13,5 +13,7 @@ describe("catálogo de sons", () => {
     expect(() => playSound("attention")).not.toThrow();
     expect(() => playSound("success")).not.toThrow();
     expect(() => playSound("failure")).not.toThrow();
+    expect(() => playSound("message", 0)).not.toThrow();
+    expect(() => playSound("message", 0.25)).not.toThrow();
   });
 });

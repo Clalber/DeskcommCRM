@@ -62,7 +62,7 @@ export function emitNotification(input: EmitNotificationInput): void {
 
   if (typeof document !== "undefined" && document.visibilityState === "visible") {
     try {
-      playSound(sound);
+      playSound(sound, 1.0);
     } catch {
       // AudioContext recusa
     }
