@@ -27,6 +27,22 @@ export const dynamic = "force-dynamic";
 const AGENT_COLUMNS =
   "id, organization_id, name, description, model, system_prompt, is_active, is_default, kind, priority, published_version_id, archived_at, config, guardrails, active_kb_version_id, created_at, updated_at";
 
+/**
+ * As mesmas colunas MAIS o join da versão publicada — só para a LISTAGEM.
+ *
+ * Existe porque `useAgentsList` refaz a busca por esta rota depois da primeira
+ * pintura: sem o join aqui, o "modelo em vigor" do cartão voltava a ser o id do
+ * CADASTRO no primeiro refetch, e o conserto durava um instante. Duas fontes para
+ * a mesma lista têm de pedir as mesmas colunas.
+ *
+ * NÃO entra no POST de propósito: agente recém-criado tem
+ * `published_version_id = null` por construção, o embed seria sempre nulo, e
+ * pedi-lo ali faz o tipo gerado da linha inserida deixar de resolver (`GenericStringError`).
+ */
+const AGENT_COLUMNS_COM_VERSAO =
+  AGENT_COLUMNS +
+  ", versao_publicada:ai_agent_versions!ai_agents_published_version_id_fkey(provider, model)";
+
 const VERSION_COLUMNS =
   "id, organization_id, agent_id, version_number, system_prompt, provider, model, credential_id, tool_ids, trigger_config, channel_session_id, max_steps, token_budget, cost_budget_cents, history_message_window, history_token_window, handoff_keywords, handoff_tool_enabled, cases_enabled, split_messages, split_max_chars, followup, operator_enabled, operator_model, operator_tool_ids, status, published_at, superseded_at, created_at, created_by,pipeline_ids";
 
@@ -46,7 +62,7 @@ export async function GET(req: NextRequest): Promise<Response> {
   const supabase = await createClient();
   let query = supabase
     .from("ai_agents")
-    .select(AGENT_COLUMNS)
+    .select(AGENT_COLUMNS_COM_VERSAO)
     .eq("organization_id", activeOrg.orgId);
 
   if (!includeArchived) {
@@ -56,62 +72,7 @@ export async function GET(req: NextRequest): Promise<Response> {
   const { data, error } = await query.order("created_at", { ascending: false });
   if (error) return fail("internal_error", "Erro ao listar agents.", 500, { requestId });
 
-  const agents = (data ?? []) as AgentListRow[];
-  return ok(await comModeloPublicado(supabase, activeOrg.orgId, agents), { requestId });
-}
-
-/** O que a listagem precisa saber de cada agente para resolver o modelo exibido. */
-interface AgentListRow {
-  id: string;
-  published_version_id?: string | null;
-  [key: string]: unknown;
-}
-
-/**
- * Anexa `published_provider` / `published_model` — o que o MOTOR realmente usa.
- *
- * ⚠️ `ai_agents.model` NÃO é a verdade de um `mcp_agent`, e a tela acreditava
- * que era. A coluna é escrita uma vez, na criação (`${provider}/${model}` da v1),
- * e nada a atualiza quando outra versão é publicada — enquanto o runtime lê
- * `ai_agent_versions.model` da versão publicada (`lib/agent-engine/agent/agent-config.ts`).
- * Medido numa instalação real (2026-08-18): o card anunciava
- * "anthropic · claude-sonnet-5" e o agente rodava `nvidia/nemotron-…:free`, com
- * o dono do sistema depurando o modelo errado. É o anti-pattern nº 2 do
- * CLAUDE.md (duplicação sem source of truth declarado); enquanto a coluna
- * legada não morre, quem exibe passa a REFERENCIAR a versão em vez de duplicá-la.
- *
- * Uma query para o lote todo (`in`), não uma por agente. Falha de leitura aqui
- * não derruba a lista: sem os campos, a tela cai no comportamento antigo.
- */
-async function comModeloPublicado(
-  supabase: Awaited<ReturnType<typeof createClient>>,
-  orgId: string,
-  agents: AgentListRow[],
-): Promise<AgentListRow[]> {
-  const versionIds = agents
-    .map((a) => a.published_version_id)
-    .filter((id): id is string => typeof id === "string" && id.length > 0);
-  if (versionIds.length === 0) return agents;
-
-  const { data: versions, error } = await supabase
-    .from("ai_agent_versions")
-    .select("id, provider, model")
-    .eq("organization_id", orgId)
-    .in("id", versionIds);
-  if (error || !versions) return agents;
-
-  const porId = new Map(
-    (versions as Array<{ id: string; provider: string | null; model: string | null }>).map((v) => [
-      v.id,
-      v,
-    ]),
-  );
-  return agents.map((a) => {
-    const v = a.published_version_id ? porId.get(a.published_version_id) : undefined;
-    return v === undefined
-      ? a
-      : { ...a, published_provider: v.provider, published_model: v.model };
-  });
+  return ok(data ?? [], { requestId });
 }
 
 // ---------------------------------------------------------------------------

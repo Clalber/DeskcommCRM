@@ -12,6 +12,12 @@ import { VersionFooter } from "@/components/shell/VersionFooter";
 import { useMarcaDaInstalacao } from "@/lib/branding/contexto";
 import { GRUPO_NO_RODAPE, NAV_GROUPS, sidebarGroups } from "@/lib/navigation/registry";
 
+interface SidebarContentProps {
+  collapsed: boolean;
+  showCollapseControl?: boolean;
+  onNavigate?: () => void;
+}
+
 /**
  * Navegação principal, agrupada por objetivo.
  *
@@ -20,23 +26,11 @@ import { GRUPO_NO_RODAPE, NAV_GROUPS, sidebarGroups } from "@/lib/navigation/reg
  * itens e sete `usePermission()` viviam aqui — e divergiam do hub de
  * Configurações e das abas de IA, que mantinham suas próprias listas.
  */
-interface SidebarProps {
-  collapsed: boolean;
-  /**
-   * "mobile" é o conteúdo desta MESMA navegação dentro do drawer (Sheet) que
-   * `AppShell` abre abaixo de `lg`. Reaproveita tudo — grupos, tradução, ícone
-   * ativo — em vez de duplicar a lista em outro componente, que divergiria no
-   * primeiro ajuste (a mesma lição que `sidebarGroups()` já resolveu para os
-   * `usePermission()` espalhados). Nesta variante o toggle de recolher some
-   * (não faz sentido dentro de um drawer que já fecha sozinho) e os rótulos
-   * ficam sempre por extenso, mesmo se `collapsed` vier true por engano.
-   */
-  variant?: "desktop" | "mobile";
-}
-
-export function Sidebar({ collapsed, variant = "desktop" }: SidebarProps) {
-  const isMobile = variant === "mobile";
-  const efetivoCollapsed = isMobile ? false : collapsed;
+export function SidebarContent({
+  collapsed,
+  showCollapseControl = true,
+  onNavigate,
+}: SidebarContentProps) {
   // A barra lateral aparece em TODA tela — traduzi-la aqui é o que faz a
   // escolha de idioma virar algo visível no primeiro clique.
   const t = useT();
@@ -81,19 +75,9 @@ export function Sidebar({ collapsed, variant = "desktop" }: SidebarProps) {
   const logo = activeOrg?.marca?.logoUrl || brand.logoUrl;
 
   return (
-    <aside
-      className={cn(
-        "flex flex-col border-r bg-card",
-        isMobile
-          ? "h-full w-full"
-          : cn(
-              "fixed inset-y-0 left-0 z-30 hidden transition-[width] duration-200 lg:flex",
-              efetivoCollapsed ? "w-16" : "w-60",
-            ),
-      )}
-    >
-      <div className={cn("flex items-center border-b px-4 h-14", efetivoCollapsed ? "justify-center" : "justify-start")}>
-        {logo && !efetivoCollapsed ? (
+    <>
+      <div className={cn("flex items-center border-b px-4 h-14", collapsed ? "justify-center" : "justify-start")}>
+        {logo && !collapsed ? (
           // <img> em vez de next/image de propósito: a URL vem de quem hospeda
           // (banco ou .env), e next/image exige allowlist de domínios fechada em
           // build — a imagem pré-buildada rejeitaria o domínio do self-hoster.
@@ -106,11 +90,11 @@ export function Sidebar({ collapsed, variant = "desktop" }: SidebarProps) {
             className="h-7 w-auto max-w-[10rem] object-contain"
           />
         ) : (
-          <span className={cn("font-semibold tracking-tight", efetivoCollapsed && "sr-only")}>
+          <span className={cn("font-semibold tracking-tight", collapsed && "sr-only")}>
             {nome}
           </span>
         )}
-        {efetivoCollapsed && (
+        {collapsed && (
           <span aria-hidden className="text-lg font-bold text-primary">
             {/* Spread e não `[0]`: nome começando com emoji ou acento composto
                 quebraria no meio do code point. Mesma regra de `resolveBranding`
@@ -127,7 +111,7 @@ export function Sidebar({ collapsed, variant = "desktop" }: SidebarProps) {
             <div key={group.id} className="space-y-1">
               {/* Colapsado, o sidebar tem 64px: seis rótulos ali seriam ilegíveis.
                   Vira um filete separador, que preserva o agrupamento sem texto. */}
-              {efetivoCollapsed ? (
+              {collapsed ? (
                 <div aria-hidden className="mx-2 border-t first:hidden" />
               ) : (
                 <h2
@@ -137,7 +121,7 @@ export function Sidebar({ collapsed, variant = "desktop" }: SidebarProps) {
                   {t(group.label)}
                 </h2>
               )}
-              <ul aria-labelledby={efetivoCollapsed ? undefined : tituloId} aria-label={efetivoCollapsed ? t(group.label) : undefined} className="space-y-1">
+              <ul aria-labelledby={collapsed ? undefined : tituloId} aria-label={collapsed ? t(group.label) : undefined} className="space-y-1">
                 {items.map((item) => {
                   const isActive = pathname === item.href || pathname.startsWith(item.href + "/");
                   const Icon = item.icon;
@@ -145,21 +129,22 @@ export function Sidebar({ collapsed, variant = "desktop" }: SidebarProps) {
                     <li key={item.href}>
                       <Link
                         href={item.href}
-                        title={efetivoCollapsed ? t(item.label) : undefined}
+                        title={collapsed ? t(item.label) : undefined}
                         aria-current={isActive ? "page" : undefined}
+                        onClick={onNavigate}
                         className={cn(
                           "relative flex items-center gap-3 rounded-md px-3 py-1.5 text-sm transition-colors",
                           isActive
                             ? "bg-accent text-accent-foreground"
                             : "text-muted-foreground hover:bg-accent/50 hover:text-foreground",
-                          efetivoCollapsed && "justify-center px-2",
+                          collapsed && "justify-center px-2",
                         )}
                       >
                         <Icon size={18} weight={isActive ? "fill" : "regular"} aria-hidden />
-                        {!efetivoCollapsed && <span className="truncate">{t(item.label)}</span>}
+                        {!collapsed && <span className="truncate">{t(item.label)}</span>}
                         {item.healthDot && (
                           <ConnectionHealthDot
-                            className={cn(efetivoCollapsed ? "absolute right-1.5 top-1.5" : "ml-auto")}
+                            className={cn(collapsed ? "absolute right-1.5 top-1.5" : "ml-auto")}
                           />
                         )}
                       </Link>
@@ -170,18 +155,19 @@ export function Sidebar({ collapsed, variant = "desktop" }: SidebarProps) {
                   <li>
                     <Link
                       href={group.hub.href}
-                      title={efetivoCollapsed ? t(group.hub.label) : undefined}
+                      title={collapsed ? t(group.hub.label) : undefined}
                       aria-current={pathname === group.hub.href ? "page" : undefined}
+                      onClick={onNavigate}
                       className={cn(
                         "flex items-center gap-3 rounded-md px-3 py-1.5 text-sm transition-colors",
                         pathname === group.hub.href
                           ? "bg-accent text-accent-foreground"
                           : "text-muted-foreground hover:bg-accent/50 hover:text-foreground",
-                        efetivoCollapsed && "justify-center px-2",
+                        collapsed && "justify-center px-2",
                       )}
                     >
                       <ArrowRight size={18} aria-hidden />
-                      {!efetivoCollapsed && <span className="truncate">{t(group.hub.label)}</span>}
+                      {!collapsed && <span className="truncate">{t(group.hub.label)}</span>}
                     </Link>
                   </li>
                 )}
@@ -194,25 +180,23 @@ export function Sidebar({ collapsed, variant = "desktop" }: SidebarProps) {
         {rodape && (
           <Link
             href={rodape.href}
-            title={efetivoCollapsed ? t(rodape.label) : undefined}
+            title={collapsed ? t(rodape.label) : undefined}
             aria-current={pathname.startsWith(rodape.href) ? "page" : undefined}
+            onClick={onNavigate}
             className={cn(
               "mb-1 flex items-center gap-3 rounded-md px-3 py-1.5 text-sm transition-colors",
               pathname.startsWith(rodape.href)
                 ? "bg-accent text-accent-foreground"
                 : "text-muted-foreground hover:bg-accent/50 hover:text-foreground",
-              efetivoCollapsed && "justify-center px-2",
+              collapsed && "justify-center px-2",
             )}
           >
             <Gear size={18} aria-hidden />
-            {!efetivoCollapsed && <span className="truncate">{rodape.label}</span>}
+            {!collapsed && <span className="truncate">{rodape.label}</span>}
           </Link>
         )}
-        <VersionFooter collapsed={efetivoCollapsed} />
-        {/* O toggle de recolher é conceito de sidebar FIXA — dentro do drawer
-            mobile ele fecha inteiro ao navegar (ver `AppShell`), então não há
-            estado "recolhido" para alternar ali. */}
-        {!isMobile && (
+        <VersionFooter collapsed={collapsed} onNavigate={onNavigate} />
+        {showCollapseControl && (
           <button
             type="button"
             onClick={() => startTransition(() => toggleSidebar(collapsed))}
@@ -228,6 +212,38 @@ export function Sidebar({ collapsed, variant = "desktop" }: SidebarProps) {
           </button>
         )}
       </div>
+    </>
+  );
+}
+
+export function Sidebar({ collapsed }: { collapsed: boolean }) {
+  return (
+    <aside
+      className={cn(
+        // ⚠️ `sticky`, e NUNCA `fixed`.
+        //
+        // Com `fixed` a barra sai do fluxo: ela não ocupa lugar nenhum na linha,
+        // e quem afastava o conteúdo era um `md:ml-16`/`md:ml-60` do lado de lá.
+        // Duas medidas para a mesma coisa, em componentes diferentes — e no dia
+        // em que discordassem (largura de 60 com margem de 16), a barra passava
+        // POR CIMA da lista de conversas, escondendo o começo de cada linha.
+        //
+        // Foi assim que apareceu numa instalação real: a barra expandida, com as
+        // etiquetas legíveis, e a lista atrás dela cortada. Um F5 "consertava",
+        // que é a assinatura de servidor e navegador terem pintado estados
+        // diferentes — e `AppShell` e `Sidebar` são ambos `"use client"`.
+        //
+        // `sticky top-0 h-screen` dá o mesmo efeito visual (a barra não rola com
+        // a página) e ela VOLTA a ocupar lugar: sobra para o conteúdo exatamente
+        // o que ela não usou, e não há segunda medida para discordar.
+        //
+        // `shrink-0` porque item de flex encolhe por padrão, e uma barra de 60
+        // espremida para caber é o mesmo defeito por outro caminho.
+        "sticky top-0 z-30 flex h-screen shrink-0 flex-col border-r bg-card transition-[width] duration-200",
+        collapsed ? "w-16" : "w-60",
+      )}
+    >
+      <SidebarContent collapsed={collapsed} />
     </aside>
   );
 }
