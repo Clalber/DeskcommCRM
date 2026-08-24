@@ -22,6 +22,7 @@ import { RetentionNotice } from "./RetentionNotice";
 import { CRMSidePanel } from "./CRMSidePanel";
 import { InboxKeyboardShortcuts } from "./InboxKeyboardShortcuts";
 import { ShortcutsHelpDialog } from "./ShortcutsHelpDialog";
+import { OpenConversationProvider } from "@/hooks/notifications/OpenConversationContext";
 
 /**
  * O QUE CADA ABA SIGNIFICA. Exportada porque é a definição em si — o defeito
@@ -226,13 +227,14 @@ export function InboxLayout({ initialSelectedId = null }: InboxLayoutProps = {})
   // piso do composer (370px), em vez dos 2px que a versão de uma faixa só
   // deixava. Margem de 2px não é margem, é sorte.
   return (
+    <OpenConversationProvider conversationId={selectedId}>
     <div className="grid h-[calc(100dvh-3.5rem-2*var(--space-6))] w-full grid-cols-1 md:grid-cols-[300px_1fr] xl:grid-cols-[272px_1fr_296px] 2xl:grid-cols-[300px_1fr_320px]">
       <div className="flex h-full min-h-0 flex-col border-r border-border">
         <InboxFilters value={filterValue} onChange={setFilterValue} />
         <div className="min-h-0 flex-1 overflow-hidden">
           <ConversationList
+            listQuery={listQ}
             filters={filters}
-            orgId={orgId}
             selectedId={selectedId}
             onSelect={handleSelect}
             clientFilter={clientFilter}
@@ -292,5 +294,6 @@ export function InboxLayout({ initialSelectedId = null }: InboxLayoutProps = {})
       />
       <ShortcutsHelpDialog open={helpOpen} onOpenChange={setHelpOpen} />
     </div>
+    </OpenConversationProvider>
   );
 }

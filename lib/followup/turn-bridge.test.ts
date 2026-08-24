@@ -103,11 +103,13 @@ function fakeDb(opts: {
     loadEnrollmentById: async () => opts.enrollment,
     loadFlowGraph: async () => opts.graph,
     loadLeadFacts: async () => ({ lead_stage: null, tags: [] }),
+    loadLastInboundBody: async () => null,
     loadEnrollmentEvents: async () => [],
     insertEnrollmentEvent,
     updateEnrollment,
     loadFlowPointerName: async () => null,
     insertDeadInboxItem: async () => {},
+    persistirRespostaFollowup: async () => {},
   };
   return { db, updateEnrollment, insertEnrollmentEvent };
 }

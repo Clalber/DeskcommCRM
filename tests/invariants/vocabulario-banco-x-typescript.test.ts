@@ -207,6 +207,12 @@ const PARES: Array<{
     arquivo: "lib/agent-engine/edge/llm/orcamento.ts",
     simbolo: "ModoDeOrcamento",
   },
+  {
+    tabela: "followup_flow_pointers",
+    coluna: "surface",
+    arquivo: "lib/followup/api-schemas.ts",
+    simbolo: "FollowupFlowSurface",
+  },
 ];
 
 /** Tira um nível de parênteses externos, se ele envolver a expressão inteira. */

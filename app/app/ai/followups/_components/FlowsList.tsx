@@ -41,8 +41,9 @@ export function FlowsList({ initialData, canWrite }: Props) {
           <FlowArrow size={36} aria-hidden className="text-text-muted" />
           <h2 className="font-medium">Nenhum fluxo de follow-up ainda</h2>
           <p className="max-w-sm text-sm text-text-muted">
-            Follow-ups reengajam contatos automaticamente após silêncio, mudança de
-            etapa ou fim de conversa — sem depender de alguém lembrar de mandar mensagem.
+            Follow-ups reengajam contatos após silêncio, mudança de etapa, uma regra em
+            Webhooks ou a resposta do contato — sem depender de alguém lembrar de mandar
+            mensagem.
           </p>
           {canWrite && <div className="mt-1">{newFlowButton}</div>}
         </Card>
@@ -53,9 +54,7 @@ export function FlowsList({ initialData, canWrite }: Props) {
 
   return (
     <div className="flex flex-col gap-4">
-      {canWrite && (
-        <div className="flex justify-end">{newFlowButton}</div>
-      )}
+      {canWrite && <div className="flex justify-end">{newFlowButton}</div>}
 
       <ul className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
         {flows.map((flow) => (

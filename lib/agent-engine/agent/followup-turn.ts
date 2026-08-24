@@ -71,6 +71,12 @@ export const followupTurnPayloadSchema = z
     node_id: z.string().min(1).optional(),
     purpose: z.enum(['send_message', 'classify', 'plan_timing']).optional(),
     prompt_hint: z.string().optional(),
+    /** action mode `text` — enviado pela cadeia de guardrails, sem LLM. */
+    fixed_body: z.string().min(1).max(4000).optional(),
+    /** action mode `template` — corpo em `message_templates`. */
+    template_id: z.string().uuid().optional(),
+    volta_index: z.number().int().optional(),
+    volta_total: z.number().int().optional(),
     classes: z.array(z.string()).optional(),
     hint: z.string().optional(),
     // purpose 'plan_timing': as esperas adaptativas do fluxo inteiro, na ordem.
@@ -282,6 +288,10 @@ export function createFollowupTurnHandler(deps: FollowupTurnDeps) {
         nodeId: payload.node_id,
         purpose: payload.purpose,
         promptHint: payload.prompt_hint,
+        fixedBody: payload.fixed_body,
+        templateId: payload.template_id,
+        voltaIndex: payload.volta_index,
+        voltaTotal: payload.volta_total,
         classes: payload.classes,
         hint: payload.hint,
         waits: payload.waits,
@@ -345,6 +355,10 @@ async function runFlowDrivenTurn(
     nodeId: string | undefined;
     purpose: 'send_message' | 'classify' | 'plan_timing' | undefined;
     promptHint: string | undefined;
+    fixedBody: string | undefined;
+    templateId: string | undefined;
+    voltaIndex: number | undefined;
+    voltaTotal: number | undefined;
     classes: string[] | undefined;
     hint: string | undefined;
     waits: EsperaParaPlanejar[] | undefined;
@@ -363,6 +377,14 @@ async function runFlowDrivenTurn(
   const runLog = withFields(deps.log, { job_id: job.id, tenant_id: target.tenantId, lead_id: target.leadId, enrollment_id: enrollmentId });
 
   if (input.purpose === 'send_message') {
+    const body = await resolveFlowSendBody(pool, target.tenantId, input);
+    if (body !== null) {
+      const sent = await sendFixedOutbound(deps, job, pool, ctx, clock, target, body);
+      if (sent) {
+        await complete(pool, { organizationId: target.tenantId, enrollmentId, nodeId, result: { kind: 'sent' } });
+      }
+      return;
+    }
     await runAgentTurn(deps, job, pool, ctx, {
       channelSessionId: target.channelSessionId,
       conversationId: target.conversationId,
@@ -450,48 +472,74 @@ async function runDeterministicReentry(
   clock: () => Date,
   target: ReentrySendTarget,
 ): Promise<void> {
-  const { tenantId, leadId, channelSessionId, conversationId } = target;
-  const runLog = withFields(deps.log, { job_id: job.id, tenant_id: tenantId, lead_id: leadId });
-
-  // F4-07: silêncio DURÁVEL (bot_silenced_until — handoff explícito F4-06 OU opt-out
-  // ambíguo) veta a re-entrada determinística ANTES de qualquer envio, igual ao NO-OP do
-  // caminho do agente (runAgentTurn). Fecha o caso em que o STOP ambíguo silenciou o lead
-  // mas o CRM ainda não marcou is_blocked (o stopGate por si não pega esse estado).
-  if (await isLeadInHandoff(pool, tenantId, leadId)) {
-    runLog.info('re-entrada determinística pulada — lead silenciado (handoff/opt-out)', { kind: job.kind });
-    return;
-  }
-
-  // Mesma escolha por organização do caminho do agente: a re-entrada
-  // determinística passa pela MESMA cadeia, então tem de honrar a MESMA
-  // preferência. Ler só no inbound deixaria a camada ligada num caminho e
-  // desligada no outro, para a mesma organização.
-  const camadasDaOrg = await lerCamadasDaOrg(pool, tenantId);
-
-  // Template versionado por ponteiro (acc1): sem cache de processo — mover o ponteiro
-  // ⇒ este disparo já usa a versão nova. Tenant sem template apontado = erro de
-  // configuração (permanente): o job vira dead-letter + inbox pela fila, nunca envio mudo.
-  const template = await loadReentryTemplate(pool, tenantId);
+  const template = await loadReentryTemplate(pool, target.tenantId);
   if (template === null) {
     throw new Error('re-entrada determinística sem template apontado para o tenant — publique um template e mova o ponteiro');
   }
-  const body = pickReentryVariant(leadId, template.variants);
+  await sendFixedOutbound(deps, job, pool, ctx, clock, target, pickReentryVariant(target.leadId, template.variants));
+}
 
-  // STOP no turno (fonte: CRM via get_lead_context — regra dura nº 2), como o caminho
-  // do agente. É leitura de CRM, não do modelo: o custo em LLM segue $0.
+function interpolarVoltaDoPayload(texto: string, index: number | undefined, total: number | undefined): string {
+  if (index === undefined || total === undefined) return texto;
+  return texto.replaceAll('{{volta}}', String(index)).replaceAll('{{voltas}}', String(total));
+}
+
+async function resolveFlowSendBody(
+  pool: pg.Pool,
+  tenantId: string,
+  input: {
+    fixedBody: string | undefined;
+    templateId: string | undefined;
+    voltaIndex: number | undefined;
+    voltaTotal: number | undefined;
+  },
+): Promise<string | null> {
+  if (input.fixedBody !== undefined) {
+    return interpolarVoltaDoPayload(input.fixedBody, input.voltaIndex, input.voltaTotal);
+  }
+  if (input.templateId === undefined) return null;
+  const { rows } = await pool.query<{ body: string }>(
+    `select body from message_templates where organization_id = $1 and id = $2 limit 1`,
+    [tenantId, input.templateId],
+  );
+  const body = rows[0]?.body;
+  if (body === undefined || body.length === 0) {
+    throw new Error('followup_turn sem modelo de mensagem — o template_id do passo não existe nesta organização');
+  }
+  return interpolarVoltaDoPayload(body, input.voltaIndex, input.voltaTotal);
+}
+
+/** Envia `body` pela cadeia de guardrails, sem LLM. `true` = o sink aceitou. */
+async function sendFixedOutbound(
+  deps: InboundTurnDeps,
+  job: JobRow,
+  pool: pg.Pool,
+  ctx: { workerId: string },
+  clock: () => Date,
+  target: ReentrySendTarget,
+  body: string,
+): Promise<boolean> {
+  const { tenantId, leadId, channelSessionId, conversationId } = target;
+  const runLog = withFields(deps.log, { job_id: job.id, tenant_id: tenantId, lead_id: leadId });
+
+  if (await isLeadInHandoff(pool, tenantId, leadId)) {
+    runLog.info('envio fixo pulado — lead silenciado (handoff/opt-out)', { kind: job.kind });
+    return false;
+  }
+
+  const camadasDaOrg = await lerCamadasDaOrg(pool, tenantId);
+
   const context = await getLeadContext(pool, deps.crmCfg, { tenantId, leadId }, {
     historyLimit: deps.knobs.historyLimit,
     maxTokens: deps.knobs.maxContextTokens,
   });
   if (!context.ok) {
-    throw new Error(`re-entrada determinística falhou em get_lead_context (${context.error.code})`);
+    throw new Error(`envio fixo do follow-up falhou em get_lead_context (${context.error.code})`);
   }
   const optedOutThisTurn = context.context.contact.is_blocked;
 
   const channel = (deps.channel ?? ((p: pg.Pool) => new WahaChannelAdapter(p, deps.crmCfg)))(pool);
 
-  // seq = 1: uma única mensagem determinística por disparo (identidade (job_id, 1) no
-  // ledger F2-06). Enviar SÓ pela cadeia — nunca por baixo dela (CLAUDE.md princípio 2).
   const chain = await runBeforeSend({
     pool,
     log: runLog,
@@ -501,16 +549,11 @@ async function runDeterministicReentry(
     channelSessionId,
     body,
     optedOutThisTurn,
-    // ponytail: mesmo débito do caminho do agente — o daily_message_limit do CRM ainda
-    // não é lido no runtime; null cai nos degraus de warm-up (conservadores).
     crmDailyLimit: null,
     now: clock(),
     sleep: deps.sleep,
-    // Gate LGPD (F4-09): base legal/anonimização do CRM lidas no turno (fonte confiável).
     lgpd: context.lgpd,
     ...(deps.knobs.disclosureMode !== undefined ? { disclosureMode: deps.knobs.disclosureMode } : {}),
-    // Gate 5 (F4-02/F4-08): mesma camada semântica do caminho do agente — a re-entrada
-    // determinística também passa a candidata pela cadeia completa (ids da ROW do job).
     ...(camadaLigada(camadasDaOrg.promessa_semantica, deps.knobs.promiseSemantic?.enabled === true)
       ? {
           classifyPromiseSemantic: (candidate: string) =>
@@ -523,14 +566,10 @@ async function runDeterministicReentry(
             ),
         }
       : {}),
-    // finalBody = corpo após a cadeia (disclosureGate F4-05 pode prependar o disclosure).
     send: (finalBody) => channel.send({ tenantId, leadId, jobId: job.id, seq: 1, conversationId, body: finalBody }),
   });
 
   if (chain.status === 'vetoed') {
-    // acc3: veto por JANELA anti-ban não dropa — re-agenda para a próxima abertura
-    // (7h + jitter, já calculada pelo gate). Demais vetos (STOP irrevogável, spinning)
-    // NÃO re-agendam: o trace do gate já os registrou.
     if (chain.code === 'outside_window' && chain.nextAllowedAt !== undefined) {
       await rescheduleReentry(pool, {
         tenantId,
@@ -539,14 +578,14 @@ async function runDeterministicReentry(
         at: chain.nextAllowedAt,
         payload: job.payload,
       });
-      runLog.info('re-entrada re-agendada por janela anti-ban', {
+      runLog.info('envio fixo re-agendado por janela anti-ban', {
         code: chain.code,
         next_run_at: chain.nextAllowedAt.toISOString(),
       });
-      return;
+      return false;
     }
-    runLog.info('re-entrada determinística vetada pela cadeia — não re-agendada', { code: chain.code });
-    return;
+    runLog.info('envio fixo vetado pela cadeia — não re-agendado', { code: chain.code });
+    return false;
   }
 
   const outcome = chain.outcome;
@@ -554,21 +593,17 @@ async function runDeterministicReentry(
     case 'sent':
     case 'already_sent':
     case 'queued':
-      // 'queued' = o canal aceitou e segura (sessão fora) — sob custódia do CRM, não
-      // re-agenda (mesma disposição do caminho do agente).
-      runLog.info('re-entrada determinística concluída', { kind: outcome.kind });
-      return;
+      runLog.info('envio fixo concluído', { kind: outcome.kind });
+      return true;
     case 'blocked':
-      // veto permanente do sink (is_blocked): cancela o job e cacheia o opt-out — a
-      // fonte é o CRM, nunca revertido (regra dura nº 2).
       await applySendOutcome(pool, outcome, { jobId: job.id, workerId: ctx.workerId, tenantId, leadId }, {
         queuedRetryDelayMs: deps.knobs.queuedRetryDelayMs,
       });
-      throw new JobSettledError('re-entrada determinística vetada pelo sink (is_blocked) — job cancelado em definitivo');
+      throw new JobSettledError('envio fixo vetado pelo sink (is_blocked) — job cancelado em definitivo');
     case 'failed':
-      throw new Error('re-entrada determinística: CRM marcou o envio como failed — run re-tentado pela fila');
+      throw new Error('envio fixo: CRM marcou o envio como failed — run re-tentado pela fila');
     case 'unavailable':
-      throw new Error(`re-entrada determinística: canal indisponível (${outcome.reason}) — run re-tentado pela fila`);
+      throw new Error(`envio fixo: canal indisponível (${outcome.reason}) — run re-tentado pela fila`);
   }
 }
 

@@ -46,6 +46,8 @@ import {
   CONDITION_TRUE_BRANCH_ID,
   FALLBACK_BRANCH_ID,
   NO_REPLY_BRANCH_ID,
+  REPEAT_BODY_BRANCH_ID,
+  REPEAT_DONE_BRANCH_ID,
   type RESERVED_BRANCH_IDS,
   type actionConfigSchema,
   type aiClassifyConfigSchema,
@@ -313,6 +315,8 @@ export const RAMOS_RESERVADOS_EM_FRASE: Record<RamoReservado, string> = {
   [NO_REPLY_BRANCH_ID]: "quando ninguém responde",
   [CONDITION_TRUE_BRANCH_ID]: "quando a condição é verdadeira",
   [CONDITION_FALSE_BRANCH_ID]: "quando a condição é falsa",
+  [REPEAT_BODY_BRANCH_ID]: "quando ainda falta uma volta",
+  [REPEAT_DONE_BRANCH_ID]: "quando as voltas acabaram",
 };
 
 /**
@@ -368,6 +372,8 @@ export const RAMOS_RESERVADOS: Record<RamoReservado, string> = {
   [NO_REPLY_BRANCH_ID]: conditionLabel({ type: "class_match", value: NO_REPLY_BRANCH_ID }),
   [CONDITION_TRUE_BRANCH_ID]: conditionLabel({ type: "cond_result", value: true }),
   [CONDITION_FALSE_BRANCH_ID]: conditionLabel({ type: "cond_result", value: false }),
+  [REPEAT_BODY_BRANCH_ID]: "Próxima volta",
+  [REPEAT_DONE_BRANCH_ID]: "Acabou",
 };
 
 // ─── classificação pela IA ───────────────────────────────────────────────
@@ -407,6 +413,7 @@ export const MODOS_DE_ESPERA: Record<ModoDeEspera, string> = {
 };
 
 export const MODOS_DA_ACAO: Record<ModoDaAcao, string> = {
+  text: "Texto fixo",
   ai_message: "Mensagem escrita pela IA",
   template: "Modelo de mensagem pronto",
 };
@@ -458,6 +465,7 @@ export const DESFECHOS: Record<EnrollmentOutcome, string> = {
  */
 export const GATILHOS: Record<TipoDeGatilho, string> = {
   manual: "Manual",
+  webhook: "Disparado por uma automação em Webhooks",
   silence: "Silêncio",
   stage_change: "Mudança de etapa no funil",
   // "Caso" é a palavra que a tela de escalação já usa. O rótulo diz o FATO que

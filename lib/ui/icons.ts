@@ -42,6 +42,7 @@ export {
   // actions
   List,
   Bell,
+  BellSlash,
   PaperPlaneTilt,
   Smiley,
   Check,

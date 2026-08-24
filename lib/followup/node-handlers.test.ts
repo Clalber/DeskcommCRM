@@ -700,3 +700,184 @@ describe("processNode — ai_classify migrado para ramos nomeados", () => {
     expect(result).toMatchObject({ kind: "advance", next_node_id: "no-sem-resposta" });
   });
 });
+
+describe("processNode — match_reply", () => {
+  const RAMOS = [
+    { id: "br_sim", label: "Sim", op: "eq" as const, pattern: "sim" },
+    { id: "br_preco", label: "Preço", op: "contains" as const, pattern: "preco" },
+  ];
+
+  function matchNode(): FlowNode {
+    return {
+      id: "mr1",
+      type: "match_reply",
+      label: "Casar",
+      position: { x: 0, y: 0 },
+      config: { branches: RAMOS, grace_timeout_ms: 900_000 },
+    };
+  }
+
+  const edges = [
+    edge({ source: "mr1", target: "no-sim", condition: { type: "branch", branch_id: "br_sim" } }),
+    edge({ source: "mr1", target: "no-preco", condition: { type: "branch", branch_id: "br_preco" } }),
+    edge({ source: "mr1", target: "no-sem-resposta", condition: { type: "branch", branch_id: "no_reply" } }),
+    edge({ source: "mr1", target: "escape", condition: { type: "always" } }),
+  ];
+
+  it("first visit parks with wait + waiting_reply (no enqueue_turn)", () => {
+    const result = processNode({
+      node: matchNode(),
+      edges,
+      enrollment: enrollment(),
+      lead: lead(),
+      clock,
+    });
+    expect(result).toEqual({
+      kind: "wait",
+      next_eval_at: new Date(NOW.getTime() + 900_000),
+      wake_status: "waiting_reply",
+    });
+  });
+
+  it("wokeEarly: first matching branch wins (eq, case-insensitive trim)", () => {
+    const result = processNode({
+      node: matchNode(),
+      edges,
+      enrollment: enrollment(),
+      lead: lead(),
+      clock,
+      waitElapsed: true,
+      wokeEarly: true,
+      lastInboundBody: "  SIM  ",
+    });
+    expect(result).toMatchObject({ kind: "advance", next_node_id: "no-sim" });
+  });
+
+  it("wokeEarly: contains match when eq does not", () => {
+    const result = processNode({
+      node: matchNode(),
+      edges,
+      enrollment: enrollment(),
+      lead: lead(),
+      clock,
+      waitElapsed: true,
+      wokeEarly: true,
+      lastInboundBody: "quero ver o PRECO agora",
+    });
+    expect(result).toMatchObject({ kind: "advance", next_node_id: "no-preco" });
+  });
+
+  it("wokeEarly: no match falls through always/else", () => {
+    const result = processNode({
+      node: matchNode(),
+      edges,
+      enrollment: enrollment(),
+      lead: lead(),
+      clock,
+      waitElapsed: true,
+      wokeEarly: true,
+      lastInboundBody: "talvez depois",
+    });
+    expect(result).toMatchObject({ kind: "advance", next_node_id: "escape" });
+  });
+
+  it("timeout (waitElapsed, not wokeEarly) routes no_reply", () => {
+    const result = processNode({
+      node: matchNode(),
+      edges,
+      enrollment: enrollment(),
+      lead: lead(),
+      clock,
+      waitElapsed: true,
+      wokeEarly: false,
+    });
+    expect(result).toMatchObject({ kind: "advance", next_node_id: "no-sem-resposta" });
+  });
+
+  it("wokeEarly on first occupancy still matches instead of parking", () => {
+    const result = processNode({
+      node: matchNode(),
+      edges,
+      enrollment: enrollment(),
+      lead: lead(),
+      clock,
+      waitElapsed: false,
+      wokeEarly: true,
+      lastInboundBody: "sim",
+    });
+    expect(result).toMatchObject({ kind: "advance", next_node_id: "no-sim" });
+  });
+});
+
+describe("processNode — repeat", () => {
+  function repeatNode(): FlowNode {
+    return {
+      id: "rp1",
+      type: "repeat",
+      label: "Repetir",
+      position: { x: 0, y: 0 },
+      config: { max_count: 12 },
+    };
+  }
+  const edges = [
+    edge({ source: "rp1", target: "corpo", condition: { type: "branch", branch_id: "body" } }),
+    edge({ source: "rp1", target: "fim", condition: { type: "branch", branch_id: "done" } }),
+    edge({ source: "rp1", target: "de-novo", condition: { type: "always" } }),
+  ];
+
+  it("primeira visita com 2 sai para o corpo na volta 1", () => {
+    const result = processNode({
+      node: repeatNode(),
+      edges,
+      enrollment: enrollment(),
+      lead: lead(),
+      clock,
+      lastInboundBody: "2",
+      repeatTaken: 0,
+      repeatTotal: null,
+    });
+    expect(result).toMatchObject({ kind: "advance", next_node_id: "corpo", repeat: { index: 1, total: 2 } });
+  });
+
+  it("zero filhos vai direto para acabou", () => {
+    const result = processNode({
+      node: repeatNode(),
+      edges,
+      enrollment: enrollment(),
+      lead: lead(),
+      clock,
+      lastInboundBody: "nenhum",
+      repeatTaken: 0,
+      repeatTotal: null,
+    });
+    expect(result).toMatchObject({ kind: "advance", next_node_id: "fim" });
+  });
+
+  it("depois de N voltas sai por acabou sem reler a resposta", () => {
+    const result = processNode({
+      node: repeatNode(),
+      edges,
+      enrollment: enrollment(),
+      lead: lead(),
+      clock,
+      lastInboundBody: "Maria tem 8 anos",
+      repeatTaken: 2,
+      repeatTotal: 2,
+    });
+    expect(result).toMatchObject({ kind: "advance", next_node_id: "fim" });
+  });
+
+  it("texto sem número cai no fallback", () => {
+    const result = processNode({
+      node: repeatNode(),
+      edges,
+      enrollment: enrollment(),
+      lead: lead(),
+      clock,
+      lastInboundBody: "não sei",
+      repeatTaken: 0,
+      repeatTotal: null,
+    });
+    expect(result).toMatchObject({ kind: "advance", next_node_id: "de-novo" });
+  });
+});

@@ -12,7 +12,7 @@ import { midpoint } from "@/lib/kanban/fractional-indexing";
 import type { Lead } from "@/lib/types/leads";
 import type { Pipeline, Stage } from "@/lib/kanban/types";
 import { StageColumn } from "./StageColumn";
-import { LeadDossier } from "./LeadDossier";
+import { camposDoFunil } from "@/lib/leads/campos-do-funil";
 
 interface KanbanBoardProps {
   pipelineId: string;
@@ -256,6 +256,7 @@ export function KanbanBoard({
           onOpenChange={(v) => !v && setDossieId(null)}
           lead={leadDoDossie}
           pipelineId={pipelineId}
+          fieldDefs={camposDoFunil(data.pipeline.settings ?? null)}
           stageName={
             data.stages.find((s) => s.id === leadDoDossie.stage_id)?.name ?? "—"
           }

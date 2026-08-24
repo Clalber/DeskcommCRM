@@ -283,6 +283,13 @@ const schema = z.object({
    * poder; a validação do valor é do resolvedor, que degrada e diz o motivo.
    */
   APP_ACCENT_HEX: z.string().optional().default(""),
+
+  /**
+   * Par VAPID do Web Push. Opcionais: sem elas a bandeja só funciona com a aba
+   * viva (Notification API + SW local). Gerar: `npx web-push generate-vapid-keys`.
+   */
+  VAPID_PUBLIC_KEY: z.string().optional().default(""),
+  VAPID_PRIVATE_KEY: z.string().optional().default(""),
 });
 
 let parsed = schema.safeParse(process.env);

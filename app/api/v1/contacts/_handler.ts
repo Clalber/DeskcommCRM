@@ -1,5 +1,5 @@
 /**
- * Core handlers para /api/v1/contacts (lista + get + create + patch).
+ * Core handlers para /api/v1/contacts (lista + get + create + patch + delete).
  *
  * Reusados pelo Route Handler REST e por MCP tools (S-13.03/04).
  * - Recebem actor polimórfico (`user` | `ai_agent`).
@@ -13,6 +13,7 @@ import type { Actor, HandlerCtx } from "@/lib/api/handlers/types";
 import { audit } from "@/lib/audit";
 import { hashCpf, encryptCpfSql } from "@/lib/contacts/cpf";
 import type { Contact } from "@/lib/types/contacts";
+import { ensureConversation, sessaoProntaParaEnvio } from "@/lib/automation/start-conversation";
 import type {
   ContactCreate,
   ContactPatch,
@@ -362,6 +363,16 @@ export async function createContactHandler(
   }
 
   const contact = created as Contact;
+  if (contact.phone_number) {
+    try {
+      const sessionId = await sessaoProntaParaEnvio(supabase, ctx.organization_id);
+      if (sessionId) {
+        await ensureConversation(supabase, ctx.organization_id, contact.id, sessionId);
+      }
+    } catch {
+      // conversa no create é best-effort; o contato já existe
+    }
+  }
 
   await supabase
     .rpc("emit_event", {
@@ -576,4 +587,101 @@ export async function patchContactHandler(
   });
 
   return contact;
+}
+
+// ---------------------------------------------------------------------------
+// delete
+// ---------------------------------------------------------------------------
+
+function throwOnDbError(
+  err: { code?: string; message: string } | null,
+  requestId: string,
+): void {
+  if (!err) return;
+  // conversations/messages apontam para contacts com ON DELETE RESTRICT.
+  if (err.code === "23503") {
+    throw new ApiError(
+      409,
+      "state_conflict",
+      undefined,
+      requestId,
+      "Não foi possível excluir: o contato ainda tem registros vinculados.",
+    );
+  }
+  throw new ApiError(500, "internal_error", undefined, requestId, err.message);
+}
+
+export async function deleteContactHandler(
+  supabase: SB,
+  ctx: HandlerCtx,
+  contactId: string,
+): Promise<{ id: string }> {
+  const { data: existing, error: selErr } = await supabase
+    .from("contacts")
+    .select("id, organization_id")
+    .eq("id", contactId)
+    .eq("organization_id", ctx.organization_id)
+    .maybeSingle();
+
+  if (selErr) {
+    throw new ApiError(500, "internal_error", undefined, ctx.requestId, selErr.message);
+  }
+  if (!existing) {
+    throw new ApiError(404, "not_found", undefined, ctx.requestId, "Contato não encontrado.");
+  }
+
+  // Mensagens e conversas RESTRICT no contato: apagar primeiro, senão o DELETE
+  // da ficha falha para qualquer lead que já falou no canal.
+  const { error: msgErr } = await supabase
+    .from("messages")
+    .delete()
+    .eq("contact_id", contactId)
+    .eq("organization_id", ctx.organization_id);
+  throwOnDbError(msgErr, ctx.requestId);
+
+  const { error: convErr } = await supabase
+    .from("conversations")
+    .delete()
+    .eq("contact_id", contactId)
+    .eq("organization_id", ctx.organization_id);
+  throwOnDbError(convErr, ctx.requestId);
+
+  const { data: deleted, error: delErr } = await supabase
+    .from("contacts")
+    .delete()
+    .eq("id", contactId)
+    .eq("organization_id", ctx.organization_id)
+    .select("id")
+    .maybeSingle();
+  throwOnDbError(delErr, ctx.requestId);
+  if (!deleted) {
+    throw new ApiError(404, "not_found", undefined, ctx.requestId, "Contato não encontrado.");
+  }
+
+  const a = actorAuditPayload(ctx.actor);
+
+  await supabase
+    .rpc("emit_event", {
+      p_event_type: "contact.deleted",
+      p_entity_kind: "contact",
+      p_entity_id: contactId,
+      p_payload: {},
+      p_metadata: { request_id: ctx.requestId, ...a.metadataActor },
+      p_organization_id: ctx.organization_id,
+    })
+    .then(({ error }) => {
+      if (error) console.error("[contacts.delete] emit_event failed", error.message);
+    });
+
+  await audit({
+    action: "contact.deleted",
+    actorUserId: a.actorUserId,
+    organizationId: ctx.organization_id,
+    resourceType: "contact",
+    resourceId: contactId,
+    requestId: ctx.requestId,
+    metadata: a.metadataActor,
+  });
+
+  return { id: deleted.id as string };
 }

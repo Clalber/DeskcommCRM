@@ -13813,4 +13813,55 @@ create unique index if not exists channel_sessions_zernio_account_id_ativo_uniqu
   on public.channel_sessions (zernio_account_id)
   where archived_at is null and zernio_account_id is not null;
 
+-- 0167 — Superfície do pointer de follow-up (IA vs automação CRM).
+-- Default 'followup' para linha já existente. CHECK de conjunto (PARES).
+alter table public.followup_flow_pointers
+  add column if not exists surface text not null default 'followup';
+
+alter table public.followup_flow_pointers
+  drop constraint if exists followup_flow_pointers_surface_check;
+
+alter table public.followup_flow_pointers
+  add constraint followup_flow_pointers_surface_check
+  check (surface in ('followup', 'crm_automation'));
+
+comment on column public.followup_flow_pointers.surface is
+  'Onde o fluxo aparece: followup = /app/ai/followups; crm_automation = CRM Automação. '
+  'Vocabulário cobrado por tests/invariants/vocabulario-banco-x-typescript.test.ts.';
+
+-- 0168 — inscrição Web Push (bandeja do SO com a aba fechada).
+create table if not exists public.push_subscriptions (
+  id uuid primary key default gen_random_uuid(),
+  organization_id uuid not null references public.organizations(id) on delete cascade,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  endpoint text not null unique,
+  p256dh text not null,
+  auth text not null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists push_subscriptions_org_idx
+  on public.push_subscriptions (organization_id);
+
+alter table public.push_subscriptions enable row level security;
+
+drop policy if exists push_subscriptions_own on public.push_subscriptions;
+create policy push_subscriptions_own on public.push_subscriptions
+  for all
+  using (
+    organization_id in (select public.fn_user_org_ids())
+    and user_id = auth.uid()
+  )
+  with check (
+    organization_id in (select public.fn_user_org_ids())
+    and user_id = auth.uid()
+  );
+
+revoke all on public.push_subscriptions from anon, public;
+grant select, insert, update, delete on public.push_subscriptions to authenticated;
+
+comment on table public.push_subscriptions is
+  'Inscrição Web Push por navegador. Envio é service role; a sessão só vê a própria linha.';
+
 notify pgrst, 'reload schema';

@@ -18,6 +18,7 @@ import type { AdminClient, EnrollmentPatch } from "./engine";
 import { flowGraphSchema } from "./graph-schema";
 import { classEdgeMatch, selectEdge, type EnrollmentRow } from "./node-handlers";
 import { coletarEsperasAdaptativas, montarTimingPlan, type PropostaDeEspera } from "./timing-plan";
+import { persistirRespostaFollowupPg } from "./persistir-resposta";
 
 /** Superset de AdminClient: a ponte precisa do snapshot COMPLETO do enrollment
  *  (current_node_id/version_id/steps_taken) pra montar o passo de conclusão —
@@ -240,9 +241,22 @@ export function createPgAdminClient(pool: pg.Pool): TurnBridgeAdminClient {
       if (rows.length === 0) return { lead_stage: null, tags: [] };
       return { lead_stage: rows[0]!.stage_id, tags: rows[0]!.tags };
     },
+    async loadLastInboundBody(orgId, contactId, conversationId) {
+      const params: unknown[] = [orgId, contactId];
+      const conv = conversationId ? "and conversation_id = $3" : "";
+      if (conversationId) params.push(conversationId);
+      const { rows } = await pool.query<{ body: string | null }>(
+        `select body from messages
+         where organization_id = $1 and contact_id = $2 and direction = 'inbound' ${conv}
+         order by sent_at desc limit 1`,
+        params,
+      );
+      const body = rows[0]?.body;
+      return typeof body === "string" ? body : null;
+    },
     async loadEnrollmentEvents(enrollmentId) {
       const { rows } = await pool.query(
-        `select node_id, idempotency_key from followup_enrollment_events where enrollment_id = $1`,
+        `select node_id, idempotency_key, event_type, payload from followup_enrollment_events where enrollment_id = $1 order by created_at asc`,
         [enrollmentId],
       );
       return rows;
@@ -284,6 +298,9 @@ export function createPgAdminClient(pool: pg.Pool): TurnBridgeAdminClient {
          values ($1, 'followup_dead', 'warn', $2, $3, 'followup_enrollment', $4)`,
         [item.organization_id, item.title, item.body, item.ref_id],
       );
+    },
+    async persistirRespostaFollowup(input) {
+      await persistirRespostaFollowupPg((sql, params) => pool.query(sql, params), input);
     },
   };
 }

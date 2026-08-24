@@ -220,9 +220,8 @@ async function reactToInbound(
 
     // Acorda: marker de step próprio (`${node}:${steps}:wake`) — NÃO o
     // idempotency_key de step (`${node}:${steps-1}`) que resolveWaitPhase
-    // checa. `steps_taken` não muda por essa escrita (só engine.ts avança
-    // steps_taken ao aplicar um NodeResult) — o marker fica válido até o
-    // tick reprocessar esta MESMA ocupação do nó.
+    // checa. Vale para `ai_classify` e `match_reply` (ambos estacionam em
+    // `waiting_reply`). `cancel_on_reply` acima cancela a inscrição inteira.
     const wakeKey = `${e.current_node_id}:${e.steps_taken}:wake`;
     // `next_eval_at` vem do BANCO; `updated_at` continua do processo de
     // propósito — ele é carimbo de auditoria, ninguém o compara com `now()`.

@@ -321,6 +321,7 @@ export const AUDIT_ACTIONS = [
   "ai.budget_limit_changed",
   "ai.budget_enforcement_armed",
   "ai.budget_enforcement_disarmed",
+  "contact.deleted",
 ] as const;
 
 /** Um código de auditoria. Derivado de `AUDIT_ACTIONS` — não redigite a lista. */

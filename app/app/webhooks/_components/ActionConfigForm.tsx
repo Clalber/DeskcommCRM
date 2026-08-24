@@ -1,5 +1,6 @@
 "use client";
 import * as React from "react";
+import { useQuery } from "@tanstack/react-query";
 
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -15,13 +16,16 @@ import {
 import { usePipelines, usePipelineStages } from "@/hooks/webhooks/useWebhookSources";
 import { channelLabel, useChannelSessions } from "@/hooks/channels/useChannelSessions";
 import { useAssignableMembers } from "@/hooks/inbox/useAssignableMembers";
+import { apiClient } from "@/lib/api/client";
+import type { FollowupFlowPointerRow } from "@/hooks/followup/useFollowupFlows";
 
 export type ActionItem =
   | { type: "create_or_move_lead"; config: { pipeline_id: string; stage_id: string } }
   | { type: "send_whatsapp_message"; config: { channel_session_id: string; template: string } }
   | { type: "add_tag"; config: { tags: string[] } }
   | { type: "assign_owner"; config: { user_id: string } }
-  | { type: "call_webhook"; config: { url: string; secret?: string; secret_enc?: string } };
+  | { type: "call_webhook"; config: { url: string; secret?: string; secret_enc?: string } }
+  | { type: "start_message_flow"; config: { flow_pointer_id: string } };
 
 export function defaultActionConfig(type: ActionItem["type"]): ActionItem {
   switch (type) {
@@ -35,6 +39,8 @@ export function defaultActionConfig(type: ActionItem["type"]): ActionItem {
       return { type, config: { user_id: "" } };
     case "call_webhook":
       return { type, config: { url: "" } };
+    case "start_message_flow":
+      return { type, config: { flow_pointer_id: "" } };
   }
 }
 
@@ -266,6 +272,50 @@ function CallWebhookForm({
   );
 }
 
+function StartMessageFlowForm({ config, onChange }: FormProps<{ flow_pointer_id: string }>) {
+  const { data, isLoading } = useQuery({
+    queryKey: ["followup", "flows", "list"],
+    queryFn: async () => {
+      const res = await apiClient.get<{ data: FollowupFlowPointerRow[] }>(
+        "/api/v1/ai/followup-flows",
+      );
+      return res.data;
+    },
+  });
+  const active = (data ?? []).filter((f) => f.status === "active");
+
+  return (
+    <div className="space-y-1">
+      <Label>Fluxo de follow-up</Label>
+      <Select
+        value={config.flow_pointer_id}
+        onValueChange={(v) => onChange({ flow_pointer_id: v })}
+        disabled={isLoading}
+      >
+        <SelectTrigger>
+          <SelectValue placeholder="Escolha um fluxo publicado" />
+        </SelectTrigger>
+        <SelectContent>
+          {active.map((f) => (
+            <SelectItem key={f.id} value={f.id}>
+              {f.name}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      {!isLoading && active.length === 0 ? (
+        <p className="text-xs text-muted-foreground">
+          Nenhum fluxo ativo. Publique um follow-up em Follow-ups para usá-lo aqui.
+        </p>
+      ) : (
+        <p className="text-xs text-muted-foreground">
+          Só entram fluxos publicados e ativos.
+        </p>
+      )}
+    </div>
+  );
+}
+
 export function ActionConfigForm({
   action,
   onChange,
@@ -305,6 +355,13 @@ export function ActionConfigForm({
     case "call_webhook":
       return (
         <CallWebhookForm
+          config={action.config}
+          onChange={(config) => onChange({ type: action.type, config })}
+        />
+      );
+    case "start_message_flow":
+      return (
+        <StartMessageFlowForm
           config={action.config}
           onChange={(config) => onChange({ type: action.type, config })}
         />

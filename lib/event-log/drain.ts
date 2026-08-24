@@ -37,7 +37,23 @@ export async function drainEventLog(
   const summary: DrainSummary = { scanned: 0, done: 0, retried: 0, failed: 0, dead: 0 };
 
   const handledTypes = [...new Set(getRegisteredHandlers().flatMap((h) => h.events))];
-  if (!handledTypes.length) return summary;
+  if (!handledTypes.length) {
+    // #region agent log
+    fetch("http://127.0.0.1:7701/ingest/87ca3154-89cc-4a8f-92e3-eaa13aed4946", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "a1ee90" },
+      body: JSON.stringify({
+        sessionId: "a1ee90",
+        hypothesisId: "B",
+        location: "lib/event-log/drain.ts:no-handlers",
+        message: "no registered handlers",
+        data: {},
+        timestamp: Date.now(),
+      }),
+    }).catch(() => {});
+    // #endregion
+    return summary;
+  }
 
   const nowIso = new Date().toISOString();
   const { data: rows, error } = await admin
@@ -57,8 +73,41 @@ export async function drainEventLog(
 
   if (error) {
     logger.error("[event-log.drain] select failed", { error: error.message });
+    // #region agent log
+    fetch("http://127.0.0.1:7701/ingest/87ca3154-89cc-4a8f-92e3-eaa13aed4946", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "a1ee90" },
+      body: JSON.stringify({
+        sessionId: "a1ee90",
+        hypothesisId: "B",
+        location: "lib/event-log/drain.ts:select-error",
+        message: "event_log select failed",
+        data: { error: error.message, handledTypes },
+        timestamp: Date.now(),
+      }),
+    }).catch(() => {});
+    // #endregion
     return summary;
   }
+
+  // #region agent log
+  fetch("http://127.0.0.1:7701/ingest/87ca3154-89cc-4a8f-92e3-eaa13aed4946", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "a1ee90" },
+    body: JSON.stringify({
+      sessionId: "a1ee90",
+      hypothesisId: "B",
+      location: "lib/event-log/drain.ts:selected",
+      message: "pending events selected",
+      data: {
+        handledTypes,
+        rowCount: (rows ?? []).length,
+        types: (rows ?? []).map((r) => (r as { event_type?: string }).event_type),
+      },
+      timestamp: Date.now(),
+    }),
+  }).catch(() => {});
+  // #endregion
 
   for (const raw of rows ?? []) {
     const row = raw as unknown as EventRow;

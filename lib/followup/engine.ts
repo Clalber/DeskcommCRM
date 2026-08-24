@@ -13,11 +13,15 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { logger } from "@/lib/logger";
 
-import { flowGraphSchema, type FlowGraph, type FlowNode } from "./graph-schema";
+import { flowGraphSchema, type FlowGraph, type FlowNode, type ReplySaveTo } from "./graph-schema";
 import {
   ACTION_RECHECK_MS,
   BACKOFF_MS,
+  latestRepeatIndex,
+  occupancyEventCount,
   processNode,
+  repeatTakenFromEvents,
+  repeatTotalFromEvents,
   resolveWaitPhase,
   type EnrollmentEventRef,
   type EnrollmentOutcome,
@@ -27,8 +31,9 @@ import {
   type NodeResult,
 } from "./node-handlers";
 import { coletarEsperasAdaptativas, type EsperaAdaptativa, type TimingPlan } from "./timing-plan";
+import { interpolarDestino, persistirRespostaFollowupSupabase } from "./persistir-resposta";
 
-const MAX_STEPS = 30;
+const MAX_STEPS = 80;
 const CLAIM_LEASE_SECONDS = 120;
 const DEFAULT_CLAIM_LIMIT = 20;
 const MAX_ERROR_LEN = 300;
@@ -58,6 +63,12 @@ export interface FollowupJobRequest {
     purpose: "send_message" | "classify" | "plan_timing";
     /** action (mode 'ai_message') — Task 5.1: repassado ao turno pra virar o bloco de orientação. */
     prompt_hint?: string;
+    /** action (mode 'text') — corpo pronto; o turno envia sem chamar o modelo. */
+    fixed_body?: string;
+    /** action (mode 'template') — id em `message_templates`; o turno carrega o corpo e envia sem modelo. */
+    template_id?: string;
+    volta_index?: number;
+    volta_total?: number;
     /** ai_classify — Task 5.1: classes possíveis + dica opcional pro classificador. */
     classes?: string[];
     hint?: string;
@@ -74,6 +85,12 @@ export interface AdminClient {
   loadFlowGraph(orgId: string, versionId: string): Promise<FlowGraph | null>;
   loadLeadFacts(orgId: string, contactId: string): Promise<{ lead_stage: string | null; tags: string[] }>;
   loadEnrollmentEvents(enrollmentId: string): Promise<EnrollmentEventRef[]>;
+  /** Latest inbound `messages.body` for the contact (optionally scoped to the enrollment conversation). */
+  loadLastInboundBody(
+    orgId: string,
+    contactId: string,
+    conversationId: string | null,
+  ): Promise<string | null>;
   /** Inserts the step's audit event; `inserted:false` means idempotency_key already existed (23505 replay). */
   insertEnrollmentEvent(event: {
     organization_id: string;
@@ -86,6 +103,12 @@ export interface AdminClient {
   updateEnrollment(id: string, orgId: string, patch: EnrollmentPatch): Promise<void>;
   loadFlowPointerName(orgId: string, pointerId: string): Promise<string | null>;
   insertDeadInboxItem(item: { organization_id: string; title: string; body: string; ref_id: string }): Promise<void>;
+  persistirRespostaFollowup(input: {
+    organization_id: string;
+    contact_id: string;
+    save_to: ReplySaveTo;
+    value: string;
+  }): Promise<void>;
 }
 
 export interface TickDeps {
@@ -145,8 +168,15 @@ function eventPayload(result: NodeResult): Record<string, unknown> {
       return {
         next_node_id: result.next_node_id,
         ...(result.reason !== undefined ? { reason: result.reason } : {}),
+        ...(result.repeat !== undefined
+          ? { repeat_index: result.repeat.index, repeat_total: result.repeat.total }
+          : {}),
       };
     case "wait":
+      return {
+        next_eval_at: result.next_eval_at.toISOString(),
+        ...(result.wake_status !== undefined ? { wake_status: result.wake_status } : {}),
+      };
     case "recheck":
       return { next_eval_at: result.next_eval_at.toISOString() };
     case "enqueue_turn":
@@ -166,9 +196,29 @@ function eventPayload(result: NodeResult): Record<string, unknown> {
  * action, classes/hint do ai_classify, guidance do wait smart) pra saber o que
  * fazer; sem isso o job só teria os 3 campos genéricos (enrollment/node/purpose).
  */
-function turnPayloadExtras(node: FlowNode, smartWaits: EsperaAdaptativa[]): Partial<FollowupJobRequest["payload"]> {
+function interpolarVolta(texto: string, events: EnrollmentEventRef[]): string {
+  const volta = latestRepeatIndex(events);
+  if (!volta) return texto;
+  return texto.replaceAll("{{volta}}", String(volta.index)).replaceAll("{{voltas}}", String(volta.total));
+}
+
+function turnPayloadExtras(
+  node: FlowNode,
+  smartWaits: EsperaAdaptativa[],
+  events: EnrollmentEventRef[] = [],
+): Partial<FollowupJobRequest["payload"]> {
   if (node.type === "action" && node.config.mode === "ai_message") {
-    return { prompt_hint: node.config.prompt_hint };
+    return { prompt_hint: interpolarVolta(node.config.prompt_hint, events) };
+  }
+  if (node.type === "action" && node.config.mode === "text") {
+    return { fixed_body: interpolarVolta(node.config.body, events) };
+  }
+  if (node.type === "action" && node.config.mode === "template") {
+    const volta = latestRepeatIndex(events);
+    return {
+      template_id: node.config.template_id,
+      ...(volta ? { volta_index: volta.index, volta_total: volta.total } : {}),
+    };
   }
   if (node.type === "ai_classify") {
     return { classes: node.config.classes, ...(node.config.hint !== undefined ? { hint: node.config.hint } : {}) };
@@ -258,6 +308,8 @@ async function applyResult(
   result: NodeResult,
   summary: TickSummary,
   smartWaits: EsperaAdaptativa[] = [],
+  events: EnrollmentEventRef[] = [],
+  respostaParaGravar: string | null = null,
 ): Promise<void> {
   const { db, clock, enqueueJob } = deps;
 
@@ -297,8 +349,25 @@ async function applyResult(
       patch.current_node_id = result.next_node_id;
       patch.status = "active";
       patch.next_eval_at = result.next_eval_at.toISOString();
+      if (
+        !isReplay &&
+        respostaParaGravar &&
+        node.type === "match_reply" &&
+        node.config.save_to
+      ) {
+        await db.persistirRespostaFollowup({
+          organization_id: enrollment.organization_id,
+          contact_id: enrollment.contact_id,
+          save_to: interpolarDestino(node.config.save_to, events),
+          value: respostaParaGravar,
+        });
+      }
       break;
     case "wait":
+      patch.current_node_id = enrollment.current_node_id;
+      patch.status = result.wake_status ?? "active";
+      patch.next_eval_at = result.next_eval_at.toISOString();
+      break;
     case "recheck":
       // recheck = action turn in flight: stay on the node, stay active, look again after the
       // recheck delay. No enqueueJob (the whole point) — the in-flight turn owns the send.
@@ -335,7 +404,7 @@ async function applyResult(
             followup_enrollment_id: enrollment.id,
             node_id: node.id,
             purpose: result.purpose,
-            ...turnPayloadExtras(node, smartWaits),
+            ...turnPayloadExtras(node, smartWaits, events),
           },
         });
       }
@@ -385,43 +454,54 @@ async function processEnrollment(deps: TickDeps, enrollment: EnrollmentRow, summ
   let actionRecheckCount: number | undefined;
   let planEnqueued: boolean | undefined;
   let planRecheckCount: number | undefined;
+  let repeatTaken: number | undefined;
+  let repeatTotal: number | null | undefined;
+  let events: EnrollmentEventRef[] = [];
 
-  // Acionamento: as esperas adaptativas do fluxo. Só o trigger precisa delas (é
-  // ele quem manda planejar), e só quando ainda não há plano — fluxo v1 e
-  // enrollment já planejado não pagam nem a coleta nem a leitura de eventos.
   const smartWaits = node.type === "trigger" ? coletarEsperasAdaptativas(graph.nodes) : [];
   const vaiPlanejar = smartWaits.length > 0 && (enrollment.timing_plan ?? null) === null;
+  const precisaEventos =
+    vaiPlanejar ||
+    node.type === "wait" ||
+    node.type === "ai_classify" ||
+    node.type === "match_reply" ||
+    node.type === "action" ||
+    node.type === "repeat";
+
+  if (precisaEventos) {
+    events = await db.loadEnrollmentEvents(enrollment.id);
+  }
 
   if (vaiPlanejar) {
-    const events = await db.loadEnrollmentEvents(enrollment.id);
-    // Mesmo guard de ocupação do action: "um turno para ESTA estadia no nó já
-    // foi enfileirado?" — sem ele, cada recheck geraria um 2º job de plano.
     planEnqueued = resolveWaitPhase(events, node.id, enrollment.steps_taken);
     planRecheckCount = events.filter((e) => e.node_id === node.id).length;
   }
 
-  if (node.type === "wait" || node.type === "ai_classify" || node.type === "action") {
-    const events = await db.loadEnrollmentEvents(enrollment.id);
-    // Same prior-step-event check for all three: "did we already act on this node at this
-    // occupancy?" — resolveWaitPhase looks for `${node}:${steps_taken - 1}`. For `action`
-    // this is the occupancy guard that makes the send enqueue EXACTLY ONCE (a recheck sees
-    // the prior `turn_enqueued` event and skips re-enqueuing).
+  if (node.type === "wait" || node.type === "ai_classify" || node.type === "match_reply" || node.type === "action") {
     waitElapsed = resolveWaitPhase(events, node.id, enrollment.steps_taken);
-    if (node.type === "ai_classify") {
-      // Marker próprio de reactivity (Task 5.2, lib/followup/reactivity.ts) —
-      // `${node.id}:${steps_taken}:wake`, distinto do idempotency_key de passo
-      // (`${node.id}:${steps_taken - 1}`) que waitElapsed checa. Existe ⇒ um
-      // inbound chegou nesta ocupação do nó; desempata contra o "no_reply" do
-      // fix da Task 5.1 (ambos re-entram via a MESMA waitElapsed=true).
+    if (node.type === "ai_classify" || node.type === "match_reply") {
       const wakeKey = `${node.id}:${enrollment.steps_taken}:wake`;
       wokeEarly = events.some((e) => e.node_id === node.id && e.idempotency_key === wakeKey);
     }
     if (node.type === "action") {
       actionEnqueued = waitElapsed;
-      // Dead-man counter: events on THIS action node (action never enters waiting_reply, so
-      // reactivity never writes a `:wake` marker for it — this counts turn_enqueued + recheck).
-      actionRecheckCount = events.filter((e) => e.node_id === node.id).length;
+      actionRecheckCount = occupancyEventCount(events, node.id);
     }
+  }
+
+  if (node.type === "repeat") {
+    repeatTaken = repeatTakenFromEvents(events, node.id);
+    repeatTotal = repeatTotalFromEvents(events, node.id);
+  }
+
+  let lastInboundBody: string | undefined;
+  if ((node.type === "match_reply" && wokeEarly) || (node.type === "repeat" && repeatTotal == null)) {
+    lastInboundBody =
+      (await db.loadLastInboundBody(
+        enrollment.organization_id,
+        enrollment.contact_id,
+        enrollment.conversation_id,
+      )) ?? "";
   }
 
   const result = processNode({
@@ -432,13 +512,25 @@ async function processEnrollment(deps: TickDeps, enrollment: EnrollmentRow, summ
     clock,
     waitElapsed,
     wokeEarly,
+    lastInboundBody,
     actionEnqueued,
     actionRecheckCount,
     smartWaits,
     planEnqueued,
     planRecheckCount,
+    repeatTaken,
+    repeatTotal,
   });
-  await applyResult(deps, enrollment, node, result, summary, smartWaits);
+  await applyResult(
+    deps,
+    enrollment,
+    node,
+    result,
+    summary,
+    smartWaits,
+    events,
+    node.type === "match_reply" && wokeEarly ? (lastInboundBody ?? "").trim() || null : null,
+  );
 }
 
 export async function runFollowupTick(deps: TickDeps, opts?: { limit?: number }): Promise<TickSummary> {
@@ -516,13 +608,34 @@ export function createSupabaseAdminClient(admin: SupabaseClient): AdminClient {
       if (error) throw new Error(error.message);
       return { lead_stage: data?.stage_id ?? null, tags: data?.tags ?? [] };
     },
+    async loadLastInboundBody(orgId, contactId, conversationId) {
+      let q = admin
+        .from("messages")
+        .select("body")
+        .eq("organization_id", orgId)
+        .eq("contact_id", contactId)
+        .eq("direction", "inbound");
+      if (conversationId) q = q.eq("conversation_id", conversationId);
+      const { data, error } = await q.order("sent_at", { ascending: false }).limit(1).maybeSingle();
+      if (error) throw new Error(error.message);
+      return typeof data?.body === "string" ? data.body : null;
+    },
     async loadEnrollmentEvents(enrollmentId) {
       const { data, error } = await admin
         .from("followup_enrollment_events")
-        .select("node_id, idempotency_key")
-        .eq("enrollment_id", enrollmentId);
+        .select("node_id, idempotency_key, event_type, payload")
+        .eq("enrollment_id", enrollmentId)
+        .order("created_at", { ascending: true });
       if (error) throw new Error(error.message);
-      return data ?? [];
+      return (data ?? []).map((row) => ({
+        node_id: row.node_id,
+        idempotency_key: row.idempotency_key,
+        event_type: row.event_type,
+        payload:
+          row.payload && typeof row.payload === "object" && !Array.isArray(row.payload)
+            ? (row.payload as Record<string, unknown>)
+            : null,
+      }));
     },
     async insertEnrollmentEvent(event) {
       const { error } = await admin.from("followup_enrollment_events").insert(event);
@@ -557,6 +670,9 @@ export function createSupabaseAdminClient(admin: SupabaseClient): AdminClient {
         ref_id: item.ref_id,
       });
       if (error) throw new Error(error.message);
+    },
+    async persistirRespostaFollowup(input) {
+      await persistirRespostaFollowupSupabase(admin, input);
     },
   };
 }

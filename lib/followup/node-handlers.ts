@@ -3,8 +3,9 @@
  * `engine.ts` owns the tick/DB orchestration; this file only decides "given
  * this node + these facts, what happens next" so it's testable without Postgres.
  */
-import { NO_REPLY_BRANCH_ID, nodeBranches } from "./graph-schema";
+import { NO_REPLY_BRANCH_ID, REPEAT_BODY_BRANCH_ID, REPEAT_DONE_BRANCH_ID, nodeBranches } from "./graph-schema";
 import type { FlowEdge, FlowNode } from "./graph-schema";
+import { parseReplyCount } from "./parse-count";
 import { clampEspera, esperaPlanejadaDe, type EsperaAdaptativa } from "./timing-plan";
 
 export type EnrollmentStatus =
@@ -63,14 +64,17 @@ export interface LeadFacts {
 export interface EnrollmentEventRef {
   node_id: string | null;
   idempotency_key: string | null;
+  event_type?: string | null;
+  payload?: Record<string, unknown> | null;
 }
 
 export type NodeResult =
   // `reason` só aparece quando o avanço NÃO é o avanço comum: hoje, o trigger
   // desistindo do plano de tempo (o turno nunca voltou). Vira event_type próprio
   // no engine — seguir sem plano é um fato que o operador precisa poder ler.
-  | { kind: "advance"; next_node_id: string; next_eval_at: Date; reason?: "plan_timeout" }
-  | { kind: "wait"; next_eval_at: Date } // stays on the node
+  | { kind: "advance"; next_node_id: string; next_eval_at: Date; reason?: "plan_timeout"; repeat?: { index: number; total: number } }
+  // stays on the node. `wake_status` parks `match_reply` in waiting_reply without a job.
+  | { kind: "wait"; next_eval_at: Date; wake_status?: "active" | "waiting_reply" }
   | {
       kind: "enqueue_turn";
       purpose: "send_message" | "classify" | "plan_timing";
@@ -128,7 +132,7 @@ export type EdgeMatch =
  * escreveu.
  */
 export function classEdgeMatch(
-  node: Extract<FlowNode, { type: "ai_classify" }>,
+  node: Extract<FlowNode, { type: "ai_classify" | "match_reply" }>,
   classe: string,
 ): EdgeMatch {
   const ramo = nodeBranches(node).find(
@@ -175,6 +179,38 @@ export function selectEdge(edges: FlowEdge[], from: string, match: EdgeMatch): F
  * already start this wait" is exactly "does the event for the PRIOR step on
  * this node exist".
  */
+export function occupancyEventCount(events: EnrollmentEventRef[], nodeId: string): number {
+  let n = 0;
+  for (let i = events.length - 1; i >= 0; i--) {
+    if (events[i]!.node_id !== nodeId) break;
+    n++;
+  }
+  return n;
+}
+
+export function repeatTakenFromEvents(events: EnrollmentEventRef[], nodeId: string): number {
+  return events.filter(
+    (e) => e.node_id === nodeId && typeof e.payload?.repeat_index === "number",
+  ).length;
+}
+
+export function repeatTotalFromEvents(events: EnrollmentEventRef[], nodeId: string): number | null {
+  for (let i = events.length - 1; i >= 0; i--) {
+    const total = events[i]!.payload?.repeat_total;
+    if (events[i]!.node_id === nodeId && typeof total === "number") return total;
+  }
+  return null;
+}
+
+export function latestRepeatIndex(events: EnrollmentEventRef[]): { index: number; total: number } | null {
+  for (let i = events.length - 1; i >= 0; i--) {
+    const index = events[i]!.payload?.repeat_index;
+    const total = events[i]!.payload?.repeat_total;
+    if (typeof index === "number" && typeof total === "number") return { index, total };
+  }
+  return null;
+}
+
 export function resolveWaitPhase(events: EnrollmentEventRef[], nodeId: string, stepsTaken: number): boolean {
   const priorKey = `${nodeId}:${stepsTaken - 1}`;
   return events.some((e) => e.node_id === nodeId && e.idempotency_key === priorKey);
@@ -241,6 +277,8 @@ export function processNode(input: {
   clock: () => Date;
   waitElapsed?: boolean;
   wokeEarly?: boolean;
+  /** Last inbound `messages.body` for this contact/conversation — engine loads on `match_reply` + wokeEarly. */
+  lastInboundBody?: string;
   /** action occupancy guard: a `turn_enqueued` event for THIS stay on the action node already
    *  exists (an entry/recheck happened before). Resolved by the engine via `resolveWaitPhase`
    *  — same prior-step-event check as `wait`. When true, the send turn is in flight: DON'T
@@ -258,6 +296,10 @@ export function processNode(input: {
   /** trigger dead-man counter: eventos já acumulados no nó trigger — limita os rechecks para que
    *  um turno de planejamento que nunca volta siga SEM plano em vez de esperar para sempre. */
   planRecheckCount?: number;
+  /** `repeat`: quantas voltas deste nó já saíram por `body` (eventos com repeat_index). */
+  repeatTaken?: number;
+  /** `repeat`: N armado na primeira visita; null = ainda precisa parsear lastInboundBody. */
+  repeatTotal?: number | null;
 }): NodeResult {
   const {
     node,
@@ -267,11 +309,14 @@ export function processNode(input: {
     lead,
     waitElapsed,
     wokeEarly,
+    lastInboundBody,
     actionEnqueued,
     actionRecheckCount,
     smartWaits,
     planEnqueued,
     planRecheckCount,
+    repeatTaken,
+    repeatTotal,
   } = input;
 
   switch (node.type) {
@@ -371,6 +416,75 @@ export function processNode(input: {
       return { kind: "advance", next_node_id: edge.target, next_eval_at: clock() };
     }
 
+    case "match_reply": {
+      if (!waitElapsed && !wokeEarly) {
+        return {
+          kind: "wait",
+          next_eval_at: new Date(clock().getTime() + node.config.grace_timeout_ms),
+          wake_status: "waiting_reply",
+        };
+      }
+      if (wokeEarly) {
+        const body = (lastInboundBody ?? "").trim().toLowerCase();
+        const hit = node.config.branches.find((b) => {
+          const needle = b.pattern.trim().toLowerCase();
+          if (needle.length === 0) return false;
+          return b.op === "eq" ? body === needle : body.includes(needle);
+        });
+        const edge = hit
+          ? selectEdge(edges, node.id, { type: "branch", branch_id: hit.id })
+          : selectEdge(edges, node.id, { type: "always" });
+        if (!edge) {
+          return {
+            kind: "fail",
+            error: `match_reply node "${node.id}" has no edge for branch "${hit?.id ?? "else"}" (fallback also missing)`,
+          };
+        }
+        return { kind: "advance", next_node_id: edge.target, next_eval_at: clock() };
+      }
+      const edge = selectEdge(edges, node.id, classEdgeMatch(node, NO_REPLY_BRANCH_ID));
+      if (!edge) {
+        return {
+          kind: "fail",
+          error: `match_reply node "${node.id}" has no edge for class "no_reply" (fallback also missing)`,
+        };
+      }
+      return { kind: "advance", next_node_id: edge.target, next_eval_at: clock() };
+    }
+
+    case "repeat": {
+      const taken = repeatTaken ?? 0;
+      let total = repeatTotal ?? null;
+      if (total === null) {
+        const parsed = parseReplyCount(lastInboundBody, node.config.max_count);
+        if (parsed === null) {
+          const edge = selectEdge(edges, node.id, { type: "always" });
+          if (!edge) {
+            return { kind: "fail", error: `repeat node "${node.id}" has no fallback edge for an unreadable count` };
+          }
+          return { kind: "advance", next_node_id: edge.target, next_eval_at: clock() };
+        }
+        total = parsed;
+      }
+      if (taken >= total) {
+        const edge = selectEdge(edges, node.id, { type: "branch", branch_id: REPEAT_DONE_BRANCH_ID });
+        if (!edge) {
+          return { kind: "fail", error: `repeat node "${node.id}" has no edge for branch "${REPEAT_DONE_BRANCH_ID}"` };
+        }
+        return { kind: "advance", next_node_id: edge.target, next_eval_at: clock(), repeat: { index: taken, total } };
+      }
+      const edge = selectEdge(edges, node.id, { type: "branch", branch_id: REPEAT_BODY_BRANCH_ID });
+      if (!edge) {
+        return { kind: "fail", error: `repeat node "${node.id}" has no edge for branch "${REPEAT_BODY_BRANCH_ID}"` };
+      }
+      return {
+        kind: "advance",
+        next_node_id: edge.target,
+        next_eval_at: clock(),
+        repeat: { index: taken + 1, total },
+      };
+    }
+
     case "action": {
       // At-most-once send: enqueue the turn EXACTLY ONCE per occupancy. First entry
       // (no prior occupancy event) enqueues; a recheck fired while the turn is still in
@@ -382,12 +496,9 @@ export function processNode(input: {
       if (!actionEnqueued) {
         return { kind: "enqueue_turn", purpose: "send_message", wake_status: "active" };
       }
-      // Dead-man: the turn never completed (worker down / turn permanently failing). Never
-      // re-enqueue, never wait forever — after MAX_ACTION_RECHECKS idle rechecks give up.
-      // ponytail: recheck budget is counted per-node over the enrollment's lifetime, so a
-      // flow that LOOPS back to the same action node shares the budget (re-sending on a
-      // loop is itself an anti-ban smell). Precise per-occupancy counting would need the
-      // event_type, which EnrollmentEventRef doesn't carry — upgrade there if loops appear.
+      // Dead-man: the turn never completed. Rechecks count THIS occupancy only
+      // (`occupancyEventCount`) so a `repeat` that volta no mesmo nó de ação não
+      // herda o orçamento das voltas anteriores.
       if ((actionRecheckCount ?? 0) >= MAX_ACTION_RECHECKS) {
         return { kind: "dead", reason: "action_turn_never_completed" };
       }

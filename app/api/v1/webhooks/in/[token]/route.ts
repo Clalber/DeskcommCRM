@@ -19,6 +19,7 @@ import type { CreateLeadInput } from "@/lib/schemas";
 import { mapInboundPayload, verifyInboundSignature, type FieldMap } from "@/lib/webhooks/inbound";
 import { decryptWebhookSecret } from "@/lib/webhooks/secrets";
 import { ApiError } from "@/lib/api/types";
+import { kickLocalPipeline } from "@/lib/dev/kick-local-pipeline";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -287,6 +288,23 @@ export async function POST(req: NextRequest, ctx: RouteCtx): Promise<NextRespons
     requestId,
     metadata: { webhook_source_id: source.id },
   });
+
+  // localhost: sem crontab. Prod não entra aqui (NODE_ENV=production).
+  // #region agent log
+  fetch("http://127.0.0.1:7701/ingest/87ca3154-89cc-4a8f-92e3-eaa13aed4946", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "a1ee90" },
+    body: JSON.stringify({
+      sessionId: "a1ee90",
+      hypothesisId: "A",
+      location: "app/api/v1/webhooks/in/[token]/route.ts:before-kick",
+      message: "webhook lead created, kicking local pipeline",
+      data: { nodeEnv: process.env.NODE_ENV ?? null, hasLeadId: Boolean(lead.id) },
+      timestamp: Date.now(),
+    }),
+  }).catch(() => {});
+  // #endregion
+  await kickLocalPipeline(admin);
 
   return respondWithLead(String(lead.id));
 }

@@ -4,14 +4,14 @@
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-import { ensureConversation } from "@/lib/automation/start-conversation";
+import { ensureConversation, sessaoProntaParaEnvio } from "@/lib/automation/start-conversation";
 import { phoneLookupVariants } from "@/lib/channels/phone-variants";
 import { parseDialablePhone } from "@/lib/messaging/contact-card";
 
 type Admin = SupabaseClient;
 
 export interface OpenSharedContactInput {
-  channel_session_id: string;
+  channel_session_id?: string;
   contact_id?: string;
   phone_number?: string;
   name?: string;
@@ -86,11 +86,13 @@ export async function openSharedContactConversation(
   organizationId: string,
   input: OpenSharedContactInput,
 ): Promise<OpenSharedContactResult> {
+  const sessionId = input.channel_session_id ?? (await sessaoProntaParaEnvio(admin, organizationId));
+  if (!sessionId) throw new Error("session_not_found");
   const { data: session, error: sessErr } = await admin
     .from("channel_sessions")
     .select("id")
     .eq("organization_id", organizationId)
-    .eq("id", input.channel_session_id)
+    .eq("id", sessionId)
     .maybeSingle();
   if (sessErr) throw new Error(sessErr.message);
   if (!session) throw new Error("session_not_found");
@@ -100,8 +102,7 @@ export async function openSharedContactConversation(
     admin,
     organizationId,
     contactId,
-    input.channel_session_id,
+    sessionId,
   );
-
   return { conversation_id: conversationId, contact_id: contactId };
 }

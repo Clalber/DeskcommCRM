@@ -78,7 +78,10 @@ function makeDb(pointers: Row[], versions: Row[], stages: Row[] = []) {
     let payload: Row | undefined;
 
     function matches(row: Row): boolean {
-      return filters.every(([k, v]) => row[k] === v);
+      return filters.every(([k, v]) => {
+        if (k === "surface") return (row.surface ?? "followup") === v;
+        return row[k] === v;
+      });
     }
 
     function execute(): { data: Row[] | null; error: { code?: string; message: string } | null } {
@@ -104,6 +107,7 @@ function makeDb(pointers: Row[], versions: Row[], stages: Row[] = []) {
           draft_graph: null,
           handoff_policy: "pause",
           trigger_config: { kind: "manual" },
+          surface: "followup",
           active_version_id: null,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
@@ -307,7 +311,7 @@ describe("GET /api/v1/ai/followup-flows — list", () => {
     );
     session("viewer", db);
     const { GET } = await import("@/app/api/v1/ai/followup-flows/route");
-    const res = await GET();
+    const res = await GET(req("GET"));
     expect(res.status).toBe(200);
     const body = (await res.json()) as { data: Row[] };
     expect(body.data).toHaveLength(1);

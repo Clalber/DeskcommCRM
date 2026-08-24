@@ -46,6 +46,8 @@ import { TriggerNode } from "./nodes/TriggerNode";
 import { WaitNode } from "./nodes/WaitNode";
 import { ConditionNode } from "./nodes/ConditionNode";
 import { ClassifyNode } from "./nodes/ClassifyNode";
+import { MatchReplyNode } from "./nodes/MatchReplyNode";
+import { RepeatNode } from "./nodes/RepeatNode";
 import { ActionNode } from "./nodes/ActionNode";
 import { EndNode } from "./nodes/EndNode";
 
@@ -59,6 +61,8 @@ const nodeTypes: NodeTypes = {
   wait: WaitNode,
   condition: ConditionNode,
   ai_classify: ClassifyNode,
+  match_reply: MatchReplyNode,
+  repeat: RepeatNode,
   action: ActionNode,
   end: EndNode,
 };
