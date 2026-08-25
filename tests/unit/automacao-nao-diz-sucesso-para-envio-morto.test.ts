@@ -237,4 +237,53 @@ describe("o agregador do run também diz a verdade", () => {
     // E o que NÃO pode voltar: o ternário antigo, que ignorava o adiamento.
     expect(fonte).not.toContain('const status = failed === 0 ? "success"');
   });
+
+  it("o SEGUNDO agregador — o do reenvio manual — só pode usar o ternário antigo enquanto nada que ele executa souber adiar", async () => {
+    // ═══ Por que este caso existe ═══
+    //
+    // `automation-rules/runs/[runId]/resend` tem um agregador PRÓPRIO, com o
+    // ternário que o motor abandonou:
+    //
+    //     const status = failed === 0 ? "success" : …
+    //
+    // Ele está correto HOJE, e por um motivo que não está escrito nele: a rota
+    // filtra `action.type === "call_webhook"`, e `call_webhook` só devolve
+    // `success` ou `failed` — não tem `postponeUntil`, não sabe adiar. Nenhum
+    // `postponed` alcança aquele ternário.
+    //
+    // É uma correção por COINCIDÊNCIA, não por desenho. No dia em que alguém
+    // permitir reenviar um envio de WhatsApp — a ação óbvia a querer reenviar —
+    // a rota grava "Sucesso" para uma mensagem parada em `queued`, que é
+    // exatamente o defeito que esta entrega veio matar, ressuscitado pela porta
+    // do lado. Este caso liga as duas condições para que uma não possa mudar
+    // sozinha.
+    const { readFileSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    const rota = readFileSync(
+      join(process.cwd(), "app", "api", "v1", "automation-rules", "runs", "[runId]", "resend", "route.ts"),
+      "utf8",
+    );
+
+    const usaTernarioAntigo = rota.includes('const status = failed === 0 ? "success"');
+    if (!usaTernarioAntigo) return; // já trata adiamento — nada a cobrar.
+
+    // Então TODO tipo de ação que a rota executa tem de ser incapaz de adiar.
+    const tipos = [...rota.matchAll(/action\.type === "([a-z_]+)"/g)].map((m) => m[1]);
+    expect(tipos.length).toBeGreaterThan(0); // o filtro sumiu = a premissa caiu
+
+    const ARQUIVO_DA_ACAO: Record<string, string> = {
+      call_webhook: "call-webhook.ts",
+      send_whatsapp_message: "send-whatsapp.ts",
+      send_ai_message: "send-ai-message.ts",
+    };
+    for (const tipo of tipos) {
+      const arquivo = ARQUIVO_DA_ACAO[tipo];
+      expect(arquivo, `ação "${tipo}" sem mapeamento neste teste — acrescente-a`).toBeDefined();
+      const fonteDaAcao = readFileSync(join(process.cwd(), "lib", "automation", "actions", arquivo), "utf8");
+      expect(
+        fonteDaAcao.includes("postponeUntil"),
+        `"${tipo}" sabe adiar, e o reenvio ainda decide com \`failed === 0\` — ele vai gravar "Sucesso" para mensagem que não chegou`,
+      ).toBe(false);
+    }
+  });
 });
