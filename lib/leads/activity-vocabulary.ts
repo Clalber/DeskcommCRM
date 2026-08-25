@@ -50,7 +50,14 @@ export type ActivityType =
   | "followup_snoozed"
   | "followup_step_skipped"
   | "demand_closed"
-  | "promise_unowned";
+  | "promise_unowned"
+  /**
+   * O respondente disse NÃO no formulário de captação (ex.: Respondi). A
+   * recusa é sinal, não ausência de sinal — sem linha na timeline, "por que
+   * ninguém mandou WhatsApp pra este lead" fica sem resposta visível, e é
+   * justamente esse silêncio que a automação de 1º toque precisa respeitar.
+   */
+  | "consent_declined";
 
 export const ACTIVITY_LABELS: Record<ActivityType, string> = {
   lead_created: "Entrou pelo WhatsApp",
@@ -117,6 +124,7 @@ export const ACTIVITY_LABELS: Record<ActivityType, string> = {
   // invisível na timeline — só existia em audit e event_log, que ninguém lê na
   // tela — e o dossiê de um negócio fechado terminava sem dizer que fechou.
   demand_closed: "Demanda encerrada",
+  consent_declined: "Consentimento de contato recusado no formulário",
 };
 
 /** Quando o tipo é legado/desconhecido, a linha ainda é honesta — sem jargão. */
