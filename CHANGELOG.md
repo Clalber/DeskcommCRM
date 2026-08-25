@@ -83,8 +83,11 @@ passo manual. É uma tabela nova (o histórico acima) e um estado novo nas autom
   modelo do Conversador.
 - **O painel de Provedores de IA mostrava o modelo errado** nos pontos que herdam do agente
   (classificador de etapa, detector de manipulação, verificador de promessa, resumo de
-  conversa, checkpoint e sugestão de resposta): anunciava o padrão da organização enquanto o
-  sistema usava o do agente. A coluna passa a mostrar o que de fato roda, e diz de quem herdou.
+  conversa, checkpoint, sugestão de resposta e a mensagem escrita pela IA nas automações):
+  anunciava o padrão da organização enquanto o sistema usava o do agente. A coluna passa a
+  mostrar o que de fato roda, e diz de quem herdou. **A "Mensagem escrita pela IA" desta
+  mesma versão caía no primeiro item desta lista** — nas instalações com agente num provedor
+  diferente do padrão da organização, ela não sairia.
 
 ## [1.5.0] — 2026-08-25
 

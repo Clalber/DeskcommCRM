@@ -144,6 +144,7 @@ export const PONTOS_QUE_HERDAM_DO_AGENTE: ReadonlySet<string> = new Set([
   "compaction",
   "checkpoint",
   "draft_suggestion",
+  "automation_ai_message",
 ]);
 
 export function decidirBinding(entrada: EntradaDaDecisao): DecisaoDeBinding {

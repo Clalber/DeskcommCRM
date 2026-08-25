@@ -76,6 +76,7 @@ const PONTOS_AUXILIARES = [
   "compaction",
   "checkpoint",
   "draft_suggestion",
+  "automation_ai_message",
 ] as const;
 
 describe("o ponto auxiliar não cruza provider de um com modelo de outro", () => {
