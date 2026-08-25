@@ -97,6 +97,20 @@ test.describe("a automação conta o que aconteceu de verdade", () => {
   test.setTimeout(180_000);
   test.use({ actionTimeout: 15_000 });
 
+  // O seed roda de novo AQUI, e não só na carga do módulo.
+  //
+  // `loadCreds()` executa quando o Playwright COLETA o arquivo, o que pode ser
+  // bem antes deste teste rodar — e o banco do CI é compartilhado entre as duas
+  // partes do job, sem reset. Uma spec que rode no meio pode deixar a sessão
+  // fora de `WORKING` (o watchdog de canal reconcilia status), e aí o número
+  // que este teste precisa aparece desabilitado na tela.
+  //
+  // Reexecutar é barato: o seed é idempotente pelo `waha_session_name` e
+  // reafirma `status='WORKING'` quando a linha já existe.
+  test.beforeAll(() => {
+    execFileSync("npx", ["tsx", "scripts/seed-e2e-numero-conectado.ts"], { stdio: "inherit" });
+  });
+
   test("envio que morre aparece como FALHOU, com a razão — nunca como sucesso", async ({
     page,
     request,
@@ -150,7 +164,18 @@ test.describe("a automação conta o que aconteceu de verdade", () => {
       // espera de verdade.
       const seletorDeNumero = editor.getByRole("combobox").filter({ hasText: /Escolha o número/ });
       await seletorDeNumero.click();
-      const numeros = page.getByRole("option");
+
+      // O primeiro número HABILITADO, não o primeiro da lista.
+      //
+      // A tela desabilita quem não está `WORKING` (correto — mandar por número
+      // desconectado é o defeito que aquele `disabled` evita), e o banco do CI é
+      // compartilhado entre as duas partes do job: outras specs deixam sessões
+      // em `STARTING`/`FAILED`, e a ordem não é garantida. `.first()` pegava uma
+      // dessas e o clique expirava em `aria-disabled="true"` — medido no CI.
+      //
+      // Escolher o primeiro habilitado é o que uma pessoa faria, e não depende
+      // de quem mais semeou número neste banco.
+      const numeros = page.locator('[role="option"]:not([aria-disabled="true"])');
       await expect(
         numeros.first(),
         "nenhum número de WhatsApp WORKING — rode scripts/seed-e2e-numero-conectado.ts",
