@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { FlowArrow, Plus } from "@/lib/ui/icons";
 import { useFollowupFlows, type FollowupFlowPointerRow } from "@/hooks/followup/useFollowupFlows";
+import { DeleteFollowupFlowButton } from "./DeleteFollowupFlowButton";
 import { FlowStatusBadge } from "./FlowStatusBadge";
 import { NewFlowDialog } from "./NewFlowDialog";
 
@@ -61,8 +62,8 @@ export function FlowsList({ initialData, canWrite }: Props) {
       <ul className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
         {flows.map((flow) => (
           <li key={flow.id}>
-            <Link href={`/app/ai/followups/${flow.id}`} className="block h-full">
-              <Card className="flex h-full flex-col gap-3 p-4 transition-colors hover:border-accent-400">
+            <Card className="flex h-full flex-col gap-3 p-4 transition-colors hover:border-accent-400">
+              <Link href={`/app/ai/followups/${flow.id}`} className="flex flex-1 flex-col gap-3">
                 <div className="flex items-start justify-between gap-2">
                   <h3 className="min-w-0 flex-1 truncate font-medium" title={flow.name}>
                     {flow.name}
@@ -82,8 +83,13 @@ export function FlowsList({ initialData, canWrite }: Props) {
                 <p className="mt-auto pt-2 text-xs text-text-muted">
                   Atualizado em {formatUpdatedAt(flow.updated_at)}
                 </p>
-              </Card>
-            </Link>
+              </Link>
+              {canWrite && (
+                <div className="flex justify-end border-t border-border pt-2">
+                  <DeleteFollowupFlowButton flowId={flow.id} flowName={flow.name} />
+                </div>
+              )}
+            </Card>
           </li>
         ))}
       </ul>

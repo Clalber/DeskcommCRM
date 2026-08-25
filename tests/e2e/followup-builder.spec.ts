@@ -5,10 +5,7 @@
  * clica "Novo fluxo" → digita um nome → o fluxo aparece na lista com badge
  * "Rascunho". Task 6.2 estende este spec com o editor visual (grafo).
  *
- * Sem endpoint DELETE em followup-flows (decisão deliberada da Onda 3+ —
- * fluxos não se apagam, só se desativam). Cada run usa um nome com timestamp
- * único, então não colide entre execuções; os drafts de teste se acumulam no
- * banco e exigem um sweep manual periódico (fora do escopo desta task).
+ * Cada run usa um nome com timestamp único, então não colide entre execuções.
  */
 import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
