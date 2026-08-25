@@ -80,7 +80,7 @@ export async function podarHistoricoDeCaptacao(
   const limite = new Date(Date.now() - dias * 86_400_000).toISOString();
 
   // `received_at` é a coluna do índice `webhook_lead_captures_poda_idx`, criado
-  // com este predicado em mente (migration 0169). Sem filtro de organização de
+  // com este predicado em mente (migration 0174). Sem filtro de organização de
   // propósito: a poda varre pela ponta mais velha e não sabe escolher tenant —
   // é o que a torna incapaz de ser usada como apagador dirigido.
   const { data, error } = await admin

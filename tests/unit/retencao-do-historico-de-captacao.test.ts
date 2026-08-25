@@ -139,7 +139,7 @@ describe("poda do histórico de captação — o que ela NÃO faz", () => {
     });
   });
 
-  it("varre pela ponta mais velha, por received_at (a coluna do índice da 0169)", () => {
+  it("varre pela ponta mais velha, por received_at (a coluna do índice da 0174)", () => {
     const { admin, pedidos } = fakeAdmin();
     return podarHistoricoDeCaptacao(admin, { diasBrutos: "365" }).then(() => {
       expect(pedidos[0]!.tabela).toBe("webhook_lead_captures");

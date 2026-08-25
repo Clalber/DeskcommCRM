@@ -70,7 +70,7 @@ export interface AutomationRuleRunActionResult {
   detail?: Record<string, unknown>;
 }
 
-/** Espelha o CHECK de `automation_rule_runs.status` (migrations 0038 e 0170). */
+/** Espelha o CHECK de `automation_rule_runs.status` (migrations 0038 e 0175). */
 export type AutomationRunStatus = "success" | "failed" | "partial" | "adiado";
 
 export interface AutomationRuleRunRow {
@@ -80,7 +80,7 @@ export interface AutomationRuleRunRow {
   event_id: string | null;
   /**
    * Espelha o CHECK de `automation_rule_runs.status` — `adiado` entrou na
-   * migration 0170 (a espera é um estado; sem ele a tela não mostrava NADA
+   * migration 0175 (a espera é um estado; sem ele a tela não mostrava NADA
    * enquanto a regra aguardava a janela de envio).
    */
   status: AutomationRunStatus;

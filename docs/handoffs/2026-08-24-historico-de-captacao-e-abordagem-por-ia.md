@@ -42,7 +42,7 @@ Dois silêncios vizinhos vieram junto:
 2. **O adiamento invisível.** Quando uma ação pedia adiamento, o motor devolvia
    `retry` e saía sem gravar linha nenhuma — a aba Atividade ficava vazia. Para
    quem montou a regra, "não apareceu nada" e "não rodou" eram a mesma tela.
-   Migration 0170 acrescenta o estado `adiado`.
+   Migration 0175 acrescenta o estado `adiado`.
 
 ## Evidência pela tela
 
@@ -128,7 +128,7 @@ dele o remetente, e as guardas ficariam dependendo de ele obedecer.
 
 ## A poda, que era dívida e foi paga
 
-O cabeçalho da migration 0169 já DESCREVIA a poda quando ela ainda não existia
+O cabeçalho da migration 0174 já DESCREVIA a poda quando ela ainda não existia
 — uma afirmação de estado falsa dentro do próprio artefato, que é o defeito que
 o DoD 16 combate. Ela agora existe:
 `lib/webhooks/retencao-da-captacao.ts`, chamada no MESMO tique do cron

@@ -4,7 +4,7 @@
  *
  * Distinto do arquivo forense (`webhook_events_log`), que existe para depurar
  * webhook e é PODADO pelo cron a cada 5 min: corpo em D+7, linha em D+90
- * (migration 0163). Ver o cabeçalho da migration 0169 para o argumento inteiro.
+ * (migration 0163). Ver o cabeçalho da migration 0174 para o argumento inteiro.
  *
  * Escreve com o admin client (a rota de captação é pública e não tem sessão),
  * então TODA chamada carrega o `organization_id` resolvido da FONTE — nunca do

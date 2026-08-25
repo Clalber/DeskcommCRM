@@ -1,5 +1,5 @@
 -- ============================================================================
--- 0170 — A AUTOMAÇÃO PRECISA PODER DIZER "AINDA NÃO".
+-- 0175 — A AUTOMAÇÃO PRECISA PODER DIZER "AINDA NÃO".
 --
 -- `automation_rule_runs.status` aceitava três valores: success, partial,
 -- failed. Faltava o quarto estado que o motor JÁ produz e que a tela não tinha
@@ -50,7 +50,7 @@ alter table public.automation_rule_runs
     'success',
     'partial',
     'failed',
-    -- (migration 0170) NADA CHEGOU AO CLIENTE, E AINDA PODE CHEGAR. Dois
+    -- (migration 0175) NADA CHEGOU AO CLIENTE, E AINDA PODE CHEGAR. Dois
     -- caminhos produzem este estado, e confundi-los foi um defeito achado em
     -- revisão adversarial:
     --   (a) a regra casou e a primeira ação pediu para esperar antes de

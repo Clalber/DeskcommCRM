@@ -230,7 +230,7 @@ const PARES: Array<{
     // e um valor sem entrada cai no rótulo de "Parcial" — dizendo que algo
     // falhou quando nada foi sequer tentado.
     //
-    // Nasce com a 0170, que acrescentou `adiado` (a espera é um estado; sem ele
+    // Nasce com a 0175, que acrescentou `adiado` (a espera é um estado; sem ele
     // a aba Atividade não mostrava NADA enquanto a regra aguardava a janela).
     arquivo: "hooks/webhooks/useAutomationRules.ts",
     simbolo: "AutomationRunStatus",

@@ -8,7 +8,7 @@
  */
 import { z } from "zod";
 
-/** Espelha o CHECK de `webhook_lead_captures.outcome` (migration 0169). */
+/** Espelha o CHECK de `webhook_lead_captures.outcome` (migration 0174). */
 export const DESFECHOS_DA_CAPTACAO = ["criado", "duplicado", "recusado"] as const;
 
 export const leadCapturesQuerySchema = z.object({

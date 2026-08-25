@@ -183,7 +183,7 @@ export async function runAutomationForEvent(
         // A ESPERA É UM ESTADO, e um estado que ninguém vê é indistinguível de
         // morte. Sem esta linha o evento sumia até a janela reabrir e a aba
         // Atividade não mostrava NADA — para quem montou a regra, "não apareceu
-        // nada" e "não rodou" são a mesma tela (migration 0170).
+        // nada" e "não rodou" são a mesma tela (migration 0175).
         await registrarAdiamento(admin, row, rule, action.type, until);
         return { consumer_key: AUTOMATION_CONSUMER_KEY, status: "retry", retry_at: until };
       }

@@ -1,7 +1,7 @@
 /**
  * OS DADOS QUE A IA RECEBE COMO ENTRADA — e de onde eles vêm.
  *
- * A fonte PREFERIDA é `webhook_lead_captures` (migration 0169): ela guarda o
+ * A fonte PREFERIDA é `webhook_lead_captures` (migration 0174): ela guarda o
  * formulário como a pessoa preencheu, com os rótulos originais dos campos. É a
  * diferença entre a IA ler `quantos_funcionarios: 3` e ler um `custom_fields`
  * já mastigado pelo mapeamento.
