@@ -204,6 +204,32 @@ test.describe("a automação conta o que aconteceu de verdade", () => {
       );
       expect(envio.status()).toBe(200);
 
+      // ── Concede o consentimento que um webhook genérico nunca traz ───────
+      //
+      // O gate de consentimento (achado 2026-08-25, lib/automation/
+      // guarda-do-contato.ts) bloqueia TODO envio automático pra um contato
+      // sem `consent.marketing.granted_at` — e este teste usa um webhook
+      // GENÉRICO (`{ nome, telefone }`, sem pergunta de consentimento
+      // nenhuma), então o contato nasce sem consentimento por desenho do
+      // mapeador genérico (mapInboundPayload não tem conceito de consent).
+      //
+      // Sem conceder aqui, a automação nunca chegaria a discar o WhatsApp —
+      // o gate pegaria PRIMEIRO, e o desfecho seria "sem consentimento", não
+      // "serviço de WhatsApp fora do ar", que é o que ESTE ARQUIVO existe
+      // para provar (ver o cabeçalho). Concede pela mesma rota que a tela
+      // usaria (PATCH /contacts/:id), com a sessão já logada.
+      const busca = await page.request.get(
+        `${APP_URL}/api/v1/contacts?search=${encodeURIComponent(LEAD_NAME)}`,
+      );
+      expect(busca.ok()).toBeTruthy();
+      const contatos = ((await busca.json()) as { data: Array<{ id: string }> }).data;
+      expect(contatos.length, "contato do lead não foi encontrado pela busca").toBeGreaterThan(0);
+      const contactId = contatos[0]!.id;
+      const consentimento = await page.request.patch(`${APP_URL}/api/v1/contacts/${contactId}`, {
+        data: { consent: { marketing: { granted_at: new Date().toISOString(), source: "e2e-test", version: null } } },
+      });
+      expect(consentimento.ok()).toBeTruthy();
+
       // ── PRIMEIRO o backend, DEPOIS a tela ────────────────────────────────
       //
       // Drena até a execução EXISTIR, medindo pela rota que a aba consome. A
