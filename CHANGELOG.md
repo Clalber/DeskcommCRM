@@ -8,6 +8,20 @@ Se você roda o DeskcommCRM numa VPS, **leia a seção da versão para a qual es
 
 ## [Não lançado]
 
+### Corrigido
+
+- **Instalar numa VPS que já tem o CRM no ar não derruba mais a instalação existente.**
+  Quando você baixava o projeto numa pasta nova para instalar de novo — numa aula, num
+  teste — o instalador via o CRM que já estava rodando, concluía que era ele mesmo sendo
+  rodado outra vez, e subia por cima: o site continuava no ar, mas passava a usar o banco
+  de dados da pasta nova. Na prática o sistema trocava de banco sem avisar, e o primeiro
+  sintoma era a senha "parar de funcionar" (no outro banco a sua conta é outra, com outra
+  senha e outro aplicativo de autenticação). Agora o instalador reconhece a instalação que
+  já existe, **para antes de tocar em qualquer coisa**, diz em que pasta ela está e ensina
+  o comando para atualizá-la. O motivo de a confusão existir: o Docker dá nome ao conjunto
+  a partir do nome da pasta, e toda cópia do projeto se chama `DeskcommCRM`.
+
+
 ## [1.4.0] — 2026-08-24
 
 Esta versão muda o primeiro acesso. Instalar deixou de ser "configurar uma IA" e passou a ser **montar um funcionário e vê-lo atender antes de terminar**: você diz como ele se chama, o jeito dele falar e as regras da casa, monta o quadro de clientes do **seu** ramo — não o de loja virtual que todo mundo ganhava igual — e, no último passo, conversa com ele como se fosse um cliente. Nada sai pelo WhatsApp; você só confere que ele funciona antes de confiar nele. Junto disso, seis causas diferentes que deixavam uma IA publicada **muda** foram medidas num servidor real e consertadas uma a uma; o sistema passou a ser usável no celular; e você pode pôr o seu nome, o seu logo e a sua cor em tudo — pela tela, sem linha de comando.
