@@ -1049,9 +1049,9 @@ tk_ok "caddy não é traefik"              nao "caddy:2-alpine"    "outro-caddy-
 tk_ok "nginx não é traefik"              nao "nginxproxy/nginx"  "webproxy"
 
 echo "proxy reverso: a decisão"
-dec_ok() {  # dec_ok <descrição> <esperado> <ocupadas> <proj_dono> <proj_atual> <img> <nome>
+dec_ok() {  # dec_ok <descrição> <esperado> <ocupadas> <proj_dono> <proj_atual> <img> <nome> [árvore_dono] [árvore_atual]
   local desc="$1" esperado="$2" real
-  real="$(decide_proxy "${3:-}" "${4:-}" "${5:-}" "${6:-}" "${7:-}")"
+  real="$(decide_proxy "${3:-}" "${4:-}" "${5:-}" "${6:-}" "${7:-}" "${8:-}" "${9:-}")"
   if [ "$real" = "$esperado" ]; then printf '  ✓ %s\n' "$desc"
   else printf '  ✗ %s  (deu %s, esperava %s)\n' "$desc" "$real" "$esperado"; fail=1; fi
 }
@@ -1062,6 +1062,30 @@ dec_ok "portas livres → nosso Caddy"        caddy    ""        ""          "cr
 # rodar de novo para corrigir uma resposta, e sem nem um comando acionável.
 dec_ok "re-execução: portas com esta mesma instalação" caddy "80 e 443" "crm" "crm" "caddy:2-alpine" "crm-caddy-1"
 dec_ok "Caddy de OUTRO Deskcomm → bloqueia" bloqueia "80 e 443" "outro"     "crm" "caddy:2-alpine" "outro-caddy-1"
+# O fixture acima nomeia "outro Deskcomm" mas usa projeto DIFERENTE ("outro" vs
+# "crm") — e é justamente o nome do projeto que NÃO difere no caso real: o
+# projeto do compose é o basename da pasta, e toda cópia do repo se chama
+# DeskcommCRM. Medido numa VPS de produção em 2026-08-24: a instalação de uma
+# aula em /root/apagar7/DeskcommCRM viu o Caddy da produção em
+# /root/DeskcommCRM com o MESMO projeto `deskcommcrm`, concluiu "é a
+# re-execução" e subiu por cima — trocando o banco do CRM no ar sem um aviso.
+# Quem distingue as duas é a ÁRVORE (label com.docker.compose.project.working_dir),
+# não o nome.
+dec_ok "cópia irmã: mesmo projeto, OUTRA árvore → bloqueia" \
+  bloqueia "80 e 443" "deskcommcrm" "deskcommcrm" "caddy:2-alpine" "deskcommcrm-caddy-1" \
+  "/root/DeskcommCRM" "/root/apagar7/DeskcommCRM"
+# O outro lado da mesma moeda: re-execução DE VERDADE é mesma árvore, e tem de
+# seguir passando (é o caminho que o kit manda usar para corrigir uma resposta).
+dec_ok "re-execução real: mesmo projeto, MESMA árvore → segue" \
+  caddy "80 e 443" "deskcommcrm" "deskcommcrm" "caddy:2-alpine" "deskcommcrm-caddy-1" \
+  "/root/DeskcommCRM" "/root/DeskcommCRM"
+# Contêiner sem o label de árvore (não foi o compose que criou, ou é antigo):
+# não dá para afirmar que é cópia irmã, e fechar aqui quebraria re-execução
+# legítima. Mantém o comportamento anterior — a varredura de portas continua
+# sendo a rede que pega o resto.
+dec_ok "sem árvore conhecida: mantém o comportamento anterior" \
+  caddy "80 e 443" "deskcommcrm" "deskcommcrm" "caddy:2-alpine" "deskcommcrm-caddy-1" \
+  "" "/root/apagar7/DeskcommCRM"
 dec_ok "Traefik da hospedagem → por ele"    traefik  "80 e 443" "coolify"   "crm" "traefik:v3.3"   "coolify-proxy"
 dec_ok "ocupante não identificado → bloqueia" bloqueia "80"     ""          "crm" ""              ""
 dec_ok "projeto vazio não casa projeto vazio" bloqueia "80"     ""          ""    "nginx"         "web"
