@@ -884,3 +884,6 @@ script do repo o cria). E o primeiro build parecia ter passado porque
 `pnpm e2e:build 2>&1 | tail -20` devolve o exit do `tail`, não o do build
 ([[feedback-pipe-tail-mascara-exit]]). Confira `.next/BUILD_ID`, nunca o exit de
 um pipe.
+
+**Evidência visual:** `evidence/inbox-tempo-real/mensagem-sem-reload.png` — a
+conversa aberta com as mensagens das rodadas, cada uma entregue sem recarregar.
