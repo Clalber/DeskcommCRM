@@ -559,7 +559,15 @@ describe("send_whatsapp_message — gate de consentimento (achado 2026-08-25)", 
       template: "Oi {{contact.name}}",
     });
 
-    expect(result.status).toBe("success");
-    expect(result.detail?.reason).not.toBe("no_consent");
+    // Este caso não prova entrega — prova só que o gate de consentimento
+    // deixou passar. Entrega depende do transporte, e este harness roda SEM
+    // WAHA configurado de propósito (achado do caso 2 acima): todo envio
+    // termina `postponed`/`waha_not_configured`, nunca `success`. Escrito
+    // como `toBe("success")` antes de este arquivo ter rodado contra um banco
+    // real — a asserção nunca foi exercitada e congelava um desfecho
+    // impossível neste harness. `not.toBe("no_consent")` já era a prova
+    // certa; a linha abaixo só nomeia o desfecho real em vez de negá-lo.
+    expect(result.status).toBe("postponed");
+    expect(result.detail?.reason).toBe("waha_not_configured");
   });
 });
