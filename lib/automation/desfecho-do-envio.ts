@@ -131,6 +131,33 @@ export async function reportarEnvio(
  * não chegou —, e inventar um kind novo dividiria o mesmo problema em duas
  * listas. Fire-and-forget: um aviso que não entra não pode derrubar a regra.
  */
+/**
+ * Quanto tempo um aviso ABERTO desta classe silencia os seguintes.
+ *
+ * ═══ Por que existe ═══
+ *
+ * A causa típica de falha de envio não é uma mensagem: é o transporte inteiro
+ * fora do ar. Nesse estado TODA automação que disparar falha, e um formulário
+ * de campanha entrega leads em rajada — 200 leads em minutos viram 200 avisos
+ * críticos idênticos, e a Central deixa de ser lida exatamente no dia em que
+ * mais precisa ser.
+ *
+ * Não é regra nova: é a que o cron irmão já aplica. `recover-stuck-messages`
+ * abre "um aviso por organização por rodada, não um por mensagem" — e esta
+ * função nasceu sem olhar para ele.
+ *
+ * ═══ Por que 15 minutos, e não "enquanto houver um aberto" ═══
+ *
+ * Suprimir enquanto existir um aberto é mais simples e cala DEMAIS: um aviso
+ * que ninguém resolveu esconderia para sempre uma falha nova de outra causa.
+ * A janela agrupa a rajada e deixa a persistência aparecer — quatro avisos por
+ * hora dizem "continua quebrado", que é informação; duzentos não dizem nada.
+ *
+ * Um aviso já RESOLVIDO nunca silencia: se o operador tratou e o problema
+ * voltou, isso é fato novo e ele precisa saber.
+ */
+const JANELA_DE_SILENCIO_MS = 15 * 60_000;
+
 export async function avisarEnvioQueFalhou(
   admin: SupabaseClient,
   entrada: {
@@ -139,7 +166,38 @@ export async function avisarEnvioQueFalhou(
     conversationId?: string | null;
     motivo: string;
   },
+  agora: Date = new Date(),
 ): Promise<void> {
+  // Casa com o índice parcial `idx_agent_inbox_items_open`
+  // (organization_id, created_at desc) where status = 'open'.
+  //
+  // Isto NÃO é atômico: duas automações no mesmo instante podem passar as duas
+  // e abrir dois avisos. É aceito de propósito — o alvo é a ordem de grandeza
+  // (200 → 1 ou 2), e uma trava de verdade custaria uma constraint e uma
+  // migration para resolver um problema estético.
+  const desde = new Date(agora.getTime() - JANELA_DE_SILENCIO_MS).toISOString();
+  const { data: jaAvisado, error: erroDaBusca } = await admin
+    .from("agent_inbox_items")
+    .select("id")
+    .eq("organization_id", entrada.organizationId)
+    .eq("kind", "message_send_stuck")
+    .eq("status", "open")
+    .gte("created_at", desde)
+    .limit(1);
+
+  // Falha ABERTA: se a busca quebrou, o aviso SAI. Entre repetir um aviso e
+  // engolir o único sinal de que o cliente não recebeu a mensagem, repetir é o
+  // erro barato — uma checagem de RUÍDO nunca pode calar o SINAL que ela existe
+  // para organizar.
+  if (erroDaBusca) {
+    logger.warn("[automation] não deu para checar aviso repetido — avisando assim mesmo", {
+      organization_id: entrada.organizationId,
+      causa: erroDaBusca.message,
+    });
+  } else if (jaAvisado !== null && jaAvisado.length > 0) {
+    return;
+  }
+
   const { error } = await admin.from("agent_inbox_items").insert({
     organization_id: entrada.organizationId,
     kind: "message_send_stuck",

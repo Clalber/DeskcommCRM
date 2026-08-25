@@ -268,7 +268,9 @@ describe("o agregador do run também diz a verdade", () => {
     if (!usaTernarioAntigo) return; // já trata adiamento — nada a cobrar.
 
     // Então TODO tipo de ação que a rota executa tem de ser incapaz de adiar.
-    const tipos = [...rota.matchAll(/action\.type === "([a-z_]+)"/g)].map((m) => m[1]);
+    const tipos = [...rota.matchAll(/action\.type === "([a-z_]+)"/g)]
+      .map((m) => m[1])
+      .filter((x): x is string => typeof x === "string");
     expect(tipos.length).toBeGreaterThan(0); // o filtro sumiu = a premissa caiu
 
     const ARQUIVO_DA_ACAO: Record<string, string> = {
@@ -278,7 +280,12 @@ describe("o agregador do run também diz a verdade", () => {
     };
     for (const tipo of tipos) {
       const arquivo = ARQUIVO_DA_ACAO[tipo];
-      expect(arquivo, `ação "${tipo}" sem mapeamento neste teste — acrescente-a`).toBeDefined();
+      // `throw` e não `expect(...).toBeDefined()`: além de estreitar o tipo, um
+      // tipo de ação que este teste não conhece precisa PARAR a varredura — se
+      // ela seguisse, o caso passaria sem ter olhado a ação nova.
+      if (arquivo === undefined) {
+        throw new Error(`a rota executa "${tipo}", que este teste não mapeia — acrescente-o a ARQUIVO_DA_ACAO`);
+      }
       const fonteDaAcao = readFileSync(join(process.cwd(), "lib", "automation", "actions", arquivo), "utf8");
       expect(
         fonteDaAcao.includes("postponeUntil"),
