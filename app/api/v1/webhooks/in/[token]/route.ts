@@ -294,7 +294,12 @@ export async function POST(req: NextRequest, ctx: RouteCtx): Promise<NextRespons
 
   // Captação: drena lead.created e inscreve no fluxo neste mesmo request.
   // Sem isto, em prod (Vercel Hobby sem cron de 1 min) o gatilho fica pending.
-  await kickLocalPipeline(admin);
+  await kickLocalPipeline(
+    admin,
+    contactId
+      ? { organizationId: source.organization_id, contactId }
+      : undefined,
+  );
 
   return respondWithLead(String(lead.id));
 }

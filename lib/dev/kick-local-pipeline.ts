@@ -14,10 +14,11 @@ import { ApiError } from "@/lib/api/types";
 import { ensureConversation, sessaoProntaParaEnvio } from "@/lib/automation/start-conversation";
 import { drainEventLog } from "@/lib/event-log/drain";
 import { ensureHandlersRegistered } from "@/lib/event-log/register-handlers";
+import { idsDoContatoEGemeos } from "@/lib/channels/contato-por-telefone";
 import { aplicarTextoNosFollowups } from "@/lib/followup/aplicar-inbound";
 import {
+  avancarEnrollmentAtivo,
   createSupabaseAdminClient,
-  runFollowupTick,
   type FollowupJobRequest,
   type TickDeps,
 } from "@/lib/followup/engine";
@@ -31,6 +32,11 @@ export type SinalDeInbound = {
   contactId: string;
   messageId?: string | null;
   texto?: string | null;
+};
+
+export type ContatoDoPipeline = {
+  organizationId: string;
+  contactId: string;
 };
 
 function tickDepsDe(admin: SupabaseClient): TickDeps {
@@ -49,15 +55,32 @@ function tickDepsDe(admin: SupabaseClient): TickDeps {
   };
 }
 
-async function tickFollowupAteParar(admin: SupabaseClient): Promise<number> {
-  const tickDeps = tickDepsDe(admin);
-  let claimed = 0;
-  for (let i = 0; i < 8; i++) {
-    const tick = await runFollowupTick(tickDeps);
-    claimed += tick.claimed;
-    if (!tick.claimed) break;
+/**
+ * Arranca só o fluxo DESTE contato, e só nós `active`.
+ * `waiting_reply` avança com a mensagem do WhatsApp (`aplicarTextoNosFollowups`),
+ * não com um POST de captação — o claim global tratava a espera vencida como
+ * timeout no mesmo request do webhook de contato.
+ */
+async function tickAtivosDoContato(
+  admin: SupabaseClient,
+  contato: ContatoDoPipeline,
+): Promise<number> {
+  const ids = await idsDoContatoEGemeos(admin, contato.organizationId, contato.contactId);
+  const agora = new Date().toISOString();
+  const { data, error } = await admin
+    .from("followup_enrollments")
+    .select("*")
+    .eq("organization_id", contato.organizationId)
+    .in("contact_id", ids)
+    .eq("status", "active")
+    .lte("next_eval_at", agora)
+    .limit(8);
+  if (error) throw new Error(error.message);
+  const deps = tickDepsDe(admin);
+  for (const row of data ?? []) {
+    await avancarEnrollmentAtivo(deps, row as EnrollmentRow);
   }
-  return claimed;
+  return data?.length ?? 0;
 }
 
 function ponteSupabase(admin: SupabaseClient): TurnBridgeAdminClient {
@@ -79,7 +102,10 @@ function ponteSupabase(admin: SupabaseClient): TurnBridgeAdminClient {
 }
 
 /** Envia o texto fixo do fluxo neste request — sem cron e sem agent-worker. */
-async function enviarTextoFixoPendente(admin: SupabaseClient): Promise<number> {
+async function enviarTextoFixoPendente(
+  admin: SupabaseClient,
+  somenteContactIds?: string[],
+): Promise<number> {
   const { data: jobs, error } = await admin
     .from("job_queue")
     .select("id, organization_id, contact_id, payload")
@@ -98,6 +124,7 @@ async function enviarTextoFixoPendente(admin: SupabaseClient): Promise<number> {
     const nodeId = payload.node_id;
     const contactId = job.contact_id as string | null;
     if (typeof body !== "string" || !body || !enrollmentId || !nodeId || !contactId) continue;
+    if (somenteContactIds && !somenteContactIds.includes(contactId)) continue;
 
     const { data: claimed, error: claimErr } = await admin
       .from("job_queue")
@@ -180,6 +207,15 @@ async function acordarFollowupPorInbound(admin: SupabaseClient, sinal: SinalDeIn
   });
 }
 
+async function acelerarDesteContato(admin: SupabaseClient, contato: ContatoDoPipeline): Promise<void> {
+  const ids = await idsDoContatoEGemeos(admin, contato.organizationId, contato.contactId);
+  for (let i = 0; i < 6; i++) {
+    const claimed = await tickAtivosDoContato(admin, contato);
+    const enviados = await enviarTextoFixoPendente(admin, ids);
+    if (!claimed && !enviados) break;
+  }
+}
+
 export async function acelerarPipelineDeEventos(
   admin: SupabaseClient,
   inbound?: SinalDeInbound,
@@ -199,11 +235,10 @@ export async function acelerarPipelineDeEventos(
           error: err instanceof Error ? err.message : String(err),
         });
       }
-      for (let i = 0; i < 6; i++) {
-        const claimed = await tickFollowupAteParar(admin);
-        const enviados = await enviarTextoFixoPendente(admin);
-        if (!claimed && !enviados) break;
-      }
+      await acelerarDesteContato(admin, {
+        organizationId: inbound.organizationId,
+        contactId: inbound.contactId,
+      });
     }
     ensureHandlersRegistered();
     try {
@@ -214,10 +249,11 @@ export async function acelerarPipelineDeEventos(
         error: err instanceof Error ? err.message : String(err),
       });
     }
-    for (let i = 0; i < 6; i++) {
-      const claimed = await tickFollowupAteParar(admin);
-      const enviados = await enviarTextoFixoPendente(admin);
-      if (!claimed && !enviados) break;
+    if (inbound) {
+      await acelerarDesteContato(admin, {
+        organizationId: inbound.organizationId,
+        contactId: inbound.contactId,
+      });
     }
   } catch (err) {
     logger.warn("[dev.pipeline] acelerar falhou (lead/mensagem já gravados)", {
@@ -226,6 +262,10 @@ export async function acelerarPipelineDeEventos(
   }
 }
 
-export async function kickLocalPipeline(admin: SupabaseClient): Promise<void> {
+export async function kickLocalPipeline(
+  admin: SupabaseClient,
+  contato?: ContatoDoPipeline,
+): Promise<void> {
   await acelerarPipelineDeEventos(admin);
+  if (contato) await acelerarDesteContato(admin, contato);
 }

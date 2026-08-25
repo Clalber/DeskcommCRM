@@ -275,6 +275,7 @@ describe("nascimento do lead", () => {
 describe("os dois canais usam o mesmo passo", () => {
   const ZERNIO = readFileSync("lib/channels/zernio/ingest.ts", "utf8");
   const WAHA = readFileSync("lib/waha/ingest.ts", "utf8");
+  const META = readFileSync("lib/channels/meta/ingest.ts", "utf8");
 
   it("o canal intermediado chama nos DOIS caminhos de inserção", () => {
     // A ingestão resolve a conversa por dois caminhos — thread conhecida e
@@ -291,6 +292,10 @@ describe("os dois canais usam o mesmo passo", () => {
 
   it("o canal por QR delega no compartilhado em vez de reimplementar", () => {
     expect(WAHA).toMatch(/await aplicarEfeitosPosEntrada\(admin, \{/);
+  });
+
+  it("o canal oficial também acorda o follow-up no mesmo passo", () => {
+    expect(META).toMatch(/await aplicarEfeitosPosEntrada\(admin, \{/);
   });
 
   it("e não guarda mais uma cópia privada da regra de opt-out", () => {

@@ -24,6 +24,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { ARCHIVED_AT, queryTolerantToMissingArchived } from "../archived";
+import { aplicarEfeitosPosEntrada } from "../pos-entrada";
 import { canonicalPhoneBR, phoneLookupVariants } from "../phone-variants";
 import type { ChannelTenantScope } from "../types";
 import type { InboundMessageEvent } from "./webhook";
@@ -207,9 +208,21 @@ export async function ingestMetaInbound(
     p_at: e.sentAt.toISOString(),
   } as never);
 
+  const messageId = (inserida as { id: string } | null)?.id ?? "";
+  await aplicarEfeitosPosEntrada(admin, {
+    organizationId: orgId,
+    contactId: contactId as string,
+    conversationId: conversationId as string,
+    messageId: messageId || null,
+    channelSessionId: sessao.id,
+    texto: e.text ?? null,
+    nomeDoContato: e.profileName ?? null,
+    origem: "meta_webhook",
+  });
+
   return {
     status: "ingested",
-    messageId: (inserida as { id: string } | null)?.id ?? "",
+    messageId,
     conversationId: conversationId as string,
   };
 }

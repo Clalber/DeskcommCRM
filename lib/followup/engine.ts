@@ -445,6 +445,16 @@ export async function aplicarRespostaInbound(
   await processEnrollment(deps, enrollment, summary, inboundBody);
 }
 
+/** Um passo do grafo sem claim global — captação arranca o fluxo novo sem
+ *  tratar `waiting_reply` de outro lead como timeout. */
+export async function avancarEnrollmentAtivo(
+  deps: TickDeps,
+  enrollment: EnrollmentRow,
+): Promise<void> {
+  const summary: TickSummary = { claimed: 0, advanced: 0, scheduled: 0, failed: 0, dead: 0 };
+  await processEnrollment(deps, enrollment, summary);
+}
+
 async function processEnrollment(
   deps: TickDeps,
   enrollment: EnrollmentRow,
