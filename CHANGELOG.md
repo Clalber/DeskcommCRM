@@ -30,9 +30,6 @@ em Conexões › Proteção de envio** — a mesma que a IA já respeitava. Se v
 ampliou esse horário achando que só mexia com a IA, confira: agora ele também rege as
 automações. Quem nunca mexeu fica com 7h às 22h, no horário do seu negócio.
 
-**Esta versão mexe no banco de dados, e o `bash update.sh` cuida disso sozinho** — não há
-passo manual. É uma tabela nova (o histórico acima) e um estado novo nas automações.
-
 **Assumir uma conversa agora PARA o atendimento automático nela. Antes não parava, e os dois
 respondiam o mesmo cliente.** Quem clicava "Assumir" no Inbox ganhava a conversa na tela, mas o
 automático continuava respondendo por baixo — ele só ficava quieto por 5 minutos depois que o
@@ -48,7 +45,9 @@ vez.** Não é conversa nova: são as que a IA já tinha passado para uma pessoa
 aba nenhuma. Se o número saltar depois de atualizar, é isso — e vale olhar, porque são pessoas
 esperando resposta há mais tempo do que você imaginava.
 
-Esta versão **mexe no banco de dados**. O `update.sh` aplica sozinho; não há passo manual.
+Esta versão **mexe no banco de dados**. O `update.sh` aplica sozinho; não há passo
+manual — são tabelas e estados novos: o histórico de captação, o estado **Adiado** das
+automações e o registro de quem está no comando de cada conversa.
 
 **Se você está vindo da 1.4.0, os dois avisos abaixo são da 1.4.1 e valem para você.** A tela de
 atualização mostra só a seção da versão que você está instalando, então eles vão repetidos aqui
