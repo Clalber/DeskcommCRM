@@ -181,8 +181,11 @@ function SendWhatsappForm({
           placeholder="Oi {{nome}}, tudo bem?"
         />
         <p className="text-xs text-muted-foreground">
-          Enviamos só entre 7h e 22h e respeitamos o limite diário do número — fora disso a
-          mensagem espera a próxima janela.
+          {/* NÃO cravar "7h e 22h": a janela passou a vir dos ajustes DO NÚMERO
+              (Conexões), no fuso da sua organização, e quem a mudou lá veria a
+              tela continuar prometendo outro horário. Rótulo visível é contrato. */}
+          Respeitamos a janela de envio e o limite diário configurados para esse número em
+          Conexões — fora da janela, a mensagem espera a próxima.
         </p>
       </div>
     </div>

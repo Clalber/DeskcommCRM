@@ -14139,6 +14139,7 @@ alter table public.automation_rule_runs
 
 comment on column public.automation_rule_runs.status is
   'success = todas as ações funcionaram; partial = algumas falharam; failed = todas falharam; '
-  'adiado = nada foi tentado ainda, a regra está esperando a janela de envio do número reabrir.';
+  'adiado = nada chegou ao cliente e ainda pode chegar — a regra espera a janela de envio do '
+  'número, ou a mensagem ficou na fila do canal.';
 
 notify pgrst, 'reload schema';

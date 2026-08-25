@@ -45,7 +45,12 @@ function statusBadgeVariant(
 function statusBadgeLabel(status: AutomationRuleRunRow["status"]): string {
   if (status === "success") return "Sucesso";
   if (status === "failed") return "Falhou";
-  if (status === "adiado") return "Aguardando horário";
+  // "Aguardando envio", e não "Aguardando horário": desde que o agregador passou
+  // a marcar `adiado` também quando a mensagem ficou na fila do canal (número
+  // desconectado, transporte não configurado), o rótulo antigo afirmava uma
+  // causa — o relógio — que muitas vezes não é a certa. A causa exata aparece
+  // na linha da ação, logo abaixo, onde ela pode ser específica.
+  if (status === "adiado") return "Aguardando envio";
   return "Parcial";
 }
 
@@ -104,7 +109,12 @@ function ActionLine({ action, run }: { action: AutomationRuleRunActionResult; ru
       <SkipForward className="h-4 w-4 shrink-0 text-muted-foreground" />
     );
 
-  const explicacao = action.status === "failed" ? null : explicacaoDe(action);
+  // A explicação vale TAMBÉM em `failed` — era aqui que os motivos da ação de
+  // IA (`sem_agente_publicado`, `ia_indisponivel`, `texto_vazio`) morriam: eles
+  // chegam em `action.error` como CÓDIGO, o ramo de falha imprime `error` cru, e
+  // o mapa de frases logo acima nunca era consultado. Escrever as frases e não
+  // ligá-las é o mesmo que não tê-las.
+  const explicacao = explicacaoDe(action);
   const retorno = horarioDeRetorno(action);
 
   return (
@@ -119,7 +129,12 @@ function ActionLine({ action, run }: { action: AutomationRuleRunActionResult; ru
         // comprido empurre o botão "Reenviar" pra fora da tela.
         <div className="ml-6 flex flex-wrap items-center justify-between gap-2 rounded-sm bg-muted px-2 py-1.5">
           <p className="min-w-0 break-words text-xs text-muted-foreground">
-            {action.error ?? "Essa ação não funcionou."}
+            {/* A frase ANTES do código cru. `action.error` já é texto de gente
+                nas falhas de envio (desfechoDoEnvio traduz), mas nas falhas da
+                IA ele é o código (`sem_agente_publicado`) — e é para esses que
+                `explicacao` existe. O `??` mantém o erro do webhook externo,
+                que não tem tradução possível e é a única pista real. */}
+            {explicacao ?? action.error ?? "Essa ação não funcionou."}
           </p>
           {action.type === "call_webhook" ? (
             <Button

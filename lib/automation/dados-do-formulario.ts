@@ -25,8 +25,23 @@ export interface DadosParaAbordagem {
   veioDeFormulario: boolean;
 }
 
-/** Rótulos que a pessoa reconhece, para os três campos canônicos. */
-const ROTULO_CANONICO: Record<string, string> = {
+/**
+ * Do CONTATO, só estes campos entram — e a lista é uma ALLOWLIST, não um mapa
+ * de rótulos bonitos.
+ *
+ * `buildContext` (lib/automation/engine.ts) hidrata `context.contact` com
+ * `select("*")`: a linha INTEIRA de `contacts`. Iterar esse objeto — que é o que
+ * este arquivo fazia — despejava no prompt do provedor de LLM, sob o rótulo "o
+ * que a pessoa preencheu", coisas como `id`, `organization_id`, `cpf_hash`,
+ * `cpf_encrypted`, `email_normalized`, `is_blocked`, `created_at` e as flags
+ * internas. Três lentes de revisão acharam isto de forma independente.
+ *
+ * Dois estragos, e o segundo é o silencioso: (1) identificadores internos e
+ * hash de CPF saíam da instalação; (2) o modelo era instruído a "personalizar
+ * de verdade" a partir de metadados de banco, então a mensagem podia citar o
+ * horário de `created_at` ou a palavra "webhook" ao cliente.
+ */
+const CAMPOS_DO_CONTATO: Record<string, string> = {
   name: "Nome",
   display_name: "Nome",
   phone_number: "Telefone",
@@ -42,13 +57,28 @@ function texto(valor: unknown): string | null {
 function acrescentar(
   destino: Record<string, string>,
   origem: Record<string, unknown> | null | undefined,
-  rotular = false,
 ): void {
   if (!origem) return;
   for (const [chave, valor] of Object.entries(origem)) {
     const v = texto(valor);
     if (v === null) continue;
-    const rotulo = rotular ? (ROTULO_CANONICO[chave] ?? chave) : chave;
+    if (!(chave in destino)) destino[chave] = v;
+  }
+}
+
+/**
+ * O contato, pela allowlist. Itera os campos PERMITIDOS, não os presentes —
+ * é o que faz uma coluna nova em `contacts` (amanhã) não vazar sozinha para o
+ * prompt.
+ */
+function acrescentarContato(
+  destino: Record<string, string>,
+  contato: Record<string, unknown> | null | undefined,
+): void {
+  if (!contato) return;
+  for (const [coluna, rotulo] of Object.entries(CAMPOS_DO_CONTATO)) {
+    const v = texto(contato[coluna]);
+    if (v === null) continue;
     if (!(rotulo in destino)) destino[rotulo] = v;
   }
 }
@@ -62,7 +92,7 @@ export async function dadosDoFormularioDoContexto(ctx: ActionCtx): Promise<Dados
     | undefined;
 
   const dados: Record<string, string> = {};
-  acrescentar(dados, contact as Record<string, unknown> | undefined, true);
+  acrescentarContato(dados, contact as Record<string, unknown> | undefined);
 
   if (lead?.id) {
     // A captação mais recente deste lead. `maybeSingle` com limit 1: um lead

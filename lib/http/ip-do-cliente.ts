@@ -22,6 +22,8 @@
  * vira uma linha que parece um IP na tela.
  */
 
+import { isIP } from "node:net";
+
 /** O primeiro salto do `x-forwarded-for`, ou o `x-real-ip`. `null` = sem proxy à frente. */
 export function ipDoCliente(headers: Headers): string | null {
   const encaminhado = headers.get("x-forwarded-for")?.split(",")[0]?.trim();
@@ -38,17 +40,37 @@ export function ipDoCliente(headers: Headers): string | null {
  * por causa de um header malformado (que é justamente o que um cliente hostil
  * mandaria). Aqui o valor inválido vira `null`: a linha entra, sem a origem.
  *
+ * ═══ Por que `net.isIP` e não uma regex ═══
+ *
+ * A primeira versão desta função tinha uma regex escrita à mão para IPv6
+ * (`/^[0-9a-fA-F:]+…/` mais `includes(":")`), e ela ACEITAVA lixo que o Postgres
+ * recusa: `":::::"` passa (só hex e dois-pontos), `"12345::"` passa (cinco
+ * dígitos hex num grupo de quatro). Qualquer um dos dois num `X-Forwarded-For`
+ * derrubava o INSERT inteiro com `22P02` — e como `registrarCaptacao` não lança,
+ * a captação sumia da tela em silêncio. Ou seja: um header hostil apagava do
+ * histórico exatamente a batida que alguém queria investigar.
+ *
+ * `net.isIP` é a implementação do próprio Node (devolve 4, 6 ou 0) e não tem
+ * como divergir por descuido de regex. IPv6 é notoriamente difícil de validar à
+ * mão — `::ffff:1.2.3.4`, zeros comprimidos, grupos de tamanho variável — e
+ * escrever essa regex era trabalho para uma ferramenta que já existe.
+ *
+ * ⚠️ `isIP` sozinho NÃO BASTA, e isto foi MEDIDO contra o Postgres, não
+ * presumido — a primeira versão deste comentário afirmava o contrário:
+ *
+ *     node  -> isIP("fe80::1%eth0") === 6           (aceita a zona)
+ *     psql  -> ERROR: invalid input syntax for type inet: "fe80::1%eth0"
+ *
+ * Ou seja, o identificador de zona (`%eth0`) atravessaria o guarda e recriaria
+ * exatamente o `22P02` que ele existe para impedir. O `%` é recusado antes.
+ * Notação CIDR (`/64`) também sai: o Postgres a aceitaria, mas um prefixo de
+ * rede não é "de onde veio esta requisição".
+ *
  * A validação é de FORMA, não de veracidade — ver o cabeçalho.
  */
 export function ipDoClienteParaInet(headers: Headers): string | null {
   const bruto = ipDoCliente(headers);
   if (bruto === null) return null;
-  // IPv4 com quatro octetos em faixa, ou IPv6 na forma que o Postgres aceita
-  // (hex e `:`, com o sufixo IPv4 opcional do `::ffff:1.2.3.4`).
-  const ipv4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(bruto);
-  if (ipv4) {
-    return ipv4.slice(1).every((o) => Number(o) <= 255) ? bruto : null;
-  }
-  if (/^[0-9a-fA-F:]+(\.\d{1,3}){0,3}$/.test(bruto) && bruto.includes(":")) return bruto;
-  return null;
+  if (bruto.includes("%") || bruto.includes("/")) return null;
+  return isIP(bruto) === 0 ? null : bruto;
 }

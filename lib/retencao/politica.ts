@@ -14,13 +14,21 @@
  *
  * ─── O piso não é sugestão ──────────────────────────────────────────────────
  *
- * Este módulo devolve o número que o CHAMADOR pede ao banco; o piso de verdade
- * mora dentro de `fn_podar_fila_de_jobs` e `fn_expurgar_auditoria_vencida`
- * (`greatest(..., piso)`), porque só lá ele vale para QUALQUER chamador —
- * inclusive um `psql` na mão. Repeti-lo aqui serve para outra coisa: para o
- * operador ver no log que o valor dele foi elevado, em vez de descobrir pela
- * ausência de efeito. Os dois lados usam as mesmas constantes deste arquivo, e
- * `tests/invariants/retencao-poda-e-expurgo.test.ts` compara os dois.
+ * Este módulo devolve o número que o CHAMADOR pede ao banco; para a FILA e a
+ * AUDITORIA o piso de verdade mora dentro de `fn_podar_fila_de_jobs` e
+ * `fn_expurgar_auditoria_vencida` (`greatest(..., piso)`), porque só lá ele vale
+ * para QUALQUER chamador — inclusive um `psql` na mão. Repeti-lo aqui serve para
+ * outra coisa: para o operador ver no log que o valor dele foi elevado, em vez
+ * de descobrir pela ausência de efeito. Os dois lados usam as mesmas constantes
+ * deste arquivo, e `tests/invariants/retencao-poda-e-expurgo.test.ts` compara os
+ * dois.
+ *
+ * ⚠️ A CAPTAÇÃO É A EXCEÇÃO, e por isso o aviso NÃO diz mais "o piso também é
+ * aplicado dentro da função do banco": para `webhook_lead_captures` isso seria
+ * FALSO. A poda dela é um DELETE do admin client (`lib/webhooks/retencao-da-
+ * captacao.ts`), não uma `security definer` — não há função onde enfiar o piso,
+ * e o alcance dele termina no TypeScript. Uma frase que promete uma proteção
+ * inexistente é pior que a ausência da frase: ela faz quem lê parar de checar.
  */
 
 /** 90 dias. Longe o bastante do horizonte em que "1º outbound" ainda diz algo. */
@@ -101,7 +109,7 @@ export function interpretarRetencao(
       dias: opcoes.piso,
       aviso:
         `${opcoes.chave}=${numero} está abaixo do piso de ${opcoes.piso} dias — ` +
-        `usando ${opcoes.piso}. O piso também é aplicado dentro da função do banco.`,
+        `usando ${opcoes.piso}.`,
     };
   }
 

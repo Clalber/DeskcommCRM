@@ -50,12 +50,20 @@ alter table public.automation_rule_runs
     'success',
     'partial',
     'failed',
-    -- (migration 0170) Nada foi executado ainda: a regra casou, e a primeira
-    -- ação pediu para esperar (janela horária do número, cap diário). O
-    -- `actions_result` carrega o motivo e o instante do retorno.
+    -- (migration 0170) NADA CHEGOU AO CLIENTE, E AINDA PODE CHEGAR. Dois
+    -- caminhos produzem este estado, e confundi-los foi um defeito achado em
+    -- revisão adversarial:
+    --   (a) a regra casou e a primeira ação pediu para esperar antes de
+    --       executar (janela horária do número, cap diário) — nada foi tentado;
+    --   (b) as ações executaram e ao menos uma terminou em `postponed`: a
+    --       mensagem existe, está em `queued`, e não alcançou o cliente.
+    -- O caso (b) era gravado como `success` pelo agregador do motor, o que
+    -- ressuscitava — um nível acima — exatamente o defeito que esta entrega
+    -- veio matar. O `actions_result` carrega o motivo de cada ação.
     'adiado'
   ));
 
 comment on column public.automation_rule_runs.status is
   'success = todas as ações funcionaram; partial = algumas falharam; failed = todas falharam; '
-  'adiado = nada foi tentado ainda, a regra está esperando a janela de envio do número reabrir.';
+  'adiado = nada chegou ao cliente e ainda pode chegar — a regra espera a janela de envio do '
+  'número, ou a mensagem ficou na fila do canal.';

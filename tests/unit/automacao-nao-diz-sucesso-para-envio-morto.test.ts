@@ -158,3 +158,83 @@ describe("as duas ações de envio usam o MESMO tradutor", () => {
     expect(culpadas).toEqual([]);
   });
 });
+
+/**
+ * O AGREGADOR — o andar de cima do mesmo defeito.
+ *
+ * `desfechoDoEnvio` (acima) passou a devolver `postponed` honestamente. Mas quem
+ * escreve `automation_rule_runs.status` é o motor, e ele fazia:
+ *
+ *     const failed = results.filter(r => r.status === "failed").length;
+ *     const status = failed === 0 ? "success" : …
+ *
+ * Uma ação `postponed` conta ZERO falhas → o run vira **"Sucesso"** verde na
+ * tela, para uma mensagem que ficou em `queued` e não chegou ao cliente. Ou
+ * seja: o defeito que esta entrega veio matar, ressuscitado um nível acima,
+ * porque o conserto foi por instância e não por classe.
+ *
+ * Achado em revisão adversarial — os casos de comportamento acima passavam
+ * todos, e nenhum deles olhava para a agregação. Este bloco é a rede que
+ * faltava.
+ *
+ * A regra vive dentro de `runAutomationForEvent`, que exige banco e event_log;
+ * o que se testa aqui é a REGRA, extraída como a função pura que o motor aplica.
+ * Se alguém mudar o motor sem mudar esta função, o `it` final reprova — ele
+ * compara os dois lendo o fonte.
+ */
+describe("o agregador do run também diz a verdade", () => {
+  /** Espelha a regra do motor. Mantida em sincronia pelo caso final deste bloco. */
+  function statusDoRun(statuses: string[]): string {
+    const failed = statuses.filter((s) => s === "failed").length;
+    const adiados = statuses.filter((s) => s === "postponed").length;
+    return failed > 0
+      ? failed === statuses.length
+        ? "failed"
+        : "partial"
+      : adiados > 0
+        ? "adiado"
+        : "success";
+  }
+
+  it("O DEFEITO: uma ação adiada NÃO vira run de sucesso", () => {
+    expect(statusDoRun(["postponed"])).toBe("adiado");
+  });
+
+  it("sucesso + adiada = adiado — algo ainda não chegou ao cliente", () => {
+    // "success" mentiria (nem tudo chegou) e "partial" mentiria ao contrário
+    // (nada falhou). O honesto é dizer que ainda há coisa a caminho.
+    expect(statusDoRun(["success", "postponed"])).toBe("adiado");
+  });
+
+  it("falha VENCE adiamento — quem lê precisa saber que algo quebrou", () => {
+    expect(statusDoRun(["failed", "postponed"])).toBe("partial");
+  });
+
+  it("tudo falhou continua sendo failed", () => {
+    expect(statusDoRun(["failed", "failed"])).toBe("failed");
+  });
+
+  it("tudo funcionou continua sendo success", () => {
+    expect(statusDoRun(["success", "success"])).toBe("success");
+  });
+
+  it("pular não é adiar: uma ação `skipped` não segura o run em adiado", () => {
+    // `skipped` é desfecho TERMINAL (contato bloqueado, sem telefone) — nada
+    // vai chegar depois. Tratá-lo como adiado prometeria uma mensagem que não
+    // existe.
+    expect(statusDoRun(["success", "skipped"])).toBe("success");
+  });
+
+  it("a regra do motor e a deste teste são a MESMA — senão a rede vigia outra coisa", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    const fonte = readFileSync(join(process.cwd(), "lib", "automation", "engine.ts"), "utf8");
+
+    // Não compara texto formatado (o prettier reescreveria e daria falso
+    // vermelho): compara os PEDAÇOS que carregam a decisão.
+    expect(fonte).toContain('results.filter((r) => r.status === "postponed")');
+    expect(fonte).toContain('adiados > 0');
+    // E o que NÃO pode voltar: o ternário antigo, que ignorava o adiamento.
+    expect(fonte).not.toContain('const status = failed === 0 ? "success"');
+  });
+});

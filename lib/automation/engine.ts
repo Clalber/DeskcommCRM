@@ -214,8 +214,33 @@ export async function runAutomationForEvent(
       }
     }
 
+    // ═══ O AGREGADOR TAMBÉM PRECISA DIZER A VERDADE ═══
+    //
+    // `failed === 0 ? "success"` fazia uma ação `postponed` — mensagem que ficou
+    // em `queued` e NÃO chegou ao cliente — virar "Sucesso" verde na tela. É o
+    // MESMO defeito que `desfecho-do-envio.ts` existe para matar, ressurgindo
+    // um nível acima: a ação passou a ser honesta e quem soma continuava
+    // mentindo. Conserto por instância, não por classe.
+    //
+    // Achado por revisão adversarial, com o cenário alcançável: instalação sem
+    // o transporte de WhatsApp configurado (o caso de TODA instalação nova), a
+    // janela aberta, `postponeUntil` devolve null, a ação executa, e o envio
+    // termina em `queued` com `queued_reason`. É exatamente o estado congelado
+    // em `tests/invariants/automation-send-whatsapp.test.ts` caso 2.
+    //
+    // A ordem importa: falha vence adiamento. Uma regra em que uma ação falhou
+    // e outra ficou esperando é `partial` — quem lê precisa saber que algo
+    // quebrou, não que está tudo a caminho.
     const failed = results.filter((r) => r.status === "failed").length;
-    const status = failed === 0 ? "success" : failed === results.length ? "failed" : "partial";
+    const adiados = results.filter((r) => r.status === "postponed").length;
+    const status =
+      failed > 0
+        ? failed === results.length
+          ? "failed"
+          : "partial"
+        : adiados > 0
+          ? "adiado"
+          : "success";
     const { data: runRow, error: runErr } = await admin
       .from("automation_rule_runs")
       .insert({

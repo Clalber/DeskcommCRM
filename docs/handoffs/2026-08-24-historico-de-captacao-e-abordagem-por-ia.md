@@ -162,11 +162,70 @@ Três decisões que valem reler:
 Guardado por `tests/unit/retencao-do-historico-de-captacao.test.ts` (10 casos).
 Sabotado: removendo o `Math.max` do piso, 2 casos reprovam.
 
+## O que a revisão adversarial achou (e o que eu tinha errado)
+
+Antes de abrir o PR, seis lentes independentes leram o diff e cada achado passou
+por um cético que tentou derrubá-lo. Saíram **11 achados únicos, 2 refutados, 9
+consertados** — todos meus. Os três que valem ser lidos por quem herdar isto:
+
+**1. O defeito consertado ressuscitou um andar acima.** `desfechoDoEnvio` passou
+a devolver `postponed` honestamente, e o AGREGADOR do motor continuava fazendo
+`failed === 0 ? "success"` — então uma ação adiada virava "Sucesso" verde na
+tela, para uma mensagem em `queued` que não chegou ao cliente. É exatamente o
+defeito que esta entrega veio matar, e eu o deixei vivo porque consertei por
+instância em vez de por classe. Guardado agora por `tests/unit/automacao-nao-diz-
+sucesso-para-envio-morto.test.ts` (20 casos, o último comparando a regra do teste
+com o fonte do motor); sabotado devolvendo o ternário antigo, reprova.
+
+**2. A instrução do operador e o formulário público moravam na mesma mensagem.**
+Separados só por cabeçalho markdown (`## O que fazer com esses dados`) — que
+qualquer campo forja, e mais perto do fim, que é a posição de mais peso. A
+instrução subiu para o `system` (onde conteúdo público nunca chega) e os dados
+desceram para o `user` dentro de `<dados id="{nonce}">`, com um id aleatório por
+chamada. Não é imunidade — nenhuma mitigação de injeção é —, é a diferença entre
+"duas linhas no campo" e "adivinhar um uuid".
+
+**3. A linha inteira de `contacts` ia para o provedor de LLM.** `buildContext`
+hidrata com `select("*")`, e eu iterava o objeto: `cpf_hash`, `cpf_encrypted`,
+`organization_id`, `created_at` e as flags internas saíam da instalação sob o
+rótulo "o que a pessoa preencheu" — com o modelo instruído a "personalizar de
+verdade" a partir disso. Virou allowlist que itera os campos PERMITIDOS, não os
+presentes: coluna nova em `contacts` amanhã não vaza sozinha.
+
+Mais: IP malformado derrubava o INSERT inteiro (`:::::` passava na minha regex e
+o Postgres recusa); a captação `duplicado` gravava PII sem `contact_id`, fora do
+alcance do gatilho de anonimização; a tela mostrava o código cru da falha da IA
+porque `explicacao` era anulada justamente em `failed`; e erro de consulta se
+apresentava como "Ninguém preencheu seus formulários ainda".
+
+**Duas coisas que só apareceram porque medi, em vez de raciocinar:**
+
+- `net.isIP`, que peguei como "a ferramenta exata", aceita `fe80::1%eth0` — e o
+  Postgres recusa. Meu comentário afirmava o contrário. As duas saídas estão
+  agora lado a lado em `lib/http/ip-do-cliente.ts`, e o guarda recusa `%` e `/`.
+- O **disclosure foi refutado**, e eu estava prestes a implementá-lo:
+  `insertDisclosureTemplateVersion` e `setDisclosureTemplatePointer` têm ZERO
+  chamadores no repo, então `loadDisclosureTemplate` devolve `null` em toda
+  organização e o gate é no-op em todo envio existente. Mesmo armado, esta ação
+  não escreve em `send_ledger`, então o disclosure continuaria chegando na
+  primeira mensagem do agente. Era código para uma proteção que ninguém tem.
+
 ## O que NÃO foi feito (dívida declarada)
 
 - **O agente da abordagem não lê a base de conhecimento (RAG).** `draft-reply`
   também não lê; a via limpa usa `runModelCall` sem tools. Se a mensagem
   precisar citar material do negócio, isso é frente própria.
+- **A LGPD alcança a captação pelo `contact_id`, e só por ele.** A revisão
+  sugeriu uma rede a mais — o gatilho alcançar também pela volta do lead
+  (`lead_id in (select id from crm_leads where contact_id = …)`), para não
+  depender de todo call site lembrar do vínculo. Não implementei, e a razão é
+  que procurei um cenário ALCANÇÁVEL hoje sem o vínculo e não achei: depois do
+  conserto da rota, os caminhos com PII passam `contactId`; o formulário que
+  coleta só nome e e-mail cria lead sem contato, mas aí não há contato para
+  anonimizar — a LGPD é indexada por contato, e a pessoa não tem registro. O que
+  a rede cobriria é um call site FUTURO esquecendo. Fica declarado em vez de
+  codificado; quem discordar tem o raciocínio inteiro aqui para decidir
+  diferente.
 - **Nenhuma spec exercita a IA gerando texto de verdade.** O rig não tem chave
   de modelo (`.env.e2e` sem `ANTHROPIC_API_KEY`), então a spec prova a
   CONFIGURAÇÃO pela tela e o caminho de erro; o texto gerado por um modelo real

@@ -173,16 +173,22 @@ export async function POST(req: NextRequest, ctx: RouteCtx): Promise<NextRespons
     return ok({ lead_id: leadId }, { requestId });
   };
 
-  const findLeadByExternalId = async (): Promise<string | null> => {
+  // Traz o CONTATO junto, e não só o id do lead: a linha de captação precisa do
+  // vínculo para a LGPD alcançá-la. O gatilho de anonimização casa por
+  // `contact_id` — uma captação `duplicado` gravada sem ele guarda nome,
+  // telefone e o formulário inteiro de alguém que pediu anonimização, por 365
+  // dias, enquanto o produto afirma que a pessoa foi anonimizada.
+  const findLeadByExternalId = async (): Promise<{ id: string; contactId: string | null } | null> => {
     if (!externalId) return null;
     const { data } = await admin
       .from("crm_leads")
-      .select("id")
+      .select("id, contact_id")
       .eq("organization_id", source.organization_id)
       .eq("source", "webhook")
       .eq("external_id", externalId)
       .maybeSingle();
-    return (data?.id as string | undefined) ?? null;
+    if (!data) return null;
+    return { id: data.id as string, contactId: (data.contact_id as string | null) ?? null };
   };
 
   const fieldMap = (source.field_map ?? {}) as FieldMap;
@@ -209,18 +215,19 @@ export async function POST(req: NextRequest, ctx: RouteCtx): Promise<NextRespons
     utm: mapped.source_metadata,
   };
 
-  const dedupedLeadId = await findLeadByExternalId();
-  if (dedupedLeadId) {
+  const deduped = await findLeadByExternalId();
+  if (deduped) {
     // Mesmo envio repetido: 200 com o lead existente, nada é recriado — a
     // ferramenta que reenviou recebe sucesso e para de tentar.
     await registrarCaptacao(admin, {
       ...fonteDaCaptacao,
       ...origemDaCaptacao,
       ...dadosDaCaptacao,
-      leadId: dedupedLeadId,
+      leadId: deduped.id,
+      contactId: deduped.contactId,
       outcome: "duplicado",
     });
-    return respondWithLead(dedupedLeadId);
+    return respondWithLead(deduped.id);
   }
 
   if (!mapped.name && !mapped.phone && !mapped.email) {
@@ -325,17 +332,20 @@ export async function POST(req: NextRequest, ctx: RouteCtx): Promise<NextRespons
       // passam ambos pelo fast-path; o índice único derruba o segundo INSERT
       // (23505) — re-seleciona o vencedor e responde idempotente.
       if (externalId && err.message?.includes("uniq_crm_leads_org_source_external")) {
-        const winnerId = await findLeadByExternalId();
-        if (winnerId) {
+        const vencedor = await findLeadByExternalId();
+        if (vencedor) {
           await registrarCaptacao(admin, {
             ...fonteDaCaptacao,
             ...origemDaCaptacao,
             ...dadosDaCaptacao,
-            leadId: winnerId,
-            contactId: contactId ?? null,
+            leadId: vencedor.id,
+            // O contato desta requisição quando existe (foi resolvido acima);
+            // o do lead vencedor como plano B — o que importa é a linha ter
+            // vínculo, para o gatilho de anonimização alcançá-la.
+            contactId: contactId ?? vencedor.contactId,
             outcome: "duplicado",
           });
-          return respondWithLead(winnerId);
+          return respondWithLead(vencedor.id);
         }
       }
       await registrarCaptacao(admin, {

@@ -95,7 +95,7 @@ export function CapturasTab() {
     [fonte, desfecho, buscaAplicada, de, ate],
   );
 
-  const { data, isLoading, fetchNextPage, hasNextPage, isFetchingNextPage } =
+  const { data, isLoading, isError, refetch, fetchNextPage, hasNextPage, isFetchingNextPage } =
     useLeadCaptures(filtros);
   const linhas = data?.pages.flatMap((p) => p.data) ?? [];
   const temFiltro = Object.keys(filtros).length > 0;
@@ -189,6 +189,25 @@ export function CapturasTab() {
           <Skeleton className="h-12 w-full" />
           <Skeleton className="h-12 w-full" />
           <Skeleton className="h-12 w-full" />
+        </div>
+      ) : isError ? (
+        // ERRO NÃO É LISTA VAZIA. A versão anterior mostrava "Ninguém preencheu
+        // seus formulários ainda" quando a CONSULTA falhou — a frase mais
+        // tranquilizadora possível para o estado em que a pessoa mais precisa
+        // saber que algo quebrou. Ela iria conferir a landing page em vez de
+        // recarregar a tela.
+        <div className="flex justify-center pt-10">
+          <Card className="max-w-md">
+            <CardContent className="space-y-3 pt-6 text-center">
+              <p className="text-sm text-text">Não foi possível carregar o histórico.</p>
+              <p className="text-xs text-muted-foreground">
+                Isto é uma falha ao consultar — não quer dizer que ninguém preencheu.
+              </p>
+              <Button type="button" variant="secondary" onClick={() => refetch()}>
+                Tentar de novo
+              </Button>
+            </CardContent>
+          </Card>
         </div>
       ) : linhas.length === 0 ? (
         <div className="flex justify-center pt-10">
