@@ -210,6 +210,36 @@ apresentava como "Ninguém preencheu seus formulários ainda".
   não escreve em `send_ledger`, então o disclosure continuaria chegando na
   primeira mensagem do agente. Era código para uma proteção que ninguém tem.
 
+## Um controle que não controla, achado no caminho (NÃO consertado)
+
+`checkDailyLimit` (`lib/automation/throttle.ts`) — o cap diário anti-ban da
+automação — lê `channel_session_warmup`. Essa tabela **não tem escritor nenhum
+no produto**:
+
+```bash
+grep -rn "channel_session_warmup" --include='*.ts' app/ lib/ workers/ scripts/
+#  → só o LEITOR (lib/automation/throttle.ts) e a declaração em database.types
+grep -rn "pacing_ledger" --include='*.ts' lib/ workers/ | grep insert
+#  → lib/agent-engine/pacing/store.ts:132  (o contador que o pacing REAL usa)
+```
+
+Logo `sent` é sempre `0` e o cap diário da automação **nunca dispara**. O único
+`insert` na tabela em todo o repositório está dentro de
+`tests/invariants/automation-send-whatsapp.test.ts` — ou seja, o caso que
+"prova" o cap semeia à mão a tabela que ninguém escreve.
+
+Há um segundo defeito no mesmo lugar: `checkDailyLimit` calcula "hoje" com
+`new Date().toISOString().slice(0,10)` — o dia em **UTC** — e devolve a próxima
+tentativa com `setHours` no fuso do **processo**. É exatamente o defeito de fuso
+que a janela de envio acabou de deixar de ter, sobrevivendo no irmão ao lado.
+
+**Por que não consertei:** ligar a automação ao `pacing_ledger` muda o
+comportamento anti-ban real (o cap passaria a valer de fato, onde hoje não
+vale), e isso é frente própria — não algo para entrar junto de uma entrega de
+histórico e abordagem por IA, às vésperas do merge. O que fiz foi não deixar o
+achado invisível: está escrito aqui e no comentário do caso 4 do invariante, com
+os comandos que o reproduzem.
+
 ## O que NÃO foi feito (dívida declarada)
 
 - **O agente da abordagem não lê a base de conhecimento (RAG).** `draft-reply`
