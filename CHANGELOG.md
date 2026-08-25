@@ -8,6 +8,18 @@ Se você roda o DeskcommCRM numa VPS, **leia a seção da versão para a qual es
 
 ## [Não lançado]
 
+### Corrigido
+
+- **A caixa de conversas voltou a se atualizar sozinha — antes só recarregando a página.**
+  A mensagem do cliente chegava, ficava guardada certinho, e a tela continuava parada: quem
+  estava com a conversa aberta, olhando, não via nada até apertar F5. Valia também para o
+  funil, o histórico do contato e as telas da IA. A causa veio de fora — uma peça de terceiros
+  que o sistema usa mudou de comportamento numa atualização, e o aviso de "chegou coisa nova"
+  passou a ser recusado em silêncio, sem erro em lugar nenhum. Agora a tela recebe de novo na
+  hora, e ela também se recupera sozinha: se a conexão em tempo real cair, a lista e a
+  conversa voltam a se sincronizar em pouco tempo em vez de ficar congeladas num passado que
+  parece presente. Nada para você fazer — vale assim que atualizar.
+
 ## [1.5.0] — 2026-08-25
 
 O histórico de quem chega pelos seus formulários agora existe — inclusive de quem **não**
@@ -99,16 +111,6 @@ para não passarem em branco. Se você já atualizou para a 1.4.1, já os leu �
   própria.
 
 ### Corrigido
-
-- **A caixa de conversas voltou a se atualizar sozinha — antes só recarregando a página.**
-  A mensagem do cliente chegava, ficava guardada certinho, e a tela continuava parada: quem
-  estava com a conversa aberta, olhando, não via nada até apertar F5. Valia também para o
-  funil, o histórico do contato e as telas da IA. A causa veio de fora — uma peça de terceiros
-  que o sistema usa mudou de comportamento numa atualização, e o aviso de "chegou coisa nova"
-  passou a ser recusado em silêncio, sem erro em lugar nenhum. Agora a tela recebe de novo na
-  hora, e ela também se recupera sozinha: se a conexão em tempo real cair, a lista e a
-  conversa voltam a se sincronizar em pouco tempo em vez de ficar congeladas num passado que
-  parece presente. Nada para você fazer — vale assim que atualizar.
 
 - **A automação dizia "Sucesso" para mensagem que não chegou ao cliente.** Era o relato que
   originou boa parte desta entrega: automação ligada, lead entrando pelo formulário, a aba
