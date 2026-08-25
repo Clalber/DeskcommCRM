@@ -29,11 +29,14 @@
  * Um motivo a MAIS na lista seria a tela afirmando sobre o motor uma coisa que o
  * motor não faz. Dois candidatos ficaram FORA de propósito:
  *
- *   * **janela de 24h** — o canal primário não tem janela (`capabilities.waha
- *     .freeformOutsideWindow`), e quem responde por isso na tela é o `JanelaSelo`,
- *     que é provider-aware. Recalcular 24h aqui diria "o automático está calado
- *     porque a janela fechou" em toda conversa WAHA com mais de um dia, ao lado de
- *     um selo dizendo o contrário.
+ *   * **janela de 24h** — nem todo canal a tem (é uma CAPACIDADE,
+ *     `freeformOutsideWindow` em `lib/channels/capabilities.ts`), e quem responde
+ *     por isso na tela é o `JanelaSelo`, que consulta a capacidade. Recalcular 24h
+ *     aqui diria "o automático está calado porque a janela fechou" em toda conversa
+ *     de canal sem janela com mais de um dia, ao lado de um selo dizendo o
+ *     contrário. E perguntar de que provider é o canal, aqui, seria o que a
+ *     doutrina de restrição de canal proíbe fora de `lib/channels/` — foi o
+ *     `lint:channels` que pegou a primeira versão deste comentário.
  *   * **conversa encerrada** — já é o `status`, e o `STATUS_LABEL` do cabeçalho já
  *     a mostra. Ela entra como ESTADO DE COMANDO (`encerrada`), não como motivo.
  *
