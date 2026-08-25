@@ -28,13 +28,19 @@ ficava esperando até as 4h da manhã seguinte; e uma disparada de madrugada sa�
 mensagem para o cliente às 5h. Agora vale o seu fuso, e **vale a faixa que você configurou
 em Conexões › Proteção de envio** — a mesma que a IA já respeitava. Se você apertou ou
 ampliou esse horário achando que só mexia com a IA, confira: agora ele também rege as
-automações. Quem nunca mexeu fica com 7h às 22h, no horário do seu negócio.
+automações. Quem nunca mexeu fica com 7h às 22h no **horário de Brasília**. Se o seu negócio fica em outro
+fuso, escolha o seu em **Conexões › Proteção de envio**, no campo "Fuso horário da janela" — e
+confira conexão por conexão, porque essa escolha é de cada número, não da instalação inteira.
 
 **Assumir uma conversa agora PARA o atendimento automático nela. Antes não parava, e os dois
 respondiam o mesmo cliente.** Quem clicava "Assumir" no Inbox ganhava a conversa na tela, mas o
 automático continuava respondendo por baixo — ele só ficava quieto por 5 minutos depois que o
 atendente mandava uma mensagem, e voltava a falar sozinho em seguida. Agora assumir e transferir
-silenciam o automático naquela conversa; **"Liberar" e "Fechar" devolvem o comando a ele**. Se a sua
+silenciam o automático naquela conversa, e **"Liberar" ou "Fechar" desfazem o silêncio que a
+pessoa pôs**. Há uma exceção que importa: quando foi o próprio automático que passou o caso
+para uma pessoa, "Liberar" e "Fechar" **não** o trazem de volta — ali quem devolve é o botão
+**"Devolver ao automático"**, no topo da conversa. É justamente o caso das conversas que
+aparecem na aba "Fila" (veja o aviso abaixo). Se a sua
 equipe se acostumou a assumir a conversa e deixar a IA responder junto, esse hábito muda aqui.
 
 **A distribuição por rodízio NÃO cala o automático** — distribuir é escolher quem cuida se precisar,
@@ -46,7 +52,7 @@ aba nenhuma. Se o número saltar depois de atualizar, é isso — e vale olhar, 
 esperando resposta há mais tempo do que você imaginava.
 
 Esta versão **mexe no banco de dados**. O `update.sh` aplica sozinho; não há passo
-manual — são tabelas e estados novos: o histórico de captação, o estado **Adiado** das
+manual — são tabelas e estados novos: o histórico de captação, o estado de espera das
 automações e o registro de quem está no comando de cada conversa.
 
 **Se você está vindo da 1.4.0, os dois avisos abaixo são da 1.4.1 e valem para você.** A tela de
@@ -56,8 +62,10 @@ para não passarem em branco. Se você já atualizou para a 1.4.1, já os leu �
 - **A IA passa a atender aos domingos, e antes não atendia.** O padrão de fábrica da janela
   anti-banimento mudou na 1.4.0: domingo era dia mudo e passou a ser dia normal (a faixa de
   horário continua a mesma). Se o seu negócio depende de silêncio no domingo, desligue em
-  **Conexões › Proteção de envio › "Enviar aos domingos"**, por canal. Quem já tinha mexido ali
-  teve a escolha respeitada.
+  **Conexões › Proteção de envio**, na chave "Enviar aos domingos", por canal. Quem já tinha
+  mexido ali teve a escolha respeitada. **Novidade desta versão:** essa chave passou a valer
+  também para as automações — desligá-la faz o lead que preencher seu formulário no domingo
+  só ser abordado na segunda de manhã.
 - **Duas conexões oficiais do WhatsApp com a mesma conta da Meta: fica com o identificador a
   conexão MAIS RECENTE**, e a mais antiga recebe o sufixo `-conflito-`. Nada foi apagado. A 1.4.0
   disse o contrário — se você apagou a conexão SEM o sufixo por causa daquela frase, era a que
@@ -98,11 +106,14 @@ para não passarem em branco. Se você já atualizou para a 1.4.1, já os leu �
   automação só sabia perguntar se tinha dado erro de programa; ela não olhava se a mensagem
   de fato saiu. Agora ela olha: quando o envio falha, o resultado aparece como falha, com o
   motivo em português ("Não conseguimos falar com o serviço de WhatsApp. Confira se ele está
-  no ar."), e um aviso é aberto na Central de Atendimento **nomeando a regra que falhou** —
+  no ar."), e um aviso é aberto na **Central de avisos** — o menu "Alertas", dentro de IA › Acompanhar o
+  agente — **nomeando a regra que falhou**,
   porque um erro que só existe numa aba que ninguém abre é um erro invisível.
 - **A automação que estava só esperando o horário parecia não ter rodado.** Ao adiar um
   envio, ela não gravava nada: "não apareceu nada na Atividade" e "a automação não funcionou"
-  eram a mesma tela. Agora a espera é um estado visível — **Adiado** —, com o motivo.
+  eram a mesma tela. Agora a espera é um estado visível na aba Atividade — **Aguardando envio** —, com o motivo ao
+  lado. Nem sempre é o relógio: o mesmo estado aparece quando o número de WhatsApp está
+  desconectado, e aí o que resolve é reconectar em Conexões, não esperar.
 
 - **A promessa da 1.4.0 sobre o limite de gasto agora é verdade.** Aquela versão disse que, quando o
   limite para a IA, "as conversas que estavam sendo atendidas vão para a fila de atendimento
