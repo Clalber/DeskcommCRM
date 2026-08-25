@@ -8,6 +8,17 @@ Se você roda o DeskcommCRM numa VPS, **leia a seção da versão para a qual es
 
 ## [Não lançado]
 
+### Corrigido
+
+- **Instalar numa VPS que já tem o CRM no ar não derruba mais a instalação existente.**
+  O instalador confundia a instalação de outra pasta com ele mesmo sendo rodado de novo e
+  subia por cima: o site seguia no ar, mas passando a usar o banco da pasta nova — e o
+  primeiro sintoma era a senha "parar de funcionar". Agora ele para antes de tocar em
+  nada, diz em que pasta está a instalação que já existe e ensina como atualizá-la. Isso
+  vale em qualquer arranjo de servidor — inclusive nas VPS em que o painel da hospedagem
+  (Hostinger, Coolify, Dokploy) é quem atende as portas, e nas pastas que já tinham
+  concluído uma instalação antes, onde a checagem anterior se desligava sozinha.
+
 ## [1.4.1] — 2026-08-24
 
 Correção de **texto de aviso**, não de comportamento: a seção da 1.4.0 descreveu errado uma
