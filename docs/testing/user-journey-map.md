@@ -988,6 +988,26 @@ Junte as duas com o defeito da publication: se o canal já não entrega nada, n�
 entrega para engolir → `engolidos` fica 0 → a pré-condição reprova → e o `test.fail()` diz
 "falhou como esperado". **A cerca estaria quebrada sem sinal.**
 
+**O mecanismo foi FECHADO por leitura (QA, 2026-08-25) — cada elo é uma linha, nenhum é
+inferência.** Verificado na fonte por mim:
+
+```
+degradacao-silenciosa.spec.ts:105  ehEntrega() → só true se q[3] === "postgres_changes"
+degradacao-silenciosa.spec.ts:149  if (ehEntrega(...)) { engolidos++ }
+degradacao-silenciosa.spec.ts:159  expect(engolidos).toBeGreaterThan(0)   ← pré-condição
+```
+
+Com a publication sem as tabelas, o servidor **nunca emite** quadro `postgres_changes` — emite
+`join`, `phx_reply` e `heartbeat`, que são justamente os que o proxy deixa passar de propósito.
+Logo `ehEntrega` nunca devolve true, `engolidos` fica 0, a pré-condição reprova, e o
+`test.fail()` mostra "falhou como esperado".
+
+**E a consequência é mais interessante que o bug** (formulação do QA): se a predição se
+confirmar, aquela cerca esteve quebrada desde que o defeito da publication existe, e ninguém
+podia ver — não por descuido, mas porque **o mecanismo que a protege de virar teatro (o
+`test.fail()`) é o mesmo que escondeu que ela virou**. É uma cerca cujo desenho de segurança
+criou o próprio ponto cego.
+
 Como confirmar (ninguém mediu ainda): rodar `CERCA_CRUA=1 pnpm exec playwright test
 degradacao-silenciosa.spec.ts` no CI antes e depois do passo de restart. Se antes ela falha na
 pré-condição e depois no ponto certo, a predição se confirma — e o conserto do CI terá tirado
