@@ -992,10 +992,15 @@ entrega para engolir → `engolidos` fica 0 → a pré-condição reprova → e 
 inferência.** Verificado na fonte por mim:
 
 ```
-degradacao-silenciosa.spec.ts:105  ehEntrega() → só true se q[3] === "postgres_changes"
-degradacao-silenciosa.spec.ts:149  if (ehEntrega(...)) { engolidos++ }
-degradacao-silenciosa.spec.ts:159  expect(engolidos).toBeGreaterThan(0)   ← pré-condição
+ehEntrega()                        → só true se q[3] === "postgres_changes"
+if (ehEntrega(...)) { engolidos++ }  ← é o ÚNICO lugar que incrementa
+expect(engolidos).toBeGreaterThan(0) ← a pré-condição, antes da asserção que interessa
 ```
+
+⚠️ **Sem número de linha, de propósito.** A primeira versão deste bloco citava `:105`, `:149`
+e `:159` — e estava certa na branch onde foi escrita e errada na `main`, porque o próprio
+cabeçalho que documenta isto empurrou o arquivo 31 linhas. O registro mudou o objeto que ele
+descreve. Ache por `grep -n "function ehEntrega" tests/e2e/degradacao-silenciosa.spec.ts`.
 
 Com a publication sem as tabelas, o servidor **nunca emite** quadro `postgres_changes` — emite
 `join`, `phx_reply` e `heartbeat`, que são justamente os que o proxy deixa passar de propósito.

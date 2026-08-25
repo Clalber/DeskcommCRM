@@ -31,9 +31,11 @@
  * parágrafo acima diz não existir. Um contador que só incrementa nesse estado
  * É o detector.
  *
- * Ele já é publicado no DOM como `data-refetch-divergencias` em:
- *     app/app/pipelines/[id]/_client.tsx:74
- *     components/kanban/LeadDossier.tsx:73
+ * Ele já é publicado no DOM como `data-refetch-divergencias` em dois lugares
+ * (`app/app/pipelines/[id]/_client.tsx` e `components/kanban/LeadDossier.tsx`).
+ * Sem número de linha de propósito: achar por
+ * `grep -rn data-refetch-divergencias` responde certo em qualquer branch, e um
+ * número envelhece no primeiro commit que mexer no arquivo — inclusive neste.
  *
  * ⚠️ E NÃO no Inbox — que é onde o operador vive e onde a intermitência mais
  * dói. (Ressalva de régua: o PR #327 acrescenta a publicação em
