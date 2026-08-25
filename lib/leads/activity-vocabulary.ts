@@ -59,6 +59,20 @@ export type ActivityType =
    */
   | "consent_declined"
   /**
+   * Classificação inicial (ver `lib/leads/classificacao-inicial.ts`) bateu um
+   * dos 3 motivos exatos de desqualificação. Igual a `consent_declined`: o
+   * "não" é sinal — sem esta linha, um lead que some do funil comercial de
+   * primeiro toque parece esquecido, não desqualificado por regra.
+   */
+  | "lead_disqualified"
+  /**
+   * Classificação inicial achou conflito de identidade (nome do envio diverge
+   * do nome já gravado no contato casado por telefone/e-mail) e NÃO
+   * classificou — pediu olho humano antes. Sem linha, ninguém sabe que o lead
+   * está parado esperando alguém decidir quem é quem.
+   */
+  | "lead_needs_review"
+  /**
    * A TROCA DE COMANDO ENTRE PESSOAS. A ida e a volta IA↔humano já estavam aqui
    * (`handoff_triggered`/`handoff_resolved`); assumir, transferir e liberar não
    * geravam linha nenhuma — grep nas três rotas devolvia zero. O efeito era uma
@@ -141,6 +155,8 @@ export const ACTIVITY_LABELS: Record<ActivityType, string> = {
   // tela — e o dossiê de um negócio fechado terminava sem dizer que fechou.
   demand_closed: "Demanda encerrada",
   consent_declined: "Consentimento de contato recusado no formulário",
+  lead_disqualified: "Desqualificado na triagem inicial",
+  lead_needs_review: "Aguardando revisão humana (conflito de identidade)",
   // Rótulos com OBJETO, nunca verbo nu: "Liberou" sozinho não diz o quê, e numa
   // clínica "liberar" é o que se faz com um exame. O resto do arquivo já segue
   // essa régua ("Retorno agendado", "Demanda encerrada").

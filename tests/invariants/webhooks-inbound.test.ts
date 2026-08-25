@@ -796,3 +796,107 @@ describe("POST /api/v1/webhooks/in/[token] — Respondi (payload aninhado, achad
     expect(contatosComEsseEmail, "deveria haver exatamente um contato por organização").toHaveLength(2);
   });
 });
+
+/**
+ * Classificação inicial (lib/leads/classificacao-inicial.ts), integrada na
+ * mesma rota. `CONFIG_CLASSIFICACAO_INICIAL` é `null` nesta suíte (config
+ * pendente, ver o arquivo) — os 3 casos abaixo provam o que É determinístico
+ * hoje: os 3 motivos exatos de desqualificação, o pedido de revisão humana, e
+ * que uma classe nunca é adivinhada quando o config não existe.
+ */
+describe("POST /api/v1/webhooks/in/[token] — classificação inicial (2026-08-25)", () => {
+  it("caso 9 — 'Ainda não posso investir' desqualifica: lead criado, custom_fields marca motivo, atividade na timeline", async () => {
+    const payload = respondiPayload("resp-int-desq-invest-0009", "55 15988880009", "maria.exemplo+0009@example.com", (p) => {
+      const respondent = p.respondent as Record<string, unknown>;
+      (respondent.answers as Record<string, unknown>)[
+        "Considerando estratégia, tecnologia, atendimento e mídia, qual faixa de investimento seria viável para sua empresa crescer?"
+      ] = "Ainda não posso investir";
+    });
+    const res = await POST(jsonReq(TOKEN_RESPONDI, payload), reqCtx(TOKEN_RESPONDI));
+    expect(res.status).toBe(200);
+    const leadId = ((await res.json()) as { data: { lead_id: string } }).data.lead_id;
+
+    const lead = rows(`select * from public.crm_leads where id = '${leadId}'`)[0]!;
+    const cf = lead.custom_fields as Record<string, unknown>;
+    expect(cf.classificacao_inicial_status).toBe("desqualificado");
+    expect(cf.classificacao_inicial_motivo).toBe("sem_capacidade_de_investimento");
+
+    const activityRows = rows(
+      `select * from public.crm_lead_activities where lead_id = '${leadId}' and type = 'lead_disqualified'`,
+    );
+    expect(activityRows.length).toBe(1);
+  });
+
+  it("caso 10 — consentimento recusado desqualifica a classificação (motivo sem_consentimento), além de gerar consent_declined", async () => {
+    const payload = respondiPayload("resp-int-desq-consent-0010", "55 15988880010", "maria.exemplo+0010@example.com", (p) => {
+      const respondent = p.respondent as Record<string, unknown>;
+      const rawAnswers = respondent.raw_answers as Array<Record<string, unknown>>;
+      const legaltext = rawAnswers.find(
+        (r) => (r.question as Record<string, unknown>).question_type === "legaltext",
+      )!;
+      legaltext.answer = "no";
+      (respondent.answers as Record<string, unknown>)["Autorização de contato"] = "Não aceito";
+    });
+    const res = await POST(jsonReq(TOKEN_RESPONDI, payload), reqCtx(TOKEN_RESPONDI));
+    expect(res.status).toBe(200);
+    const leadId = ((await res.json()) as { data: { lead_id: string } }).data.lead_id;
+
+    const lead = rows(`select * from public.crm_leads where id = '${leadId}'`)[0]!;
+    const cf = lead.custom_fields as Record<string, unknown>;
+    expect(cf.classificacao_inicial_status).toBe("desqualificado");
+    expect(cf.classificacao_inicial_motivo).toBe("sem_consentimento");
+
+    const disqualified = rows(
+      `select id from public.crm_lead_activities where lead_id = '${leadId}' and type = 'lead_disqualified'`,
+    );
+    expect(disqualified.length).toBe(1);
+  });
+
+  it("caso 11 — segundo envio com o MESMO telefone mas nome diferente do contato existente: revisão humana, lead ainda criado", async () => {
+    const telefone = "55 15988880011";
+    const primeiro = respondiPayload("resp-int-rev-a-0011", telefone, "maria.exemplo+0011a@example.com");
+    const res1 = await POST(jsonReq(TOKEN_RESPONDI, primeiro), reqCtx(TOKEN_RESPONDI));
+    expect(res1.status).toBe(200);
+
+    const segundo = respondiPayload("resp-int-rev-b-0011", telefone, "maria.exemplo+0011b@example.com", (p) => {
+      const respondent = p.respondent as Record<string, unknown>;
+      (respondent.answers as Record<string, unknown>)["Qual é o seu nome?"] = "Outra Pessoa Completamente Diferente";
+      const rawAnswers = respondent.raw_answers as Array<Record<string, unknown>>;
+      const nameAnswer = rawAnswers.find((r) => (r.question as Record<string, unknown>).question_type === "name")!;
+      nameAnswer.answer = "Outra Pessoa Completamente Diferente";
+    });
+    const res2 = await POST(jsonReq(TOKEN_RESPONDI, segundo), reqCtx(TOKEN_RESPONDI));
+    expect(res2.status).toBe(200);
+    const leadId2 = ((await res2.json()) as { data: { lead_id: string } }).data.lead_id;
+
+    const lead2 = rows(`select * from public.crm_leads where id = '${leadId2}'`)[0]!;
+    const cf2 = lead2.custom_fields as Record<string, unknown>;
+    expect(cf2.classificacao_inicial_status).toBe("revisao_humana");
+    expect(cf2.classificacao_inicial_motivo).toBe("conflito_de_identidade");
+
+    const reviewRows = rows(
+      `select id from public.crm_lead_activities where lead_id = '${leadId2}' and type = 'lead_needs_review'`,
+    );
+    expect(reviewRows.length).toBe(1);
+  });
+
+  it("caso 12 — sem config numérica: lead válido classifica como nao_avaliado, nunca uma classe adivinhada", async () => {
+    const payload = respondiPayload("resp-int-naoavaliado-0012", "55 15988880012", "maria.exemplo+0012@example.com");
+    const res = await POST(jsonReq(TOKEN_RESPONDI, payload), reqCtx(TOKEN_RESPONDI));
+    expect(res.status).toBe(200);
+    const leadId = ((await res.json()) as { data: { lead_id: string } }).data.lead_id;
+
+    const lead = rows(`select * from public.crm_leads where id = '${leadId}'`)[0]!;
+    const cf = lead.custom_fields as Record<string, unknown>;
+    expect(cf.classificacao_inicial_status).toBe("classificado");
+    expect(cf.classificacao_inicial_classe).toBe("nao_avaliado");
+    expect(cf.classificacao_inicial_percentual).toBeUndefined();
+
+    // "nao_avaliado" não é evento — não deveria ter gerado lead_disqualified
+    // nem lead_needs_review.
+    const activityRows = rows(
+      `select type from public.crm_lead_activities where lead_id = '${leadId}' and type in ('lead_disqualified', 'lead_needs_review')`,
+    );
+    expect(activityRows).toHaveLength(0);
+  });
+});
