@@ -729,13 +729,16 @@ describe("processNode — match_reply", () => {
     { id: "br_preco", label: "Preço", op: "contains" as const, pattern: "preco" },
   ];
 
-  function matchNode(): FlowNode {
+  function matchNode(extra?: Partial<Extract<FlowNode, { type: "match_reply" }>["config"]>): Extract<
+    FlowNode,
+    { type: "match_reply" }
+  > {
     return {
       id: "mr1",
       type: "match_reply",
       label: "Casar",
       position: { x: 0, y: 0 },
-      config: { branches: RAMOS, grace_timeout_ms: 900_000 },
+      config: { branches: RAMOS, grace_timeout_ms: 900_000, ...extra },
     };
   }
 
@@ -804,10 +807,7 @@ describe("processNode — match_reply", () => {
   });
 
   it("wokeEarly + save_to sem aresta Sempre usa o primeiro ramo que não é no_reply", () => {
-    const node: FlowNode = {
-      ...matchNode(),
-      config: { ...matchNode().config, save_to: { kind: "contact_name" } },
-    };
+    const node = matchNode({ save_to: { kind: "contact_name" } });
     const soRamo = [
       edge({ source: "mr1", target: "no-sim", condition: { type: "branch", branch_id: "br_sim" } }),
     ];
@@ -825,10 +825,7 @@ describe("processNode — match_reply", () => {
   });
 
   it("wokeEarly + save_to: qualquer texto segue o Sempre (nome já na ficha não importa)", () => {
-    const node: FlowNode = {
-      ...matchNode(),
-      config: { ...matchNode().config, save_to: { kind: "contact_name" } },
-    };
+    const node = matchNode({ save_to: { kind: "contact_name" } });
     const result = processNode({
       node,
       edges,
@@ -843,10 +840,7 @@ describe("processNode — match_reply", () => {
   });
 
   it("if_exists skip: nome já na ficha avança na hora", () => {
-    const node: FlowNode = {
-      ...matchNode(),
-      config: { ...matchNode().config, save_to: { kind: "contact_name" }, if_exists: "skip" },
-    };
+    const node = matchNode({ save_to: { kind: "contact_name" }, if_exists: "skip" });
     const result = processNode({
       node,
       edges,
@@ -858,10 +852,7 @@ describe("processNode — match_reply", () => {
   });
 
   it("if_exists confirm: nome já na ficha enfileira pergunta de confirmação", () => {
-    const node: FlowNode = {
-      ...matchNode(),
-      config: { ...matchNode().config, save_to: { kind: "contact_name" }, if_exists: "confirm" },
-    };
+    const node = matchNode({ save_to: { kind: "contact_name" }, if_exists: "confirm" });
     const result = processNode({
       node,
       edges,
@@ -886,10 +877,7 @@ describe("processNode — match_reply", () => {
       position: { x: 0, y: 0 },
       config: { mode: "text", body: "qual seu nome?" },
     };
-    const nxt: FlowNode = {
-      ...matchNode(),
-      config: { ...matchNode().config, save_to: { kind: "contact_name" }, if_exists: "confirm" },
-    };
+    const nxt = matchNode({ save_to: { kind: "contact_name" }, if_exists: "confirm" });
     const result = processNode({
       node: ask,
       edges: [edge({ source: "ask", target: "mr1", condition: { type: "always" } })],

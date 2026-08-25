@@ -1,9 +1,9 @@
 import { recoverStuckMessages } from "@/app/api/v1/cron/recover-stuck-messages/route";
-import { inboundEhDestaPergunta } from "@/lib/followup/aplicar-inbound";
-import { enviarTextoFixoPendente } from "@/lib/followup/enviar-texto-fixo";
+import { idsDoContatoEGemeos } from "@/lib/channels/contato-por-telefone";
 import { drainEventLog } from "@/lib/event-log/drain";
 import { ensureHandlersRegistered } from "@/lib/event-log/register-handlers";
 import { createSupabaseFollowupGateDb } from "@/lib/followup/agent-followup-gate";
+import { inboundEhDestaPergunta } from "@/lib/followup/aplicar-inbound";
 import {
   aplicarRespostaInbound,
   createSupabaseAdminClient,
@@ -11,6 +11,7 @@ import {
   type FollowupJobRequest,
   type TickDeps,
 } from "@/lib/followup/engine";
+import { enviarTextoFixoPendente } from "@/lib/followup/enviar-texto-fixo";
 import type { EnrollmentRow } from "@/lib/followup/node-handlers";
 import { createSupabaseSilenceSweepDb, runSilenceSweep } from "@/lib/followup/silence-sweep";
 import { logger } from "@/lib/logger";

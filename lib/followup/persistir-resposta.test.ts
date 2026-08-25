@@ -12,7 +12,7 @@ describe("interpolarDestino", () => {
   it("substitui {{volta}} pela última volta do repeat", () => {
     const out = interpolarDestino(
       { kind: "lead_custom", key: "filho_{{volta}}_nome" },
-      [{ node_id: "rp", payload: { repeat_index: 2, repeat_total: 3 } }],
+      [{ node_id: "rp", idempotency_key: "rp:0", payload: { repeat_index: 2, repeat_total: 3 } }],
     );
     expect(out).toEqual({ kind: "lead_custom", key: "filho_2_nome" });
   });

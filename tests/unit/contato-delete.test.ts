@@ -65,7 +65,8 @@ describe("deleteContactHandler", () => {
     );
     expect(out).toEqual({ id: CONTATO });
     expect(chamadas.map((c) => c.tabela)).toEqual(["messages", "conversations", "contacts"]);
-    expect(auditSpy.mock.calls.at(-1)?.[0]).toMatchObject({
+    const ultima = (auditSpy.mock.calls.at(-1) as unknown as [Record<string, unknown>] | undefined)?.[0];
+    expect(ultima).toMatchObject({
       action: "contact.deleted",
       resourceId: CONTATO,
       organizationId: ORG,
