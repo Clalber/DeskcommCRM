@@ -100,7 +100,11 @@ export async function listConversationsHandler(
     .order("id", { ascending: asc })
     .limit(q.limit + 1);
 
-  if (q.status) query = query.eq("status", q.status);
+  // `.in` e não `.eq`: o filtro agora chega como LISTA (um valor vira lista de um,
+  // e o SQL resultante é equivalente). É o que deixa a aba Fila pedir os dois
+  // estados de espera numa consulta só, em vez de filtrar em memória o que a
+  // página já truncou.
+  if (q.status && q.status.length > 0) query = query.in("status", q.status);
   // Depois do `status` de propósito: pedir um status terminal E `exclude_finished`
   // é contradição, e a resposta certa para uma contradição é lista vazia — não
   // um dos dois lados escolhido em silêncio.

@@ -61,8 +61,19 @@ export type ConversationWithContact = Conversation & {
   assigned_to_user_name?: string | null;
 };
 
+/** O vocabulário de LEITURA (7), que inclui os dois estados que só o motor escreve. */
+export type StatusDeConversa =
+  | "open"
+  | "pending"
+  | "resolved"
+  | "claimed"
+  | "ai_handling"
+  | "closed"
+  | "archived";
+
 export interface ConversationsFilters {
-  status?: "open" | "claimed" | "ai_handling" | "closed" | "archived";
+  /** Um status ou vários — a aba Fila precisa de dois (open + pending). */
+  status?: StatusDeConversa | readonly StatusDeConversa[];
   /** Esconde fechadas/arquivadas — ver `exclude_finished` no schema da rota. */
   exclude_finished?: boolean;
   assigned_to?: "me" | "unassigned" | string;
@@ -88,7 +99,12 @@ export function useConversationsRealtime(
     initialPageParam: undefined as string | undefined,
     queryFn: async ({ pageParam }) => {
       const qs = new URLSearchParams();
-      if (filters.status) qs.set("status", filters.status);
+      // Lista vira `open,pending`; valor único continua saindo como antes.
+      if (filters.status) {
+        const lista: readonly StatusDeConversa[] =
+          typeof filters.status === "string" ? [filters.status] : filters.status;
+        qs.set("status", lista.join(","));
+      }
       if (filters.exclude_finished) qs.set("exclude_finished", "true");
       if (filters.assigned_to) qs.set("assigned_to", filters.assigned_to);
       if (filters.search) qs.set("search", filters.search);

@@ -244,4 +244,47 @@ test.describe("Inbox — quem manda nesta conversa", () => {
     await expect(page.getByTestId("badge-atendimento-humano")).toHaveCount(0);
     await captura(page, "3-devolvido-ao-automatico");
   });
+
+  test("a conversa que o automático escalou APARECE na Fila", async ({ page }) => {
+    // ESTE CASO É A ÚLTIMA PONTA DA RECLAMAÇÃO Nº 1, e ela não era de tela.
+    //
+    // `performHumanHandoff` deixa a conversa em `status='pending'` sem dono, e a
+    // definição de "fila" estava copiada em SEIS sítios que não concordavam: o
+    // trigger de roteamento do banco enfileirava `pending` (por isso o rodízio a
+    // atribuía), mas a aba, o badge e o painel do gerente pediam só `open`. A
+    // conversa que mais precisa de uma pessoa era a única invisível.
+    const escalada = await admin
+      .from("conversations")
+      .update({
+        status: "pending",
+        bot_silenced_until: "infinity",
+        last_handoff_at: new Date().toISOString(),
+        last_handoff_reason: "cliente pediu para falar com uma pessoa",
+        assigned_to_user_id: null,
+      })
+      .eq("id", conversaId)
+      .select("id, status")
+      .maybeSingle();
+    if (escalada.error) throw new Error(`escalar: ${escalada.error.message}`);
+    expect((escalada.data as { status: string } | null)?.status).toBe("pending");
+
+    await login(page, creds.users.agent!.email, creds.password);
+    await page.goto("/app/inbox?filter=unassigned");
+
+    // A conversa está na lista da Fila, pelo nome do contato.
+    const naFila = page.getByText(NOME_DO_CONTATO, { exact: false }).first();
+    await expect(naFila).toBeVisible({ timeout: 30_000 });
+    await captura(page, "4-escalada-aparece-na-fila");
+
+    // E o BADGE da aba a conta — badge que não bate com a lista manda o atendente
+    // procurar um trabalho que a aba não mostra (ou o contrário, que é este caso).
+    const abaFila = page.getByRole("tab", { name: /Fila/i }).first();
+    await expect(abaFila).toContainText(/[1-9]/, { timeout: 30_000 });
+
+    // Abrindo, a tela diz que ninguém está no comando — nem pessoa, nem automático.
+    await naFila.click();
+    await expect(page.getByTestId("comando-da-conversa")).toContainText(/sem respons/i, {
+      timeout: 30_000,
+    });
+  });
 });
