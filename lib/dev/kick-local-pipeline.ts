@@ -14,8 +14,8 @@ import { ApiError } from "@/lib/api/types";
 import { ensureConversation, sessaoProntaParaEnvio } from "@/lib/automation/start-conversation";
 import { drainEventLog } from "@/lib/event-log/drain";
 import { ensureHandlersRegistered } from "@/lib/event-log/register-handlers";
+import { aplicarTextoNosFollowups } from "@/lib/followup/aplicar-inbound";
 import {
-  aplicarRespostaInbound,
   createSupabaseAdminClient,
   runFollowupTick,
   type FollowupJobRequest,
@@ -58,22 +58,6 @@ async function tickFollowupAteParar(admin: SupabaseClient): Promise<number> {
     if (!tick.claimed) break;
   }
   return claimed;
-}
-
-async function aplicarTextoNosFollowups(admin: SupabaseClient, sinal: SinalDeInbound): Promise<void> {
-  const texto = sinal.texto?.trim() ?? "";
-  if (!texto) return;
-  const { data, error } = await admin
-    .from("followup_enrollments")
-    .select("*")
-    .eq("organization_id", sinal.organizationId)
-    .eq("contact_id", sinal.contactId)
-    .in("status", ["waiting_reply", "active"]);
-  if (error) throw new Error(error.message);
-  const deps = tickDepsDe(admin);
-  for (const row of data ?? []) {
-    await aplicarRespostaInbound(deps, row as EnrollmentRow, texto);
-  }
 }
 
 function ponteSupabase(admin: SupabaseClient): TurnBridgeAdminClient {
@@ -186,8 +170,20 @@ export async function acelerarPipelineDeEventos(
 ): Promise<void> {
   try {
     if (inbound) {
-      await acordarFollowupPorInbound(admin, inbound);
-      await aplicarTextoNosFollowups(admin, inbound);
+      try {
+        await aplicarTextoNosFollowups(admin, inbound);
+      } catch (err) {
+        logger.warn("[dev.pipeline] aplicar texto do inbound falhou", {
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+      try {
+        await acordarFollowupPorInbound(admin, inbound);
+      } catch (err) {
+        logger.warn("[dev.pipeline] acordar follow-up falhou", {
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
       for (let i = 0; i < 6; i++) {
         const claimed = await tickFollowupAteParar(admin);
         const enviados = await enviarTextoFixoPendente(admin);

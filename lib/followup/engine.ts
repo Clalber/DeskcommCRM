@@ -356,21 +356,6 @@ async function applyResult(
       patch.current_node_id = result.next_node_id;
       patch.status = "active";
       patch.next_eval_at = result.next_eval_at.toISOString();
-      if (
-        !isReplay &&
-        respostaParaGravar &&
-        node.type === "match_reply" &&
-        node.config.save_to &&
-        (node.config.if_exists ?? "overwrite") !== "skip" &&
-        !((node.config.if_exists ?? "overwrite") === "confirm" && ehConfirmacao(respostaParaGravar))
-      ) {
-        await db.persistirRespostaFollowup({
-          organization_id: enrollment.organization_id,
-          contact_id: enrollment.contact_id,
-          save_to: interpolarDestino(node.config.save_to, events),
-          value: respostaParaGravar,
-        });
-      }
       break;
     case "wait":
       patch.current_node_id = enrollment.current_node_id;
@@ -420,6 +405,29 @@ async function applyResult(
   }
 
   await db.updateEnrollment(enrollment.id, enrollment.organization_id, patch);
+
+  if (
+    result.kind === "advance" &&
+    !isReplay &&
+    respostaParaGravar &&
+    node.type === "match_reply" &&
+    node.config.save_to &&
+    (node.config.if_exists ?? "overwrite") !== "skip" &&
+    !((node.config.if_exists ?? "overwrite") === "confirm" && ehConfirmacao(respostaParaGravar))
+  ) {
+    try {
+      await db.persistirRespostaFollowup({
+        organization_id: enrollment.organization_id,
+        contact_id: enrollment.contact_id,
+        save_to: interpolarDestino(node.config.save_to, events),
+        value: respostaParaGravar,
+      });
+    } catch (err) {
+      logger.warn("followup: gravar resposta falhou; o fluxo já avançou", {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
 
   if (!isReplay) tallyOutcome(result, summary);
 }

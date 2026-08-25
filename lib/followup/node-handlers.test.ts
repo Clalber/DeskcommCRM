@@ -794,6 +794,27 @@ describe("processNode — match_reply", () => {
     expect(result).toMatchObject({ kind: "advance", next_node_id: "escape" });
   });
 
+  it("wokeEarly + save_to sem aresta Sempre usa o primeiro ramo que não é no_reply", () => {
+    const node: FlowNode = {
+      ...matchNode(),
+      config: { ...matchNode().config, save_to: { kind: "contact_name" } },
+    };
+    const soRamo = [
+      edge({ source: "mr1", target: "no-sim", condition: { type: "branch", branch_id: "br_sim" } }),
+    ];
+    const result = processNode({
+      node,
+      edges: soRamo,
+      enrollment: enrollment(),
+      lead: lead(),
+      clock,
+      waitElapsed: true,
+      wokeEarly: true,
+      lastInboundBody: "Ian",
+    });
+    expect(result).toMatchObject({ kind: "advance", next_node_id: "no-sim" });
+  });
+
   it("wokeEarly + save_to: qualquer texto segue o Sempre (nome já na ficha não importa)", () => {
     const node: FlowNode = {
       ...matchNode(),

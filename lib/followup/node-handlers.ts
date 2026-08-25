@@ -523,7 +523,11 @@ export function processNode(input: {
               });
         const edge = hit
           ? selectEdge(edges, node.id, { type: "branch", branch_id: hit.id })
-          : selectEdge(edges, node.id, { type: "always" });
+          : selectEdge(edges, node.id, { type: "always" }) ??
+            (() => {
+              const ramo = node.config.branches.find((b) => b.id !== NO_REPLY_BRANCH_ID);
+              return ramo ? selectEdge(edges, node.id, { type: "branch", branch_id: ramo.id }) : null;
+            })();
         if (!edge) {
           return {
             kind: "fail",
