@@ -14,6 +14,7 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import { audit } from "@/lib/audit";
 import { sincronizarSaudeDaConexao } from "@/lib/channels/health";
 import { aplicarEfeitosPosEntrada } from "@/lib/channels/pos-entrada";
+import { canonicalPhoneBR } from "@/lib/channels/phone-variants";
 import { estamparAtribuicaoDoContato } from "@/lib/leads/atribuicao-de-anuncio";
 import { extrairAtribuicaoWaha } from "@/lib/waha/atribuicao-de-anuncio";
 import type { createAdminClient } from "@/lib/supabase/admin";
@@ -363,7 +364,11 @@ async function upsertContact(
     // ele já é um número, ou de `_data.key.remoteJidAlt` quando o chat é `@lid`.
     // Resolver aqui, e não no SQL, foi o que permitiu manter a assinatura da
     // função (e portanto os grants e os invariantes de hardening) intacta.
-    p_phone: parsed.kind === "phone" ? parsed.phone : telefoneAlt,
+    p_phone: parsed.kind === "phone"
+      ? canonicalPhoneBR(parsed.phone)
+      : telefoneAlt
+        ? canonicalPhoneBR(telefoneAlt)
+        : null,
     p_lid: parsed.kind === "lid" ? parsed.lid : null,
     p_chat_id: chatId,
     p_notify: notifyName,

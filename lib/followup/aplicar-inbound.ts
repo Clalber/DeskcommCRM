@@ -4,6 +4,8 @@
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+import { idsDoContatoEGemeos } from "@/lib/channels/contato-por-telefone";
+
 import {
   aplicarRespostaInbound,
   createSupabaseAdminClient,
@@ -46,12 +48,27 @@ export async function aplicarTextoNosFollowups(
   sinal: SinalDeInboundFollowup,
 ): Promise<void> {
   const texto = sinal.texto?.trim() ?? "";
+  const { data: vivos } = await admin
+    .from("followup_enrollments")
+    .select("id, status, current_node_id, contact_id")
+    .eq("organization_id", sinal.organizationId)
+    .in("status", ["waiting_reply", "active"]);
+  const todos = vivos ?? [];
   if (!texto) return;
+  const contactIds = await idsDoContatoEGemeos(admin, sinal.organizationId, sinal.contactId);
+  const soEspera = todos.filter((r) => r.status === "waiting_reply");
+  const esperaNestaPessoa = soEspera.filter((r) => contactIds.includes(r.contact_id as string));
+  // Medido: inbound no cadastro do WhatsApp, enrollment no da captação, 1 espera na org.
+  // Teto: duas esperas simultâneas — aí o telefone tem que casar; não chutamos.
+  if (esperaNestaPessoa.length === 0 && soEspera.length === 1) {
+    const unico = soEspera[0]?.contact_id;
+    if (typeof unico === "string") contactIds.push(unico);
+  }
   const { data, error } = await admin
     .from("followup_enrollments")
     .select("*")
     .eq("organization_id", sinal.organizationId)
-    .eq("contact_id", sinal.contactId)
+    .in("contact_id", contactIds)
     .in("status", ["waiting_reply", "active"]);
   if (error) throw new Error(error.message);
   const deps = tickDepsDe(admin);

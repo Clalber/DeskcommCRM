@@ -17,6 +17,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { createLeadHandler } from "@/app/api/v1/leads/_handler";
 import type { CreateLeadInput } from "@/lib/schemas";
 import { mapInboundPayload, verifyInboundSignature, type FieldMap } from "@/lib/webhooks/inbound";
+import { phoneLookupVariants } from "@/lib/channels/phone-variants";
 import { decryptWebhookSecret } from "@/lib/webhooks/secrets";
 import { ApiError } from "@/lib/api/types";
 import { kickLocalPipeline } from "@/lib/dev/kick-local-pipeline";
@@ -187,13 +188,15 @@ export async function POST(req: NextRequest, ctx: RouteCtx): Promise<NextRespons
   // único uniq_contacts_org_phone só cobre a linha ativa por telefone).
   let contactId: string | undefined;
   if (mapped.phone) {
+    const variantes = phoneLookupVariants(mapped.phone);
     const selectActiveByPhone = () =>
       admin
         .from("contacts")
         .select("id")
         .eq("organization_id", source.organization_id)
-        .eq("phone_number", mapped.phone)
+        .in("phone_number", variantes)
         .is("is_merged_into", null)
+        .limit(1)
         .maybeSingle();
 
     const { data: existing } = await selectActiveByPhone();

@@ -30,6 +30,7 @@ import { useDeleteContact } from "@/hooks/contacts/useDeleteContact";
 import type { ContactOrderBy } from "@/lib/schemas/contacts";
 import type { Contact } from "@/lib/types/contacts";
 import { rotuloDoContato } from "@/lib/contacts/rotulo-do-contato";
+import { phoneForDisplay } from "@/lib/channels/phone-variants";
 
 interface Props {
   contacts: Contact[];
@@ -191,7 +192,7 @@ export function ContactsTable({ contacts, orderBy, orderDir, onSort }: Props) {
               {c.email ?? "—"}
             </TableCell>
             <TableCell className="text-muted-foreground">
-              {c.phone_number ?? "—"}
+              {c.phone_number ? phoneForDisplay(c.phone_number) : "—"}
             </TableCell>
             <TableCell>
               <div className="flex flex-wrap gap-1">

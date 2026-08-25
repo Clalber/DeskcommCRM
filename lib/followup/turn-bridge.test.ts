@@ -146,6 +146,33 @@ describe("completeTurnForEnrollment — 'sent' (action)", () => {
     const { db } = fakeDb({ enrollment: enrollment({ current_node_id: "ac1" }), graph: CLASSIFY_GRAPH });
     await expect(completeTurnForEnrollment(db, "org-1", "enr-1", "ac1", { kind: "sent" }, clock)).rejects.toThrow();
   });
+
+  it("match_reply + sent is a no-op — the confirm question already parked waiting_reply", async () => {
+    const graph: FlowGraph = {
+      nodes: [
+        {
+          id: "m_name",
+          type: "match_reply",
+          label: "Nome",
+          position: { x: 0, y: 0 },
+          config: {
+            branches: [{ id: "ok", label: "Ok", op: "eq", pattern: "sim" }],
+            grace_timeout_ms: 900_000,
+            save_to: { kind: "contact_name" },
+            if_exists: "confirm",
+          },
+        },
+      ],
+      edges: [{ id: "m-end", source: "m_name", target: "m_name", priority: 0, condition: { type: "always" } }],
+    };
+    const { db, updateEnrollment, insertEnrollmentEvent } = fakeDb({
+      enrollment: enrollment({ current_node_id: "m_name", status: "waiting_reply" }),
+      graph,
+    });
+    await completeTurnForEnrollment(db, "org-1", "enr-1", "m_name", { kind: "sent" }, clock);
+    expect(updateEnrollment).not.toHaveBeenCalled();
+    expect(insertEnrollmentEvent).not.toHaveBeenCalled();
+  });
 });
 
 describe("completeTurnForEnrollment — 'classified' (ai_classify)", () => {

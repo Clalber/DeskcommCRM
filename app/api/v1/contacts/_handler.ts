@@ -11,6 +11,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { ApiError } from "@/lib/api/types";
 import type { Actor, HandlerCtx } from "@/lib/api/handlers/types";
 import { audit } from "@/lib/audit";
+import { canonicalPhoneBR, phoneLookupVariants } from "@/lib/channels/phone-variants";
 import { hashCpf, encryptCpfSql } from "@/lib/contacts/cpf";
 import type { Contact } from "@/lib/types/contacts";
 import { ensureConversation, sessaoProntaParaEnvio } from "@/lib/automation/start-conversation";
@@ -128,6 +129,18 @@ export async function listContactsHandler(
       `email.ilike.%${s}%`,
       `phone_number.ilike.%${s}%`,
     ];
+    if (digits.length >= 8) {
+      // 10/11 dígitos sem DDI: no Brasil é DDD+local. Sem o 55, `3284793302`
+      // não gera a variante com o 9 e o cadastro `+5532984793302` some da busca.
+      const base =
+        !digits.startsWith("55") && (digits.length === 10 || digits.length === 11)
+          ? `55${digits}`
+          : digits;
+      for (const v of phoneLookupVariants(base)) {
+        const d = v.replace(/\D/g, "");
+        if (d && d !== digits) orParts.push(`phone_number.ilike.%${d}%`);
+      }
+    }
     if (digits.length === 11) {
       orParts.push(`cpf_hash.eq.${hashCpf(digits)}`);
     }
@@ -338,7 +351,7 @@ export async function createContactHandler(
     name: input.name ?? null,
     display_name: input.display_name ?? null,
     email: input.email ?? null,
-    phone_number: input.phone_number ?? null,
+    phone_number: input.phone_number ? canonicalPhoneBR(input.phone_number) : null,
     birthdate: input.birthdate ?? null,
     tags: input.tags ?? [],
     source: input.source,
@@ -455,7 +468,9 @@ export async function patchContactHandler(
   //
   // O banco deriva a coluna sozinho — era só não escrever nela.
   if (input.email !== undefined) patch.email = input.email;
-  if (input.phone_number !== undefined) patch.phone_number = input.phone_number;
+  if (input.phone_number !== undefined) {
+    patch.phone_number = input.phone_number ? canonicalPhoneBR(input.phone_number) : input.phone_number;
+  }
   if (input.birthdate !== undefined) patch.birthdate = input.birthdate;
   if (input.tags !== undefined) patch.tags = input.tags;
   if (input.source !== undefined) patch.source = input.source;

@@ -110,6 +110,10 @@ export async function completeTurnForEnrollment(
   };
 
   if (result.kind === "sent") {
+    // match_reply (if_exists: confirm) enfileira a pergunta e permanece no nó.
+    // Completar o envio não avança — a resposta do lead é que avança.
+    // Lançar aqui devolvia o job pra pending e o pipeline mandava a pergunta de novo.
+    if (node.type === "match_reply") return;
     if (node.type !== "action") {
       throw new Error(`completeTurnForEnrollment: resultado 'sent' mas o nó "${node.id}" não é 'action'`);
     }

@@ -110,6 +110,16 @@ async function enviarTextoFixoPendente(admin: SupabaseClient): Promise<number> {
     if (!claimed) continue;
 
     try {
+      const { data: enr } = await admin
+        .from("followup_enrollments")
+        .select("current_node_id")
+        .eq("id", enrollmentId)
+        .eq("organization_id", job.organization_id as string)
+        .maybeSingle();
+      if (!enr || enr.current_node_id !== nodeId) {
+        await admin.from("job_queue").update({ status: "done" }).eq("id", job.id);
+        continue;
+      }
       const sessionId = await sessaoProntaParaEnvio(admin, job.organization_id as string);
       if (!sessionId) {
         logger.warn("[dev.pipeline] sem sessão de canal — job volta pra pending");
@@ -131,12 +141,18 @@ async function enviarTextoFixoPendente(admin: SupabaseClient): Promise<number> {
         },
         { conversation_id: conversationId, type: "text", body },
       );
-      await completeTurnForEnrollment(ponte, job.organization_id as string, enrollmentId, nodeId, {
-        kind: "sent",
-      });
+      enviados++;
+      try {
+        await completeTurnForEnrollment(ponte, job.organization_id as string, enrollmentId, nodeId, {
+          kind: "sent",
+        });
+      } catch (err) {
+        logger.warn("[dev.pipeline] completeTurn apos envio", {
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
       const { error: doneErr } = await admin.from("job_queue").update({ status: "done" }).eq("id", job.id);
       if (doneErr) throw new Error(doneErr.message);
-      enviados++;
     } catch (err) {
       const message = err instanceof ApiError ? err.message : err instanceof Error ? err.message : String(err);
       logger.warn("[dev.pipeline] envio inline falhou", { error: message });
@@ -173,9 +189,8 @@ export async function acelerarPipelineDeEventos(
       try {
         await aplicarTextoNosFollowups(admin, inbound);
       } catch (err) {
-        logger.warn("[dev.pipeline] aplicar texto do inbound falhou", {
-          error: err instanceof Error ? err.message : String(err),
-        });
+        const detail = err instanceof Error ? err.message : String(err);
+        logger.warn("[dev.pipeline] aplicar texto do inbound falhou", { error: detail });
       }
       try {
         await acordarFollowupPorInbound(admin, inbound);

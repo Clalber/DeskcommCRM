@@ -5,7 +5,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { ensureConversation, sessaoProntaParaEnvio } from "@/lib/automation/start-conversation";
-import { phoneLookupVariants } from "@/lib/channels/phone-variants";
+import { phoneLookupVariants, canonicalPhoneBR } from "@/lib/channels/phone-variants";
 import { parseDialablePhone } from "@/lib/messaging/contact-card";
 
 type Admin = SupabaseClient;
@@ -58,17 +58,18 @@ async function resolveContactId(
 
   const phone = input.phone_number ? parseDialablePhone(input.phone_number) : null;
   if (!phone) throw new Error("invalid_phone");
+  const canonico = canonicalPhoneBR(phone);
 
-  const existente = await findContactByPhoneVariants(admin, orgId, phone);
+  const existente = await findContactByPhoneVariants(admin, orgId, canonico);
   if (existente) return existente.id;
 
-  const waid = phone.replace(/\D/g, "");
+  const waid = canonico.replace(/\D/g, "");
   const { data: contactId, error: upsertErr } = await admin.rpc(
     "fn_upsert_wa_contact" as never,
     {
       p_org: orgId,
       p_kind: "phone",
-      p_phone: phone,
+      p_phone: canonico,
       p_lid: null,
       p_chat_id: waid,
       p_notify: input.name?.trim() || null,
