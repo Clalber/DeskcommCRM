@@ -160,7 +160,30 @@ export function ChatThread({ conversationId, onResponder }: Props) {
   }
 
   return (
-    <div className="flex h-full flex-col" data-testid="chat-thread">
+    <div
+      className="flex h-full flex-col"
+      data-testid="chat-thread"
+      /*
+       * O ESTADO DO CANAL QUE TRAZ A MENSAGEM — e ele faltava.
+       *
+       * O `InboxLayout` já publicava `data-realtime-status`, mas aquele é o
+       * canal de `conversations` (a LISTA). A mensagem que aparece aqui vem por
+       * outro canal, o de `messages`, com filtro por `conversation_id` — e ele
+       * não tinha sinal nenhum.
+       *
+       * Achado consertando um teste meu que afirmava, em comentário, provar que
+       * "o canal está de pé": ele afirmava sobre o canal da lista enquanto
+       * esperava a entrega do canal do thread. Dois canais, um sinal, e a
+       * asserção olhava o que não era.
+       *
+       * ⚠️ Vale aqui a mesma ressalva do outro: `subscribed` NÃO prova entrega
+       * viva — canal anônimo e canal sem publication respondem `subscribed` e
+       * calam. O que este atributo distingue é "assinou" de "nem chegou a
+       * assinar", que é informação diferente e também necessária.
+       */
+      data-realtime-status-mensagens={q.realtimeStatus}
+      data-refetch-divergencias-mensagens={q.seguranca?.divergencias ?? 0}
+    >
       <div ref={scrollerRef} className="flex-1 overflow-y-auto py-2">
         {q.hasNextPage && (
           <div className="flex justify-center py-2">

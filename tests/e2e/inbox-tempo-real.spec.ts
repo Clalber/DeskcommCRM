@@ -132,6 +132,18 @@ test.describe("inbox em tempo real", () => {
     // `manager` e não `admin`: o admin do seed tem fator MFA cadastrado e o
     // login dele para em /login/mfa. O manager vê a aba "Todas" (leitura
     // org-wide), que é o que este teste precisa.
+    /**
+     * DIAGNÓSTICO, e ele existe porque a adivinhação já custou quatro rodadas.
+     *
+     * Cada uma matou uma causa real e diferente (posição na lista, teto de 30s,
+     * publication) e a quinta falha continuou idêntica na tela: "element(s) not
+     * found". Sintoma que não distingue as causas obriga a instrumentar em vez
+     * de propor a quinta hipótese.
+     */
+    const console_: string[] = [];
+    page.on("console", (m) => console_.push(`${m.type()}: ${m.text()}`.slice(0, 300)));
+    page.on("pageerror", (e) => console_.push(`pageerror: ${e.message}`.slice(0, 300)));
+
     await login(page, c.users.manager!.email, c.password);
 
     /**
@@ -195,8 +207,47 @@ test.describe("inbox em tempo real", () => {
     const corpo = `chegou em tempo real ${Date.now()}`;
     chegarMensagem(conversationId, corpo);
 
+    // O canal DO THREAD — que é quem traz esta mensagem. A asserção anterior
+    // cobre o canal da LISTA (`conversations`); são canais diferentes, e até
+    // esta versão o teste afirmava sobre um enquanto esperava a entrega do
+    // outro.
+    await expect(page.getByTestId("chat-thread")).toHaveAttribute(
+      "data-realtime-status-mensagens",
+      "subscribed",
+      { timeout: 20_000 },
+    );
+
     // ⚠️ SEM reload. Se aparecer, o canal entregou.
-    await expect(page.getByText(corpo)).toBeVisible({ timeout: 25_000 });
+    try {
+      await expect(page.getByText(corpo)).toBeVisible({ timeout: 25_000 });
+    } catch (err) {
+      // Sem isto, a falha diz só "element(s) not found" — que é verdade para
+      // todas as causas já vistas e não separa nenhuma. O que segue é o que
+      // distingue: estado dos DOIS canais, contadores de perda, e o que o
+      // browser falou.
+      const thread = page.getByTestId("chat-thread");
+      const diag = {
+        canalDaLista: await page
+          .locator("[data-realtime-status]")
+          .getAttribute("data-realtime-status")
+          .catch(() => "<ausente>"),
+        canalDoThread: await thread
+          .getAttribute("data-realtime-status-mensagens")
+          .catch(() => "<ausente>"),
+        perdasNaLista: await page
+          .locator("[data-refetch-divergencias]")
+          .getAttribute("data-refetch-divergencias")
+          .catch(() => "<ausente>"),
+        perdasNoThread: await thread
+          .getAttribute("data-refetch-divergencias-mensagens")
+          .catch(() => "<ausente>"),
+        conversationId,
+        corpoEsperado: corpo,
+      };
+      console.info("[diag] estado dos canais:", JSON.stringify(diag));
+      console.info("[diag] console do browser:", JSON.stringify(console_.slice(-40)));
+      throw err;
+    }
 
     // E entregou pelo CANAL, não pela rede de segurança: `divergencias` conta as
     // vezes em que o refetch trouxe novidade que o canal não tinha trazido.
