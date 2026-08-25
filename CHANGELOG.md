@@ -8,13 +8,158 @@ Se você roda o DeskcommCRM numa VPS, **leia a seção da versão para a qual es
 
 ## [Não lançado]
 
-## [1.4.1] — 2026-08-24
+O histórico de quem chega pelos seus formulários agora existe — inclusive de quem **não**
+entrou. As automações passam a poder responder com uma mensagem escrita pela IA a partir do
+que a pessoa preencheu. E a automação parou de marcar "Sucesso" para mensagem que nunca
+chegou ao cliente.
 
-Correção de **texto de aviso**, não de comportamento: a seção da 1.4.0 descreveu errado uma
-mudança que chega a todo mundo e inverteu a instrução de outra. Como a tela de atualização lê
-o texto congelado na versão, o conserto só alcança quem atualizou pela publicação de uma
-versão nova — é isto. Junto vai um conserto de código pequeno e real, no descadastro em
-espanhol.
+### Adicionado
+
+- **"Leads recebidos", em Webhooks: quem chegou pelo formulário, com o que preencheu.**
+  Até aqui, o formulário do seu site entregava o lead e não sobrava registro nenhum de como
+  ele chegou. Agora há uma aba com a lista: nome, data e hora, de qual formulário veio, a
+  página em que a pessoa estava, o endereço de internet dela e as etiquetas de campanha
+  (`utm_source` e companhia). Clicando na linha, todos os campos do formulário como ela
+  preencheu, e um atalho para o lead no funil. Dá para filtrar por busca, por origem, por
+  resultado e por período.
+  **E aparece também quem NÃO entrou.** Um formulário cujos campos o CRM não reconhece era
+  recusado em silêncio: quem colou o endereço no site só sabia que "não chegou nada", sem
+  ter onde olhar. Agora a tentativa aparece na lista como *Não entrou*, com o motivo escrito
+  em português e os campos crus do jeito que vieram — que é o que permite consertar o
+  formulário em vez de adivinhar.
+- **Nas automações, no "então": "Mensagem escrita pela IA".**
+  Antes só dava para mandar um texto pronto com `{{nome}}` e `{{telefone}}`. Se o seu
+  formulário pergunta o segmento, o tamanho da equipe e a maior dificuldade de hoje, quem
+  tem 3 funcionários e quem tem 300 recebiam a mesma frase. Agora você escolhe um agente já
+  **publicado**, escolhe o número, e escreve no campo *"O que a IA deve fazer com esses
+  dados"* — por exemplo, "cite a dificuldade que ela citou e ofereça uma conversa de 15
+  minutos". A IA recebe as respostas do formulário e essa sua instrução, e sabe que é a
+  primeira mensagem de alguém que acabou de preencher e não está esperando resposta. É o
+  mesmo desenho da instrução de um passo de follow-up.
+  Quem envia continua sendo a automação — com horário de envio, descadastro e espaçamento
+  entre mensagens valendo igual. A IA escreve o texto; ela não fala com ninguém por conta
+  própria.
+
+### ⚠️ Requer atenção
+
+**O horário em que as automações mandam mensagem passa a ser o seu, e não o do servidor.**
+A proteção de horário da automação era medida pelo relógio da máquina, que roda em UTC —
+então a faixa "7h às 22h" era, na prática, **4h às 19h de Brasília**. Duas consequências
+que você talvez tenha visto sem saber a causa: uma automação disparada às 19h30 não saía e
+ficava esperando até as 4h da manhã seguinte; e uma disparada de madrugada saía, mandando
+mensagem para o cliente às 5h. Agora vale o seu fuso, e **vale a faixa que você configurou
+em Conexões › Proteção de envio** — a mesma que a IA já respeitava. Se você apertou ou
+ampliou esse horário achando que só mexia com a IA, confira: agora ele também rege as
+automações. Quem nunca mexeu fica com 7h às 22h, no horário do seu negócio.
+
+**Esta versão mexe no banco de dados, e o `bash update.sh` cuida disso sozinho** — não há
+passo manual. É uma tabela nova (o histórico acima) e um estado novo nas automações.
+
+### Corrigido
+
+- **A automação dizia "Sucesso" para mensagem que não chegou ao cliente.** Era o relato que
+  originou boa parte desta entrega: automação ligada, lead entrando pelo formulário, a aba
+  Atividade mostrando um "Sucesso" verde — e nenhuma mensagem no celular de ninguém. A
+  automação só sabia perguntar se tinha dado erro de programa; ela não olhava se a mensagem
+  de fato saiu. Agora ela olha: quando o envio falha, o resultado aparece como falha, com o
+  motivo em português ("Não conseguimos falar com o serviço de WhatsApp. Confira se ele está
+  no ar."), e um aviso é aberto na Central de Atendimento **nomeando a regra que falhou** —
+  porque um erro que só existe numa aba que ninguém abre é um erro invisível.
+- **A automação que estava só esperando o horário parecia não ter rodado.** Ao adiar um
+  envio, ela não gravava nada: "não apareceu nada na Atividade" e "a automação não funcionou"
+  eram a mesma tela. Agora a espera é um estado visível — **Adiado** —, com o motivo.
+
+## [1.5.0] — 2026-08-25
+
+O Inbox passa a dizer **quem manda em cada conversa** — e o conserto principal não é de tela:
+clicar "Assumir" não parava o atendimento automático, então os dois respondiam o mesmo cliente.
+
+### ⚠️ Requer atenção
+
+**Assumir uma conversa agora PARA o atendimento automático nela. Antes não parava, e os dois
+respondiam o mesmo cliente.** Quem clicava "Assumir" no Inbox ganhava a conversa na tela, mas o
+automático continuava respondendo por baixo — ele só ficava quieto por 5 minutos depois que o
+atendente mandava uma mensagem, e voltava a falar sozinho em seguida. Agora assumir e transferir
+silenciam o automático naquela conversa; **"Liberar" e "Fechar" devolvem o comando a ele**. Se a sua
+equipe se acostumou a assumir a conversa e deixar a IA responder junto, esse hábito muda aqui.
+
+**A distribuição por rodízio NÃO cala o automático** — distribuir é escolher quem cuida se precisar,
+não tomar a conversa. Só o clique de uma pessoa silencia.
+
+**A aba "Fila" vai mostrar mais conversas do que mostrava, e o número do badge pode subir de uma
+vez.** Não é conversa nova: são as que a IA já tinha passado para uma pessoa e que não apareciam em
+aba nenhuma. Se o número saltar depois de atualizar, é isso — e vale olhar, porque são pessoas
+esperando resposta há mais tempo do que você imaginava.
+
+Esta versão **mexe no banco de dados**. O `update.sh` aplica sozinho; não há passo manual.
+
+**Se você está vindo da 1.4.0, os dois avisos abaixo são da 1.4.1 e valem para você.** A tela de
+atualização mostra só a seção da versão que você está instalando, então eles vão repetidos aqui
+para não passarem em branco. Se você já atualizou para a 1.4.1, já os leu — pule.
+
+- **A IA passa a atender aos domingos, e antes não atendia.** O padrão de fábrica da janela
+  anti-banimento mudou na 1.4.0: domingo era dia mudo e passou a ser dia normal (a faixa de
+  horário continua a mesma). Se o seu negócio depende de silêncio no domingo, desligue em
+  **Conexões › Proteção de envio › "Enviar aos domingos"**, por canal. Quem já tinha mexido ali
+  teve a escolha respeitada.
+- **Duas conexões oficiais do WhatsApp com a mesma conta da Meta: fica com o identificador a
+  conexão MAIS RECENTE**, e a mais antiga recebe o sufixo `-conflito-`. Nada foi apagado. A 1.4.0
+  disse o contrário — se você apagou a conexão SEM o sufixo por causa daquela frase, era a que
+  estava funcionando; reconecte o número em Conexões.
+
+### Corrigido
+
+- **A promessa da 1.4.0 sobre o limite de gasto agora é verdade.** Aquela versão disse que, quando o
+  limite para a IA, "as conversas que estavam sendo atendidas vão para a fila de atendimento
+  humano". Elas iam — mas a fila na tela não as mostrava: a aba, o contador e o painel do gerente
+  procuravam um estado e a conversa escalada ficava em outro. Quem confiou no aviso e foi olhar a
+  fila não encontrou nada lá. Vale para toda passagem para humano, não só a do limite.
+- **O número da fila que o cliente ouve e o que a equipe vê eram contados de formas diferentes.** O
+  "você é o Nº da fila" enviado pelo WhatsApp incluía as conversas escaladas; o número mostrado ao
+  atendente não. Agora é a mesma conta dos dois lados.
+- **Dava para saber quem atende uma conversa pela IA, mas não pela tela.** O nome do atendente
+  chegava ao agente e não ao Inbox, que só tinha o código interno. O cabeçalho e a lista passam a
+  mostrar **quem está no comando** — pessoa (com nome e iniciais) ou automático —, e o selo diz o
+  **motivo** quando o automático está parado: alguém assumiu, está pausado para aquele cliente, ou
+  volta sozinho em instantes.
+- **Faltava o botão de desligar.** Havia "Devolver ao automático" e nada para pausá-lo — ele só
+  parava por conta própria. Agora o mesmo lugar tem os dois lados.
+- **Assumir, transferir e liberar não apareciam no histórico da conversa.** Passavam sem deixar
+  rastro no painel lateral; o motivo escrito ao transferir ficava só no registro de auditoria, que
+  o atendente não abre. Agora as quatro ações viram linha na atividade, **com o nome de quem fez** —
+  antes toda ação humana aparecia como "Você/time".
+- **Conversa encerrada deixava de dizer quem a atendeu**, justamente na aba "Fechadas".
+- **Numa instalação sem nenhuma IA configurada, a tela dizia "Automático atendendo".** Não havia
+  automático nenhum: eram conversas sem ninguém.
+- **Quem não enxerga uma conversa conseguia ler o histórico de quem a atendeu.** Com a visibilidade
+  restrita por atendente, o registro de troca de responsável não respeitava esse limite.
+
+
+## [1.4.1] — 2026-08-25
+
+O primeiro acesso passa a **perguntar como você já usa o seu número**, em vez de supor que
+todo mundo conecta lendo um código no celular. Instalar numa máquina que já tem o CRM no ar
+deixou de derrubar a instalação existente. E a seção da 1.4.0 descreveu errado duas mudanças
+que chegam a todo mundo — uma delas invertida: como a tela de atualização lê o texto congelado
+na versão, o conserto do texto só alcança você pela publicação de uma versão nova, que é esta.
+
+### Adicionado
+
+- **O primeiro acesso pergunta como você já usa o seu número, em vez de supor.** Existe mais
+  de um jeito de ter WhatsApp para empresa, e cada um conecta de um jeito — mas o passo do
+  telefone só sabia um: ele mostrava o código para ler no celular e pronto. Quem tem conta
+  oficial na Meta, ou contrata o WhatsApp por uma empresa parceira, passava por ali sem nunca
+  ser perguntado; o número entrava cadastrado do jeito errado e a pessoa só descobria depois,
+  em outra tela, com o funcionário já montado por cima. Agora o passo abre com a pergunta e
+  três respostas: **ler um código com o celular** (que é como quase todo mundo faz e segue
+  sendo o caminho mais curto), **conta oficial na Meta**, ou **provedor parceiro** — e cada
+  uma leva ao formulário certo, ali mesmo, sem sair do passo a passo. Escolher errado não
+  tranca nada: dá para voltar e trocar. E nada é criado enquanto você não escolhe — antes, o
+  número era cadastrado como "por código" só de você chegar na tela.
+- **Quem escolhe a conta oficial é avisado ANTES de ir buscar as credenciais.** Esse caminho
+  precisa de duas configurações no servidor que a instalação não cria sozinha, e sem elas o
+  número **envia mas nunca recebe** — sem erro em lugar nenhum, que é o pior jeito de falhar.
+  A tela diz isso antes de você abrir o painel da Meta, e aponta o caminho que funciona hoje.
 
 ### ⚠️ Requer atenção
 
@@ -38,6 +183,14 @@ Fora isso, nada exige ação sua. Não há mudança de banco de dados nesta vers
 
 ### Corrigido
 
+- **Instalar numa VPS que já tem o CRM no ar não derruba mais a instalação existente.**
+  O instalador confundia a instalação de outra pasta com ele mesmo sendo rodado de novo e
+  subia por cima: o site seguia no ar, mas passando a usar o banco da pasta nova — e o
+  primeiro sintoma era a senha "parar de funcionar". Agora ele para antes de tocar em
+  nada, diz em que pasta está a instalação que já existe e ensina como atualizá-la. Isso
+  vale em qualquer arranjo de servidor — inclusive nas VPS em que o painel da hospedagem
+  (Hostinger, Coolify, Dokploy) é quem atende as portas, e nas pastas que já tinham
+  concluído uma instalação antes, onde a checagem anterior se desligava sozinha.
 - **`salir` sozinho não descadastrava.** A 1.4.0 anunciou que "`baja`, `salir` e
   `no quiero recibir` descadastram"; medido com a função real, `baja` e `no quiero recibir`
   funcionavam e `salir` não — a palavra estava fora da lista. `salir` é o `sair` em espanhol,
@@ -717,7 +870,10 @@ Primeira versão marcada do DeskcommCRM. O projeto vinha sendo desenvolvido publ
 
 - **Node 22 é obrigatório para desenvolvimento.** A suíte de invariantes instancia o cliente do Supabase, que exige o `WebSocket` global — nativo apenas a partir do Node 22. Isso não afeta quem apenas hospeda: a VPS roda a imagem pronta.
 
-[Não lançado]: https://github.com/melgarafael/DeskcommCRM/compare/v1.2.1...HEAD
+[Não lançado]: https://github.com/melgarafael/DeskcommCRM/compare/v1.4.1...HEAD
+[1.4.1]: https://github.com/melgarafael/DeskcommCRM/compare/v1.4.0...v1.4.1
+[1.4.0]: https://github.com/melgarafael/DeskcommCRM/compare/v1.3.0...v1.4.0
+[1.3.0]: https://github.com/melgarafael/DeskcommCRM/compare/v1.2.1...v1.3.0
 [1.2.1]: https://github.com/melgarafael/DeskcommCRM/compare/v1.2.0...v1.2.1
 [1.2.0]: https://github.com/melgarafael/DeskcommCRM/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/melgarafael/DeskcommCRM/compare/v1.0.0...v1.1.0

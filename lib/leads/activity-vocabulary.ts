@@ -57,7 +57,23 @@ export type ActivityType =
    * ninguém mandou WhatsApp pra este lead" fica sem resposta visível, e é
    * justamente esse silêncio que a automação de 1º toque precisa respeitar.
    */
-  | "consent_declined";
+  | "consent_declined"
+  /**
+   * A TROCA DE COMANDO ENTRE PESSOAS. A ida e a volta IA↔humano já estavam aqui
+   * (`handoff_triggered`/`handoff_resolved`); assumir, transferir e liberar não
+   * geravam linha nenhuma — grep nas três rotas devolvia zero. O efeito era uma
+   * timeline em que o cliente saía do automático, alguém resolvia, e a conversa
+   * reaparecia com outro dono sem nada explicando a passagem.
+   *
+   * Não vieram como tabela nova de propósito: a auditoria de atribuição
+   * (`conversation_assignment_events`) existe, é append-only e serve ao
+   * roteamento — mas uma SEGUNDA linha do tempo ao lado desta, no mesmo painel,
+   * seria dois lugares contando a mesma história.
+   */
+  | "conversation_claimed"
+  | "conversation_transferred"
+  | "conversation_released"
+  | "conversation_ai_paused";
 
 export const ACTIVITY_LABELS: Record<ActivityType, string> = {
   lead_created: "Entrou pelo WhatsApp",
@@ -125,6 +141,16 @@ export const ACTIVITY_LABELS: Record<ActivityType, string> = {
   // tela — e o dossiê de um negócio fechado terminava sem dizer que fechou.
   demand_closed: "Demanda encerrada",
   consent_declined: "Consentimento de contato recusado no formulário",
+  // Rótulos com OBJETO, nunca verbo nu: "Liberou" sozinho não diz o quê, e numa
+  // clínica "liberar" é o que se faz com um exame. O resto do arquivo já segue
+  // essa régua ("Retorno agendado", "Demanda encerrada").
+  conversation_claimed: "Assumiu a conversa",
+  conversation_transferred: "Transferiu a conversa",
+  conversation_released: "Liberou a conversa",
+  // "automático" e não "IA": a palavra do estado já é contrato em quatro
+  // arquivos e o controle NEGATIVO de `handoff-por-orcamento.test.ts` usa
+  // literalmente "Voltar para a IA" como a sabotagem que deve reprovar.
+  conversation_ai_paused: "Pausou o automático",
 };
 
 /** Quando o tipo é legado/desconhecido, a linha ainda é honesta — sem jargão. */
