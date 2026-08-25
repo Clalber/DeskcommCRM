@@ -9,7 +9,6 @@
  *
  * Não é teste: é instrumento de medição. Some com os próprios rastros no fim.
  */
-import { randomUUID } from "node:crypto";
 
 import { carregarEnvLocal } from "./lib/env-de-teste";
 
@@ -164,7 +163,6 @@ async function main(): Promise<void> {
     for (const m of msgs) await pg(`messages?id=eq.${m.id}`, { method: "DELETE" });
     console.log("\n(rastros removidos — use MANTER=1 para preservar)");
   }
-  void randomUUID;
 }
 
 void main().catch((err) => {

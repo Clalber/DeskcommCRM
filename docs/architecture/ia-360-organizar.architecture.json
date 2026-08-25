@@ -408,6 +408,12 @@
       "from": "desfecho",
       "to": "runs",
       "label": "success · failed · postponed — e o aviso na Central quando morre"
+    },
+    {
+      "id": "e32",
+      "from": "telaCapturas",
+      "to": "telas",
+      "label": "'Ver no funil' — /app/leads/[id] resolve o funil do lead e redireciona para o card"
     }
   ],
   "cards": [
