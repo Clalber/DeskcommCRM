@@ -12,6 +12,7 @@ import { useReleaseConversation } from "@/hooks/inbox/useReleaseConversation";
 import { useCloseConversation } from "@/hooks/inbox/useCloseConversation";
 import { useResumeAiAttendance } from "@/hooks/inbox/useResumeAiAttendance";
 import { usePauseAiAttendance } from "@/hooks/inbox/usePauseAiAttendance";
+import { useAutomaticoAtivo } from "@/hooks/ai/useAutomaticoAtivo";
 import { OwnerBadge } from "@/components/kanban/OwnerBadge";
 import { comandoDaConversa, ROTULO_DO_MOTIVO } from "@/lib/inbox/comando-da-conversa";
 import { ReassignDialog } from "@/components/inbox/ReassignDialog";
@@ -49,6 +50,9 @@ export function ConversationHeader({ conversation }: Props) {
   const close = useCloseConversation();
   const retomar = useResumeAiAttendance();
   const pausar = usePauseAiAttendance();
+  // "Existe automático nesta org?" — sem isto o selo afirmava que o robô estava
+  // atendendo em instalação que nunca configurou agente nenhum.
+  const automaticoDaOrg = useAutomaticoAtivo();
   const [reassignOpen, setReassignOpen] = useState(false);
 
   const c = conversation.contacts ?? null;
@@ -75,6 +79,7 @@ export function ConversationHeader({ conversation }: Props) {
     assignee_kind: conversation.assignee_kind ?? null,
     bot_silenced_until: conversation.bot_silenced_until ?? null,
     force_human: c?.force_human ?? null,
+    automaticoDaOrg: automaticoDaOrg.data,
   });
 
   const encerrada = status === "closed" || status === "archived";
@@ -165,6 +170,8 @@ export function ConversationHeader({ conversation }: Props) {
           ) : comando.quem === "automatico" ? (
             <OwnerBadge ownerKind="ai" ownerName="Automático" />
           ) : (
+            // `ninguem`, `aguardando` e `encerrada` sem dono caem aqui: o disco
+            // TRACEJADO do OwnerBadge, que é como o funil já desenha "ninguém".
             <OwnerBadge ownerKind={null} ownerName={null} />
           )}
         </div>
@@ -227,6 +234,17 @@ export function ConversationHeader({ conversation }: Props) {
             variant="outline"
             disabled={retomar.isPending}
             data-testid="devolver-ao-automatico"
+            // O ALCANCE DA VOLTA NÃO É SEMPRE O MESMO, e a tela precisa dizer qual é.
+            //
+            // `devolverAtendimentoAoAgente` limpa `contacts.force_human`, que é do
+            // CLIENTE e não desta conversa: quando foi ela que travou, o clique
+            // religa o automático para TODAS as conversas daquela pessoa. Um botão
+            // que às vezes faz mais do que o nome promete precisa dizer quando.
+            title={
+              motivo === "contato_travado"
+                ? "Religa o atendimento automático para este cliente — vale para todas as conversas dele."
+                : "Devolve esta conversa ao atendimento automático."
+            }
             onClick={() => retomar.mutate({ conversation_id: conversation.id })}
           >
             {retomar.isPending ? "Devolvendo..." : t("Devolver ao automático")}
@@ -238,11 +256,10 @@ export function ConversationHeader({ conversation }: Props) {
             variant="outline"
             disabled={pausar.isPending}
             data-testid="pausar-o-automatico"
-            title={
-              isOpen
-                ? "Você assume a conversa e o atendimento automático para aqui."
-                : "O atendimento automático para nesta conversa."
-            }
+            // `podePausar` já exige dono != null, então este botão NUNCA aparece
+            // sem dono — prometer "você assume" aqui seria prometer o que a rota
+            // não faz: com dono, ela só cala, nunca rouba a conversa de quem a tem.
+            title="O atendimento automático para nesta conversa. O dono não muda."
             onClick={() => pausar.mutate({ conversation_id: conversation.id })}
           >
             {pausar.isPending ? "Pausando..." : t("Pausar o automático")}

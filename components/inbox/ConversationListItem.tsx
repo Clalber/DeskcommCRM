@@ -34,6 +34,13 @@ interface Props {
    * sabe quantos donos distintos ela tem.
    */
   mostrarAtendente?: boolean;
+  /**
+   * A org tem atendimento automático de pé? Vem por PROP e não por hook: um hook
+   * por linha faria 50 assinaturas de query na mesma lista para responder a MESMA
+   * pergunta org-wide. `undefined` = "não sei", e a função trata isso como "não
+   * afirme nada".
+   */
+  automaticoDaOrg?: boolean;
 }
 
 const STATUS_DOT: Record<string, string> = {
@@ -80,6 +87,7 @@ export function ConversationListItem({
   queuePosition,
   mostrarCanal,
   mostrarAtendente,
+  automaticoDaOrg,
 }: Props) {
   const c = conversation.contacts ?? null;
   const displayName = rotuloDoContato(c);
@@ -108,6 +116,7 @@ export function ConversationListItem({
     assignee_kind: conversation.assignee_kind ?? null,
     bot_silenced_until: conversation.bot_silenced_until ?? null,
     force_human: c?.force_human ?? null,
+    automaticoDaOrg,
   });
   const isAi = comando.quem === "automatico";
 

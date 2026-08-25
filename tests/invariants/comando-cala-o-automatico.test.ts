@@ -107,6 +107,50 @@ describe("0173 — o comando da conversa muda o silêncio do automático", () =>
     expect(silencioDaConversa()).toBe("(null)");
   });
 
+  it("release NÃO desfaz uma ESCALAÇÃO — só solta o silêncio que um humano pôs", () => {
+    // O DEFEITO QUE ESTE CASO EXISTE PARA IMPEDIR, e ele já esteve aqui:
+    // a primeira versão limpava `bot_silenced_until` em TODO release, com a
+    // justificativa de que "quem escalou também gravou contacts.force_human".
+    // Medido, é FALSO para `triggerHandoff` — o escalador do MCP
+    // `crm_request_human_handoff`, do handler de sentimento, do worker legado e do
+    // teto de gasto (`grep -n force_human lib/ai/handoff/orchestrator.ts` → rc=1).
+    // Nesses caminhos o silêncio é a ÚNICA trava, e apagá-la fazia o robô voltar a
+    // responder um cliente que pediu uma pessoa: dois atores no mesmo cliente, na
+    // direção OPOSTA à do defeito original.
+    //
+    // O discriminador é `last_handoff_at`: uma escalação o carimba, um humano
+    // assumindo não.
+    sql(`update public.conversations
+            set bot_silenced_until = 'infinity',
+                last_handoff_at = now(),
+                last_handoff_reason = 'legal_mention',
+                assigned_to_user_id = null,
+                assignee_kind = null,
+                status = 'pending'
+          where id = '${CMD_CONV}';`);
+
+    // Uma pessoa assume o caso escalado…
+    expect(atribuirComo(GOV_AGENT_A, `'${GOV_AGENT_A}'::uuid, 'claim', null::uuid, false`)).toBe(1);
+    expect(silencioDaConversa()).toBe("infinity");
+
+    // …vê que não é com ela, e libera. O silêncio da ESCALAÇÃO tem de sobreviver.
+    expect(
+      atribuirComo(GOV_AGENT_A, `null::uuid, 'release', '${GOV_AGENT_A}'::uuid, true`),
+    ).toBe(1);
+    expect(silencioDaConversa()).toBe("infinity");
+
+    // O CONTROLE: sem o carimbo de escalação, o mesmo release limpa. Sem esta
+    // metade, um `infinity` acima passaria por "a função nunca limpa nada".
+    sql(`update public.conversations
+            set last_handoff_at = null, last_handoff_reason = null
+          where id = '${CMD_CONV}';`);
+    expect(atribuirComo(GOV_AGENT_A, `'${GOV_AGENT_A}'::uuid, 'claim', null::uuid, false`)).toBe(1);
+    expect(
+      atribuirComo(GOV_AGENT_A, `null::uuid, 'release', '${GOV_AGENT_A}'::uuid, true`),
+    ).toBe(1);
+    expect(silencioDaConversa()).toBe("(null)");
+  });
+
   it("routing também não LIMPA um silêncio que já existia", () => {
     // O outro lado do mesmo braço: a conversa que o automático escalou
     // (silêncio 'infinity' + force_human) não pode ser destravada por um rodízio

@@ -129,12 +129,61 @@ describe("comandoDaConversa — conversa encerrada", () => {
     expect(r.motivo).toBeNull();
   });
 
-  it("encerrada COM dono: o comando acabou, mesmo o produto não soltando o dono ao fechar", () => {
+  it("encerrada COM dono NÃO apaga quem atendeu — ver o bloco 'o que a tela NÃO pode afirmar'", () => {
     const r = comandoDaConversa(
       fatos({ status: "closed", assigned_to_user_id: ATENDENTE, assigned_to_user_name: "Maria" }),
       AGORA,
     );
-    expect(r.comando).toEqual({ quem: "encerrada" });
+    expect(r.comando.quem).toBe("humano");
+    expect(r.automaticoAtivo).toBe(false);
+  });
+});
+
+describe("o que a tela NÃO pode afirmar", () => {
+  it("org sem automático: conversa sem dono é 'ninguem', não 'automatico'", () => {
+    // O defeito: a versão anterior dizia "Automático atendendo" em TODA conversa
+    // sem dono, inclusive numa instalação que nunca configurou agente — afirmando
+    // que o robô cuidava de conversas que ninguém estava respondendo, na primeira
+    // impressão, que é P0.
+    const r = comandoDaConversa(fatos({ automaticoDaOrg: false }), AGORA);
+    expect(r.comando).toEqual({ quem: "ninguem" });
+  });
+
+  it("'não sei' NÃO vira 'não há': leitura ausente mantém o comportamento anterior", () => {
+    // `undefined` é leitura em andamento ou que falhou. Traduzi-la para "não há
+    // automático" seria a mesma mentira ao contrário — e ela apareceria em toda
+    // instalação configurada, no primeiro segundo de cada carregamento.
+    for (const f of [fatos(), fatos({ automaticoDaOrg: undefined })]) {
+      expect(comandoDaConversa(f, AGORA).comando).toEqual({ quem: "automatico" });
+    }
+  });
+
+  it("a org sem automático não muda quem manda quando há dono humano", () => {
+    // O fato é sobre a ORG, não sobre a conversa: com dono, quem manda é a pessoa,
+    // configurada ou não a automação.
+    const r = comandoDaConversa(
+      fatos({ assigned_to_user_id: ATENDENTE, assigned_to_user_name: "Maria", automaticoDaOrg: false }),
+      AGORA,
+    );
+    expect(r.comando).toEqual({ quem: "humano", userId: ATENDENTE, nome: "Maria" });
+  });
+
+  it("conversa FECHADA continua nomeando quem atendeu", () => {
+    // A aba "Fechadas" é onde "quem atendeu isto?" é a única pergunta que importa,
+    // e a versão anterior colapsava para 'encerrada' e jogava o nome fora.
+    const r = comandoDaConversa(
+      fatos({ status: "closed", assigned_to_user_id: ATENDENTE, assigned_to_user_name: "Maria" }),
+      AGORA,
+    );
+    expect(r.comando).toEqual({ quem: "humano", userId: ATENDENTE, nome: "Maria" });
+    // E continua sendo verdade que ninguém está atendendo agora.
+    expect(r.automaticoAtivo).toBe(false);
+  });
+
+  it("conversa fechada SEM dono é 'encerrada' — não há nome a preservar", () => {
+    expect(comandoDaConversa(fatos({ status: "archived" }), AGORA).comando).toEqual({
+      quem: "encerrada",
+    });
   });
 });
 
@@ -210,7 +259,7 @@ describe("o espelho entre a tela e o motor", () => {
 
   it("todo estado e todo motivo têm rótulo, e a palavra do estado é 'automático'", () => {
     expect(Object.keys(ROTULO_DO_COMANDO).sort()).toEqual(
-      ["aguardando", "automatico", "encerrada", "humano"],
+      ["aguardando", "automatico", "encerrada", "humano", "ninguem"],
     );
     expect(Object.keys(ROTULO_DO_MOTIVO)).toHaveLength(4);
     // "IA" no rótulo colidiria com o léxico que o produto já fixou em quatro

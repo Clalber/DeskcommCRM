@@ -4,6 +4,8 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useChannelSessions } from "@/hooks/channels/useChannelSessions";
 
+import { useAutomaticoAtivo } from "@/hooks/ai/useAutomaticoAtivo";
+
 import { ConversationListItem } from "./ConversationListItem";
 import { EmptyInbox } from "@/components/empty";
 import {
@@ -45,6 +47,9 @@ export function ConversationList({
   // Fila (G5-03): a lista já vem ordenada por tempo de espera (server), então a
   // posição é o índice na lista visível. Só mostramos posição/espera nessa visão.
   const isQueue = filters.assigned_to === "unassigned";
+  // Uma leitura por lista, compartilhada por todas as linhas (react-query dedupa
+  // com o cabeçalho, que faz a mesma pergunta).
+  const automaticoDaOrg = useAutomaticoAtivo();
 
   const items = useMemo(() => {
     const all: ConversationWithContact[] = q.data?.pages.flatMap((p) => p.data) ?? [];
@@ -125,6 +130,7 @@ export function ConversationList({
             queuePosition={isQueue ? i + 1 : undefined}
             mostrarCanal={maisDeUmCanal}
             mostrarAtendente={mostrarAtendente}
+            automaticoDaOrg={automaticoDaOrg.data}
           />
         ))}
         {q.hasNextPage && (

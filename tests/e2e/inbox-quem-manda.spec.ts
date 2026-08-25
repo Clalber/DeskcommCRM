@@ -190,7 +190,17 @@ test.describe("Inbox — quem manda nesta conversa", () => {
     // -----------------------------------------------------------------
     // (3) A tela passa a dizer QUEM manda, e o selo explica o porquê.
     // -----------------------------------------------------------------
-    await expect(comando).toContainText(/atendente|e2e/i, { timeout: 30_000 });
+    // O NOME DE VERDADE, não o rótulo genérico.
+    //
+    // A primeira versão aceitava `/atendente|e2e/i` — e "Atendente" é exatamente o
+    // fallback que a tela usa quando o nome NÃO foi resolvido (self-host sem
+    // service role, ou lookup que falhou). Ou seja: o teste que existe para provar
+    // a reclamação nº 3 passava no estado degradado, que é o estado em que a
+    // feature não funciona. Agora ele exige o `full_name` que o seed grava…
+    await expect(comando).toContainText("E2E Agent", { timeout: 30_000 });
+    // …e recusa o genérico. Sem esta metade, um dia em que o nome voltasse null e
+    // a tela caísse no fallback passaria despercebido.
+    await expect(comando).not.toContainText(/^Atendente$/);
     await expect(page.getByTestId("badge-atendimento-humano")).toContainText(/assumiu/i);
     await captura(page, "2-pessoa-no-comando");
 

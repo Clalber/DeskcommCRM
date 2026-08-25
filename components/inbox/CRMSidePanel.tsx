@@ -308,7 +308,19 @@ export function CRMSidePanel({ conversation }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [contactId, tentativa]);
+    // AS DUAS DEPS NOVAS SÃO O REFETCH DA TROCA DE COMANDO.
+    //
+    // Este painel não usa react-query: ele busca num `useEffect` e guarda em
+    // `useState`, então `invalidateQueries` não o alcança — e os hooks de
+    // claim/transfer/release/pausar invalidam só as chaves de conversa. Resultado
+    // medido: as quatro atividades novas ("Assumiu a conversa" e irmãs) nasciam no
+    // banco e a seção "Atividade" ao lado NUNCA as mostrava, porque `contactId` não
+    // muda quando o dono muda e o painel fica montado o tempo todo.
+    //
+    // Depender do DADO que muda é mais honesto que um contador de invalidação:
+    // `assigned_to_user_id` cobre assumir/transferir/liberar e `bot_silenced_until`
+    // cobre pausar e devolver — que são exatamente os quatro gestos que geram linha.
+  }, [contactId, tentativa, conversation?.assigned_to_user_id, conversation?.bot_silenced_until]);
 
   // Recarrega o resumo pelo MESMO caminho do "Tentar de novo": o efeito depende
   // de `tentativa`, então a demanda recém-marcada volta do servidor em vez de

@@ -31,6 +31,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import type { Actor } from "@/lib/api/handlers/types";
+import { isServiceRoleConfigured } from "@/lib/audit";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { resolveActiveLeadForContact, type LeadCandidate } from "@/lib/leads/active-lead";
 import { emitLeadActivity } from "@/lib/leads/activity-emitter";
 import type { ActivityType } from "@/lib/leads/activity-vocabulary";
@@ -44,6 +46,10 @@ export type AtividadeDeComando =
   | "conversation_ai_paused";
 
 interface Entrada {
+  /**
+   * Client do REQUEST — usado para ESCREVER a atividade, herdando a RLS de quem
+   * clicou.
+   */
   supabase: SupabaseClient;
   organizationId: string;
   conversationId: string;
@@ -70,13 +76,38 @@ export async function registrarTrocaDeComando(entrada: Entrada): Promise<void> {
   if (!contactId) return;
 
   try {
+    /**
+     * A BUSCA DOS CANDIDATOS USA O ADMIN CLIENT, e isso não é atalho.
+     *
+     * `crm_leads` tem SELECT visibility-aware (`fn_can_view_lead`, migration
+     * 0036). Com o client do request, a lista de negócios do contato chega
+     * RECORTADA por quem clicou — e `resolveActiveLeadForContact` existe
+     * justamente para RECUSAR o palpite quando há empate. Lista truncada desarma
+     * essa defesa duas vezes:
+     *
+     *   (a) o atendente que não é dono do negócio vê 0 candidatos, a função sai
+     *       por `no_open_lead` e nenhuma linha nasce — a reclamação nº 4 continua
+     *       de pé, com um `info` no log como único rastro;
+     *   (b) com DOIS negócios abertos, um de cada atendente, quem clica vê só o
+     *       seu, não há empate, e a linha é pendurada no negócio ERRADO. A mesma
+     *       ação daria destinos diferentes conforme quem a executa.
+     *
+     * Medido em pg17 com o baseline desta branch, org no default do produto
+     * (`visibility_mode='own_and_unassigned'`), negócio do agent B: agent A lê 0,
+     * agent B lê 1, manager lê 1.
+     *
+     * É o mesmo padrão de `lib/followup/retorno-crm.ts`, que já passa lista de
+     * admin. Doutrina do service role satisfeita: `organizationId` vem de fonte
+     * confiável (o cookie validado pela rota), e todo filtro é explícito.
+     */
+    const leitor = isServiceRoleConfigured() ? createAdminClient() : supabase;
     const [{ data: leadsData }, { data: defaultPipeline }] = await Promise.all([
-      supabase
+      leitor
         .from("crm_leads")
         .select("id, organization_id, pipeline_id, status, last_activity_at, created_at")
         .eq("organization_id", organizationId)
         .eq("contact_id", contactId),
-      supabase
+      leitor
         .from("crm_pipelines")
         .select("id")
         .eq("organization_id", organizationId)

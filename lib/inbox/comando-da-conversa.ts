@@ -46,6 +46,16 @@
 /** As colunas de que esta função precisa — nada além. */
 export interface FatosDoComando {
   status: string;
+  /**
+   * A ORG tem atendimento automático de pé?
+   *
+   * `undefined` significa "não sei" — leitura em andamento ou que falhou — e é
+   * tratado como "não afirme nada", nunca como `false`: dizer "não há automático"
+   * por causa de uma requisição que não voltou é a mesma mentira ao contrário.
+   * Com `undefined` a função mantém o comportamento de assumir que há, que é o
+   * certo para a instalação configurada.
+   */
+  automaticoDaOrg?: boolean;
   assigned_to_user_id: string | null;
   /** Nome do atendente, quando o servidor conseguiu resolvê-lo (pode ser null). */
   assigned_to_user_name?: string | null;
@@ -61,6 +71,14 @@ export type Comando =
   | { quem: "humano"; userId: string; nome: string | null }
   /** O automático está atendendo. */
   | { quem: "automatico" }
+  /**
+   * Sem dono e sem trava, mas a org NÃO tem atendimento automático de pé — então
+   * não há quem responda. É o estado de toda instalação que ainda não configurou
+   * agente, e a versão anterior desta função o chamava de "automatico": a tela
+   * afirmava que o robô estava cuidando de conversas que ninguém estava
+   * respondendo — na primeira impressão, que é P0.
+   */
+  | { quem: "ninguem" }
   /** Ninguém: o automático saiu e nenhuma pessoa assumiu. É a fila. */
   | { quem: "aguardando" }
   /** Acabou. Nem pessoa nem automático têm o que fazer aqui. */
@@ -157,12 +175,20 @@ export function comandoDaConversa(fatos: FatosDoComando, agora: Date = new Date(
         // dono é a conversa que o automático escalou e ninguém pegou — a fila.
         silencio.vigente || travado
         ? { quem: "aguardando" }
-        : { quem: "automatico" };
+        : fatos.automaticoDaOrg === false
+          ? { quem: "ninguem" }
+          : { quem: "automatico" };
 
-  // Encerrada com dono: quem atendeu continua sendo o registro (o produto NÃO
-  // solta o dono ao fechar, de propósito), mas o comando acabou.
-  const comandoFinal: Comando =
-    encerrada && comando.quem === "humano" ? { quem: "encerrada" } : comando;
+  /**
+   * Encerrada COM dono continua nomeando quem atendeu.
+   *
+   * A versão anterior colapsava para `encerrada` e apagava o nome — justamente na
+   * aba "Fechadas", que é onde a pergunta "quem atendeu isto?" é a única que
+   * importa. O produto não solta o dono ao fechar de propósito ("quem atendeu é
+   * histórico"), e a tela estava jogando esse histórico fora. Que a conversa
+   * acabou já é dito pelo selo de status, ao lado.
+   */
+  const comandoFinal: Comando = comando;
 
   const automaticoAtivo = !encerrada && !travado && !silencio.vigente;
 
@@ -204,6 +230,7 @@ export function comandoDaConversa(fatos: FatosDoComando, agora: Date = new Date(
 export const ROTULO_DO_COMANDO: Record<Comando["quem"], string> = {
   humano: "Em atendimento",
   automatico: "Automático atendendo",
+  ninguem: "Sem atendente",
   aguardando: "Aguardando atendente",
   encerrada: "Encerrada",
 };
