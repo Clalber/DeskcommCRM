@@ -33,10 +33,29 @@ async function execute(ctx: ActionCtx, config: Record<string, unknown>): Promise
   if (!sessionId || !template) {
     return { type: "send_whatsapp_message", status: "failed", error: "missing_config" };
   }
-  const contact = ctx.context.contact as { id: string; is_blocked?: boolean; phone_number?: string | null } | undefined;
+  const contact = ctx.context.contact as
+    | {
+        id: string;
+        is_blocked?: boolean;
+        phone_number?: string | null;
+        consent?: { marketing?: { granted_at?: string | null } | null } | null;
+      }
+    | undefined;
   if (!contact) return { type: "send_whatsapp_message", status: "skipped", detail: { reason: "no_contact" } };
   if (contact.is_blocked) return { type: "send_whatsapp_message", status: "skipped", detail: { reason: "contact_blocked" } };
   if (!contact.phone_number) return { type: "send_whatsapp_message", status: "skipped", detail: { reason: "no_phone" } };
+  // Gate FIXO, não configurável — decisão do dono: ausência de consentimento e
+  // recusa explícita são o MESMO estado no schema (`consent.marketing.granted_at`
+  // null nos dois casos; não existe coluna separada de "recusou"), e as duas
+  // bloqueiam TODO envio automático, sem exceção por regra/trigger. Não vive em
+  // `conditions` declarativas de propósito: o motor de `conditions` trata campo
+  // ausente + operador `neq` como sempre-verdadeiro (achado 2026-08-25), o que
+  // deixaria passar exatamente o caso mais perigoso — sem consentimento — se
+  // alguém configurasse a condição errada. Invariante de segurança fica em
+  // código, não em configuração que um admin possa desligar sem querer.
+  if (!contact.consent?.marketing?.granted_at) {
+    return { type: "send_whatsapp_message", status: "skipped", detail: { reason: "no_consent" } };
+  }
 
   const last = _lastSendAt.get(sessionId) ?? 0;
   const wait = last + AUTOMATED_SEND_SPACING_MS + jitterMs() - Date.now();

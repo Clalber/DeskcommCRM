@@ -346,7 +346,15 @@ describe("send_whatsapp_message — execute (Task 11)", () => {
     vi.setSystemTime(new Date("2026-07-17T10:00:00"));
     const executor = getAction("send_whatsapp_message")!;
     const ctx = baseCtx({
-      context: { contact: { id: CONTACT_ID, is_blocked: false, phone_number: "+5511999990001", name: "Ana" } },
+      context: {
+        contact: {
+          id: CONTACT_ID,
+          is_blocked: false,
+          phone_number: "+5511999990001",
+          name: "Ana",
+          consent: { marketing: { granted_at: "2026-07-01T00:00:00Z", source: "manual", version: null } },
+        },
+      },
     });
     const result = await executor.execute(ctx, {
       channel_session_id: SESSION_ID,
@@ -417,5 +425,82 @@ describe("send_whatsapp_message — contato bloqueado (Task 11)", () => {
     expect(result.detail?.reason).toBe("contact_blocked");
     const after = rows(`select id from public.messages where contact_id = '${CONTACT_BLOCKED_ID}'`).length;
     expect(after).toBe(before);
+  });
+});
+
+/**
+ * Gate fixo de consentimento (decisão do dono, 2026-08-25) — código, não
+ * `conditions` declarativas. Ausência total do objeto `consent.marketing` e
+ * recusa explícita (`granted_at: null` presente mas nulo) são o MESMO estado
+ * no schema hoje — as duas têm de bloquear, sem exceção de regra/trigger.
+ */
+describe("send_whatsapp_message — gate de consentimento (achado 2026-08-25)", () => {
+  it("6. sem objeto consent no contato: skipped no_consent, zero mensagens", async () => {
+    vi.setSystemTime(new Date("2026-07-17T10:00:00"));
+    const before = rows(`select id from public.messages where contact_id = '${CONTACT_ID}'`).length;
+    const executor = getAction("send_whatsapp_message")!;
+    const ctx = baseCtx({
+      context: {
+        contact: { id: CONTACT_ID, is_blocked: false, phone_number: "+5511999990001", name: "Ana" },
+      },
+    });
+    const result = await executor.execute(ctx, {
+      channel_session_id: SESSION_ID,
+      template: "Oi {{contact.name}}",
+    });
+
+    expect(result.status).toBe("skipped");
+    expect(result.detail?.reason).toBe("no_consent");
+    const after = rows(`select id from public.messages where contact_id = '${CONTACT_ID}'`).length;
+    expect(after).toBe(before);
+  });
+
+  it("7. consentimento explicitamente recusado (granted_at null): skipped no_consent, zero mensagens", async () => {
+    vi.setSystemTime(new Date("2026-07-17T10:00:00"));
+    const before = rows(`select id from public.messages where contact_id = '${CONTACT_ID}'`).length;
+    const executor = getAction("send_whatsapp_message")!;
+    const ctx = baseCtx({
+      context: {
+        contact: {
+          id: CONTACT_ID,
+          is_blocked: false,
+          phone_number: "+5511999990001",
+          name: "Ana",
+          consent: { marketing: { granted_at: null, source: null, version: null } },
+        },
+      },
+    });
+    const result = await executor.execute(ctx, {
+      channel_session_id: SESSION_ID,
+      template: "Oi {{contact.name}}",
+    });
+
+    expect(result.status).toBe("skipped");
+    expect(result.detail?.reason).toBe("no_consent");
+    const after = rows(`select id from public.messages where contact_id = '${CONTACT_ID}'`).length;
+    expect(after).toBe(before);
+  });
+
+  it("8. consentimento concedido: passa do gate (não fica preso em no_consent)", async () => {
+    vi.setSystemTime(new Date("2026-07-17T10:00:00"));
+    const executor = getAction("send_whatsapp_message")!;
+    const ctx = baseCtx({
+      context: {
+        contact: {
+          id: CONTACT_ID,
+          is_blocked: false,
+          phone_number: "+5511999990001",
+          name: "Ana",
+          consent: { marketing: { granted_at: "2026-08-01T00:00:00Z", source: "webhook:respondi", version: "9FiY9mrO" } },
+        },
+      },
+    });
+    const result = await executor.execute(ctx, {
+      channel_session_id: SESSION_ID,
+      template: "Oi {{contact.name}}",
+    });
+
+    expect(result.status).toBe("success");
+    expect(result.detail?.reason).not.toBe("no_consent");
   });
 });
