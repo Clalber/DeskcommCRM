@@ -943,5 +943,39 @@ script do repo o cria). E o primeiro build parecia ter passado porque
 ([[feedback-pipe-tail-mascara-exit]]). Confira `.next/BUILD_ID`, nunca o exit de
 um pipe.
 
+### Vai escrever uma spec que depende de tempo real? Leia isto primeiro
+
+**No CI, o Realtime sobe ANTES de as tabelas entrarem na publication.** O `e2e.yml` faz
+`supabase start` (que sobe o Realtime) e só depois aplica o `baseline.sql`, que é quem
+adiciona `messages`, `conversations`, `crm_leads` e as demais à publication
+`supabase_realtime`. O Realtime já subiu sem elas e não as reconhece depois: **assina,
+responde `SUBSCRIBED` e nunca entrega**.
+
+Custou três rodadas de CI de 15 minutos para achar, porque o sintoma é idêntico ao do canal
+anônimo — os dois respondem `SUBSCRIBED` e calam. O que separou os dois foi cruzar o log do
+script (`[e2e-chega-mensagem] entregue em 6f5fd1f2…`) com o snapshot da página no mesmo
+instante (`"Nenhuma mensagem nesta conversa."`): gravado no banco, nunca entregue à tela.
+
+Há um passo no `e2e.yml` que reinicia o Realtime depois do baseline e resolve isso. **Ele
+existe desde o PR #327 — confira que continua lá antes de culpar o seu código:**
+
+```bash
+grep -c "Reiniciar o Realtime" .github/workflows/e2e.yml   # 1 = está lá
+```
+
+Na VPS o problema não existe: o `install.sh` aplica o baseline e só então o compose sobe os
+serviços. É o CI que inverte a ordem.
+
+⚠️ **Uma spec que navega com `page.goto()` antes de cada asserção NÃO exercita o canal** —
+ela refaz o fetch e passaria mesmo com o tempo real morto. `inbox-quem-manda.spec.ts` é assim
+(medido: `goto` nas linhas 174 e 272, asserções depois), e por isso ela não foi afetada pelo
+defeito acima. Se a sua spec existe para provar tempo real, ela não pode recarregar depois de
+abrir a tela — e vale afirmar `data-realtime-status="subscribed"` **antes** de provocar o
+evento, senão um canal que suba tarde passa igual.
+
+**Registro de dívida, apontado pelo QA na revisão desta entrega:** enquanto o passo do
+restart estiver só na branch do #327 e não na `main`, toda spec nova de tempo real nasce
+quebrada no CI pelo motivo acima — e quem a escrever vai perder as mesmas horas.
+
 **Evidência visual:** `evidence/inbox-tempo-real/mensagem-sem-reload.png` — a
 conversa aberta com as mensagens das rodadas, cada uma entregue sem recarregar.
