@@ -134,8 +134,24 @@ test.describe("inbox em tempo real", () => {
     const corpo = `chegou em tempo real ${Date.now()}`;
     chegarMensagem(conversationId!, corpo);
 
+    // O canal está de pé ANTES de a mensagem chegar. Sem esta linha, o teste
+    // passaria com o canal morto se a rede de segurança curasse a perda a tempo
+    // — e a rede existe justamente para o canal morto. Verde pelo motivo errado.
+    await expect(page.locator("[data-realtime-status]")).toHaveAttribute(
+      "data-realtime-status",
+      "subscribed",
+      { timeout: 20_000 },
+    );
+
     // ⚠️ SEM reload. Se aparecer, o canal entregou.
     await expect(page.getByText(corpo)).toBeVisible({ timeout: 25_000 });
+
+    // E entregou pelo CANAL, não pela rede de segurança: `divergencias` conta as
+    // vezes em que o refetch trouxe novidade que o canal não tinha trazido.
+    await expect(page.locator("[data-refetch-divergencias]")).toHaveAttribute(
+      "data-refetch-divergencias",
+      "0",
+    );
 
     // E a lista também reagiu — é o outro canal do mesmo socket, que era
     // justamente o que ficava anônimo quando dois canais coexistiam.

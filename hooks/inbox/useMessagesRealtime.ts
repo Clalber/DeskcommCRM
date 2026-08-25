@@ -59,7 +59,7 @@ export function useMessagesRealtime(conversationId: string | null) {
     qc.invalidateQueries({ queryKey: ["conversations"] });
   }, [qc, conversationId]);
 
-  const { ultimaEntrega } = useRealtimeChannel({
+  const { status: realtimeStatus, ultimaEntrega } = useRealtimeChannel({
     name: conversationId ? `messages-${conversationId}` : "messages-disabled",
     postgresChanges: conversationId
       ? {
@@ -94,5 +94,5 @@ export function useMessagesRealtime(conversationId: string | null) {
     enabled: !!conversationId,
   });
 
-  return { ...query, seguranca };
+  return { ...query, realtimeStatus, seguranca };
 }

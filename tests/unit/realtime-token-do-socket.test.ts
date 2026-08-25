@@ -82,8 +82,8 @@ describe("o token que o socket do Realtime usa", () => {
 describe("a callback do token", () => {
   // A callback é módulo-global de propósito (o cache tem de valer para todos os
   // canais do socket). O reset existe para os casos não vazarem um no outro.
-  let createClient: typeof import("@/lib/supabase/browser").createClient;
-  let __resetTokenDoRealtime: typeof import("@/lib/supabase/browser").__resetTokenDoRealtime;
+  let createClient: () => unknown;
+  let __resetTokenDoRealtime: () => void;
 
   /** Extrai a callback que foi passada ao createBrowserClient. */
   async function callbackInstalada(): Promise<() => Promise<string | null>> {

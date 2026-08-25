@@ -116,7 +116,7 @@ export function useConversationsRealtime(
   // com o filtro amplo `organization_id=eq.<org>` abaixo. Prova do filtro em
   // tests/invariants/gov-5-visibility-scope.test.ts (SELECT sob role agent = 0 rows
   // para conversa de outro atendente — o mesmo SELECT que o Realtime executa).
-  const { ultimaEntrega } = useRealtimeChannel({
+  const { status: realtimeStatus, ultimaEntrega } = useRealtimeChannel({
     name: orgId ? `inbox-${orgId}` : "inbox-disabled",
     postgresChanges: orgId
       ? {
@@ -160,5 +160,5 @@ export function useConversationsRealtime(
     enabled: !!orgId,
   });
 
-  return { ...query, seguranca };
+  return { ...query, realtimeStatus, seguranca };
 }

@@ -118,13 +118,27 @@ describe("a rede de segurança do inbox", () => {
   it("a lista de conversas tem rede, e devolve o sinal de perda", () => {
     const fonte = readFileSync("hooks/inbox/useConversationsRealtime.ts", "utf8");
     expect(fonte, "a lista ficou sem rede de segurança").toMatch(/useRefetchDeSeguranca</);
-    expect(fonte, "o sinal de perda não sai do hook").toMatch(/return \{ \.\.\.query, seguranca \}/);
+    expect(fonte, "o sinal de perda não sai do hook").toMatch(/return \{[^}]*\bseguranca\b[^}]*\}/);
   });
 
   it("a conversa aberta também", () => {
     const fonte = readFileSync("hooks/inbox/useMessagesRealtime.ts", "utf8");
     expect(fonte, "a conversa aberta ficou sem rede de segurança").toMatch(/useRefetchDeSeguranca</);
-    expect(fonte, "o sinal de perda não sai do hook").toMatch(/return \{ \.\.\.query, seguranca \}/);
+    expect(fonte, "o sinal de perda não sai do hook").toMatch(/return \{[^}]*\bseguranca\b[^}]*\}/);
+  });
+
+  it("o estado do canal chega à TELA — senão a morte dele segue invisível", () => {
+    // O dossiê do lead já publicava este par; o inbox não publicava nada.
+    // ⚠️ `data-realtime-status` tem de vir do STATUS do canal, não de um objeto
+    // que existe sempre: a primeira versão desta linha diria `ativo` inclusive
+    // com o canal morto — controle decorativo, que mente com cara de instrumento.
+    const tela = readFileSync("components/inbox/InboxLayout.tsx", "utf8");
+    expect(tela, "o inbox não publica o estado do canal").toMatch(
+      /data-realtime-status=\{listQ\.realtimeStatus\}/,
+    );
+    expect(tela, "o inbox não publica a contagem de perdas").toMatch(
+      /data-refetch-divergencias=\{listQ\.seguranca/,
+    );
   });
 
   it("a rede consome o carimbo de entrega do canal — senão só sabe reprovar", () => {
@@ -133,7 +147,7 @@ describe("a rede de segurança do inbox", () => {
     for (const f of ["hooks/inbox/useConversationsRealtime.ts", "hooks/inbox/useMessagesRealtime.ts"]) {
       const fonte = readFileSync(f, "utf8");
       expect(fonte, `${f} não passa ultimaEntrega para a rede`).toMatch(
-        /const \{ ultimaEntrega \} = useRealtimeChannel\(/,
+        /const \{[^}]*\bultimaEntrega\b[^}]*\} = useRealtimeChannel\(/,
       );
     }
   });
