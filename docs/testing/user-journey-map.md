@@ -973,6 +973,33 @@ defeito acima. Se a sua spec existe para provar tempo real, ela não pode recarr
 abrir a tela — e vale afirmar `data-realtime-status="subscribed"` **antes** de provocar o
 evento, senão um canal que suba tarde passa igual.
 
+**A `degradacao-silenciosa.spec.ts` provavelmente está reprovando em silêncio hoje — e é
+uma PREDIÇÃO, não uma medição.** Achado do QA nesta revisão, verificado por mim na fonte:
+
+- Ela mata o socket de propósito (`routeWebSocket`, linha 113) e tem uma **pré-condição**
+  antes da asserção que interessa (linhas 156-164): `expect(engolidos).toBeGreaterThan(0)`,
+  cuja razão escrita é "se nenhum quadro de dados foi engolido, a entrega não foi morta e o
+  teste não mediu degradação nenhuma".
+- Mas ela é `test.fail()`, e o próprio arquivo avisa (linhas 89-92) que isso **esconde QUAL
+  asserção falhou**: "uma cerca que falha na PRÉ-CONDIÇÃO parece idêntica a uma que falha no
+  ponto certo". O escape é `CERCA_CRUA=1`.
+
+Junte as duas com o defeito da publication: se o canal já não entrega nada, não há quadro de
+entrega para engolir → `engolidos` fica 0 → a pré-condição reprova → e o `test.fail()` diz
+"falhou como esperado". **A cerca estaria quebrada sem sinal.**
+
+Como confirmar (ninguém mediu ainda): rodar `CERCA_CRUA=1 pnpm exec playwright test
+degradacao-silenciosa.spec.ts` no CI antes e depois do passo de restart. Se antes ela falha na
+pré-condição e depois no ponto certo, a predição se confirma — e o conserto do CI terá tirado
+essa spec de um estado em que ela não provava nada.
+
+**O que continua faltando nela, e não é o mesmo que a pré-condição:** não há controle
+positivo estrito — nenhum caso com o canal VIVO afirmando que a tela **não** mostra o aviso.
+A pré-condição garante que a sabotagem funcionou; ela não garante que o aviso é consequência
+da sabotagem. Se o aviso fosse incondicional, a spec passaria idêntica. O QA estimou cinco
+linhas para fechar isso, e a dívida é dele por escrito — não foi feita aqui porque a spec não
+é deste PR.
+
 **Registro de dívida, apontado pelo QA na revisão desta entrega:** enquanto o passo do
 restart estiver só na branch do #327 e não na `main`, toda spec nova de tempo real nasce
 quebrada no CI pelo motivo acima — e quem a escrever vai perder as mesmas horas.
