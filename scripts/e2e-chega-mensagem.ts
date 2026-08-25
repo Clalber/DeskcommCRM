@@ -68,7 +68,7 @@ async function main(): Promise<void> {
     .eq("id", c.id);
   if (eConvUpd) throw new Error(`carimbo: ${eConvUpd.message}`);
 
-  console.log(`[e2e-chega-mensagem] entregue em ${c.id}: ${corpo}`);
+  console.info(`[e2e-chega-mensagem] entregue em ${c.id}: ${corpo}`);
 }
 
 main().catch((err: unknown) => {

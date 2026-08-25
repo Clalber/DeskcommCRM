@@ -865,3 +865,22 @@ conserto já commitado):
 | remover a callback de `browser.ts` | 6 de 7 |
 | a callback devolve a anon key (o que a PADRÃO fazia) | 3, incluindo *"devolve o token da sessão — NUNCA a anon key"* |
 | tirar a rede de segurança da lista de conversas | 1, apontando a lista |
+
+**A prova que fecha o caso — o mesmo teste dos dois lados** (2026-08-24, build de
+produção contra o Supabase local, banco semeado pelos scripts do repo):
+
+| Código sob teste | Resultado |
+|---|---|
+| com o conserto | `1 passed` — a mensagem apareceu na tela sem reload |
+| revertido ao da `main` (`git checkout main -- lib/supabase/browser.ts hooks/realtime/useRealtimeChannel.ts`) | `1 failed` — *element(s) not found*, 25 s |
+
+Reverter **só o fonte**, mantendo o teste, é o que separa "o teste vigia" de "o
+teste passa". Um verde sozinho não distingue as duas coisas.
+
+⚠️ **Achado de ambiente, não do repo:** o build morria com
+`'node_modules/node_modules' is a symlink causes that causes an infinite loop!` —
+um symlink auto-referente de 2026-08-13, resíduo de sessão anterior (nenhum
+script do repo o cria). E o primeiro build parecia ter passado porque
+`pnpm e2e:build 2>&1 | tail -20` devolve o exit do `tail`, não o do build
+([[feedback-pipe-tail-mascara-exit]]). Confira `.next/BUILD_ID`, nunca o exit de
+um pipe.
