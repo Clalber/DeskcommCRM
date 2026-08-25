@@ -148,6 +148,13 @@ test.describe("inbox em tempo real", () => {
       "0",
     );
 
+    // A evidência vai para `evidence/`, que é VERSIONADO — `.superpowers/` é
+    // ignorado pelo git, e prova citada que ninguém consegue abrir não é prova.
+    await page.screenshot({
+      path: "evidence/inbox-tempo-real/mensagem-sem-reload.png",
+      fullPage: true,
+    });
+
     // E a lista também reagiu — é o outro canal do mesmo socket, que era
     // justamente o que ficava anônimo quando dois canais coexistiam.
     await expect(page.locator("[data-conversation-id]").first()).toContainText(corpo, {
