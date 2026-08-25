@@ -35,13 +35,34 @@ interface E2ECreds {
 
 const CREDS_PATH = path.join(process.cwd(), ".e2e-creds.json");
 
+/**
+ * SEMEIA SEMPRE, nunca "só se o arquivo não existir".
+ *
+ * `.e2e-creds.json` é estado de disco: ele sobrevive a um banco recriado e passa
+ * a apontar para uma organização que não existe mais. Medido — o seed da fila
+ * morria com `channel_sessions_organization_id_fkey`, e a causa não era o teste
+ * nem o banco, era um arquivo velho. Os seeds são idempotentes; pular por
+ * existência de arquivo troca um custo pequeno por uma falha confusa.
+ */
 function creds(): E2ECreds {
-  if (!fs.existsSync(CREDS_PATH)) {
-    execFileSync(process.execPath, ["--import", "tsx", "scripts/seed-e2e-credentials.ts"], {
-      stdio: "inherit",
-    });
-  }
+  execFileSync(process.execPath, ["--import", "tsx", "scripts/seed-e2e-credentials.ts"], {
+    stdio: "inherit",
+  });
   return JSON.parse(fs.readFileSync(CREDS_PATH, "utf8")) as E2ECreds;
+}
+
+/**
+ * A CONVERSA QUE ESTE TESTE PRECISA — semeada, nunca pressuposta.
+ *
+ * O seed de credenciais NÃO cria conversas. Depender de "já ter alguma no banco"
+ * passaria na máquina de quem desenvolve (onde o banco acumulou histórico) e
+ * falharia num banco fresco, que é o do CI — e é o único que vale como prova.
+ * `seed-e2e-queue.ts` já monta o trio contato + canal + conversa e é idempotente.
+ */
+function semearConversa(): void {
+  execFileSync(process.execPath, ["--import", "tsx", "scripts/seed-e2e-queue.ts"], {
+    stdio: "inherit",
+  });
 }
 
 async function login(page: Page, email: string, senha: string): Promise<void> {
@@ -53,61 +74,30 @@ async function login(page: Page, email: string, senha: string): Promise<void> {
 }
 
 /**
- * Grava uma mensagem inbound pelo mesmo caminho da ingestão: service role,
- * INSERT em `messages` + carimbo em `conversations`. Roda FORA do browser, como
- * o webhook do WhatsApp roda — se fosse pela própria página, o teste provaria
- * que a UI mostra o que ela mesma escreveu, que é outra coisa.
+ * Faz a mensagem CHEGAR — fora do browser, como o webhook do WhatsApp chega.
+ *
+ * Se a mensagem fosse escrita pela própria página, o teste provaria que a UI
+ * mostra o que ela mesma escreveu, que é outra coisa. O script grava as duas
+ * pontas que o inbox escuta (`messages` e o carimbo de `conversations`) — dois
+ * canais no mesmo socket, e era a coexistência deles que expunha o defeito.
  */
 function chegarMensagem(conversationId: string, corpo: string): void {
   execFileSync(
     process.execPath,
-    [
-      "--import",
-      "tsx",
-      "-e",
-      `
-      import { createClient } from "@supabase/supabase-js";
-      import { credenciaisSupabaseDeTeste } from "./scripts/lib/env-de-teste";
-      const { url, serviceRoleKey } = credenciaisSupabaseDeTeste();
-      const admin = createClient(url, serviceRoleKey, { auth: { persistSession: false } });
-      const { data: conv, error: e1 } = await admin
-        .from("conversations")
-        .select("id, organization_id, channel_session_id, contact_id")
-        .eq("id", process.env.CONV_ID!)
-        .single();
-      if (e1) throw new Error("conversa: " + e1.message);
-      const { error: e2 } = await admin.from("messages").insert({
-        organization_id: conv.organization_id,
-        conversation_id: conv.id,
-        channel_session_id: conv.channel_session_id,
-        contact_id: conv.contact_id,
-        external_id: "e2e-tempo-real-" + Date.now(),
-        direction: "inbound",
-        type: "text",
-        body: process.env.CORPO!,
-        status: "delivered",
-      });
-      if (e2) throw new Error("mensagem: " + e2.message);
-      // O que reordena a lista é o carimbo da última mensagem, não o insert.
-      const { error: e3 } = await admin
-        .from("conversations")
-        .update({ last_message_at: new Date().toISOString() })
-        .eq("id", conv.id);
-      if (e3) throw new Error("carimbo: " + e3.message);
-      `,
-    ],
-    {
-      cwd: process.cwd(),
-      env: { ...process.env, CONV_ID: conversationId, CORPO: corpo },
-      stdio: "inherit",
-    },
+    ["--import", "tsx", "scripts/e2e-chega-mensagem.ts", conversationId, corpo],
+    { cwd: process.cwd(), stdio: "inherit" },
   );
 }
 
 test.describe("inbox em tempo real", () => {
   test("mensagem que chega aparece na conversa aberta, sem recarregar", async ({ page }) => {
     const c = creds();
-    await login(page, c.users.admin!.email, c.password);
+    semearConversa();
+
+    // `manager` e não `admin`: o admin do seed tem fator MFA cadastrado e o
+    // login dele para em /login/mfa. O manager vê a aba "Todas" (leitura
+    // org-wide), que é o que este teste precisa.
+    await login(page, c.users.manager!.email, c.password);
 
     await page.goto("/app/inbox");
     // A aba "Todas": a conversa do seed pode estar atribuída a qualquer um, e a
@@ -123,12 +113,17 @@ test.describe("inbox em tempo real", () => {
     const conversationId = await item.getAttribute("data-conversation-id");
     expect(conversationId).toBeTruthy();
     await item.click();
-    await page.waitForURL(new RegExp(`/app/inbox/${conversationId}`), { timeout: 20_000 });
 
-    // Espera o thread ASSENTAR antes de escrever. Sem isto, o refetch inicial
+    // A seleção é estado LOCAL — a URL não muda (`setSelectedId`, não `router.push`).
+    // O sinal de que a conversa abriu é o cabeçalho dela; esperar navegação aqui
+    // seria esperar por algo que o app nunca faz.
+    await expect(page.getByRole("heading", { level: 2, name: /Cliente Fila E2E/ })).toBeVisible({
+      timeout: 20_000,
+    });
+
+    // Deixa a tela ASSENTAR antes de escrever. Sem isto o refetch inicial
     // poderia trazer a mensagem e o teste passaria sem o canal ter feito nada —
     // verde pelo motivo errado, que é o modo de falha desta classe de teste.
-    await expect(page.getByTestId("chat-thread")).toBeVisible({ timeout: 20_000 });
     await page.waitForTimeout(2_000);
 
     const corpo = `chegou em tempo real ${Date.now()}`;
