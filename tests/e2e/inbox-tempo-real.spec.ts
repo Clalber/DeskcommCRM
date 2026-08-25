@@ -31,6 +31,8 @@ import { test, expect, type Page } from "@playwright/test";
 interface E2ECreds {
   password: string;
   users: Record<string, { id: string; email: string; role: string }>;
+  /** Bloco gravado por `seed-e2e-queue.ts` — a conversa que este teste usa. */
+  queue?: { conversation_id: string; contact_name: string };
 }
 
 const CREDS_PATH = path.join(process.cwd(), ".e2e-creds.json");
@@ -59,10 +61,13 @@ function creds(): E2ECreds {
  * falharia num banco fresco, que é o do CI — e é o único que vale como prova.
  * `seed-e2e-queue.ts` já monta o trio contato + canal + conversa e é idempotente.
  */
-function semearConversa(): void {
+function semearConversa(): NonNullable<E2ECreds["queue"]> {
   execFileSync(process.execPath, ["--import", "tsx", "scripts/seed-e2e-queue.ts"], {
     stdio: "inherit",
   });
+  const c = JSON.parse(fs.readFileSync(CREDS_PATH, "utf8")) as E2ECreds;
+  if (!c.queue) throw new Error("bloco `queue` ausente em .e2e-creds.json após o seed");
+  return c.queue;
 }
 
 async function login(page: Page, email: string, senha: string): Promise<void> {
@@ -92,51 +97,55 @@ function chegarMensagem(conversationId: string, corpo: string): void {
 test.describe("inbox em tempo real", () => {
   test("mensagem que chega aparece na conversa aberta, sem recarregar", async ({ page }) => {
     const c = creds();
-    semearConversa();
+    const fila = semearConversa();
 
     // `manager` e não `admin`: o admin do seed tem fator MFA cadastrado e o
     // login dele para em /login/mfa. O manager vê a aba "Todas" (leitura
     // org-wide), que é o que este teste precisa.
     await login(page, c.users.manager!.email, c.password);
 
-    await page.goto("/app/inbox");
-    // A aba "Todas": a conversa do seed pode estar atribuída a qualquer um, e a
-    // fila (default) mostraria só as não atribuídas.
-    await page.getByRole("tab", { name: /Todas/ }).click();
-
-    // Abre a primeira conversa — o estado real de quem está atendendo: a
-    // conversa na tela, esperando o cliente responder.
-    const item = page.locator("[data-conversation-id]").first();
-    await expect(item, "o seed precisa ter ao menos uma conversa").toBeVisible({
-      timeout: 20_000,
-    });
-    const conversationId = await item.getAttribute("data-conversation-id");
-    expect(conversationId).toBeTruthy();
-    await item.click();
+    /**
+     * DEEP-LINK, não "clicar na primeira da lista".
+     *
+     * A primeira versão clicava em `[data-conversation-id]`.first() e esperava o
+     * cabeçalho do contato do seed. Passou aqui e reprovou no CI: lá o banco é
+     * compartilhado entre as duas partes do job, outras specs criam conversas
+     * mais recentes, e a primeira da lista não era a semeada. O teste media a
+     * ORDEM da lista — que não é o assunto dele — e, pior, a conversa poderia
+     * nem estar na primeira página (`limit=50`).
+     *
+     * `?filter=all` porque a fila (default) só mostra as não atribuídas.
+     */
+    const conversationId = fila.conversation_id;
+    await page.goto(`/app/inbox?id=${conversationId}&filter=all`);
 
     // A seleção é estado LOCAL — a URL não muda (`setSelectedId`, não `router.push`).
     // O sinal de que a conversa abriu é o cabeçalho dela; esperar navegação aqui
     // seria esperar por algo que o app nunca faz.
-    await expect(page.getByRole("heading", { level: 2, name: /Cliente Fila E2E/ })).toBeVisible({
-      timeout: 20_000,
-    });
+    await expect(
+      page.getByRole("heading", { level: 2, name: fila.contact_name }),
+    ).toBeVisible({ timeout: 20_000 });
 
     // Deixa a tela ASSENTAR antes de escrever. Sem isto o refetch inicial
     // poderia trazer a mensagem e o teste passaria sem o canal ter feito nada —
     // verde pelo motivo errado, que é o modo de falha desta classe de teste.
     await page.waitForTimeout(2_000);
 
-    const corpo = `chegou em tempo real ${Date.now()}`;
-    chegarMensagem(conversationId!, corpo);
-
-    // O canal está de pé ANTES de a mensagem chegar. Sem esta linha, o teste
-    // passaria com o canal morto se a rede de segurança curasse a perda a tempo
-    // — e a rede existe justamente para o canal morto. Verde pelo motivo errado.
+    // O canal tem de estar de pé ANTES de a mensagem chegar — e a asserção vem
+    // ANTES da escrita, senão ela não afirma isso: um canal que subisse só
+    // depois da entrega passaria igual. (A primeira versão tinha esta asserção
+    // DEPOIS do `chegarMensagem`, com este mesmo comentário dizendo "antes".)
+    //
+    // Sem ela, o teste passaria com o canal morto se a rede de segurança
+    // curasse a perda a tempo — e a rede existe justamente para o canal morto.
     await expect(page.locator("[data-realtime-status]")).toHaveAttribute(
       "data-realtime-status",
       "subscribed",
       { timeout: 20_000 },
     );
+
+    const corpo = `chegou em tempo real ${Date.now()}`;
+    chegarMensagem(conversationId, corpo);
 
     // ⚠️ SEM reload. Se aparecer, o canal entregou.
     await expect(page.getByText(corpo)).toBeVisible({ timeout: 25_000 });
@@ -157,8 +166,15 @@ test.describe("inbox em tempo real", () => {
 
     // E a lista também reagiu — é o outro canal do mesmo socket, que era
     // justamente o que ficava anônimo quando dois canais coexistiam.
-    await expect(page.locator("[data-conversation-id]").first()).toContainText(corpo, {
+    // E A LISTA REORDENOU: a conversa que acabou de receber vai para o topo
+    // (`_handler.ts` ordena por `last_message_at` desc). Asserir no PRIMEIRO
+    // item é seguro AQUI — e só aqui — porque a mensagem que acabou de chegar é
+    // a mais recente do banco por construção. Antes de ela chegar, a posição na
+    // lista era imprevisível, e foi o que reprovou no CI.
+    const primeiro = page.locator("[data-conversation-id]").first();
+    await expect(primeiro).toHaveAttribute("data-conversation-id", conversationId, {
       timeout: 25_000,
     });
+    await expect(primeiro).toContainText(corpo, { timeout: 25_000 });
   });
 });
