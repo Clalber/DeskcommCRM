@@ -286,13 +286,13 @@ Checks **obrigatórios** na branch protection da `main` (verificado na configura
 - **`verify`** (`ci.yml`) — typecheck + lint + test:unit.
 - **`invariants`** (`ci.yml`) — `pnpm test:db`: sobe `pgvector/pgvector:pg17`, aplica `supabase/baseline.sql` em modo install (`ON_ERROR_STOP=1`) e update (idempotência), e roda os testes de invariante, incluindo o de isolamento RLS entre 2 organizações.
 - **`build-and-size`** (`perf.yml`) — `pnpm build` em Node 22.
-- **`e2e`** (`e2e.yml`) — sobe Supabase local, aplica o `baseline.sql` e roda **48 das 49 specs** Playwright (medido em 2026-08-14 @ `587a494d`; **reconte antes de citar** — este número já apodreceu **quatro** vezes). A **única** de fora é `vps-fresh-onboarding` (precisa de WAHA + Redis + Resend + Nuvemshop) — e ela é a **P0** da doutrina de QA Visual, ou seja, `e2e` verde **não** prova a jornada de instalação fresca, que é o produto que se vende.
+- **`e2e`** (`e2e.yml`) — sobe Supabase local, aplica o `baseline.sql` e roda **50 das 51 specs** Playwright (medido em 2026-08-25 @ `90fc1ee8`; o número já apodreceu **cinco** vezes — a quinta foi pega por `tests/unit/e2e-cobertura-completa.test.ts`, que desde então COBRA esta frase e reprova quando ela diverge do workflow). A **única** de fora é `vps-fresh-onboarding` (precisa de WAHA + Redis + Resend + Nuvemshop) — e ela é a **P0** da doutrina de QA Visual, ou seja, `e2e` verde **não** prova a jornada de instalação fresca, que é o produto que se vende.
 
-  **A receita antiga de recontagem estava errada** e é provavelmente uma das causas do apodrecimento. `grep -oE '[a-z0-9-]+\.spec\.ts' .github/workflows/e2e.yml | sort -u | wc -l` devolve **49**, não 48 — mas *não* pelo motivo que este parágrafo afirmava até 2026-08-14. Ele dizia "conta menções em COMENTÁRIOS do workflow", e isso é falso: medido, o conjunto de specs citadas fora de variável é **vazio**. O excedente é a `FORA_DO_CI`, que é uma **variável YAML** como as outras — o grep não distingue a variável que o CI *invoca* da que ele só *declara*. Medir o arquivo inteiro mede quem é citado, não quem é invocado. O que roda são as `SPECS_PARTE_*`:
+  **A receita antiga de recontagem estava errada** e é provavelmente uma das causas do apodrecimento. `grep -oE '[a-z0-9-]+\.spec\.ts' .github/workflows/e2e.yml | sort -u | wc -l` devolve **51**, não 50 — mas *não* pelo motivo que este parágrafo afirmava até 2026-08-14. Ele dizia "conta menções em COMENTÁRIOS do workflow", e isso é falso: medido, o conjunto de specs citadas fora de variável é **vazio**. O excedente é a `FORA_DO_CI`, que é uma **variável YAML** como as outras — o grep não distingue a variável que o CI *invoca* da que ele só *declara*. Medir o arquivo inteiro mede quem é citado, não quem é invocado. O que roda são as `SPECS_PARTE_*`:
 
   ```bash
-  ls tests/e2e/*.spec.ts | wc -l                    # 49 em disco
-  python3 - <<'PY'                                  # 48 que o CI invoca
+  ls tests/e2e/*.spec.ts | wc -l                    # 51 em disco
+  python3 - <<'PY'                                  # 50 que o CI invoca
   import re
   y = open(".github/workflows/e2e.yml", encoding="utf-8").read()
   print(len({s for _, c in re.findall(r'(SPECS_PARTE_\d+):\s*>-\n((?:[ ]{8,}.*\n)+)', y)

@@ -109,6 +109,34 @@ describe("cobertura do e2e no CI", () => {
     expect(fantasmas, "lista do CI aponta para spec inexistente — renomeada ou apagada").toEqual([]);
   });
 
+  it("o número citado no CLAUDE.md bate com o que o CI invoca", () => {
+    /**
+     * A QUARTA PONTA, e ela é a que o próprio CLAUDE.md pediu.
+     *
+     * Aquele arquivo afirma quantas specs o `e2e` roda, avisa que o número "já
+     * apodreceu QUATRO vezes" e diz qual é o conserto devido: este teste passar
+     * a cobrar o texto de lá, como já cobra as três listas do workflow. Enquanto
+     * não cobrava, apodreceu a QUINTA — dizia "48 das 49" com 50 de 51 no repo.
+     *
+     * Por que importa mais do que parece: o CLAUDE.md é a régua que uma triagem
+     * de PR usa para decidir se a cobertura caiu. Medir contra a régua errada é
+     * o modo de falha nº 1 daquele procedimento — está escrito lá, nessas
+     * palavras. Prosa que nenhum gate lê é prosa que diverge.
+     */
+    const claude = readFileSync("CLAUDE.md", "utf8");
+    const m = /roda \*\*(\d+) das (\d+) specs\*\*/.exec(claude);
+    expect(
+      m,
+      "CLAUDE.md não tem mais a frase 'roda **N das M specs**' — se o texto mudou de forma, " +
+        "atualize este regex junto, senão o gate passa a aprovar por não achar nada.",
+    ).not.toBeNull();
+    const [, invocadas, emDisco] = m!;
+    expect(
+      { invocadas: Number(invocadas), emDisco: Number(emDisco) },
+      "o número no CLAUDE.md apodreceu — reconte e corrija a frase lá",
+    ).toEqual({ invocadas: [...parte1, ...parte2].length, emDisco: noDisco.length });
+  });
+
   it("as listas são de fato passadas ao Playwright", () => {
     // A terceira ponta. Declarar não é executar: sem o consumo, acrescentar o nome
     // à variável deixa este gate verde e a spec continua fora do run.
