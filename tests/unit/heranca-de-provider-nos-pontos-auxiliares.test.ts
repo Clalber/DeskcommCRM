@@ -36,7 +36,13 @@
  */
 import { describe, expect, it, vi } from "vitest";
 
-import { decidirBinding, type AgentePublicado, type EntradaDaDecisao } from "@/lib/ai/pontos/resolver";
+import {
+  decidirBinding,
+  PONTOS_DO_AGENTE_PUBLICADO,
+  PONTOS_QUE_HERDAM_DO_AGENTE,
+  type AgentePublicado,
+  type EntradaDaDecisao,
+} from "@/lib/ai/pontos/resolver";
 import { runModelCall } from "@/lib/agent-engine/edge/llm/run-model-call";
 
 const PADRAO = { provider: "anthropic", defaultModel: "claude-sonnet-4-5" };
@@ -69,6 +75,7 @@ const PONTOS_AUXILIARES = [
   "promise_semantic",
   "compaction",
   "checkpoint",
+  "draft_suggestion",
 ] as const;
 
 describe("o ponto auxiliar não cruza provider de um com modelo de outro", () => {
@@ -190,5 +197,127 @@ describe("o seam instancia o modelo do agente, não o do padrão da org", () => 
     // E a chave tem de ser a do provider instanciado — o outro meio do PR #151.
     expect(chamadas[0]?.apiKey).toBe("chave-openai");
     expect(r.origem).not.toBe("padrao_da_organizacao");
+  });
+});
+
+/**
+ * A GUARDA DE CLASSE — para o próximo call site não repetir o mesmo erro.
+ *
+ * Consertar as instâncias que existem hoje não impede a de amanhã: `operator_turn`
+ * ficou três frentes inteiras mandando o modelo do agente para o endpoint da
+ * organização porque nenhum teste perguntava se ELE também passava o par junto.
+ * Esta varredura pergunta, do código, em todo call site de uma vez.
+ *
+ * O eixo é o objeto literal passado a `runModelCall`: se ele empresta o modelo
+ * do agente publicado (`model: agentConfig.…` / `agent.…`), tem de emprestar
+ * `llmOverride` no MESMO objeto. Ler o objeto balanceado, e não o arquivo,
+ * é o que separa `compaction` (empresta) de `flush` (não empresta) — os dois
+ * moram em `compaction.ts`.
+ */
+import { readdirSync, readFileSync, statSync } from "node:fs";
+import { join } from "node:path";
+
+/** Sobe até a `{` que abre o objeto do índice e desce até a `}` que o fecha. */
+function objetoQueContem(fonte: string, indice: number): string {
+  let profundidade = 0;
+  let i = indice;
+  for (; i >= 0; i--) {
+    const c = fonte[i];
+    if (c === "}") profundidade++;
+    else if (c === "{") {
+      if (profundidade === 0) break;
+      profundidade--;
+    }
+  }
+  if (i < 0) return "";
+  const inicio = i;
+  profundidade = 0;
+  for (let j = i; j < fonte.length; j++) {
+    const c = fonte[j];
+    if (c === "{") profundidade++;
+    else if (c === "}") {
+      profundidade--;
+      if (profundidade === 0) return fonte.slice(inicio, j + 1);
+    }
+  }
+  return "";
+}
+
+function arquivosDoMotor(dir: string): string[] {
+  return readdirSync(dir).flatMap((nome) => {
+    const caminho = join(dir, nome);
+    if (statSync(caminho).isDirectory()) return arquivosDoMotor(caminho);
+    return nome.endsWith(".ts") && !nome.includes(".test.") ? [caminho] : [];
+  });
+}
+
+/**
+ * O ponto herda do ROTEADOR de intenção, não do agente publicado — o provider
+ * vem de `router.classifierProvider`. Ele passa no eixo do PR #151 (modelo e
+ * provider juntos) e por isso está fora de `PONTOS_QUE_HERDAM_DO_AGENTE`, que
+ * é o que a TELA usa para dizer de quem herdou.
+ */
+const HERDAM_DE_OUTRA_FONTE = new Set(["intent_router"]);
+
+describe("nenhum call site empresta o modelo do agente sem o provider dele", () => {
+  const objetosPorPurpose = (() => {
+    const mapa = new Map<string, { arquivo: string; objeto: string }[]>();
+    for (const arquivo of arquivosDoMotor(join(process.cwd(), "lib/agent-engine"))) {
+      const fonte = readFileSync(arquivo, "utf-8");
+      for (const m of fonte.matchAll(/purpose:\s*['"]([a-z_]+)['"]/g)) {
+        const objeto = objetoQueContem(fonte, m.index);
+        const lista = mapa.get(m[1]!) ?? [];
+        lista.push({ arquivo, objeto });
+        mapa.set(m[1]!, lista);
+      }
+    }
+    return mapa;
+  })();
+
+  it("a varredura enxerga o motor — controle positivo", () => {
+    // Sem isto, uma varredura que não achasse arquivo nenhum passaria em tudo
+    // abaixo por vacuidade: instrumento quebrado devolve zero e não avisa.
+    expect(objetosPorPurpose.size).toBeGreaterThanOrEqual(10);
+    expect(objetosPorPurpose.has("agent_turn")).toBe(true);
+    expect(objetosPorPurpose.has("operator_turn")).toBe(true);
+  });
+
+  it("quem passa o modelo do agente passa o llmOverride no mesmo objeto", () => {
+    const faltando: string[] = [];
+    for (const [purpose, ocorrencias] of objetosPorPurpose) {
+      for (const { arquivo, objeto } of ocorrencias) {
+        const emprestaModeloDoAgente = /model:\s*(agentConfig|agent)\./.test(objeto);
+        if (emprestaModeloDoAgente && !objeto.includes("llmOverride")) {
+          faltando.push(`${purpose} (${arquivo.split("/lib/")[1]})`);
+        }
+      }
+    }
+    expect(faltando, `call site empresta o modelo do agente sem o provider: ${faltando.join(", ")}`).toEqual([]);
+  });
+
+  it("todo ponto que recebe llmOverride está declarado, ou é herança de outra fonte", () => {
+    // O outro sentido: a lista que a TELA lê não pode ficar para trás de um
+    // call site novo, senão o painel volta a anunciar o padrão da organização
+    // num ponto que em runtime usa o modelo do agente.
+    const naoDeclarados: string[] = [];
+    for (const [purpose, ocorrencias] of objetosPorPurpose) {
+      if (!ocorrencias.some(({ objeto }) => objeto.includes("llmOverride"))) continue;
+      if (PONTOS_DO_AGENTE_PUBLICADO.has(purpose)) continue;
+      if (HERDAM_DE_OUTRA_FONTE.has(purpose)) continue;
+      if (!PONTOS_QUE_HERDAM_DO_AGENTE.has(purpose)) naoDeclarados.push(purpose);
+    }
+    expect(
+      naoDeclarados,
+      `ponto herda do agente mas não está em PONTOS_QUE_HERDAM_DO_AGENTE: ${naoDeclarados.join(", ")}`,
+    ).toEqual([]);
+  });
+
+  it("a lista não guarda ponto que nenhum call site herda", () => {
+    // A recíproca: ponto declarado e nunca herdado faria a tela anunciar
+    // herança que não acontece — a mesma mentira, do avesso.
+    const orfaos = [...PONTOS_QUE_HERDAM_DO_AGENTE].filter(
+      (p) => !(objetosPorPurpose.get(p) ?? []).some(({ objeto }) => objeto.includes("llmOverride")),
+    );
+    expect(orfaos, `declarado mas nenhum call site herda: ${orfaos.join(", ")}`).toEqual([]);
   });
 });

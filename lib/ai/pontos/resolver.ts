@@ -143,6 +143,7 @@ export const PONTOS_QUE_HERDAM_DO_AGENTE: ReadonlySet<string> = new Set([
   "promise_semantic",
   "compaction",
   "checkpoint",
+  "draft_suggestion",
 ]);
 
 export function decidirBinding(entrada: EntradaDaDecisao): DecisaoDeBinding {
@@ -157,9 +158,23 @@ export function decidirBinding(entrada: EntradaDaDecisao): DecisaoDeBinding {
       );
     }
     const agente = entrada.agentePublicado;
+    // Versão publicada SEM modelo: o padrão da organização vale INTEIRO. O
+    // `agente.model ?? padrao.defaultModel` que morava aqui juntava o provider
+    // do agente ao modelo da org — o cruzamento do PR #151 escrito à mão, num
+    // ramo que existe justamente para impedi-lo.
+    if (agente.model === undefined) {
+      return {
+        provider: entrada.padraoDaOrganizacao.provider,
+        modelId: entrada.padraoDaOrganizacao.defaultModel,
+        credentialId: null,
+        baseUrl: null,
+        origem: "padrao_da_organizacao",
+        avisos,
+      };
+    }
     return {
       provider: agente.provider,
-      modelId: agente.model ?? entrada.padraoDaOrganizacao.defaultModel,
+      modelId: agente.model,
       credentialId: agente.credentialId,
       baseUrl: null,
       origem: "agente_publicado",
