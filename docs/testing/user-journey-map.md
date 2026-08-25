@@ -260,14 +260,24 @@ Regra no banco: `tests/invariants/comando-cala-o-automatico.test.ts` (6 casos).
 | J11.8 | O rodízio NÃO cala o automático | `reason='routing'` não mexe no silêncio — senão uma org em round_robin perde a IA inteira | PASS (invariante) |
 | J11.9 | Fechar devolve o comando | o silêncio é limpo ao fechar, senão vaza para o próximo episódio (a ingestão reusa a MESMA linha de conversa) | PASS (invariante) |
 
-**Achado NÃO corrigido nesta rodada (medido, com dono):** a conversa que o
-automático escalou fica em `status='pending'`, e nenhuma aba do inbox a mostra —
-"Fila" filtra `status='open'`, "Minhas" exige dono, "IA" filtra `ai_handling`, e
-"Todas" é escondida do papel `agent` fora do modo `all`. Consertar exige aceitar
-`pending` no `conversationStatusSchema` e um filtro de status com mais de um
-valor, que é contrato compartilhado com as tools MCP — peso próprio, PR próprio.
-Atenuante medido: a escalação abre item na Central de Avisos e o caminho por
-`/app/ai/cases` funciona (J8.1), então não é buraco negro, é aba faltando.
+| J11.10 | A conversa que o automático ESCALOU aparece na Fila | `status='pending'` sem dono entra na aba e é contada pelo badge | FAIL → PASS |
+| J11.11 | O número da fila é o MESMO para o cliente e para a equipe | `getQueuePosition` (o "você é o 5º" que o cliente ouve) e `getQueuePositions` (o "3º" da tela) contam os mesmos estados | FAIL → PASS |
+
+**O achado que esta jornada abriu, e como ele cresceu.** A primeira rodada
+registrou aqui "a conversa escalada não aparece em aba nenhuma" como pendência de
+PR próprio. Ao medir, o defeito era maior e mais barato: a definição de "está na
+fila" estava copiada em SEIS sítios que **não concordavam entre si** — o trigger
+de roteamento do banco e a função que responde ao cliente contavam `open+pending`;
+a aba, o badge, o painel do gerente e a posição mostrada na tela contavam só
+`open`. Daí as duas consequências: a conversa que mais precisa de uma pessoa era a
+única invisível, e o número de fila prometido ao cliente pelo WhatsApp não batia
+com o que a equipe via.
+
+Conserto: `CONVERSATION_QUEUE_STATUSES` (uma definição, quatro consumidores) +
+separação entre o vocabulário de LEITURA (7 valores, o do banco) e o de ESCRITA
+(5 — quem grava `pending` é o motor, e um cliente REST não pode fingir uma
+escalação). Guardado por `tests/unit/fila-tem-uma-definicao-so.test.ts`, que varre
+o fonte dos quatro sítios e compara o CONJUNTO do trigger com o da constante.
 
 ---
 

@@ -313,6 +313,14 @@
       "type": "service",
       "label": "lib/inbox/atividade-de-comando.ts",
       "sublabel": "a troca de dono vira linha na timeline que JÁ existe"
+    },
+    {
+      "id": "fila",
+      "lane": "regra",
+      "col": 2,
+      "type": "service",
+      "label": "CONVERSATION_QUEUE_STATUSES",
+      "sublabel": "quem está esperando uma pessoa — uma definição, quatro consumidores"
     }
   ],
   "edges": [
@@ -591,6 +599,24 @@
       "from": "comando",
       "to": "atribuir",
       "label": "lê os MESMOS fatos que a função escreve"
+    },
+    {
+      "id": "e47",
+      "from": "fila",
+      "to": "conversas",
+      "label": "open+pending: o mesmo que o trigger de roteamento enfileira"
+    },
+    {
+      "id": "e48",
+      "from": "cabecalho",
+      "to": "fila",
+      "label": "a aba Fila pede os dois estados de espera"
+    },
+    {
+      "id": "e49",
+      "from": "fila",
+      "to": "comando",
+      "label": "o estado 'aguardando' do selo sai daqui"
     }
   ],
   "cards": [
