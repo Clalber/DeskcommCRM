@@ -1,31 +1,31 @@
 /**
- * Anti-banimento mínimo p/ envio AUTOMATIZADO (spec §8): janela 7h-22h,
- * limite diário da sessão, espaçamento 1.2s+jitter. O schema de warmup já
- * existe (channel_session_warmup + channel_sessions.daily_message_limit);
- * a lógica nasce aqui. ponytail: janela fixa no fuso do servidor; janela
- * por-regra/fuso do tenant é v2.
+ * Anti-banimento do envio AUTOMATIZADO: limite diário da sessão e espaçamento
+ * 1.2s + jitter.
+ *
+ * ═══ A JANELA DE HORÁRIO NÃO MORA MAIS AQUI ═══
+ *
+ * Se você veio procurar por `withinSendWindow()`: ela foi REMOVIDA, e não por
+ * arrumação. Ela media a janela com `new Date().getHours()` — o relógio do
+ * processo —, e o contêiner de produção roda em UTC (`TZ=UTC`, declarado no
+ * `Dockerfile.scheduler` e no `docker-compose.prod.yml`). A faixa "7h–22h"
+ * virava 4h–19h de Brasília: a automação represava um envio das 19h30 até as
+ * 4h da manhã, e mandava mensagem para o cliente às 5h.
+ *
+ * Pior que o fuso: era uma SEGUNDA régua. A faixa que o dono do negócio
+ * configura em Conexões › Proteção de envio valia para o agente de IA e não
+ * valia para a automação, sem nada na tela dizendo isso.
+ *
+ * A janela agora é UMA só, vem de `channel_knobs` e é avaliada no fuso do
+ * tenant: `lib/automation/janela-do-canal.ts`, que chama a mesma regra pura
+ * de `lib/agent-engine/pacing/`. Precisa de janela? Use aquele módulo — não
+ * ressuscite uma régua local aqui.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
-
-const WINDOW_START_HOUR = 7;
-const WINDOW_END_HOUR = 22;
 
 export interface ThrottleVerdict {
   allowed: boolean;
   retry_at?: string;
   reason?: string;
-}
-
-export function withinSendWindow(now: Date = new Date()): boolean {
-  const h = now.getHours();
-  return h >= WINDOW_START_HOUR && h < WINDOW_END_HOUR;
-}
-
-export function nextWindowStart(now: Date = new Date()): string {
-  const next = new Date(now);
-  next.setHours(WINDOW_START_HOUR, 0, 0, 0);
-  if (now.getHours() >= WINDOW_START_HOUR) next.setDate(next.getDate() + 1);
-  return next.toISOString();
 }
 
 export async function checkDailyLimit(
@@ -52,6 +52,21 @@ export async function checkDailyLimit(
   const sent = (warmup as { messages_sent?: number } | null)?.messages_sent ?? 0;
 
   if (sent >= limit) {
+    // ⚠️ RAMO INALCANÇÁVEL HOJE, e as duas coisas erradas nele estão aqui de
+    // propósito — para quem vier reanimar o cap não replantar nenhuma.
+    //
+    // Inalcançável porque `channel_session_warmup` NÃO TEM ESCRITOR no produto:
+    // quem conta envio de verdade é `pacing_ledger` (lib/agent-engine/pacing).
+    // `sent` é sempre 0, então `sent >= limit` nunca é verdade e o cap diário da
+    // automação nunca dispara. Ligar a automação ao ledger muda comportamento
+    // anti-ban real e é frente própria — não foi feito aqui.
+    //
+    // E o `retry_at` abaixo repete, em miniatura, o defeito que esta entrega
+    // veio matar: `setHours` marca a hora no relógio do PROCESSO (UTC no
+    // contêiner), não no fuso do negócio. Quem reanimar isto deve tirar o
+    // instante de `proximaAberturaDaJanela` (lib/agent-engine/pacing/engine),
+    // via `adiarAteAJanelaAbrir` — a régua única.
+    const WINDOW_START_HOUR = 7;
     const tomorrow = new Date();
     tomorrow.setDate(tomorrow.getDate() + 1);
     tomorrow.setHours(WINDOW_START_HOUR, 0, 0, 0);
