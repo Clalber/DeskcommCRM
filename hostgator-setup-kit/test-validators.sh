@@ -1896,6 +1896,91 @@ STUB
 ) || fail=1
 rm -rf "$TMP4"
 
+echo "integração: instalar de uma CÓPIA IRMÃ, com o CRM já no ar (2026-08-24)"
+# Os casos de decide_proxy acima exercitam a FUNÇÃO. Este roda o install.sh
+# inteiro, porque o defeito real pode voltar por dois caminhos independentes: a
+# regra (dentro de decide_proxy) ou o call site (deixar de passar a árvore). Um
+# teste só da função fica verde enquanto o produto instala por cima da produção.
+#
+# A VPS deste teste é a que aconteceu de verdade: um DeskcommCRM no ar em
+# /root/DeskcommCRM (Caddy publicando 80/443, projeto `deskcommcrm`), e o
+# instalador rodando de OUTRA cópia — cuja pasta também se chama DeskcommCRM,
+# então o projeto colide e a versão anterior dizia "é a re-execução, siga".
+TMP_IRMA="$(mktemp -d)"
+(
+  montar_vps "$TMP_IRMA" "DeskcommCRM" <<'STUB'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$DOCKER_LOG"
+case "$1" in
+  compose) case "$*" in *" exec "*) printf 'healthy\n{"data":{"status":"healthy"}}\n' ;; esac; exit 0 ;;
+  # 80/443 ocupadas: o bind de teste falha.
+  run)     case "$*" in *--entrypoint*) exit 1 ;; esac; exit 0 ;;
+  # O Caddy da instalação que está NO AR, com o MESMO nome de projeto.
+  ps)      for a in "$@"; do [ "$a" = "network=host" ] && em_host=1; done
+           [ "${em_host:-0}" = 1 ] && exit 0
+           printf 'deskcommcrm-caddy-1|deskcommcrm|caddy:2-alpine|0.0.0.0:80->80/tcp, 0.0.0.0:443->443/tcp\n'
+           exit 0 ;;
+  # A árvore que pariu aquele contêiner — o dado que separa irmã de re-execução.
+  inspect) case "$*" in *working_dir*) printf '/root/DeskcommCRM\n' ;; esac; exit 0 ;;
+  network) case "$2" in inspect) exit 1 ;; esac; exit 0 ;;
+esac
+exit 0
+STUB
+  LOG="$VPS_LOG"; PROJ="$VPS_PROJ"
+
+  saida="$(rodar install.sh --yes)"
+  chegou_na_deteccao || exit 1
+
+  # 1. Recusa. O sintoma do defeito era instalar em silêncio; qualquer coisa que
+  #    não seja parar aqui é o defeito de volta.
+  if ! printf '%s' "$saida" | grep -q 'Já existe um DeskcommCRM NO AR'; then
+    printf '  ✗ NÃO recusou a instalação por cima da que está no ar\n'
+    printf '     últimas linhas: %s\n' "$(printf '%s' "$saida" | tail -3 | tr '\n' ' ')"; exit 1
+  fi
+  # 2. Nomeia a árvore do OUTRO — sem isso quem lê não sabe qual pasta usar.
+  if ! printf '%s' "$saida" | grep -q '/root/DeskcommCRM'; then
+    printf '  ✗ a recusa não diz ONDE está a instalação que já existe\n'; exit 1
+  fi
+  # 3. Ensina a saída acionável (atualizar a que existe).
+  if ! printf '%s' "$saida" | grep -q 'update.sh'; then
+    printf '  ✗ a recusa não ensina o caminho (update.sh na pasta que já existe)\n'; exit 1
+  fi
+  # 4. Recusou de verdade: não pode ter subido nada. `up -d` depois da recusa
+  #    seria o pior desfecho — a mensagem certa e o estrago feito assim mesmo.
+  if grep -qE '^compose .*up -d' "$LOG"; then
+    printf '  ✗ recusou mas subiu a stack mesmo assim: %s\n' "$(grep -m1 -E '^compose .*up -d' "$LOG")"; exit 1
+  fi
+  printf '  ✓ recusa, nomeia a instalação no ar e não sobe nada\n'
+
+  # ── O outro lado: a MESMA VPS, o MESMO nome de projeto, mas rodando de dentro
+  # da árvore que É a dona. Isto é re-execução legítima — o caminho que o kit
+  # ensina para corrigir uma resposta — e tem de seguir. Sem este par, bastaria
+  # bloquear tudo para o teste acima ficar verde.
+  cat > "$VPS_RAIZ/bin/docker" <<STUB2
+#!/usr/bin/env bash
+printf '%s\n' "\$*" >> "\$DOCKER_LOG"
+case "\$1" in
+  compose) case "\$*" in *" exec "*) printf 'healthy\n{"data":{"status":"healthy"}}\n' ;; esac; exit 0 ;;
+  run)     case "\$*" in *--entrypoint*) exit 1 ;; esac; exit 0 ;;
+  ps)      for a in "\$@"; do [ "\$a" = "network=host" ] && em_host=1; done
+           [ "\${em_host:-0}" = 1 ] && exit 0
+           printf 'deskcommcrm-caddy-1|deskcommcrm|caddy:2-alpine|0.0.0.0:80->80/tcp, 0.0.0.0:443->443/tcp\n'
+           exit 0 ;;
+  inspect) case "\$*" in *working_dir*) printf '%s\n' "$VPS_PROJ" ;; esac; exit 0 ;;
+  network) case "\$2" in inspect) exit 1 ;; esac; exit 0 ;;
+esac
+exit 0
+STUB2
+  chmod +x "$VPS_RAIZ/bin/docker"
+  saida="$(rodar install.sh --yes)"
+  chegou_na_deteccao || exit 1
+  if printf '%s' "$saida" | grep -q 'Já existe um DeskcommCRM NO AR'; then
+    printf '  ✗ bloqueou a RE-EXECUÇÃO legítima (mesma árvore) — o kit manda rodar de novo\n'; exit 1
+  fi
+  printf '  ✓ e a re-execução de dentro da própria árvore continua passando\n'
+) || fail=1
+rm -rf "$TMP_IRMA"
+
 echo "integração: instalação NOVA numa VPS com Traefik em bridge PRÓPRIA (Coolify)"
 # O caminho NÃO-host, que é a maioria das VPS com painel — e o que a pergunta
 # nova poderia ter estragado sem ninguém ver. Aqui a coluna Ports do `docker ps`
