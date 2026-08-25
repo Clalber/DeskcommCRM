@@ -95,9 +95,39 @@ function chegarMensagem(conversationId: string, corpo: string): void {
 }
 
 test.describe("inbox em tempo real", () => {
+  /**
+   * O TETO DE 30s DO `playwright.config.ts` NÃO CABE NESTE TESTE.
+   *
+   * Medido no CI: `Test timeout of 30000ms exceeded` na última asserção — o
+   * teste chegou até o fim e o relógio o matou. As esperas somam ~67s no pior
+   * caso (cabeçalho 20s + assentar 2s + canal de pé 20s + a mensagem 25s), e
+   * cada uma delas existe por uma razão: são os prazos de uma tela que fala com
+   * um socket, não folga preguiçosa.
+   *
+   * Subir o teto do describe é o padrão do repo para specs assim
+   * (`agente-novo-e-uso`, `capacidades-do-agente`, `distribuicao-atendimento`…),
+   * e o fim de `docs/testing/user-journey-map.md` avisa exatamente isto para
+   * quem escreve spec nova. Eu li e não apliquei — daí a segunda rodada vermelha.
+   */
+  test.describe.configure({ timeout: 120_000 });
+
+  /**
+   * Os seeds saem de DENTRO do relógio do teste.
+   *
+   * São dois `execFileSync` (credenciais + fila) que sobem processos Node e
+   * falam com o banco. Rodando dentro do `test()`, eles gastavam o orçamento do
+   * teste antes de o browser abrir a primeira página. `beforeAll` tem relógio
+   * próprio — o tempo de preparar deixa de competir com o tempo de medir.
+   */
+  let c: E2ECreds;
+  let fila: NonNullable<E2ECreds["queue"]>;
+
+  test.beforeAll(() => {
+    c = creds();
+    fila = semearConversa();
+  });
+
   test("mensagem que chega aparece na conversa aberta, sem recarregar", async ({ page }) => {
-    const c = creds();
-    const fila = semearConversa();
 
     // `manager` e não `admin`: o admin do seed tem fator MFA cadastrado e o
     // login dele para em /login/mfa. O manager vê a aba "Todas" (leitura
