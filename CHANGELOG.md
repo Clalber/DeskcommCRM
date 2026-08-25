@@ -103,6 +103,26 @@ para não passarem em branco. Se você já atualizou para a 1.4.1, já os leu �
 - **A automação que estava só esperando o horário parecia não ter rodado.** Ao adiar um
   envio, ela não gravava nada: "não apareceu nada na Atividade" e "a automação não funcionou"
   eram a mesma tela. Agora a espera é um estado visível — **Adiado** —, com o motivo.
+- **O agente ficava mudo quando o provedor dele era diferente do provedor padrão da
+  organização.** Quem publicou o agente numa IA (por exemplo OpenAI) enquanto a organização
+  continuava configurada em outra (Anthropic) tinha TODA mensagem de WhatsApp engolida: a
+  conversa ficava sem resposta, sem erro visível na tela do agente. Por baixo, um verificador
+  interno saía com o endereço de uma IA e o nome de modelo da outra, tomava "modelo inexistente"
+  e derrubava o atendimento inteiro antes de o agente falar. Não era preciso mexer em nada para
+  cair nisso — bastava a combinação. O rastro sempre esteve em **IA › Execuções** e o aviso em
+  **Central de avisos** ("Job descartado após esgotar tentativas"); o que faltava era o
+  atendimento acontecer.
+- **O papel Operador mandava o modelo escolhido para o provedor errado**, pela mesma razão, e
+  o campo "Modelo do Operador" deixado em branco não fazia o que a tela prometia: ele diz *"A
+  mesma que conversa"* e usava o modelo padrão da organização. Agora vazio herda de verdade o
+  modelo do Conversador.
+- **O painel de Provedores de IA mostrava o modelo errado** nos pontos que herdam do agente
+  (classificador de etapa, detector de manipulação, verificador de promessa, resumo de
+  conversa, checkpoint, sugestão de resposta e a mensagem escrita pela IA nas automações):
+  anunciava o padrão da organização enquanto o sistema usava o do agente. A coluna passa a
+  mostrar o que de fato roda, e diz de quem herdou. **A "Mensagem escrita pela IA" desta
+  mesma versão caía no primeiro item desta lista** — nas instalações com agente num provedor
+  diferente do padrão da organização, ela não sairia.
 
 - **A promessa da 1.4.0 sobre o limite de gasto agora é verdade.** Aquela versão disse que, quando o
   limite para a IA, "as conversas que estavam sendo atendidas vão para a fila de atendimento
