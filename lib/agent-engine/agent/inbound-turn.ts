@@ -1029,6 +1029,16 @@ async function executarTurnoDoAgente(
   if (leadId === null) {
     throw new Error('job de turno sem contact_id — o CHECK da fila deveria impedir');
   }
+  // O RELÓGIO, declarado antes de qualquer guarda de janela.
+  //
+  // Ele já existia — 330 linhas ABAIXO, depois das duas guardas que mais
+  // dependem dele. O contrato de `InboundTurnDeps.clock` diz "a janela horária
+  // do gate anti-ban é avaliada nele", e as duas guardas chamavam `new Date()`
+  // cru: o relógio injetado não alcançava justamente o que ele existe para
+  // fixar. Em produção dá no mesmo; no CI, a hora real do runner decidia, e a
+  // suíte de invariantes ficava vermelha das 22h às 7h (fuso do tenant) — nove
+  // horas por dia em que um PR reprova por causa do relógio de parede.
+  const clock = deps.clock ?? ((): Date => new Date());
   const contextKnobs = { historyLimit: deps.knobs.historyLimit, maxTokens: deps.knobs.maxContextTokens };
   // Contexto do RUN em toda linha de log do turno (F2-16): job_id É o run id.
   const runLog = withFields(deps.log, { job_id: job.id, tenant_id: tenantId, lead_id: leadId });
@@ -1074,24 +1084,7 @@ async function executarTurnoDoAgente(
   // hora do envio, teria passado.
   if (turnoVaiFalarComOLead(job)) {
     const { knobs } = await loadChannelKnobs(pool, tenantId, input.channelSessionId, runLog);
-    // O RELÓGIO DO TURNO, não o do processo.
-    //
-    // Aqui estava `new Date()` cru, e o turno inteiro tem um clock injetável
-    // (`deps.clock`) — que é como todo o resto decide "que horas são". Dois
-    // relógios no mesmo caminho, e o desfecho é do que não foi injetado.
-    //
-    // O sintoma: três invariantes que exercitam o turno completo
-    // (`agent-send-template-turn`, `agent-no-credential`,
-    // `limite-de-envios-por-turno`) fixam o clock DENTRO da janela — 15:00Z,
-    // 18:00Z — e mesmo assim reprovavam com "fora da janela anti-ban" sempre
-    // que o relógio REAL estivesse fora dela. Ou seja: passavam de dia e
-    // falhavam de noite, e a mensagem culpava o anti-ban em vez do relógio.
-    // Medido em 2026-08-24 às 22:29 local, e reproduzido no CI às 01:37 UTC.
-    //
-    // Em produção `deps.clock` é ausente e isto continua sendo `new Date()` —
-    // nada muda para quem roda. O que muda é o teste poder decidir a hora, que
-    // é o ponto de um clock injetável.
-    const agora = deps.clock ? deps.clock() : new Date();
+    const agora = clock();
     if (!janelaDeEnvioAberta(agora, knobs)) {
       const abertura = proximaAberturaDaJanela(agora, knobs);
       await rescheduleJob(pool, job.id, ctx.workerId, {
@@ -1183,7 +1176,7 @@ async function executarTurnoDoAgente(
   // attempts (`rescheduleJob`) — quem escreveu 22h é atendido às 8h. O throw é
   // o contrato de `JobSettledError`: o run já dispôs do job, main.ts no-opa.
   if (job.kind === 'inbound_turn' && agentConfig?.janelaDeAtendimento != null) {
-    const esperaMs = msAteAJanelaAbrir(agentConfig.janelaDeAtendimento, new Date());
+    const esperaMs = msAteAJanelaAbrir(agentConfig.janelaDeAtendimento, clock());
     if (esperaMs !== null) {
       await rescheduleJob(pool, job.id, ctx.workerId, {
         delayMs: esperaMs,
@@ -1425,7 +1418,6 @@ async function executarTurnoDoAgente(
   const turnCrmCfg =
     agentConfig !== null ? { ...deps.crmCfg, agentActorId: agentConfig.agentId } : deps.crmCfg;
   const channel = (deps.channel ?? ((p: pg.Pool) => new WahaChannelAdapter(p, turnCrmCfg)))(pool);
-  const clock = deps.clock ?? ((): Date => new Date());
   // STOP lido no turno (fonte: CRM via get_lead_context) — combinado com o cache
   // durável leads.is_opted_out no gate 1 da cadeia (F2-13).
   const optedOutThisTurn = openingContext.context.contact.is_blocked;

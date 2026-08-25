@@ -8,6 +8,61 @@ Se você roda o DeskcommCRM numa VPS, **leia a seção da versão para a qual es
 
 ## [Não lançado]
 
+### Corrigido
+
+- **Instalar numa VPS que já tem o CRM no ar não derruba mais a instalação existente.**
+  O instalador confundia a instalação de outra pasta com ele mesmo sendo rodado de novo e
+  subia por cima: o site seguia no ar, mas passando a usar o banco da pasta nova — e o
+  primeiro sintoma era a senha "parar de funcionar". Agora ele para antes de tocar em
+  nada, diz em que pasta está a instalação que já existe e ensina como atualizá-la. Isso
+  vale em qualquer arranjo de servidor — inclusive nas VPS em que o painel da hospedagem
+  (Hostinger, Coolify, Dokploy) é quem atende as portas, e nas pastas que já tinham
+  concluído uma instalação antes, onde a checagem anterior se desligava sozinha.
+
+## [1.4.1] — 2026-08-24
+
+Correção de **texto de aviso**, não de comportamento: a seção da 1.4.0 descreveu errado uma
+mudança que chega a todo mundo e inverteu a instrução de outra. Como a tela de atualização lê
+o texto congelado na versão, o conserto só alcança quem atualizou pela publicação de uma
+versão nova — é isto. Junto vai um conserto de código pequeno e real, no descadastro em
+espanhol.
+
+### ⚠️ Requer atenção
+
+**A IA passa a atender aos domingos, e antes não atendia. A 1.4.0 fez essa mudança e não
+avisou.** O padrão de fábrica da janela anti-banimento mudou: domingo era dia mudo e passou a
+ser dia normal (a faixa de horário continua a mesma). Quem nunca mexeu nessa configuração —
+que é a maioria — recebeu a mudança na atualização, sem escolher. Se o seu negócio depende de
+silêncio no domingo, desligue em **Conexões › Proteção de envio › "Enviar aos domingos"**, por
+canal. Se você já tinha mexido ali, a sua escolha foi respeitada e nada mudou.
+
+**Se você tem duas conexões oficiais do WhatsApp com a mesma conta da Meta, a 1.4.0 disse o
+contrário do que acontece — confira antes de apagar qualquer uma.** O texto dizia que a
+atualização "mantém a mais antiga". É o inverso: **fica com o identificador a conexão MAIS
+RECENTE** (criá-la exigiu provar posse da conta na tela), e é a **mais antiga** que recebe o
+sufixo `-conflito-`. Nada foi apagado. A conexão com o identificador limpo é a que continua
+recebendo; a marcada como conflito aparece como falha na verificação de saúde, e isso é
+esperado. **Se você apagou a conexão sem o sufixo por causa daquela frase, é a que estava
+funcionando** — reconecte o número pela tela de Conexões.
+
+Fora isso, nada exige ação sua. Não há mudança de banco de dados nesta versão.
+
+### Corrigido
+
+- **`salir` sozinho não descadastrava.** A 1.4.0 anunciou que "`baja`, `salir` e
+  `no quiero recibir` descadastram"; medido com a função real, `baja` e `no quiero recibir`
+  funcionavam e `salir` não — a palavra estava fora da lista. `salir` é o `sair` em espanhol,
+  que já estava lá desde sempre. Continua valendo só a palavra **sozinha**: "voy a salir
+  ahora" tem três palavras e não bloqueia ninguém.
+- **A importação de planilha assume Brasil, e isso não estava escrito em lugar nenhum.**
+  Telefone sem código de país entra como brasileiro: `(11) 99999-8888` vira
+  `+5511999998888` — a mesma regra que o WhatsApp já usava ao receber mensagem. Se a sua
+  planilha tem números de fora do Brasil, escreva-os com o `+` e o código do país (`+351…`),
+  que aí são respeitados como estão. O comportamento não mudou; o que faltava era a frase.
+- **Um controle citado pelo nome errado.** A 1.4.0 mandava procurar "Parar a IA no limite" na
+  tela de orçamento de IA. O rótulo real mostra o seu número: "Parar a IA ao chegar em
+  US$ 50,00". Nada mudou na tela — mudou a descrição.
+
 ## [1.4.0] — 2026-08-24
 
 Esta versão muda o primeiro acesso. Instalar deixou de ser "configurar uma IA" e passou a ser **montar um funcionário e vê-lo atender antes de terminar**: você diz como ele se chama, o jeito dele falar e as regras da casa, monta o quadro de clientes do **seu** ramo — não o de loja virtual que todo mundo ganhava igual — e, no último passo, conversa com ele como se fosse um cliente. Nada sai pelo WhatsApp; você só confere que ele funciona antes de confiar nele. Junto disso, seis causas diferentes que deixavam uma IA publicada **muda** foram medidas num servidor real e consertadas uma a uma; o sistema passou a ser usável no celular; e você pode pôr o seu nome, o seu logo e a sua cor em tudo — pela tela, sem linha de comando.

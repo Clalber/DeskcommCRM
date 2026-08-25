@@ -107,13 +107,6 @@ describe("4B — turno sem credencial NENHUMA (nem env, nem BYOK)", () => {
         SUPABASE_SERVICE_ROLE_KEY: "placeholder-service",
       }),
       llmCfg: {}, // SEM anthropicApiKey — e o banco não tem BYOK para a org
-      // Relógio FIXO dentro da janela de envio, como os dois irmãos que
-      // exercitam o turno completo já faziam (`agent-send-template-turn`:
-      // 15:00Z, `limite-de-envios-por-turno`: 18:00Z). Sem ele este caso
-      // reprovava com "fora da janela anti-ban" sempre que o relógio REAL
-      // estivesse fora de 7h-22h — passava de dia, falhava de noite, e a
-      // asserção que interessa (`/credencial LLM/`) nunca era alcançada.
-      clock: () => new Date("2026-07-30T15:00:00Z"),
       knobs: {
         historyLimit: 10,
         maxContextTokens: 1000,
@@ -129,6 +122,16 @@ describe("4B — turno sem credencial NENHUMA (nem env, nem BYOK)", () => {
           noProgressBlock: 5,
         },
       },
+      // Terça, 15h BRT: dentro da janela anti-ban (7h-22h). Sem fixar o
+      // relógio, este teste mede o motivo ERRADO quando a suíte roda fora da
+      // janela — a guarda de horário vem ANTES da checagem de credencial no
+      // fluxo, então o turno é adiado e nunca chega ao `credencial LLM` que a
+      // asserção procura. Medido: rodando às 22:20 BRT, a mensagem vinha
+      // `fora da janela anti-ban — job reagendado`. Os arquivos irmãos
+      // (`limite-de-envios-por-turno`, `agent-send-template-turn`) já faziam
+      // isso; este ficou de fora, e a suíte de invariantes reprovava das 22h
+      // às 7h por causa do relógio de parede.
+      clock: () => new Date("2026-07-28T18:00:00Z"),
       log,
     });
 
