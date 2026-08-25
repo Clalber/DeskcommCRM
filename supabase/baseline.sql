@@ -6753,7 +6753,7 @@ create table if not exists channel_knobs (
   jitter_max_ms integer,              -- teto do jitter randômico somado ao throttle
   window_start_hour smallint,         -- janela [start, end) na hora local da org
   window_end_hour smallint,
-  allow_sunday boolean,               -- domingo evitado por default
+  allow_sunday boolean,               -- NULL = default do código (hoje: enviar)
   timezone text,                      -- IANA tz da org (a janela é avaliada nela)
   -- degraus [{"minAgeDays":N,"cap":M|null}, ...]; CHECK (array NÃO-VAZIO) +
   -- validação de shape no load — NULL cai no default; `[]` é rejeitado.
