@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
 import { describe, expect, it } from "vitest";
 
 import { inboundEhDestaPergunta, textoDoPayloadInbound } from "./aplicar-inbound";
@@ -23,5 +26,13 @@ describe("inboundEhDestaPergunta", () => {
 
   it("a resposta depois da pergunta conta", () => {
     expect(inboundEhDestaPergunta("2026-08-25T19:25:00.000Z", "2026-08-25T19:19:00.000Z")).toBe(true);
+  });
+});
+
+describe("aplicarTextoNosFollowups — segunda passada", () => {
+  it("reaplica waiting_reply depois de avançar active (corrida cap_nome)", () => {
+    const fonte = readFileSync(join(process.cwd(), "lib/followup/aplicar-inbound.ts"), "utf8");
+    const chamadas = fonte.match(/await aplicarTextoAosEnrollmentsEmEspera\(/g) ?? [];
+    expect(chamadas.length).toBe(2);
   });
 });

@@ -72,6 +72,25 @@ async function ultimoInboundDoContato(
   return typeof data?.body === "string" ? data.body.trim() : "";
 }
 
+async function aplicarTextoAosEnrollmentsEmEspera(
+  admin: SupabaseClient,
+  orgId: string,
+  contactIds: string[],
+  texto: string,
+  deps: TickDeps,
+): Promise<void> {
+  const { data, error } = await admin
+    .from("followup_enrollments")
+    .select("*")
+    .eq("organization_id", orgId)
+    .in("contact_id", contactIds)
+    .eq("status", "waiting_reply");
+  if (error) throw new Error(error.message);
+  for (const row of data ?? []) {
+    await aplicarRespostaInbound(deps, row as EnrollmentRow, texto);
+  }
+}
+
 export async function aplicarTextoNosFollowups(
   admin: SupabaseClient,
   sinal: SinalDeInboundFollowup,
@@ -79,18 +98,9 @@ export async function aplicarTextoNosFollowups(
   const contactIds = await idsDoContatoEGemeos(admin, sinal.organizationId, sinal.contactId);
   const texto = (sinal.texto?.trim() || (await ultimoInboundDoContato(admin, sinal.organizationId, contactIds))).trim();
   if (!texto) return;
-  const { data, error } = await admin
-    .from("followup_enrollments")
-    .select("*")
-    .eq("organization_id", sinal.organizationId)
-    .in("contact_id", contactIds)
-    .in("status", ["waiting_reply", "active"]);
-  if (error) throw new Error(error.message);
   const deps = tickDepsDe(admin);
-  for (const row of data ?? []) {
-    if (row.status !== "waiting_reply") continue;
-    await aplicarRespostaInbound(deps, row as EnrollmentRow, texto);
-  }
+  // 1ª passada: resposta chegou com o enrollment já em waiting_reply.
+  await aplicarTextoAosEnrollmentsEmEspera(admin, sinal.organizationId, contactIds, texto, deps);
   for (let i = 0; i < 6; i++) {
     const agora = new Date().toISOString();
     const { data: vivos, error: vivosErr } = await admin
@@ -108,4 +118,7 @@ export async function aplicarTextoNosFollowups(
     const enviados = await enviarTextoFixoPendente(admin, contactIds);
     if (!(vivos?.length) && !enviados) break;
   }
+  // 2ª passada: o SIM pode ter chegado enquanto o nó ainda era `active` (ex.:
+  // cap_nome enfileirando a pergunta de confirmação neste mesmo request).
+  await aplicarTextoAosEnrollmentsEmEspera(admin, sinal.organizationId, contactIds, texto, deps);
 }
