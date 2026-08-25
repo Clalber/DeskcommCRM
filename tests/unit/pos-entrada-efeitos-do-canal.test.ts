@@ -319,6 +319,17 @@ describe("os dois canais usam o mesmo passo", () => {
     );
   });
 
+  it("avança o follow-up ANTES de acordar o agente", async () => {
+    vi.mocked(acelerarPipelineDeEventos).mockImplementation(async () => {
+      sequencia.push("acelerar-followup");
+    });
+    await rodar();
+    const followup = sequencia.indexOf("acelerar-followup");
+    const agente = sequencia.indexOf("rpc:ai_agent.dispatch_requested");
+    expect(followup).toBeGreaterThanOrEqual(0);
+    expect(agente).toBeGreaterThan(followup);
+  });
+
   it("o vocabulário do opt-out vive num lugar só", () => {
     // O lugar mudou — de uma regex exportada daqui para o módulo de decisão
     // `lib/opt-out/deteccao.ts` — porque o runtime tinha a própria regra e a

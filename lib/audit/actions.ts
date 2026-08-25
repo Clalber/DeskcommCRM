@@ -334,6 +334,9 @@ export const AUDIT_ACTIONS = [
   // demais para a chamada seguinte do expurgo alcançar — a trilha registra
   // a própria erosão em vez de encolher sem deixar marca.
   "retention.sweep_run",
+  // Relógio HTTP (Hobby / sem contêiner scheduler): uma batida que alguém
+  // de fora chama. Só audita quando alguma tarefa mexeu em dado.
+  "relogio.tick_run",
 ] as const;
 
 /** Um código de auditoria. Derivado de `AUDIT_ACTIONS` — não redigite a lista. */

@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 
 import {
   BACKOFF_MS,
+  occupancyEventCount,
   processNode,
   resolveWaitPhase,
   selectEdge,
@@ -129,6 +130,14 @@ describe("resolveWaitPhase", () => {
   it("ignores prior-step events belonging to a different node", () => {
     const events = [{ node_id: "other", idempotency_key: "wait1:4" }];
     expect(resolveWaitPhase(events, "wait1", 5)).toBe(false);
+  });
+});
+
+describe("occupancyEventCount", () => {
+  it("conta eventos do nó atual mesmo se a chave steps_taken-1 não bater", () => {
+    const events = [{ node_id: "cap_nome", idempotency_key: "cap_nome:3" }];
+    expect(resolveWaitPhase(events, "cap_nome", 8)).toBe(false);
+    expect(occupancyEventCount(events, "cap_nome")).toBe(1);
   });
 });
 

@@ -258,13 +258,13 @@ export function createPgAdminClient(pool: pg.Pool): TurnBridgeAdminClient {
         custom_fields: lead?.custom_fields ?? {},
       };
     },
-    async loadLastInboundBody(orgId, contactId, conversationId) {
+    async loadLastInboundBody(orgId, contactId, _conversationId, naoAntesDe) {
       const params: unknown[] = [orgId, contactId];
-      const conv = conversationId ? "and conversation_id = $3" : "";
-      if (conversationId) params.push(conversationId);
+      const desde = naoAntesDe ? "and sent_at >= $3" : "";
+      if (naoAntesDe) params.push(naoAntesDe);
       const { rows } = await pool.query<{ body: string | null }>(
         `select body from messages
-         where organization_id = $1 and contact_id = $2 and direction = 'inbound' ${conv}
+         where organization_id = $1 and contact_id = $2 and direction = 'inbound' ${desde}
          order by sent_at desc limit 1`,
         params,
       );

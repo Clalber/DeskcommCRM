@@ -21,12 +21,11 @@ export const followupReactivityHandler: EventHandler = {
       const summary = await applyReactivityEvent(db, () => new Date(), row);
       if (row.event_type === "message.received") {
         const contactId = typeof row.payload.contact_id === "string" ? row.payload.contact_id : null;
-        const texto = textoDoPayloadInbound(row.payload);
-        if (contactId && texto) {
+        if (contactId) {
           await aplicarTextoNosFollowups(admin, {
             organizationId: row.organization_id,
             contactId,
-            texto,
+            texto: textoDoPayloadInbound(row.payload) || null,
           });
         }
       }

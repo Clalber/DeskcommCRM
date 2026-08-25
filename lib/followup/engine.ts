@@ -11,6 +11,7 @@
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+import { idsDoContatoEGemeos } from "@/lib/channels/contato-por-telefone";
 import { logger } from "@/lib/logger";
 
 import { flowGraphSchema, type FlowGraph, type FlowNode, type ReplySaveTo } from "./graph-schema";
@@ -97,6 +98,8 @@ export interface AdminClient {
     orgId: string,
     contactId: string,
     conversationId: string | null,
+    /** Só mensagens deste instante em diante — senão o SIM da pergunta anterior casa no próximo `match_reply`. */
+    naoAntesDe?: string | null,
   ): Promise<string | null>;
   /** Inserts the step's audit event; `inserted:false` means idempotency_key already existed (23505 replay). */
   insertEnrollmentEvent(event: {
@@ -519,6 +522,13 @@ async function processEnrollment(
 
   if (node.type === "wait" || node.type === "ai_classify" || node.type === "match_reply" || node.type === "action") {
     waitElapsed = resolveWaitPhase(events, node.id, enrollment.steps_taken);
+    // match_reply de captação: a confirmação já enfileirou um evento neste nó.
+    // O claim seguinte às vezes chega com steps_taken desalinhado da chave
+    // `${node}:${steps-1}` — sem isto o motor trata como 1ª visita e MANDA A
+    // PERGUNTA DE NOVO em vez de ler o SIM.
+    if (node.type === "match_reply") {
+      waitElapsed = waitElapsed || occupancyEventCount(events, node.id) > 0;
+    }
     if (node.type === "ai_classify" || node.type === "match_reply" || node.type === "wait") {
       const wakeKey = `${node.id}:${enrollment.steps_taken}:wake`;
       wokeEarly = events.some((e) => e.node_id === node.id && e.idempotency_key === wakeKey);
@@ -541,22 +551,21 @@ async function processEnrollment(
   let lastInboundBody: string | undefined;
   if (textoInbound && node.type === "match_reply") {
     lastInboundBody = textoInbound;
-  } else if ((node.type === "match_reply" && wokeEarly) || (node.type === "repeat" && repeatTotal == null)) {
+  } else if (
+    (node.type === "match_reply" && (wokeEarly || waitElapsed)) ||
+    (node.type === "repeat" && repeatTotal == null)
+  ) {
+    // Sempre no contato inteiro: a captação e o WhatsApp podem ser conversas
+    // diferentes, e filtrar pela conversation_id do enrollment esconde o SIM.
     lastInboundBody =
       (await db.loadLastInboundBody(
         enrollment.organization_id,
         enrollment.contact_id,
-        enrollment.conversation_id,
+        null,
+        enrollment.updated_at,
       )) ?? "";
-    // Captação abre uma conversa; o WhatsApp pode gravar a resposta em outra
-    // 1:1 do mesmo contato. Sem o fallback o match_reply acorda e lê vazio.
-    if (!lastInboundBody.trim() && enrollment.conversation_id) {
-      lastInboundBody =
-        (await db.loadLastInboundBody(
-          enrollment.organization_id,
-          enrollment.contact_id,
-          null,
-        )) ?? "";
+    if (node.type === "match_reply" && lastInboundBody.trim()) {
+      wokeEarly = true;
     }
   }
 
@@ -681,14 +690,15 @@ export function createSupabaseAdminClient(admin: SupabaseClient): AdminClient {
         custom_fields: custom,
       };
     },
-    async loadLastInboundBody(orgId, contactId, conversationId) {
+    async loadLastInboundBody(orgId, contactId, _conversationId, naoAntesDe) {
+      const ids = await idsDoContatoEGemeos(admin, orgId, contactId);
       let q = admin
         .from("messages")
         .select("body")
         .eq("organization_id", orgId)
-        .eq("contact_id", contactId)
+        .in("contact_id", ids)
         .eq("direction", "inbound");
-      if (conversationId) q = q.eq("conversation_id", conversationId);
+      if (naoAntesDe) q = q.gte("sent_at", naoAntesDe);
       const { data, error } = await q.order("sent_at", { ascending: false }).limit(1).maybeSingle();
       if (error) throw new Error(error.message);
       return typeof data?.body === "string" ? data.body : null;

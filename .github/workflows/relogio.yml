@@ -1,0 +1,35 @@
+# Relógio HTTP — Hobby / instalação sem o contêiner scheduler.
+#
+# Desligado por padrão (esta variável precisa existir no repositório que
+# hospeda A INSTALAÇÃO). Sem ela o job nem inicia — o repositório open source
+# não fica batendo em ninguém a cada 5 minutos.
+#
+# Secrets: RELOGIO_APP_URL, RELOGIO_SECRET (= INTERNAL_SECRET do .env)
+# Variable: RELOGIO_LIGADO = 1
+name: relogio
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+jobs:
+  tick:
+    if: vars.RELOGIO_LIGADO == '1'
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Bater o relógio
+        env:
+          RELOGIO_APP_URL: ${{ secrets.RELOGIO_APP_URL }}
+          RELOGIO_SECRET: ${{ secrets.RELOGIO_SECRET }}
+        run: |
+          set -eu
+          if [ -z "${RELOGIO_APP_URL:-}" ] || [ -z "${RELOGIO_SECRET:-}" ]; then
+            echo "Secrets RELOGIO_APP_URL / RELOGIO_SECRET ausentes."
+            exit 1
+          fi
+          base="${RELOGIO_APP_URL%/}"
+          curl -fsS -X POST -m 55 \
+            -H "Authorization: Bearer ${RELOGIO_SECRET}" \
+            "${base}/api/v1/system/relogio/tick"

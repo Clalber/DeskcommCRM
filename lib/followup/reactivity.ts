@@ -55,6 +55,7 @@ import type { EventRow } from "@/lib/event-log/dispatcher";
 import type { EnrollmentPatch } from "./engine";
 import { triggerConfigSchema } from "./api-schemas";
 import type { EnrollmentOutcome, EnrollmentStatus } from "./node-handlers";
+import { idsDoContatoEGemeos } from "@/lib/channels/contato-por-telefone";
 
 /** Grace pós-resume (spec §4: "grace configurável, default 30min, knob"). */
 export const RESUME_GRACE_MS = 30 * 60_000;
@@ -392,11 +393,12 @@ export function createSupabaseReactivityClient(admin: SupabaseClient): Reactivit
       return data?.is_blocked ?? false;
     },
     async loadLiveEnrollmentsForContact(orgId, contactId) {
+      const ids = await idsDoContatoEGemeos(admin, orgId, contactId);
       const { data: enrollments, error } = await admin
         .from("followup_enrollments")
         .select("id, status, current_node_id, steps_taken, pointer_id")
         .eq("organization_id", orgId)
-        .eq("contact_id", contactId)
+        .in("contact_id", ids)
         .in("status", LIVE_STATUSES);
       if (error) throw new Error(error.message);
       if (!enrollments?.length) return [];
