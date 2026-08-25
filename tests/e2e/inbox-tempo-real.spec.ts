@@ -161,13 +161,31 @@ test.describe("inbox em tempo real", () => {
     // verde pelo motivo errado, que é o modo de falha desta classe de teste.
     await page.waitForTimeout(2_000);
 
-    // O canal tem de estar de pé ANTES de a mensagem chegar — e a asserção vem
-    // ANTES da escrita, senão ela não afirma isso: um canal que subisse só
-    // depois da entrega passaria igual. (A primeira versão tinha esta asserção
-    // DEPOIS do `chegarMensagem`, com este mesmo comentário dizendo "antes".)
-    //
-    // Sem ela, o teste passaria com o canal morto se a rede de segurança
-    // curasse a perda a tempo — e a rede existe justamente para o canal morto.
+    /**
+     * ⚠️ ESTA ASSERÇÃO NÃO PROVA QUE A ENTREGA ESTÁ VIVA — e escrever que provava
+     * era repetir, um nível acima, o defeito que este arquivo persegue.
+     *
+     * `degradacao-silenciosa.spec.ts:22-24` já tinha medido e escrito, meses
+     * antes deste PR: "o único estado publicado é o da ASSINATURA
+     * (`data-realtime-status`), e ele diz `subscribed` com a entrega morta".
+     * É exatamente a assinatura do defeito que este spec existe para guardar —
+     * canal que responde SUBSCRIBED e não entrega. Usar esse sinal como prova de
+     * saúde é usar como termômetro o instrumento que já se sabe cego.
+     *
+     * O que ela é de fato: um FILTRO BARATO. Pega o canal que nem chegou a
+     * assinar (erro, timeout, socket fora) e falha ali, perto da causa, em vez
+     * de esperar 25s pela mensagem e dar "element(s) not found" — que não
+     * distingue "não assinou" de "assinou e não entregou".
+     *
+     * QUEM PROVA A ENTREGA é a asserção seguinte (a mensagem aparecendo) somada
+     * a `data-refetch-divergencias` continuar 0: se o texto aparecesse porque a
+     * rede de segurança curou a perda, o contador teria subido. As duas juntas
+     * separam "o canal entregou" de "alguém consertou depois".
+     *
+     * Vem ANTES da escrita de propósito: um canal que subisse só depois da
+     * entrega passaria igual. (A primeira versão tinha esta asserção DEPOIS do
+     * `chegarMensagem`, com um comentário dizendo "antes".)
+     */
     await expect(page.locator("[data-realtime-status]")).toHaveAttribute(
       "data-realtime-status",
       "subscribed",
