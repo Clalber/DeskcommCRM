@@ -18,17 +18,38 @@ import { extractChangelogSection } from "@/lib/system/changelog";
  * teto de 30.000. O texto chegava DECAPITADO no meio de uma frase e — pior — o
  * bloco `### ⚠️ Requer atenção` ficava inteiro do lado de fora do corte:
  * `extractChangelogSection()` sobre o texto truncado devolvia
- * `requiresAttention: null`. Os dois avisos daquela versão (que rodar o
- * `update.sh` uma vez passou a bastar, e que o teto de gasto de IA sempre foi em
- * dólar) simplesmente não existiriam para quem fosse atualizar.
+ * `requiresAttention: null`. Os dois avisos daquela versão simplesmente não
+ * existiriam para quem fosse atualizar.
  *
- * Nada reprovava isso. O defeito não está no texto nem no script: está em serem
- * dois artefatos com um contrato de tamanho que ninguém media. Este teste é esse
- * contrato.
+ * ─── O QUE SE MEDE, e por que não é o arquivo do disco ─────────────────────
+ *
+ * O que chega à VPS é `git show <TAG>:CHANGELOG.md`, e num arquivo TAGUEADO o
+ * bloco `## [Não lançado]` está VAZIO — o conteúdo dele virou a seção numerada
+ * no ato de cortar a release. Medido nas cinco tags do origin: 20 bytes, sempre.
+ *
+ * A primeira versão deste teste somava o offset ABSOLUTO do fim da seção mais
+ * nova no working tree, o que embute o `[Não lançado]` do momento. Essas duas
+ * coisas nunca coexistem num arquivo tagueado, e o efeito é datado: com 720
+ * bytes de folga depois da v1.4.0, o primeiro ciclo normal de desenvolvimento
+ * deixaria o `verify` — status check OBRIGATÓRIO — vermelho na `main` por uma
+ * condição que nenhum cliente enxerga. Reproduzido antes do conserto: 3.645
+ * bytes em `[Não lançado]` (o repo já teve 3.632 dois dias depois da v1.3.0)
+ * davam `AssertionError: A seção [1.4.0] termina no byte 34288`, mandando
+ * enxugar uma seção JÁ LANÇADA cuja cópia taggeada está correta.
+ *
+ * Então aqui se mede o arquivo **como ele estará na tag**, e as duas seções que
+ * podem estourar são cobradas separadamente:
+ *
+ *   1. a seção numerada mais nova — o que já foi lançado (guarda retroativa);
+ *   2. o `[Não lançado]` de agora — o que a PRÓXIMA release vai publicar, que é
+ *      a única das duas que ainda dá para consertar enxugando.
  *
  * O teto NÃO é digitado aqui — é lido do próprio `agent.sh`. Um número copiado
  * para cá viraria uma segunda fonte da verdade, e a que envelhece primeiro é
- * sempre a cópia.
+ * sempre a cópia. (Isso tem um custo declarado: subir o `head -c` do `agent.sh`
+ * silencia este teste. Não conserta ninguém — quem corta é o script que JÁ está
+ * instalado na VPS do cliente —, então subir o número para calar o CI é trocar
+ * um vermelho honesto por um cliente sem aviso.)
  *
  * CONSERTOS POSSÍVEIS quando este teste ficar vermelho, em ordem de preferência:
  *   1. enxugar a seção (quase sempre certo — item de changelog longo costuma ser
@@ -36,8 +57,6 @@ import { extractChangelogSection } from "@/lib/system/changelog";
  *   2. mover `### ⚠️ Requer atenção` para logo depois do parágrafo de abertura —
  *      `findAttentionRange()` acha o bloco em qualquer posição da seção, então o
  *      aviso passa a sobreviver ao corte mesmo se o corpo for truncado.
- * Aumentar o teto no `agent.sh` conserta as versões futuras e NÃO conserta esta:
- * quem corta é o script que já está instalado na VPS do cliente, não o da `main`.
  */
 
 const RAIZ = process.cwd();
@@ -57,60 +76,138 @@ function tetoDoAgente(): number {
   return Number(m[1]);
 }
 
-/** A primeira versão numerada do arquivo — "Não lançado" não é publicável. */
-function secaoMaisNova(raw: string): { versao: string; inicio: number; fim: number } {
-  const linhas = raw.split("\n");
-  const rx = /^##\s+\[(\d+\.\d+\.\d+)\]/;
-  let inicio = -1;
-  let versao = "";
-  let offset = 0;
+interface Secao {
+  /** `1.4.0`, ou `null` para o bloco `[Não lançado]`. */
+  versao: string | null;
+  /** O texto da seção, do `## [` até o `## [` seguinte (exclusive). */
+  texto: string;
+}
 
-  for (const linha of linhas) {
-    const m = rx.exec(linha);
-    if (m && inicio === -1) {
-      inicio = offset;
-      versao = m[1]!;
-    } else if (inicio !== -1 && /^##\s+\[/.test(linha)) {
-      return { versao, inicio, fim: offset };
-    }
-    offset += Buffer.byteLength(linha, "utf8") + 1; // +1 = o \n
-  }
-  if (inicio === -1) throw new Error("nenhuma versão numerada no CHANGELOG.md");
-  return { versao, inicio, fim: Buffer.byteLength(raw, "utf8") };
+/** Quebra o arquivo em cabeçalho + seções, na ordem em que aparecem. */
+function fatiar(raw: string): { cabecalho: string; secoes: Secao[] } {
+  const linhas = raw.split("\n");
+  const cortes: number[] = [];
+  linhas.forEach((linha, i) => {
+    if (/^##\s+\[/.test(linha)) cortes.push(i);
+  });
+  if (cortes.length === 0) throw new Error("nenhuma seção `## [...]` no CHANGELOG.md");
+
+  const cabecalho = linhas.slice(0, cortes[0]!).join("\n") + "\n";
+  const secoes: Secao[] = cortes.map((inicio, i) => {
+    const fim = cortes[i + 1] ?? linhas.length;
+    const m = /^##\s+\[([^\]]+)\]/.exec(linhas[inicio]!);
+    const rotulo = m?.[1] ?? "";
+    return {
+      versao: /^\d+\.\d+\.\d+$/.test(rotulo) ? rotulo : null,
+      texto: linhas.slice(inicio, fim).join("\n") + (fim < linhas.length ? "\n" : ""),
+    };
+  });
+  return { cabecalho, secoes };
+}
+
+/**
+ * O arquivo como ele fica DEPOIS de cortar a release — que é a única forma em
+ * que a VPS o vê. O `[Não lançado]` esvazia e o conteúdo dele vira a seção
+ * numerada nova, no mesmo lugar.
+ */
+function comoFicaNaTag(raw: string, versaoFutura: string): string {
+  const { cabecalho, secoes } = fatiar(raw);
+  const naoLancado = secoes.find((s) => s.versao === null);
+  const numeradas = secoes.filter((s) => s.versao !== null);
+  const corpo = naoLancado
+    ? naoLancado.texto.split("\n").slice(1).join("\n").replace(/^\n+/, "")
+    : "";
+  return (
+    cabecalho +
+    "## [Não lançado]\n\n" +
+    `## [${versaoFutura}] — 2099-01-01\n\n` +
+    corpo +
+    numeradas.map((s) => s.texto).join("")
+  );
 }
 
 /** Exatamente o que o agente manda: os primeiros N bytes do arquivo. */
-function comoChegaNaVps(raw: string, teto: number): string {
-  return Buffer.from(raw, "utf8").subarray(0, teto).toString("utf8");
+function comoChegaNaVps(texto: string, teto: number): string {
+  return Buffer.from(texto, "utf8").subarray(0, teto).toString("utf8");
+}
+
+/** Onde a seção `versao` termina, em bytes, dentro de `texto`. */
+function fimDaSecao(texto: string, versao: string): number {
+  const { cabecalho, secoes } = fatiar(texto);
+  let offset = Buffer.byteLength(cabecalho, "utf8");
+  for (const s of secoes) {
+    const tam = Buffer.byteLength(s.texto, "utf8");
+    if (s.versao === versao) return offset + tam;
+    offset += tam;
+  }
+  throw new Error(`seção [${versao}] não encontrada`);
+}
+
+const RAW = fs.readFileSync(CHANGELOG, "utf8");
+const TETO = tetoDoAgente();
+
+/** As duas seções que podem estourar, cada uma no arquivo em que ela é publicada. */
+const CANDIDATAS: Array<{ nome: string; versao: string; texto: string; conserto: string }> = [];
+{
+  const { secoes } = fatiar(RAW);
+  const maisNova = secoes.find((s) => s.versao !== null);
+  if (maisNova) {
+    CANDIDATAS.push({
+      nome: `a seção numerada mais nova [${maisNova.versao}]`,
+      versao: maisNova.versao!,
+      texto: RAW,
+      // A mensagem não afirma se esta seção já foi taggeada — ela não sabe, e o
+      // conserto certo depende disso: antes da tag, enxugar resolve; depois, o
+      // texto já congelou e só uma versão nova alcança quem leu.
+      conserto:
+        "Se a tag desta versão ainda NÃO foi cortada, enxugue a seção. Se já foi, o texto " +
+        "congelou na tag e o conserto é uma versão nova — editar aqui não alcança quem já leu.",
+    });
+  }
+  const naoLancado = secoes.find((s) => s.versao === null);
+  const temConteudo =
+    naoLancado !== undefined &&
+    naoLancado.texto.split("\n").slice(1).join("").trim().length > 0;
+  if (temConteudo) {
+    CANDIDATAS.push({
+      nome: "o [Não lançado], como ele sairá na PRÓXIMA release",
+      versao: "9.9.9",
+      texto: comoFicaNaTag(RAW, "9.9.9"),
+      conserto: "Enxugue os itens de [Não lançado] (veja o cabeçalho deste arquivo).",
+    });
+  }
 }
 
 describe("o CHANGELOG da versão nova cabe no que a VPS recebe", () => {
-  const raw = fs.readFileSync(CHANGELOG, "utf8");
-  const teto = tetoDoAgente();
-  const { versao, fim } = secaoMaisNova(raw);
-
-  it("a seção mais nova termina antes do corte do agente", () => {
-    expect(
-      fim,
-      `A seção [${versao}] termina no byte ${fim}, além do corte de ${teto} bytes que o ` +
-        `agent.sh aplica. O dono da VPS receberia o texto cortado no meio. Enxugue a seção ` +
-        `(veja o cabeçalho deste arquivo).`,
-    ).toBeLessThanOrEqual(teto);
+  it("há o que medir — o arquivo tem ao menos uma seção candidata", () => {
+    // Guarda de vacuidade: se `fatiar()` quebrar, os `it.each` abaixo somem e a
+    // suíte fica verde por não haver caso — o modo de falha mais silencioso que
+    // um gate tem.
+    expect(CANDIDATAS.length, "nenhuma seção candidata: o parser deste teste quebrou").toBeGreaterThan(0);
   });
 
-  it("o aviso de ação manual sobrevive ao corte", () => {
-    const inteiro = extractChangelogSection(raw, versao);
+  it.each(CANDIDATAS)("$nome termina antes do corte do agente", ({ versao, texto, conserto }) => {
+    const fim = fimDaSecao(texto, versao);
+    expect(
+      fim,
+      `A seção termina no byte ${fim}, além do corte de ${TETO} bytes que o agent.sh aplica ` +
+        `sobre o arquivo TAGUEADO. O dono da VPS receberia o texto cortado no meio. ${conserto}`,
+    ).toBeLessThanOrEqual(TETO);
+  });
+
+  it.each(CANDIDATAS)("o aviso de ação manual de $nome sobrevive ao corte", ({ versao, texto, conserto }) => {
+    const inteiro = extractChangelogSection(texto, versao);
     expect(inteiro, `a seção [${versao}] não foi extraída do arquivo completo`).not.toBeNull();
 
     // Só cobra o que existe: versão sem ação manual não precisa do bloco.
     if (inteiro!.requiresAttention === null) return;
 
-    const cortado = extractChangelogSection(comoChegaNaVps(raw, teto), versao);
+    const cortado = extractChangelogSection(comoChegaNaVps(texto, TETO), versao);
     expect(
       cortado?.requiresAttention,
-      `A seção [${versao}] tem "⚠️ Requer atenção", mas o bloco fica FORA dos ${teto} bytes ` +
-        `que chegam à VPS — o aviso não apareceria para quem vai atualizar. Enxugue a seção, ` +
-        `ou mova o bloco para logo depois do parágrafo de abertura.`,
+      `A seção tem "⚠️ Requer atenção", mas o bloco fica FORA dos ${TETO} bytes que chegam à ` +
+        `VPS — o aviso não apareceria para quem vai atualizar. ${conserto} Ou mova o bloco ` +
+        `para logo depois do parágrafo de abertura.`,
     ).not.toBeNull();
   });
 });
