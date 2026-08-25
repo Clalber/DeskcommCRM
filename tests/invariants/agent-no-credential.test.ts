@@ -107,6 +107,13 @@ describe("4B — turno sem credencial NENHUMA (nem env, nem BYOK)", () => {
         SUPABASE_SERVICE_ROLE_KEY: "placeholder-service",
       }),
       llmCfg: {}, // SEM anthropicApiKey — e o banco não tem BYOK para a org
+      // Relógio FIXO dentro da janela de envio, como os dois irmãos que
+      // exercitam o turno completo já faziam (`agent-send-template-turn`:
+      // 15:00Z, `limite-de-envios-por-turno`: 18:00Z). Sem ele este caso
+      // reprovava com "fora da janela anti-ban" sempre que o relógio REAL
+      // estivesse fora de 7h-22h — passava de dia, falhava de noite, e a
+      // asserção que interessa (`/credencial LLM/`) nunca era alcançada.
+      clock: () => new Date("2026-07-30T15:00:00Z"),
       knobs: {
         historyLimit: 10,
         maxContextTokens: 1000,
