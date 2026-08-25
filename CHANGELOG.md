@@ -11,16 +11,10 @@ Se você roda o DeskcommCRM numa VPS, **leia a seção da versão para a qual es
 ### Corrigido
 
 - **Instalar numa VPS que já tem o CRM no ar não derruba mais a instalação existente.**
-  Quando você baixava o projeto numa pasta nova para instalar de novo — numa aula, num
-  teste — o instalador via o CRM que já estava rodando, concluía que era ele mesmo sendo
-  rodado outra vez, e subia por cima: o site continuava no ar, mas passava a usar o banco
-  de dados da pasta nova. Na prática o sistema trocava de banco sem avisar, e o primeiro
-  sintoma era a senha "parar de funcionar" (no outro banco a sua conta é outra, com outra
-  senha e outro aplicativo de autenticação). Agora o instalador reconhece a instalação que
-  já existe, **para antes de tocar em qualquer coisa**, diz em que pasta ela está e ensina
-  o comando para atualizá-la. O motivo de a confusão existir: o Docker dá nome ao conjunto
-  a partir do nome da pasta, e toda cópia do projeto se chama `DeskcommCRM`.
-
+  O instalador confundia a instalação de outra pasta com ele mesmo sendo rodado de novo e
+  subia por cima: o site seguia no ar, mas passando a usar o banco da pasta nova — e o
+  primeiro sintoma era a senha "parar de funcionar". Agora ele para antes de tocar em
+  nada, diz em que pasta está a instalação que já existe e ensina como atualizá-la.
 
 ## [1.4.0] — 2026-08-24
 
