@@ -77,13 +77,50 @@ export function limitarCampos(entrada: Record<string, unknown>): Record<string, 
   for (const [chave, valor] of Object.entries(entrada)) {
     if (n >= MAX_CAMPOS) break;
     n += 1;
-    if (typeof valor === "string" && valor.length > MAX_TAMANHO_DE_VALOR) {
-      saida[chave] = `${valor.slice(0, MAX_TAMANHO_DE_VALOR)}…`;
-    } else {
-      saida[chave] = valor;
-    }
+    saida[chave] = limitarValor(valor);
   }
   return saida;
+}
+
+/**
+ * O teto vale para QUALQUER valor, não só para string.
+ *
+ * A versão anterior cortava só o ramo `typeof valor === "string"`, e todo o
+ * resto caía num `else` que guardava o valor INTEIRO. Um formulário que manda
+ * um campo aninhado — um array de itens de carrinho, um objeto de endereço,
+ * qualquer JSON — entrava sem limite nenhum, enquanto a prosa deste módulo (e o
+ * cálculo de retenção em `retencao-da-captacao.ts:20`, que dimensiona a tabela
+ * em "60 campos × 2.000 caracteres") prometia o contrário.
+ *
+ * Quem manda o corpo é o site do cliente, então o tamanho não é escolha nossa:
+ * é a superfície de quem quiser encher a tabela que a tela lê.
+ *
+ * Valor pequeno passa INTACTO, com o tipo original — o número continua número e
+ * o objeto continua objeto. Só quando o JSON dele passa do teto é que vira a
+ * string cortada, porque aí guardar "quase o objeto" seria guardar um objeto
+ * que não é o que chegou. O `…` no fim é o mesmo sinal visível de sempre.
+ */
+function limitarValor(valor: unknown): unknown {
+  if (typeof valor === "string") {
+    return valor.length > MAX_TAMANHO_DE_VALOR
+      ? `${valor.slice(0, MAX_TAMANHO_DE_VALOR)}…`
+      : valor;
+  }
+  if (valor === null || valor === undefined || typeof valor !== "object") return valor;
+
+  // `JSON.stringify` devolve `undefined` para valor não serializável e LANÇA em
+  // referência circular. Nos dois casos o certo é registrar que havia algo ali
+  // e seguir — a captação inteira não pode cair por causa de um campo.
+  let serializado: string | undefined;
+  try {
+    serializado = JSON.stringify(valor);
+  } catch {
+    return "[valor não serializável]";
+  }
+  if (serializado === undefined) return "[valor não serializável]";
+  return serializado.length > MAX_TAMANHO_DE_VALOR
+    ? `${serializado.slice(0, MAX_TAMANHO_DE_VALOR)}…`
+    : valor;
 }
 
 /**
