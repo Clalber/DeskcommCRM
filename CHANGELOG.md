@@ -8,6 +8,96 @@ Se você roda o DeskcommCRM numa VPS, **leia a seção da versão para a qual es
 
 ## [Não lançado]
 
+## [1.5.0] — 2026-08-25
+
+O histórico de quem chega pelos seus formulários agora existe — inclusive de quem **não**
+entrou. As automações passam a poder responder com uma mensagem escrita pela IA a partir do
+que a pessoa preencheu. E a automação parou de marcar "Sucesso" para mensagem que nunca
+chegou ao cliente.
+
+O Inbox passa a dizer **quem manda em cada conversa** — e o conserto principal não é de tela:
+clicar "Assumir" não parava o atendimento automático, então os dois respondiam o mesmo cliente.
+
+### ⚠️ Requer atenção
+
+**O horário em que as automações mandam mensagem passa a ser o seu, e não o do servidor.**
+A proteção de horário da automação era medida pelo relógio da máquina, que roda em UTC —
+então a faixa "7h às 22h" era, na prática, **4h às 19h de Brasília**. Duas consequências
+que você talvez tenha visto sem saber a causa: uma automação disparada às 19h30 não saía e
+ficava esperando até as 4h da manhã seguinte; e uma disparada de madrugada saía, mandando
+mensagem para o cliente às 5h. Agora vale o seu fuso, e **vale a faixa que você configurou
+em Conexões › Proteção de envio** — a mesma que a IA já respeitava. Se você apertou ou
+ampliou esse horário achando que só mexia com a IA, confira: agora ele também rege as
+automações. Quem nunca mexeu fica com 7h às 22h no **horário de Brasília**. Se o seu negócio fica em outro
+fuso, escolha o seu em **Conexões › Proteção de envio**, no campo "Fuso horário da janela" — e
+confira conexão por conexão, porque essa escolha é de cada número, não da instalação inteira.
+
+**Assumir uma conversa agora PARA o atendimento automático nela. Antes não parava, e os dois
+respondiam o mesmo cliente.** Quem clicava "Assumir" no Inbox ganhava a conversa na tela, mas o
+automático continuava respondendo por baixo — ele só ficava quieto por 5 minutos depois que o
+atendente mandava uma mensagem, e voltava a falar sozinho em seguida. Agora assumir e transferir
+silenciam o automático naquela conversa, e **"Liberar" ou "Fechar" desfazem o silêncio que a
+pessoa pôs**. Há uma exceção que importa: quando foi o próprio automático que passou o caso
+para uma pessoa, "Liberar" e "Fechar" **não** o trazem de volta — ali quem devolve é o botão
+**"Devolver ao automático"**, no topo da conversa. É justamente o caso das conversas que
+aparecem na aba "Fila" (veja o aviso abaixo). Se a sua
+equipe se acostumou a assumir a conversa e deixar a IA responder junto, esse hábito muda aqui.
+
+**A distribuição por rodízio NÃO cala o automático** — distribuir é escolher quem cuida se precisar,
+não tomar a conversa. Só o clique de uma pessoa silencia.
+
+**A aba "Fila" vai mostrar mais conversas do que mostrava, e o número do badge pode subir de uma
+vez.** Não é conversa nova: são as que a IA já tinha passado para uma pessoa e que não apareciam em
+aba nenhuma. Se o número saltar depois de atualizar, é isso — e vale olhar, porque são pessoas
+esperando resposta há mais tempo do que você imaginava.
+
+Esta versão **mexe no banco de dados**. O `update.sh` aplica sozinho; não há passo
+manual — são tabelas e estados novos: o histórico de captação, o estado de espera das
+automações e o registro de quem está no comando de cada conversa.
+
+**Se você está vindo da 1.4.0, os dois avisos abaixo são da 1.4.1 e valem para você.** A tela de
+atualização mostra só a seção da versão que você está instalando, então eles vão repetidos aqui
+para não passarem em branco. Se você já atualizou para a 1.4.1, já os leu — pule.
+
+- **A IA passa a atender aos domingos, e antes não atendia.** O padrão de fábrica da janela
+  anti-banimento mudou na 1.4.0: domingo era dia mudo e passou a ser dia normal (a faixa de
+  horário continua a mesma). Se o seu negócio depende de silêncio no domingo, desligue em
+  **Conexões › Proteção de envio**, na chave "Enviar aos domingos", por canal. Quem já tinha
+  mexido ali teve a escolha respeitada. **Novidade desta versão:** essa chave passou a valer
+  também para as automações — desligá-la faz o lead que preencher seu formulário no domingo
+  só ser abordado na segunda de manhã.
+- **Duas conexões oficiais do WhatsApp com a mesma conta da Meta: fica com o identificador a
+  conexão MAIS RECENTE**, e a mais antiga recebe o sufixo `-conflito-`. Nada foi apagado. A 1.4.0
+  disse o contrário — se você apagou a conexão SEM o sufixo por causa daquela frase, era a que
+  estava funcionando; reconecte o número em Conexões.
+
+### Adicionado
+
+- **"Leads recebidos", em Webhooks: quem chegou pelo formulário, com o que preencheu.**
+  Até aqui, o formulário do seu site entregava o lead e não sobrava registro nenhum de como
+  ele chegou. Agora há uma aba com a lista: nome, data e hora, de qual formulário veio, a
+  página em que a pessoa estava, o endereço de internet dela e as etiquetas de campanha
+  (`utm_source` e companhia). Clicando na linha, todos os campos do formulário como ela
+  preencheu, e um atalho para o lead no funil. Dá para filtrar por busca, por origem, por
+  resultado e por período.
+  **E aparece também quem NÃO entrou.** Um formulário cujos campos o CRM não reconhece era
+  recusado em silêncio: quem colou o endereço no site só sabia que "não chegou nada", sem
+  ter onde olhar. Agora a tentativa aparece na lista como *Não entrou*, com o motivo escrito
+  em português e os campos crus do jeito que vieram — que é o que permite consertar o
+  formulário em vez de adivinhar.
+- **Nas automações, no "então": "Mensagem escrita pela IA".**
+  Antes só dava para mandar um texto pronto com `{{nome}}` e `{{telefone}}`. Se o seu
+  formulário pergunta o segmento, o tamanho da equipe e a maior dificuldade de hoje, quem
+  tem 3 funcionários e quem tem 300 recebiam a mesma frase. Agora você escolhe um agente já
+  **publicado**, escolhe o número, e escreve no campo *"O que a IA deve fazer com esses
+  dados"* — por exemplo, "cite a dificuldade que ela citou e ofereça uma conversa de 15
+  minutos". A IA recebe as respostas do formulário e essa sua instrução, e sabe que é a
+  primeira mensagem de alguém que acabou de preencher e não está esperando resposta. É o
+  mesmo desenho da instrução de um passo de follow-up.
+  Quem envia continua sendo a automação — com horário de envio, descadastro e espaçamento
+  entre mensagens valendo igual. A IA escreve o texto; ela não fala com ninguém por conta
+  própria.
+
 ### Corrigido
 
 - **A caixa de conversas voltou a se atualizar sozinha — antes só recarregando a página.**
@@ -19,6 +109,66 @@ Se você roda o DeskcommCRM numa VPS, **leia a seção da versão para a qual es
   hora, e ela também se recupera sozinha: se a conexão em tempo real cair, a lista e a
   conversa voltam a se sincronizar em pouco tempo em vez de ficar congeladas num passado que
   parece presente. Nada para você fazer — vale assim que atualizar.
+
+- **A automação dizia "Sucesso" para mensagem que não chegou ao cliente.** Era o relato que
+  originou boa parte desta entrega: automação ligada, lead entrando pelo formulário, a aba
+  Atividade mostrando um "Sucesso" verde — e nenhuma mensagem no celular de ninguém. A
+  automação só sabia perguntar se tinha dado erro de programa; ela não olhava se a mensagem
+  de fato saiu. Agora ela olha: quando o envio falha, o resultado aparece como falha, com o
+  motivo em português ("Não conseguimos falar com o serviço de WhatsApp. Confira se ele está
+  no ar."), e um aviso é aberto na **Central de avisos** — o menu "Alertas", dentro de IA › Acompanhar o
+  agente — **nomeando a regra que falhou**,
+  porque um erro que só existe numa aba que ninguém abre é um erro invisível.
+- **A automação que estava só esperando o horário parecia não ter rodado.** Ao adiar um
+  envio, ela não gravava nada: "não apareceu nada na Atividade" e "a automação não funcionou"
+  eram a mesma tela. Agora a espera é um estado visível na aba Atividade — **Aguardando envio** —, com o motivo ao
+  lado. Nem sempre é o relógio: o mesmo estado aparece quando o número de WhatsApp está
+  desconectado, e aí o que resolve é reconectar em Conexões, não esperar.
+- **O agente ficava mudo quando o provedor dele era diferente do provedor padrão da
+  organização.** Quem publicou o agente numa IA (por exemplo OpenAI) enquanto a organização
+  continuava configurada em outra (Anthropic) tinha TODA mensagem de WhatsApp engolida: a
+  conversa ficava sem resposta, sem erro visível na tela do agente. Por baixo, um verificador
+  interno saía com o endereço de uma IA e o nome de modelo da outra, tomava "modelo inexistente"
+  e derrubava o atendimento inteiro antes de o agente falar. Não era preciso mexer em nada para
+  cair nisso — bastava a combinação. O rastro sempre esteve em **IA › Execuções** e o aviso em
+  **Central de avisos** ("Job descartado após esgotar tentativas"); o que faltava era o
+  atendimento acontecer.
+- **O papel Operador mandava o modelo escolhido para o provedor errado**, pela mesma razão, e
+  o campo "Modelo do Operador" deixado em branco não fazia o que a tela prometia: ele diz *"A
+  mesma que conversa"* e usava o modelo padrão da organização. Agora vazio herda de verdade o
+  modelo do Conversador.
+- **O painel de Provedores de IA mostrava o modelo errado** nos pontos que herdam do agente
+  (classificador de etapa, detector de manipulação, verificador de promessa, resumo de
+  conversa, checkpoint, sugestão de resposta e a mensagem escrita pela IA nas automações):
+  anunciava o padrão da organização enquanto o sistema usava o do agente. A coluna passa a
+  mostrar o que de fato roda, e diz de quem herdou. **A "Mensagem escrita pela IA" desta
+  mesma versão caía no primeiro item desta lista** — nas instalações com agente num provedor
+  diferente do padrão da organização, ela não sairia.
+
+- **A promessa da 1.4.0 sobre o limite de gasto agora é verdade.** Aquela versão disse que, quando o
+  limite para a IA, "as conversas que estavam sendo atendidas vão para a fila de atendimento
+  humano". Elas iam — mas a fila na tela não as mostrava: a aba, o contador e o painel do gerente
+  procuravam um estado e a conversa escalada ficava em outro. Quem confiou no aviso e foi olhar a
+  fila não encontrou nada lá. Vale para toda passagem para humano, não só a do limite.
+- **O número da fila que o cliente ouve e o que a equipe vê eram contados de formas diferentes.** O
+  "você é o Nº da fila" enviado pelo WhatsApp incluía as conversas escaladas; o número mostrado ao
+  atendente não. Agora é a mesma conta dos dois lados.
+- **Dava para saber quem atende uma conversa pela IA, mas não pela tela.** O nome do atendente
+  chegava ao agente e não ao Inbox, que só tinha o código interno. O cabeçalho e a lista passam a
+  mostrar **quem está no comando** — pessoa (com nome e iniciais) ou automático —, e o selo diz o
+  **motivo** quando o automático está parado: alguém assumiu, está pausado para aquele cliente, ou
+  volta sozinho em instantes.
+- **Faltava o botão de desligar.** Havia "Devolver ao automático" e nada para pausá-lo — ele só
+  parava por conta própria. Agora o mesmo lugar tem os dois lados.
+- **Assumir, transferir e liberar não apareciam no histórico da conversa.** Passavam sem deixar
+  rastro no painel lateral; o motivo escrito ao transferir ficava só no registro de auditoria, que
+  o atendente não abre. Agora as quatro ações viram linha na atividade, **com o nome de quem fez** —
+  antes toda ação humana aparecia como "Você/time".
+- **Conversa encerrada deixava de dizer quem a atendeu**, justamente na aba "Fechadas".
+- **Numa instalação sem nenhuma IA configurada, a tela dizia "Automático atendendo".** Não havia
+  automático nenhum: eram conversas sem ninguém.
+- **Quem não enxerga uma conversa conseguia ler o histórico de quem a atendeu.** Com a visibilidade
+  restrita por atendente, o registro de troca de responsável não respeitava esse limite.
 
 ## [1.4.1] — 2026-08-25
 
@@ -755,7 +905,11 @@ Primeira versão marcada do DeskcommCRM. O projeto vinha sendo desenvolvido publ
 
 - **Node 22 é obrigatório para desenvolvimento.** A suíte de invariantes instancia o cliente do Supabase, que exige o `WebSocket` global — nativo apenas a partir do Node 22. Isso não afeta quem apenas hospeda: a VPS roda a imagem pronta.
 
-[Não lançado]: https://github.com/melgarafael/DeskcommCRM/compare/v1.2.1...HEAD
+[Não lançado]: https://github.com/melgarafael/DeskcommCRM/compare/v1.5.0...HEAD
+[1.5.0]: https://github.com/melgarafael/DeskcommCRM/compare/v1.4.1...v1.5.0
+[1.4.1]: https://github.com/melgarafael/DeskcommCRM/compare/v1.4.0...v1.4.1
+[1.4.0]: https://github.com/melgarafael/DeskcommCRM/compare/v1.3.0...v1.4.0
+[1.3.0]: https://github.com/melgarafael/DeskcommCRM/compare/v1.2.1...v1.3.0
 [1.2.1]: https://github.com/melgarafael/DeskcommCRM/compare/v1.2.0...v1.2.1
 [1.2.0]: https://github.com/melgarafael/DeskcommCRM/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/melgarafael/DeskcommCRM/compare/v1.0.0...v1.1.0
