@@ -1031,3 +1031,45 @@ quebrada no CI pelo motivo acima — e quem a escrever vai perder as mesmas hora
 
 **Evidência visual:** `evidence/inbox-tempo-real/mensagem-sem-reload.png` — a
 conversa aberta com as mensagens das rodadas, cada uma entregue sem recarregar.
+
+## O gate de CHANGELOG que falta — desenho combinado (2026-08-25)
+
+**Nada no repo cobra que mudança de comportamento tenha entrada no CHANGELOG.** Esquecer é de
+graça, e aconteceu duas vezes num dia: o PR #326 entrou na `main` sem linha nenhuma (a
+normalização do Respondi altera dado do cliente em silêncio — telefone sem DDI vira
+brasileiro), e o conserto do tempo real do inbox só não saiu pelo mesmo buraco porque o dono
+mandou reconciliar com o time.
+
+O QA (`Assistente e Testes`) vai escrever o gate. Desenho combinado numa revisão cruzada, com
+as armadilhas já medidas — está aqui porque a conversa bateu no teto anti-loop do Espaço antes
+do último ponto ser entregue.
+
+**A armadilha que matou o primeiro desenho:** um teste em `tests/unit` que faça
+`git diff origin/main...HEAD` **nasce cego**. O `actions/checkout` do `ci.yml` não tem
+`fetch-depth`, então o clone traz UM commit e não há `origin/main` contra o que comparar — o
+gate passaria vazio, verde sempre. *Gate que nasce cego é pior que gate ausente, porque
+ninguém procura o que já tem cerca.*
+
+**Forma acordada:**
+
+| peça | o quê |
+|---|---|
+| `scripts/gate-changelog.ts` | a lógica; recebe a lista de arquivos tocados como argumento |
+| `pnpm gate:changelog` | uso local, alimentado por `git diff --name-only origin/main...HEAD` (local TEM o histórico) |
+| passo no workflow | alimentado por `github.event.pull_request.base.sha`, que o Actions dá de graça |
+| o que cobra | **entrada em `[Não lançado]`**, nunca "o arquivo foi tocado" — um cobra o efeito, o outro o gesto |
+| allowlist | **nomeada e travada por `toEqual([...])`**, como `tests/unit/branding.test.ts` — travar por contagem deixa trocar uma dívida por outra em silêncio |
+
+**O ponto que ficou sem resposta, e a proposta:** como separar "mudou comportamento" de
+"refactor puro" sem virar imposto. A ideia de cobrar só de quem toca `app/api` ou `app/app`
+**falha no primeiro caso real** — medido: o PR #327 não toca nenhum dos dois (mexe em `lib/`,
+`hooks/inbox`, `components/inbox`) e é a mudança mais visível ao usuário daquele dia. Falso
+negativo silencioso.
+
+Proposta alternativa: **inverter o ônus em vez de adivinhar**. Todo PR que toca código de
+produto exige entrada; quem acha que não precisa **declara** (uma linha no corpo do PR ou no
+commit, com o motivo) e o gate lê a declaração. Três ganhos: não há falso negativo silencioso
+(não ter entrada passa a exigir ato consciente); a decisão fica **escrita e auditável**; e não
+vira imposto, porque uma linha de declaração custa menos que uma linha vazia de changelog —
+que é o risco real, já que ela polui a tela de produto do operador. Não é convenção nova: o
+`tests/unit/navegacao-completude.test.ts` já aceita exceção **com justificativa escrita**.
