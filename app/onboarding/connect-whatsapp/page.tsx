@@ -1,5 +1,6 @@
 import { requireAuth, resolveActiveOrg } from "@/lib/auth/server";
 import { redirect } from "next/navigation";
+import { metaPodeReceber } from "@/lib/channels/meta/webhook";
 import { getWahaClient } from "@/lib/waha/client";
 import { ConnectWhatsappClient } from "./_client";
 
@@ -12,12 +13,9 @@ export default async function ConnectWhatsappPage() {
 
   const wahaConfigured = getWahaClient() !== null;
 
-  // A volta do canal oficial depende deste valor, e o `install.sh` NÃO o
-  // escreve — numa instalação recém-feita ele está sempre ausente. Lido aqui,
-  // no servidor, para a tela poder avisar ANTES de a pessoa ir atrás de três
-  // credenciais no painel: sem ele o número envia e nunca recebe, que é
-  // exatamente o modo de falha que ninguém procura porque não reclama.
-  const oficialPodeReceber = Boolean(process.env.META_WEBHOOK_VERIFY_TOKEN);
+  // Receber pelo canal oficial exige DOIS segredos, não um — a regra e o porquê
+  // moram em `lib/channels/meta/webhook.ts`, ao lado de quem os consome.
+  const oficialPodeReceber = metaPodeReceber();
   // We don't try to start the session at SSR — client kicks off the call
   // (and shows graceful banner if WAHA is not reachable).
 

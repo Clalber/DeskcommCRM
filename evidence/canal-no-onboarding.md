@@ -32,7 +32,7 @@ CANAIS APOS NAVEGAR PELOS TRES RAMOS: 0
 CANAIS APOS ESCOLHER O CODIGO: 1
 ```
 
-A linha do meio é a que importa: passear pelos três ramos — inclusive abrir o formulário
+A linha do meio é a que importa: passear pelos dois ramos de credencial — inclusive abrir o formulário
 oficial e o do parceiro — **não deixa canal pendurado**.
 
 ## Sabotagem
