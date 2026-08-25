@@ -68,22 +68,32 @@ passo manual. É uma tabela nova (o histórico acima) e um estado novo nas autom
 - **A automação que estava só esperando o horário parecia não ter rodado.** Ao adiar um
   envio, ela não gravava nada: "não apareceu nada na Atividade" e "a automação não funcionou"
   eram a mesma tela. Agora a espera é um estado visível — **Adiado** —, com o motivo.
-- **Instalar numa VPS que já tem o CRM no ar não derruba mais a instalação existente.**
-  O instalador confundia a instalação de outra pasta com ele mesmo sendo rodado de novo e
-  subia por cima: o site seguia no ar, mas passando a usar o banco da pasta nova — e o
-  primeiro sintoma era a senha "parar de funcionar". Agora ele para antes de tocar em
-  nada, diz em que pasta está a instalação que já existe e ensina como atualizá-la. Isso
-  vale em qualquer arranjo de servidor — inclusive nas VPS em que o painel da hospedagem
-  (Hostinger, Coolify, Dokploy) é quem atende as portas, e nas pastas que já tinham
-  concluído uma instalação antes, onde a checagem anterior se desligava sozinha.
 
-## [1.4.1] — 2026-08-24
+## [1.4.1] — 2026-08-25
 
-Correção de **texto de aviso**, não de comportamento: a seção da 1.4.0 descreveu errado uma
-mudança que chega a todo mundo e inverteu a instrução de outra. Como a tela de atualização lê
-o texto congelado na versão, o conserto só alcança quem atualizou pela publicação de uma
-versão nova — é isto. Junto vai um conserto de código pequeno e real, no descadastro em
-espanhol.
+O primeiro acesso passa a **perguntar como você já usa o seu número**, em vez de supor que
+todo mundo conecta lendo um código no celular. Instalar numa máquina que já tem o CRM no ar
+deixou de derrubar a instalação existente. E a seção da 1.4.0 descreveu errado duas mudanças
+que chegam a todo mundo — uma delas invertida: como a tela de atualização lê o texto congelado
+na versão, o conserto do texto só alcança você pela publicação de uma versão nova, que é esta.
+
+### Adicionado
+
+- **O primeiro acesso pergunta como você já usa o seu número, em vez de supor.** Existe mais
+  de um jeito de ter WhatsApp para empresa, e cada um conecta de um jeito — mas o passo do
+  telefone só sabia um: ele mostrava o código para ler no celular e pronto. Quem tem conta
+  oficial na Meta, ou contrata o WhatsApp por uma empresa parceira, passava por ali sem nunca
+  ser perguntado; o número entrava cadastrado do jeito errado e a pessoa só descobria depois,
+  em outra tela, com o funcionário já montado por cima. Agora o passo abre com a pergunta e
+  três respostas: **ler um código com o celular** (que é como quase todo mundo faz e segue
+  sendo o caminho mais curto), **conta oficial na Meta**, ou **provedor parceiro** — e cada
+  uma leva ao formulário certo, ali mesmo, sem sair do passo a passo. Escolher errado não
+  tranca nada: dá para voltar e trocar. E nada é criado enquanto você não escolhe — antes, o
+  número era cadastrado como "por código" só de você chegar na tela.
+- **Quem escolhe a conta oficial é avisado ANTES de ir buscar as credenciais.** Esse caminho
+  precisa de duas configurações no servidor que a instalação não cria sozinha, e sem elas o
+  número **envia mas nunca recebe** — sem erro em lugar nenhum, que é o pior jeito de falhar.
+  A tela diz isso antes de você abrir o painel da Meta, e aponta o caminho que funciona hoje.
 
 ### ⚠️ Requer atenção
 
@@ -107,6 +117,14 @@ Fora isso, nada exige ação sua. Não há mudança de banco de dados nesta vers
 
 ### Corrigido
 
+- **Instalar numa VPS que já tem o CRM no ar não derruba mais a instalação existente.**
+  O instalador confundia a instalação de outra pasta com ele mesmo sendo rodado de novo e
+  subia por cima: o site seguia no ar, mas passando a usar o banco da pasta nova — e o
+  primeiro sintoma era a senha "parar de funcionar". Agora ele para antes de tocar em
+  nada, diz em que pasta está a instalação que já existe e ensina como atualizá-la. Isso
+  vale em qualquer arranjo de servidor — inclusive nas VPS em que o painel da hospedagem
+  (Hostinger, Coolify, Dokploy) é quem atende as portas, e nas pastas que já tinham
+  concluído uma instalação antes, onde a checagem anterior se desligava sozinha.
 - **`salir` sozinho não descadastrava.** A 1.4.0 anunciou que "`baja`, `salir` e
   `no quiero recibir` descadastram"; medido com a função real, `baja` e `no quiero recibir`
   funcionavam e `salir` não — a palavra estava fora da lista. `salir` é o `sair` em espanhol,
