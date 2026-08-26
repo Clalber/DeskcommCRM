@@ -246,6 +246,23 @@ export const DICIONARIO: Traducoes = {
   "Chaves para outro sistema conversar com o seu CRM.": {
     es: "Claves para que otro sistema converse con tu CRM.",
   },
+  // ─── Shell persistente (sidebar, topbar, ⌘K, menu do usuário) ───
+  "Navegação principal": { es: "Navegación principal" },
+  "Expandir sidebar": { es: "Expandir barra lateral" },
+  "Recolher sidebar": { es: "Contraer barra lateral" },
+  Versão: { es: "Versión" },
+  versão: { es: "versión" },
+  "Nova versão": { es: "Nueva versión" },
+  disponível: { es: "disponible" },
+  "Abrir navegação": { es: "Abrir navegación" },
+  "Buscar telas": { es: "Buscar pantallas" },
+  "Buscar telas do sistema…": { es: "Buscar pantallas del sistema…" },
+  Telas: { es: "Pantallas" },
+  "Buscar…": { es: "Buscar…" },
+  "Menu do usuário": { es: "Menú del usuario" },
+  Sair: { es: "Cerrar sesión" },
+  "Central de avisos": { es: "Central de avisos" },
+  "em aberto": { es: "abiertos" },
 };
 
 /**
