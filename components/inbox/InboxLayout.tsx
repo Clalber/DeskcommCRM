@@ -22,6 +22,8 @@ import { RetentionNotice } from "./RetentionNotice";
 import { CRMSidePanel } from "./CRMSidePanel";
 import type { Message as ConversationMensagem } from "@/lib/types/messaging";
 import { InboxKeyboardShortcuts } from "./InboxKeyboardShortcuts";
+import { CONVERSATION_QUEUE_STATUSES } from "@/lib/schemas";
+
 import { ShortcutsHelpDialog } from "./ShortcutsHelpDialog";
 import { OpenConversationProvider } from "@/hooks/notifications/OpenConversationContext";
 // ADR-05: ícone de feature sai do mapa canônico, nunca do pacote direto.
@@ -63,7 +65,12 @@ export function colunasDoCelular(temSelecao: boolean): { lista: string; conversa
 export function tabToFilter(tab: InboxFiltersValue["tab"]): Partial<ConversationsFilters> {
   switch (tab) {
     case "unassigned":
-      return { assigned_to: "unassigned", status: "open" };
+      // Os DOIS estados de espera, não só `open`. A conversa que o automático
+      // escalou é `pending` e não aparecia em aba nenhuma que o atendente vê —
+      // "Fila" pedia `open`, "Minhas" exige dono, "IA" filtra `ai_handling` e
+      // "Todas" é escondida do papel `agent` fora do modo `all`. A conversa que
+      // mais precisa de uma pessoa era a única invisível.
+      return { assigned_to: "unassigned", status: [...CONVERSATION_QUEUE_STATUSES] };
     case "mine":
       // Sem `exclude_finished` a aba mostra tudo que o atendente JÁ atendeu —
       // `Fechar` muda o status mas não solta o dono (de propósito: quem atendeu
@@ -285,7 +292,31 @@ export function InboxLayout({ initialSelectedId = null }: InboxLayoutProps = {})
   // deixava. Margem de 2px não é margem, é sorte.
   return (
     <OpenConversationProvider conversationId={selectedId}>
-    <div className="grid h-[calc(100dvh-3.5rem-2*var(--space-6))] w-full grid-cols-1 md:grid-cols-[300px_1fr] xl:grid-cols-[272px_1fr_296px] 2xl:grid-cols-[300px_1fr_320px]">
+    <div
+      className="grid h-[calc(100dvh-3.5rem-2*var(--space-6))] w-full grid-cols-1 md:grid-cols-[300px_1fr] xl:grid-cols-[272px_1fr_296px] 2xl:grid-cols-[300px_1fr_320px]"
+      /*
+       * O ESTADO DO TEMPO REAL, LEGÍVEL DE FORA — mesmo par que o dossiê do lead
+       * já publica (`LeadDossier`), e pela mesma razão: quando a entrega morre,
+       * nenhuma tela avisa. Foi o único achado que atravessou o dia intacto
+       * quando o realtime quebrou pela primeira vez, e voltou a morder agora.
+       *
+       * `divergencias` é o que a rede de segurança contou: refetch trouxe estado
+       * novo que o canal NÃO tinha entregue. Zero com o canal vivo; subindo é a
+       * assinatura de canal que assina e não entrega — o defeito que não grita.
+       *
+       * ⚠️ `data-realtime-status` vem do STATUS do canal, não de um objeto que
+       * existe sempre. A primeira versão desta linha derivava o valor de
+       * `listQ.seguranca`, que nunca é nulo — ela diria `ativo` inclusive com o
+       * canal morto. Controle decorativo é pior que controle nenhum: mente com
+       * cara de instrumento.
+       *
+       * Atributo de dado e não texto na tela de propósito: quem lê isto é o
+       * teste e quem depura, não o atendente. Pôr um aviso permanente na cara de
+       * quem atende seria ruído; esconder o sinal do todo é o que custou o dia.
+       */
+      data-realtime-status={listQ.realtimeStatus}
+      data-refetch-divergencias={listQ.seguranca?.divergencias ?? 0}
+    >
       {/*
         NO CELULAR, UMA COISA POR VEZ.
 

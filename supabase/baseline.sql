@@ -6753,7 +6753,7 @@ create table if not exists channel_knobs (
   jitter_max_ms integer,              -- teto do jitter randômico somado ao throttle
   window_start_hour smallint,         -- janela [start, end) na hora local da org
   window_end_hour smallint,
-  allow_sunday boolean,               -- domingo evitado por default
+  allow_sunday boolean,               -- NULL = default do código (hoje: enviar)
   timezone text,                      -- IANA tz da org (a janela é avaliada nela)
   -- degraus [{"minAgeDays":N,"cap":M|null}, ...]; CHECK (array NÃO-VAZIO) +
   -- validação de shape no load — NULL cai no default; `[]` é rejeitado.
@@ -13284,6 +13284,206 @@ comment on table public.api_audit_log is
   'app/api/v1/cron/data-retention. Não há camada cold/S3.';
 
 notify pgrst, 'reload schema';
+-- ---- quem manda na conversa: "Assumir" cala o automático (migration 0173) ----
+--
+-- ⚠️ ENTRA ANTES DO BLOCO DA VARREDURA anon, que é de propósito o último do
+-- arquivo: `fn_conversation_assign` é recriada aqui e função criada depois da
+-- varredura nasce com EXECUTE para anon sem ninguém curar. Os revokes explícitos
+-- no fim deste bloco já fecham as duas origens, mas a ordem é a rede que pega o
+-- próximo que esquecer. Vigiado por `tests/unit/varredura-anon-e-o-ultimo-bloco.test.ts`.
+--
+-- Medido no HEAD 927dfa51: `lib/agent-engine/` NUNCA lê `assignee_kind` nem
+-- `assigned_to_user_id` (grep → rc=1), e `fn_conversation_assign` nunca tocou
+-- `bot_silenced_until`. Um atendente clicava "Assumir" e o automático continuava
+-- respondendo o MESMO cliente; ele só calava 5 minutos deslizantes quando a pessoa
+-- ENVIAVA (`extendBotSilence`). Dois atores atendendo a mesma pessoa é o defeito, e
+-- qualquer selo de "você está no comando" em cima disso seria mentira.
+--
+-- O conserto entra na função de atribuição e não no motor porque
+-- `bot_silenced_until` é o gate que o motor JÁ lê — nenhuma linha do motor muda. A
+-- alternativa (ensinar o motor a ler `assignee_kind`) foi medida e REPROVADA:
+-- `Fechar` não solta o dono, de propósito, então o fim NORMAL de um atendimento
+-- deixaria `assignee_kind='user'` pendurado e o automático mudo para sempre naquele
+-- contato — e aquele gate é por CONTATO, então calaria conversa NOVA de outro número.
+--
+-- O braço do rodízio é o que impede a regressão silenciosa:
+--   * `p_reason='routing'` → NÃO MEXE. Distribuir não é assumir.
+--     `trg_conversation_routing_requested` dispara em TODA conversa nova e o worker
+--     roda 1×/min: sem a ressalva, uma org em `round_robin` ficaria com o automático
+--     calado na primeira mensagem da vida de cada cliente.
+--   * destino humano (claim/transfer) → 'infinity'.  * destino nulo (release) → null.
+--
+-- Assinatura IDÊNTICA de 6 args de propósito: parâmetro novo criaria OVERLOAD (o
+-- `create or replace` não substitui assinatura diferente) e as cinco chamadas por
+-- nome passariam a falhar com `is not unique`. Idempotente; sem dados a corrigir.
+--
+-- A limpeza do silêncio ao FECHAR mora na rota (`close/route.ts`): fechar não passa
+-- por aqui, e sem ela o silêncio vazaria para o próximo episódio — a ingestão reusa
+-- a MESMA linha de conversa (`on conflict do update`).
+
+create or replace function public.fn_conversation_assign(
+  p_organization_id uuid,
+  p_conversation_id uuid,
+  p_to_user_id uuid,
+  p_reason text,
+  p_expected_assignee uuid default null,
+  p_enforce_expected boolean default false
+) returns setof public.conversations
+language plpgsql security definer
+set search_path = public
+as $$
+declare
+  v_from uuid;
+  v_conv public.conversations%rowtype;
+begin
+  if auth.uid() is not null
+     and not public.fn_role_at_least(p_organization_id, 'agent') then
+    raise exception 'caller_not_authorized_for_org'
+      using hint = 'caller must be an active agent+ member of the organization';
+  end if;
+
+  if p_to_user_id is not null then
+    if coalesce(public.fn_member_role_in_org(p_to_user_id, p_organization_id), 'none')
+         not in ('agent','manager','admin') then
+      raise exception 'assignee_not_eligible_member'
+        using hint = 'target must be an active agent+ member of the organization';
+    end if;
+  end if;
+
+  select assigned_to_user_id into v_from
+    from public.conversations
+   where id = p_conversation_id
+     and organization_id = p_organization_id
+   for update;
+
+  if not found then
+    return;
+  end if;
+
+  if p_enforce_expected and v_from is distinct from p_expected_assignee then
+    return;
+  end if;
+
+  update public.conversations
+     set assigned_to_user_id = p_to_user_id,
+         assigned_at = case when p_to_user_id is null then null else now() end,
+         assignee_kind = case when p_to_user_id is null then null else 'user' end,
+         status = case when p_to_user_id is null then 'open' else 'claimed' end,
+         status_changed_at = now(),
+         unread_count_for_assignee = 0,
+         -- A trava só é solta por quem a pôs. `last_handoff_at` é o discriminador
+         -- que já existe: uma ESCALAÇÃO o carimba (`performHumanHandoff` e
+         -- `triggerHandoff`), um humano ASSUMINDO não. Sem esta condição, o
+         -- release apagaria o silêncio de uma conversa que a IA escalou — e o
+         -- caminho legado (`triggerHandoff`, usado pelo MCP, pelo handler de
+         -- sentimento, pelo worker e pelo teto de gasto) NÃO grava
+         -- `contacts.force_human`, então ali o silêncio é a ÚNICA trava. Medido:
+         -- `grep -n force_human lib/ai/handoff/orchestrator.ts` → rc=1.
+         -- Soltar de propósito é o botão "Devolver ao automático"
+         -- (`devolverAtendimentoAoAgente`), que limpa as três travas de uma vez.
+         bot_silenced_until = case
+           when p_reason = 'routing'  then bot_silenced_until
+           when p_to_user_id is null  then (case when last_handoff_at is null
+                                                 then null
+                                                 else bot_silenced_until end)
+           else 'infinity'::timestamptz
+         end,
+         updated_at = now()
+   where id = p_conversation_id
+   returning * into v_conv;
+
+  insert into public.conversation_assignment_events
+    (organization_id, conversation_id, from_user_id, to_user_id, changed_by, reason)
+  values
+    (p_organization_id, p_conversation_id, v_from, p_to_user_id, auth.uid(), p_reason);
+
+  return next v_conv;
+end;
+$$;
+
+-- As DUAS origens de EXECUTE (doutrina, item 9): `revoke from public` não remove o
+-- grant direto que `anon` carrega via ALTER DEFAULT PRIVILEGES, e `revoke from anon`
+-- não remove o grant a PUBLIC dado na criação. Re-asseridas: é SECURITY DEFINER que
+-- reatribui conversa.
+revoke all     on function public.fn_conversation_assign(uuid, uuid, uuid, text, uuid, boolean) from public;
+revoke execute on function public.fn_conversation_assign(uuid, uuid, uuid, text, uuid, boolean) from anon;
+grant  execute on function public.fn_conversation_assign(uuid, uuid, uuid, text, uuid, boolean)
+  to authenticated, service_role;
+
+-- ---- o histórico de atribuição herda o escopo da conversa (migration 0173) ----
+-- Medido: org em `visibility_mode='own'`, agent que não é dono → `select` em
+-- `conversations` devolve 0 linhas e `select` em `conversation_assignment_events` da
+-- MESMA conversa devolve 1. A policy era membership de org pura enquanto
+-- `conversations_select` passa por `fn_can_view_conversation`. A tabela vive no
+-- schema `public`, então isso é alcançável pelo PostgREST com a anon key + o JWT do
+-- usuário — não depende de existir rota nossa.
+--
+-- Molde do `messages_select`: o `exists` sobre `conversations` já aplica a RLS de
+-- `conversations`, então o escopo é HERDADO em vez de reescrito — duas cópias da
+-- mesma regra divergem na primeira mudança de uma delas.
+drop policy if exists cae_select on public.conversation_assignment_events;
+create policy cae_select on public.conversation_assignment_events
+  for select using (
+    public.fn_is_platform_admin()
+    or (
+      -- O filtro de org fica, mesmo com o `exists` ao lado. Os dois predicados
+      -- respondem perguntas DIFERENTES: o `exists` diz "você enxerga esta
+      -- conversa?", e este diz "esta LINHA é da sua organização?". A policy de
+      -- INSERT (intocada) permite gravar uma linha com o `organization_id` de um
+      -- tenant e o `conversation_id` de outro; sem esta metade, quem enxerga a
+      -- conversa apontada leria a linha do tenant vizinho.
+      organization_id in (select public.fn_user_org_ids())
+      and exists (
+        select 1
+          from public.conversations c
+         where c.id = conversation_assignment_events.conversation_id
+      )
+    )
+  );
+
+-- ---- LGPD alcança o histórico de captação: função + trigger (migration 0174) ----
+--
+-- A PRIMEIRA metade da 0174. Está aqui, e não no fim do arquivo, porque cria
+-- FUNÇÃO — e o bloco da VARREDURA anon (logo abaixo) proíbe qualquer
+-- `create function` depois dele: a função nasceria com EXECUTE para `anon` em
+-- quem ATUALIZA, sem nada mais adiante para tirar. A tabela vai no bloco do
+-- fim, e a ordem entre os dois não importa: o corpo de uma plpgsql só resolve
+-- os nomes na execução, e o trigger é de UPDATE (nada dispara durante o
+-- baseline).
+--
+-- `fn_lgpd_cascade_redact_contact` tem 180 linhas; acrescentar um 9º passo
+-- exigiria reescrevê-la inteira aqui, e a partir daí existiriam duas cópias —
+-- a do dump e a do apêndice — que divergem no primeiro conserto que alguém
+-- fizer na de cima. O gancho é a transição `is_anonymized false → true` na
+-- própria `contacts`, que é o último fato da anonimização e roda na MESMA
+-- transação do cascade. E alcança mais que o 9º passo alcançaria: qualquer
+-- caminho que anonimize um contato passa por este UPDATE.
+create or replace function public.fn_redigir_captacoes_do_contato_anonimizado()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+begin
+  update public.webhook_lead_captures
+     set captured_name = null,
+         captured_phone = null,
+         captured_email = null,
+         fields = '{}'::jsonb,
+         utm = '{}'::jsonb,
+         remote_ip = null,
+         user_agent = null
+   where organization_id = new.organization_id
+     and contact_id = new.id;
+  return new;
+end;
+$$;
+
+revoke execute on function public.fn_redigir_captacoes_do_contato_anonimizado() from public, anon, authenticated;
+grant execute on function public.fn_redigir_captacoes_do_contato_anonimizado() to service_role;
+
+notify pgrst, 'reload schema';
+
 -- ---- VARREDURA anon: função nova nasce exposta em quem ATUALIZA (migration 0116) ----
 --
 -- ⚠️ ESTE BLOCO É, DE PROPÓSITO, O ÚLTIMO DO ARQUIVO. Apêndice novo entra ANTES
@@ -14574,5 +14774,124 @@ update public.contacts
           || '9'
           || substring(regexp_replace(contacts.phone_number, '\D', '', 'g') from 5)
    );
+
+-- ---- histórico DURÁVEL de leads captados: tabela (migration 0174) ----
+--
+-- A SEGUNDA metade da 0174. A função e o trigger de LGPD estão ANTES do bloco
+-- da VARREDURA anon, e a razão está escrita lá.
+--
+-- Quem publica uma landing page precisa responder depois: "chegou alguém?",
+-- "com que dados?" e "de onde?". A única coisa que existia era o ARQUIVO
+-- FORENSE (`webhook_events_log`), que é DESCARTÁVEL por desenho: o cron
+-- `webhook-log-retention` zera `raw_body`/`payload_parsed`/`headers` em D+7 e
+-- apaga a linha em D+90 (migration 0163). Foi a decisão certa — ele era 468 MB
+-- de um banco de 545 MB numa instalação real — mas transforma qualquer
+-- histórico construído sobre ele numa tela que MENTE a partir do sétimo dia.
+--
+-- O que esta tabela guarda e o arquivo não guardava: o IP em coluna tipada (lá
+-- ele só existia solto dentro de `headers`, que é podado); o DESFECHO (o
+-- arquivo registra "chegou um POST" e não sabe se virou lead, se caiu na
+-- deduplicação, ou se foi RECUSADO — que é justamente o caso em que a pessoa
+-- não vê nada hoje); e o nome da fonte NO MOMENTO da captação.
+--
+-- RLS exige `manager`: `fields` carrega o formulário como a pessoa preencheu, e
+-- a policy de `webhook_events_log` é org-flat sem gate de papel — qualquer
+-- `viewer` lê aquela PII pelo PostgREST, mesmo com a rota HTTP exigindo
+-- manager. Não repetir o buraco. Sem policy de escrita: só o service role
+-- escreve (a rota pública de captação), e ele bypassa RLS.
+create table if not exists public.webhook_lead_captures (
+  id uuid primary key default gen_random_uuid(),
+  organization_id uuid not null references public.organizations(id) on delete cascade,
+  webhook_source_id uuid references public.webhook_sources(id) on delete set null,
+  source_name text not null,
+  lead_id uuid references public.crm_leads(id) on delete set null,
+  contact_id uuid references public.contacts(id) on delete set null,
+  outcome text not null
+    check (outcome in ('criado', 'duplicado', 'recusado')),
+  reject_reason text,
+  captured_name text,
+  captured_phone text,
+  captured_email text,
+  fields jsonb not null default '{}'::jsonb,
+  utm jsonb not null default '{}'::jsonb,
+  remote_ip inet,
+  user_agent text,
+  origin text,
+  request_id uuid,
+  received_at timestamptz not null default now()
+);
+
+create index if not exists webhook_lead_captures_org_recebido_idx
+  on public.webhook_lead_captures (organization_id, received_at desc, id desc);
+create index if not exists webhook_lead_captures_fonte_idx
+  on public.webhook_lead_captures (webhook_source_id, received_at desc)
+  where webhook_source_id is not null;
+create index if not exists webhook_lead_captures_lead_idx
+  on public.webhook_lead_captures (lead_id)
+  where lead_id is not null;
+create index if not exists webhook_lead_captures_poda_idx
+  on public.webhook_lead_captures (received_at);
+
+comment on table public.webhook_lead_captures is
+  'Histórico DURÁVEL de leads captados por formulário/webhook: o que chegou, quando, de onde (IP, página, UTM) e no que deu. '
+  'Distinto de webhook_events_log, que é arquivo forense e é PODADO (corpo em D+7, linha em D+90).';
+comment on column public.webhook_lead_captures.remote_ip is
+  'IP de origem do POST, lido de x-forwarded-for/x-real-ip. Informativo — forjável, nada no produto decide com base nele. NULL = não havia proxy à frente.';
+comment on column public.webhook_lead_captures.outcome is
+  'criado = virou lead novo; duplicado = mesmo external_id já capturado antes (retry da ferramenta); recusado = não entrou (reject_reason diz por quê).';
+comment on column public.webhook_lead_captures.source_name is
+  'Nome da fonte NO MOMENTO da captação. Cópia deliberada: a fonte pode ser renomeada ou excluída, e o histórico responde de onde o contato veio.';
+
+alter table public.webhook_lead_captures enable row level security;
+
+drop policy if exists "webhook_lead_captures_manager_read" on public.webhook_lead_captures;
+create policy "webhook_lead_captures_manager_read" on public.webhook_lead_captures
+  for select using (
+    public.fn_is_platform_admin()
+    or ((organization_id in (select public.fn_user_org_ids()))
+        and public.fn_role_at_least(organization_id, 'manager'))
+  );
+
+-- O trigger vive aqui (e não com a função, no bloco de cima) porque só faz
+-- sentido depois que a tabela existe.
+drop trigger if exists trg_redigir_captacoes_ao_anonimizar on public.contacts;
+create trigger trg_redigir_captacoes_ao_anonimizar
+  after update of is_anonymized on public.contacts
+  for each row
+  when (new.is_anonymized is true and old.is_anonymized is distinct from true)
+  execute function public.fn_redigir_captacoes_do_contato_anonimizado();
+
+
+-- ---- a automação precisa poder dizer "ainda não" (migration 0175) ----
+--
+-- `automation_rule_runs.status` aceitava success/partial/failed. Faltava o
+-- quarto estado que o motor JÁ produz: quando uma ação de envio pede adiamento
+-- (fora da janela do número, cap diário), `runAutomationForEvent` devolve
+-- `retry` e sai SEM GRAVAR LINHA NENHUMA — e a aba Atividade não mostra nada
+-- enquanto isso. Para quem montou a regra, "não apareceu nada" e "não rodou"
+-- são a mesma tela.
+--
+-- Valor novo em vez de reusar `partial`: `partial` é "algumas ações falharam" e
+-- a tela pinta de amarelo com esse texto; adiamento não é falha nenhuma.
+--
+-- CHECK reconstruído em UM bloco só (lição do #159, a mesma de
+-- `agent_inbox_items_kind_check`): N blocos quebram o `update.sh` de um clone
+-- com vocabulário posterior. Aditiva — só alarga o conjunto, nada a corrigir
+-- antes.
+alter table public.automation_rule_runs
+  drop constraint if exists automation_rule_runs_status_check;
+
+alter table public.automation_rule_runs
+  add constraint automation_rule_runs_status_check check (status in (
+    'success',
+    'partial',
+    'failed',
+    'adiado'
+  ));
+
+comment on column public.automation_rule_runs.status is
+  'success = todas as ações funcionaram; partial = algumas falharam; failed = todas falharam; '
+  'adiado = nada chegou ao cliente e ainda pode chegar — a regra espera a janela de envio do '
+  'número, ou a mensagem ficou na fila do canal.';
 
 notify pgrst, 'reload schema';
