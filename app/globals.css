@@ -141,6 +141,37 @@
   --input: var(--color-border);
   --ring: var(--color-accent-500);
   --radius: var(--radius-md);
+  /* ---- Agenda · cor de pessoa (8 trilhas) ------------------------------
+   * Quem é o dono do compromisso é o eixo visual da grade, e a accent NÃO
+   * serve para isso: ela é substituída em runtime pelo revendedor
+   * (`<style id="marca-instalacao">` no layout), então uma agenda pintada
+   * com ela ficaria monocromática — e azul — na instalação que comprou a
+   * marca em azul.
+   *
+   * Os OITO MATIZES saem de Okabe-Ito, a paleta desenhada para daltonismo
+   * (protanopia/deuteranopia/tritanopia): a separação entre eles não é gosto
+   * meu, é a escolha publicada que já resolveu esse problema. O que ajustei
+   * foi luminosidade e saturação — o original é saturado demais para uma
+   * tela que alguém encara 8h/dia, e o amarelo #F0E442 dele tem contraste
+   * indefensável sobre fundo claro. Nenhum matiz cai na faixa da Sage
+   * (verde-amarelado ~110°), para cor de pessoa nunca ser confundida com
+   * estado do sistema.
+   *
+   * MESMO ASSIM, cor nunca é a única informação: todo lugar que usa uma
+   * destas trilhas carrega junto a inicial da pessoa.
+   *
+   * O fundo suave de cada bloco é derivado com `color-mix` no ponto de uso,
+   * não duplicado aqui — assim a relação entre a faixa e o fundo é uma só,
+   * e não dois hex que envelhecem separados.
+   */
+  --agenda-pessoa-1: #1b6494;   /* azul */
+  --agenda-pessoa-2: #a75a30;   /* terracota */
+  --agenda-pessoa-3: #0f7358;   /* jade */
+  --agenda-pessoa-4: #7b4a92;   /* ameixa */
+  --agenda-pessoa-5: #a8455f;   /* framboesa */
+  --agenda-pessoa-6: #7f6a1a;   /* ocre */
+  --agenda-pessoa-7: #136e80;   /* petróleo */
+  --agenda-pessoa-8: #5a55a3;   /* índigo */
 }
 
 /* ─────────────────────────────────────────────────────────────────────────
@@ -236,6 +267,21 @@
   --border: var(--color-border);
   --input: var(--color-border);
   --ring: var(--color-accent-500);
+  /* ---- Agenda · cor de pessoa (espelho do :root) -----------------------
+   * Espelhado aqui porque o tema escuro sobrescreve estas oito chaves, e
+   * `tests/unit/branding-tema-claro-escopavel.test.ts` exige que este bloco
+   * cubra EXATAMENTE o que o escuro cobre: uma subárvore `data-theme="light"`
+   * dentro de página escura herdaria os valores escuros, e a amostra de cor
+   * mentiria sobre a cor que a pessoa tem.
+   */
+  --agenda-pessoa-1: #1b6494;   /* azul */
+  --agenda-pessoa-2: #a75a30;   /* terracota */
+  --agenda-pessoa-3: #0f7358;   /* jade */
+  --agenda-pessoa-4: #7b4a92;   /* ameixa */
+  --agenda-pessoa-5: #a8455f;   /* framboesa */
+  --agenda-pessoa-6: #7f6a1a;   /* ocre */
+  --agenda-pessoa-7: #136e80;   /* petróleo */
+  --agenda-pessoa-8: #5a55a3;   /* índigo */
 }
 
 [data-theme="dark"] {
@@ -324,6 +370,18 @@
   --border: var(--color-border);
   --input: var(--color-border);
   --ring: var(--color-accent-400);
+  /* ---- Agenda · cor de pessoa (tema escuro) ----------------------------
+   * Mais claras e menos saturadas que as do claro: sobre `#161510` a versão
+   * escura de cada matiz sumiria. Mesma ordem, mesmos nomes.
+   */
+  --agenda-pessoa-1: #7cb8dd;
+  --agenda-pessoa-2: #e6a077;
+  --agenda-pessoa-3: #5cc3a0;
+  --agenda-pessoa-4: #c79bd8;
+  --agenda-pessoa-5: #e88ba0;
+  --agenda-pessoa-6: #cfb457;
+  --agenda-pessoa-7: #5fbdd0;
+  --agenda-pessoa-8: #a49ee8;
 }
 
 @layer base {
@@ -496,5 +554,65 @@
        Ele dura os PULSE_MS inteiros (useBoard.ts), NÃO os 320ms da animação:
        a diferença entre os dois números é deliberada e está explicada lá. */
     border-color: var(--color-accent);
+  }
+}
+
+/* ---- Agenda · a coluna de horários que desliza para dentro ----------------
+   O painel de marcação tem três tempos (escolher dia → escolher horário →
+   confirmar) e a coluna de horários NÃO existe no primeiro. Quando o dia é
+   escolhido, ela entra pela direita e o painel cresce — é isso que dá a
+   sensação de "abriu" em vez de "trocou de tela", e é o único motivo pelo qual
+   um painel de marcação parece fluido em vez de parecer um formulário de três
+   páginas.
+
+   Por que `width` e `grid-template-columns` não: animar a coluna do grid
+   funciona em Chrome recente e falha calado em Safari, e este produto roda no
+   celular do dono da clínica. `width` + `overflow: hidden` anima em tudo.
+
+   `tailwindcss-animate` NÃO está instalado neste repo (`plugins: []` no
+   tailwind.config.ts) — `animate-in`/`slide-in-from-*` são classes que não
+   existem e falham em silêncio. Os seis Sheets em produção abrem sem transição
+   nenhuma por causa disso. Daí este bloco ser CSS à mão, no modelo do
+   `.card-pulse` acima, que é o precedente local. */
+.agenda-coluna-horarios {
+  width: 0;
+  opacity: 0;
+  overflow: hidden;
+  transform: translateX(8px);
+  transition:
+    width var(--duration-base) var(--ease-out),
+    opacity var(--duration-base) var(--ease-out),
+    transform var(--duration-base) var(--ease-out);
+}
+
+.agenda-coluna-horarios[data-aberta="true"] {
+  width: var(--agenda-largura-horarios, 240px);
+  opacity: 1;
+  transform: translateX(0);
+}
+
+/* A borda só existe quando a coluna existe. Deixá-la no estado fechado
+   desenharia um risco vertical de 1px no meio de um painel sem coluna
+   nenhuma — e daria à coluna "de largura zero" um retângulo de 1px de
+   largura, que é uma medida difícil de explicar a quem lê o teste. */
+@media (min-width: 768px) {
+  .agenda-coluna-horarios[data-aberta="true"] {
+    border-left: 1px solid var(--color-border);
+  }
+}
+
+@media (min-width: 1024px) {
+  .agenda-coluna-horarios[data-aberta="true"] {
+    width: var(--agenda-largura-horarios-lg, 280px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* O destino é o MESMO — só chega sem o percurso. Esconder a coluna, ou
+     entregá-la por um caminho diferente, faria de "movimento reduzido" uma
+     versão pior do produto em vez de uma versão calma dele. */
+  .agenda-coluna-horarios {
+    transition: none;
+    transform: none;
   }
 }
