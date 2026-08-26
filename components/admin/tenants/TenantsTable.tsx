@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/table";
 import { Buildings } from "@/lib/ui/icons";
 import type { AdminTenantRow } from "@/hooks/useAdminTenants";
+import { useT } from "@/hooks/i18n/useT";
 
 // ---------------------------------------------------------------------------
 // Status badge
@@ -42,11 +43,12 @@ function StatusBadge({
   status: string;
   onboardedAt: string | null;
 }) {
+  const t = useT();
   // 'onboarding' não existe no banco — é derivado: ativo sem onboarding concluído.
   const effective = status === "active" && !onboardedAt ? "onboarding" : status;
   return (
     <Badge variant={STATUS_VARIANTS[effective] ?? "neutral"}>
-      {STATUS_LABELS[effective] ?? effective}
+      {t(STATUS_LABELS[effective] ?? effective)}
     </Badge>
   );
 }
@@ -84,12 +86,13 @@ function shortCnpj(cnpj: string | null): string {
 // ---------------------------------------------------------------------------
 
 export function TenantsTableSkeleton() {
+  const t = useT();
   return (
     <div className="rounded-md border">
       <Table>
         <TableHeader>
           <TableRow>
-            {["Slug", "Nome", "CNPJ", "Status", "Users", "Conversas", "Criado em", ""].map(
+            {["Slug", t("Nome"), "CNPJ", t("Status"), t("Users"), t("Conversas"), t("Criado em"), ""].map(
               (h) => (
                 <TableHead key={h}>{h}</TableHead>
               ),
@@ -129,13 +132,14 @@ export function TenantsTable({
   isFetchingNextPage,
   onLoadMore,
 }: TenantsTableProps) {
+  const t = useT();
   if (data.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center gap-3 rounded-md border py-16 text-center text-muted-foreground">
         <Buildings size={36} weight="duotone" className="opacity-40" aria-hidden />
-        <p className="text-sm font-medium">Nenhum tenant encontrado</p>
+        <p className="text-sm font-medium">{t("Nenhum tenant encontrado")}</p>
         <p className="max-w-xs text-xs opacity-70">
-          Ajuste os filtros ou crie um novo tenant.
+          {t("Ajuste os filtros ou crie um novo tenant.")}
         </p>
       </div>
     );
@@ -148,12 +152,12 @@ export function TenantsTable({
           <TableHeader>
             <TableRow>
               <TableHead className="w-[140px]">Slug</TableHead>
-              <TableHead>Nome</TableHead>
+              <TableHead>{t("Nome")}</TableHead>
               <TableHead className="w-[130px]">CNPJ</TableHead>
-              <TableHead className="w-[110px]">Status</TableHead>
-              <TableHead className="w-[70px] text-right">Users</TableHead>
-              <TableHead className="w-[90px] text-right">Conversas</TableHead>
-              <TableHead className="w-[90px]">Criado em</TableHead>
+              <TableHead className="w-[110px]">{t("Status")}</TableHead>
+              <TableHead className="w-[70px] text-right">{t("Users")}</TableHead>
+              <TableHead className="w-[90px] text-right">{t("Conversas")}</TableHead>
+              <TableHead className="w-[90px]">{t("Criado em")}</TableHead>
               <TableHead className="w-[60px]" />
             </TableRow>
           </TableHeader>
@@ -182,7 +186,7 @@ export function TenantsTable({
                     href={`/admin/tenants/${row.id}`}
                     className="text-xs font-medium text-accent hover:underline"
                   >
-                    Ver
+                    {t("Ver")}
                   </Link>
                 </TableCell>
               </TableRow>
@@ -199,7 +203,7 @@ export function TenantsTable({
             onClick={onLoadMore}
             disabled={isFetchingNextPage}
           >
-            {isFetchingNextPage ? "Carregando..." : "Carregar mais"}
+            {isFetchingNextPage ? t("Carregando...") : t("Carregar mais")}
           </Button>
         </div>
       )}

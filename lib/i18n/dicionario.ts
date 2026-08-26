@@ -2132,6 +2132,43 @@ export const DICIONARIO: Traducoes = {
   "tenants com gasto acumulado ≥80% do teto": {
     es: "tenants con gasto acumulado ≥80% del tope",
   },
+
+  // ─── Admin de plataforma: Tenants (lista + criação) ───
+  "Novo tenant": { es: "Nuevo tenant" },
+  "Buscar por nome, slug ou CNPJ...": { es: "Buscar por nombre, slug o CNPJ..." },
+  "Buscar tenants": { es: "Buscar tenants" },
+  Onboarding: { es: "Onboarding" },
+  Suspenso: { es: "Suspendido" },
+  Redigido: { es: "Redactado" },
+  Conversas: { es: "Conversaciones" },
+  "Nenhum tenant encontrado": { es: "Ningún tenant encontrado" },
+  "Ajuste os filtros ou crie um novo tenant.": {
+    es: "Ajusta los filtros o crea un nuevo tenant.",
+  },
+  Ver: { es: "Ver" },
+  "Tenant criado com sucesso!": { es: "¡Tenant creado con éxito!" },
+  "Este slug já está em uso": { es: "Este slug ya está en uso" },
+  "Erro ao criar tenant:": { es: "Error al crear el tenant:" },
+  "Erro inesperado ao criar tenant": { es: "Error inesperado al crear el tenant" },
+  "Novo Tenant": { es: "Nuevo Tenant" },
+  "Cria um novo tenant com status": { es: "Crea un nuevo tenant con estado" },
+  "Dados do tenant": { es: "Datos del tenant" },
+  "Loja da Maria": { es: "Tienda de María" },
+  "Mínimo 2 caracteres": { es: "Mínimo 2 caracteres" },
+  "Máximo 120 caracteres": { es: "Máximo 120 caracteres" },
+  "Máximo 40 caracteres": { es: "Máximo 40 caracteres" },
+  "Apenas letras minúsculas, números e hífens": {
+    es: "Solo letras minúsculas, números y guiones",
+  },
+  "Apenas letras minúsculas, números e hífens. Gerado automaticamente.": {
+    es: "Solo letras minúsculas, números y guiones. Se genera automáticamente.",
+  },
+  "Maria da Silva LTDA": { es: "María García LTDA" },
+  "E-mail inválido": { es: "Email inválido" },
+  Plano: { es: "Plan" },
+  "E-mail do responsável": { es: "Email del responsable" },
+  "Criando...": { es: "Creando..." },
+  "Criar tenant": { es: "Crear tenant" },
 };
 
 /**
