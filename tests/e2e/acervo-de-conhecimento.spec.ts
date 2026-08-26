@@ -29,7 +29,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type BrowserContext, type Page } from "@playwright/test";
 
 import { lerCreds, loginComoAdmin, type CredsE2E } from "./helpers/login-admin";
 
@@ -63,18 +63,24 @@ interface CredsAcervo {
 let creds: CredsE2E = lerCreds();
 
 /**
- * Login que sobrevive ao banco COMPARTILHADO.
+ * UMA SESSÃO PARA A JORNADA INTEIRA — e não um login por caso.
  *
- * `seed-e2e-credentials.ts` rotaciona o fator TOTP do admin, e várias frentes
- * usam este mesmo Supabase local: quando isso acontece no meio da bateria, o
- * `.e2e-creds.json` em disco aponta para um fator que não existe mais e todo
- * login falha com "MFA falhou" — sintoma que lê como bug de senha. O helper
- * re-semeia e devolve as credenciais novas; guardá-las é o que evita repetir o
- * mesmo código TOTP no teste seguinte (o servidor aceita cada um UMA vez).
+ * Duas razões, e a segunda é a que derrubou a bateria:
+ *
+ *  1. **É o que a pessoa faz.** Ninguém entra seis vezes para cadastrar um
+ *     material, ver os trechos e marcar num assistente. Um login por caso
+ *     mediria uma jornada que não existe.
+ *  2. **O produto limita login por IP** (60 por 300 s, e no teste todos vêm do
+ *     mesmo 127.0.0.1). Seis logins deste arquivo, somados aos das execuções
+ *     anteriores, estouram o teto — e o sintoma é a tela de MFA que nunca
+ *     renderiza, que se lê como bug do segundo fator. Medido aqui: o último
+ *     caso caiu em `input[aria-label="Dígito 1"]` sem nunca aparecer.
+ *
+ * A sessão vive no `beforeAll`; cada caso reusa a MESMA aba. Em `mode: serial`
+ * com um worker, isso é seguro e é o que o Playwright recomenda para jornada.
  */
-async function entrarComoAdmin(page: Page): Promise<void> {
-  creds = (await loginComoAdmin(page, creds)) as CredsE2E;
-}
+let contexto: BrowserContext;
+let page: Page;
 
 function agentes(): { a: string; b: string } {
   const p = path.join(process.cwd(), ".e2e-creds.json");
@@ -120,8 +126,19 @@ test.describe("acervo de conhecimento", () => {
   // o que reprovava era o relógio, não o produto.
   test.describe.configure({ mode: "serial", timeout: 180_000 });
 
-  test("sem chave de embedding, a tela DIZ — e oferece o conserto ali mesmo", async ({ page }) => {
-    await entrarComoAdmin(page);
+  test.beforeAll(async ({ browser }) => {
+    contexto = await browser.newContext();
+    page = await contexto.newPage();
+    // O helper re-semeia quando o fator TOTP foi rotacionado por outra frente
+    // no mesmo Supabase local — sem isso, "MFA falhou" acusa a tela de MFA.
+    creds = (await loginComoAdmin(page, creds)) as CredsE2E;
+  });
+
+  test.afterAll(async () => {
+    await contexto?.close();
+  });
+
+  test("sem chave de embedding, a tela DIZ — e oferece o conserto ali mesmo", async () => {
     await page.goto("/app/ai/knowledge/sources");
 
     // Um dos dois tem de estar na tela; qual, depende de a organização já ter
@@ -137,11 +154,24 @@ test.describe("acervo de conhecimento", () => {
     }
   });
 
-  test("cadastrar material sem chave: ele fica ESPERANDO, e a tela não mente", async ({ page }) => {
-    await entrarComoAdmin(page);
+  test("cadastrar material sem chave: ele fica ESPERANDO, e a tela não mente", async () => {
     await page.goto("/app/ai/knowledge/sources");
 
-    const semChave = await page.getByTestId("conhecimento-sem-chave").isVisible();
+    // ESPERAR O ESTADO ANTES DE PERGUNTAR POR ELE.
+    //
+    // `isVisible()` NÃO espera: chamado antes de a tela terminar de renderizar,
+    // devolve `false` e o `test.skip` abaixo dispara — o caso some do relatório
+    // como "pulado", que se lê igual a "não se aplica aqui". Cobertura parcial
+    // silenciosa é o modo de falha que este repo mais persegue, e foi medido
+    // exatamente assim nesta bateria.
+    const semChaveLoc = page.getByTestId("conhecimento-sem-chave");
+    await expect(
+      semChaveLoc.or(page.getByTestId("conhecimento-chave-ok")).or(
+        page.getByTestId("conhecimento-chave-conferindo"),
+      ),
+    ).toBeVisible({ timeout: 30_000 });
+
+    const semChave = await semChaveLoc.isVisible();
     test.skip(
       !semChave,
       "esta organização já tem chave de embedding — o estado 'esperando' não é alcançável aqui",
@@ -172,15 +202,12 @@ test.describe("acervo de conhecimento", () => {
     await expect(page.getByText("Esperando a chave").first()).toBeVisible({ timeout: 20_000 });
   });
 
-  test("com a chave cadastrada pela tela, perguntas e respostas viram trecho buscável", async ({
-    page,
-  }) => {
+  test("com a chave cadastrada pela tela, perguntas e respostas viram trecho buscável", async () => {
     test.skip(
       CHAVE_OPENAI.length === 0,
       "OPENAI_API_KEY_E2E ausente: embedding com dublê provaria a chamada, não o material buscável",
     );
 
-    await entrarComoAdmin(page);
     await page.goto("/app/ai/knowledge/sources");
 
     if (await page.getByTestId("conhecimento-sem-chave").isVisible()) {
@@ -207,12 +234,9 @@ test.describe("acervo de conhecimento", () => {
     await expect(page.getByTestId("material-trechos-lista")).toContainText("2 a 3 dias úteis");
   });
 
-  test("documento enviado como arquivo também vira trecho — não só pergunta e resposta", async ({
-    page,
-  }) => {
+  test("documento enviado como arquivo também vira trecho — não só pergunta e resposta", async () => {
     test.skip(CHAVE_OPENAI.length === 0, "OPENAI_API_KEY_E2E ausente");
 
-    await entrarComoAdmin(page);
     await page.goto("/app/ai/knowledge/sources");
 
     await page.getByTestId("acervo-adicionar").click();
@@ -237,14 +261,11 @@ test.describe("acervo de conhecimento", () => {
     await expect(page.getByTestId("material-trechos-lista")).toContainText("30 dias corridos");
   });
 
-  test("o assistente ESCOLHE o que lê, e a escolha é dele — não do primeiro da organização", async ({
-    page,
-  }) => {
+  test("o assistente ESCOLHE o que lê, e a escolha é dele — não do primeiro da organização", async () => {
     test.skip(CHAVE_OPENAI.length === 0, "OPENAI_API_KEY_E2E ausente");
 
     const { a, b } = agentes();
 
-    await entrarComoAdmin(page);
 
     // O assistente B (que NÃO é o primeiro da organização) marca a FAQ.
     await page.goto(`/app/ai/agents/${b}`);
@@ -268,12 +289,9 @@ test.describe("acervo de conhecimento", () => {
     expect(marcadosEmA, "o assistente A não deveria ter herdado a marcação do B").toBe(0);
   });
 
-  test("acervo que nenhum assistente lê é DITO — dinheiro gasto sem efeito era invisível", async ({
-    page,
-  }) => {
+  test("acervo que nenhum assistente lê é DITO — dinheiro gasto sem efeito era invisível", async () => {
     test.skip(CHAVE_OPENAI.length === 0, "OPENAI_API_KEY_E2E ausente");
 
-    await entrarComoAdmin(page);
     await page.goto("/app/ai/knowledge/sources");
 
     const cartaoDoc = page
