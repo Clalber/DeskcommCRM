@@ -1218,6 +1218,43 @@ export const DICIONARIO: Traducoes = {
     {
       es: "Top K = cuántos fragmentos buscar. Similarity threshold = relevancia mínima (cosine). Confidence = umbral por debajo del cual el agente escala a un humano.",
     },
+  "Chaves de acesso à IA": { es: "Claves de acceso a la IA" },
+  "A conta de inteligência artificial é sua: você contrata direto na Anthropic, OpenAI ou Google e cola a chave aqui. Ela é guardada criptografada e nunca mais aparece na tela depois de salva — nem para você.":
+    {
+      es: "La cuenta de inteligencia artificial es tuya: la contratas directo con Anthropic, OpenAI o Google y pegas la clave aquí. Se guarda cifrada y nunca vuelve a aparecer en la pantalla después de guardada — ni siquiera para ti.",
+    },
+  "Nenhuma chave cadastrada ainda": { es: "Todavía no hay ninguna clave registrada" },
+  "Seus agentes só conseguem pensar depois que você cola aqui uma chave da Anthropic, da OpenAI ou do Google. A cobrança vai direto para a sua conta no provedor, e a chave fica guardada criptografada.":
+    {
+      es: "Tus agentes solo pueden pensar después de que pegues aquí una clave de Anthropic, de OpenAI o de Google. El cobro va directo a tu cuenta en el proveedor, y la clave queda guardada cifrada.",
+    },
+  "Adicionar credencial": { es: "Añadir credencial" },
+  Validada: { es: "Validada" },
+  Inválida: { es: "Inválida" },
+  Inativa: { es: "Inactiva" },
+  "Revalidando…": { es: "Revalidando…" },
+  "Credencial removida.": { es: "Credencial eliminada." },
+  "Excluir credencial": { es: "Eliminar credencial" },
+  Modelos: { es: "Modelos" },
+  "Em uso por": { es: "En uso por" },
+  publicado: { es: "publicado" },
+  "Revalidar credencial": { es: "Revalidar credencial" },
+  "Remover credencial": { es: "Quitar credencial" },
+  "Agents que usam esta credencial vão falhar ao executar. Esta ação não pode ser desfeita.": {
+    es: "Los agentes que usan esta credencial fallarán al ejecutarse. Esta acción no se puede deshacer.",
+  },
+  "A chave é cifrada (AES-GCM) antes de gravar e nunca é retornada em texto claro.": {
+    es: "La clave se cifra (AES-GCM) antes de guardarse y nunca se devuelve en texto plano.",
+  },
+  Label: { es: "Etiqueta" },
+  "Ex: Produção": { es: "Ej: Producción" },
+  "Credencial salva. Validando…": { es: "Credencial guardada. Validando…" },
+  "Credencial salva. Validação em segundo plano.": { es: "Credencial guardada. Validación en segundo plano." },
+  "modelos disponíveis.": { es: "modelos disponibles." },
+  "Validação falhou": { es: "La validación falló" },
+  "Salvar e validar": { es: "Guardar y validar" },
+  "Obrigatório": { es: "Obligatorio" },
+  "API key muito curta": { es: "API key demasiado corta" },
 };
 
 /**
