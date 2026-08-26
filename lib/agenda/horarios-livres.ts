@@ -13,26 +13,36 @@
  * dia mente nos dois sentidos: passa quando não devia e falha quando devia
  * passar.
  *
- * ─── A ordem das subtrações, e por que a grade é ancorada na JANELA ────────
+ ─── Duas grandezas que parecem uma: JANELA e INSTANTE ────────────────────
  *
- * 1. As janelas do dia, no fuso da jornada.
- * 2. Menos as exceções de data: as disponíveis SUBSTITUEM a base, as
- *    indisponíveis SUBTRAEM dela (DECISÃO 11 — ver `janelasDoDia`).
- * 3. A grade nasce no início de CADA janela, de `intervaloMin` em `intervaloMin`.
- * 4. Menos os ocupados, com os buffers inflando cada um.
+ * 1. A janela do dia, no fuso da jornada — ou as exceções DISPONÍVEIS, que a
+ *    substituem quando existem (o sábado excepcional vale no lugar da jornada).
+ * 2. Faixas sobrepostas são UNIDAS antes de qualquer coisa (`unirFaixas`).
+ * 3. A grade nasce no início da janela e NÃO SE MOVE, de `intervaloMin` em
+ *    `intervaloMin`.
+ * 4. Menos os ocupados. Compromisso, evento do Google e bloqueio por exceção
+ *    são a MESMA coisa aqui (DECISÃO 12), com o buffer inflando o slot.
  * 5. Menos o que começa antes de `agora + avisoMinimo`.
  * 6. Menos o que passa de `agora + janelaDias`.
  *
- * A ordem entre 3 e 4 é uma DECISÃO, e é o oposto do que parece natural. Se os
- * ocupados fossem subtraídos das janelas ANTES de gradear, a grade recomeçaria
- * no fim de cada compromisso: um paciente marcado às 10h15 faria a tarde inteira
- * ser oferecida às 11h15, 12h15, 13h15. Os horários oferecidos mudariam a cada
- * agendamento, e o dono da clínica veria a agenda dele "andar" sozinha.
+ * ⚠️ NADA REPARTE A JANELA — e essa é a lição que custou uma versão inteira.
  *
- * Ancorando na janela publicada, os horários oferecidos são sempre os mesmos —
- * 09:00, 10:00, 11:00 — e o que está ocupado apenas some da lista. É o que o
- * cal.com faz (`slotInterval` mais `offsetStart` só fazem sentido sobre uma
- * âncora fixa) e é o que o usuário consegue prever.
+ * A versão anterior tratava o bloqueio SUBTRAINDO-O da janela. Parece a mesma
+ * coisa que removê-lo da grade, e não é: subtrair reparte, e o pedaço de depois
+ * começa onde o bloqueio terminou. Uma reunião das 10:30 às 11:30 fazia a tarde
+ * inteira ser oferecida às 12:30, 13:30, 14:30 — e o 17:00-18:00, inteiramente
+ * livre, sumia. A MESMA reunião gravada como compromisso não fazia nada disso.
+ * Duas formas de dizer a mesma coisa, dois resultados.
+ *
+ * Tentei consertar preservando uma âncora através dos cortes, e funcionava.
+ * A decisão do maestro é melhor e é uma REMOÇÃO: fazer dois caminhos
+ * concordarem exige disciplina e volta a divergir no primeiro caso que ninguém
+ * previu; fazer os dois serem o mesmo caminho não tem como divergir.
+ *
+ * Ancorada na janela publicada, a lista oferecida é sempre a mesma — 09:00,
+ * 10:00, 11:00 — e o que está ocupado apenas some dela. É o que o cal.com faz
+ * (`slotInterval` e `offsetStart` só fazem sentido sobre uma âncora fixa) e é o
+ * que o dono da agenda consegue prever.
  *
  * ─── A régua do `windows` vazio é OUTRA aqui ───────────────────────────────
  *
@@ -123,19 +133,10 @@ export interface EntradaDeHorariosLivres {
 const MINUTO = 60_000;
 const DIA = 86_400_000;
 
-/**
- * Faixa em minutos desde a meia-noite LOCAL (é assim que a jornada é escrita).
- *
- * `ancora` é onde a grade daquela janela COMEÇA, e sobrevive aos cortes. Sem
- * ela, um bloqueio das 10:30 às 11:30 faria a tarde inteira ser oferecida às
- * 12:30, 13:30, 14:30 — a agenda "andando sozinha" que o cabeçalho deste
- * arquivo diz impedir. Medido pelo QAVivo: os casos da DECISÃO 11 usam só
- * múltiplos de 60, e para números assim o deslocamento não aparece.
- */
-interface FaixaEmMinutos {
+/** Faixa em minutos desde a meia-noite LOCAL (é assim que a jornada é escrita). */
+export interface FaixaEmMinutos {
   inicio: number;
   fim: number;
-  ancora: number;
 }
 
 /** Faixa em instantes (`getTime()`) — é assim que um compromisso existe. */
@@ -208,36 +209,6 @@ export function unirFaixas(faixas: FaixaEmMinutos[]): FaixaEmMinutos[] {
 }
 
 /**
- * Subtrai uma faixa de uma lista de faixas.
- *
- * ⚠️ ADJACÊNCIA NÃO É SOBREPOSIÇÃO, e é aqui que um sinal trocado come um slot
- * inteiro sem nenhum outro teste reclamar: um bloqueio que termina às 12:00 não
- * toca a janela que começa às 12:00. Por isso `<=` e `>=` na guarda, e `<` e `>`
- * nos dois pedaços que sobram.
- *
- * Cortar no MEIO devolve DUAS faixas — é o caso "almoço estendido", e é a razão
- * de a assinatura ser lista, não faixa única.
- */
-function subtraiFaixa(base: FaixaEmMinutos[], corte: FaixaEmMinutos): FaixaEmMinutos[] {
-  const resto: FaixaEmMinutos[] = [];
-  for (const faixa of base) {
-    if (corte.fim <= faixa.inicio || corte.inicio >= faixa.fim) {
-      resto.push(faixa);
-      continue;
-    }
-    // Os pedaços herdam a âncora da janela-mãe: quem foi cortado continua a
-    // grade original, não recomeça uma nova.
-    if (corte.inicio > faixa.inicio) {
-      resto.push({ inicio: faixa.inicio, fim: corte.inicio, ancora: faixa.ancora });
-    }
-    if (corte.fim < faixa.fim) {
-      resto.push({ inicio: corte.fim, fim: faixa.fim, ancora: faixa.ancora });
-    }
-  }
-  return resto;
-}
-
-/**
  * As faixas de trabalho de um dia — e o ponto onde a agenda diverge do roteamento.
  *
  * ⚠️ `windows` VAZIO SIGNIFICA COISAS OPOSTAS NOS DOIS USOS DESTA MESMA COLUNA:
@@ -279,31 +250,12 @@ function janelasDoDia(
 
   const base: FaixaEmMinutos[] =
     disponiveis.length > 0
-      ? disponiveis.map((e) => ({
-          inicio: e.inicioMinuto,
-          fim: e.fimMinuto,
-          ancora: e.inicioMinuto,
-        }))
+      ? disponiveis.map((e) => ({ inicio: e.inicioMinuto, fim: e.fimMinuto }))
       : jornada.windows
           .filter((w) => w.dow === dow)
-          .map((w) => {
-            const inicio = hhmmParaMinutos(w.start);
-            return { inicio, fim: hhmmParaMinutos(w.end), ancora: inicio };
-          });
+          .map((w) => ({ inicio: hhmmParaMinutos(w.start), fim: hhmmParaMinutos(w.end) }));
 
-  // Unir ANTES de subtrair: sobreposição na base viraria horário em dobro, e a
-  // subtração não conserta isso por acidente — medido.
-  let faixas = unirFaixas(base);
-
-  for (const corte of excecoesDoDia.filter((e) => e.indisponivel)) {
-    faixas = subtraiFaixa(faixas, {
-      inicio: corte.inicioMinuto,
-      fim: corte.fimMinuto,
-      ancora: corte.inicioMinuto,
-    });
-  }
-
-  return faixas;
+  return unirFaixas(base);
 }
 
 /**
@@ -394,6 +346,19 @@ export function horariosLivres(entrada: EntradaDeHorariosLivres): Slot[] {
     // intenção, duas telas, dois resultados. Medido pelo QAVivo; a DECISÃO 11
     // criou o caso, porque antes dela a exceção zerava o dia e não havia borda
     // no meio do dia para o buffer atravessar.
+    // ⚠️ O BLOQUEIO É UM OCUPADO — não uma janela menor (DECISÃO 12).
+    //
+    // A versão anterior SUBTRAÍA o bloqueio da janela, e subtrair repartia: uma
+    // reunião das 10:30 às 11:30 fazia a segunda metade da janela começar às
+    // 11:30, e o relógio inteiro da tarde andava meia hora. Compromisso nunca
+    // fez isso, porque ele REMOVE INSTANTES em vez de REPARTIR A JANELA — as
+    // duas coisas parecem a mesma e não são.
+    //
+    // Aqui os dois viram o MESMO mecanismo, e é por isso que a correção é uma
+    // remoção de código: fazer dois caminhos concordarem exige disciplina e
+    // volta a divergir no caso que ninguém previu; ser o mesmo caminho não tem
+    // como divergir. O buffer passa a valer contra bloqueio de graça, pela
+    // mesma razão.
     const bloqueiosDoDia = [
       ...compromissos,
       ...excecoesDoDia.filter((e) => e.indisponivel).map(emInstantes),
@@ -402,12 +367,7 @@ export function horariosLivres(entrada: EntradaDeHorariosLivres): Slot[] {
     for (const faixa of janelasDoDia(jornada, excecoesDoDia, dow)) {
       const fimDaFaixa = instanteDe(paredeDeMinutos(ano, mes, dia, faixa.fim), fuso).getTime();
 
-      // A grade continua a da JANELA, não recomeça no pedaço: avança da âncora
-      // até o primeiro ponto que caia dentro desta faixa.
-      const primeiroDaGrade =
-        faixa.ancora + Math.ceil((faixa.inicio - faixa.ancora) / passo) * passo;
-
-      for (let minuto = primeiroDaGrade; ; minuto += passo) {
+      for (let minuto = faixa.inicio; ; minuto += passo) {
         const inicio = instanteDe(paredeDeMinutos(ano, mes, dia, minuto), fuso).getTime();
         const fim = inicio + tipo.duracaoMin * MINUTO;
 

@@ -28,6 +28,8 @@ import { describe, expect, it } from "vitest";
 import { partesNoFuso } from "@/lib/agenda/fuso";
 import {
   horariosLivres,
+  unirFaixas,
+  type FaixaEmMinutos,
   type ExcecaoDeData,
   type JornadaDaAgenda,
   type Ocupado,
@@ -418,7 +420,7 @@ describe("exceções por data — o que a jornada semanal não sabe dizer", () =
     expect(horas(slots)).toEqual(["09:00", "10:00", "11:00"]);
   });
 
-  it("dois bloqueios no mesmo dia subtraem os dois, em qualquer ordem de cadastro", () => {
+  it("dois bloqueios disjuntos no mesmo dia tiram os dois", () => {
     const excecoes: ExcecaoDeData[] = [
       { data: "2026-03-09", indisponivel: true, inicioMinuto: 15 * 60, fimMinuto: 16 * 60 },
       { data: "2026-03-09", indisponivel: true, inicioMinuto: 10 * 60, fimMinuto: 11 * 60 },
@@ -433,6 +435,34 @@ describe("exceções por data — o que a jornada semanal não sabe dizer", () =
     });
     expect(horas(slots)).toEqual([
       "09:00", "11:00", "12:00", "13:00", "14:00", "16:00", "17:00",
+    ]);
+  });
+
+  it("bloqueios SOBREPOSTOS dão o mesmo resultado em qualquer ordem de cadastro", () => {
+    // Este teste já existiu com cortes DISJUNTOS, e assim ele não podia falhar:
+    // a ordem só tem como importar quando os cortes se SOBREPÕEM. Medido pelo
+    // QAVivo, na análise de cobertura. Agora eles se sobrepõem — 10h-12h e
+    // 11h-13h — e as duas ordens são comparadas uma com a outra.
+    const comum = {
+      jornada: { timezone: SP, windows: [{ dow: 1, start: "09:00", end: "18:00" }] },
+      ocupados: [],
+      tipo: CONSULTA_DE_1H,
+      ...oDiaDe("2026-03-09"),
+      agora: new Date("2026-03-01T12:00:00Z"),
+    };
+    const a: ExcecaoDeData = {
+      data: "2026-03-09", indisponivel: true, inicioMinuto: 600, fimMinuto: 720,
+    };
+    const b: ExcecaoDeData = {
+      data: "2026-03-09", indisponivel: true, inicioMinuto: 660, fimMinuto: 780,
+    };
+    const numaOrdem = horariosLivres({ ...comum, excecoes: [a, b] });
+    const naOutra = horariosLivres({ ...comum, excecoes: [b, a] });
+
+    expect(horas(numaOrdem)).toEqual(horas(naOutra));
+    // E o buraco é a UNIÃO dos dois: 10h-13h fora, o resto fica.
+    expect(horas(numaOrdem)).toEqual([
+      "09:00", "13:00", "14:00", "15:00", "16:00", "17:00",
     ]);
   });
 });
@@ -776,5 +806,58 @@ describe("no salto do horário de verão, dois horários não podem ser o mesmo 
       "2026-03-08T07:00:00.000Z",
       "2026-03-08T08:00:00.000Z",
     ]);
+  });
+});
+
+/**
+ * `unirFaixas` MERECE TESTE PRÓPRIO — e a razão é uma medição, não estética.
+ *
+ * Os três casos de sobreposição que passam pelo motor **não vigiam esta
+ * função**: sabotei a união sozinha e os 36 continuaram verdes, porque o dedupe
+ * por instante, lá no fim, remove as duplicatas que ela deixou passar. Só
+ * sabotando as DUAS ao mesmo tempo é que vermelharam. Ou seja: quem removesse
+ * `unirFaixas` amanhã não veria nada acontecer.
+ *
+ * A rede que pega tudo é útil e fica. Mas correção-na-origem e rede-no-fim
+ * precisam de testes SEPARADOS, senão uma esconde a ausência da outra. Isto é o
+ * teste da origem; o do salto do horário de verão, lá em cima, é o da rede — e
+ * ele é o único caso que a união não teria como consertar, porque ali as horas
+ * de parede são distintas e só o INSTANTE colide.
+ *
+ * A função é exportada pelo pedido do QAVivo: a agenda é a primeira peça deste
+ * produto que GERA horários a partir de `schedule.windows`, e quem gerar amanhã
+ * herda o buraco se reimplementar inline.
+ */
+describe("unirFaixas — a correção na origem, medida sem passar pelo motor", () => {
+  const f = (inicio: number, fim: number): FaixaEmMinutos => ({ inicio, fim });
+
+  it("funde faixas que se sobrepõem", () => {
+    expect(unirFaixas([f(540, 720), f(600, 780)])).toEqual([f(540, 780)]);
+  });
+
+  it("funde faixas contíguas: 09:00-12:00 e 12:00-18:00 são um bloco só", () => {
+    // A grade tem de fluir através da emenda, senão o meio-dia vira uma âncora
+    // nova e a tarde inteira anda.
+    expect(unirFaixas([f(540, 720), f(720, 1080)])).toEqual([f(540, 1080)]);
+  });
+
+  it("NÃO funde faixas separadas — o almoço continua partindo o dia", () => {
+    expect(unirFaixas([f(540, 720), f(780, 1080)])).toEqual([f(540, 720), f(780, 1080)]);
+  });
+
+  it("engole a faixa inteiramente contida em outra", () => {
+    expect(unirFaixas([f(540, 1080), f(600, 660)])).toEqual([f(540, 1080)]);
+  });
+
+  it("ordena, então a ordem de cadastro não muda o resultado", () => {
+    expect(unirFaixas([f(780, 1080), f(540, 720)])).toEqual(unirFaixas([f(540, 720), f(780, 1080)]));
+  });
+
+  it("descarta faixa degenerada em vez de emitir horário impossível", () => {
+    expect(unirFaixas([f(600, 600), f(720, 700)])).toEqual([]);
+  });
+
+  it("três faixas em cadeia viram uma", () => {
+    expect(unirFaixas([f(540, 660), f(600, 780), f(760, 900)])).toEqual([f(540, 900)]);
   });
 });
