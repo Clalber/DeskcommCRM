@@ -45,6 +45,8 @@ function pedido(query: Record<string, string>): NextRequest {
 
 /** O `upsert` fake, para inspecionar o que foi gravado. */
 let upsertRecebido: Record<string, unknown> | null = null;
+/** O que já está gravado para esta conta, quando o teste quer simular reconexão. */
+let linhaExistente: Record<string, unknown> | null = null;
 let opcoesDoUpsert: Record<string, unknown> | null = null;
 let erroDoUpsert: { message: string } | null = null;
 
@@ -63,12 +65,20 @@ function googleRespondendoBem() {
 beforeEach(() => {
   upsertRecebido = null;
   opcoesDoUpsert = null;
+  linhaExistente = null;
   erroDoUpsert = null;
   vi.stubGlobal("fetch", vi.fn());
   vi.mocked(encryptWebhookSecret).mockResolvedValue("\\xdeadbeef");
   vi.mocked(audit).mockClear();
   vi.mocked(createAdminClient).mockReturnValue({
     from: () => ({
+      select: () => {
+        const cadeia = {
+          eq: () => cadeia,
+          maybeSingle: async () => ({ data: linhaExistente }),
+        };
+        return cadeia;
+      },
       upsert: (linha: Record<string, unknown>, opcoes?: Record<string, unknown>) => {
         upsertRecebido = linha;
         opcoesDoUpsert = opcoes ?? null;
@@ -184,6 +194,57 @@ describe("GET /api/v1/agenda/google/callback", () => {
     for (const coluna of ["organization_id", "user_id", "provider", "account_email"]) {
       expect(chave.split(",").map((c) => c.trim())).toContain(coluna);
     }
+  });
+
+  it("sem chave de renovação e sem uma guardada, RECUSA — conexão morta não nasce healthy", async () => {
+    // Todo o argumento do `prompt=consent` na rota de ida existe para garantir
+    // que a chave venha. Se ainda assim não vier, gravar `healthy` faz a agenda
+    // funcionar por uma hora e parar calada — o relato chega no dia seguinte,
+    // longe daqui, como "minha agenda parou de sincronizar".
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(
+        respostaHttp({ access_token: "ya29.x", expires_in: 3599, scope: ESCOPOS, token_type: "Bearer" }),
+      )
+      .mockResolvedValueOnce(respostaHttp({ id: "ana@clinica.com.br", timeZone: "America/Sao_Paulo" }));
+
+    const res = await chamar({ code: "c", state: estadoValido() });
+    expect(destino(res)).toBe("https://crm.exemplo/app/agenda?erro=sem_token_de_renovacao");
+    expect(upsertRecebido).toBeNull();
+  });
+
+  it("reconexão SEM chave nova preserva a guardada — omitir a coluna, nunca mandar null", async () => {
+    // `on conflict do update` só toca o que recebe. Mandar `null` apagaria a
+    // chave que faz a conexão sobreviver à primeira hora — a mesma armadilha de
+    // `fundirTokens`, um andar acima.
+    linhaExistente = { oauth_refresh_token_encrypted: "\\xJAGUARDADO" };
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(
+        respostaHttp({ access_token: "ya29.x", expires_in: 3599, scope: ESCOPOS, token_type: "Bearer" }),
+      )
+      .mockResolvedValueOnce(respostaHttp({ id: "ana@clinica.com.br", timeZone: "America/Sao_Paulo" }));
+
+    const res = await chamar({ code: "c", state: estadoValido() });
+    expect(destino(res)).toBe("https://crm.exemplo/app/agenda?ok=agenda_conectada");
+    expect(upsertRecebido).not.toHaveProperty("oauth_refresh_token_encrypted");
+    // Controle positivo: a linha FOI montada, então a ausência acima é omissão
+    // deliberada e não objeto vazio.
+    expect(upsertRecebido).toMatchObject({ status: "healthy", account_email: "ana@clinica.com.br" });
+  });
+
+  it("NENHUM audit carrega token — e o audit é append-only por cinco anos", async () => {
+    // `lib/audit` insere `metadata` CRU em `api_audit_log`, sem sanitizador, e a
+    // retenção padrão é de cinco anos. O scrub do Sentry não alcança ali. Hoje a
+    // rota está certa POR HÁBITO — este caso é o mecanismo, que sobrevive à
+    // próxima pessoa.
+    googleRespondendoBem();
+    await chamar({ code: "c", state: estadoValido() });
+    const tudo = JSON.stringify(vi.mocked(audit).mock.calls);
+    expect(tudo).not.toContain("ya29.novo");
+    expect(tudo).not.toContain("1//r");
+    expect(tudo).not.toContain("o-codigo");
+    // Controle positivo: o audit FOI chamado, então as ausências acima são
+    // ausência de token e não ausência de chamada.
+    expect(tudo).toContain("agenda.google.conexao_concluida");
   });
 
   it("quem clicou Cancelar volta sem erro no log — não é falha, é desistência", async () => {

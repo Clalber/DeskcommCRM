@@ -123,6 +123,38 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   //    chave de cifra da instalação não está ativa — e aqui isso vira uma
   //    recusa em português, não a exceção do Postgres que nomeia um parceiro.
   const admin = createAdminClient();
+
+  // ⚠️ SEM `refresh_token` A CONEXÃO NASCE MORTA, e o pior é que ela nasce
+  // parecendo viva. Todo o argumento do `prompt=consent` na rota de ida existe
+  // para garantir que ele venha; se ainda assim não vier, gravar `healthy` faz a
+  // agenda funcionar por uma hora e parar calada — o relato chega no dia
+  // seguinte como "minha agenda parou de sincronizar", longe daqui.
+  //
+  // Reconexão é o caso legítimo em que ele pode faltar: quem já tem uma chave
+  // guardada para ESTA conta não precisa de outra. Por isso a decisão depende do
+  // que já existe, e não só do que veio agora.
+  let refreshJaGuardado = false;
+  if (!token.refresh_token) {
+    const { data: existente } = await admin
+      .from("calendar_connections")
+      .select("oauth_refresh_token_encrypted")
+      .eq("organization_id", organizationId)
+      .eq("user_id", userId)
+      .eq("provider", "google_calendar")
+      .eq("account_email", conta.conta.email)
+      .maybeSingle();
+    refreshJaGuardado = Boolean(existente?.oauth_refresh_token_encrypted);
+
+    if (!refreshJaGuardado) {
+      await audit({
+        action: "agenda.google.conexao_falhou",
+        organizationId,
+        metadata: { reason: "sem_token_de_renovacao", user_id: userId },
+      });
+      return voltar("erro=sem_token_de_renovacao");
+    }
+  }
+
   const accessCifrado = await encryptWebhookSecret(admin, token.access_token);
   const refreshCifrado = token.refresh_token ? await encryptWebhookSecret(admin, token.refresh_token) : null;
   if (!accessCifrado || (token.refresh_token && !refreshCifrado)) {
@@ -143,7 +175,12 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       provider: "google_calendar",
       account_email: conta.conta.email,
       oauth_access_token_encrypted: accessCifrado,
-      oauth_refresh_token_encrypted: refreshCifrado,
+      // Quando o Google não reenviou a chave e já havia uma guardada, a coluna
+      // fica FORA do upsert: `on conflict do update` só toca o que recebe, então
+      // omitir preserva. Mandar `null` aqui apagaria a chave que faz a conexão
+      // sobreviver à primeira hora — é a mesma armadilha de `fundirTokens`, um
+      // andar acima.
+      ...(refreshCifrado ? { oauth_refresh_token_encrypted: refreshCifrado } : {}),
       token_expires_at: token.expira_em,
       scopes: token.scope,
       status: "healthy",

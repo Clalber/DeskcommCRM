@@ -98,6 +98,23 @@ describe("classificarErroDoGoogle — o corpo CRU do Google, que e o que `res.js
     expect(c.motivo).toBe("fullsyncrequired");
   });
 
+  it("410 fullSyncRequired no corpo cru, em operação de ESCRITA, não pode apagar linha", () => {
+    // ⚠️ ESTA É A CÉLULA QUE O RAMO REDUNDANTE ESCONDIA. Nos casos acima o
+    // desfecho certo chega por DOIS caminhos: o motivo (`fullsyncrequired`) e o
+    // par status+operação (410 + sincronizar). Quebrar o extrator de motivo
+    // deixava aqueles verdes no DESFECHO — só o campo `motivo` acusava.
+    //
+    // Com operação de escrita não há ramo redundante: sem o motivo, 410 cai em
+    // `evento_sumiu`, que é o caminho que APAGA A LINHA. É a única célula em que
+    // o extrator de motivo, sozinho, decide entre ressincronizar e apagar.
+    for (const operacao of ["atualizar", "criar"] as const) {
+      expect(desfecho(corpoCru(410, "fullSyncRequired"), operacao)).toBe("ressincronizar");
+    }
+    // Controle positivo: sem o motivo, a MESMA forma e o MESMO status caem no
+    // desfecho perigoso — é isto que a asserção acima impede.
+    expect(desfecho(corpoCru(410, "notFound"), "atualizar")).toBe("evento_sumiu");
+  });
+
   it("401 no corpo cru pede reconexão", () => {
     expect(desfecho(corpoCru(401, "authError"), "listar")).toBe("reautenticar");
   });
