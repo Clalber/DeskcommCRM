@@ -311,6 +311,25 @@ async function fecharOLaco(args: {
   nomeDoTipo: string;
 }): Promise<void> {
   if (args.empurrarAoGoogle) {
+    // ⚠️ ESTE EVENTO AINDA NÃO TEM CONSUMIDOR, E O SILÊNCIO É PIOR QUE A FILA.
+    //
+    // Medido: `agenda.appointment.push_to_google` aparece UMA vez no repo — esta
+    // linha, que emite. Nenhum handler o declara em `register-handlers.ts`.
+    //
+    // E a cadeia não deixa rastro disso. `dispatchEvent` faz
+    // `if (!matches.length) return []` — sem log, sem erro — e o `drainEventLog`,
+    // com resultado vazio, cai no ramo final e marca `status: "done"`. O evento
+    // é registrado como CONCLUÍDO sem que nada tenha acontecido: pior que ficar
+    // pendente, porque fila crescendo alguém vê.
+    //
+    // Quem sente: o profissional, cujo compromisso não aparece na agenda do
+    // Google dele, e o cliente que marcou. O sistema não fica sabendo — ele
+    // afirma que fez.
+    //
+    // O consumidor é da frente 3 (Google). A emissão fica aqui porque o
+    // contrato é este e o payload já carrega o que o handler vai precisar
+    // (inclusive o fuso, ACHADO 09); o que falta é do outro lado, e está
+    // reportado.
     await args.supabase.from("event_log").insert({
       organization_id: args.orgId,
       event_type: "agenda.appointment.push_to_google",
