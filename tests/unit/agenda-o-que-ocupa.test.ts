@@ -129,3 +129,51 @@ describe("o que o banco pode devolver e não pode derrubar a rota", () => {
     expect(r.ocupados).toEqual([]);
   });
 });
+
+/**
+ * ⚠️ TESTE VERMELHO DE PROPÓSITO — o contrato que falta (achado QAVivo, Wave 2).
+ *
+ * `fontesDefasadas` só é populado DENTRO do laço sobre as linhas externas
+ * (`ocupados.ts:110`). Uma conexão saudável que NUNCA sincronizou produz ZERO
+ * linhas — logo `fontesDefasadas` sai vazio, e a rota responde EXATAMENTE como
+ * responde para quem não tem Google nenhum.
+ *
+ * O mecanismo de "falha fechada na ação, aberta na informação" que o cabeçalho
+ * deste módulo declara é, por construção, incapaz de avisar sobre o caso em que
+ * NÃO HÁ LINHA — porque ele deriva o aviso da linha.
+ *
+ * E a rota herda a cegueira na query: o `select` de `calendar_external_events`
+ * traz a saúde da conexão de carona num `calendar_connections!inner`
+ * (route.ts:173). Carona só existe se houver veículo: conexão sem evento nunca
+ * aparece, e a rota nunca lê `last_sync_at`.
+ *
+ * O CONSERTO É A ASSINATURA, e é por isso que este teste também reprova no
+ * `tsc`: a função precisa receber as CONEXÕES do dono, não só as linhas que
+ * elas produziram. Enquanto ela só vê linhas, nenhuma lógica interna resolve —
+ * a informação não chega nela.
+ *
+ * Vermelho esperado: `fontesDefasadas` volta `[]` onde deveria acusar a conexão
+ * muda. Quando o conserto entrar, este bloco vira teste normal.
+ */
+describe("a fonte que nunca falou (VERMELHO até o conserto)", () => {
+  it("conexão saudável que NUNCA sincronizou é indistinguível de não ter Google", () => {
+    const semGoogleNenhum = ocupadosDoDono([], []);
+
+    // O contrato que falta: a função recebe também as conexões do dono.
+    const comGoogleMudo = (
+      ocupadosDoDono as unknown as (
+        a: LinhaDeAgendamento[],
+        e: LinhaDeEventoExterno[],
+        c: Array<{ status: string; last_sync_at: string | null }>,
+      ) => ReturnType<typeof ocupadosDoDono>
+    )([], [], [{ status: "connected", last_sync_at: null }]);
+
+    expect(semGoogleNenhum.fontesDefasadas).toEqual([]);
+
+    expect(
+      comGoogleMudo.fontesDefasadas,
+      "conexão conectada e sem UM sync precisa acusar — senão a tela diz que está tudo certo " +
+        "para quem tem a agenda inteira do Google invisível",
+    ).not.toEqual([]);
+  });
+});
