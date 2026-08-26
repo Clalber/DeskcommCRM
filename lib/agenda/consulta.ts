@@ -55,7 +55,17 @@ export type CodigoDeRecusaDaConsulta =
   | "erro_interno";
 
 export interface ParametrosDaConsulta {
-  eventTypeId: string;
+  /**
+   * O tipo, por id OU por slug — exatamente um dos dois.
+   *
+   * A rota fala `uuid` porque a tela tem o id na mão. A ferramenta MCP fala
+   * SLUG porque o modelo não tem, e o cabeçalho de `calendar_event_types` diz
+   * por quê: o slug existe para "dar à IA um handle que ela não alucina, ao
+   * contrário de um uuid". Resolver os dois aqui evita uma segunda consulta
+   * só para traduzir.
+   */
+  eventTypeId?: string | null;
+  eventTypeSlug?: string | null;
   /** Ausente = o responsável padrão do tipo. */
   ownerUserId?: string | null;
   de: Date;
@@ -103,7 +113,7 @@ export async function horariosLivresDaOrg(
       "id, name, is_active, duration_minutes, buffer_before_minutes, buffer_after_minutes, minimum_notice_minutes, slot_interval_minutes, booking_window_days, default_owner_user_id",
     )
     .eq("organization_id", organizationId)
-    .eq("id", params.eventTypeId)
+    .eq(params.eventTypeSlug ? "slug" : "id", params.eventTypeSlug ?? params.eventTypeId ?? "")
     .maybeSingle();
 
   if (erroTipo) {
@@ -119,7 +129,11 @@ export async function horariosLivresDaOrg(
       ok: false,
       codigo: "tipo_desconhecido",
       motivoParaOperador: "Tipo de agendamento não encontrado.",
-      motivoParaCliente: "Esse tipo de atendimento não existe. Pergunte qual atendimento a pessoa quer.",
+      // Devolve o que foi pedido: sem isso o modelo não sabe QUAL nome errou, e
+      // a recusa que não ensina faz ele tentar de novo igual.
+      motivoParaCliente:
+        `Não existe atendimento chamado "${params.eventTypeSlug ?? params.eventTypeId ?? ""}". ` +
+        "Pergunte à pessoa que tipo de atendimento ela quer e use um dos tipos que a organização oferece.",
     };
   }
   if (!tipo.is_active) {

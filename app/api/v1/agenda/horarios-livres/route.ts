@@ -94,6 +94,7 @@ export async function GET(req: NextRequest): Promise<Response> {
   // tela respostas diferentes sobre o mesmo horário.
   const consulta = await horariosLivresDaOrg(supabase, activeOrg.orgId, {
     eventTypeId: parsed.data.event_type_id,
+    eventTypeSlug: null,
     ownerUserId: parsed.data.owner_user_id ?? null,
     de,
     ate,
