@@ -207,8 +207,13 @@ test.describe("kit visual da Agenda", () => {
     expect(larguraAntes).toBe(0);
     const painelAntes = await largura(painel);
 
+    // Escopado ao `painel`, e não a `page`: desde que a vitrine ganhou o
+    // SEGUNDO painel (o do aviso de opt-out), todo `data-testid` interno existe
+    // duas vezes na página, e um localizador global resolve para 2 elementos —
+    // o modo estrito do Playwright reprova. Custou um run inteiro descobrir.
+    //
     // Escolhe um dia que TEM horário (a fixture garante).
-    await page.getByTestId("dia-2026-08-24").click();
+    await painel.getByTestId("dia-2026-08-24").click();
 
     await expect(painel).toHaveAttribute("data-tempo", "escolhendo-horario", { timeout: ESPERA });
     await expect(coluna).toHaveAttribute("data-aberta", "true");
@@ -227,11 +232,11 @@ test.describe("kit visual da Agenda", () => {
     expect(painelDepois).toBeGreaterThan(painelAntes);
 
     // E os horários estão lá, clicáveis, levando ao terceiro tempo.
-    await page.getByTestId("horario-09:30").click();
+    await painel.getByTestId("horario-09:30").click();
     await expect(painel).toHaveAttribute("data-tempo", "confirmando", { timeout: ESPERA });
-    await page.getByTestId("confirmar-marcacao").click();
+    await painel.getByTestId("confirmar-marcacao").click();
     await expect(painel).toHaveAttribute("data-tempo", "marcado", { timeout: ESPERA });
-    await expect(page.getByText("Marcado.")).toBeVisible();
+    await expect(painel.getByText("Marcado.")).toBeVisible();
   });
 
   test("quem pediu para não receber mensagem: marca igual, mas a tela avisa ANTES", async () => {

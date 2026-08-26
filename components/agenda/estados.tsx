@@ -15,6 +15,14 @@ import { JANELA_DA_GRADE } from "./GradeDaAgenda";
  * página trocou. As mesmas 7 colunas e a mesma janela de horas da grade real.
  */
 export function AgendaCarregando() {
+  // `bg-border` em cada Skeleton, e não o default: o `components/ui/skeleton.tsx`
+  // usa `bg-primary/10`, que é a accent do produto a 10% de opacidade. Sobre o
+  // branco do tema claro isso dá contraste ~1.06 — o esqueleto fica INVISÍVEL, e
+  // a espera vira uma grade vazia em vez de uma promessa de conteúdo. Visto no
+  // screenshot de evidência, não no código.
+  //
+  // Não mexo no primitivo: ele é usado por todo o produto e a correção lá é
+  // decisão de quem cuida do design system, não drive-by no PR do calendário.
   const linhas = JANELA_DA_GRADE.ultima - JANELA_DA_GRADE.primeira + 1;
   return (
     <div
@@ -27,7 +35,7 @@ export function AgendaCarregando() {
         <div className="h-8 border-b border-border" />
         {Array.from({ length: linhas }).map((_, i) => (
           <div key={i} className="flex h-12 items-start justify-end border-b border-border/50 p-1">
-            <Skeleton className="h-2.5 w-6" />
+            <Skeleton className="h-2.5 w-6 bg-border" />
           </div>
         ))}
       </div>
@@ -35,13 +43,13 @@ export function AgendaCarregando() {
         {Array.from({ length: 7 }).map((_, col) => (
           <div key={col} className="min-w-0 flex-1 border-r border-border last:border-r-0">
             <div className="flex h-8 items-center justify-center border-b border-border">
-              <Skeleton className="h-3 w-10" />
+              <Skeleton className="h-3 w-10 bg-border" />
             </div>
             <div className="space-y-2 p-1.5">
               {/* Alturas diferentes por coluna: um esqueleto perfeitamente
                   regular parece uma tabela, não uma agenda. */}
-              <Skeleton className="h-10 w-full" style={{ marginTop: (col % 3) * 28 }} />
-              {col % 2 === 0 && <Skeleton className="h-16 w-full" />}
+              <Skeleton className="h-10 w-full bg-border" style={{ marginTop: (col % 3) * 28 }} />
+              {col % 2 === 0 && <Skeleton className="h-16 w-full bg-border" />}
             </div>
           </div>
         ))}

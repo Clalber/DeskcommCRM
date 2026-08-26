@@ -126,7 +126,16 @@ export function PainelDeMarcacao({
       data-testid="painel-de-marcacao"
       data-tempo={tempo}
       className={cn(
-        "flex min-h-[450px] flex-col overflow-hidden rounded-lg border border-border bg-surface md:flex-row",
+        // `md:w-fit` é o que faz o painel CRESCER quando a coluna entra, em vez de
+        // redistribuir o espaço por dentro. Medido: esticado à largura do
+        // container ele ficava em 1104px nos dois estados, e a coluna só
+        // aparecia às custas do corpo encolher — o mini-calendário diminuía na
+        // frente de quem tinha acabado de clicar nele, que é o oposto da
+        // sensação de "abriu" que a máquina de três tempos existe para dar.
+        //
+        // No celular continua ocupando tudo: lá não há para onde crescer, e os
+        // três tempos empilham.
+        "flex min-h-[450px] flex-col overflow-hidden rounded-lg border border-border bg-surface md:w-fit md:flex-row",
         className,
       )}
     >
