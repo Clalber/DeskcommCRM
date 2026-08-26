@@ -26,6 +26,10 @@ const usuario: AuthUser = {
   full_name: "Ana",
   avatar_url: null,
   is_platform_admin: false,
+  // `organizations` é obrigatório em `AuthUser` e o dublê não o tinha — o
+  // typecheck da árvore integrada pegou, o vitest não pegaria nunca: esbuild
+  // apaga tipo sem conferir. É o motivo de `pnpm typecheck` não ser opcional.
+  organizations: [{ organization_id: ORG, organization_name: "Clínica", role: "agent" }],
 };
 const orgAtiva: ActiveOrg = { orgId: ORG, name: "Clínica", role: "agent" };
 
