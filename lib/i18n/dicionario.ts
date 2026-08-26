@@ -2344,6 +2344,40 @@ export const DICIONARIO: Traducoes = {
   "Revisão pendente": { es: "Revisión pendiente" },
   "Todos os tipos": { es: "Todos los tipos" },
   "Todos os riscos": { es: "Todos los riesgos" },
+
+  // ─── Admin de plataforma: Incidents (lista + detalhe) ───
+  incidente: { es: "incidente" },
+  incidentes: { es: "incidentes" },
+  Reconhecidos: { es: "Reconocidos" },
+  Severidade: { es: "Severidad" },
+  "Todas severidades": { es: "Todas las severidades" },
+  Aberto: { es: "Abierto" },
+  Reconhecido: { es: "Reconocido" },
+  Resolvido: { es: "Resuelto" },
+  Quando: { es: "Cuándo" },
+  "Nenhum incidente encontrado": { es: "Ningún incidente encontrado" },
+  "Ajuste os filtros para ver outros incidentes.": {
+    es: "Ajusta los filtros para ver otros incidentes.",
+  },
+  "Incidente não encontrado": { es: "Incidente no encontrado" },
+  "Criado": { es: "Creado" },
+  "Nenhuma entrada de auditoria encontrada.": {
+    es: "No se encontró ninguna entrada de auditoría.",
+  },
+  "Resolução": { es: "Resolución" },
+  "Resolvido em": { es: "Resuelto el" },
+  "Resolver incidente": { es: "Resolver incidente" },
+  "Descreva como o incidente foi resolvido. Esta ação é registrada no audit log e não pode ser desfeita.": {
+    es: "Describe cómo se resolvió el incidente. Esta acción queda registrada en el audit log y no se puede deshacer.",
+  },
+  "Nota de resolução": { es: "Nota de resolución" },
+  "mín. 10 caracteres": { es: "mín. 10 caracteres" },
+  "Descreva a causa raiz e as ações tomadas para resolver o incidente...": {
+    es: "Describe la causa raíz y las acciones tomadas para resolver el incidente...",
+  },
+  "Mínimo de 10 caracteres": { es: "Mínimo de 10 caracteres" },
+  "Resolvendo...": { es: "Resolviendo..." },
+  "Confirmar resolução": { es: "Confirmar resolución" },
 };
 
 /**
