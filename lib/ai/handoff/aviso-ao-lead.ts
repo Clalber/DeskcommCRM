@@ -81,7 +81,17 @@ export async function avisarLeadDoCrm(
         actor: { type: "ai_agent", id: ATOR_DO_AVISO, role: "manager" },
         requestId: `handoff-aviso-${input.conversationId}`,
       },
-      { conversation_id: input.conversationId, type: "text", body },
+      {
+        conversation_id: input.conversationId,
+        type: "text",
+        body,
+        // A linha se DECLARA. Sem isto, no banco e na tela, este aviso é
+        // indistinguível de uma fala do agente — e ele não é: é texto de
+        // sistema, escrito em código, que sai no instante em que a IA se
+        // retira. Quem audita a conversa depois precisa saber a diferença, e
+        // quem escreve teste sobre este caminho também.
+        metadata: { aviso_de_escalacao: true, handoff_reason: input.reason },
+      },
     );
     return { avisado: true };
   } catch (err) {

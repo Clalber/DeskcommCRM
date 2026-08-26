@@ -230,8 +230,37 @@ Evidência: `.superpowers/evidence/ia-360-w3/`.
 | J8.7 | A **ida** aparece na linha do tempo | atividade "Passou para humano" também pelo caminho do harness/casos | FAIL(BUG-05) → PASS |
 | J8.8 | O agente retoma **sabendo** o que a pessoa fez | a abertura do turno (`ritualBlocks`) cita a decisão dela, sem apagar o acumulado anterior | PASS |
 | J8.9 | Status da conversa escalada em português | o cabeçalho mostrava `pending` cru | FAIL → PASS |
+| J8.10 | **O cliente é AVISADO antes de a IA sair de campo** | mensagem ao lead dizendo que uma pessoa vai assumir, ANTES do silêncio | FAIL(BUG-06) → PASS |
+| J8.11 | O aviso respeita o motivo | quem pediu para PARAR recebe confirmação da parada, não oferta de atendente | FAIL(BUG-06) → PASS |
+| J8.12 | O aviso respeita a equipe real | conta sem ninguém configurado não recebe promessa de contato | FAIL(BUG-06) → PASS |
+| J8.13 | A passagem por SENTIMENTO abre item na Central | `triggerHandoff` não abria nenhum — cliente sem resposta E time sem sinal | FAIL(BUG-07) → PASS |
 
-Bugs desta jornada estão detalhados em `HANDOFF-ia-360.md` (BUG-01 a BUG-05).
+Bugs desta jornada estão detalhados em `HANDOFF-ia-360.md` (BUG-01 a BUG-05) e em
+`HANDOFF-handoff-avisa-o-lead.md` (BUG-06, BUG-07).
+
+### BUG-06 — a passagem para humano era MUDA (2026-08-26)
+
+Achado pelo dono do produto, em duas conversas reais na mesma hora, e a medição
+no banco de produção mostrou que **são dois motores, não um**:
+
+```
+status  | bot_silenced_until | last_handoff_reason | force_human
+open    | infinity           | requested_human     | t     <- performHumanHandoff (motor, pg)
+pending | infinity           | low_sentiment       | f     <- triggerHandoff (CRM, supabase-js)
+```
+
+O pior caso não foi o pedido explícito: foi o do sentimento. Às 14:50:32 o agente
+PERGUNTOU o e-mail do cliente; às 14:51:01 o worker de sentimento disparou o
+handoff; às 14:51:27 o e-mail chegou e o turno foi pulado. Ele respondeu uma
+pergunta da própria IA para o vazio.
+
+**A ordem é obrigatória:** `performHumanHandoff` grava `force_human`, e o gate 1
+da cadeia de envio o relê a cada tentativa — avisar depois é avisar ninguém.
+Provado por sabotagem em `evidence/handoff-avisa-antes/sabotagem-ordem-invertida.txt`.
+
+Guardas: `tests/invariants/handoff-avisa-o-lead.test.ts` (turno real contra
+Postgres do baseline), `tests/unit/handoff-avisa-o-lead.test.ts` (varredura AST
+dos dois motores) e `tests/unit/aviso-ao-lead.test.ts` (o texto).
 
 ---
 
