@@ -30,14 +30,21 @@
  */
 import { localMoment } from "@/lib/routing/eligibility";
 
-/** Hora de parede: o que o relógio da parede mostra, sem dizer em que fuso. */
+/**
+ * Hora de parede: o que o relógio da parede mostra, sem dizer em que fuso.
+ *
+ * `hora`, `minuto` e `segundo` são OPCIONAIS e valem 0 quando ausentes — o que
+ * torna `{ano, mes, dia}` a meia-noite daquele dia, que é como
+ * `primeiroInstanteDoDia` (`lib/agenda/google/tempo.ts`) pergunta. A alternativa
+ * era cada consumidor escrever `hora: 0, minuto: 0`, e um deles esquecer.
+ */
 export interface HoraDeParede {
   ano: number;
   /** 1-12 — mês do calendário, não o índice do `Date` do JS. */
   mes: number;
   dia: number;
-  hora: number;
-  minuto: number;
+  hora?: number;
+  minuto?: number;
   segundo?: number;
 }
 
@@ -103,7 +110,19 @@ export function offsetEmMinutos(instante: Date, fuso: string): number {
   return (comoSeFosseUtc - instanteEmSegundos) / 60_000;
 }
 
-function ehAHoraPedida(instante: Date, fuso: string, parede: HoraDeParede): boolean {
+/** Preenche os campos ausentes com 0 — meia-noite é `{ano, mes, dia}`. */
+function completa(parede: HoraDeParede): Required<HoraDeParede> {
+  return {
+    ano: parede.ano,
+    mes: parede.mes,
+    dia: parede.dia,
+    hora: parede.hora ?? 0,
+    minuto: parede.minuto ?? 0,
+    segundo: parede.segundo ?? 0,
+  };
+}
+
+function ehAHoraPedida(instante: Date, fuso: string, parede: Required<HoraDeParede>): boolean {
   const lida = partesNoFuso(instante, fuso);
   return (
     lida.ano === parede.ano &&
@@ -150,14 +169,15 @@ function ehAHoraPedida(instante: Date, fuso: string, parede: HoraDeParede): bool
  * existir em dois instantes. Devolvemos o primeiro. Escolher é obrigatório;
  * escolher em silêncio é que não pode — está escrito aqui e tem teste.
  */
-export function instanteDe(parede: HoraDeParede, fuso: string): Date {
+export function instanteDe(paredePedida: HoraDeParede, fuso: string): Date {
+  const parede = completa(paredePedida);
   const alvo = Date.UTC(
     parede.ano,
     parede.mes - 1,
     parede.dia,
     parede.hora,
     parede.minuto,
-    parede.segundo ?? 0,
+    parede.segundo,
   );
 
   // 1ª passada: o offset lido no palpite (o alvo interpretado como se fosse UTC).

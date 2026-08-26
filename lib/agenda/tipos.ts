@@ -16,6 +16,8 @@
  * mora num `Record` à parte, cuja exaustividade quem cobra é o compilador.
  */
 
+import type { ActivityType } from "@/lib/leads/activity-vocabulary";
+
 /**
  * O que esta organização marca. Espelha os nichos que o onboarding já usa
  * (`lib/onboarding/pacotes-de-funil.ts`): clínica, imobiliária, serviços,
@@ -220,8 +222,30 @@ export const ATIVIDADES_DA_AGENDA = [
   "appointment_cancelled",
   "appointment_completed",
   "appointment_no_show",
-] as const;
+] as const satisfies readonly ActivityType[];
 export type AtividadeDaAgenda = (typeof ATIVIDADES_DA_AGENDA)[number];
+
+/**
+ * ⚠️ O `satisfies` ACIMA É A AMARRA — não é decoração de tipo.
+ *
+ * Esta lista vive aqui; `ActivityType` vive em
+ * `lib/leads/activity-vocabulary.ts`, e é ele que `emitLeadActivity` exige. Por
+ * um tempo as duas não se conheciam: esta tinha ZERO consumidor e nenhum dos
+ * cinco valores estava lá — duplicação sem source of truth declarado, o
+ * anti-pattern nº 2 do `CLAUDE.md`, dentro de um arquivo que existe para ser a
+ * fonte única.
+ *
+ * Com o `satisfies`, acrescentar valor aqui e esquecer de lá não compila. E a
+ * forma importa: uma variável-guarda separada também reprova, mas o erro aponta
+ * para a LINHA DA GUARDA, e quem o recebe precisa descer três níveis de
+ * aninhamento para achar qual valor era. O `satisfies` aponta para o VALOR:
+ *
+ *   Type '"appointment_inventado"' is not assignable to type 'ActivityType'
+ *
+ * (Medido pelo Arquiteto com `tsc` de verdade, sabotando as duas formas, e
+ * reproduzido aqui. Ele também conferiu que o `satisfies` não quebra o extrator
+ * do invariante de vocabulário — o regex casa `] as const` e para antes dele.)
+ */
 
 /**
  * A TRILHA de cor da pessoa — o número, não a cor.

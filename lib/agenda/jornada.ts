@@ -40,6 +40,28 @@ import { availabilityScheduleSchema } from "@/lib/schemas/routing";
 
 import type { JornadaDaAgenda } from "./horarios-livres";
 
+/**
+ * A recusa que o CLIENTE FINAL recebe quando a agenda está mal configurada.
+ *
+ * ⚠️ CONSTANTE EXPORTADA, e a razão é que ela terá TRÊS consumidores: as
+ * ferramentas MCP (que falam pelo WhatsApp), a tela do agendamento e o aviso da
+ * Central. Se cada um escrever a própria versão, o cliente ouve uma frase pelo
+ * WhatsApp e lê OUTRA na tela para o mesmo estado — e esta é a hora barata de
+ * evitar isso, com um consumidor só no mundo.
+ *
+ * ⚠️ E ELA DIZ O QUE FAZER EM SEGUIDA, não só o que não dá. É a doutrina de
+ * `lib/mcp/recusa-para-o-modelo.ts`, medida com LLM real: uma recusa que só
+ * informa a falha deixa o modelo com três saídas ruins à mão — dizer que
+ * "estamos sem vagas" (FALSO: é configuração quebrada, não lotação), inventar
+ * um horário para não frustrar, ou encerrar sem caminho nenhum. Nenhuma delas é
+ * proibida por um texto que apenas constata.
+ *
+ * (Achado do MaestroConexoes relendo a implementação da própria proposta.)
+ */
+export const RECUSA_PARA_O_CLIENTE =
+  "Os horários de atendimento ainda não estão disponíveis. Não ofereça horários " +
+  "e não diga que está lotado — avise que alguém da equipe confirma o horário.";
+
 export type LeituraDaJornada =
   | {
       ok: true;
@@ -124,7 +146,7 @@ export function lerJornadaDoBanco(scheduleDoBanco: unknown): LeituraDaJornada {
     return {
       ok: false,
       motivoParaOperador: `${primeiro?.message ?? "formato inesperado"}${onde}`,
-      motivoParaCliente: "Os horários de atendimento ainda não estão disponíveis.",
+      motivoParaCliente: RECUSA_PARA_O_CLIENTE,
     };
   }
 
