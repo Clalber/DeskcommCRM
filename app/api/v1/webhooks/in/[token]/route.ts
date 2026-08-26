@@ -16,6 +16,7 @@ import { logger } from "@/lib/logger";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createLeadHandler } from "@/app/api/v1/leads/_handler";
 import { emitLeadActivity } from "@/lib/leads/activity-emitter";
+import { classificarLeadInicial, type ResultadoClassificacaoInicial } from "@/lib/leads/classificacao-inicial";
 import type { CreateLeadInput } from "@/lib/schemas";
 import { mapInboundPayload, verifyInboundSignature, type FieldMap } from "@/lib/webhooks/inbound";
 import {
@@ -311,6 +312,11 @@ export async function POST(req: NextRequest, ctx: RouteCtx): Promise<NextRespons
   })();
 
   let contactId: string | undefined;
+  // Nome do contato JÁ EXISTENTE que este envio casou (não o que acabou de
+  // criar — um contato novo nunca conflita com ele mesmo). `undefined` =
+  // ninguém existia antes; alimenta a checagem de conflito de identidade da
+  // classificação inicial (lib/leads/classificacao-inicial.ts).
+  let existingContactName: string | null | undefined;
   // Nasceu neste request? O INSERT já grava o consentimento com a forma certa;
   // a reconciliação abaixo existe só para quem JÁ era contato.
   let contatoNasceuAqui = false;
@@ -318,7 +324,7 @@ export async function POST(req: NextRequest, ctx: RouteCtx): Promise<NextRespons
     const selectActiveByPhone = () =>
       admin
         .from("contacts")
-        .select("id")
+        .select("id, name")
         .eq("organization_id", source.organization_id)
         .eq("phone_number", mapped.phone)
         .is("is_merged_into", null)
@@ -333,7 +339,7 @@ export async function POST(req: NextRequest, ctx: RouteCtx): Promise<NextRespons
       if (!mapped.email) return null;
       return admin
         .from("contacts")
-        .select("id")
+        .select("id, name")
         .eq("organization_id", source.organization_id)
         .eq("email_normalized", mapped.email.trim().toLowerCase())
         .is("is_merged_into", null)
@@ -343,6 +349,7 @@ export async function POST(req: NextRequest, ctx: RouteCtx): Promise<NextRespons
     const { data: existing } = await selectActiveByPhone();
     if (existing) {
       contactId = existing.id as string;
+      existingContactName = existing.name as string | null;
     } else {
       const { data: created, error: insertErr } = await admin
         .from("contacts")
@@ -375,10 +382,12 @@ export async function POST(req: NextRequest, ctx: RouteCtx): Promise<NextRespons
           const { data: winnerByPhone } = await selectActiveByPhone();
           if (winnerByPhone) {
             contactId = winnerByPhone.id as string;
+            existingContactName = winnerByPhone.name as string | null;
           } else {
             const byEmail = selectActiveByEmail();
             const { data: winnerByEmail } = byEmail ? await byEmail : { data: null };
             contactId = (winnerByEmail?.id as string | undefined) ?? undefined;
+            existingContactName = (winnerByEmail?.name as string | null | undefined) ?? undefined;
           }
         } else {
           logger.error("[webhooks.inbound] contact insert failed", {
@@ -426,6 +435,40 @@ export async function POST(req: NextRequest, ctx: RouteCtx): Promise<NextRespons
         contactId,
         error: eConsent.message,
       });
+    }
+  }
+
+  // Classificação inicial (só Respondi por ora — os motivos de
+  // desqualificação/revisão e o campo de orçamento são específicos do form
+  // "Imobiliárias e Incorporadoras"; um webhook genérico não tem
+  // `custom_fields.viable_investment_range` nem `consent` estruturado do
+  // mesmo jeito). Escreve em `custom_fields` do PRÓPRIO lead sendo criado —
+  // não dispara automação nenhuma, não manda mensagem: é dado, não ação.
+  // "revisao_humana" (conflito de identidade, spam, incoerência de
+  // investimento) também não bloqueia nada — quem controla envio é
+  // guarda-do-contato.ts, que não lê classificação nenhuma.
+  let classificacaoInicial: ResultadoClassificacaoInicial | null = null;
+  if (respondiMapped) {
+    classificacaoInicial = classificarLeadInicial({
+      customFields: respondiMapped.custom_fields,
+      phoneNormalizado: mapped.phone,
+      consentGranted: respondiMapped.consent.granted,
+      consentPerguntado: respondiMapped.consent.detectedVia !== "not_found",
+      contatoExistente: existingContactName !== undefined ? { name: existingContactName } : null,
+      nomeDoEnvio: mapped.name,
+    });
+    mapped.custom_fields.classificacao_inicial_status = classificacaoInicial.status;
+    if (classificacaoInicial.status === "desqualificado") {
+      mapped.custom_fields.classificacao_inicial_motivo = classificacaoInicial.motivo;
+    } else if (classificacaoInicial.status === "revisao_humana") {
+      mapped.custom_fields.classificacao_inicial_motivo = classificacaoInicial.motivo;
+    } else {
+      mapped.custom_fields.classificacao_inicial_classe = classificacaoInicial.classe;
+      if (classificacaoInicial.percentual !== null) {
+        mapped.custom_fields.classificacao_inicial_percentual = String(
+          Math.round(classificacaoInicial.percentual),
+        );
+      }
     }
   }
 
@@ -534,6 +577,37 @@ export async function POST(req: NextRequest, ctx: RouteCtx): Promise<NextRespons
         organizationId: source.organization_id,
         leadId: String(lead.id),
         error: atividade.error,
+      });
+    }
+  }
+
+  // Classificação inicial: desqualificação e pedido de revisão humana também
+  // são sinal, não ausência de sinal — mesmo raciocínio de consent_declined
+  // acima. "classificado" com uma classe (A/B/C/D/nao_avaliado) NÃO gera
+  // atividade própria: o valor já fica visível em custom_fields, e uma
+  // classificação normal não é um evento que precisa de linha na timeline.
+  if (classificacaoInicial && classificacaoInicial.status !== "classificado") {
+    const tipo = classificacaoInicial.status === "desqualificado" ? "lead_disqualified" : "lead_needs_review";
+    const atividadeClassificacao = await emitLeadActivity(admin, {
+      organizationId: source.organization_id,
+      leadId: String(lead.id),
+      contactId: contactId ?? null,
+      type: tipo,
+      sourceModule: "webhook",
+      sourceId: source.id,
+      actor: { type: "webhook_source", id: source.id },
+      reason:
+        classificacaoInicial.status === "desqualificado"
+          ? `Desqualificado na triagem inicial: ${classificacaoInicial.motivo}.`
+          : `Revisão humana pedida na triagem inicial: ${classificacaoInicial.motivo}.`,
+      payload: { webhook_source_id: source.id, motivo: classificacaoInicial.motivo },
+    });
+    if (!atividadeClassificacao.ok) {
+      logger.error("[webhooks.inbound] classificacao_inicial activity failed", {
+        webhookSourceId: source.id,
+        organizationId: source.organization_id,
+        leadId: String(lead.id),
+        error: atividadeClassificacao.error,
       });
     }
   }
