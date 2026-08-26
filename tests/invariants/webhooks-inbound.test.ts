@@ -590,7 +590,7 @@ describe("POST /api/v1/webhooks/in/[token] — Respondi (payload aninhado, achad
     expect(count).toBe(1);
   });
 
-  it("caso 3 — consentimento recusado: lead é criado, contato NÃO ganha consent.marketing, e a recusa vira atividade na timeline", async () => {
+  it("caso 3 — consentimento recusado: lead é criado, a recusa fica CARIMBADA no contato (declined_at) e vira atividade na timeline", async () => {
     const payload = respondiPayload("resp-int-declined-0003", "55 15988880003", "maria.exemplo+0003@example.com", (p) => {
       const respondent = p.respondent as Record<string, unknown>;
       const rawAnswers = respondent.raw_answers as Array<Record<string, unknown>>;
@@ -609,15 +609,95 @@ describe("POST /api/v1/webhooks/in/[token] — Respondi (payload aninhado, achad
     expect((lead.custom_fields as Record<string, unknown>).consent_marketing_status).toBe("declined");
 
     const contact = rows(`select * from public.contacts where id = '${lead.contact_id}'`)[0]!;
-    const consent = contact.consent as { marketing: { granted_at: string | null } };
-    // Recusa NUNCA vira concessão por omissão: continua no default (tudo null).
+    const consent = contact.consent as {
+      marketing: { granted_at: string | null; declined_at?: string | null; source?: string | null };
+    };
+    // Recusa NUNCA vira concessão por omissão: `granted_at` continua null…
     expect(consent.marketing.granted_at).toBeNull();
+    // …mas o "não" precisa ser LEGÍVEL, e null sozinho não é: o DEFAULT da
+    // coluna já é `granted_at: null`, então "nunca perguntamos" e "disse não"
+    // ficavam com a mesma forma. `declined_at` é o que separa os dois, e é o
+    // que a guarda de automação lê (lib/automation/guarda-do-contato.ts).
+    expect(consent.marketing.declined_at).toBeTruthy();
+    expect(consent.marketing.source).toBe("webhook:respondi");
 
     const activityRows = rows(
       `select * from public.crm_lead_activities where lead_id = '${leadId}' and type = 'consent_declined'`,
     );
     expect(activityRows.length).toBe(1);
     expect(activityRows[0]!.actor_kind).toBe("system");
+  });
+
+  it("caso 3b — quem JÁ era contato e agora recusa também fica carimbado (o ramo que o INSERT não alcança)", async () => {
+    // Primeiro envio: concede. Segundo envio, MESMO telefone: recusa.
+    // O bloco de consentimento do INSERT só roda pra contato novo — sem a
+    // reconciliação do contato existente, a recusa do segundo envio se perderia
+    // e a pessoa continuaria marcada como tendo concedido.
+    const telefone = "55 15988880031";
+    const email = "maria.exemplo+0031@example.com";
+
+    const concede = respondiPayload("resp-int-decl-0031-a", telefone, email);
+    const r1 = await POST(jsonReq(TOKEN_RESPONDI, concede), reqCtx(TOKEN_RESPONDI));
+    expect(r1.status).toBe(200);
+    const lead1 = ((await r1.json()) as { data: { lead_id: string } }).data.lead_id;
+    const contactId = rows(`select contact_id from public.crm_leads where id = '${lead1}'`)[0]!
+      .contact_id as string;
+    const antes = rows(`select consent from public.contacts where id = '${contactId}'`)[0]!
+      .consent as { marketing: { granted_at: string | null; declined_at?: string | null } };
+    expect(antes.marketing.granted_at).not.toBeNull();
+    expect(antes.marketing.declined_at ?? null).toBeNull();
+
+    const recusa = respondiPayload("resp-int-decl-0031-b", telefone, email, (p) => {
+      const respondent = p.respondent as Record<string, unknown>;
+      const rawAnswers = respondent.raw_answers as Array<Record<string, unknown>>;
+      const legaltext = rawAnswers.find(
+        (r) => (r.question as Record<string, unknown>).question_type === "legaltext",
+      )!;
+      legaltext.answer = "no";
+      (respondent.answers as Record<string, unknown>)["Autorização de contato"] = "Não aceito";
+    });
+    const r2 = await POST(jsonReq(TOKEN_RESPONDI, recusa), reqCtx(TOKEN_RESPONDI));
+    expect(r2.status).toBe(200);
+
+    // MESMO contato (reuso por telefone), agora com a recusa carimbada.
+    const lead2 = ((await r2.json()) as { data: { lead_id: string } }).data.lead_id;
+    expect(rows(`select contact_id from public.crm_leads where id = '${lead2}'`)[0]!.contact_id).toBe(
+      contactId,
+    );
+    const depois = rows(`select consent from public.contacts where id = '${contactId}'`)[0]!
+      .consent as { marketing: { granted_at: string | null; declined_at?: string | null } };
+    expect(depois.marketing.declined_at).toBeTruthy();
+    expect(depois.marketing.granted_at).toBeNull();
+  });
+
+  it("caso 3c — formulário SEM a pergunta de autorização: nada é carimbado (ninguém perguntou ≠ disse não)", async () => {
+    // O mapeador devolve `granted: false` quando não acha a pergunta —
+    // leitura defensiva correta, silêncio nunca vira concessão. Mas isso NÃO
+    // é recusa: carimbar `declined_at` aqui bloquearia a automação de todo
+    // formulário do Respondi que não faz a pergunta.
+    const payload = respondiPayload("resp-int-sem-legaltext-0032", "55 15988880032", "maria.exemplo+0032@example.com", (p) => {
+      const respondent = p.respondent as Record<string, unknown>;
+      respondent.raw_answers = (respondent.raw_answers as Array<Record<string, unknown>>).filter(
+        (r) => (r.question as Record<string, unknown>).question_type !== "legaltext",
+      );
+      const answers = respondent.answers as Record<string, unknown>;
+      for (const k of Object.keys(answers)) {
+        if (/autoriza|aceito receber|consent/i.test(k)) delete answers[k];
+      }
+    });
+
+    const res = await POST(jsonReq(TOKEN_RESPONDI, payload), reqCtx(TOKEN_RESPONDI));
+    expect(res.status).toBe(200);
+    const leadId = ((await res.json()) as { data: { lead_id: string } }).data.lead_id;
+    const lead = rows(`select * from public.crm_leads where id = '${leadId}'`)[0]!;
+
+    const contact = rows(`select * from public.contacts where id = '${lead.contact_id}'`)[0]!;
+    const consent = contact.consent as {
+      marketing: { granted_at: string | null; declined_at?: string | null };
+    };
+    expect(consent.marketing.granted_at).toBeNull();
+    // O ponto do caso: SEM carimbo de recusa.
+    expect(consent.marketing.declined_at ?? null).toBeNull();
   });
 
   it("caso 4 — compatibilidade: o botão interno 'Enviar lead de teste' (payload genérico) continua funcionando sem passar pelo caminho Respondi", async () => {
