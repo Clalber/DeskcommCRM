@@ -97,35 +97,39 @@ type ConfigOf<T extends NodeType> = Extract<FlowNode, { type: T }>["config"];
  * RF node's own `type`/`data.config` pair (not a reconstructed `FlowNode`)
  * because the node components only ever see React Flow's generic shape.
  */
-export function describeNodeConfig(type: NodeType, config: FlowNode["config"]): string {
+export function describeNodeConfig(
+  type: NodeType,
+  config: FlowNode["config"],
+  t: (texto: string) => string = (texto) => texto,
+): string {
   switch (type) {
     case "trigger":
-      return "Início do fluxo";
+      return t("Início do fluxo");
     case "wait": {
       const c = config as ConfigOf<"wait">;
       return c.mode === "fixed"
-        ? `${Math.round(c.duration_ms / 60_000)} min`
-        : `${Math.round(c.min_ms / 60_000)}–${Math.round(c.max_ms / 60_000)} min (adaptativo)`;
+        ? `${Math.round(c.duration_ms / 60_000)} ${t("min")}`
+        : `${Math.round(c.min_ms / 60_000)}–${Math.round(c.max_ms / 60_000)} ${t("min")} (${t("adaptativo")})`;
     }
     case "condition": {
       const c = config as ConfigOf<"condition">;
       // No modo uma-saída-por-regra o combinador NÃO é consultado (a regra não
       // vota, ela roteia). Continuar anunciando "E"/"OU" ali seria o card
       // afirmando uma coisa que o motor ignora — e o usuário acredita no card.
-      if (c.branching === "per_check") return `${c.checks.length} regras · uma saída por regra`;
-      return `${c.checks.length} condição(ões) · ${c.combinator === "and" ? "E" : "OU"}`;
+      if (c.branching === "per_check") return `${c.checks.length} ${t("regras · uma saída por regra")}`;
+      return `${c.checks.length} ${t("condição(ões)")} · ${c.combinator === "and" ? t("E") : t("OU")}`;
     }
     case "ai_classify": {
       const c = config as ConfigOf<"ai_classify">;
-      return `${c.classes.length} classes · grace ${Math.round(c.grace_timeout_ms / 60_000)}min`;
+      return `${c.classes.length} ${t("classes")} · grace ${Math.round(c.grace_timeout_ms / 60_000)}min`;
     }
     case "action": {
       const c = config as ConfigOf<"action">;
-      return c.mode === "ai_message" ? c.prompt_hint : "Template fixo";
+      return c.mode === "ai_message" ? c.prompt_hint : t("Template fixo");
     }
     case "end": {
       const c = config as ConfigOf<"end">;
-      return RESULTADOS_DO_FIM[c.outcome];
+      return t(RESULTADOS_DO_FIM[c.outcome]);
     }
     default: {
       const exhaustive: never = type;
