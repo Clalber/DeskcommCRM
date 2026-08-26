@@ -15,7 +15,11 @@
  * Por isso, na dúvida, OCUPA. Vale para status que ainda não existe no
  * vocabulário, para evento tentativo, e para a conexão do Google que caiu.
  */
-import { SITUACOES_DO_AGENDAMENTO, type SituacaoDaConexao } from "./tipos";
+import {
+  SITUACOES_DO_AGENDAMENTO,
+  type SituacaoDaConexao,
+  type SituacaoExterna,
+} from "./tipos";
 
 import type { Ocupado } from "./horarios-livres";
 
@@ -63,8 +67,23 @@ export interface OQueOcupa {
  */
 const LIBERAM_O_HORARIO = new Set<string>(["cancelled", "no_show"]);
 
-/** O `transparent` do Google é o "estou livre" — quem o marca aceita compromisso por cima. */
-const NAO_OCUPA_NO_GOOGLE = new Set<string>(["cancelled"]);
+/**
+ * O que cada situação de evento externo faz com o horário.
+ *
+ * ⚠️ `Record` EXAUSTIVO, e não um `Set` de literais, pela mesma razão que
+ * `SITUACOES_QUE_OCUPAM` deixou de ser lista solta: um `Set` parece guarda e não
+ * guarda nada — situação nova cairia no padrão sem ninguém decidir. Aqui o
+ * compilador cobra a decisão, porque `SituacaoExterna` é união fechada.
+ *
+ * `tentative` ocupa: "talvez eu vá" é a pessoa segurando aquele horário, e o
+ * desfecho seguro é não oferecê-lo. `cancelled` libera — o horário voltou a
+ * existir de verdade.
+ */
+const OCUPA_NO_GOOGLE: Record<SituacaoExterna, boolean> = {
+  confirmed: true,
+  tentative: true,
+  cancelled: false,
+};
 
 function intervaloValido(inicioISO: string, fimISO: string): Ocupado | null {
   const inicio = new Date(inicioISO);
@@ -89,7 +108,9 @@ export function ocupadosDoDono(
 
   for (const linha of externos) {
     if (linha.transparency === "transparent") continue;
-    if (NAO_OCUPA_NO_GOOGLE.has(linha.status)) continue;
+    // Situação fora do vocabulário ocupa — o mesmo desfecho seguro do lado do
+    // CRM: o que não se conhece bloqueia, nunca libera.
+    if (OCUPA_NO_GOOGLE[linha.status as SituacaoExterna] === false) continue;
     const intervalo = intervaloValido(linha.starts_at, linha.ends_at);
     if (!intervalo) continue;
 
@@ -115,11 +136,60 @@ export function ocupadosDoDono(
 }
 
 /**
- * Guarda de vocabulário: se `SITUACOES_DO_AGENDAMENTO` ganhar um valor novo,
- * quem o acrescentar tem que decidir aqui se ele libera ou ocupa. Não é gate de
- * CI — é a lista ao alcance de quem edita, para a decisão não ser tomada por
- * omissão.
+ * As situações que OCUPAM, derivadas — e ela existe para ser VERIFICADA, não
+ * para ser lida.
+ *
+ * ⚠️ A versão anterior deste bloco dizia "é a lista ao alcance de quem edita,
+ * para a decisão não ser tomada por omissão" — e não era: ninguém a importava,
+ * nenhum teste a lia, e o comentário prometia uma guarda que não existia. Órfão
+ * com promessa é pior que órfão calado, porque quem lê acha que está protegido.
+ *
+ * O consumidor agora é `tests/unit/agenda-o-que-ocupa.test.ts`, que prova que
+ * toda situação do vocabulário está classificada — ou libera, ou ocupa, nunca
+ * fora das duas. Se `SITUACOES_DO_AGENDAMENTO` ganhar um valor e ninguém decidir
+ * aqui, o teste diz qual.
+ *
+ * (Achado aplicando em mim a régua do Arquiteto: export sem consumidor NOMEADO
+ * é dívida sem dono. Ele varreu `lib/agenda` e achou 28; cinco eram meus, e
+ * quatro daqueles são tipos de assinatura — este era o único morto de verdade.)
  */
 export const SITUACOES_QUE_OCUPAM = SITUACOES_DO_AGENDAMENTO.filter(
   (s) => !LIBERAM_O_HORARIO.has(s),
 );
+
+/** O par: as que liberam. Exportada para o mesmo teste poder somar as duas. */
+export const SITUACOES_QUE_LIBERAM = SITUACOES_DO_AGENDAMENTO.filter((s) =>
+  LIBERAM_O_HORARIO.has(s),
+);
+
+/** Uma linha de `calendar_connections`, no que interessa para saber se dá para confiar. */
+export interface LinhaDeConexao {
+  status: string;
+  last_sync_at: string | null;
+}
+
+/**
+ * A agenda externa deste dono é confiável AGORA?
+ *
+ * ⚠️ "NÃO TEM GOOGLE" E "TEM GOOGLE QUE NUNCA FOI LIDO" PRODUZEM A MESMA LISTA
+ * VAZIA DE OCUPADOS — e são coisas opostas.
+ *
+ * Sem conexão nenhuma, não há nada lá fora e oferecer o dia inteiro está certo.
+ * Com conexão que nunca sincronizou (`last_sync_at is null`), há compromissos no
+ * Google que ninguém trouxe para cá — e o motor oferece a hora da cirurgia que
+ * está na agenda do médico. O paciente chega e o médico está no centro
+ * cirúrgico.
+ *
+ * É o mesmo formato de `publicouHorarios` e de `fusoSuposto`: um sinal que
+ * preserva a distinção que o dado normalizado apaga. Sem ele, quem lê a lista
+ * vazia conclui "está livre", e a conclusão errada não gera chamado nenhum.
+ *
+ * ⚠️ NÃO CONFUNDIR COM `fontesDefasadas`, que é outra pergunta: lá a conexão
+ * JÁ trouxe eventos e parou de atualizar (e eles continuam ocupando, DECISÃO
+ * 3.2). Aqui ela nunca trouxe nada.
+ */
+export function agendaExternaNuncaLida(conexoes: LinhaDeConexao[]): boolean {
+  const vivas = conexoes.filter((c) => c.status !== "disconnected");
+  if (vivas.length === 0) return false;
+  return vivas.every((c) => c.last_sync_at === null);
+}

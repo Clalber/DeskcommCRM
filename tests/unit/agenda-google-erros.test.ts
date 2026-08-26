@@ -13,7 +13,6 @@ import {
   type DesfechoDoGoogle,
   type OperacaoNoGoogle,
   classificarErroDoGoogle,
-  contaComoConflito,
   deveTentarDeNovo,
   estadoDaConexaoApos,
 } from "@/lib/agenda/google/erros";
@@ -97,6 +96,23 @@ describe("classificarErroDoGoogle — o corpo CRU do Google, que e o que `res.js
     expect(c.desfecho).toBe("ressincronizar");
     expect(c.status).toBe(410);
     expect(c.motivo).toBe("fullsyncrequired");
+  });
+
+  it("410 fullSyncRequired no corpo cru, em operação de ESCRITA, não pode apagar linha", () => {
+    // ⚠️ ESTA É A CÉLULA QUE O RAMO REDUNDANTE ESCONDIA. Nos casos acima o
+    // desfecho certo chega por DOIS caminhos: o motivo (`fullsyncrequired`) e o
+    // par status+operação (410 + sincronizar). Quebrar o extrator de motivo
+    // deixava aqueles verdes no DESFECHO — só o campo `motivo` acusava.
+    //
+    // Com operação de escrita não há ramo redundante: sem o motivo, 410 cai em
+    // `evento_sumiu`, que é o caminho que APAGA A LINHA. É a única célula em que
+    // o extrator de motivo, sozinho, decide entre ressincronizar e apagar.
+    for (const operacao of ["atualizar", "criar"] as const) {
+      expect(desfecho(corpoCru(410, "fullSyncRequired"), operacao)).toBe("ressincronizar");
+    }
+    // Controle positivo: sem o motivo, a MESMA forma e o MESMO status caem no
+    // desfecho perigoso — é isto que a asserção acima impede.
+    expect(desfecho(corpoCru(410, "notFound"), "atualizar")).toBe("evento_sumiu");
   });
 
   it("401 no corpo cru pede reconexão", () => {
@@ -210,7 +226,7 @@ describe("classificarErroDoGoogle — o que a classificação devolve junto", ()
   });
 });
 
-describe("estadoDaConexaoApos / contaComoConflito — a ponte com a DECISÃO 3.2", () => {
+describe("estadoDaConexaoApos — o que o desfecho faz com a CONEXÃO", () => {
   it("cada desfecho diz o que fazer com a CONEXÃO, não só com a chamada", () => {
     expect(estadoDaConexaoApos("reautenticar")).toBe("token_expired");
     expect(estadoDaConexaoApos("sem_permissao")).toBe("scope_missing");
@@ -234,19 +250,6 @@ describe("estadoDaConexaoApos / contaComoConflito — a ponte com a DECISÃO 3.2
     expect(estadoDaConexaoApos("ressincronizar")).toBeNull();
   });
 
-  it("só agenda saudável conta como conflito — 'não sei' nunca é 'está livre'", () => {
-    // É a exigência literal da DECISÃO 3.2: contar uma fonte que não responde é
-    // pior que não ter fonte, porque ela parece vazia e marcaríamos em cima de
-    // compromisso real.
-    expect(contaComoConflito("healthy")).toBe(true);
-    for (const status of ["connecting", "token_expired", "scope_missing", "disconnected", "rate_limited", "error"] as const) {
-      expect(contaComoConflito(status), `${status} não pode contar como fonte confiável`).toBe(false);
-    }
-    // `rate_limited` é o mais tentador de tratar como benigno — a conexão está
-    // saudável, só não respondeu agora. Mas o motor não pergunta se a conexão
-    // está bem; pergunta o que HÁ na agenda, e a resposta é "não sei".
-    expect(contaComoConflito("rate_limited")).toBe(false);
-  });
 });
 
 describe("deveTentarDeNovo", () => {

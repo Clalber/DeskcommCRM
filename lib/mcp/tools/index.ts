@@ -63,6 +63,7 @@ import {
   crmSetWebhookSourceActive,
   crmUpdateStage,
 } from "./operacao";
+import { crmFindFreeSlots } from "./agendamento";
 import {
   crmScheduleFollowup,
   crmCancelFollowup,
@@ -79,6 +80,7 @@ import {
 // unknown>` e cada handler valida no Zod do registerTool.
 export const allTools: ReadonlyArray<McpToolDefinition> = [
   // read
+  crmFindFreeSlots,
   crmSearchContacts,
   crmGetContact,
   crmProposeContactField,

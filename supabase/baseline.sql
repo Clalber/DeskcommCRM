@@ -13532,6 +13532,113 @@ $$;
 revoke execute on function public.fn_limpar_vinculos_do_agendamento() from public, anon, authenticated;
 grant  execute on function public.fn_limpar_vinculos_do_agendamento() to service_role;
 
+-- ---- LGPD alcança a agenda: função (migration 0184) ----
+--
+-- A PRIMEIRA metade da 0184. Está aqui, e não no fim, porque cria FUNÇÃO — e a
+-- VARREDURA anon (logo abaixo) proíbe `create function` depois dela: a função
+-- nasceria com EXECUTE para `anon` em quem ATUALIZA, sem nada adiante para tirar.
+-- O trigger vai no bloco do fim; a ordem não importa, porque o corpo de uma
+-- plpgsql só resolve nomes na execução e nada dispara UPDATE durante o baseline.
+--
+-- `fn_lgpd_cascade_redact_contact` percorre uma lista escrita à mão e
+-- `calendar_appointments` não estava nela — e a tabela guarda `title`,
+-- `description`, `notes` (numa clínica, queixa clínica), `location_details` e
+-- `cancellation_reason`. A função reportava sucesso, a rota reportava sucesso, o
+-- SLA de D+15 era marcado como cumprido, e a queixa continuava legível.
+--
+-- Trigger e não passo dentro da função: ela vem do dump com ~180 linhas, e um
+-- passo novo exigiria carregar uma CÓPIA inteira dela aqui — duas cópias que
+-- divergem no primeiro conserto. E o trigger escuta a COLUNA, não o chamador,
+-- então alcança qualquer caminho de anonimização.
+create or replace function public.fn_redigir_agenda_do_contato_anonimizado()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+begin
+  update public.calendar_appointments
+     set title               = 'Compromisso anonimizado',
+         description         = null,
+         notes               = null,
+         location_details    = null,
+         meeting_url         = null,
+         cancellation_reason = null
+   where organization_id = new.organization_id
+     and contact_id = new.id;
+  return new;
+end;
+$$;
+
+-- Função de trigger não exige EXECUTE de quem dispara o UPDATE, então revogar
+-- das três origens não a quebra — e a mantém fora da lista de exceções do
+-- invariante de hardening, que é congelada.
+revoke execute on function public.fn_redigir_agenda_do_contato_anonimizado() from public, anon, authenticated;
+grant  execute on function public.fn_redigir_agenda_do_contato_anonimizado() to service_role;
+
+-- ---- a agenda nasce com o que marcar: funções (migration 0185) ----
+--
+-- A PRIMEIRA metade da 0185, aqui porque cria FUNÇÃO e a VARREDURA anon (logo
+-- abaixo) proíbe `create function` depois dela.
+--
+-- Zero INSERT em `calendar_event_types` em todo o repo, medido com controle
+-- positivo. Instalação fresca abria a Agenda numa semana em branco, sem nada
+-- para clicar e sem mensagem — e grade vazia é indistinguível de "ninguém marcou
+-- hoje". É o P0 da doutrina de QA Visual.
+--
+-- NEUTRO de propósito: o nicho não é persistido em lugar nenhum (a inferência
+-- roda em memória no passo do funil e morre lá), e o trigger dispara no INSERT
+-- da organização, antes de existir qualquer texto para inferir. Este é o PISO;
+-- o enriquecimento por nicho vive onde o nicho existe, no passo do onboarding.
+create or replace function public.fn_semear_tipos_de_agendamento(p_organization_id uuid)
+returns integer
+language plpgsql
+set search_path = public, pg_temp
+as $$
+declare
+  v_criados integer := 0;
+  r record;
+begin
+  for r in
+    select * from (values
+      ('Consulta',    'consulta',    'consulta', 30, 1000::numeric),
+      ('Reunião',     'reuniao',     'reuniao',  30, 2000::numeric),
+      ('Atendimento', 'atendimento', 'outro',    30, 3000::numeric)
+    ) as t(nome, slug, categoria, duracao, posicao)
+  loop
+    insert into public.calendar_event_types
+      (organization_id, name, slug, category, duration_minutes, position)
+    values
+      (p_organization_id, r.nome, r.slug, r.categoria, r.duracao, r.posicao)
+    on conflict (organization_id, slug) do nothing;
+
+    if found then
+      v_criados := v_criados + 1;
+    end if;
+  end loop;
+
+  return v_criados;
+end;
+$$;
+
+create or replace function public.fn_semear_tipos_de_agendamento_na_org_nova()
+returns trigger
+language plpgsql
+set search_path = public, pg_temp
+as $$
+begin
+  perform public.fn_semear_tipos_de_agendamento(new.id);
+  return new;
+end;
+$$;
+
+-- Função de trigger não exige EXECUTE de quem dispara o INSERT, e a de seed é
+-- chamada por ela e pelo backfill — nenhum dos dois passa pelo PostgREST.
+revoke execute on function public.fn_semear_tipos_de_agendamento(uuid) from public, anon, authenticated;
+revoke execute on function public.fn_semear_tipos_de_agendamento_na_org_nova() from public, anon, authenticated;
+grant  execute on function public.fn_semear_tipos_de_agendamento(uuid) to service_role;
+grant  execute on function public.fn_semear_tipos_de_agendamento_na_org_nova() to service_role;
+
 -- ---- VARREDURA anon: função nova nasce exposta em quem ATUALIZA (migration 0116) ----
 --
 -- ⚠️ ESTE BLOCO É, DE PROPÓSITO, O ÚLTIMO DO ARQUIVO. Apêndice novo entra ANTES
@@ -15020,5 +15127,189 @@ create policy calendar_connections_dono_ou_manager_read on public.calendar_conne
 -- de fonte confiável. Uma policy de escrita aqui só abriria caminho para
 -- gravar token pelo PostgREST.
 revoke all on public.calendar_connections from anon;
+
+notify pgrst, 'reload schema';
+
+-- ---- dois cliques não marcam duas vezes (migration 0182) ----
+--
+-- Entre a validação do motor de slots e o INSERT há uma janela em que o banco
+-- não repete a pergunta: dois POSTs simultâneos para o mesmo horário passam OS
+-- DOIS na checagem e criam dois agendamentos. É o duplo clique, e é a corrida
+-- entre duas pessoas marcando o mesmo slot.
+--
+-- Não é a constraint de sobreposição que a 0177 recusou, e a distinção importa:
+-- `exclude using gist` proibiria SOBREPOSIÇÃO (14h-15h contra 14h30-15h30, que é
+-- o encaixe legítimo) e exigiria `btree_gist`, ausente deste baseline. Índice
+-- único parcial é btree PURO e proíbe só a COINCIDÊNCIA EXATA de instante para o
+-- mesmo dono.
+--
+-- ⚠️ `owner_user_id is not null` NÃO conserta buraco nenhum, e a primeira versão
+-- deste comentário dizia que sim. Medido num pg17 descartável: com a condição e
+-- sem ela, duas linhas com dono NULL no mesmo instante entram IGUAL — `NULL`
+-- nunca colide com `NULL` numa UNIQUE, esteja a linha dentro ou fora do índice.
+-- A condição fica porque mantém fora do índice o que nunca colidiria e porque
+-- DECLARA o alcance da guarda (ela é sobre a agenda de uma PESSOA), não porque
+-- proteja. Comentário que promete guarda inexistente é pior que nenhum: quem lê
+-- para de procurar.
+--
+-- Custo declarado: proíbe dois compromissos do mesmo atendente no MESMO
+-- instante, que numa clínica às vezes é o encaixe deliberado. A troca é
+-- consciente, e a contrapartida é a rota devolver 409 dizendo QUAL compromisso
+-- está ali — senão troca-se uma corrida rara por uma parede diária.
+--
+-- Deduplica ANTES da constraint, e deslocando em vez de apagar: cancelar a
+-- duplicata destruiria um compromisso combinado com uma pessoa real, e isso uma
+-- migration não faz. Nenhum clone tem linha nesta tabela hoje (nasceu na 0177 e
+-- a rota que grava não existe); o bloco é para o clone que vier a ter.
+-- ─── 1 · deduplicar deslocando, sem perder nenhum compromisso ──────────────
+-- Empurra a 2ª, 3ª… ocorrência em 1 segundo cada, levando `ends_at` junto para
+-- a duração não mudar. Em laço porque um deslocamento pode cair em cima de
+-- outro instante já ocupado; 10 passadas cobrem qualquer caso real e o teto
+-- impede laço infinito num dado patológico.
+do $$
+declare
+  mexidas integer;
+  passada integer := 0;
+begin
+  loop
+    with duplicadas as (
+      select id,
+             row_number() over (
+               partition by organization_id, owner_user_id, starts_at
+               order by created_at, id
+             ) - 1 as posicao
+        from public.calendar_appointments
+       where status in ('pending', 'confirmed')
+         and owner_user_id is not null
+    )
+    update public.calendar_appointments a
+       set starts_at = a.starts_at + (d.posicao * interval '1 second'),
+           ends_at   = a.ends_at   + (d.posicao * interval '1 second')
+      from duplicadas d
+     where d.id = a.id
+       and d.posicao > 0;
+
+    get diagnostics mexidas = row_count;
+    passada := passada + 1;
+    exit when mexidas = 0 or passada >= 10;
+  end loop;
+end
+$$;
+
+-- ─── 2 · a guarda ─────────────────────────────────────────────────────────
+create unique index if not exists calendar_appointments_sem_duplicata_idx
+  on public.calendar_appointments (organization_id, owner_user_id, starts_at)
+  where status in ('pending', 'confirmed') and owner_user_id is not null;
+
+comment on index public.calendar_appointments_sem_duplicata_idx is
+  'Fecha a janela entre a validação do motor de slots e o INSERT: dois POSTs simultâneos para o mesmo instante e o mesmo atendente não viram dois compromissos. Parcial em (pending, confirmed) porque cancelado e realizado não ocupam ninguém, e em owner_user_id não nulo porque NULL não colide com NULL numa UNIQUE — e porque agendamento sem atendente não ocupa agenda. Quem captura o 23505 é a rota, que devolve 409 dizendo qual compromisso está ali.';
+
+notify pgrst, 'reload schema';
+
+-- ---- a grade da agenda não se move sozinha (migration 0183) ----
+--
+-- `calendar_appointments` não estava na publicação: o `.channel()` sobe, o
+-- `subscribe` devolve SUBSCRIBED, nenhum erro em lugar nenhum, e nenhum evento
+-- chega nunca. Duas pessoas com a agenda aberta não veem o que a outra marcou.
+-- Agravante de diagnóstico: nesta base o canal já morre calado por outro motivo
+-- quando o token não chega ao socket, então quem investigar vai para o `setAuth`
+-- e não para a publicação — dois defeitos com o MESMO sintoma.
+--
+-- SÓ ela entra, e a doutrina julga tabela a tabela: `calendar_external_events` é
+-- espelho reescrito em lote pelo sync (200 eventos = 200 pulsos: o "pulso que
+-- mente" da 0075 em forma de calendário); `calendar_connections` guarda token; as
+-- de configuração mudam com quem já está na tela.
+--
+-- ⚠️ NÃO resolve o DELETE: `replica identity` tem zero ocorrência neste schema,
+-- então o payload de DELETE traz só o `id` e um canal com `filter` por
+-- `owner_user_id` não o recebe — o card apagado fica na tela até o F5. Não ligo
+-- `replica identity full` aqui porque hoje não há assinante nenhum, e o custo em
+-- WAL seria para servir um consumidor que não existe.
+do $$
+begin
+  if not exists (
+    select 1 from pg_publication where pubname = 'supabase_realtime'
+  ) then
+    create publication supabase_realtime;
+  end if;
+
+  if not exists (
+    select 1 from pg_publication_tables
+     where pubname = 'supabase_realtime'
+       and schemaname = 'public'
+       and tablename = 'calendar_appointments'
+  ) then
+    execute 'alter publication supabase_realtime add table public.calendar_appointments';
+  end if;
+end $$;
+
+comment on table public.calendar_appointments is
+  'O compromisso COMBINADO: hora marcada, com alguém, ocupando a agenda de um atendente. Distinto do RETORNO agendado (cron_jobs kind=at, job_kind=followup_turn), que é decisão interna do sistema, não ocupa agenda de ninguém e o cliente não sabe. ESTÁ na publicação supabase_realtime (migration 0183) porque marcar e cancelar é mudança de estado, não telemetria — mas o DELETE só traz o id, então um canal com filter por owner_user_id não o recebe.';
+
+notify pgrst, 'reload schema';
+
+-- ---- LGPD alcança a agenda: trigger (migration 0184) ----
+--
+-- A SEGUNDA metade da 0184. A função está ANTES do bloco da VARREDURA anon, e a
+-- razão está escrita lá.
+--
+-- Redige o texto livre e PRESERVA `starts_at`, `ends_at`, `status` e
+-- `owner_user_id`: a clínica precisa responder "quantos atendimentos houve em
+-- março" depois de anonimizar. O QUE aconteceu e QUANDO fica; COM QUEM e SOBRE O
+-- QUÊ sai.
+--
+-- `calendar_external_events` fica de fora e NÃO por esquecimento: ela não tem
+-- `contact_id`, e o único vínculo com a pessoa é o `title` copiado do Google.
+-- Alcançá-la exige uma decisão de produto — declarar que é espelho de terceiro,
+-- ou apagar a janela da conexão.
+drop trigger if exists trg_redigir_agenda_ao_anonimizar on public.contacts;
+create trigger trg_redigir_agenda_ao_anonimizar
+  after update of is_anonymized on public.contacts
+  for each row
+  when (new.is_anonymized is true and old.is_anonymized is distinct from true)
+  execute function public.fn_redigir_agenda_do_contato_anonimizado();
+
+comment on column public.calendar_appointments.notes is
+  'Anotação livre do atendimento — numa clínica, queixa clínica. É dado pessoal: o trigger trg_redigir_agenda_ao_anonimizar (migration 0184) a apaga quando o contato é anonimizado, junto com title, description, location_details, meeting_url e cancellation_reason. Horário, status e dono são PRESERVADOS: o que aconteceu e quando é registro de operação.';
+
+notify pgrst, 'reload schema';
+
+-- ---- a agenda nasce com o que marcar: trigger e backfill (migration 0185) ----
+--
+-- A SEGUNDA metade da 0185. As funções estão ANTES do bloco da VARREDURA anon.
+--
+-- TRIGGER e BACKFILL, e não um só: o baseline nunca semeia organização que ainda
+-- não existe (só faz backfill das de hoje), e o único mecanismo que alcança
+-- organização FUTURA é trigger em `organizations`. Só backfill deixaria a
+-- segunda organização do dono vazia; só trigger deixaria sem nada todo clone que
+-- já instalou.
+--
+-- `on conflict do nothing` e nunca `do update`: o `update.sh` re-aplica este
+-- arquivo a cada atualização, e `do update` sobrescreveria em silêncio o tipo
+-- que o dono já editou. É a diferença entre semear e mandar.
+drop trigger if exists trg_semear_tipos_de_agendamento on public.organizations;
+create trigger trg_semear_tipos_de_agendamento
+  after insert on public.organizations
+  for each row
+  execute function public.fn_semear_tipos_de_agendamento_na_org_nova();
+
+-- Backfill: os clones que JÁ instalaram. Guardado por `not exists` para o
+-- `update.sh` poder re-aplicar sem duplicar e sem tocar em quem já editou.
+do $$
+declare o record;
+begin
+  for o in
+    select id from public.organizations
+     where not exists (
+       select 1 from public.calendar_event_types t where t.organization_id = organizations.id
+     )
+  loop
+    perform public.fn_semear_tipos_de_agendamento(o.id);
+  end loop;
+end
+$$;
+
+comment on function public.fn_semear_tipos_de_agendamento(uuid) is
+  'O PISO da agenda: três tipos neutros (Consulta, Reunião, Atendimento) para que instalação fresca tenha o que marcar. Não é o teto — o enriquecimento por nicho vive no passo do funil do onboarding, onde o nicho existe. `on conflict do nothing` para nunca sobrescrever o que o dono editou.';
 
 notify pgrst, 'reload schema';

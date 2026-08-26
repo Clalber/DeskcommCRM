@@ -13,7 +13,15 @@
  */
 import { describe, expect, it } from "vitest";
 
-import { ocupadosDoDono, type LinhaDeAgendamento, type LinhaDeEventoExterno } from "@/lib/agenda/ocupados";
+import {
+  agendaExternaNuncaLida,
+  ocupadosDoDono,
+  SITUACOES_QUE_LIBERAM,
+  SITUACOES_QUE_OCUPAM,
+  type LinhaDeAgendamento,
+  type LinhaDeEventoExterno,
+} from "@/lib/agenda/ocupados";
+import { SITUACOES_DO_AGENDAMENTO } from "@/lib/agenda/tipos";
 
 const jan = (h: number) => new Date(`2026-03-09T${String(h).padStart(2, "0")}:00:00Z`);
 
@@ -131,49 +139,79 @@ describe("o que o banco pode devolver e não pode derrubar a rota", () => {
 });
 
 /**
- * ⚠️ TESTE VERMELHO DE PROPÓSITO — o contrato que falta (achado QAVivo, Wave 2).
+ * A CLASSIFICAÇÃO É EXAUSTIVA — e este é o consumidor que faltava.
  *
- * `fontesDefasadas` só é populado DENTRO do laço sobre as linhas externas
- * (`ocupados.ts:110`). Uma conexão saudável que NUNCA sincronizou produz ZERO
- * linhas — logo `fontesDefasadas` sai vazio, e a rota responde EXATAMENTE como
- * responde para quem não tem Google nenhum.
+ * `SITUACOES_QUE_OCUPAM` existia exportada, sem ninguém importar, sob um
+ * comentário que a chamava de "guarda". Não guardava nada: era órfã com
+ * promessa, que é pior que órfã calada — quem lê acha que está protegido.
  *
- * O mecanismo de "falha fechada na ação, aberta na informação" que o cabeçalho
- * deste módulo declara é, por construção, incapaz de avisar sobre o caso em que
- * NÃO HÁ LINHA — porque ele deriva o aviso da linha.
- *
- * E a rota herda a cegueira na query: o `select` de `calendar_external_events`
- * traz a saúde da conexão de carona num `calendar_connections!inner`
- * (route.ts:173). Carona só existe se houver veículo: conexão sem evento nunca
- * aparece, e a rota nunca lê `last_sync_at`.
- *
- * O CONSERTO É A ASSINATURA, e é por isso que este teste também reprova no
- * `tsc`: a função precisa receber as CONEXÕES do dono, não só as linhas que
- * elas produziram. Enquanto ela só vê linhas, nenhuma lógica interna resolve —
- * a informação não chega nela.
- *
- * Vermelho esperado: `fontesDefasadas` volta `[]` onde deveria acusar a conexão
- * muda. Quando o conserto entrar, este bloco vira teste normal.
+ * Agora ela é lida aqui. Se alguém acrescentar uma situação ao vocabulário do
+ * agendamento e não decidir se ela libera ou ocupa, este teste nomeia qual.
  */
-describe("a fonte que nunca falou (VERMELHO até o conserto)", () => {
-  it("conexão saudável que NUNCA sincronizou é indistinguível de não ter Google", () => {
-    const semGoogleNenhum = ocupadosDoDono([], []);
+describe("toda situação do vocabulário está classificada", () => {
+  it("a classificação é EXATAMENTE esta — status novo tem de passar por aqui", () => {
+    // ⚠️ A PRIMEIRA VERSÃO DESTE TESTE NÃO PODIA FALHAR, e a sabotagem provou:
+    // acrescentei "remarcando" ao vocabulário sem classificar e os 16 seguiram
+    // verdes. A causa é que `SITUACOES_QUE_OCUPAM` é derivada por `filter` —
+    // tudo que não libera ocupa, por construção — então "a união cobre o
+    // vocabulário" é trivialmente verdadeiro, e afirmar isso não vigia nada.
+    //
+    // O que precisa travar é a DECISÃO, não a cobertura. Fixando as duas listas,
+    // um status novo quebra aqui e alguém tem de escrever em qual lado ele cai.
+    // O desfecho seguro continua sendo o padrão (quem não libera, ocupa); este
+    // teste só garante que ninguém receba esse padrão sem saber.
+    expect([...SITUACOES_QUE_LIBERAM]).toEqual(["cancelled", "no_show"]);
+    expect([...SITUACOES_QUE_OCUPAM]).toEqual(["pending", "confirmed", "completed"]);
+    expect([...SITUACOES_QUE_OCUPAM, ...SITUACOES_QUE_LIBERAM].sort()).toEqual(
+      [...SITUACOES_DO_AGENDAMENTO].sort(),
+    );
+  });
 
-    // O contrato que falta: a função recebe também as conexões do dono.
-    const comGoogleMudo = (
-      ocupadosDoDono as unknown as (
-        a: LinhaDeAgendamento[],
-        e: LinhaDeEventoExterno[],
-        c: Array<{ status: string; last_sync_at: string | null }>,
-      ) => ReturnType<typeof ocupadosDoDono>
-    )([], [], [{ status: "connected", last_sync_at: null }]);
+  it("e o desfecho SEGURO é o padrão: quem ocupa é a maioria", () => {
+    // Não é estética: a lista de quem LIBERA é a exceção enumerada, e tudo o
+    // mais ocupa. Se um dia a relação se inverter, alguém trocou blocklist por
+    // allowlist — e aí um status novo passa a liberar por omissão.
+    expect(SITUACOES_QUE_OCUPAM.length).toBeGreaterThan(SITUACOES_QUE_LIBERAM.length);
+  });
+});
 
-    expect(semGoogleNenhum.fontesDefasadas).toEqual([]);
+/**
+ * "NÃO TEM GOOGLE" E "TEM GOOGLE QUE NUNCA FOI LIDO" dão a mesma lista vazia.
+ *
+ * Levantado pelo maestro como risco de ORDEM entre as frentes: se o POST entrar
+ * antes de o sync existir, a agenda do atendente é oferecida inteira como livre
+ * — inclusive na hora da cirurgia que está no Google e que ninguém trouxe.
+ *
+ * O risco é de ordem, mas o SINAL é do motor: quem lê a lista vazia precisa
+ * saber se ela significa "livre" ou "não perguntei ainda".
+ */
+describe("a agenda externa é confiável agora?", () => {
+  it("sem conexão nenhuma NÃO é alerta — não há nada lá fora", () => {
+    expect(agendaExternaNuncaLida([])).toBe(false);
+  });
 
+  it("conexão que JÁ sincronizou não é alerta", () => {
     expect(
-      comGoogleMudo.fontesDefasadas,
-      "conexão conectada e sem UM sync precisa acusar — senão a tela diz que está tudo certo " +
-        "para quem tem a agenda inteira do Google invisível",
-    ).not.toEqual([]);
+      agendaExternaNuncaLida([{ status: "healthy", last_sync_at: "2026-08-26T10:00:00Z" }]),
+    ).toBe(false);
+  });
+
+  it("conexão que NUNCA sincronizou é alerta — há compromisso lá que não veio", () => {
+    expect(agendaExternaNuncaLida([{ status: "healthy", last_sync_at: null }])).toBe(true);
+  });
+
+  it("uma sincronizada entre várias já basta para não alertar", () => {
+    expect(
+      agendaExternaNuncaLida([
+        { status: "healthy", last_sync_at: null },
+        { status: "healthy", last_sync_at: "2026-08-26T10:00:00Z" },
+      ]),
+    ).toBe(false);
+  });
+
+  it("conexão DESCONECTADA não conta — quem desconectou sabe que desconectou", () => {
+    // Diferente de "nunca li": aqui houve um ato deliberado, e a tela da agenda
+    // já mostra a faixa de reconectar.
+    expect(agendaExternaNuncaLida([{ status: "disconnected", last_sync_at: null }])).toBe(false);
   });
 });

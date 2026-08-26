@@ -33,6 +33,8 @@
  * tudo isso é de quem chama. Aqui não há relógio, nem banco, nem rede.
  */
 
+import type { SituacaoDaConexao } from "@/lib/agenda/tipos";
+
 /** Qual chamada falhou. Muda o significado de `404` e de `410`. */
 export type OperacaoNoGoogle =
   | "criar"
@@ -281,28 +283,20 @@ export function classificarErroDoGoogle(erro: unknown, operacao: OperacaoNoGoogl
 }
 
 /**
- * O vocabulário de estado da conexão — **o do banco, não um subconjunto meu**.
+ * O estado da conexão é o vocabulário da entrega — **não uma lista minha**.
  *
- * Estes sete valores são exatamente o `calendar_connections_status_check` da
- * migration 0177, que por sua vez repete o de `tenant_integrations`. Não se
- * inventa palavra nova aqui: `needs_reauth`, que a v1 da arquitetura propunha,
- * não existe neste repo.
+ * `SITUACOES_DA_CONEXAO` (`lib/agenda/tipos.ts`) já declara os sete valores do
+ * `calendar_connections_status_check` da 0177, com os rótulos em português ao
+ * lado. Este arquivo teve por um tempo um `StatusDaConexao` próprio, e ele era a
+ * TERCEIRA lista do mesmo vocabulário — que é literalmente o que o invariante
+ * `vocabulario-banco-x-typescript` existe para proibir; o cabeçalho de lá diz
+ * isso com todas as letras.
  *
- * ⚠️ Esta lista já foi menor, e a razão de ter sido é uma armadilha de ordem:
- * quando escrevi este arquivo o schema ainda não existia, então declarei os
- * quatro estados que os desfechos produziam. O CHECK do banco tem sete — e
- * `rate_limited` é justamente o estado que faltava para o desfecho `recuar` ter
- * para onde ir. Tipo que nasce antes da coluna tem de ser corrigido CONTRA a
- * coluna quando ela chega, nunca o contrário.
+ * Nasceu porque a camada pura veio antes do schema e antes de `tipos.ts`. O
+ * remédio é o mesmo da conversão de fuso: quando o dono do vocabulário aparece,
+ * a lista adiantada não é corrigida — é APAGADA, e quem precisava dela importa.
  */
-export type StatusDaConexao =
-  | "connecting"
-  | "healthy"
-  | "token_expired"
-  | "scope_missing"
-  | "disconnected"
-  | "rate_limited"
-  | "error";
+export type { SituacaoDaConexao } from "@/lib/agenda/tipos";
 
 /**
  * Em que estado este desfecho deixa a agenda conectada — e, com isso, se ela
@@ -317,7 +311,7 @@ export type StatusDaConexao =
  * sobre a conexão, e rebaixar a conexão por causa de um evento que sumiu
  * desligaria a agenda inteira por um caso isolado.
  */
-export function estadoDaConexaoApos(desfecho: DesfechoDoGoogle): StatusDaConexao | null {
+export function estadoDaConexaoApos(desfecho: DesfechoDoGoogle): SituacaoDaConexao | null {
   switch (desfecho) {
     case "reautenticar":
       return "token_expired";
@@ -339,20 +333,25 @@ export function estadoDaConexaoApos(desfecho: DesfechoDoGoogle): StatusDaConexao
 }
 
 /**
- * Esta conexão pode ser contada no cálculo de horário livre?
+ * ⚠️ AQUI MORAVA `contaComoConflito`, E ELA FOI APAGADA — DECISÃO 23.
  *
- * Só `healthy` conta. Qualquer outro estado significa que não sabemos o que há
- * naquela agenda — e **"não sei" nunca pode ser lido como "está livre"**.
+ * Ela devolvia `true` só para `healthy`, e a docstring argumentava que "não sei"
+ * nunca pode ser lido como "está livre". O argumento é bom, era meu, e está
+ * INVERTIDO — o maestro corrigiu a DECISÃO 3.2 e a versão em vigor
+ * (`lib/agenda/ocupados.ts`) faz o oposto: **conexão caída CONTINUA ocupando**.
+ * O compromisso não deixou de existir na agenda do Google da pessoa; o que
+ * parou foi a atualização dele. Parar de contar é que oferece o horário tomado.
  *
- * Isso vale inclusive para `rate_limited`, que é o mais tentador de tratar como
- * benigno: a conexão está saudável, só não respondeu agora. Mas o motor de
- * horários não pergunta se a conexão está bem — pergunta o que há na agenda. E
- * a resposta, enquanto ela não responde, é "não sei". Quem lê `false` aqui
- * PARA de oferecer horário daquele calendário; não passa a oferecer tudo.
+ * O perigo não era a duplicação — era a QUALIDADE DO TEXTO. A função tinha nome
+ * certo, argumento convincente, antecipava a objeção do `rate_limited` e teste
+ * verde. Quem chegasse para ligar o motor de horários encontraria tudo isso e
+ * ligaria, e o Google desconectado passaria a parecer VAZIO — oferecendo as 14h
+ * que já têm consulta.
+ *
+ * Não foi renomeada de propósito: nome novo para semântica invertida é a mesma
+ * armadilha com disfarce melhor. Quem precisa saber se uma fonte defasada entra
+ * no cálculo pergunta a `lib/agenda/ocupados.ts`, que é quem decide.
  */
-export function contaComoConflito(status: StatusDaConexao): boolean {
-  return status === "healthy";
-}
 
 /**
  * Vale tentar de novo sozinho?

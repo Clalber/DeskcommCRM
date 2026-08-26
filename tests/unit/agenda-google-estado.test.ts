@@ -50,13 +50,28 @@ describe("emitirEstado / verificarEstado", () => {
     expect(verificarEstado(state, { segredo: SEGREDO, agora: new Date(quaseLa.getTime() + 1) })).toBeNull();
   });
 
-  it("devolve o nonce para quem quiser queimá-lo — aqui ele não é queimado", () => {
-    // Declarado em vez de esquecido: dentro do prazo, o mesmo state vale duas
-    // vezes. Fechar isso exige guardar o nonce usado, o que é estado — e estado
-    // não mora nesta camada.
+  it("devolve o nonce, que é o que permite queimá-lo", () => {
     const state = emitirEstado(DADOS, { segredo: SEGREDO, agora: AGORA, nonce: "nonce-de-teste" });
     expect(verificarEstado(state, { segredo: SEGREDO, agora: AGORA })?.nonce).toBe("nonce-de-teste");
-    expect(verificarEstado(state, { segredo: SEGREDO, agora: AGORA })?.nonce).toBe("nonce-de-teste");
+  });
+
+  // ⚠️ ESTE `skip` SUBSTITUI UM TESTE QUE PRENDIA O BURACO.
+  //
+  // Antes havia aqui um caso chamado "aqui ele não é queimado", que AFIRMAVA que
+  // o mesmo state vale duas vezes dentro do prazo. A intenção era declarar
+  // dívida; o efeito era outro — quem consertasse a queima faria aquele caso
+  // ficar VERMELHO, e o caminho de menor resistência seria "consertar de volta".
+  // Teste que afirma o defeito o transforma em contrato.
+  //
+  // A forma certa de declarar a dívida é esta: o caso que descreve o
+  // comportamento DESEJADO, pulado, com o motivo escrito. Ele nasce vermelho no
+  // dia em que alguém ligar a queima — e é assim que se percebe que acabou.
+  //
+  // Falta, para ele deixar de ser `skip`: onde guardar o nonce usado (tabela com
+  // migration ou Upstash, que já é dependência obrigatória). É decisão de infra,
+  // e está com o maestro.
+  it.skip("o mesmo state não vale duas vezes — o nonce é queimado no primeiro uso", () => {
+    // Ver o comentário acima. Quem implementar a queima liga este caso.
   });
 
   it("dois states do mesmo par de ids são diferentes", () => {

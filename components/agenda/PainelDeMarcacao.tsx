@@ -35,6 +35,9 @@ export function PainelDeMarcacao({
   local = "Presencial · Sala 2",
   fuso = "America/Sao_Paulo",
   horariosPorDia,
+  publicouHorarios = true,
+  fusoSuposto = false,
+  fontesDefasadas,
   quemSeraAtendido,
   onConfirmar,
   className,
@@ -48,6 +51,18 @@ export function PainelDeMarcacao({
   fuso?: string;
   /** `yyyy-MM-dd` → horários livres. Dia ausente = sem horário, nasce apagado. */
   horariosPorDia: Record<string, HorarioLivre[]>;
+  /**
+   * `false` = a pessoa NUNCA publicou jornada. Não é o mesmo que "não há vaga",
+   * e a rota devolve os dois separados de propósito: sem a distinção a tela
+   * diria "nenhum horário disponível" para quem não configurou nada — uma
+   * resposta verdadeira e inútil, que manda procurar vaga onde não há agenda.
+   * Decisão 1.1 da entrega.
+   */
+  publicouHorarios?: boolean;
+  /** O fuso veio do padrão, ninguém escolheu — e o agente oferece horário com ele. */
+  fusoSuposto?: boolean;
+  /** Agenda conectada que parou de atualizar: o horário fica bloqueado, e a tela diz desde quando. */
+  fontesDefasadas?: Array<{ nome?: string; desde?: string }>;
   /**
    * Quem vai ser atendido, e se ele aceita receber mensagem.
    *
@@ -196,6 +211,41 @@ export function PainelDeMarcacao({
             </Button>
           </div>
         </div>
+
+        {!publicouHorarios && (
+          // Não é estado vazio: é estado NÃO CONFIGURADO, e o texto diz o
+          // próximo passo em vez de constatar a ausência.
+          <div
+            data-testid="sem-jornada-publicada"
+            className="mb-3 rounded-sm border border-warning/40 bg-warning-bg p-3"
+          >
+            <p className="text-sm font-semibold text-text">
+              Você ainda não publicou seus horários de atendimento
+            </p>
+            <p className="mt-1 text-xs leading-4 text-text-muted">
+              Sem eles ninguém consegue marcar — nem você, nem o agente. Configure a sua
+              disponibilidade e os horários aparecem aqui.
+            </p>
+          </div>
+        )}
+
+        {fusoSuposto && (
+          <p data-testid="fuso-suposto" className="mb-2 text-[11px] leading-4 text-text-subtle">
+            Estamos supondo o fuso <span className="font-mono">{fuso.replace("_", " ")}</span> —
+            ninguém escolheu ainda. O agente oferece horário usando ele.
+          </p>
+        )}
+
+        {fontesDefasadas && fontesDefasadas.length > 0 && (
+          // Falhar fechado na AÇÃO (o horário fica bloqueado de qualquer jeito)
+          // e aberto na INFORMAÇÃO (a tela diz desde quando). O contrário —
+          // bloquear em silêncio — faz a pessoa achar que a agenda está errada.
+          <p data-testid="fontes-defasadas" className="mb-2 text-[11px] leading-4 text-warning">
+            {fontesDefasadas.length === 1
+              ? `A agenda conectada ${fontesDefasadas[0]?.nome ?? ""} não atualiza desde ${fontesDefasadas[0]?.desde ?? "algum tempo"}. Os horários dela seguem bloqueados por precaução.`
+              : `${fontesDefasadas.length} agendas conectadas não estão atualizando. Os horários delas seguem bloqueados por precaução.`}
+          </p>
+        )}
 
         <div className="grid grid-cols-7 gap-1 text-center">
           {semanas[0]?.map((d) => (

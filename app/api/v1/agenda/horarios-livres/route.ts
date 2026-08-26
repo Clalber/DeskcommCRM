@@ -37,19 +37,14 @@ import { randomUUID } from "node:crypto";
 import { type NextRequest } from "next/server";
 import { z } from "zod";
 
-import { horariosLivres, type ExcecaoDeData } from "@/lib/agenda/horarios-livres";
-import { lerJornadaDoBanco } from "@/lib/agenda/jornada";
 import {
-  ocupadosDoDono,
-  type LinhaDeAgendamento,
-  type LinhaDeEventoExterno,
-} from "@/lib/agenda/ocupados";
+  horariosLivresDaOrg,
+  MAXIMO_DE_DIAS,
+  type CodigoDeRecusaDaConsulta,
+} from "@/lib/agenda/consulta";
 import { fail, ok } from "@/lib/api/wrappers";
 import { requireRole } from "@/lib/auth/require-role";
 import { createClient } from "@/lib/supabase/server";
-
-/** Teto de dias por consulta: uma varredura de ano inteiro é erro de chamada, não pedido. */
-const MAXIMO_DE_DIAS = 62;
 
 const querySchema = z.object({
   event_type_id: z.string().uuid(),
@@ -94,149 +89,56 @@ export async function GET(req: NextRequest): Promise<Response> {
 
   const supabase = await createClient();
 
-  const { data: tipo, error: erroTipo } = await supabase
-    .from("calendar_event_types")
-    .select(
-      "id, name, is_active, duration_minutes, buffer_before_minutes, buffer_after_minutes, minimum_notice_minutes, slot_interval_minutes, booking_window_days, default_owner_user_id",
-    )
-    .eq("organization_id", activeOrg.orgId)
-    .eq("id", parsed.data.event_type_id)
-    .maybeSingle();
-  if (erroTipo) return fail("internal_error", erroTipo.message, 500, { requestId });
-  if (!tipo) return fail("not_found", "Tipo de agendamento não encontrado.", 404, { requestId });
-  if (!tipo.is_active) {
-    return fail("validation_failed", `"${tipo.name}" está desativado.`, 422, { requestId });
-  }
-
-  const donoId = parsed.data.owner_user_id ?? tipo.default_owner_user_id;
-  if (!donoId) {
-    // Sem dono não há jornada, e sem jornada não há horário. Devolver lista
-    // vazia aqui faria a tela dizer "nenhum horário disponível" para uma
-    // configuração incompleta — o erro nomeado é o que leva alguém a corrigir.
-    return fail(
-      "validation_failed",
-      `"${tipo.name}" não tem responsável definido, e sem responsável não há agenda para consultar.`,
-      422,
-      { requestId },
-    );
-  }
-
-  const { data: disponibilidade, error: erroDisp } = await supabase
-    .from("attendant_availability")
-    .select("schedule")
-    .eq("organization_id", activeOrg.orgId)
-    .eq("user_id", donoId)
-    .maybeSingle();
-  if (erroDisp) return fail("internal_error", erroDisp.message, 500, { requestId });
-
-  const leitura = lerJornadaDoBanco(disponibilidade?.schedule);
-  if (!leitura.ok) {
-    // Falha fechada na AÇÃO, aberta na INFORMAÇÃO: schedule corrompido não pode
-    // virar lista vazia, senão o dono conclui que está sem vaga e essa conclusão
-    // errada não gera chamado nenhum.
-    return fail(
-      "validation_failed",
-      // O consumidor desta rota é a TELA DO OPERADOR, então vai o motivo com o
-      // nome do campo. Quem fala com o cliente final (as ferramentas MCP) usa
-      // `motivoParaCliente` — dois campos para a escolha ser explícita.
-      `A disponibilidade deste responsável está mal configurada: ${leitura.motivoParaOperador}`,
-      422,
-      { requestId },
-    );
-  }
-
-  const [{ data: excecoesRaw, error: erroExc }, { data: agendaRaw, error: erroAg }] =
-    await Promise.all([
-      supabase
-        .from("calendar_availability_exceptions")
-        .select("exception_date, is_unavailable, start_minute, end_minute")
-        .eq("organization_id", activeOrg.orgId)
-        .eq("user_id", donoId)
-        .gte("exception_date", diaISO(de))
-        .lte("exception_date", diaISO(ate)),
-      supabase
-        .from("calendar_appointments")
-        .select("starts_at, ends_at, status")
-        .eq("organization_id", activeOrg.orgId)
-        .eq("owner_user_id", donoId)
-        .lt("starts_at", ate.toISOString())
-        .gt("ends_at", de.toISOString()),
-    ]);
-  if (erroExc) return fail("internal_error", erroExc.message, 500, { requestId });
-  if (erroAg) return fail("internal_error", erroAg.message, 500, { requestId });
-
-  // `calendar_external_events` NÃO tem `user_id`: o dono vem por
-  // `connection_id → calendar_connections.user_id`. O join traz de carona a
-  // situação da conexão, que decide se o horário sai com aviso de defasagem.
-  const { data: externosRaw, error: erroExt } = await supabase
-    .from("calendar_external_events")
-    .select("starts_at, ends_at, transparency, status, calendar_connections!inner(user_id, status)")
-    .eq("organization_id", activeOrg.orgId)
-    .eq("calendar_connections.user_id", donoId)
-    .lt("starts_at", ate.toISOString())
-    .gt("ends_at", de.toISOString());
-  if (erroExt) return fail("internal_error", erroExt.message, 500, { requestId });
-
-  const excecoes: ExcecaoDeData[] = (excecoesRaw ?? []).map((linha) => ({
-    // ⚠️ `exception_date` é `date` no Postgres e chega como "YYYY-MM-DD" pelo
-    // PostgREST. `diaLocalISO` compara STRING — um `Date` aqui não casaria com
-    // dia nenhum, e o bloqueio sumiria em silêncio.
-    data: String(linha.exception_date).slice(0, 10),
-    indisponivel: linha.is_unavailable,
-    inicioMinuto: linha.start_minute,
-    fimMinuto: linha.end_minute,
-  }));
-
-  const { ocupados, fontesDefasadas } = ocupadosDoDono(
-    (agendaRaw ?? []) as LinhaDeAgendamento[],
-    (externosRaw ?? []).map((linha) => {
-      const conexao = linha.calendar_connections as unknown as { status?: string } | null;
-      return {
-        starts_at: linha.starts_at,
-        ends_at: linha.ends_at,
-        transparency: linha.transparency,
-        status: linha.status,
-        situacaoDaConexao: conexao?.status ?? "error",
-      } satisfies LinhaDeEventoExterno;
-    }),
-  );
-
-  const slots = horariosLivres({
-    jornada: leitura.jornada,
-    excecoes,
-    ocupados,
-    tipo: {
-      duracaoMin: tipo.duration_minutes,
-      bufferAntesMin: tipo.buffer_before_minutes,
-      bufferDepoisMin: tipo.buffer_after_minutes,
-      avisoMinimoMin: tipo.minimum_notice_minutes,
-      intervaloMin: tipo.slot_interval_minutes,
-      janelaDias: tipo.booking_window_days,
-    },
+  // O miolo mora em `lib/agenda/consulta.ts` porque as ferramentas MCP precisam
+  // do MESMO cálculo sem ter request nem cookie. Duas coletas dariam à IA e à
+  // tela respostas diferentes sobre o mesmo horário.
+  const consulta = await horariosLivresDaOrg(supabase, activeOrg.orgId, {
+    eventTypeId: parsed.data.event_type_id,
+    eventTypeSlug: null,
+    ownerUserId: parsed.data.owner_user_id ?? null,
     de,
     ate,
     agora: new Date(),
   });
 
+  if (!consulta.ok) {
+    // O consumidor desta rota é a TELA DO OPERADOR, então vai o motivo com o
+    // nome do campo. Quem fala com o cliente final (as ferramentas MCP) usa
+    // `motivoParaCliente` — dois campos para a escolha ser explícita.
+    const status: Record<CodigoDeRecusaDaConsulta, { codigo: string; http: number }> = {
+      tipo_desconhecido: { codigo: "not_found", http: 404 },
+      tipo_desativado: { codigo: "validation_failed", http: 422 },
+      sem_responsavel: { codigo: "validation_failed", http: 422 },
+      jornada_mal_configurada: { codigo: "validation_failed", http: 422 },
+      erro_interno: { codigo: "internal_error", http: 500 },
+    };
+    const { codigo, http } = status[consulta.codigo];
+    return fail(codigo, consulta.motivoParaOperador, http, { requestId });
+  }
+
   return ok(
     {
-      slots: slots.map((s) => ({ inicio: s.inicio.toISOString(), fim: s.fim.toISOString() })),
-      fuso_da_regra: leitura.jornada.timezone,
+      slots: consulta.slots.map((s) => ({
+        inicio: s.inicio.toISOString(),
+        fim: s.fim.toISOString(),
+      })),
+      fuso_da_regra: consulta.fusoDaRegra,
       // "Não publiquei meus horários" e "não tenho vaga" chegam como a mesma
       // lista vazia se a tela não puder distingui-los (DECISÃO 1.1).
-      publicou_horarios: leitura.publicouHorarios,
+      publicou_horarios: consulta.publicouHorarios,
       // O fuso não foi escolhido por ninguém: veio do default. A tela precisa
       // poder pedir que a pessoa confirme, porque a IA oferece horário com ele.
-      fuso_suposto: leitura.fusoSuposto,
+      fuso_suposto: consulta.fusoSuposto,
       // Fechado na ação, aberto na informação: o horário fica bloqueado, e a
       // tela pode dizer desde quando a agenda conectada parou de atualizar.
-      fontes_defasadas: fontesDefasadas,
+      fontes_defasadas: consulta.fontesDefasadas,
+      // Diferente de `fontes_defasadas`: lá a conexão já trouxe eventos e parou
+      // de atualizar; aqui ela nunca trouxe nada, e a grade pode estar mentindo
+      // por inteiro. Sai da mesma função que serve às ferramentas MCP, para a
+      // tela e a IA nunca discordarem sobre o mesmo horário.
+      agenda_externa_nunca_lida: consulta.agendaExternaNuncaLida,
     },
     { requestId },
   );
 }
 
-/** `YYYY-MM-DD` de um instante, em UTC — a régua que a coluna `date` usa. */
-function diaISO(instante: Date): string {
-  return instante.toISOString().slice(0, 10);
-}
