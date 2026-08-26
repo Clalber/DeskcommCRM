@@ -97,7 +97,7 @@ export function GuardrailsEditor({ value, onChange, disabled }: Props) {
             <SelectContent>
               {(Object.keys(KIND_LABELS) as GuardrailKind[]).map((k) => (
                 <SelectItem key={k} value={k}>
-                  {KIND_LABELS[k]}
+                  {t(KIND_LABELS[k])}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -124,7 +124,7 @@ export function GuardrailsEditor({ value, onChange, disabled }: Props) {
               >
                 <div className="mb-2 flex items-center justify-between gap-2">
                   <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    {KIND_LABELS[item.kind]}
+                    {t(KIND_LABELS[item.kind])}
                   </span>
                   <Button
                     type="button"

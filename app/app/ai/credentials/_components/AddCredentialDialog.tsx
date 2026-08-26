@@ -170,7 +170,7 @@ export function AddCredentialDialog({ open, onOpenChange }: Props) {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="cred-key">API key</Label>
+            <Label htmlFor="cred-key">{t("API key")}</Label>
             <Input
               id="cred-key"
               type="password"
