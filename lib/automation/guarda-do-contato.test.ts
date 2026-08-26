@@ -38,29 +38,64 @@ describe("checarGuardasDeContato", () => {
     expect(r).toEqual({ ok: false, reason: "no_phone" });
   });
 
-  it("sem objeto consent: no_consent", () => {
+  /**
+   * ⚠️ OS TRÊS CASOS ABAIXO SÃO O CONTRÁRIO DO QUE A PRIMEIRA VERSÃO AFIRMAVA,
+   * e a razão está medida no cabeçalho de `guarda-do-contato.ts`: o DEFAULT da
+   * coluna `contacts.consent` já é `{marketing: {granted_at: null, …}}`, então
+   * "grant ausente" é o estado de NASCIMENTO de todo contato do produto — não
+   * um sinal de recusa. Bloquear por ele desligaria a automação de WhatsApp de
+   * toda instalação que não usa o formulário do Respondi, sem tela para
+   * conceder consentimento em lugar nenhum.
+   */
+  it("sem objeto consent: PASSA — é o contato que nasceu pelo default, não uma recusa", () => {
     const r = checarGuardasDeContato(
       ctxComContato({ id: "c1", phone_number: "+5511999999999" }),
     );
-    expect(r).toEqual({ ok: false, reason: "no_consent" });
+    expect(r).toEqual({ ok: true, contact: { id: "c1", phone_number: "+5511999999999" } });
   });
 
-  it("consent.marketing ausente: no_consent", () => {
+  it("consent.marketing ausente: PASSA", () => {
     const r = checarGuardasDeContato(
       ctxComContato({ id: "c1", phone_number: "+5511999999999", consent: {} }),
     );
-    expect(r).toEqual({ ok: false, reason: "no_consent" });
+    expect(r).toEqual({ ok: true, contact: { id: "c1", phone_number: "+5511999999999" } });
   });
 
-  it("consent.marketing.granted_at explicitamente null (recusa): no_consent", () => {
+  it("granted_at null SEM declined_at: PASSA — é exatamente o default da coluna", () => {
     const r = checarGuardasDeContato(
       ctxComContato({
         id: "c1",
         phone_number: "+5511999999999",
-        consent: { marketing: { granted_at: null } },
+        consent: { marketing: { granted_at: null, source: null, version: null } },
       }),
     );
-    expect(r).toEqual({ ok: false, reason: "no_consent" });
+    expect(r).toEqual({ ok: true, contact: { id: "c1", phone_number: "+5511999999999" } });
+  });
+
+  it("declined_at gravado: consent_declined — a pessoa respondeu NÃO", () => {
+    const r = checarGuardasDeContato(
+      ctxComContato({
+        id: "c1",
+        phone_number: "+5511999999999",
+        consent: { marketing: { granted_at: null, declined_at: "2026-08-26T12:00:00Z" } },
+      }),
+    );
+    expect(r).toEqual({ ok: false, reason: "consent_declined" });
+  });
+
+  it("recusa vence sobre concessão antiga: declined_at bloqueia mesmo com granted_at preenchido", () => {
+    // A pessoa concedeu num envio e recusou no seguinte. A ingestão reescreve o
+    // objeto inteiro, mas se um clone tiver as duas chaves, quem manda é o NÃO.
+    const r = checarGuardasDeContato(
+      ctxComContato({
+        id: "c1",
+        phone_number: "+5511999999999",
+        consent: {
+          marketing: { granted_at: "2026-01-01T00:00:00Z", declined_at: "2026-08-26T12:00:00Z" },
+        },
+      }),
+    );
+    expect(r).toEqual({ ok: false, reason: "consent_declined" });
   });
 
   it("consentimento concedido, tudo em ordem: ok, contato estreito devolvido", () => {
