@@ -2397,6 +2397,34 @@ export const DICIONARIO: Traducoes = {
   "Sem actor registrado": { es: "Sin actor registrado" },
   "Ver tenant": { es: "Ver tenant" },
   "Abrir recurso": { es: "Abrir recurso" },
+
+  // ─── Admin de plataforma: Platform Admins ───
+  "Administradores com acesso privilegiado à plataforma": {
+    es: "Administradores con acceso privilegiado a la plataforma",
+  },
+  "Erro ao carregar platform admins. Tente recarregar.": {
+    es: "Error al cargar los platform admins. Intenta recargar.",
+  },
+  "Gerenciamento de Platform Admins é restrito ao DBA": {
+    es: "La gestión de Platform Admins está restringida al DBA",
+  },
+  "Conforme Spec 01 §3.4 T-04: adição, remoção ou alteração de": {
+    es: "Según la Spec 01 §3.4 T-04: la adición, eliminación o modificación de",
+  },
+  "é feita exclusivamente via SQL pelo DBA, com nota explicativa em": {
+    es: "se hace exclusivamente vía SQL por el DBA, con una nota explicativa en",
+  },
+  ". Esta página é informativa e read-only — nenhum botão de modificação está disponível por design.": {
+    es: ". Esta página es informativa y de solo lectura — ningún botón de modificación está disponible por diseño.",
+  },
+  "Ver runbook →": { es: "Ver runbook →" },
+  "Usuário": { es: "Usuario" },
+  "Concedido em": { es: "Concedido el" },
+  "Concedido por": { es: "Concedido por" },
+  "Nenhum platform admin encontrado": { es: "Ningún platform admin encontrado" },
+  "Platform admins são configurados exclusivamente via DBA.": {
+    es: "Los platform admins se configuran exclusivamente vía DBA.",
+  },
 };
 
 /**
