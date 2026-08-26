@@ -13,7 +13,9 @@ import {
   type DesfechoDoGoogle,
   type OperacaoNoGoogle,
   classificarErroDoGoogle,
+  contaComoConflito,
   deveTentarDeNovo,
+  estadoDaConexaoApos,
 } from "@/lib/agenda/google/erros";
 
 /** Erro no formato que `googleapis` levanta. */
@@ -59,6 +61,51 @@ describe("classificarErroDoGoogle — o mesmo 410, dois desfechos opostos", () =
 
   it("`fullSyncRequired` vale mais que a operação — é o Google nomeando a causa", () => {
     expect(desfecho(erroDoGoogle(410, "fullSyncRequired"), "atualizar")).toBe("ressincronizar");
+  });
+});
+
+describe("classificarErroDoGoogle — o corpo CRU do Google, que e o que `res.json()` devolve", () => {
+  // ⚠️ ESTE BLOCO GUARDA O ACHADO GRAVE DA REVISÃO FRIA. Este repo não tem
+  // `googleapis` nas dependências, então quem escrever o cliente vai de
+  // `fetch` — e o objeto natural de `await res.json()` é o corpo CRU,
+  // `{ error: { code, message, errors[], status } }`. Ele não era reconhecido:
+  // chegava sem status e sem motivo, caía no desfecho conservador
+  // `transitorio`, e virava repetição infinita.
+  const corpoCru = (status: number, reason: string, statusTexto?: string) => ({
+    error: {
+      code: status,
+      message: "erro",
+      errors: [{ domain: "global", reason, message: reason }],
+      ...(statusTexto ? { status: statusTexto } : {}),
+    },
+  });
+
+  it("403 de escopo no corpo cru dá o MESMO desfecho que embrulhado", () => {
+    const cru = classificarErroDoGoogle(corpoCru(403, "insufficientPermissions", "PERMISSION_DENIED"), "criar");
+    const embrulhado = classificarErroDoGoogle(erroDeFetch(403, "insufficientPermissions"), "criar");
+    expect(cru.desfecho).toBe("sem_permissao");
+    expect(cru.desfecho).toBe(embrulhado.desfecho);
+    expect(cru.status).toBe(403);
+    expect(deveTentarDeNovo(cru.desfecho)).toBe(false);
+  });
+
+  it("o pior caso: 410 fullSyncRequired no corpo cru NÃO pode virar 'tentar de novo'", () => {
+    // Se virar, o worker repete a MESMA requisição com o MESMO syncToken morto,
+    // recebe 410 de novo, para sempre — e a sincronização daquela agenda
+    // congela em silêncio, porque cada tentativa parece falha passageira.
+    const c = classificarErroDoGoogle(corpoCru(410, "fullSyncRequired"), "sincronizar");
+    expect(c.desfecho).toBe("ressincronizar");
+    expect(c.status).toBe(410);
+    expect(c.motivo).toBe("fullsyncrequired");
+  });
+
+  it("401 no corpo cru pede reconexão", () => {
+    expect(desfecho(corpoCru(401, "authError"), "listar")).toBe("reautenticar");
+  });
+
+  it("reconhece `statusCode`, que é como outros embrulhos de fetch nomeiam o status", () => {
+    expect(desfecho({ statusCode: 429 }, "criar")).toBe("recuar");
+    expect(desfecho({ statusCode: 503 }, "criar")).toBe("transitorio");
   });
 });
 
@@ -160,6 +207,34 @@ describe("classificarErroDoGoogle — o que a classificação devolve junto", ()
     // Sem nada para ler, o desfecho conservador é "tentar de novo" — não
     // "desistir" nem "mandar o dono reconectar".
     expect(desfecho(null, "criar")).toBe("transitorio");
+  });
+});
+
+describe("estadoDaConexaoApos / contaComoConflito — a ponte com a DECISÃO 3.2", () => {
+  it("cada desfecho diz o que fazer com a CONEXÃO, não só com a chamada", () => {
+    expect(estadoDaConexaoApos("reautenticar")).toBe("token_expired");
+    expect(estadoDaConexaoApos("sem_permissao")).toBe("scope_missing");
+    expect(estadoDaConexaoApos("permanente")).toBe("error");
+    expect(estadoDaConexaoApos("ja_esta_feito")).toBe("healthy");
+  });
+
+  it("desfecho sobre um EVENTO não mexe no estado da conexão", () => {
+    // Rebaixar a conexão porque um evento sumiu desligaria a agenda inteira
+    // por causa de um caso isolado.
+    expect(estadoDaConexaoApos("evento_sumiu")).toBeNull();
+    expect(estadoDaConexaoApos("recuar")).toBeNull();
+    expect(estadoDaConexaoApos("transitorio")).toBeNull();
+    expect(estadoDaConexaoApos("ressincronizar")).toBeNull();
+  });
+
+  it("só agenda saudável conta como conflito — 'não sei' nunca é 'está livre'", () => {
+    // É a exigência literal da DECISÃO 3.2: contar uma fonte que não responde é
+    // pior que não ter fonte, porque ela parece vazia e marcaríamos em cima de
+    // compromisso real.
+    expect(contaComoConflito("healthy")).toBe(true);
+    expect(contaComoConflito("token_expired")).toBe(false);
+    expect(contaComoConflito("scope_missing")).toBe(false);
+    expect(contaComoConflito("error")).toBe(false);
   });
 });
 

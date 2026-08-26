@@ -391,6 +391,119 @@ describe("doEventoDoGoogle", () => {
     ).toBe("fuso_invalido");
   });
 
+  it("`dateTime` SEM deslocamento é hora de parede, e usa o fuso do evento", () => {
+    // ⚠️ `new Date("2026-09-02T14:00:00")` — sem Z e sem -03:00 — é lido pela
+    // especificação como hora LOCAL DO PROCESSO. O mesmo evento viraria
+    // instantes diferentes conforme o fuso da máquina onde a imagem roda: a
+    // agenda de um self-hoster em Manaus ocuparia horário diferente da de um em
+    // São Paulo, com o mesmo dado. Esta asserção é absoluta de propósito — ela
+    // vale igual em qualquer fuso de processo.
+    const e = eventoLido(
+      doEventoDoGoogle(
+        {
+          id: "evt-sem-offset",
+          start: { dateTime: "2026-09-02T14:00:00", timeZone: "America/Sao_Paulo" },
+          end: { dateTime: "2026-09-02T15:00:00", timeZone: "America/Sao_Paulo" },
+        },
+        { fusoDoCalendario: "UTC" },
+      ),
+    );
+    expect(e.starts_at).toBe("2026-09-02T17:00:00.000Z");
+    expect(e.ends_at).toBe("2026-09-02T18:00:00.000Z");
+  });
+
+  it("sem `timeZone` no evento, a hora de parede cai no fuso do CALENDÁRIO", () => {
+    const e = eventoLido(
+      doEventoDoGoogle(
+        {
+          id: "evt-sem-tz",
+          start: { dateTime: "2026-09-02T14:00:00" },
+          end: { dateTime: "2026-09-02T15:00:00" },
+        },
+        FUSO_DO_CALENDARIO,
+      ),
+    );
+    expect(e.starts_at).toBe("2026-09-02T17:00:00.000Z");
+  });
+
+  it("data pura chegando no campo `dateTime` não reproduz o bug da meia-noite UTC", () => {
+    const e = eventoLido(
+      doEventoDoGoogle(
+        { id: "evt-torto", start: { dateTime: "2026-09-02" }, end: { dateTime: "2026-09-03" } },
+        FUSO_DO_CALENDARIO,
+      ),
+    );
+    expect(e.starts_at).toBe("2026-09-02T03:00:00.000Z");
+    expect(e.starts_at).not.toBe("2026-09-02T00:00:00.000Z");
+  });
+
+  it("compromisso que o DONO da agenda recusou não ocupa o horário dele", () => {
+    // Deixar ocupando some com horário livre por causa de convite que a pessoa
+    // nem aceitou — e é o tipo de sumiço que ninguém liga ao Google.
+    const e = eventoLido(
+      doEventoDoGoogle(
+        {
+          id: "evt-recusado",
+          start: { dateTime: "2026-09-02T14:00:00Z" },
+          end: { dateTime: "2026-09-02T15:00:00Z" },
+          attendees: [
+            { email: "outro@exemplo.com", responseStatus: "accepted" },
+            { email: "dono@clinica.com.br", self: true, responseStatus: "declined" },
+          ],
+        },
+        FUSO_DO_CALENDARIO,
+      ),
+    );
+    expect(e.ocupa).toBe(false);
+    // Recusa de OUTRO participante não muda nada — o horário do dono segue tomado.
+    const deOutro = eventoLido(
+      doEventoDoGoogle(
+        {
+          id: "evt-outro-recusou",
+          start: { dateTime: "2026-09-02T14:00:00Z" },
+          end: { dateTime: "2026-09-02T15:00:00Z" },
+          attendees: [{ email: "outro@exemplo.com", responseStatus: "declined" }],
+        },
+        FUSO_DO_CALENDARIO,
+      ),
+    );
+    expect(deOutro.ocupa).toBe(true);
+  });
+
+  it("`workingLocation` é marcador de onde a pessoa trabalha, não compromisso", () => {
+    // Ele cobre o dia inteiro; contá-lo como ocupação apagaria a agenda de quem
+    // apenas marcou que hoje está no escritório.
+    const e = eventoLido(
+      doEventoDoGoogle(
+        {
+          id: "evt-local",
+          eventType: "workingLocation",
+          start: { date: "2026-09-02" },
+          end: { date: "2026-09-03" },
+        },
+        FUSO_DO_CALENDARIO,
+      ),
+    );
+    expect(e.ocupa).toBe(false);
+  });
+
+  it("caixa alta não muda o significado — `CANCELLED` não vira compromisso", () => {
+    const cancelado = doEventoDoGoogle({ id: "evt-CX", status: "CANCELLED" }, FUSO_DO_CALENDARIO);
+    expect(cancelado.tipo).toBe("cancelado");
+    const livre = eventoLido(
+      doEventoDoGoogle(
+        {
+          id: "evt-CX2",
+          transparency: "TRANSPARENT",
+          start: { dateTime: "2026-09-02T14:00:00Z" },
+          end: { dateTime: "2026-09-02T15:00:00Z" },
+        },
+        FUSO_DO_CALENDARIO,
+      ),
+    );
+    expect(livre.ocupa).toBe(false);
+  });
+
   it("não chuta `updated` ilegível — devolve nulo", () => {
     const e = eventoLido(
       doEventoDoGoogle(

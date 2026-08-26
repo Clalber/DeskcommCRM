@@ -129,6 +129,44 @@ describe("lerRespostaDeToken", () => {
   });
 });
 
+describe("lerRespostaDeToken — expires_in que chega como texto", () => {
+  it("aceita o número em string, em vez de nascer 'já vencido'", () => {
+    // Recusar a string faria a renovação rodar em TODA chamada — caro, e
+    // invisível, porque cada renovação isolada parece legítima.
+    const r = lerRespostaDeToken({ access_token: "ya29.novo", expires_in: "3599" }, { agora: AGORA });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.token.expira_em).toBe("2026-08-26T12:59:59.000Z");
+    expect(precisaRenovar(r.token.expira_em, AGORA)).toBe(false);
+  });
+
+  it("texto que não é número continua caindo no conservador 'já vencido'", () => {
+    const r = lerRespostaDeToken({ access_token: "ya29.novo", expires_in: "uma hora" }, { agora: AGORA });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.token.expira_em).toBe(AGORA.toISOString());
+  });
+});
+
+describe("a ORDEM entre fundir e conferir escopo — e não o contrário", () => {
+  it("conferir a resposta da renovação DIRETO acusa escopo faltando numa conexão boa", () => {
+    // Esta asserção existe para pinar a armadilha, não para abençoá-la: é o
+    // resultado ERRADO, e ele é o que se obtém invertendo a ordem.
+    const respostaDaRenovacao = lerRespostaDeToken(
+      { access_token: "ya29.novo", expires_in: 3600 },
+      { agora: AGORA },
+    );
+    expect(respostaDaRenovacao.ok).toBe(true);
+    if (!respostaDaRenovacao.ok) return;
+    expect(escoposFaltando(respostaDaRenovacao.token.scope)).toEqual([...ESCOPOS_OBRIGATORIOS]);
+
+    // A ordem certa: fundir primeiro, conferir depois. A fusão é quem preserva
+    // o escopo que a renovação não repetiu.
+    const fundido = fundirTokens(token(), respostaDaRenovacao.token);
+    expect(escoposFaltando(fundido.scope)).toEqual([]);
+  });
+});
+
 describe("fundirTokens", () => {
   it("PRESERVA o refresh_token que a renovação não repetiu", () => {
     // A armadilha nº 1 de quem implementa isto do zero: `token = novaResposta`

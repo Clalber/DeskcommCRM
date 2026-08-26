@@ -13,7 +13,7 @@
  */
 import { describe, expect, it } from "vitest";
 
-import { primeiroInstanteDoDia } from "@/lib/agenda/google/tempo";
+import { instanteDaParede, primeiroInstanteDoDia } from "@/lib/agenda/google/tempo";
 
 /** Estreita `Date | null` falhando alto — cast em teste esconde justamente o nulo. */
 function naoNulo(i: Date | null): Date {
@@ -35,6 +35,31 @@ function paredeEm(instante: Date, fuso: string): string {
     .format(instante)
     .replace(",", "");
 }
+
+describe("instanteDaParede", () => {
+  it("converte hora de parede qualquer, não só a meia-noite", () => {
+    expect(
+      instanteDaParede({ ano: 2026, mes: 9, dia: 2, hora: 14, minuto: 0 }, "America/Sao_Paulo")?.toISOString(),
+    ).toBe("2026-09-02T17:00:00.000Z");
+    expect(
+      instanteDaParede({ ano: 2026, mes: 9, dia: 2, hora: 9, minuto: 30 }, "America/Manaus")?.toISOString(),
+    ).toBe("2026-09-02T13:30:00.000Z");
+  });
+
+  it("na hora que NÃO existiu, devolve o primeiro instante depois do salto", () => {
+    // 2018-11-04 em São Paulo pulou de 23:59:59 (GMT-3) para 01:00 (GMT-2):
+    // 00:30 daquele dia nunca aconteceu.
+    const i = instanteDaParede({ ano: 2018, mes: 11, dia: 4, hora: 0, minuto: 30 }, "America/Sao_Paulo");
+    expect(i?.toISOString()).toBe("2018-11-04T03:30:00.000Z");
+    expect(paredeEm(naoNulo(i), "America/Sao_Paulo")).toBe("2018-11-04 01:30");
+  });
+
+  it("recusa hora impossível e fuso desconhecido, em vez de chutar", () => {
+    expect(instanteDaParede({ ano: 2026, mes: 2, dia: 31 }, "UTC")).toBeNull();
+    expect(instanteDaParede({ ano: 2026, mes: 9, dia: 2, hora: 25 }, "UTC")).toBeNull();
+    expect(instanteDaParede({ ano: 2026, mes: 9, dia: 2 }, "Marte/Olympus")).toBeNull();
+  });
+});
 
 describe("primeiroInstanteDoDia", () => {
   it("converte pelo fuso do calendário, não por UTC", () => {

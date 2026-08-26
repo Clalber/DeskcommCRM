@@ -95,16 +95,34 @@ function comoObjeto(v: unknown): Record<string, unknown> | null {
 /**
  * O status HTTP, de onde quer que ele esteja.
  *
- * As bibliotecas discordam: `googleapis` põe em `code`, `fetch` em
- * `response.status`, e o corpo de erro do Google repete em `error.code`. E
- * `code` também carrega string de rede (`ECONNRESET`), que não é status —
- * por isso a checagem de número.
+ * As bibliotecas discordam: `googleapis` põe em `code`, os embrulhos de `fetch`
+ * em `response.status` ou `statusCode`, e o corpo de erro do Google repete em
+ * `error.code`. E `code` também carrega string de rede (`ECONNRESET`), que não
+ * é status — por isso a checagem de número.
+ *
+ * ⚠️ **`error.code` NO TOPO é o caso que mais importa, e era o que faltava.**
+ * Este repo não tem `googleapis` nas dependências, então quem escrever o
+ * cliente vai de `fetch` — e o objeto natural de um `await res.json()` é o
+ * corpo CRU, `{ error: { code, message, errors[], status } }`. Sem lê-lo, um
+ * erro perfeitamente bem-formado do Google chegava aqui sem status e sem
+ * motivo, caía no desfecho conservador `transitorio`, e virava repetição
+ * infinita. O pior caso medido: um `410 fullSyncRequired` nessa forma vira
+ * "tentar de novo", o worker repete a MESMA requisição com o MESMO `syncToken`
+ * morto, e a sincronização daquela agenda congela para sempre — em silêncio,
+ * porque cada tentativa parece uma falha passageira. Achado pelo QA na revisão
+ * fria, e o comentário anterior deste bloco JÁ prometia ler `error.code`: a
+ * promessa estava aqui e a implementação não.
  */
 function extrairStatus(erro: unknown): number | null {
   const e = comoObjeto(erro);
   if (!e) return null;
   if (ehNumero(e.code)) return e.code;
   if (ehNumero(e.status)) return e.status;
+  if (ehNumero(e.statusCode)) return e.statusCode;
+
+  // O corpo CRU do Google, entregue direto por `await res.json()`.
+  const erroNoTopo = comoObjeto(e.error);
+  if (erroNoTopo && ehNumero(erroNoTopo.code)) return erroNoTopo.code;
 
   const resposta = comoObjeto(e.response);
   if (resposta && ehNumero(resposta.status)) return resposta.status;
@@ -134,8 +152,17 @@ function extrairMotivos(erro: unknown): string[] {
     }
   };
 
-  // `{ error: "invalid_grant" }` — o formato do endpoint de token.
+  // `{ error: "invalid_grant" }` — o formato do endpoint de token, em que
+  // `error` é STRING.
   empilhar(e.error);
+  // …e `{ error: { code, errors[], status } }` — o corpo cru da API, em que
+  // `error` é OBJETO. Só aceitar a string descartava este em silêncio, e era
+  // metade da causa do defeito descrito em `extrairStatus`.
+  const erroNoTopo = comoObjeto(e.error);
+  if (erroNoTopo) {
+    empilhar(erroNoTopo.status);
+    listaDeReasons(erroNoTopo.errors);
+  }
   // `code` só entra como motivo quando NÃO é status (ECONNRESET, ETIMEDOUT…).
   if (typeof e.code === "string") empilhar(e.code);
   listaDeReasons(e.errors);
@@ -251,6 +278,54 @@ export function classificarErroDoGoogle(erro: unknown, operacao: OperacaoNoGoogl
     esperarSegundos,
     mensagem: `${FRASE[desfecho]} — ${numero}${detalhe}`,
   };
+}
+
+/**
+ * O vocabulário de estado de conexão que este repo já usa
+ * (`tenant_integrations.status`, `channel_sessions`). Não se inventa palavra
+ * nova: `needs_reauth` não existe aqui.
+ */
+export type StatusDaConexao = "healthy" | "token_expired" | "scope_missing" | "error";
+
+/**
+ * Em que estado este desfecho deixa a agenda conectada — e, com isso, se ela
+ * continua contando como fonte de conflito.
+ *
+ * É a metade que faltava para a DECISÃO 3.2 fechar: nenhum dos oito desfechos
+ * dizia "pare de contar este calendário", que é a ação que ela exige. Contar
+ * uma fonte que não responde é pior que não ter fonte — marcaria compromisso
+ * em cima de compromisso real, porque a agenda que não responde parece vazia.
+ *
+ * `null` significa **não mexa no estado**: o desfecho é sobre um evento, não
+ * sobre a conexão, e rebaixar a conexão por causa de um evento que sumiu
+ * desligaria a agenda inteira por um caso isolado.
+ */
+export function estadoDaConexaoApos(desfecho: DesfechoDoGoogle): StatusDaConexao | null {
+  switch (desfecho) {
+    case "reautenticar":
+      return "token_expired";
+    case "sem_permissao":
+      return "scope_missing";
+    case "permanente":
+      return "error";
+    case "ja_esta_feito":
+      return "healthy";
+    case "recuar":
+    case "transitorio":
+    case "ressincronizar":
+    case "evento_sumiu":
+      return null;
+  }
+}
+
+/**
+ * Esta conexão pode ser contada no cálculo de horário livre?
+ *
+ * Só `healthy` conta. Qualquer outro estado significa que não sabemos o que há
+ * naquela agenda — e "não sei" nunca pode ser lido como "está livre".
+ */
+export function contaComoConflito(status: StatusDaConexao): boolean {
+  return status === "healthy";
 }
 
 /**

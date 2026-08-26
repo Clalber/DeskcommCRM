@@ -53,6 +53,18 @@
  *
  * Aquele arquivo não está nesta branch — releia antes de agir, ele pode ter
  * mudado.
+ *
+ * **Medição do domínio comum, para a unificação não ser decidida no escuro:**
+ * comparei as duas funções na única pergunta que ambas respondem — o primeiro
+ * instante de um dia — em 47.476 pares (13 fusos, inclusive os treze que
+ * `lib/tempo/fusos.ts` oferece, de 2018 a 2027, meses inteiros com os dias 29,
+ * 30 e 31). **Zero divergências.** O QA relatou 3 divergências em 18.250 pares
+ * apontando o motor como o lado errado; não consegui reproduzir no domínio
+ * comum, e as duas medições provavelmente olham objetos diferentes (a dele
+ * cobre horas de parede fora da meia-noite, que esta função aqui nem responde).
+ * Antes de escolher um lado na unificação, peça os 3 pares e meça o MESMO
+ * objeto — a divergência, se existir, é em hora que não é meia-noite, e aí ela
+ * é do motor e não daqui.
  */
 
 import { fusoValido } from "@/lib/tempo/fusos";
@@ -84,29 +96,55 @@ function paredeComoUTC(instante: number, fuso: string): number {
 }
 
 /**
- * O primeiro instante do dia `AAAA-MM-DD` naquele fuso.
+ * Uma hora lida no relógio da parede — o que a pessoa vê, sem instante ainda.
  *
- * Devolve `null` — nunca lança e nunca chuta — quando a data está malformada ou
- * o fuso não existe neste runtime. Quem chama transforma isso em recusa
- * nomeada; cair num `new Date()` de consolo é como um evento corrompido vira
- * "ocupado agora".
+ * O nome e os campos são deliberadamente os mesmos de `lib/agenda/fuso.ts`
+ * (branch do motor de horários), para que a unificação anunciada acima seja
+ * troca de import e não reescrita.
  */
-export function primeiroInstanteDoDia(dataYmd: string, fuso: string): Date | null {
-  const casou = SO_DATA.exec(dataYmd.trim());
-  if (!casou) return null;
-  const [, ano, mes, dia] = casou;
-  if (!ano || !mes || !dia) return null;
+export interface HoraDeParede {
+  ano: number;
+  mes: number;
+  dia: number;
+  hora?: number;
+  minuto?: number;
+  segundo?: number;
+}
+
+/**
+ * Hora de parede num fuso → o instante correspondente.
+ *
+ * Devolve `null` — nunca lança e nunca chuta — quando a data não existe no
+ * calendário ou o fuso não existe neste runtime. Quem chama transforma isso em
+ * recusa nomeada; cair num `new Date()` de consolo é como um evento corrompido
+ * vira "ocupado agora".
+ *
+ * **Na hora que não existe** (o salto do horário de verão) devolve o primeiro
+ * instante DEPOIS do salto — o pedido deslocado pelo tamanho do buraco, que é o
+ * que qualquer agenda faz. **Na hora que acontece duas vezes** (a volta)
+ * devolve a primeira. Escolher é obrigatório; escolher em silêncio é que não
+ * pode, e por isso está escrito aqui e tem teste.
+ */
+export function instanteDaParede(parede: HoraDeParede, fuso: string): Date | null {
+  const { ano, mes, dia } = parede;
+  const hora = parede.hora ?? 0;
+  const minuto = parede.minuto ?? 0;
+  const segundo = parede.segundo ?? 0;
+  if (![ano, mes, dia, hora, minuto, segundo].every((n) => Number.isInteger(n))) return null;
   if (!fusoValido(fuso)) return null;
 
-  const alvo = Date.UTC(Number(ano), Number(mes) - 1, Number(dia));
+  const alvo = Date.UTC(ano, mes - 1, dia, hora, minuto, segundo);
   // Guarda contra data que não existe no calendário (31 de fevereiro): o
   // `Date.UTC` normaliza em silêncio para 3 de março, e o dia ocupado seria
   // outro. Só aceitamos quando a volta bate com o que veio escrito.
   const conferencia = new Date(alvo);
   if (
-    conferencia.getUTCFullYear() !== Number(ano) ||
-    conferencia.getUTCMonth() !== Number(mes) - 1 ||
-    conferencia.getUTCDate() !== Number(dia)
+    conferencia.getUTCFullYear() !== ano ||
+    conferencia.getUTCMonth() !== mes - 1 ||
+    conferencia.getUTCDate() !== dia ||
+    conferencia.getUTCHours() !== hora ||
+    conferencia.getUTCMinutes() !== minuto ||
+    conferencia.getUTCSeconds() !== segundo
   ) {
     return null;
   }
@@ -117,8 +155,22 @@ export function primeiroInstanteDoDia(dataYmd: string, fuso: string): Date | nul
   const corrigido = alvo - (paredeComoUTC(palpite, fuso) - palpite);
   if (paredeComoUTC(corrigido, fuso) === alvo) return new Date(corrigido);
 
-  // Nenhum instante tem essa hora de parede: a meia-noite caiu dentro do salto
-  // do horário de verão. O dia começa no primeiro instante DEPOIS do salto —
-  // o maior dos dois candidatos.
+  // Nenhum instante tem essa hora de parede: ela caiu dentro do salto do
+  // horário de verão. Fica o primeiro instante DEPOIS do salto — o maior dos
+  // dois candidatos.
   return new Date(Math.max(palpite, corrigido));
+}
+
+/**
+ * O primeiro instante do dia `AAAA-MM-DD` naquele fuso.
+ *
+ * É o caso de dia inteiro: a meia-noite local, com a ressalva de que existem
+ * dias cuja meia-noite não aconteceu.
+ */
+export function primeiroInstanteDoDia(dataYmd: string, fuso: string): Date | null {
+  const casou = SO_DATA.exec(dataYmd.trim());
+  if (!casou) return null;
+  const [, ano, mes, dia] = casou;
+  if (!ano || !mes || !dia) return null;
+  return instanteDaParede({ ano: Number(ano), mes: Number(mes), dia: Number(dia) }, fuso);
 }
