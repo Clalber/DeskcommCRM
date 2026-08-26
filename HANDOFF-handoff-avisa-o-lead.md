@@ -92,13 +92,50 @@ Checklist em `docs/doctrine/packaging.md` (12 itens). Já verificado ANTES do me
 | 1 — seção no CHANGELOG | ✅ três entradas na voz de quem opera |
 | 2 — nenhuma variável nova obrigatória | ✅ `git diff ... -- .env.example` vazio |
 | 3 — o número nunca foi publicado | ✅ tag local vazia; `ghcr_status deskcommcrm 1.6.0` → 404, com controle positivo (1.5.0 → 200) e negativo (9.9.9 → 404) |
-| 4 — pins upstream revisitados | ⬜ fazer no corte |
-| 5..12 | ⬜ dependem do merge |
+| 4 — pins upstream revisitados | ✅ **decidido: ficam** (waha 2026.7.2, redis:7-alpine, caddy:2-alpine, srh por digest). Bump de infra não entra em release corretiva |
+| 5 — tag `v1.6.0` empurrada | ✅ de `bf386c19` |
+| 6 — run de publicação verde | ✅ |
+| 7 — as três imagens existem e são PÚBLICAS | ✅ 200/200/200, com controle negativo (9.9.9 → 404) |
+| 8 — a imagem reporta a versão | ✅ label `1.6.0` |
+| 9 — release no GitHub | ✅ notas extraídas de `git show v1.6.0:CHANGELOG.md`, não do disco |
+| 10 — `stable` == `1.6.0` no digest, nas três | ✅ BATE nas três (a sonda quebrou no zsh e o guarda "SONDA VAZIA" pegou) |
+| 11 — tags de branch órfãs | ⬜ exige `gh auth refresh -s delete:packages` |
+| 12 — `update.sh` numa instalação real | ✅ **feito na VPS do dono** — ver abaixo |
 
 O item 12 (ensaio de `update.sh` numa instalação real) é o único que exige VPS e
 **é ele que responde a pergunta do Rafael** — se o cliente consegue atualizar.
 
+## A prova na VPS (v1.6.0, imagem `bf386c19`)
+
+`update.sh` de 1.5.0 → 1.6.0 **sem o operador editar arquivo nenhum** (invariante 6).
+Verificado pelo artefato: os três contêineres com label `1.6.0` + revision
+`bf386c19`; `/api/v1/health` responde 1.6.0 com supabase/redis/waha ok; domínio
+responde 307. O código chegou: `grep` do símbolo novo acha na imagem 1.6.0 e dá
+**zero** na 1.5.0.
+
+Turno real pelo caminho de produção, com número sintético — o caso exato do
+screenshot 2:
+
+```
+21:46:15  cliente → Preciso de falar com atendente
+21:46:34  IA      → Claro! Já estou chamando alguém da equipe para falar com você.
+                    No momento ninguém está disponível, mas seu pedido ficou registrado.
+```
+
+A segunda frase é o estado REAL da equipe às 21h46. Log, na ordem:
+`spinning=skipped/not_applicable` → `lead avisado` (21:46:36) → `handoff aplicado`
+(21:46:38). Central: *"O cliente JÁ FOI avisado de que uma pessoa vai assumir."*
+
+Evidência em `evidence/handoff-avisa-antes/vps-v1.6.0-turno-real.txt`. Contato de
+teste removido da produção depois da prova.
+
 ## O que NÃO foi provado ainda
 
-- Envio real por WhatsApp: só na VPS, depois do corte da v1.6.0.
-- E2E de tela: não escrito.
+- **Entrega no aparelho.** O número da prova é sintético: a mensagem sai com
+  `status='sent'` e não chega a um WhatsApp real. Confirmar mandando "preciso
+  falar com atendente" de um celular para **55 11 4863-3324**.
+- **E2E de tela:** não escrito.
+- **Assimetria conhecida:** o aviso do lado do CRM nasce marcado
+  (`metadata.aviso_de_escalacao`); o do MOTOR não — lá a identidade é o `seq 0` no
+  `send_ledger`. Funciona, mas a mesma mensagem se declara num caminho e não no
+  outro. Candidato à próxima versão.
