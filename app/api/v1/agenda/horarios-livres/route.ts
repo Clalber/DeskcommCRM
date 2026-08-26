@@ -16,8 +16,17 @@
  *
  * ─── Escopo ───────────────────────────────────────────────────────────────
  *
- * Client user-scoped (cookie session): as tabelas são tenant-aware e a RLS já
- * filtra por `fn_user_org_ids()`. A org vem do cookie validado, NUNCA da query.
+ * Client user-scoped (cookie session), e MESMO ASSIM toda query filtra
+ * `organization_id` explicitamente. Não é redundância à toa: a RLS é a defesa
+ * que vale, e o filtro é a que sobra se uma policy for afrouxada — as cinco
+ * tabelas são tenant-aware, e o `CLAUDE.md` cobra o filtro explícito em toda
+ * query que as cruza. O `organization_id` vem do cookie validado, NUNCA da
+ * query string.
+ *
+ * O caso concreto que isso cobre: `attendant_availability` seria buscada só por
+ * `user_id`, e `user_id` chega pela query (`owner_user_id`). Sem o filtro de
+ * org, uma policy frouxa deixaria consultar a agenda de alguém de outro tenant.
+ *
  * Read-only ⇒ sem audit (invariante 3 cobra audit em MUTAÇÃO).
  *
  * Piso `viewer`: consultar horário livre é o menor privilégio que existe nesta
@@ -90,6 +99,7 @@ export async function GET(req: NextRequest): Promise<Response> {
     .select(
       "id, name, is_active, duration_minutes, buffer_before_minutes, buffer_after_minutes, minimum_notice_minutes, slot_interval_minutes, booking_window_days, default_owner_user_id",
     )
+    .eq("organization_id", activeOrg.orgId)
     .eq("id", parsed.data.event_type_id)
     .maybeSingle();
   if (erroTipo) return fail("internal_error", erroTipo.message, 500, { requestId });
@@ -114,6 +124,7 @@ export async function GET(req: NextRequest): Promise<Response> {
   const { data: disponibilidade, error: erroDisp } = await supabase
     .from("attendant_availability")
     .select("schedule")
+    .eq("organization_id", activeOrg.orgId)
     .eq("user_id", donoId)
     .maybeSingle();
   if (erroDisp) return fail("internal_error", erroDisp.message, 500, { requestId });
@@ -136,12 +147,14 @@ export async function GET(req: NextRequest): Promise<Response> {
       supabase
         .from("calendar_availability_exceptions")
         .select("exception_date, is_unavailable, start_minute, end_minute")
+        .eq("organization_id", activeOrg.orgId)
         .eq("user_id", donoId)
         .gte("exception_date", diaISO(de))
         .lte("exception_date", diaISO(ate)),
       supabase
         .from("calendar_appointments")
         .select("starts_at, ends_at, status")
+        .eq("organization_id", activeOrg.orgId)
         .eq("owner_user_id", donoId)
         .lt("starts_at", ate.toISOString())
         .gt("ends_at", de.toISOString()),
@@ -155,6 +168,7 @@ export async function GET(req: NextRequest): Promise<Response> {
   const { data: externosRaw, error: erroExt } = await supabase
     .from("calendar_external_events")
     .select("starts_at, ends_at, transparency, status, calendar_connections!inner(user_id, status)")
+    .eq("organization_id", activeOrg.orgId)
     .eq("calendar_connections.user_id", donoId)
     .lt("starts_at", ate.toISOString())
     .gt("ends_at", de.toISOString());
