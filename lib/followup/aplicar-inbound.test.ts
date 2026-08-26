@@ -29,10 +29,21 @@ describe("inboundEhDestaPergunta", () => {
   });
 });
 
-describe("aplicarTextoNosFollowups — segunda passada", () => {
-  it("reaplica waiting_reply depois de avançar active (corrida cap_nome)", () => {
-    const fonte = readFileSync(join(process.cwd(), "lib/followup/aplicar-inbound.ts"), "utf8");
-    const chamadas = fonte.match(/await aplicarTextoAosEnrollmentsEmEspera\(/g) ?? [];
-    expect(chamadas.length).toBe(2);
+describe("aplicarTextoNosFollowups — uma mensagem, uma pergunta", () => {
+  const fonte = () => readFileSync(join(process.cwd(), "lib/followup/aplicar-inbound.ts"), "utf8");
+
+  it("filtra waiting_reply com inboundEhDestaPergunta (não reaproveita texto velho)", () => {
+    const src = fonte();
+    expect(src).toMatch(/inboundEhDestaPergunta\(enviadaEm, enrollment\.updated_at\)/);
+    expect(src).toMatch(/if \(!enviadaEm \|\| !inboundEhDestaPergunta/);
+  });
+
+  it("não tem 2ª passada cega fora do loop (regressão: confirm + endereço no mesmo request)", () => {
+    const src = fonte();
+    // Uma chamada só, dentro do for — a 2ª passada solta reaplicava o texto
+    // que enfileirou a confirmação de nome como se fosse o SIM.
+    const chamadas = src.match(/await aplicarTextoAosEnrollmentsEmEspera\(/g) ?? [];
+    expect(chamadas.length).toBe(1);
+    expect(src).toMatch(/for \(let i = 0; i < 6; i\+\+\) \{[\s\S]*aplicarTextoAosEnrollmentsEmEspera/);
   });
 });
