@@ -16,6 +16,7 @@ import { usePipelines, usePipelineStages } from "@/hooks/webhooks/useWebhookSour
 import { useAgentsList } from "@/hooks/ai/useAgents";
 import { channelLabel, useChannelSessions } from "@/hooks/channels/useChannelSessions";
 import { useAssignableMembers } from "@/hooks/inbox/useAssignableMembers";
+import { useT } from "@/hooks/i18n/useT";
 
 export type ActionItem =
   | { type: "create_or_move_lead"; config: { pipeline_id: string; stage_id: string } }
@@ -54,6 +55,7 @@ function CreateOrMoveLeadForm({
   config,
   onChange,
 }: FormProps<{ pipeline_id: string; stage_id: string }>) {
+  const t = useT();
   const { data: pipelinesRes, isLoading: pipelinesLoading } = usePipelines();
   const { data: boardRes, isLoading: stagesLoading } = usePipelineStages(
     config.pipeline_id || null,
@@ -64,14 +66,14 @@ function CreateOrMoveLeadForm({
   return (
     <div className="grid gap-2 sm:grid-cols-2">
       <div className="space-y-1">
-        <Label>Funil</Label>
+        <Label>{t("Funil")}</Label>
         <Select
           value={config.pipeline_id}
           onValueChange={(v) => onChange({ pipeline_id: v, stage_id: "" })}
           disabled={pipelinesLoading}
         >
           <SelectTrigger>
-            <SelectValue placeholder="Escolha o funil" />
+            <SelectValue placeholder={t("Escolha o funil")} />
           </SelectTrigger>
           <SelectContent>
             {pipelines.map((p) => (
@@ -83,7 +85,7 @@ function CreateOrMoveLeadForm({
         </Select>
       </div>
       <div className="space-y-1">
-        <Label>Etapa</Label>
+        <Label>{t("Etapa")}</Label>
         <Select
           value={config.stage_id}
           onValueChange={(v) => onChange({ ...config, stage_id: v })}
@@ -91,7 +93,7 @@ function CreateOrMoveLeadForm({
         >
           <SelectTrigger>
             <SelectValue
-              placeholder={config.pipeline_id ? "Escolha a etapa" : "Escolha o funil primeiro"}
+              placeholder={config.pipeline_id ? t("Escolha a etapa") : t("Escolha o funil primeiro")}
             />
           </SelectTrigger>
           <SelectContent>
@@ -117,6 +119,7 @@ function SendWhatsappForm({
   config,
   onChange,
 }: FormProps<{ channel_session_id: string; template: string }>) {
+  const t = useT();
   const { data: sessions } = useChannelSessions();
   const textareaRef = React.useRef<HTMLTextAreaElement>(null);
 
@@ -136,30 +139,32 @@ function SendWhatsappForm({
   return (
     <div className="space-y-2">
       <div className="space-y-1">
-        <Label>Número de WhatsApp</Label>
+        <Label>{t("Número de WhatsApp")}</Label>
         <Select
           value={config.channel_session_id}
           onValueChange={(v) => onChange({ ...config, channel_session_id: v })}
         >
           <SelectTrigger>
-            <SelectValue placeholder="Escolha o número" />
+            <SelectValue placeholder={t("Escolha o número")} />
           </SelectTrigger>
           <SelectContent>
             {(sessions ?? []).map((s) => (
               <SelectItem key={s.id} value={s.id} disabled={s.status !== "WORKING"}>
-                {channelLabel(s) + (s.status !== "WORKING" ? " — desconectado" : "")}
+                {channelLabel(s, t) + (s.status !== "WORKING" ? ` — ${t("desconectado")}` : "")}
               </SelectItem>
             ))}
           </SelectContent>
         </Select>
         {(sessions ?? []).some((s) => s.status !== "WORKING") ? (
           <p className="text-xs text-muted-foreground">
-            Números desconectados aparecem desabilitados — reconecte em Conexões antes de usar.
+            {t(
+              "Números desconectados aparecem desabilitados — reconecte em Conexões antes de usar.",
+            )}
           </p>
         ) : null}
       </div>
       <div className="space-y-1">
-        <Label>Mensagem</Label>
+        <Label>{t("Mensagem")}</Label>
         <div className="flex flex-wrap gap-1">
           {TEMPLATE_VARS.map((v) => (
             <Button
@@ -169,7 +174,7 @@ function SendWhatsappForm({
               size="sm"
               onClick={() => insertVar(v.token)}
             >
-              {v.label}
+              {t(v.label)}
             </Button>
           ))}
         </div>
@@ -178,14 +183,15 @@ function SendWhatsappForm({
           rows={4}
           value={config.template}
           onChange={(e) => onChange({ ...config, template: e.target.value })}
-          placeholder="Oi {{nome}}, tudo bem?"
+          placeholder={t("Oi {{nome}}, tudo bem?")}
         />
         <p className="text-xs text-muted-foreground">
           {/* NÃO cravar "7h e 22h": a janela passou a vir dos ajustes DO NÚMERO
               (Conexões), no fuso da sua organização, e quem a mudou lá veria a
               tela continuar prometendo outro horário. Rótulo visível é contrato. */}
-          Respeitamos a janela de envio e o limite diário configurados para esse número em
-          Conexões — fora da janela, a mensagem espera a próxima.
+          {t(
+            "Respeitamos a janela de envio e o limite diário configurados para esse número em Conexões — fora da janela, a mensagem espera a próxima.",
+          )}
         </p>
       </div>
     </div>
@@ -209,6 +215,7 @@ function SendAiMessageForm({
   config,
   onChange,
 }: FormProps<{ agent_id: string; channel_session_id: string; instruction: string }>) {
+  const t = useT();
   const { data: agentes } = useAgentsList();
   const { data: sessions } = useChannelSessions();
   const publicados = (agentes ?? []).filter((a) => Boolean(a.published_version_id));
@@ -217,42 +224,42 @@ function SendAiMessageForm({
   return (
     <div className="space-y-3">
       <div className="space-y-1">
-        <Label>Qual agente escreve</Label>
+        <Label>{t("Qual agente escreve")}</Label>
         <Select
           value={config.agent_id}
           onValueChange={(v) => onChange({ ...config, agent_id: v })}
         >
           <SelectTrigger>
-            <SelectValue placeholder="Escolha o agente" />
+            <SelectValue placeholder={t("Escolha o agente")} />
           </SelectTrigger>
           <SelectContent>
             {(agentes ?? []).map((a) => (
               <SelectItem key={a.id} value={a.id} disabled={!a.published_version_id}>
-                {a.name + (a.published_version_id ? "" : " — não publicado")}
+                {a.name + (a.published_version_id ? "" : ` — ${t("não publicado")}`)}
               </SelectItem>
             ))}
           </SelectContent>
         </Select>
         <p className="text-xs text-muted-foreground">
           {semPublicado
-            ? "Nenhum agente está publicado. Publique um em Agentes de IA para poder usá-lo aqui."
-            : "Ele escreve com o mesmo tom e o mesmo conhecimento que usa no atendimento."}
+            ? t("Nenhum agente está publicado. Publique um em Agentes de IA para poder usá-lo aqui.")
+            : t("Ele escreve com o mesmo tom e o mesmo conhecimento que usa no atendimento.")}
         </p>
       </div>
 
       <div className="space-y-1">
-        <Label>Número de WhatsApp</Label>
+        <Label>{t("Número de WhatsApp")}</Label>
         <Select
           value={config.channel_session_id}
           onValueChange={(v) => onChange({ ...config, channel_session_id: v })}
         >
           <SelectTrigger>
-            <SelectValue placeholder="Escolha o número" />
+            <SelectValue placeholder={t("Escolha o número")} />
           </SelectTrigger>
           <SelectContent>
             {(sessions ?? []).map((s) => (
               <SelectItem key={s.id} value={s.id} disabled={s.status !== "WORKING"}>
-                {channelLabel(s) + (s.status !== "WORKING" ? " — desconectado" : "")}
+                {channelLabel(s, t) + (s.status !== "WORKING" ? ` — ${t("desconectado")}` : "")}
               </SelectItem>
             ))}
           </SelectContent>
@@ -260,22 +267,21 @@ function SendAiMessageForm({
       </div>
 
       <div className="space-y-1">
-        <Label htmlFor="ai-instruction">O que a IA deve fazer com os dados</Label>
+        <Label htmlFor="ai-instruction">{t("O que a IA deve fazer com os dados")}</Label>
         <Textarea
           id="ai-instruction"
           rows={4}
           maxLength={1000}
           value={config.instruction}
           onChange={(e) => onChange({ ...config, instruction: e.target.value })}
-          placeholder={
-            "Ex.: Agradeça o interesse citando o segmento que a pessoa informou, mostre em uma frase " +
-            "como a gente resolve a dificuldade que ela descreveu, e pergunte qual o melhor horário para conversar."
-          }
+          placeholder={t(
+            "Ex.: Agradeça o interesse citando o segmento que a pessoa informou, mostre em uma frase como a gente resolve a dificuldade que ela descreveu, e pergunte qual o melhor horário para conversar.",
+          )}
         />
         <p className="text-xs text-muted-foreground">
-          O agente já sabe que é a PRIMEIRA mensagem, logo depois de a pessoa preencher o
-          formulário, e recebe todos os campos que ela respondeu. Aqui você diz o que fazer com
-          eles — quanto mais concreto, melhor a mensagem.
+          {t(
+            "O agente já sabe que é a PRIMEIRA mensagem, logo depois de a pessoa preencher o formulário, e recebe todos os campos que ela respondeu. Aqui você diz o que fazer com eles — quanto mais concreto, melhor a mensagem.",
+          )}
         </p>
       </div>
     </div>
@@ -283,17 +289,18 @@ function SendAiMessageForm({
 }
 
 function AddTagForm({ config, onChange }: FormProps<{ tags: string[] }>) {
+  const t = useT();
   const [text, setText] = React.useState(config.tags.join(", "));
   return (
     <div className="space-y-1">
-      <Label>Tags (separadas por vírgula)</Label>
+      <Label>{t("Tags (separadas por vírgula)")}</Label>
       <Input
         value={text}
         onChange={(e) => {
           setText(e.target.value);
           const tags = e.target.value
             .split(",")
-            .map((t) => t.trim())
+            .map((s) => s.trim())
             .filter(Boolean);
           onChange({ tags });
         }}
@@ -304,13 +311,14 @@ function AddTagForm({ config, onChange }: FormProps<{ tags: string[] }>) {
 }
 
 function AssignOwnerForm({ config, onChange }: FormProps<{ user_id: string }>) {
+  const t = useT();
   const { data: members } = useAssignableMembers(true);
   return (
     <div className="space-y-1">
-      <Label>Atendente</Label>
+      <Label>{t("Atendente")}</Label>
       <Select value={config.user_id} onValueChange={(v) => onChange({ user_id: v })}>
         <SelectTrigger>
-          <SelectValue placeholder="Escolha o atendente" />
+          <SelectValue placeholder={t("Escolha o atendente")} />
         </SelectTrigger>
         <SelectContent>
           {(members ?? []).map((m) => (
@@ -331,11 +339,12 @@ function CallWebhookForm({
   // O segredo é write-only: o servidor guarda cifrado (secret_enc) e nunca
   // devolve o valor. Digitar aqui envia `secret` novo; deixar em branco
   // preserva o secret_enc existente no round-trip do editor.
+  const t = useT();
   const hasStoredSecret = Boolean(config.secret_enc) && !config.secret;
   return (
     <div className="space-y-2">
       <div className="space-y-1">
-        <Label>Endereço (URL)</Label>
+        <Label>{t("Endereço (URL)")}</Label>
         <Input
           type="url"
           value={config.url}
@@ -344,7 +353,7 @@ function CallWebhookForm({
         />
       </div>
       <div className="space-y-1">
-        <Label>Segredo (opcional)</Label>
+        <Label>{t("Segredo (opcional)")}</Label>
         <Input
           type="password"
           value={config.secret ?? ""}
@@ -354,12 +363,16 @@ function CallWebhookForm({
             const { secret_enc: _enc, ...rest } = config;
             onChange(next ? { ...rest, secret: next } : { ...rest, secret: undefined });
           }}
-          placeholder={hasStoredSecret ? "•••••••• (definido — digite para trocar)" : "uma senha só sua"}
+          placeholder={
+            hasStoredSecret ? t("•••••••• (definido — digite para trocar)") : t("uma senha só sua")
+          }
         />
         <p className="text-xs text-muted-foreground">
           {hasStoredSecret
-            ? "Já existe um segredo guardado com segurança. Digitar aqui substitui; limpar remove."
-            : "Se preencher, enviaremos uma assinatura para o outro sistema conferir que fomos nós."}
+            ? t("Já existe um segredo guardado com segurança. Digitar aqui substitui; limpar remove.")
+            : t(
+                "Se preencher, enviaremos uma assinatura para o outro sistema conferir que fomos nós.",
+              )}
         </p>
       </div>
     </div>

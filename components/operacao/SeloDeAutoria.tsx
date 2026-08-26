@@ -6,6 +6,7 @@ import { ptBR } from "date-fns/locale";
 import { Robot, Gear } from "@/lib/ui/icons";
 import { autorNaTela, mudadoPorAgente } from "@/lib/operacao/autoria";
 import { cn } from "@/lib/utils";
+import { useT } from "@/hooks/i18n/useT";
 
 /**
  * Quem mexeu nesta configuração por último — ao lado do estado que ele mudou.
@@ -38,6 +39,7 @@ export function SeloDeAutoria({
   em: string | null;
   className?: string;
 }) {
+  const t = useT();
   const texto = autorNaTela(kind);
   if (!texto) return null;
 
@@ -56,12 +58,12 @@ export function SeloDeAutoria({
         className,
       )}
       data-autoria={kind ?? "desconhecida"}
-      title="Ver no histórico o que foi alterado"
+      title={t("Ver no histórico o que foi alterado")}
     >
       <Icone className="h-3.5 w-3.5 shrink-0" aria-hidden />
       <span>
-        {texto}
-        {quando} — ver o que mudou
+        {t(texto)}
+        {quando} {t("— ver o que mudou")}
       </span>
     </Link>
   );
