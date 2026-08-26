@@ -149,7 +149,13 @@ export function lerRespostaDeToken(bruto: unknown, opcoes: { agora: Date }): Lei
   // Sem validade declarada, tratamos como JÁ vencido. É o desfecho conservador:
   // no pior caso gastamos uma renovação a mais; o contrário — supor uma hora que
   // ninguém prometeu — dá 401 no meio de um agendamento.
-  const expiresIn = typeof r.expires_in === "number" && Number.isFinite(r.expires_in) ? r.expires_in : null;
+  // `expires_in` também chega como STRING em alguns fluxos do Google e em
+  // proxies que serializam o corpo. Recusar a string mandaria o token nascer
+  // "já vencido" e a renovação passaria a rodar em TODA chamada — caro, e
+  // invisível, porque cada renovação isolada parece legítima.
+  const expiresInBruto = typeof r.expires_in === "string" ? Number(r.expires_in.trim()) : r.expires_in;
+  const expiresIn =
+    typeof expiresInBruto === "number" && Number.isFinite(expiresInBruto) ? expiresInBruto : null;
   const expiraEm =
     expiresIn === null
       ? new Date(opcoes.agora.getTime())
@@ -193,6 +199,13 @@ export function fundirTokens(atual: TokenDoGoogle | null | undefined, novo: Toke
  * esta conferência, a conexão é gravada como saudável e falha só no primeiro
  * agendamento — longe da tela que causou o problema, com uma mensagem que
  * culpa o calendário.
+ *
+ * ⚠️ **ORDEM OBRIGATÓRIA: confira DEPOIS de `fundirTokens`, nunca antes.** A
+ * resposta de uma RENOVAÇÃO costuma vir sem `scope`; perguntar a ela
+ * diretamente acusa os dois escopos como faltando numa conexão perfeitamente
+ * boa, e o desfecho seria marcar `scope_missing` e mandar o dono reconectar
+ * uma agenda que nunca teve problema. Quem preserva o escopo é a fusão. Há
+ * teste pinando as duas ordens.
  */
 export function escoposFaltando(concedidos: string[] | string | null | undefined): string[] {
   const lista =

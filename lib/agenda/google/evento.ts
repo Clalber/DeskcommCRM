@@ -42,7 +42,7 @@
  *   WhatsApp. Públicos diferentes — não é lembrete em dobro.
  */
 
-import { primeiroInstanteDoDia } from "./tempo";
+import { instanteDaParede, primeiroInstanteDoDia } from "./tempo";
 
 /**
  * O sufixo que marca um evento como nosso, gravado DENTRO do Google.
@@ -125,12 +125,16 @@ export interface ParticipanteDoGoogle {
   displayName?: string | null;
   organizer?: boolean;
   responseStatus?: string | null;
+  /** O Google marca com `self: true` o participante que é o dono da agenda lida. */
+  self?: boolean;
 }
 
 /** O recurso `events` do Google, no recorte que lemos e escrevemos. */
 export interface EventoDoGoogle {
   id?: string | null;
   status?: string | null;
+  /** `default | outOfOffice | focusTime | workingLocation | birthday | fromGmail`. */
+  eventType?: string | null;
   summary?: string | null;
   description?: string | null;
   location?: string | null;
@@ -322,6 +326,73 @@ function recusa(motivo: MotivoDeRecusa, detalhe: string): LeituraDeEvento {
   return { tipo: "recusado", motivo, detalhe };
 }
 
+/** `Z`, `+00:00` ou `-0300` no fim — a marca de que a string já é um instante. */
+const COM_DESLOCAMENTO = /(?:Z|[+-]\d{2}:?\d{2})$/i;
+const SO_DATA_NO_CAMPO_ERRADO = /^\d{4}-\d{2}-\d{2}$/;
+const DATA_E_HORA = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2}))?/;
+
+/**
+ * Lê o `dateTime` de um evento — e trata o caso em que ele NÃO traz deslocamento.
+ *
+ * ⚠️ Sem esta distinção o defeito é invisível e viaja com o contêiner:
+ * `new Date("2026-09-02T14:00:00")` — sem `Z` e sem `-03:00` — é lido pela
+ * especificação como hora LOCAL DO PROCESSO. O mesmo evento vira instantes
+ * diferentes conforme o fuso da máquina onde a imagem roda, e a agenda de um
+ * self-hoster em Manaus ocupa horário diferente da de um em São Paulo, com o
+ * mesmo dado. Quando não há deslocamento, a string é hora de PAREDE, e o fuso
+ * certo é o do próprio evento (`start.timeZone`) ou, na falta dele, o do
+ * calendário.
+ *
+ * O campo `dateTime` trazendo só a data (`"2026-09-02"`) também cai aqui, e é
+ * de propósito: é o mesmo bug de meia-noite UTC que `tempo.ts` existe para
+ * impedir, entrando pelo campo errado.
+ */
+function instanteDoCampo(
+  bruto: string,
+  fusoDoEvento: string | null | undefined,
+  fusoDoCalendario: string,
+): Date | null {
+  const texto = bruto.trim();
+  if (!texto) return null;
+
+  if (COM_DESLOCAMENTO.test(texto)) {
+    const d = new Date(texto);
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+
+  const fuso = fusoDoEvento?.trim() || fusoDoCalendario;
+  if (SO_DATA_NO_CAMPO_ERRADO.test(texto)) return primeiroInstanteDoDia(texto, fuso);
+
+  const m = DATA_E_HORA.exec(texto);
+  if (!m) return null;
+  const [, ano, mes, dia, hora, minuto, segundo] = m;
+  if (!ano || !mes || !dia || !hora || !minuto) return null;
+  return instanteDaParede(
+    {
+      ano: Number(ano),
+      mes: Number(mes),
+      dia: Number(dia),
+      hora: Number(hora),
+      minuto: Number(minuto),
+      segundo: segundo ? Number(segundo) : 0,
+    },
+    fuso,
+  );
+}
+
+/**
+ * O dono desta agenda RECUSOU o convite?
+ *
+ * Compromisso que a pessoa recusou não é compromisso dela — deixar ocupando
+ * some com horário livre por causa de convite que ela nem aceitou, e é o tipo
+ * de sumiço que ninguém liga ao Google.
+ */
+function donoRecusou(evento: EventoDoGoogle): boolean {
+  return (evento.attendees ?? []).some(
+    (p) => p?.self === true && (p.responseStatus ?? "").trim().toLowerCase() === "declined",
+  );
+}
+
 /**
  * Lê um evento do Google como ocupação de agenda.
  *
@@ -341,7 +412,8 @@ export function doEventoDoGoogle(
   // `{ id, status: "cancelled" }`, SEM start nem end. Recusar por "sem
   // instante" deixaria o evento apagado ocupando horário para sempre — que é
   // exatamente o fantasma que a pesquisa mediu no cal.com.
-  if (evento.status === "cancelled") return { tipo: "cancelado", externalEventId: id };
+  const statusBruto = (evento.status ?? "").trim().toLowerCase();
+  if (statusBruto === "cancelled") return { tipo: "cancelado", externalEventId: id };
 
   // Série não expandida: o evento-mestre traz `recurrence` e descreve só a
   // PRIMEIRA ocorrência. Guardá-lo como ocupação isolada esconderia todas as
@@ -389,10 +461,13 @@ export function doEventoDoGoogle(
     if (!inicio.dateTime || !fim.dateTime) {
       return recusa("sem_instante", "evento sem `dateTime` em `start` ou em `end`");
     }
-    inicioEm = new Date(inicio.dateTime);
-    fimEm = new Date(fim.dateTime);
-    if (Number.isNaN(inicioEm.getTime()) || Number.isNaN(fimEm.getTime())) {
-      return recusa("instante_invalido", `dateTime ilegível: ${inicio.dateTime} → ${fim.dateTime}`);
+    inicioEm = instanteDoCampo(inicio.dateTime, inicio.timeZone, opcoes.fusoDoCalendario);
+    fimEm = instanteDoCampo(fim.dateTime, fim.timeZone, opcoes.fusoDoCalendario);
+    if (!inicioEm || !fimEm) {
+      const fusoRuim = primeiroInstanteDoDia("2000-01-01", opcoes.fusoDoCalendario) === null;
+      return fusoRuim
+        ? recusa("fuso_invalido", `fuso do calendário desconhecido: ${JSON.stringify(opcoes.fusoDoCalendario)}`)
+        : recusa("instante_invalido", `dateTime ilegível: ${inicio.dateTime} → ${fim.dateTime}`);
     }
   }
 
@@ -404,10 +479,20 @@ export function doEventoDoGoogle(
   // e NÃO tira horário. Ausente ou qualquer outro valor conta como `opaque` —
   // errar para "ocupa" esconde um horário livre, errar para "livre" marca em
   // cima de compromisso real. Só um dos dois erros desmarca cliente.
-  const transparency = evento.transparency === "transparent" ? "transparent" : "opaque";
+  // Comparação em minúsculas de propósito: o irmão ao lado (`cancelled`) já
+  // normaliza, e um `CANCELLED` de um cliente de terceiro virando "confirmado"
+  // seria compromisso fantasma criado por diferença de caixa.
+  const transparencyBruta = (evento.transparency ?? "").trim().toLowerCase();
+  const transparency = transparencyBruta === "transparent" ? "transparent" : "opaque";
   // `cancelled` já saiu acima; sobra `tentative` e `confirmed`. Valor
   // desconhecido cai em `confirmed` pela mesma razão.
-  const status = evento.status === "tentative" ? "tentative" : "confirmed";
+  const status = statusBruto === "tentative" ? "tentative" : "confirmed";
+
+  // `workingLocation` é MARCADOR, não compromisso: o Google o usa para dizer
+  // "hoje estou no escritório". Ele cobre o dia inteiro, então contá-lo como
+  // ocupação apagaria a agenda de quem apenas marcou onde trabalha.
+  const ehMarcadorDeLocal = (evento.eventType ?? "").trim().toLowerCase() === "workinglocation";
+  const ocupa = transparency === "opaque" && !ehMarcadorDeLocal && !donoRecusou(evento);
 
   const atualizadoEm = evento.updated ? new Date(evento.updated) : null;
 
@@ -425,7 +510,7 @@ export function doEventoDoGoogle(
         atualizadoEm && !Number.isNaN(atualizadoEm.getTime()) ? atualizadoEm.toISOString() : null,
       ical_uid: evento.iCalUID?.trim() || null,
       sequence: typeof evento.sequence === "number" ? evento.sequence : null,
-      ocupa: transparency === "opaque",
+      ocupa,
     },
   };
 }
