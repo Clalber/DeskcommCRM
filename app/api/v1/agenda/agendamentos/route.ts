@@ -311,25 +311,35 @@ async function fecharOLaco(args: {
   nomeDoTipo: string;
 }): Promise<void> {
   if (args.empurrarAoGoogle) {
-    // ⚠️ ESTE EVENTO AINDA NÃO TEM CONSUMIDOR, E O SILÊNCIO É PIOR QUE A FILA.
+    // ⚠️ ESTE EVENTO AINDA NÃO TEM CONSUMIDOR, E O SILÊNCIO É TOTAL.
     //
     // Medido: `agenda.appointment.push_to_google` aparece UMA vez no repo — esta
     // linha, que emite. Nenhum handler o declara em `register-handlers.ts`.
     //
-    // E a cadeia não deixa rastro disso. `dispatchEvent` faz
-    // `if (!matches.length) return []` — sem log, sem erro — e o `drainEventLog`,
-    // com resultado vazio, cai no ramo final e marca `status: "done"`. O evento
-    // é registrado como CONCLUÍDO sem que nada tenha acontecido: pior que ficar
-    // pendente, porque fila crescendo alguém vê.
+    // O QUE ACONTECE COM ELE, na cadeia inteira e não no meio dela:
+    //
+    //   drain.ts:39  `handledTypes` = a união dos `events` dos handlers registrados
+    //   drain.ts:54  `.in("event_type", handledTypes)` — o SELECT já o exclui
+    //
+    // A linha NUNCA É SELECIONADA. Fica `status: "pending"` para sempre: não vira
+    // `dead`, não conta tentativa, não acende o aviso da Central, não entra em
+    // log nenhum. E ninguém olha — medido: não há cron, sonda, contagem ou
+    // alerta sobre `event_log` parado em `pending` (controle: a palavra aparece
+    // 5 vezes em `drain.ts`, então a busca estava viva).
+    //
+    // ⚠️ NÃO É o `if (!matches.length) return []` do `dispatcher.ts:85`. Aquele
+    // dispara em OUTRA condição — o tipo É declarado por algum handler, mas
+    // todos já estão em `consumed_by` — e ali o `done` está CERTO, porque todos
+    // os consumidores rodaram. Uma versão anterior deste comentário ligava as
+    // duas coisas e concluía que o evento era marcado como concluído. Era falso:
+    // ele não chega ao dispatcher.
     //
     // Quem sente: o profissional, cujo compromisso não aparece na agenda do
-    // Google dele, e o cliente que marcou. O sistema não fica sabendo — ele
-    // afirma que fez.
+    // Google dele, e o cliente que marcou. O sistema não fica sabendo.
     //
-    // O consumidor é da frente 3 (Google). A emissão fica aqui porque o
-    // contrato é este e o payload já carrega o que o handler vai precisar
-    // (inclusive o fuso, ACHADO 09); o que falta é do outro lado, e está
-    // reportado.
+    // O consumidor é da frente 3. A emissão fica porque o contrato é este e o
+    // payload já carrega o que o handler vai precisar (inclusive o fuso,
+    // ACHADO 09); o que falta é do outro lado, e está reportado.
     await args.supabase.from("event_log").insert({
       organization_id: args.orgId,
       event_type: "agenda.appointment.push_to_google",
