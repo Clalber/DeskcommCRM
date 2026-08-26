@@ -15420,3 +15420,25 @@ create index if not exists calendar_external_events_poda_idx
   on public.calendar_external_events (ends_at);
 
 notify pgrst, 'reload schema';
+
+-- ---- o espelho não se limpa sozinho (migration 0189) ----
+--
+-- A 0187 deu prazo ao espelho e o comentário passou a dizer "cache com prazo".
+-- Está certo e é insuficiente: quem ler aquilo conclui que ele se limpa sozinho.
+--
+-- O caso que a poda NÃO alcança: evento com `ends_at` no FUTURO, de conexão
+-- VIVA, apagado no Google. Nunca envelhece — o corte é `ends_at < now() - N`, e
+-- futuro não vence. Fica aqui para sempre, ocupando horário que na agenda do
+-- cliente já está livre, e fazendo a agenda RECUSAR hora que existe. Quem limpa
+-- é a RECONCILIAÇÃO do sync, que é de outra frente e não existe hoje.
+--
+-- Merece migration e não linha de doc porque `comment on table` é o que se lê no
+-- `\d+` e é a única declaração que viaja com o schema para todo clone. Ressalva
+-- que fica no briefing morre com a entrega.
+comment on table public.calendar_external_events is
+  'ESPELHO, somente-leitura, do que já existe na agenda conectada. Ocupa horário e aparece na grade, mas NÃO é compromisso nosso: não tem lead, não tem estado de atendimento e nunca é reescrito por nós. '
+  'É CACHE — reconstruível pelo sync, apagado em cascata quando a conexão sai, e com prazo para o PASSADO (fn_expurgar_espelho_da_agenda, migration 0187). '
+  '⚠️ O PRAZO NÃO LIMPA O FANTASMA: evento com ends_at no FUTURO, de conexão viva, apagado lá no Google, nunca envelhece e fica aqui para sempre — ocupando um horário que na agenda do cliente já está livre, e fazendo a agenda RECUSAR hora que existe. Quem limpa isso é a RECONCILIAÇÃO do sync (remover o que não veio na resposta da janela), que é da frente do Google e não existe hoje. '
+  'Fica FORA da cascata de LGPD por não ter contact_id: o único vínculo com a pessoa é o title copiado do Google, e a fonte da verdade daquele dado é a agenda do próprio cliente, onde o titular exerce o direito com o controlador de lá. A mira de verdade só nasce com o escritor do sync, que terá o ical_uid para ligar — decisão de QUANDO, não de SE.';
+
+notify pgrst, 'reload schema';
