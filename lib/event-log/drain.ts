@@ -117,9 +117,26 @@ export async function drainEventLog(
         .eq("id", row.id);
       summary[dead ? "dead" : "failed"] += 1;
     } else {
+      // O MOTIVO DE UM `skipped` SOBREVIVE À LINHA.
+      //
+      // `skipped` conta como sucesso — e deve mesmo: o handler decidiu que não
+      // era caso dele. Mas o `detail` era DESCARTADO por construção, e com ele
+      // a única evidência de por que um evento não fez nada. Quem investigasse
+      // "subi o material e não aconteceu nada" encontrava uma linha `done` sem
+      // uma palavra de explicação.
+      //
+      // Não muda o desfecho do evento; só deixa de jogar fora a resposta.
+      const pulados = results.filter((r) => r.status === "skipped" && r.detail);
       await admin
         .from("event_log")
-        .update({ status: "done", consumed_by: consumedBy, updated_at: new Date().toISOString() })
+        .update({
+          status: "done",
+          consumed_by: consumedBy,
+          updated_at: new Date().toISOString(),
+          ...(pulados.length
+            ? { last_error: pulados.map((r) => `${r.consumer_key}: ${r.detail}`).join("; ") }
+            : {}),
+        })
         .eq("id", row.id);
       summary.done += 1;
     }
