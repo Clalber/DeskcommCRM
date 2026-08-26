@@ -8,6 +8,60 @@ Se você roda o DeskcommCRM numa VPS, **leia a seção da versão para a qual es
 
 ## [Não lançado]
 
+### Adicionado
+
+- **Formulários do Respondi entram como lead, com as respostas na ficha.** Antes, quem ligava
+  um formulário do Respondi ao CRM recebia um erro e **nenhum lead era criado** — o webhook
+  chegava com as respostas dentro de uma estrutura que o CRM não sabia ler, e a captação era
+  recusada inteira. Agora o nome, o telefone, o e-mail e cada pergunta respondida chegam na
+  ficha do contato, e o lead nasce no funil como qualquer outro. **Telefone sem código de
+  país é lido como brasileiro** (`(11) 99999-8888` vira `+5511999998888`, a mesma regra que o
+  WhatsApp já usava); número de fora do Brasil precisa vir com o `+` e o código do país.
+- **Quem recusa contato no formulário aparece na linha do tempo.** Se a pessoa marcou que
+  **não** aceita receber mensagens, isso vira um evento visível na ficha dela — em vez de a
+  equipe descobrir o silêncio depois, sem saber por quê. Recusa é informação, não ausência
+  de informação.
+- **Todo lead que chega pelo formulário do Respondi já entra triado.** Cada envio é lido na
+  hora e ganha, na ficha, uma classe (A, B, C ou D) calculada a partir da pontuação do próprio
+  formulário — e, quando falta a pontuação, o valor honesto **"não avaliado"**, nunca uma
+  classe chutada. Quem não tem telefone utilizável ou recusou o contato entra marcado como
+  **desqualificado**, com o motivo. E o que **precisa de olho humano** — nome que parece spam,
+  o mesmo telefone chegando com outro nome, ou um valor de investimento que contradiz o outro —
+  fica sinalizado como **aguardando revisão**, sem travar nada: o lead entra no funil do mesmo
+  jeito e continua elegível para o primeiro contato. Tudo isso aparece na linha do tempo da
+  ficha, então dá para ver **por que** um lead foi parar onde foi parar.
+
+### Corrigido
+
+- **O agente voltou a ouvir os áudios que chegam.** Quem mandava um áudio ouvia de volta
+  "não consigo ouvir mensagens de voz" — e a transcrição ficava pronta no sistema meio
+  minuto depois, sem ninguém para usá-la. A causa era de ritmo: as tarefas de bastidor
+  (baixar o áudio, transcrever, tratar mídia) só eram acordadas uma vez por minuto, e a
+  resposta ao cliente não espera tanto. Medido numa instalação real: a cadeia levava de
+  103 a 188 segundos, e passou a levar 18. A transcrição em si sempre levou 4 segundos —
+  o resto era fila. Nada para você fazer: vale assim que atualizar.
+- **A caixa de conversas voltou a se atualizar sozinha — antes só recarregando a página.**
+  A mensagem do cliente chegava, ficava guardada certinho, e a tela continuava parada: quem
+  estava com a conversa aberta, olhando, não via nada até apertar F5. Valia também para o
+  funil, o histórico do contato e as telas da IA. A causa veio de fora — uma peça de terceiros
+  que o sistema usa mudou de comportamento numa atualização, e o aviso de "chegou coisa nova"
+  passou a ser recusado em silêncio, sem erro em lugar nenhum. Agora a tela recebe de novo na
+  hora, e ela também se recupera sozinha: se a conexão em tempo real cair, a lista e a
+  conversa voltam a se sincronizar em pouco tempo em vez de ficar congeladas num passado que
+  parece presente. Nada para você fazer — vale assim que atualizar.
+- **A automação parou de dizer "Sucesso" para mensagem que ela nem tentou mandar.** Quando o
+  envio era pulado — contato sem telefone, contato bloqueado, contato que recusou receber
+  mensagens — a execução aparecia na aba Atividade como bem-sucedida. Pior que o defeito que a
+  versão passada corrigiu: aquele pelo menos tinha tentado. Agora aparece como **Falhou**, com
+  a razão.
+- **Quem recusa receber mensagens no formulário para de receber automação.** A recusa já ficava
+  visível na linha do tempo, mas nada no motor a lia — as automações de WhatsApp saíam do
+  mesmo jeito. Agora a recusa fica registrada na ficha da pessoa e as duas ações de envio
+  automático (mensagem escrita por você e mensagem escrita pela IA) a respeitam. Vale também
+  quando a pessoa **já era seu contato** e mudou de ideia num envio novo. **Quem nunca
+  respondeu à pergunta continua recebendo normalmente** — não perguntar não é a mesma coisa
+  que ouvir "não".
+
 ## [1.5.0] — 2026-08-25
 
 O histórico de quem chega pelos seus formulários agora existe — inclusive de quem **não**
