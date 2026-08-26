@@ -2262,6 +2262,33 @@ export const DICIONARIO: Traducoes = {
   "Para a IA no limite": { es: "Detiene la IA en el límite" },
   "Último evento": { es: "Último evento" },
   "Orçamento IA": { es: "Presupuesto IA" },
+
+  // ─── Admin de plataforma: Users (lista + detalhe) ───
+  "Buscar por email ou nome...": { es: "Buscar por email o nombre..." },
+  "Buscar usuários": { es: "Buscar usuarios" },
+  "Filtrar por tenant": { es: "Filtrar por tenant" },
+  "Todos os tenants": { es: "Todos los tenants" },
+  "Filtrar por role": { es: "Filtrar por role" },
+  "Todos os roles": { es: "Todos los roles" },
+  "Nenhum usuário encontrado": { es: "Ningún usuario encontrado" },
+  "Ajuste os filtros para refinar a busca.": {
+    es: "Ajusta los filtros para refinar la búsqueda.",
+  },
+  "Revogado": { es: "Revocado" },
+  "Usuário não encontrado": { es: "Usuario no encontrado" },
+  "Usuário sem nome": { es: "Usuario sin nombre" },
+  "Informações do usuário": { es: "Información del usuario" },
+  "Email confirmado": { es: "Email confirmado" },
+  "Pendente": { es: "Pendiente" },
+  Inativo: { es: "Inactivo" },
+  "Sem memberships registrados.": { es: "Sin memberships registrados." },
+  "Aceito em": { es: "Aceptado el" },
+  "Audit recente": { es: "Auditoría reciente" },
+  "Nenhuma entrada de auditoria encontrada para este usuário.": {
+    es: "No se encontró ninguna entrada de auditoría para este usuario.",
+  },
+  "usuário": { es: "usuario" },
+  "usuários": { es: "usuarios" },
 };
 
 /**
