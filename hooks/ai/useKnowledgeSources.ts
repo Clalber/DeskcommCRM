@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { apiClient } from "@/lib/api/client";
 import { showApiError } from "@/components/feedback/ApiErrorToast";
+import { useT } from "@/hooks/i18n/useT";
 
 export interface SourceRow {
   id: string;
@@ -53,6 +54,7 @@ export function useKnowledgeSources(
 }
 
 export function useReindexSource(agentId: string) {
+  const t = useT();
   const qc = useQueryClient();
   return useMutation({
     mutationKey: ["ai", "knowledge", "sources", agentId, "reindex"],
@@ -64,7 +66,7 @@ export function useReindexSource(agentId: string) {
       return res.data;
     },
     onSuccess: () => {
-      toast.success("Reindexação enfileirada — atualizando em segundo plano.");
+      toast.success(t("Reindexação enfileirada — atualizando em segundo plano."));
     },
     onError: (err) => {
       showApiError(err);
