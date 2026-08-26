@@ -2448,6 +2448,158 @@ export const DICIONARIO: Traducoes = {
   "Exportar CSV": { es: "Exportar CSV" },
   "Invoc. AI": { es: "Invoc. IA" },
   "Custo AI": { es: "Costo IA" },
+
+  // ─── Admin de plataforma: Marca (page.tsx, _form.tsx, _estado.tsx) ───
+  "O nome e a cor que este sistema mostra para todo mundo que usa esta instalação.": {
+    es: "El nombre y el color que este sistema muestra a todo el mundo que usa esta instalación.",
+  },
+  "Sua cor": { es: "Tu color" },
+  "fora da escala — fica só no logo": { es: "fuera de la escala — solo queda en el logo" },
+  "Botões no modo claro": { es: "Botones en el modo claro" },
+  "Botões no modo escuro": { es: "Botones en el modo oscuro" },
+  "Confira os campos: algum valor não está no formato esperado.": {
+    es: "Revisa los campos: algún valor no está en el formato esperado.",
+  },
+  "Marca salva.": { es: "Marca guardada." },
+  "Nome do sistema": { es: "Nombre del sistema" },
+  "Deixe em branco para voltar ao nome padrão. Este nome já aparece no título da aba do navegador, nos menus laterais, nos e-mails que o sistema envia (para as empresas que não definiram um nome próprio), no aplicativo de verificação em duas etapas e no arquivo de códigos de recuperação que o usuário baixa. Ainda NÃO chega às telas de entrada e cadastro nem às da configuração inicial: essas continuam com o nome gravado no arquivo de instalação do servidor até a próxima atualização da stack.": {
+    es: "Déjalo en blanco para volver al nombre predeterminado. Este nombre ya aparece en el título de la pestaña del navegador, en los menús laterales, en los emails que el sistema envía (para las empresas que no definieron un nombre propio), en la app de verificación en dos pasos y en el archivo de códigos de recuperación que el usuario descarga. Todavía NO llega a las pantallas de entrada y registro ni a las de la configuración inicial: esas siguen con el nombre grabado en el archivo de instalación del servidor hasta la próxima actualización del stack.",
+  },
+  "Cor da marca": { es: "Color de la marca" },
+  "Escolher a cor visualmente": { es: "Elegir el color visualmente" },
+  "Use um código de cor como #7a5cd6.": { es: "Usa un código de color como #7a5cd6." },
+  "Deixe em branco para voltar à cor padrão do sistema.": {
+    es: "Déjalo en blanco para volver al color predeterminado del sistema.",
+  },
+  "A partir da sua cor o sistema monta esta escala e escolhe, dentro dela, o tom que vai nos botões:": {
+    es: "A partir de tu color el sistema arma esta escala y elige, dentro de ella, el tono que va en los botones:",
+  },
+  "No modo escuro o sistema usa naturalmente um tom mais claro da escala, para a cor não se perder no fundo escuro.": {
+    es: "En el modo oscuro el sistema usa naturalmente un tono más claro de la escala, para que el color no se pierda en el fondo oscuro.",
+  },
+  "Sem cor definida, o sistema usa a cor padrão dele.": {
+    es: "Sin color definido, el sistema usa su color predeterminado.",
+  },
+  "passa em AA": { es: "pasa en AA" },
+  "abaixo do mínimo AA": { es: "por debajo del mínimo AA" },
+  "definido nesta tela": { es: "definido en esta pantalla" },
+  "veio do arquivo de instalação do servidor": { es: "viene del archivo de instalación del servidor" },
+  "padrão do sistema": { es: "predeterminado del sistema" },
+  "Como está agora": { es: "Cómo está ahora" },
+  "O que o sistema está usando, o que ele mediu e o que ele ajustou sozinho.": {
+    es: "Lo que el sistema está usando, lo que midió y lo que ajustó por su cuenta.",
+  },
+  "A sua marca não está sendo aplicada.": { es: "Tu marca no se está aplicando." },
+  "Desde": { es: "Desde" },
+  "o sistema voltou a usar as cores padrão dele.": {
+    es: "el sistema volvió a usar sus colores predeterminados.",
+  },
+  "Salvar uma cor válida aqui apaga este alerta.": {
+    es: "Guardar un color válido aquí borra esta alerta.",
+  },
+  "De onde vem cada coisa": { es: "De dónde viene cada cosa" },
+  "Logo": { es: "Logo" },
+  "O logo ainda é trocado no arquivo de instalação do servidor. Esta tela mostra de onde ele vem para que o valor não pareça ter sumido.": {
+    es: "El logo todavía se cambia en el archivo de instalación del servidor. Esta pantalla muestra de dónde viene para que el valor no parezca haber desaparecido.",
+  },
+  "O texto em cima dos botões": { es: "El texto encima de los botones" },
+  "Quanto maior o número, mais fácil de ler. AA é o mínimo recomendado internacionalmente para texto.": {
+    es: "Cuanto más alto el número, más fácil de leer. AA es el mínimo recomendado internacionalmente para texto.",
+  },
+  "No modo claro": { es: "En el modo claro" },
+  "No modo escuro": { es: "En el modo oscuro" },
+  "O que o sistema ajustou": { es: "Lo que el sistema ajustó" },
+  "Nada foi ajustado — a escala acima mostra onde a sua cor entra.": {
+    es: "No se ajustó nada — la escala de arriba muestra dónde entra tu color.",
+  },
+  "Do jeito que está, esta cor não chegaria à tela: o sistema continuaria com as cores padrão dele.": {
+    es: "Tal como está, este color no llegaría a la pantalla: el sistema seguiría con sus colores predeterminados.",
+  },
+  "Logo atualizado.": { es: "Logo actualizado." },
+  "Logo removido.": { es: "Logo eliminado." },
+  "PNG ou JPG, até": { es: "PNG o JPG, hasta" },
+  "KB. Prefira fundo transparente. SVG não é aceito: ele pode executar código quando aberto direto pelo endereço da imagem.": {
+    es: "KB. Preferí fondo transparente. SVG no se acepta: puede ejecutar código cuando se abre directo por la dirección de la imagen.",
+  },
+  "Como o logo aparece nas duas aparências do sistema:": {
+    es: "Cómo se ve el logo en las dos apariencias del sistema:",
+  },
+  "Sem logo próprio, o sistema usa o logo": { es: "Sin logo propio, el sistema usa el logo" },
+  "Assim ele aparece:": { es: "Así se ve:" },
+
+  // ─── Marca: linguagem.ts (só os avisos de texto FIXO — os compostos
+  // dinamicamente com interpolação, ex. "No modo X, os botões usam..." e
+  // "Sua cor ficou parecida com...", ficam deliberadamente em português, mesma
+  // categoria de `montaLacunas`/`boaNoticia` já deferida na área ai) ───
+  "O valor gravado para a cor não está na forma que o sistema entende.": {
+    es: "El valor grabado para el color no está en la forma que el sistema entiende.",
+  },
+  "A cor gravada não é um código de cor válido.": {
+    es: "El color grabado no es un código de color válido.",
+  },
+  "A cor foi gravada por uma versão mais nova do sistema, e esta não sabe lê-la.": {
+    es: "El color fue grabado por una versión más nueva del sistema, y esta no sabe leerlo.",
+  },
+  "A cor foi salva por outra versão do sistema. Ela continua valendo — esta versão recalcula os tons a partir dela.": {
+    es: "El color fue guardado por otra versión del sistema. Sigue valiendo — esta versión recalcula los tonos a partir de él.",
+  },
+  "Esta versão do sistema não sabe onde aplicar a cor gravada, então ela não pinta a interface.": {
+    es: "Esta versión del sistema no sabe dónde aplicar el color grabado, así que no pinta la interfaz.",
+  },
+  "A cor está guardada só como identidade: ela aparece no logo, mas não pinta os botões.": {
+    es: "El color está guardado solo como identidad: aparece en el logo, pero no pinta los botones.",
+  },
+  "O cálculo dos tons a partir dessa cor não terminou.": {
+    es: "El cálculo de los tonos a partir de ese color no terminó.",
+  },
+  "Sua cor é um tom neutro (cinza, preto ou branco), e uma cor assim não destaca nada na tela. Os botões seguem com a cor padrão do sistema, e a sua fica reservada ao logo.": {
+    es: "Tu color es un tono neutro (gris, negro o blanco), y un color así no resalta nada en la pantalla. Los botones siguen con el color predeterminado del sistema, y el tuyo queda reservado al logo.",
+  },
+  "Não existe tom desta cor que deixe todos os elementos legíveis. Alguns detalhes — como o contorno que marca o campo em foco — ficam difíceis de enxergar.": {
+    es: "No existe un tono de este color que deje todos los elementos legibles. Algunos detalles — como el contorno que marca el campo en foco — quedan difíciles de ver.",
+  },
+  "A verificação de segurança barrou o resultado antes de ele chegar à tela, e a marca não foi aplicada.": {
+    es: "La verificación de seguridad bloqueó el resultado antes de que llegara a la pantalla, y la marca no se aplicó.",
+  },
+  "O sistema recusou a cor gravada por um motivo que esta versão não sabe explicar.": {
+    es: "El sistema rechazó el color grabado por un motivo que esta versión no sabe explicar.",
+  },
+  "A sua cor original continua no logo e nos destaques.": {
+    es: "Tu color original sigue en el logo y en los destacados.",
+  },
+  "Algum campo não está no formato esperado.": {
+    es: "Algún campo no está en el formato esperado.",
+  },
+  "Sua sessão expirou. Entre de novo para salvar.": {
+    es: "Tu sesión expiró. Vuelve a entrar para guardar.",
+  },
+  "Só quem administra a instalação pode mudar a marca.": {
+    es: "Solo quien administra la instalación puede cambiar la marca.",
+  },
+  "Sua sessão expirou. Entre de novo para trocar o logo.": {
+    es: "Tu sesión expiró. Vuelve a entrar para cambiar el logo.",
+  },
+  "Você não tem permissão para trocar este logo.": {
+    es: "No tienes permiso para cambiar este logo.",
+  },
+  "Nenhuma empresa ativa nesta sessão.": {
+    es: "No hay ninguna empresa activa en esta sesión.",
+  },
+  "Confirme o segundo fator nesta sessão e tente de novo.": {
+    es: "Confirma el segundo factor en esta sesión e intenta de nuevo.",
+  },
+  "Muitas trocas seguidas. Tente de novo em alguns minutos.": {
+    es: "Demasiados cambios seguidos. Intenta de nuevo en unos minutos.",
+  },
+  "Não consegui trocar o logo agora.": {
+    es: "No pude cambiar el logo ahora.",
+  },
+  Cor: { es: "Color" },
+  "do arquivo de instalação do servidor": {
+    es: "del archivo de instalación del servidor",
+  },
+  "Aparência clara": { es: "Apariencia clara" },
+  "Aparência escura": { es: "Apariencia oscura" },
 };
 
 /**
