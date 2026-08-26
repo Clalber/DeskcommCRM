@@ -4,6 +4,7 @@ import { toast } from "sonner";
 
 import { showApiError } from "@/components/feedback/ApiErrorToast";
 import { apiClient } from "@/lib/api/client";
+import { useT } from "@/hooks/i18n/useT";
 import type { EventoDeEnrollment, NoDoDossie } from "@/lib/followup/eventos-legiveis";
 import type { TimingPlan } from "@/lib/followup/plano-de-tempo";
 
@@ -85,6 +86,7 @@ const AVISO: Record<Intervencao, string> = {
  * instantes") em vez de sumir.
  */
 export function useIntervirNoFollowup() {
+  const t = useT();
   const qc = useQueryClient();
   return useMutation({
     mutationKey: ["followup", "enrollment", "intervencao"],
@@ -98,7 +100,7 @@ export function useIntervirNoFollowup() {
     onSuccess: (_data, variaveis) => {
       void qc.invalidateQueries({ queryKey: dossieQueryKey(variaveis.id) });
       void qc.invalidateQueries({ queryKey: ["followup", "queue"] });
-      toast.success(AVISO[variaveis.acao]);
+      toast.success(t(AVISO[variaveis.acao]));
     },
     onError: (err) => {
       showApiError(err);

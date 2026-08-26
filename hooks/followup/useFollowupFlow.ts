@@ -4,6 +4,7 @@ import { toast } from "sonner";
 
 import { apiClient } from "@/lib/api/client";
 import { showApiError } from "@/components/feedback/ApiErrorToast";
+import { useT } from "@/hooks/i18n/useT";
 import type { FlowGraph } from "@/lib/followup/graph-schema";
 import { followupFlowsListQueryKey, type FollowupFlowStatus } from "./useFollowupFlows";
 
@@ -47,6 +48,7 @@ export function useFollowupFlow(id: string, opts?: { initialData?: FollowupFlowD
 
 /** PATCH draft_graph — "Salvar". Errors handled by the caller (dirty-state UI), no toast noise. */
 export function useSaveFollowupFlowDraft(id: string) {
+  const t = useT();
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (draft_graph: FlowGraph) => {
@@ -59,7 +61,7 @@ export function useSaveFollowupFlowDraft(id: string) {
       qc.setQueryData<FollowupFlowDetailRow>(followupFlowQueryKey(id), (prev) =>
         prev ? { ...prev, ...updated } : prev,
       );
-      toast.success("Rascunho salvo.");
+      toast.success(t("Rascunho salvo."));
     },
     onError: (err) => showApiError(err),
   });
@@ -71,6 +73,7 @@ export function useSaveFollowupFlowDraft(id: string) {
  * offending node — a generic toast would duplicate/bury that signal.
  */
 export function usePublishFollowupFlow(id: string) {
+  const t = useT();
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async () => {
@@ -80,12 +83,13 @@ export function usePublishFollowupFlow(id: string) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: followupFlowQueryKey(id) });
       qc.invalidateQueries({ queryKey: followupFlowsListQueryKey });
-      toast.success("Fluxo publicado.");
+      toast.success(t("Fluxo publicado."));
     },
   });
 }
 
 export function useDisableFollowupFlow(id: string) {
+  const t = useT();
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async () => {
@@ -98,13 +102,14 @@ export function useDisableFollowupFlow(id: string) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: followupFlowQueryKey(id) });
       qc.invalidateQueries({ queryKey: followupFlowsListQueryKey });
-      toast.success("Fluxo desativado.");
+      toast.success(t("Fluxo desativado."));
     },
     onError: (err) => showApiError(err),
   });
 }
 
 export function useRollbackFollowupFlow(id: string) {
+  const t = useT();
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (version_id: string) => {
@@ -115,7 +120,7 @@ export function useRollbackFollowupFlow(id: string) {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: followupFlowQueryKey(id) });
-      toast.success("Fluxo revertido para a versão anterior.");
+      toast.success(t("Fluxo revertido para a versão anterior."));
     },
     onError: (err) => showApiError(err),
   });
@@ -123,6 +128,7 @@ export function useRollbackFollowupFlow(id: string) {
 
 /** PATCH trigger_config — controle de gatilho (Manual/Silêncio) na PublishBar. */
 export function useUpdateTriggerConfig(id: string) {
+  const t = useT();
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (trigger_config: Record<string, unknown>) => {
@@ -135,13 +141,14 @@ export function useUpdateTriggerConfig(id: string) {
       qc.setQueryData<FollowupFlowDetailRow>(followupFlowQueryKey(id), (prev) =>
         prev ? { ...prev, ...updated } : prev,
       );
-      toast.success("Gatilho atualizado.");
+      toast.success(t("Gatilho atualizado."));
     },
     onError: (err) => showApiError(err),
   });
 }
 
 export function useUpdateHandoffPolicy(id: string) {
+  const t = useT();
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (handoff_policy: "pause" | "cancel" | "allow") => {
@@ -154,7 +161,7 @@ export function useUpdateHandoffPolicy(id: string) {
       qc.setQueryData<FollowupFlowDetailRow>(followupFlowQueryKey(id), (prev) =>
         prev ? { ...prev, ...updated } : prev,
       );
-      toast.success("Política de handoff atualizada.");
+      toast.success(t("Política de handoff atualizada."));
     },
     onError: (err) => showApiError(err),
   });
