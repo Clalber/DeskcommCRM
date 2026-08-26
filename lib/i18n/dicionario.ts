@@ -2103,6 +2103,35 @@ export const DICIONARIO: Traducoes = {
   "A sessão expira em 1 hora. Confirma?": { es: "La sesión expira en 1 hora. ¿Confirmas?" },
   "Entrando…": { es: "Entrando…" },
   "Confirmar e entrar": { es: "Confirmar y entrar" },
+
+  // ─── Admin de plataforma: Dashboard ───
+  "Visão cross-tenant — atualiza a cada 30 segundos.": {
+    es: "Visión cross-tenant — se actualiza cada 30 segundos.",
+  },
+  "IA Budget": { es: "Presupuesto IA" },
+  Overflow: { es: "Desborde" },
+  Crítico: { es: "Crítico" },
+  Atenção: { es: "Atención" },
+  Info: { es: "Info" },
+  "Nenhum alerta crítico no momento. Tudo certo!": {
+    es: "Ninguna alerta crítica en este momento. ¡Todo en orden!",
+  },
+  "Alertas ativos": { es: "Alertas activas" },
+  alerta: { es: "alerta" },
+  alertas: { es: "alertas" },
+  "alertas adicionais": { es: "alertas adicionales" },
+  "Tenants Ativos": { es: "Tenants Activos" },
+  "organizações ativas": { es: "organizaciones activas" },
+  "Pendentes >10min": { es: "Pendientes >10min" },
+  "conversas sem resposta": { es: "conversaciones sin respuesta" },
+  "Alertas WAHA": { es: "Alertas WAHA" },
+  "sessões com problema": { es: "sesiones con problema" },
+  "LGPD em Risco": { es: "LGPD en Riesgo" },
+  "requisições próximas do prazo": { es: "solicitudes próximas al plazo" },
+  "Budgets IA": { es: "Presupuestos IA" },
+  "tenants com gasto acumulado ≥80% do teto": {
+    es: "tenants con gasto acumulado ≥80% del tope",
+  },
 };
 
 /**

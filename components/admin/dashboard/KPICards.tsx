@@ -3,6 +3,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Buildings, Clock, WifiSlash, Scales, ChartBar } from "@/lib/ui/icons";
 import type { DashboardKPIs } from "@/app/api/v1/admin/dashboard/kpis/route";
 import type { ElementType } from "react";
+import { useT } from "@/hooks/i18n/useT";
 
 interface KPICardProps {
   label: string;
@@ -49,32 +50,33 @@ interface KPICardsProps {
 }
 
 export function KPICards({ kpis }: KPICardsProps) {
+  const t = useT();
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
       <KPICard
-        label="Tenants Ativos"
+        label={t("Tenants Ativos")}
         value={kpis.tenants_active}
-        subtitle="organizações ativas"
+        subtitle={t("organizações ativas")}
         Icon={Buildings}
       />
       <KPICard
-        label="Pendentes >10min"
+        label={t("Pendentes >10min")}
         value={kpis.conv_pending_10min}
-        subtitle="conversas sem resposta"
+        subtitle={t("conversas sem resposta")}
         Icon={Clock}
         accent={kpis.conv_pending_10min > 0}
       />
       <KPICard
-        label="Alertas WAHA"
+        label={t("Alertas WAHA")}
         value={kpis.waha_ban_alerts}
-        subtitle="sessões com problema"
+        subtitle={t("sessões com problema")}
         Icon={WifiSlash}
         accent={kpis.waha_ban_alerts > 0}
       />
       <KPICard
-        label="LGPD em Risco"
+        label={t("LGPD em Risco")}
         value={kpis.lgpd_at_risk}
-        subtitle="requisições próximas do prazo"
+        subtitle={t("requisições próximas do prazo")}
         Icon={Scales}
         danger={kpis.lgpd_at_risk > 0}
       />
@@ -85,9 +87,9 @@ export function KPICards({ kpis }: KPICardsProps) {
           divergência cresce com o tempo. Ver o comentário do cálculo em
           `app/api/v1/admin/dashboard/kpis/route.ts`. */}
       <KPICard
-        label="Budgets IA"
+        label={t("Budgets IA")}
         value={kpis.ai_budget_warnings}
-        subtitle="tenants com gasto acumulado ≥80% do teto"
+        subtitle={t("tenants com gasto acumulado ≥80% do teto")}
         Icon={ChartBar}
         accent={kpis.ai_budget_warnings > 0}
       />
