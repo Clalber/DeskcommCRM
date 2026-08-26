@@ -123,6 +123,13 @@ test.describe("kit visual da Agenda", () => {
   let page: Page;
 
   test.beforeAll(async ({ browser }) => {
+    // `test.describe.configure({ timeout })` vale para os TESTES, não para os
+    // hooks — o `beforeAll` continua com os 30 s do playwright.config.ts, e o
+    // login com MFA passa disso sozinho: o helper espera a virada da janela do
+    // código TOTP (o servidor recusa código repetido) antes de tentar. Medido:
+    // o hook estourou em 30 s e derrubou os 11 testes de uma vez, com a
+    // mensagem apontando para a linha do `waitForURL` — que estava certa.
+    test.setTimeout(240_000);
     page = await browser.newPage();
     await loginComoAdmin(page, lerCreds());
   });

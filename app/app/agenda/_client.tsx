@@ -4,10 +4,9 @@ import { addDays, format, startOfWeek } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import * as React from "react";
 
-import { AGENDAMENTOS, PESSOAS } from "@/components/agenda/dados-de-mentira";
 import { FiltroDePessoas } from "@/components/agenda/FiltroDePessoas";
 import { GradeDaAgenda } from "@/components/agenda/GradeDaAgenda";
-import type { VisaoDaAgenda } from "@/components/agenda/tipos";
+import type { Agendamento, Pessoa, VisaoDaAgenda } from "@/components/agenda/tipos";
 import { EmptyAgenda } from "@/components/empty";
 import { Button } from "@/components/ui/button";
 import { CalendarPlus, CaretLeft, CaretRight } from "@/lib/ui/icons";
@@ -22,24 +21,42 @@ const VISOES: Array<{ id: VisaoDaAgenda; rotulo: string }> = [
 /**
  * A tela da Agenda.
  *
- * ⚠️ AINDA COM DADOS DE MENTIRA, e isto é deliberado, não esquecimento: a
- * frente 1 (API + motor) não está integrada, e ligar isto a `/api/v1/agenda`
- * antes disso produziria uma tela que quebra em runtime sem ninguém saber por
- * quê. O que troca quando a frente 1 subir é a ORIGEM — o hook no lugar do
- * import — e nada do desenho abaixo.
+ * ⚠️ SEM DADO NENHUM até a frente 1 (API + motor) integrar. A tela cai no
+ * estado vazio de propósito, e a razão é de SEGURANÇA PERCEBIDA, não de
+ * pureza:
  *
- * O `data-fonte` no container existe para essa troca ser VERIFICÁVEL de fora:
- * enquanto disser "mentira", nenhuma prova desta tela vale como prova de
- * integração, e um teste pode cobrar isso em vez de confiar em quem escreveu.
+ * dado falso PLAUSÍVEL numa tela real de produto multi-tenant é
+ * indistinguível de VAZAMENTO. "Ana Prado", "Marina Alves", "Visita ao imóvel"
+ * são nomes brasileiros críveis nos nichos que este produto atende — e o
+ * relato que chega de quem vê isso não é "tem dado de teste na tela", é
+ * "estou vendo paciente de outra clínica na minha agenda". O time então queima
+ * horas caçando um furo de RLS que não existe. Achado do QAVivo, decisão 18.
+ *
+ * Repare na inversão, porque ela é o ponto: os MESMOS nomes são ACERTO na
+ * vitrine (`/vitrine-agenda`), onde tornam o desenho julgável, e o pior
+ * formato possível aqui. Mesmo dado, valor oposto conforme onde está pendurado.
+ *
+ * E o vazio é mais VERDADEIRO: numa instalação nova a agenda está vazia mesmo.
+ * De quebra exercita o estado vazio, que é onde mora a primeira impressão.
+ *
+ * `data-fonte` declara isso no DOM para ser verificável de fora — e
+ * `tests/unit/telas-sem-dado-de-mentira.test.ts` impede que alguém religue os
+ * imports sem querer.
  */
 export function AgendaClient({ fusoDeApresentacao }: { fusoDeApresentacao: string | null }) {
   const [visao, setVisao] = React.useState<VisaoDaAgenda>("semana");
   const [isolada, setIsolada] = React.useState<string | null>(null);
   const [ancora, setAncora] = React.useState(() => new Date());
 
+  // A frente 1 troca estas duas linhas por um hook em `/api/v1/agenda`. O resto
+  // da tela não muda — é para isso que ela foi desenhada contra os tipos, e não
+  // contra uma fixture.
+  const todos: Agendamento[] = React.useMemo(() => [], []);
+  const pessoas: Pessoa[] = React.useMemo(() => [], []);
+
   const agendamentos = React.useMemo(
-    () => (isolada === null ? AGENDAMENTOS : AGENDAMENTOS.filter((a) => a.responsavelId === isolada)),
-    [isolada],
+    () => (isolada === null ? todos : todos.filter((a) => a.responsavelId === isolada)),
+    [isolada, todos],
   );
 
   const passo = visao === "mes" ? 30 : visao === "semana" ? 7 : 1;
@@ -53,7 +70,7 @@ export function AgendaClient({ fusoDeApresentacao }: { fusoDeApresentacao: strin
   return (
     <div
       data-testid="tela-agenda"
-      data-fonte="mentira"
+      data-fonte="vazio-ate-a-api"
       data-fuso={fusoDeApresentacao ?? "organizacao"}
       className="flex h-full flex-col gap-4 p-6"
     >
@@ -103,7 +120,7 @@ export function AgendaClient({ fusoDeApresentacao }: { fusoDeApresentacao: strin
         </div>
 
         <div className="flex items-center gap-3">
-          <FiltroDePessoas pessoas={PESSOAS} isolada={isolada} onIsolar={setIsolada} />
+          <FiltroDePessoas pessoas={pessoas} isolada={isolada} onIsolar={setIsolada} />
           <div
             data-testid="alternador-de-visao"
             className="flex items-center gap-0.5 rounded-md border border-border bg-surface p-0.5"
@@ -139,7 +156,7 @@ export function AgendaClient({ fusoDeApresentacao }: { fusoDeApresentacao: strin
           visao={visao}
           ancora={ancora}
           agora={new Date()}
-          pessoas={PESSOAS}
+          pessoas={pessoas}
           agendamentos={agendamentos}
           className="min-h-0 flex-1"
         />
