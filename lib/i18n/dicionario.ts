@@ -2622,6 +2622,9 @@ export const DICIONARIO: Traducoes = {
   "Sem organização vinculada.": { es: "Sin organización vinculada." },
   "Status:": { es: "Estado:" },
   Carregando: { es: "Cargando" },
+  Admin: { es: "Administrador" },
+  Manager: { es: "Gerente" },
+  Viewer: { es: "Visualizador" },
 };
 
 /**

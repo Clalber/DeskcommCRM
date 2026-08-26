@@ -111,10 +111,10 @@ export function UsersClient() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">{t("Todos os roles")}</SelectItem>
-            <SelectItem value="admin">Admin</SelectItem>
-            <SelectItem value="manager">Manager</SelectItem>
+            <SelectItem value="admin">{t("Admin")}</SelectItem>
+            <SelectItem value="manager">{t("Manager")}</SelectItem>
             <SelectItem value="agent">{t("Agente")}</SelectItem>
-            <SelectItem value="viewer">Viewer</SelectItem>
+            <SelectItem value="viewer">{t("Viewer")}</SelectItem>
           </SelectContent>
         </Select>
       </div>
