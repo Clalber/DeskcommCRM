@@ -1,2 +1,0 @@
-WAHA=https://crm-gabrielle.vercel.app
-APP=https://crm-gabrielle.vercel.app
