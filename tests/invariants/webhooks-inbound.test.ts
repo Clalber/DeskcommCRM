@@ -660,6 +660,36 @@ describe("POST /api/v1/webhooks/in/[token] — Respondi (payload aninhado, achad
     expect(depois.marketing.granted_at).toBeNull();
   });
 
+  it("caso 3c — formulário SEM a pergunta de autorização: nada é carimbado (ninguém perguntou ≠ disse não)", async () => {
+    // O mapeador devolve `granted: false` quando não acha a pergunta —
+    // leitura defensiva correta, silêncio nunca vira concessão. Mas isso NÃO
+    // é recusa: carimbar `declined_at` aqui bloquearia a automação de todo
+    // formulário do Respondi que não faz a pergunta.
+    const payload = respondiPayload("resp-int-sem-legaltext-0032", "55 15988880032", "maria.exemplo+0032@example.com", (p) => {
+      const respondent = p.respondent as Record<string, unknown>;
+      respondent.raw_answers = (respondent.raw_answers as Array<Record<string, unknown>>).filter(
+        (r) => (r.question as Record<string, unknown>).question_type !== "legaltext",
+      );
+      const answers = respondent.answers as Record<string, unknown>;
+      for (const k of Object.keys(answers)) {
+        if (/autoriza|aceito receber|consent/i.test(k)) delete answers[k];
+      }
+    });
+
+    const res = await POST(jsonReq(TOKEN_RESPONDI, payload), reqCtx(TOKEN_RESPONDI));
+    expect(res.status).toBe(200);
+    const leadId = ((await res.json()) as { data: { lead_id: string } }).data.lead_id;
+    const lead = rows(`select * from public.crm_leads where id = '${leadId}'`)[0]!;
+
+    const contact = rows(`select * from public.contacts where id = '${lead.contact_id}'`)[0]!;
+    const consent = contact.consent as {
+      marketing: { granted_at: string | null; declined_at?: string | null };
+    };
+    expect(consent.marketing.granted_at).toBeNull();
+    // O ponto do caso: SEM carimbo de recusa.
+    expect(consent.marketing.declined_at ?? null).toBeNull();
+  });
+
   it("caso 4 — compatibilidade: o botão interno 'Enviar lead de teste' (payload genérico) continua funcionando sem passar pelo caminho Respondi", async () => {
     // Mesmo payload literal que SourceDetail.tsx manda — bate numa fonte
     // comum (não-Respondi), prova que o normalizador novo não interfere.

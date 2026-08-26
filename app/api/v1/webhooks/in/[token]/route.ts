@@ -287,6 +287,29 @@ export async function POST(req: NextRequest, ctx: RouteCtx): Promise<NextRespons
   // Contato: upsert por telefone (se houver) — reusa a coluna E.164 canônica.
   // is_merged_into null: contato mesclado não deve ser reaproveitado (o índice
   // único uniq_contacts_org_phone só cobre a linha ativa por telefone).
+  /**
+   * O que ESTE envio afirma sobre consentimento — ou nada, que é o caso mais
+   * importante de acertar.
+   *
+   * `detectedVia: "not_found"` significa que o formulário **não tem a pergunta**
+   * de autorização. O mapeador devolve `granted: false` ali (leitura defensiva
+   * correta: silêncio nunca vira concessão), mas isso não é a pessoa dizendo
+   * "não" — é ninguém tendo perguntado. Carimbar recusa nesse caso bloquearia
+   * a automação de todo formulário do Respondi que não faz a pergunta, que é
+   * exatamente o erro que este PR existe para não cometer, um nível acima.
+   *
+   * `null` = este envio não afirma nada, e a coluna fica como está (no default,
+   * ou no que um envio anterior gravou).
+   */
+  const consentDoEnvio = (() => {
+    if (!respondiMapped) return null;
+    if (respondiMapped.consent.detectedVia === "not_found") return null;
+    const formId = respondiMapped.custom_fields.respondi_form_id ?? null;
+    return respondiMapped.consent.granted
+      ? buildContactConsentGrant(formId)
+      : buildContactConsentDenial(formId);
+  })();
+
   let contactId: string | undefined;
   // Nasceu neste request? O INSERT já grava o consentimento com a forma certa;
   // a reconciliação abaixo existe só para quem JÁ era contato.
@@ -336,13 +359,7 @@ export async function POST(req: NextRequest, ctx: RouteCtx): Promise<NextRespons
           // então omitir deixava "nunca perguntamos" e "disse não" com a mesma
           // forma no banco, e quem lê para decidir envio não tinha como separar
           // os dois (ver buildContactConsentDenial).
-          ...(respondiMapped
-            ? {
-                consent: respondiMapped.consent.granted
-                  ? buildContactConsentGrant(respondiMapped.custom_fields.respondi_form_id ?? null)
-                  : buildContactConsentDenial(respondiMapped.custom_fields.respondi_form_id ?? null),
-              }
-            : {}),
+          ...(consentDoEnvio ? { consent: consentDoEnvio } : {}),
         })
         .select("id")
         .maybeSingle();
@@ -396,15 +413,10 @@ export async function POST(req: NextRequest, ctx: RouteCtx): Promise<NextRespons
    * ainda vai entrar. Perder o carimbo é ruim; perder a captação é pior. Fica
    * no log, como as demais bordas desta rota.
    */
-  if (respondiMapped && contactId && !contatoNasceuAqui) {
-    const formId = respondiMapped.custom_fields.respondi_form_id ?? null;
+  if (consentDoEnvio && contactId && !contatoNasceuAqui) {
     const { error: eConsent } = await admin
       .from("contacts")
-      .update({
-        consent: respondiMapped.consent.granted
-          ? buildContactConsentGrant(formId)
-          : buildContactConsentDenial(formId),
-      })
+      .update({ consent: consentDoEnvio })
       .eq("id", contactId)
       .eq("organization_id", source.organization_id);
     if (eConsent) {
