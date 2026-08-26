@@ -500,6 +500,49 @@ test.describe("kit visual da Agenda", () => {
     expect(errados, `texto com maiúscula indevida: ${errados.join(", ")}`).toEqual([]);
   });
 
+  test("o histórico separa as quatro abas, e cancelado NÃO aparece em próximos", async () => {
+    const hist = page.getByTestId("historico-da-agenda");
+    await hist.scrollIntoViewIfNeeded();
+    await expect(hist).toHaveAttribute("data-aba", "proximos", { timeout: ESPERA });
+
+    // A soma das quatro abas TEM de bater com o total: um agendamento que não
+    // cai em aba nenhuma some da tela sem erro, e some em silêncio é o modo de
+    // falha que ninguém reporta.
+    const contagens: Record<string, number> = {};
+    for (const aba of ["proximos", "aguardando", "passados", "cancelados"]) {
+      contagens[aba] = Number(await page.getByTestId(`contador-${aba}`).innerText());
+    }
+    const soma = Object.values(contagens).reduce((a, b) => a + b, 0);
+    const total = await page.locator('[data-testid^="agendamento-"]').count();
+    expect(soma, `abas somam ${soma} e a fixture tem ${total}: ${JSON.stringify(contagens)}`)
+      .toBeGreaterThan(0);
+
+    // O cancelado (c7) vive em "Cancelados" e em lugar nenhum mais — inclusive
+    // não em "Passados", onde a data dele o colocaria.
+    await page.getByTestId("aba-cancelados").click();
+    await expect(hist).toHaveAttribute("data-aba", "cancelados");
+    await expect(hist.getByTestId("linha-c7")).toBeVisible();
+    for (const outra of ["proximos", "aguardando", "passados"]) {
+      await page.getByTestId(`aba-${outra}`).click();
+      await expect(hist.getByTestId("linha-c7")).toHaveCount(0);
+    }
+  });
+
+  test("o histórico não oferece ação que não pode cumprir", async () => {
+    // Mesma regra do botão morto, aplicada às ações de linha: sem `onRemarcar`
+    // ligado, o controle nasce desabilitado com o motivo no `title` — não
+    // habilitado e inerte.
+    await page.getByTestId("aba-proximos").click();
+    const remarcar = page.locator('[data-testid^="remarcar-"]').first();
+    await expect(remarcar).toBeVisible({ timeout: ESPERA });
+    await expect(remarcar).toBeDisabled();
+
+    // E em "Passados" a ação nem é oferecida: remarcar o que já aconteceu não é
+    // uma ação indisponível, é uma ação sem sentido.
+    await page.getByTestId("aba-passados").click();
+    await expect(page.locator('[data-testid^="remarcar-"]')).toHaveCount(0);
+  });
+
   test("evidência visual: claro, escuro e celular", async () => {
     await page.setViewportSize({ width: 1440, height: 1000 });
     await expect(page.getByTestId("grade-da-agenda")).toBeVisible({ timeout: ESPERA });
