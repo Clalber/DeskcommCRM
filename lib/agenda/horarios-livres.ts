@@ -37,6 +37,14 @@
  * ─── A régua do `windows` vazio é OUTRA aqui ───────────────────────────────
  *
  * Ver `janelasDoDia`. Este é o ponto mais fácil de errar do arquivo inteiro.
+ *
+ * ─── Uma limitação declarada, porque ninguém a mediu como defeito ──────────
+ *
+ * **Nada aqui cruza a meia-noite.** Nem a jornada (`22:00`–`02:00` é uma janela
+ * com `end < start`, descartada), nem a exceção, nem um slot que comece 23:30 e
+ * termine 00:30. A limitação é SIMÉTRICA — não há um lado que funcione e outro
+ * que não — e está escrita aqui para ser encontrada antes que alguém venda
+ * atendimento noturno, e não depois. Medido pelo QAVivo.
  */
 import type { ScheduleWindow } from "@/lib/schemas/routing";
 
@@ -61,7 +69,13 @@ export interface JornadaDaAgenda {
  * duplicada. `(0, 1440)` é a mesma informação e colide como deve.
  */
 export interface ExcecaoDeData {
-  /** Data local, `YYYY-MM-DD` — a mesma régua de `diaLocalISO`. */
+  /**
+   * Data local, `YYYY-MM-DD` — a mesma régua de `diaLocalISO`.
+   *
+   * ⚠️ A COLUNA NO BANCO CHAMA `exception_date`, não `date`. Os briefings da
+   * entrega dizem `date`, e quem escrever a rota ou a query lendo o briefing usa
+   * o nome errado. Achado do QAVivo, lendo a migration do Arquiteto.
+   */
   data: string;
   /** `true` SUBTRAI a faixa do dia (ver `janelasDoDia`); não zera o dia por si só. */
   indisponivel: boolean;
@@ -109,10 +123,19 @@ export interface EntradaDeHorariosLivres {
 const MINUTO = 60_000;
 const DIA = 86_400_000;
 
-/** Faixa em minutos desde a meia-noite LOCAL (é assim que a jornada é escrita). */
+/**
+ * Faixa em minutos desde a meia-noite LOCAL (é assim que a jornada é escrita).
+ *
+ * `ancora` é onde a grade daquela janela COMEÇA, e sobrevive aos cortes. Sem
+ * ela, um bloqueio das 10:30 às 11:30 faria a tarde inteira ser oferecida às
+ * 12:30, 13:30, 14:30 — a agenda "andando sozinha" que o cabeçalho deste
+ * arquivo diz impedir. Medido pelo QAVivo: os casos da DECISÃO 11 usam só
+ * múltiplos de 60, e para números assim o deslocamento não aparece.
+ */
 interface FaixaEmMinutos {
   inicio: number;
   fim: number;
+  ancora: number;
 }
 
 /** Faixa em instantes (`getTime()`) — é assim que um compromisso existe. */
@@ -147,6 +170,44 @@ function paredeDeMinutos(ano: number, mes: number, dia: number, minuto: number):
 }
 
 /**
+ * Funde faixas que se sobrepõem ou se encostam, preservando a âncora da mais
+ * à esquerda.
+ *
+ * ⚠️ NADA IMPEDE SOBREPOSIÇÃO A MONTANTE: o Zod valida `start < end` DENTRO de
+ * cada janela e o array só tem `.max(50)`; a tela acrescenta janela sem checar;
+ * a rota também não. E duas exceções disponíveis sobrepostas entram as duas —
+ * a UNIQUE é por `start_minute`, e 540 ≠ 600.
+ *
+ * Sem esta união, `09:00–12:00` mais `10:00–13:00` gera 10:00 e 11:00 DUAS
+ * vezes, e dois pacientes clicam em dois "10:00" que são o mesmo instante.
+ *
+ * **Sobreposição é inofensiva para quem TESTA pertinência e venenosa para quem
+ * GERA.** `isWithinSchedule` usa `.some()`, e um OR responde `true` uma vez só —
+ * por isso o roteamento conviveu com isso sem sintoma. A agenda é o primeiro
+ * consumidor que GERA a partir de `schedule.windows`, e por isso esta função é
+ * nomeada e exportável: a próxima peça que gerar herda o buraco se reimplementar
+ * inline.
+ */
+export function unirFaixas(faixas: FaixaEmMinutos[]): FaixaEmMinutos[] {
+  const ordenadas = [...faixas]
+    .filter((f) => f.fim > f.inicio)
+    .sort((a, b) => a.inicio - b.inicio || a.fim - b.fim);
+
+  const unidas: FaixaEmMinutos[] = [];
+  for (const faixa of ordenadas) {
+    const ultima = unidas[unidas.length - 1];
+    // `<=` funde também as contíguas: 09:00–12:00 e 12:00–18:00 são um bloco de
+    // trabalho só, e a grade deve fluir através da emenda.
+    if (ultima && faixa.inicio <= ultima.fim) {
+      if (faixa.fim > ultima.fim) ultima.fim = faixa.fim;
+      continue;
+    }
+    unidas.push({ ...faixa });
+  }
+  return unidas;
+}
+
+/**
  * Subtrai uma faixa de uma lista de faixas.
  *
  * ⚠️ ADJACÊNCIA NÃO É SOBREPOSIÇÃO, e é aqui que um sinal trocado come um slot
@@ -164,8 +225,14 @@ function subtraiFaixa(base: FaixaEmMinutos[], corte: FaixaEmMinutos): FaixaEmMin
       resto.push(faixa);
       continue;
     }
-    if (corte.inicio > faixa.inicio) resto.push({ inicio: faixa.inicio, fim: corte.inicio });
-    if (corte.fim < faixa.fim) resto.push({ inicio: corte.fim, fim: faixa.fim });
+    // Os pedaços herdam a âncora da janela-mãe: quem foi cortado continua a
+    // grade original, não recomeça uma nova.
+    if (corte.inicio > faixa.inicio) {
+      resto.push({ inicio: faixa.inicio, fim: corte.inicio, ancora: faixa.ancora });
+    }
+    if (corte.fim < faixa.fim) {
+      resto.push({ inicio: corte.fim, fim: faixa.fim, ancora: faixa.ancora });
+    }
   }
   return resto;
 }
@@ -212,26 +279,46 @@ function janelasDoDia(
 
   const base: FaixaEmMinutos[] =
     disponiveis.length > 0
-      ? disponiveis.map((e) => ({ inicio: e.inicioMinuto, fim: e.fimMinuto }))
+      ? disponiveis.map((e) => ({
+          inicio: e.inicioMinuto,
+          fim: e.fimMinuto,
+          ancora: e.inicioMinuto,
+        }))
       : jornada.windows
           .filter((w) => w.dow === dow)
-          .map((w) => ({ inicio: hhmmParaMinutos(w.start), fim: hhmmParaMinutos(w.end) }));
+          .map((w) => {
+            const inicio = hhmmParaMinutos(w.start);
+            return { inicio, fim: hhmmParaMinutos(w.end), ancora: inicio };
+          });
 
-  let faixas = base.filter((f) => f.fim > f.inicio).sort((a, b) => a.inicio - b.inicio);
+  // Unir ANTES de subtrair: sobreposição na base viraria horário em dobro, e a
+  // subtração não conserta isso por acidente — medido.
+  let faixas = unirFaixas(base);
 
   for (const corte of excecoesDoDia.filter((e) => e.indisponivel)) {
-    faixas = subtraiFaixa(faixas, { inicio: corte.inicioMinuto, fim: corte.fimMinuto });
+    faixas = subtraiFaixa(faixas, {
+      inicio: corte.inicioMinuto,
+      fim: corte.fimMinuto,
+      ancora: corte.inicioMinuto,
+    });
   }
 
-  return faixas.sort((a, b) => a.inicio - b.inicio);
+  return faixas;
 }
 
-/** Os ocupados já inflados pelos buffers, em instantes, prontos para comparar. */
-function bloqueios(ocupados: Ocupado[], tipo: TipoDeAgendamento): FaixaEmInstantes[] {
-  return ocupados.map((o) => ({
-    inicio: o.inicio.getTime() - tipo.bufferAntesMin * MINUTO,
-    fim: o.fim.getTime() + tipo.bufferDepoisMin * MINUTO,
-  }));
+/**
+ * O slot inflado pelos buffers — e é o SLOT que infla, não o compromisso.
+ *
+ * O campo promete folga ANTES do meu atendimento e DEPOIS dele. Inflar o
+ * compromisso dá a mesma conta só enquanto os dois buffers são iguais; com
+ * `antes = 60` e `depois = 0` as duas leituras divergem, e a que corresponde ao
+ * que a tela promete é esta.
+ */
+function slotInflado(inicio: number, fim: number, tipo: TipoDeAgendamento): FaixaEmInstantes {
+  return {
+    inicio: inicio - tipo.bufferAntesMin * MINUTO,
+    fim: fim + tipo.bufferDepoisMin * MINUTO,
+  };
 }
 
 /**
@@ -258,7 +345,12 @@ export function horariosLivres(entrada: EntradaDeHorariosLivres): Slot[] {
   const naoDepoisDe = Math.min(ate.getTime(), agora.getTime() + tipo.janelaDias * DIA);
   if (naoAntesDe > naoDepoisDe) return [];
 
-  const faixasBloqueadas = bloqueios(ocupados, tipo);
+  // Os compromissos, em instantes. Os bloqueios por exceção entram por dia, no
+  // laço — eles nascem em minutos de parede e só viram instante lá dentro.
+  const compromissos: FaixaEmInstantes[] = ocupados.map((o) => ({
+    inicio: o.inicio.getTime(),
+    fim: o.fim.getTime(),
+  }));
 
   const excecoesPorData = new Map<string, ExcecaoDeData[]>();
   for (const e of excecoes) {
@@ -282,10 +374,40 @@ export function horariosLivres(entrada: EntradaDeHorariosLivres): Slot[] {
     const meioDia = instanteDe({ ano, mes, dia, hora: 12, minuto: 0 }, fuso);
     const dow = diaDaSemanaLocal(meioDia, fuso);
 
-    for (const faixa of janelasDoDia(jornada, excecoesPorData.get(dataISO) ?? [], dow)) {
+    const excecoesDoDia = excecoesPorData.get(dataISO) ?? [];
+    const emInstantes = (f: FaixaEmMinutos | ExcecaoDeData): FaixaEmInstantes => {
+      const inicio = "inicio" in f ? f.inicio : f.inicioMinuto;
+      const fim = "inicio" in f ? f.fim : f.fimMinuto;
+      return {
+        inicio: instanteDe(paredeDeMinutos(ano, mes, dia, inicio), fuso).getTime(),
+        fim: instanteDe(paredeDeMinutos(ano, mes, dia, fim), fuso).getTime(),
+      };
+    };
+
+    // ⚠️ O BLOQUEIO POR EXCEÇÃO CONTA COMO OCUPADO PARA EFEITO DE BUFFER.
+    //
+    // Ele já saiu das faixas pela subtração — mas isso só impede o slot de cair
+    // DENTRO dele. O buffer é outra pergunta: a dentista que pede 15 minutos
+    // entre pacientes e bloqueia 12h-14h para o almoço não quer um paciente às
+    // 11h, porque a esterilização dele invade o almoço dela. Sem esta linha o
+    // buffer valia contra compromisso e não valia contra bloqueio — mesma
+    // intenção, duas telas, dois resultados. Medido pelo QAVivo; a DECISÃO 11
+    // criou o caso, porque antes dela a exceção zerava o dia e não havia borda
+    // no meio do dia para o buffer atravessar.
+    const bloqueiosDoDia = [
+      ...compromissos,
+      ...excecoesDoDia.filter((e) => e.indisponivel).map(emInstantes),
+    ];
+
+    for (const faixa of janelasDoDia(jornada, excecoesDoDia, dow)) {
       const fimDaFaixa = instanteDe(paredeDeMinutos(ano, mes, dia, faixa.fim), fuso).getTime();
 
-      for (let minuto = faixa.inicio; ; minuto += passo) {
+      // A grade continua a da JANELA, não recomeça no pedaço: avança da âncora
+      // até o primeiro ponto que caia dentro desta faixa.
+      const primeiroDaGrade =
+        faixa.ancora + Math.ceil((faixa.inicio - faixa.ancora) / passo) * passo;
+
+      for (let minuto = primeiroDaGrade; ; minuto += passo) {
         const inicio = instanteDe(paredeDeMinutos(ano, mes, dia, minuto), fuso).getTime();
         const fim = inicio + tipo.duracaoMin * MINUTO;
 
@@ -296,14 +418,29 @@ export function horariosLivres(entrada: EntradaDeHorariosLivres): Slot[] {
 
         if (inicio < naoAntesDe) continue;
         if (inicio > naoDepoisDe) break;
-        if (faixasBloqueadas.some((b) => colide(inicio, fim, b))) continue;
+
+        const comFolga = slotInflado(inicio, fim, tipo);
+        if (bloqueiosDoDia.some((b) => colide(comFolga.inicio, comFolga.fim, b))) continue;
 
         slots.push({ inicio: new Date(inicio), fim: new Date(fim) });
       }
     }
   }
 
-  return slots.sort((a, b) => a.inicio.getTime() - b.inicio.getTime());
+  // ⚠️ DOIS HORÁRIOS NÃO PODEM SER O MESMO INSTANTE.
+  //
+  // No salto do horário de verão a hora que não existe desliza para depois do
+  // salto (decisão de `fuso.ts`), e aterrissa em cima do slot seguinte: em Nova
+  // York, 2026-03-08, as 02:00 e as 03:00 viram o mesmo `07:00Z`. Dois pacientes
+  // escolheriam "o seu" 03:00 e cairiam no mesmo `timestamptz`, sem erro em
+  // lugar nenhum. O Brasil não tem mais horário de verão, mas Santiago e
+  // Assunção — que o produto oferece — têm.
+  const porInstante = new Map<number, Slot>();
+  for (const slot of slots) {
+    if (!porInstante.has(slot.inicio.getTime())) porInstante.set(slot.inicio.getTime(), slot);
+  }
+
+  return [...porInstante.values()].sort((a, b) => a.inicio.getTime() - b.inicio.getTime());
 }
 
 /** `YYYY-MM-DD` → data civil. Uma função só, para o tipo não virar `number | undefined`. */

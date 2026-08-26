@@ -534,3 +534,247 @@ describe("o intervalo consultado", () => {
     expect(horas(slots)).toEqual(["13:00", "14:00", "15:00", "16:00", "17:00"]);
   });
 });
+
+/**
+ * OS QUATRO DEFEITOS QUE O QAVivo MEDIU — e a razão de terem passado.
+ *
+ * Os casos de teste que a DECISÃO 11 lista usam só múltiplos de 60 (720, 840,
+ * 0, 1440, 540, 600, 660). Três dos quatro defeitos abaixo são INVISÍVEIS para
+ * números assim: o deslocamento da grade não aparece quando o corte já cai
+ * num ponto dela. Não foi azar — foi um conjunto de exemplos que não
+ * interrogava a régua.
+ */
+describe("a grade se ancora na JORNADA, não no pedaço que sobrou", () => {
+  const DIA_INTEIRO: JornadaDaAgenda = {
+    timezone: SP,
+    windows: [{ dow: 1, start: "09:00", end: "18:00" }],
+  };
+
+  it("bloqueio fora da grade não desloca os horários da tarde inteira", () => {
+    // Reunião das 10:30 às 11:30. A versão anterior devolvia 09:00, 11:30,
+    // 12:30… — do meio-dia em diante NENHUM horário coincidia com o que a
+    // clínica publica, e o dono nunca ligaria uma coisa à outra.
+    const slots = horariosLivres({
+      jornada: DIA_INTEIRO,
+      excecoes: [
+        { data: "2026-03-09", indisponivel: true, inicioMinuto: 630, fimMinuto: 690 },
+      ],
+      ocupados: [],
+      tipo: CONSULTA_DE_1H,
+      ...oDiaDe("2026-03-09"),
+      agora: new Date("2026-03-01T12:00:00Z"),
+    });
+    expect(horas(slots)).toEqual([
+      "09:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00",
+    ]);
+  });
+
+  it("o slot livre do fim do dia continua sendo oferecido", () => {
+    // Consequência do mesmo defeito: re-ancorada em 11:30, a grade terminava em
+    // 16:30 e deixava 17:00-18:00 — inteiramente livre — de fora.
+    const slots = horariosLivres({
+      jornada: DIA_INTEIRO,
+      excecoes: [
+        { data: "2026-03-09", indisponivel: true, inicioMinuto: 630, fimMinuto: 690 },
+      ],
+      ocupados: [],
+      tipo: CONSULTA_DE_1H,
+      ...oDiaDe("2026-03-09"),
+      agora: new Date("2026-03-01T12:00:00Z"),
+    });
+    expect(horas(slots)).toContain("17:00");
+  });
+
+  it("a MESMA reunião como bloqueio ou como compromisso devolve os MESMOS horários", () => {
+    // Duas telas, uma intenção. Se divergirem, o dono conclui que o sistema é
+    // imprevisível — e está certo.
+    const comum = {
+      jornada: DIA_INTEIRO,
+      tipo: CONSULTA_DE_1H,
+      ...oDiaDe("2026-03-09"),
+      agora: new Date("2026-03-01T12:00:00Z"),
+    };
+    const comoBloqueio = horariosLivres({
+      ...comum,
+      excecoes: [
+        { data: "2026-03-09", indisponivel: true, inicioMinuto: 735, fimMinuto: 795 },
+      ],
+      ocupados: [],
+    });
+    const comoCompromisso = horariosLivres({
+      ...comum,
+      excecoes: [],
+      ocupados: [
+        {
+          inicio: new Date("2026-03-09T15:15:00Z"), // 12:15 em SP
+          fim: new Date("2026-03-09T16:15:00Z"), // 13:15 em SP
+        },
+      ],
+    });
+    expect(horas(comoBloqueio)).toEqual(horas(comoCompromisso));
+  });
+});
+
+describe("o buffer vale contra o BLOQUEIO, não só contra o compromisso", () => {
+  it("o slot que encosta no bloqueio pelo buffer não é oferecido", () => {
+    // A dentista põe 15min entre pacientes e bloqueia 12h-14h para o almoço. Um
+    // paciente às 11h a faz esterilizar até 12h15, dentro do almoço dela. Ela
+    // vai concluir que o campo de intervalo não funciona.
+    const slots = horariosLivres({
+      jornada: { timezone: SP, windows: [{ dow: 1, start: "09:00", end: "18:00" }] },
+      excecoes: [
+        { data: "2026-03-09", indisponivel: true, inicioMinuto: 720, fimMinuto: 840 },
+      ],
+      ocupados: [],
+      tipo: { ...CONSULTA_DE_1H, bufferAntesMin: 15, bufferDepoisMin: 15 },
+      ...oDiaDe("2026-03-09"),
+      agora: new Date("2026-03-01T12:00:00Z"),
+    });
+    expect(horas(slots)).toEqual(["09:00", "10:00", "15:00", "16:00", "17:00"]);
+  });
+
+  it("bloqueio e compromisso com o mesmo buffer devolvem os mesmos horários", () => {
+    const comum = {
+      jornada: { timezone: SP, windows: [{ dow: 1, start: "09:00", end: "18:00" }] },
+      tipo: { ...CONSULTA_DE_1H, bufferAntesMin: 15, bufferDepoisMin: 15 },
+      ...oDiaDe("2026-03-09"),
+      agora: new Date("2026-03-01T12:00:00Z"),
+    };
+    const porBloqueio = horariosLivres({
+      ...comum,
+      excecoes: [
+        { data: "2026-03-09", indisponivel: true, inicioMinuto: 720, fimMinuto: 840 },
+      ],
+      ocupados: [],
+    });
+    const porCompromisso = horariosLivres({
+      ...comum,
+      excecoes: [],
+      ocupados: [
+        {
+          inicio: new Date("2026-03-09T15:00:00Z"), // 12:00 SP
+          fim: new Date("2026-03-09T17:00:00Z"), // 14:00 SP
+        },
+      ],
+    });
+    expect(horas(porBloqueio)).toEqual(horas(porCompromisso));
+  });
+
+  it("buffer assimétrico protege o lado certo de cada slot", () => {
+    // Com bufferAntes ≠ bufferDepois, inflar o COMPROMISSO e inflar o SLOT
+    // deixam de ser a mesma conta. O que o campo promete é folga ANTES do meu
+    // atendimento e DEPOIS dele — então quem infla é o slot.
+    const slots = horariosLivres({
+      jornada: { timezone: SP, windows: [{ dow: 1, start: "09:00", end: "18:00" }] },
+      excecoes: [],
+      ocupados: [
+        {
+          inicio: new Date("2026-03-09T15:00:00Z"), // 12:00 SP
+          fim: new Date("2026-03-09T16:00:00Z"), // 13:00 SP
+        },
+      ],
+      tipo: { ...CONSULTA_DE_1H, bufferAntesMin: 60, bufferDepoisMin: 0 },
+      ...oDiaDe("2026-03-09"),
+      agora: new Date("2026-03-01T12:00:00Z"),
+    });
+    // 11:00-12:00 encosta no compromisso e é permitido (nada é exigido DEPOIS).
+    // 13:00-14:00 exigiria a hora anterior livre, e ela é o compromisso.
+    expect(horas(slots)).toEqual(["09:00", "10:00", "11:00", "14:00", "15:00", "16:00", "17:00"]);
+  });
+});
+
+describe("faixas sobrepostas não podem gerar o mesmo horário duas vezes", () => {
+  it("duas janelas da jornada que se sobrepõem contam como uma", () => {
+    // Ninguém impede a sobreposição: o Zod valida `start < end` DENTRO de cada
+    // janela, e a tela acrescenta sem checar. Sobreposição é inofensiva para
+    // quem TESTA pertinência (o roteamento usa `.some()`, e um OR responde uma
+    // vez) e venenosa para quem GERA. A agenda é a primeira peça que gera.
+    const slots = horariosLivres({
+      jornada: {
+        timezone: SP,
+        windows: [
+          { dow: 1, start: "09:00", end: "12:00" },
+          { dow: 1, start: "10:00", end: "13:00" },
+        ],
+      },
+      excecoes: [],
+      ocupados: [],
+      tipo: CONSULTA_DE_1H,
+      ...oDiaDe("2026-03-09"),
+      agora: new Date("2026-03-01T12:00:00Z"),
+    });
+    expect(horas(slots)).toEqual(["09:00", "10:00", "11:00", "12:00"]);
+  });
+
+  it("duas exceções disponíveis que se sobrepõem contam como uma", () => {
+    // O gesto natural de quem não tem botão de editar: cadastrar "sábado 9h-12h"
+    // e depois ACRESCENTAR "10h-13h". As duas entram — a UNIQUE é por
+    // `start_minute`, e 540 ≠ 600.
+    const slots = horariosLivres({
+      jornada: JORNADA_COMERCIAL,
+      excecoes: [
+        { data: "2026-03-14", indisponivel: false, inicioMinuto: 540, fimMinuto: 720 },
+        { data: "2026-03-14", indisponivel: false, inicioMinuto: 600, fimMinuto: 780 },
+      ],
+      ocupados: [],
+      tipo: CONSULTA_DE_1H,
+      ...oDiaDe("2026-03-14"),
+      agora: new Date("2026-03-01T12:00:00Z"),
+    });
+    expect(horas(slots)).toEqual(["09:00", "10:00", "11:00", "12:00"]);
+  });
+
+  it("a subtração NÃO conserta a sobreposição por acidente", () => {
+    // Sem a união, isto devolvia 09:00 11:00 11:00 12:00 — o 10:00 sumia nas
+    // DUAS cópias e o 11:00 seguia em dobro. Verde aqui sem a união seria verde
+    // pelo motivo errado.
+    const slots = horariosLivres({
+      jornada: {
+        timezone: SP,
+        windows: [
+          { dow: 1, start: "09:00", end: "12:00" },
+          { dow: 1, start: "10:00", end: "13:00" },
+        ],
+      },
+      excecoes: [
+        { data: "2026-03-09", indisponivel: true, inicioMinuto: 600, fimMinuto: 660 },
+      ],
+      ocupados: [],
+      tipo: CONSULTA_DE_1H,
+      ...oDiaDe("2026-03-09"),
+      agora: new Date("2026-03-01T12:00:00Z"),
+    });
+    expect(horas(slots)).toEqual(["09:00", "11:00", "12:00"]);
+  });
+});
+
+describe("no salto do horário de verão, dois horários não podem ser o mesmo instante", () => {
+  it("a hora que não existe não vira um slot duplicado", () => {
+    // Nova York, 2026-03-08: o relógio pula 02:00 → 03:00. `instanteDe` desliza
+    // a hora inexistente pelo salto (decisão de `fuso.ts`), e o slot das 02:00
+    // aterrissa no MESMO instante do das 03:00. Dois pacientes escolheriam "o
+    // seu" 03:00 e cairiam no mesmo `timestamptz`, sem erro em lugar nenhum.
+    //
+    // O Brasil não tem mais horário de verão — mas o onboarding oferece
+    // Santiago e Assunção, que têm.
+    const slots = horariosLivres({
+      jornada: {
+        timezone: "America/New_York",
+        windows: [{ dow: 0, start: "01:00", end: "05:00" }],
+      },
+      excecoes: [],
+      ocupados: [],
+      tipo: CONSULTA_DE_1H,
+      de: new Date("2026-03-08T00:00:00Z"),
+      ate: new Date("2026-03-09T12:00:00Z"),
+      agora: new Date("2026-03-01T12:00:00Z"),
+    });
+    const instantes = slots.map((s) => s.inicio.toISOString());
+    expect(new Set(instantes).size).toBe(instantes.length);
+    expect(instantes).toEqual([
+      "2026-03-08T06:00:00.000Z",
+      "2026-03-08T07:00:00.000Z",
+      "2026-03-08T08:00:00.000Z",
+    ]);
+  });
+});
