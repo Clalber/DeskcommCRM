@@ -14195,10 +14195,12 @@ create policy push_subscriptions_own on public.push_subscriptions
   using (
     organization_id in (select public.fn_user_org_ids())
     and user_id = auth.uid()
+    and public.fn_role_at_least(organization_id, 'viewer')
   )
   with check (
     organization_id in (select public.fn_user_org_ids())
     and user_id = auth.uid()
+    and public.fn_role_at_least(organization_id, 'viewer')
   );
 
 revoke all on public.push_subscriptions from anon, public;

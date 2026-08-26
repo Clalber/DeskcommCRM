@@ -191,6 +191,7 @@ function baseCtx(): ActionCtx {
     admin,
     organizationId: GOV_ORG,
     ruleId: RULE_ID,
+    ruleName: "start_message_flow test",
     event: { id: lastLine(sql(`select gen_random_uuid();`)) } as unknown as EventRow,
     context: { contact: { id: CONTACT_ID } },
     requestId: "test-start-message-flow",

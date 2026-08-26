@@ -175,6 +175,16 @@ export async function kickLocalPipeline(
   admin: SupabaseClient,
   contato?: ContatoDoPipeline,
 ): Promise<void> {
-  await acelerarPipelineDeEventos(admin);
-  if (contato) await acelerarDesteContato(admin, contato);
+  // acelerarPipelineDeEventos já é fail-soft; o tick do contato NÃO era —
+  // uma query incompleta (mock de teste ou PostgREST momentâneo) derrubava o
+  // 200 da captação depois do lead já gravado. O contrato do cabeçalho vale
+  // para o POST inteiro.
+  try {
+    await acelerarPipelineDeEventos(admin);
+    if (contato) await acelerarDesteContato(admin, contato);
+  } catch (err) {
+    logger.warn("[dev.pipeline] kick falhou (lead/mensagem já gravados)", {
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
 }

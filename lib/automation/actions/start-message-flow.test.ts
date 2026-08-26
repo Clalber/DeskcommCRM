@@ -16,6 +16,7 @@ function baseCtx(context: Record<string, unknown>): ActionCtx {
     admin: {} as ActionCtx["admin"],
     organizationId: "org-1",
     ruleId: "rule-1",
+    ruleName: "Automação de teste",
     requestId: "evt-1",
     event: {
       id: "evt-1",
