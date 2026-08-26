@@ -84,8 +84,25 @@
  * Nenhum dos fusos que o produto oferece hoje cai nessa classe, então isto não
  * bloqueia nada. Mas a unificação anunciada acima trocaria uma função certa por
  * uma errada nessa borda, e é exatamente o tipo de troca que ninguém revisa
- * porque "as duas fazem a mesma coisa". Ao unificar: leve o `Math.max` daqui
- * para lá, ou mantenha esta.
+ * porque "as duas fazem a mesma coisa".
+ *
+ * ─── O CRITÉRIO, que vale mais que o vencedor ─────────────────────────────
+ *
+ * Existem TRÊS famílias deste cálculo neste repo, e a terceira é a que fecha o
+ * argumento: `nextCronTime` (`lib/agent-engine/cron/schedule.ts`) não constrói
+ * o instante — VARRE minuto a minuto e casa a representação de parede.
+ *
+ * **Não existe método sem escolha; existe escolha explícita e escolha
+ * escondida.** Esta função escolhe `Math.max` e escreve por quê. A do motor
+ * escolhe "fica o primeiro" e não diz — por isso acerta nas Américas e erra em
+ * Beirute. A varredura não escolhe, e por isso dispara duas vezes na volta do
+ * horário de verão e nenhuma no salto. Nenhuma das três é "a certa" em
+ * abstrato: **a certa é a que declara o que faz na borda.**
+ *
+ * Ao unificar, escolha por esse critério — não pela mais nova nem pela mais
+ * usada. Na prática, hoje: leve o `Math.max` daqui para lá, ou mantenha esta.
+ * (Este parágrafo é a DECISÃO 15 do maestro, e sobrevive a alguém escrever uma
+ * quarta função — que é o que uma regra que nomeia vencedor não faz.)
  *
  * (Achado do QAVivo. A divergência inicial entre a medição dele e a minha era
  * régua implícita: ele mediu 25 fusos, eu medi os 13 da lista canônica, e os
