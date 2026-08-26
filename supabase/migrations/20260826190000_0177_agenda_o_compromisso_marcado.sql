@@ -605,32 +605,140 @@ end
 $$;
 
 -- ────────────────────────────────────────────────────────────────────────────
--- 10 · tenancy
+-- 10 · tenancy E PAPEL
 -- ────────────────────────────────────────────────────────────────────────────
--- Cinco org-flat (a agenda de uma clínica é de quem trabalha nela) e uma com
--- gate, `calendar_connections`, que guarda token.
-do $$
-declare t text;
-begin
-  foreach t in array array[
-    'calendar_event_types','calendar_appointments','calendar_availability_exceptions',
-    'calendar_connection_calendars','calendar_external_events'
-  ]
-  loop
-    execute format('alter table public.%I enable row level security', t);
-    execute format('drop policy if exists tenant_isolation_%s_all on public.%I', t, t);
-    execute format(
-      'create policy tenant_isolation_%s_all on public.%I for all
-         using      ((organization_id in (select public.fn_user_org_ids())) or public.fn_is_platform_admin())
-         with check ((organization_id in (select public.fn_user_org_ids())) or public.fn_is_platform_admin())',
-      t, t);
-    -- Tabela nova NASCE concedida a anon: o `alter default privileges ... grant
-    -- all on tables to anon` do corpo do baseline vale para tudo criado depois
-    -- dele. A RLS já barra; isto custa uma linha.
-    execute format('revoke all on public.%I from anon', t);
-  end loop;
-end
-$$;
+-- A primeira versão deste bloco dava `for all` só-tenancy às cinco tabelas de
+-- agenda, e o invariante `rbac-config-ia-canais` reprovou as cinco. Ele estava
+-- certo, e não é allowlist: `DIVIDA_RBAC_CONHECIDA` é uma CATRACA — a lista
+-- congelada das tabelas que JÁ nasceram só-tenancy antes da migration 0150. O
+-- teste se chama "a dívida de RBAC não cresce", e pôr tabela nova ali é
+-- exatamente o movimento que ele existe para impedir.
+--
+-- A razão de fundo (migration 0150): `requireRole()` na rota Next NÃO é a única
+-- porta. O PostgREST é exposto ao browser por construção — URL e anon key vão no
+-- bundle — e um usuário logado fala com ele direto, com o próprio JWT. Uma
+-- policy `for all` só-tenancy significa que o papel mais fraco do tenant escreve
+-- tudo o que a organização tem.
+--
+-- Por tabela, e cada uma tem uma razão diferente:
+--
+--   event_types            lê membro · escreve manager+   é CONFIGURAÇÃO do
+--     negócio: quanto dura uma consulta, que folga tem, quando se pode marcar.
+--     O atendente usa; quem define é quem responde pelo negócio.
+--
+--   appointments           lê membro · escreve agent+     é a OPERAÇÃO do dia.
+--     Marcar, remarcar e cancelar é o trabalho do atendente. O `viewer` vê a
+--     agenda e não mexe nela.
+--
+--   availability_exceptions lê membro · escreve o DONO ou manager+
+--     "No dia 12 eu não atendo" é da pessoa. Ela mesma escreve a sua, sem
+--     depender de ninguém; manager+ escreve a dos outros porque escala é
+--     trabalho de quem coordena.
+--
+--   connection_calendars   acompanha a conexão · escreve ninguém
+--     Ele é filho de `calendar_connections` e herda o escopo dela, como
+--     `crm_lead_links` herda o do lead. Quem escreve é o callback do OAuth.
+--
+--   external_events        lê membro · escreve NINGUÉM além de service_role
+--     Vem do sync e é espelho. Escrita humana aqui só teria um caso de uso:
+--     corromper a fonte de conflito, fazendo a agenda marcar em cima de
+--     compromisso real. Ausência de policy de escrita é a decisão.
+--
+-- Nenhuma leva `for all` só-tenancy, e por isso nenhuma precisa entrar na
+-- catraca.
+
+-- ─── os tipos de agendamento: configuração do negócio ─────────────────────
+alter table public.calendar_event_types enable row level security;
+drop policy if exists tenant_isolation_calendar_event_types_all on public.calendar_event_types;
+drop policy if exists calendar_event_types_select on public.calendar_event_types;
+create policy calendar_event_types_select on public.calendar_event_types
+  for select using (
+    (organization_id in (select public.fn_user_org_ids())) or public.fn_is_platform_admin()
+  );
+drop policy if exists calendar_event_types_write on public.calendar_event_types;
+create policy calendar_event_types_write on public.calendar_event_types
+  using (
+    public.fn_is_platform_admin()
+    or ((organization_id in (select public.fn_user_org_ids()))
+        and public.fn_role_at_least(organization_id, 'manager'))
+  )
+  with check (
+    public.fn_is_platform_admin()
+    or ((organization_id in (select public.fn_user_org_ids()))
+        and public.fn_role_at_least(organization_id, 'manager'))
+  );
+revoke all on public.calendar_event_types from anon;
+
+-- ─── os compromissos: a operação do dia ───────────────────────────────────
+alter table public.calendar_appointments enable row level security;
+drop policy if exists tenant_isolation_calendar_appointments_all on public.calendar_appointments;
+drop policy if exists calendar_appointments_select on public.calendar_appointments;
+create policy calendar_appointments_select on public.calendar_appointments
+  for select using (
+    (organization_id in (select public.fn_user_org_ids())) or public.fn_is_platform_admin()
+  );
+drop policy if exists calendar_appointments_write on public.calendar_appointments;
+create policy calendar_appointments_write on public.calendar_appointments
+  using (
+    public.fn_is_platform_admin()
+    or ((organization_id in (select public.fn_user_org_ids()))
+        and public.fn_role_at_least(organization_id, 'agent'))
+  )
+  with check (
+    public.fn_is_platform_admin()
+    or ((organization_id in (select public.fn_user_org_ids()))
+        and public.fn_role_at_least(organization_id, 'agent'))
+  );
+revoke all on public.calendar_appointments from anon;
+
+-- ─── as exceções: a agenda é de quem a vive ───────────────────────────────
+alter table public.calendar_availability_exceptions enable row level security;
+drop policy if exists tenant_isolation_calendar_availability_exceptions_all on public.calendar_availability_exceptions;
+drop policy if exists calendar_availability_exceptions_select on public.calendar_availability_exceptions;
+create policy calendar_availability_exceptions_select on public.calendar_availability_exceptions
+  for select using (
+    (organization_id in (select public.fn_user_org_ids())) or public.fn_is_platform_admin()
+  );
+drop policy if exists calendar_availability_exceptions_write on public.calendar_availability_exceptions;
+create policy calendar_availability_exceptions_write on public.calendar_availability_exceptions
+  using (
+    public.fn_is_platform_admin()
+    or ((organization_id in (select public.fn_user_org_ids()))
+        and (user_id = auth.uid() or public.fn_role_at_least(organization_id, 'manager')))
+  )
+  with check (
+    public.fn_is_platform_admin()
+    or ((organization_id in (select public.fn_user_org_ids()))
+        and (user_id = auth.uid() or public.fn_role_at_least(organization_id, 'manager')))
+  );
+revoke all on public.calendar_availability_exceptions from anon;
+
+-- ─── os calendários da conexão: herdam o escopo do pai ────────────────────
+alter table public.calendar_connection_calendars enable row level security;
+drop policy if exists tenant_isolation_calendar_connection_calendars_all on public.calendar_connection_calendars;
+drop policy if exists calendar_connection_calendars_select on public.calendar_connection_calendars;
+create policy calendar_connection_calendars_select on public.calendar_connection_calendars
+  for select using (
+    public.fn_is_platform_admin()
+    or ((organization_id in (select public.fn_user_org_ids()))
+        and exists (
+          select 1 from public.calendar_connections c
+           where c.id = connection_id
+             and (c.user_id = auth.uid()
+                  or public.fn_role_at_least(c.organization_id, 'manager'))
+        ))
+  );
+revoke all on public.calendar_connection_calendars from anon;
+
+-- ─── o espelho do Google: leitura de todos, escrita de ninguém ────────────
+alter table public.calendar_external_events enable row level security;
+drop policy if exists tenant_isolation_calendar_external_events_all on public.calendar_external_events;
+drop policy if exists calendar_external_events_select on public.calendar_external_events;
+create policy calendar_external_events_select on public.calendar_external_events
+  for select using (
+    (organization_id in (select public.fn_user_org_ids())) or public.fn_is_platform_admin()
+  );
+revoke all on public.calendar_external_events from anon;
 
 alter table public.calendar_connections enable row level security;
 
