@@ -41,6 +41,22 @@ const RAIZ = process.cwd();
 const PASTA = path.join(RAIZ, "evidence", "calendario");
 const DECLARACAO = /^\s*prova-em-tela:\s*(\S+)\s*$/gim;
 
+/**
+ * A spec tem teste VIVO? — `test(`/`it(` que não seja `.skip` nem `.fixme`.
+ *
+ * Ponto cego medido pelo DevVivo no primeiro desenho deste gate: um arquivo de
+ * zero bytes fechava a dívida, e `test.skip("depois eu faço")` fechava com cara
+ * ainda melhor, porque parece trabalho começado. O gate provava que o CAMINHO
+ * existia; não que existia TESTE.
+ *
+ * É a tese desta entrega aplicada mais um nível — mecanismo protege onde regra
+ * não protegia, e o furo seguinte é sempre "o mesmo gesto com um comando a mais".
+ */
+function temTesteVivo(fonte: string): boolean {
+  const semComentarios = fonte.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/\/\/[^\n]*/g, " ");
+  return /(^|[^.\w])(test|it)\s*\(/.test(semComentarios);
+}
+
 describe("frente sem tela declara quem a prova em tela", () => {
   it("toda spec citada como prova-em-tela existe no disco", () => {
     if (!existsSync(PASTA)) return; // a entrega ainda não produziu evidência
@@ -59,6 +75,38 @@ describe("frente sem tela declara quem a prova em tela", () => {
         "permite fechar frente sem pixel, mas o endereço declarado tem de ser real — " +
         "senão a obrigação evapora sem ninguém ver. Crie a spec ou corrija o caminho.",
     ).toEqual([]);
+  });
+
+  it("a spec citada tem teste DE VERDADE — arquivo vazio ou só .skip não fecha dívida", () => {
+    if (!existsSync(PASTA)) return;
+
+    const vazias: string[] = [];
+    for (const arquivo of readdirSync(PASTA).filter((f) => /^ENTREGA-.*\.md$/.test(f))) {
+      const conteudo = readFileSync(path.join(PASTA, arquivo), "utf-8");
+      for (const [, alvo] of conteudo.matchAll(DECLARACAO)) {
+        const caminho = path.join(RAIZ, alvo);
+        if (!existsSync(caminho)) continue; // o caso acima já cobre
+        if (!temTesteVivo(readFileSync(caminho, "utf-8"))) vazias.push(`${arquivo} → ${alvo}`);
+      }
+    }
+
+    expect(
+      vazias,
+      "A spec citada existe mas NÃO TEM TESTE VIVO — está vazia, ou só com .skip/.fixme. " +
+        "`touch` fecharia a dívida sem provar nada, e `.skip` fecha com cara de trabalho começado. " +
+        "Enquanto a frente está aberta, a spec pulada é o marcador legítimo (DECISÃO 21.3); " +
+        "o relatório ENTREGA-*.md, porém, é o artefato de FECHAMENTO — escrevê-lo exige o teste real.",
+    ).toEqual([]);
+  });
+
+  it("CONTROLE: o detector de spec-vazia enxerga uma spec vazia", () => {
+    // Sem este par, o reforço acima pode nascer morto e ninguém ver — o mesmo
+    // buraco que o controle da declaração evita para a outra metade.
+    expect(temTesteVivo("")).toBe(false);
+    expect(temTesteVivo('test.skip("depois eu faço", () => {});')).toBe(false);
+    expect(temTesteVivo('test.fixme("quebrado", () => {});')).toBe(false);
+    expect(temTesteVivo('test("marca pela tela", async ({ page }) => { await page.goto("/"); });')).toBe(true);
+    expect(temTesteVivo('  it("faz algo", () => {});')).toBe(true);
   });
 
   it("CONTROLE: o detector enxerga uma declaração quebrada", () => {
