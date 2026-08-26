@@ -8,10 +8,11 @@
  * `* * * * *` em `docker/scheduler/entrypoint.sh`. Um tick por minuto.
  *
  * Isso é caro quando a cadeia tem mais de um salto. Medido nesta VPS em
- * 2026-08-25, com um áudio de WhatsApp:
+ * 2026-08-25, com um áudio recebido pelo canal:
  *
- *   áudio chega → media.persist_requested → (até 60s de fila) → baixa do WAHA
- *   → media.derive_requested → (até 60s de fila) → Whisper transcreve em 3,9s
+ *   áudio chega → media.persist_requested → (até 60s de fila) → baixa do
+ *   provedor do canal → media.derive_requested → (até 60s de fila) →
+ *   Whisper transcreve em 3,9s
  *
  * Total real: 103s e 188s em duas medições. Enquanto isso, o drain do turno
  * (`lib/agent-engine/edge/crm/drain.ts`) espera no máximo 45s pela derivação e

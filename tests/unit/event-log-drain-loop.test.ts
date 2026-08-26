@@ -10,6 +10,7 @@
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import type { Logger } from '@/lib/agent-engine/obs/logger';
 import type { DrainSummary } from '@/lib/event-log/drain';
 
 const drainEventLog = vi.fn();
@@ -24,7 +25,12 @@ const { proximaEspera, runEventLogDrainLoop } = await import('@/lib/event-log/dr
 
 const knobs = { intervalMs: 2_000, idleIntervalMs: 10_000, batchSize: 50 };
 const vazio: DrainSummary = { scanned: 0, done: 0, retried: 0, failed: 0, dead: 0 };
-const log = { info: vi.fn(), warn: vi.fn(), error: vi.fn() } as never;
+// O dublê mantém o tipo do MOCK (`log.warn` é um `vi.fn()` que as asserções
+// interrogam); o cast para `Logger` fica no ponto em que ele CRUZA a fronteira
+// da função. `as never` apagava o objeto inteiro e derrubava o typecheck do
+// CI, que roda `-p tsconfig.typecheck.json` e inclui `tests/`.
+const log = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+const logger = log as unknown as Logger;
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -59,7 +65,7 @@ describe('runEventLogDrainLoop', () => {
       return Promise.resolve({ ...vazio, done: 1 });
     });
 
-    await runEventLogDrainLoop({ ...knobs, intervalMs: 0, idleIntervalMs: 0 }, log, abort.signal);
+    await runEventLogDrainLoop({ ...knobs, intervalMs: 0, idleIntervalMs: 0 }, logger, abort.signal);
 
     expect(ensureHandlersRegistered).toHaveBeenCalledOnce();
     expect(drainEventLog).toHaveBeenCalledWith({ marcador: 'admin' }, { limit: 50 });
@@ -76,7 +82,7 @@ describe('runEventLogDrainLoop', () => {
     const abort = new AbortController();
 
     await expect(
-      runEventLogDrainLoop(knobs, log, abort.signal),
+      runEventLogDrainLoop(knobs, logger, abort.signal),
     ).resolves.toBeUndefined();
 
     expect(drainEventLog).not.toHaveBeenCalled();
@@ -92,7 +98,7 @@ describe('runEventLogDrainLoop', () => {
       return Promise.reject(new Error('banco fora do ar'));
     });
 
-    await runEventLogDrainLoop({ ...knobs, intervalMs: 0, idleIntervalMs: 0 }, log, abort.signal);
+    await runEventLogDrainLoop({ ...knobs, intervalMs: 0, idleIntervalMs: 0 }, logger, abort.signal);
 
     expect(ticks).toBe(3);
     expect(log.error).toHaveBeenCalledTimes(3);
