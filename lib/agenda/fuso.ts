@@ -121,10 +121,30 @@ function ehAHoraPedida(instante: Date, fuso: string, parede: HoraDeParede): bool
  *
  * **A hora que não existe.** Na entrada do horário de verão o relógio pula:
  * em 2018-11-04, São Paulo foi de 00:00 direto para 01:00, e 00:30 daquele dia
- * nunca aconteceu. Devolvemos o instante deslocado pelo tamanho do salto (o
- * pedido vira 01:30 local), que é o que `Temporal` chama de `compatible` e o
- * que qualquer agenda faz. **Nunca devolvemos `Invalid Date`**: uma janela de
- * trabalho que cai no salto tem que render algum horário, não derrubar a tela.
+ * nunca aconteceu. Devolvemos o **MAIOR** dos dois candidatos — o primeiro
+ * instante que de fato existiu naquele dia. É o que `Temporal` chama de
+ * `compatible`. **Nunca devolvemos `Invalid Date`**: uma janela de trabalho que
+ * cai no salto tem que render algum horário, não derrubar a tela.
+ *
+ * ⚠️ ERA "FICA O PRIMEIRO", E ISSO ACERTAVA POR ACIDENTE. O sinal do offset
+ * decide qual dos dois candidatos é o mais tarde: onde ele é NEGATIVO (as
+ * Américas inteiras), o primeiro já é o maior, e devolvê-lo dá o mesmo
+ * resultado. Onde é POSITIVO (Beirute, Teerã), a ordem se inverte e o primeiro
+ * cai na VÉSPERA. Medido: `Asia/Beirut`, 2018-03-25, meia-noite — aquele dia
+ * começou às 01:00, porque o relógio pulou de 23:59 do dia 24 direto para lá —
+ * devolvia `2018-03-24T21:00:00Z`, que lido de volta é **dia 24 às 23:00**.
+ *
+ * Onde a virada é a meia-noite (Beirute, Havana, Santiago, e o Brasil até 2019),
+ * "o início deste dia" é exatamente o que a agenda pede para exceção de data e
+ * bloqueio de dia inteiro. Com a regra antiga o dia começaria na véspera, e a
+ * agenda invadiria o dia anterior por uma hora. Um dia por ano, num fuso, e
+ * ninguém liga uma coisa à outra.
+ *
+ * Achado do QAVivo, confirmado pelo maestro (DECISÃO 15) e reproduzido aqui
+ * antes de aceitar. O critério que `lib/agenda/google/tempo.ts` escreve vale
+ * mais que o vencedor: **não existe método sem escolha, existe escolha
+ * explícita e escolha escondida** — e a certa é a que declara o que faz na
+ * borda. Esta agora declara.
  *
  * **A hora que acontece duas vezes.** Na saída, o relógio volta: 23:30 pode
  * existir em dois instantes. Devolvemos o primeiro. Escolher é obrigatório;
@@ -150,8 +170,9 @@ export function instanteDe(parede: HoraDeParede, fuso: string): Date {
   if (ehAHoraPedida(new Date(segundo), fuso, parede)) return new Date(segundo);
 
   // Nenhuma das duas bate: a hora pedida não existe naquele dia (salto do
-  // horário de verão). Fica a primeira, que é o pedido deslocado pelo salto.
-  return new Date(primeiro);
+  // horário de verão). Fica o MAIOR — o primeiro instante que de fato existiu.
+  // `Math.min` aqui devolveria a véspera em todo fuso de offset positivo.
+  return new Date(Math.max(primeiro, segundo));
 }
 
 /** O dia local (`YYYY-MM-DD`) daquele instante — a régua que casa com a exceção por data. */

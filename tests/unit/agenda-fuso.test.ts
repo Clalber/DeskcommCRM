@@ -108,6 +108,35 @@ describe("virada de horário de verão", () => {
     expect(partesNoFuso(t, "America/Sao_Paulo").hora).toBe(1);
   });
 
+  it("OFFSET POSITIVO: a meia-noite que não existiu não pode cair na véspera", () => {
+    // Asia/Beirut, 2018-03-25: o relógio pulou de 23:59 do dia 24 direto para
+    // 01:00 do dia 25 — aquele dia COMEÇOU à 01:00.
+    //
+    // Este é o caso que "fica o primeiro candidato" errava, e errava só aqui:
+    // o sinal do offset decide qual candidato é o mais tarde. Nas Américas
+    // (offset negativo) o primeiro já é o maior e a regra antiga acertava por
+    // acidente; em Beirute a ordem se inverte e ela devolvia o DIA ANTERIOR.
+    const t = instanteDe({ ano: 2018, mes: 3, dia: 25, hora: 0, minuto: 0 }, "Asia/Beirut");
+    expect(t.toISOString()).toBe("2018-03-24T22:00:00.000Z");
+
+    const lido = partesNoFuso(t, "Asia/Beirut");
+    expect(`${lido.dia}/${lido.mes} ${lido.hora}h`).toBe("25/3 1h");
+  });
+
+  it("e nas Américas o resultado NÃO mudou — a correção é da borda, não do caso geral", () => {
+    // Se a troca de "primeiro" para "maior" mexesse nestes, seria mudança de
+    // comportamento disfarçada de conserto.
+    expect(
+      instanteDe({ ano: 2018, mes: 11, dia: 4, hora: 0, minuto: 30 }, "America/Sao_Paulo").toISOString(),
+    ).toBe("2018-11-04T03:30:00.000Z");
+    expect(
+      instanteDe({ ano: 2018, mes: 3, dia: 11, hora: 0, minuto: 0 }, "America/Havana").toISOString(),
+    ).toBe("2018-03-11T05:00:00.000Z");
+    expect(
+      instanteDe({ ano: 2026, mes: 9, dia: 6, hora: 0, minuto: 0 }, "America/Santiago").toISOString(),
+    ).toBe("2026-09-06T04:00:00.000Z");
+  });
+
   it("hora AMBÍGUA (o relógio repetiu) resolve para uma das duas, sem lançar", () => {
     // 2019-02-17: o Brasil saiu do horário de verão, 00:00 voltou para 23:00.
     const t = instanteDe({ ano: 2019, mes: 2, dia: 16, hora: 23, minuto: 30 }, "America/Sao_Paulo");
