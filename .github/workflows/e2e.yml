@@ -206,6 +206,7 @@ jobs:
         automacao-diz-a-verdade.spec.ts
         inbox-quem-manda.spec.ts
         inbox-tempo-real.spec.ts
+        agenda-kit-visual.spec.ts
       # Cada item aqui tem o motivo MEDIDO, não presumido — e o gate cobra que a
       # lista exista e some com as outras duas.
       #
