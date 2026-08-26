@@ -40,6 +40,7 @@ import { z } from "zod";
 import { horariosLivres, type ExcecaoDeData } from "@/lib/agenda/horarios-livres";
 import { lerJornadaDoBanco } from "@/lib/agenda/jornada";
 import {
+  agendaExternaNuncaLida,
   ocupadosDoDono,
   type LinhaDeAgendamento,
   type LinhaDeEventoExterno,
@@ -168,6 +169,16 @@ export async function GET(req: NextRequest): Promise<Response> {
   // `calendar_external_events` NÃO tem `user_id`: o dono vem por
   // `connection_id → calendar_connections.user_id`. O join traz de carona a
   // situação da conexão, que decide se o horário sai com aviso de defasagem.
+  // ⚠️ "NÃO TEM GOOGLE" E "TEM GOOGLE QUE NUNCA FOI LIDO" dão a mesma lista
+  // vazia de ocupados, e são coisas opostas. Sem esta consulta, quem lê a grade
+  // vazia conclui "está livre" — quando pode ser "ninguém perguntou ainda", e
+  // o horário da cirurgia que está no Google é oferecido como disponível.
+  const { data: conexoesRaw } = await supabase
+    .from("calendar_connections")
+    .select("status, last_sync_at")
+    .eq("organization_id", activeOrg.orgId)
+    .eq("user_id", donoId);
+
   const { data: externosRaw, error: erroExt } = await supabase
     .from("calendar_external_events")
     .select("starts_at, ends_at, transparency, status, calendar_connections!inner(user_id, status)")
@@ -231,6 +242,10 @@ export async function GET(req: NextRequest): Promise<Response> {
       // Fechado na ação, aberto na informação: o horário fica bloqueado, e a
       // tela pode dizer desde quando a agenda conectada parou de atualizar.
       fontes_defasadas: fontesDefasadas,
+      // Diferente de `fontes_defasadas`: lá a conexão já trouxe eventos e parou
+      // de atualizar; aqui ela nunca trouxe nada, e a grade pode estar mentindo
+      // por inteiro.
+      agenda_externa_nunca_lida: agendaExternaNuncaLida(conexoesRaw ?? []),
     },
     { requestId },
   );
