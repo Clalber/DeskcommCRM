@@ -79,9 +79,11 @@ export function partesNoFuso(instante: Date, fuso: string): ParedeLida {
     ano: numero("year"),
     mes: numero("month"),
     dia: numero("day"),
-    // `h23` pode devolver 24 para a meia-noite em alguns runtimes; normalizar
-    // aqui evita que o dia inteiro escorregue no motor.
-    hora: numero("hour") % 24,
+    // ⚠️ `hourCycle: "h23"` é o que garante 00-23 aqui — medido neste runtime,
+    // 24h × 5 fusos, nenhuma ocorrência de "24". A variante `hour12: false`
+    // devolve 24 para a meia-noite, e trocar uma pela outra faria o dia inteiro
+    // escorregar no motor sem nenhum teste reclamar.
+    hora: numero("hour"),
     minuto: numero("minute"),
     segundo: numero("second"),
   };

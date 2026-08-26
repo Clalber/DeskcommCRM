@@ -100,7 +100,14 @@ export interface EntradaDeHorariosLivres {
 const MINUTO = 60_000;
 const DIA = 86_400_000;
 
+/** Faixa em minutos desde a meia-noite LOCAL (é assim que a jornada é escrita). */
 interface FaixaEmMinutos {
+  inicio: number;
+  fim: number;
+}
+
+/** Faixa em instantes (`getTime()`) — é assim que um compromisso existe. */
+interface FaixaEmInstantes {
   inicio: number;
   fim: number;
 }
@@ -169,8 +176,8 @@ function janelasDoDia(
     .sort((a, b) => a.inicio - b.inicio);
 }
 
-/** Os ocupados já inflados pelos buffers — em milissegundos, prontos para comparar. */
-function bloqueios(ocupados: Ocupado[], tipo: TipoDeAgendamento): FaixaEmMinutos[] {
+/** Os ocupados já inflados pelos buffers, em instantes, prontos para comparar. */
+function bloqueios(ocupados: Ocupado[], tipo: TipoDeAgendamento): FaixaEmInstantes[] {
   return ocupados.map((o) => ({
     inicio: o.inicio.getTime() - tipo.bufferAntesMin * MINUTO,
     fim: o.fim.getTime() + tipo.bufferDepoisMin * MINUTO,
@@ -184,7 +191,7 @@ function bloqueios(ocupados: Ocupado[], tipo: TipoDeAgendamento): FaixaEmMinutos
  * comportamento que o dono da agenda espera, e quem quiser folga entre um e
  * outro configura o buffer, que é o campo feito para isso.
  */
-function colide(inicio: number, fim: number, faixa: FaixaEmMinutos): boolean {
+function colide(inicio: number, fim: number, faixa: FaixaEmInstantes): boolean {
   return inicio < faixa.fim && fim > faixa.inicio;
 }
 
