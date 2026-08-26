@@ -6,6 +6,7 @@ import {
   BookOpen,
   Brain,
   Buildings,
+  CalendarBlank,
   ChartBar,
   ChartLineUp,
   ClipboardText,
@@ -148,6 +149,18 @@ export const NAV_DESTINATIONS: NavDestination[] = [
     label: "Radar",
     description: "Quem esfriou e ainda está aberto — o que corre risco de morrer sem resposta.",
     icon: ClockCountdown,
+    group: "atendimento",
+    sidebar: true,
+  },
+  {
+    // Entra em "atendimento", e não em "organizacao", porque a Agenda é onde o
+    // dia acontece e não onde ele se configura: quem atende abre isto de manhã
+    // junto com o Inbox. Os TIPOS de agendamento e a disponibilidade — que são
+    // configuração de verdade — vão para Configurações quando existirem.
+    href: "/app/agenda",
+    label: "Agenda",
+    description: "O que está marcado, com quem, e quem atende — seu e da equipe.",
+    icon: CalendarBlank,
     group: "atendimento",
     sidebar: true,
   },
