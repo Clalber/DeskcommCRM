@@ -61,7 +61,13 @@ export const ALVO_DE_FUNIL: Record<string, AlvoDeFunil> = {
   // Andrea de sugestões da IA é ocupar a atenção de quem cuida dele.
   crm_propose_reactivation: "funil_vem_do_lead",
 
-  // ---- tocam o lead de lado: agenda, não estado do card ----
+  // ---- tocam o lead de lado: RETORNO INTERNO, não estado do card ----
+  // ⚠️ Este comentário dizia "agenda", e a palavra passou a apontar para a coisa
+  // errada quando o produto ganhou agenda de verdade (compromisso com hora marcada,
+  // `calendar_appointments`). Retorno é decisão nossa de voltar a falar e não ocupa o
+  // tempo de ninguém; compromisso é combinado com o cliente e reserva a agenda de um
+  // atendente. As duas famílias de ferramenta se espelham nos verbos (schedule/cancel/
+  // list), então o vocabulário aqui tem de separar o que o nome não separa.
   crm_schedule_followup: "funil_vem_do_lead",
   crm_cancel_followup: "funil_vem_do_lead",
 
