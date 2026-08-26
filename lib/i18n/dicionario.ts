@@ -2425,6 +2425,29 @@ export const DICIONARIO: Traducoes = {
   "Platform admins são configurados exclusivamente via DBA.": {
     es: "Los platform admins se configuran exclusivamente vía DBA.",
   },
+
+  // ─── Admin de plataforma: Usage & Custo ───
+  "Uso & Custo": { es: "Uso y Costo" },
+  "Consumo de mensagens, conversas e AI por tenant": {
+    es: "Consumo de mensajes, conversaciones e IA por tenant",
+  },
+  "Período": { es: "Período" },
+  "Últimos 7 dias": { es: "Últimos 7 días" },
+  "Últimos 30 dias": { es: "Últimos 30 días" },
+  "Últimos 90 dias": { es: "Últimos 90 días" },
+  "Erro ao carregar dados de uso. Tente recarregar.": {
+    es: "Error al cargar los datos de uso. Intenta recargar.",
+  },
+  "Mensagens / dia": { es: "Mensajes / día" },
+  "Custo AI / dia (R$)": { es: "Costo IA / día (R$)" },
+  "AI Tokens / dia": { es: "AI Tokens / día" },
+  "Não há dados de uso no período selecionado.": {
+    es: "No hay datos de uso en el período seleccionado.",
+  },
+  "Uso por tenant": { es: "Uso por tenant" },
+  "Exportar CSV": { es: "Exportar CSV" },
+  "Invoc. AI": { es: "Invoc. IA" },
+  "Custo AI": { es: "Costo IA" },
 };
 
 /**
