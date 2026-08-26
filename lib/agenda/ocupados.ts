@@ -115,11 +115,28 @@ export function ocupadosDoDono(
 }
 
 /**
- * Guarda de vocabulário: se `SITUACOES_DO_AGENDAMENTO` ganhar um valor novo,
- * quem o acrescentar tem que decidir aqui se ele libera ou ocupa. Não é gate de
- * CI — é a lista ao alcance de quem edita, para a decisão não ser tomada por
- * omissão.
+ * As situações que OCUPAM, derivadas — e ela existe para ser VERIFICADA, não
+ * para ser lida.
+ *
+ * ⚠️ A versão anterior deste bloco dizia "é a lista ao alcance de quem edita,
+ * para a decisão não ser tomada por omissão" — e não era: ninguém a importava,
+ * nenhum teste a lia, e o comentário prometia uma guarda que não existia. Órfão
+ * com promessa é pior que órfão calado, porque quem lê acha que está protegido.
+ *
+ * O consumidor agora é `tests/unit/agenda-o-que-ocupa.test.ts`, que prova que
+ * toda situação do vocabulário está classificada — ou libera, ou ocupa, nunca
+ * fora das duas. Se `SITUACOES_DO_AGENDAMENTO` ganhar um valor e ninguém decidir
+ * aqui, o teste diz qual.
+ *
+ * (Achado aplicando em mim a régua do Arquiteto: export sem consumidor NOMEADO
+ * é dívida sem dono. Ele varreu `lib/agenda` e achou 28; cinco eram meus, e
+ * quatro daqueles são tipos de assinatura — este era o único morto de verdade.)
  */
 export const SITUACOES_QUE_OCUPAM = SITUACOES_DO_AGENDAMENTO.filter(
   (s) => !LIBERAM_O_HORARIO.has(s),
+);
+
+/** O par: as que liberam. Exportada para o mesmo teste poder somar as duas. */
+export const SITUACOES_QUE_LIBERAM = SITUACOES_DO_AGENDAMENTO.filter((s) =>
+  LIBERAM_O_HORARIO.has(s),
 );

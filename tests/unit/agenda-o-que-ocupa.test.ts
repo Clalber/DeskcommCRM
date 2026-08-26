@@ -13,7 +13,14 @@
  */
 import { describe, expect, it } from "vitest";
 
-import { ocupadosDoDono, type LinhaDeAgendamento, type LinhaDeEventoExterno } from "@/lib/agenda/ocupados";
+import {
+  ocupadosDoDono,
+  SITUACOES_QUE_LIBERAM,
+  SITUACOES_QUE_OCUPAM,
+  type LinhaDeAgendamento,
+  type LinhaDeEventoExterno,
+} from "@/lib/agenda/ocupados";
+import { SITUACOES_DO_AGENDAMENTO } from "@/lib/agenda/tipos";
 
 const jan = (h: number) => new Date(`2026-03-09T${String(h).padStart(2, "0")}:00:00Z`);
 
@@ -127,5 +134,42 @@ describe("o que o banco pode devolver e não pode derrubar a rota", () => {
   it("data ilegível é descartada em vez de virar Invalid Date no motor", () => {
     const r = ocupadosDoDono([{ starts_at: "nao-e-data", ends_at: "tambem-nao", status: "confirmed" }], []);
     expect(r.ocupados).toEqual([]);
+  });
+});
+
+/**
+ * A CLASSIFICAÇÃO É EXAUSTIVA — e este é o consumidor que faltava.
+ *
+ * `SITUACOES_QUE_OCUPAM` existia exportada, sem ninguém importar, sob um
+ * comentário que a chamava de "guarda". Não guardava nada: era órfã com
+ * promessa, que é pior que órfã calada — quem lê acha que está protegido.
+ *
+ * Agora ela é lida aqui. Se alguém acrescentar uma situação ao vocabulário do
+ * agendamento e não decidir se ela libera ou ocupa, este teste nomeia qual.
+ */
+describe("toda situação do vocabulário está classificada", () => {
+  it("a classificação é EXATAMENTE esta — status novo tem de passar por aqui", () => {
+    // ⚠️ A PRIMEIRA VERSÃO DESTE TESTE NÃO PODIA FALHAR, e a sabotagem provou:
+    // acrescentei "remarcando" ao vocabulário sem classificar e os 16 seguiram
+    // verdes. A causa é que `SITUACOES_QUE_OCUPAM` é derivada por `filter` —
+    // tudo que não libera ocupa, por construção — então "a união cobre o
+    // vocabulário" é trivialmente verdadeiro, e afirmar isso não vigia nada.
+    //
+    // O que precisa travar é a DECISÃO, não a cobertura. Fixando as duas listas,
+    // um status novo quebra aqui e alguém tem de escrever em qual lado ele cai.
+    // O desfecho seguro continua sendo o padrão (quem não libera, ocupa); este
+    // teste só garante que ninguém receba esse padrão sem saber.
+    expect([...SITUACOES_QUE_LIBERAM]).toEqual(["cancelled", "no_show"]);
+    expect([...SITUACOES_QUE_OCUPAM]).toEqual(["pending", "confirmed", "completed"]);
+    expect([...SITUACOES_QUE_OCUPAM, ...SITUACOES_QUE_LIBERAM].sort()).toEqual(
+      [...SITUACOES_DO_AGENDAMENTO].sort(),
+    );
+  });
+
+  it("e o desfecho SEGURO é o padrão: quem ocupa é a maioria", () => {
+    // Não é estética: a lista de quem LIBERA é a exceção enumerada, e tudo o
+    // mais ocupa. Se um dia a relação se inverter, alguém trocou blocklist por
+    // allowlist — e aí um status novo passa a liberar por omissão.
+    expect(SITUACOES_QUE_OCUPAM.length).toBeGreaterThan(SITUACOES_QUE_LIBERAM.length);
   });
 });
