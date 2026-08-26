@@ -20,6 +20,7 @@ import type { CreateLeadInput } from "@/lib/schemas";
 import { mapInboundPayload, verifyInboundSignature, type FieldMap } from "@/lib/webhooks/inbound";
 import {
   buildContactConsentGrant,
+  buildContactConsentDenial,
   isRespondiPayload,
   mapRespondiPayload,
   respondiLeadTitle,
@@ -286,7 +287,33 @@ export async function POST(req: NextRequest, ctx: RouteCtx): Promise<NextRespons
   // Contato: upsert por telefone (se houver) — reusa a coluna E.164 canônica.
   // is_merged_into null: contato mesclado não deve ser reaproveitado (o índice
   // único uniq_contacts_org_phone só cobre a linha ativa por telefone).
+  /**
+   * O que ESTE envio afirma sobre consentimento — ou nada, que é o caso mais
+   * importante de acertar.
+   *
+   * `detectedVia: "not_found"` significa que o formulário **não tem a pergunta**
+   * de autorização. O mapeador devolve `granted: false` ali (leitura defensiva
+   * correta: silêncio nunca vira concessão), mas isso não é a pessoa dizendo
+   * "não" — é ninguém tendo perguntado. Carimbar recusa nesse caso bloquearia
+   * a automação de todo formulário do Respondi que não faz a pergunta, que é
+   * exatamente o erro que este PR existe para não cometer, um nível acima.
+   *
+   * `null` = este envio não afirma nada, e a coluna fica como está (no default,
+   * ou no que um envio anterior gravou).
+   */
+  const consentDoEnvio = (() => {
+    if (!respondiMapped) return null;
+    if (respondiMapped.consent.detectedVia === "not_found") return null;
+    const formId = respondiMapped.custom_fields.respondi_form_id ?? null;
+    return respondiMapped.consent.granted
+      ? buildContactConsentGrant(formId)
+      : buildContactConsentDenial(formId);
+  })();
+
   let contactId: string | undefined;
+  // Nasceu neste request? O INSERT já grava o consentimento com a forma certa;
+  // a reconciliação abaixo existe só para quem JÁ era contato.
+  let contatoNasceuAqui = false;
   if (mapped.phone) {
     const selectActiveByPhone = () =>
       admin
@@ -326,14 +353,13 @@ export async function POST(req: NextRequest, ctx: RouteCtx): Promise<NextRespons
           email: mapped.email,
           source: "webhook",
           source_metadata: { webhook_source_id: source.id, ...mapped.source_metadata },
-          // Consentimento explícito só quando o Respondi confirmou concessão.
-          // Recusa NUNCA vira concessão por omissão: sem esta chave o INSERT
-          // usa o DEFAULT da coluna (tudo null == não concedido), que já é o
-          // estado correto — a recusa fica registrada no lead (custom_fields
-          // + atividade na timeline), não fabricada aqui como consentimento.
-          ...(respondiMapped?.consent.granted
-            ? { consent: buildContactConsentGrant(respondiMapped.custom_fields.respondi_form_id ?? null) }
-            : {}),
+          // Consentimento explícito só quando o Respondi confirmou concessão —
+          // recusa NUNCA vira concessão por omissão. E a recusa agora é
+          // GRAVADA, não omitida: o DEFAULT da coluna já é `granted_at: null`,
+          // então omitir deixava "nunca perguntamos" e "disse não" com a mesma
+          // forma no banco, e quem lê para decidir envio não tinha como separar
+          // os dois (ver buildContactConsentDenial).
+          ...(consentDoEnvio ? { consent: consentDoEnvio } : {}),
         })
         .select("id")
         .maybeSingle();
@@ -364,7 +390,42 @@ export async function POST(req: NextRequest, ctx: RouteCtx): Promise<NextRespons
         }
       } else {
         contactId = (created?.id as string | undefined) ?? undefined;
+        contatoNasceuAqui = contactId !== undefined;
       }
+    }
+  }
+
+  /**
+   * O contato que JÁ EXISTIA também recebe a resposta DESTE envio.
+   *
+   * O bloco acima só grava consentimento no INSERT. Quem já era contato — a
+   * segunda submissão da mesma pessoa, o lead que veio antes por outro canal —
+   * ficava com a resposta anterior, ou com nenhuma. Vale nos dois sentidos, e
+   * o pior é o segundo: quem CONCEDEU num envio e RECUSOU no seguinte
+   * continuaria marcado como tendo concedido.
+   *
+   * Escreve o objeto inteiro (as 3 finalidades), como o INSERT: a coluna é um
+   * mapa de finalidades e este webhook só capta `marketing`; `transactional` e
+   * `profiling` seguem null como o default. Só para envio do Respondi — um
+   * webhook genérico não pergunta consentimento e não tem o que afirmar.
+   *
+   * Falha aqui não derruba a captação: o contato já está resolvido e o lead
+   * ainda vai entrar. Perder o carimbo é ruim; perder a captação é pior. Fica
+   * no log, como as demais bordas desta rota.
+   */
+  if (consentDoEnvio && contactId && !contatoNasceuAqui) {
+    const { error: eConsent } = await admin
+      .from("contacts")
+      .update({ consent: consentDoEnvio })
+      .eq("id", contactId)
+      .eq("organization_id", source.organization_id);
+    if (eConsent) {
+      logger.error("[webhooks.inbound] consent write failed", {
+        webhookSourceId: source.id,
+        organizationId: source.organization_id,
+        contactId,
+        error: eConsent.message,
+      });
     }
   }
 
