@@ -44,6 +44,17 @@
  * Então o que este spec É: a cerca de ponta a ponta contra o SINTOMA relatado
  * (a mensagem não aparece sem F5), por qualquer causa. É valioso, e é menos do
  * que o cabeçalho acima sugeria antes desta medição.
+ *
+ * ⚠️ E POR ISSO ELE SAIU DO GATE DE MERGE (2026-08-26, issue #347). Ele está em
+ * `FORA_DO_CI` no `.github/workflows/e2e.yml`, com o motivo medido escrito lá:
+ * além de não discriminar, ele reprovou duas vezes o mesmo sha de um PR que não
+ * toca inbox, realtime nem socket, depois de passar em dois outros. Gate que
+ * reprova por moeda treina o time a reexecutar em vez de olhar.
+ *
+ * Ele CONTINUA aqui e continua rodando local — `pnpm exec playwright test
+ * tests/e2e/inbox-tempo-real.spec.ts`. O que a issue #347 precisa entregar para
+ * ele voltar: um caminho só até a mensagem durante a asserção, e a matriz de
+ * sabotagem ficando VERMELHA sem o conserto.
  */
 import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
