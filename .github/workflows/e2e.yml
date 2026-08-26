@@ -247,8 +247,20 @@ jobs:
       # spec media a sorte do ambiente. `scripts/seed-e2e-catalogo-openrouter.ts`
       # (main, 2026-08-09) semeia o catálogo no job, então a condição que a excluía
       # deixou de existir e ela voltou para a lista de execução.
+      #
+      # `agenda-marcar-pela-tela` nasceu `skip` de propósito, pela DECISÃO 21.3 da
+      # entrega do Calendário: a frente 1 é API e não tem pixel próprio, então em
+      # vez de CITAR num relatório qual spec vai prová-la em tela — declaração que
+      # depende de alguém reler o relatório — a spec é CRIADA, com o motivo no
+      # cabeçalho, e entra neste gate como qualquer outra.
+      #
+      # Ela sai daqui quando a tela de marcar (frente 2) consumir
+      # `GET /api/v1/agenda/horarios-livres` e o POST de criação: aí há clique
+      # para dirigir, e a condição que a exclui deixa de existir. Enquanto isso,
+      # rodá-la no CI custaria um job para exercitar um `skip`.
       FORA_DO_CI: >-
         vps-fresh-onboarding.spec.ts
+        agenda-marcar-pela-tela.spec.ts
     steps:
       - uses: actions/checkout@v7
 

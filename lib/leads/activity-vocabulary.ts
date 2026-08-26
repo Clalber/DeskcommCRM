@@ -126,10 +126,15 @@ export const ACTIVITY_LABELS: Record<ActivityType, string> = {
   // quê — e é justamente o cancelamento que o agente precisa enxergar ao
   // retomar, para não repropor o que uma pessoa já desmarcou.
   followup_scheduled: "Retorno agendado",
-  appointment_scheduled: "Consulta marcada",
-  appointment_rescheduled: "Consulta remarcada",
-  appointment_cancelled: "Consulta cancelada",
-  appointment_completed: "Compareceu",
+  // ⚠️ "Agendamento", não "Consulta". O produto é MULTI-NICHO por design:
+  // imobiliária faz visita, agência faz call, obra faz vistoria. "Consulta
+  // marcada" seria o vocabulário de UM nicho imposto aos outros quatro, que é o
+  // que o `VISION.md` proíbe. Quem quiser a palavra do próprio ramo tem o
+  // `vocabulary` do pipeline para isso — o rótulo padrão fica neutro.
+  appointment_scheduled: "Agendamento marcado",
+  appointment_rescheduled: "Agendamento remarcado",
+  appointment_cancelled: "Agendamento cancelado",
+  appointment_completed: "Agendamento realizado",
   appointment_no_show: "Não compareceu",
   followup_cancelled: "Retorno cancelado",
   // PAUSAR NÃO É CANCELAR, e a diferença importa para quem pega o atendimento
