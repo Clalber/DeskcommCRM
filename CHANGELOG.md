@@ -24,6 +24,13 @@ Se você roda o DeskcommCRM numa VPS, **leia a seção da versão para a qual es
 
 ### Corrigido
 
+- **O agente voltou a ouvir os áudios que chegam.** Quem mandava um áudio ouvia de volta
+  "não consigo ouvir mensagens de voz" — e a transcrição ficava pronta no sistema meio
+  minuto depois, sem ninguém para usá-la. A causa era de ritmo: as tarefas de bastidor
+  (baixar o áudio, transcrever, tratar mídia) só eram acordadas uma vez por minuto, e a
+  resposta ao cliente não espera tanto. Medido numa instalação real: a cadeia levava de
+  103 a 188 segundos, e passou a levar 18. A transcrição em si sempre levou 4 segundos —
+  o resto era fila. Nada para você fazer: vale assim que atualizar.
 - **A automação parou de dizer "Sucesso" para mensagem que ela nem tentou mandar.** Quando o
   envio era pulado — contato sem telefone, contato bloqueado, contato que recusou receber
   mensagens — a execução aparecia na aba Atividade como bem-sucedida. Pior que o defeito que a
