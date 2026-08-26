@@ -207,8 +207,13 @@ test.describe("kit visual da Agenda", () => {
     expect(larguraAntes).toBe(0);
     const painelAntes = await largura(painel);
 
+    // Escopado ao `painel`, e não a `page`: desde que a vitrine ganhou o
+    // SEGUNDO painel (o do aviso de opt-out), todo `data-testid` interno existe
+    // duas vezes na página, e um localizador global resolve para 2 elementos —
+    // o modo estrito do Playwright reprova. Custou um run inteiro descobrir.
+    //
     // Escolhe um dia que TEM horário (a fixture garante).
-    await page.getByTestId("dia-2026-08-24").click();
+    await painel.getByTestId("dia-2026-08-24").click();
 
     await expect(painel).toHaveAttribute("data-tempo", "escolhendo-horario", { timeout: ESPERA });
     await expect(coluna).toHaveAttribute("data-aberta", "true");
@@ -227,11 +232,11 @@ test.describe("kit visual da Agenda", () => {
     expect(painelDepois).toBeGreaterThan(painelAntes);
 
     // E os horários estão lá, clicáveis, levando ao terceiro tempo.
-    await page.getByTestId("horario-09:30").click();
+    await painel.getByTestId("horario-09:30").click();
     await expect(painel).toHaveAttribute("data-tempo", "confirmando", { timeout: ESPERA });
-    await page.getByTestId("confirmar-marcacao").click();
+    await painel.getByTestId("confirmar-marcacao").click();
     await expect(painel).toHaveAttribute("data-tempo", "marcado", { timeout: ESPERA });
-    await expect(page.getByText("Marcado.")).toBeVisible();
+    await expect(painel.getByText("Marcado.")).toBeVisible();
   });
 
   test("quem pediu para não receber mensagem: marca igual, mas a tela avisa ANTES", async () => {
@@ -404,6 +409,95 @@ test.describe("kit visual da Agenda", () => {
     }
 
     console.info("\n[medidas das trilhas]\n" + relatorio.join("\n\n") + "\n");
+  });
+
+  test("controle que promete ação ou FAZ, ou está desabilitado com o motivo", async () => {
+    // O maestro achou isto clicando: o "Novo agendamento" da tela real tinha cor
+    // de ação primária, não estava `disabled`, e o clique não mudava NADA — 252
+    // nós no DOM antes e 252 depois.
+    //
+    // Pior que não existir: quem clica conclui que o produto está quebrado e não
+    // tem o que reportar além de "não abre". Este teste existe para o botão não
+    // voltar a esse estado quando alguém "ligar" a tela na frente 1 pela metade.
+    //
+    // A regra que ele guarda é a do produto, não a do meu botão: todo controle
+    // com cor de ação ou faz alguma coisa, ou se declara indisponível.
+    await page.goto("/app/agenda");
+    const novo = page.getByRole("button", { name: /novo agendamento/i });
+    await expect(novo).toBeVisible({ timeout: ESPERA });
+
+    const habilitado = await novo.isEnabled();
+    if (habilitado) {
+      // Se está habilitado, TEM de fazer algo: o DOM muda ao clicar.
+      const antes = await page.evaluate(() => document.querySelectorAll("*").length);
+      await novo.click();
+      await expect
+        .poll(async () => page.evaluate(() => document.querySelectorAll("*").length), {
+          timeout: 5_000,
+        })
+        .not.toBe(antes);
+    } else {
+      // Se está desabilitado, o motivo tem de estar À VISTA — não só no `title`,
+      // que não existe para quem usa toque.
+      await expect(page.getByTestId("motivo-novo-agendamento")).toHaveText(/.{10,}/);
+    }
+  });
+
+  test("o NÚMERO que a tela afirma é o número que a tela mede", async () => {
+    // Este teste nasce de um defeito meu, e do que o maestro nomeou depois:
+    // hoje houve TRÊS casos de descrição que sobreviveu à coisa descrita — um
+    // comentário dele, um do DevVivo, e o meu, que era o único VISÍVEL ao
+    // usuário. O texto da vitrine seguiu dizendo "matizes de Okabe-Ito" por uma
+    // hora depois de a medição desmentir isso.
+    //
+    // A conclusão dele foi "prosa sem gate diverge". Este é o gate possível para
+    // um pedaço dela: quando a tela AFIRMA UM NÚMERO, o número vira asserção.
+    // Não fecha prosa em geral — fecha a prosa que se compromete com medida, que
+    // é justamente a que envelhece com mais confiança.
+    await page.goto(VITRINE);
+    const texto = await page.getByTestId("secao-paleta").innerText();
+
+    const afirmados = [...texto.matchAll(/0,(\d{3})/g)].map((m) => Number(`0.${m[1]}`));
+    expect(afirmados.length, `a seção deveria afirmar números; texto: ${texto}`).toBeGreaterThanOrEqual(2);
+
+    const medido = { claro: 0, escuro: 0 };
+    for (const tema of ["claro", "escuro"] as const) {
+      if (tema === "escuro") {
+        await page.getByTestId("alternar-tema").click();
+        await expect
+          .poll(async () => page.evaluate(() => document.documentElement.getAttribute("data-theme")), {
+            timeout: ESPERA,
+          })
+          .toBe("dark");
+      }
+      medido[tema] = (await medirTrilhas(page)).menorDistancia;
+    }
+
+    // Os dois primeiros números do texto são o par mais próximo em cada tema.
+    // Tolerância de 0.002: o texto arredonda para três casas.
+    expect(
+      Math.abs(afirmados[0]! - medido.claro),
+      `a tela afirma ${afirmados[0]} no claro, e mede ${medido.claro.toFixed(4)}`,
+    ).toBeLessThan(0.002);
+    expect(
+      Math.abs(afirmados[1]! - medido.escuro),
+      `a tela afirma ${afirmados[1]} no escuro, e mede ${medido.escuro.toFixed(4)}`,
+    ).toBeLessThan(0.002);
+  });
+
+  test("a data em pt-br não maiúscula a preposição", async () => {
+    // "23 De Ago" era `capitalize` do CSS, que maiúscula toda palavra. O mesmo
+    // defeito estava em QUATRO lugares — a tela, a vitrine e dois no painel —
+    // e o maestro viu um. Esta asserção varre o texto renderizado inteiro.
+    await page.goto(VITRINE);
+    await expect(page.getByTestId("grade-da-agenda")).toBeVisible({ timeout: ESPERA });
+    const errados = await page.evaluate(() => {
+      const texto = document.body.innerText;
+      // preposições e composto de dia da semana que nunca levam maiúscula no meio
+      const re = /\b(De|Da|Do|Das|Dos|E)\b(?!\s*[A-ZÁÉÍÓÚÂÊÔÃÕÇ]{2,})|-Feira/g;
+      return [...new Set(texto.match(re) ?? [])];
+    });
+    expect(errados, `texto com maiúscula indevida: ${errados.join(", ")}`).toEqual([]);
   });
 
   test("evidência visual: claro, escuro e celular", async () => {

@@ -126,7 +126,16 @@ export function PainelDeMarcacao({
       data-testid="painel-de-marcacao"
       data-tempo={tempo}
       className={cn(
-        "flex min-h-[450px] flex-col overflow-hidden rounded-lg border border-border bg-surface md:flex-row",
+        // `md:w-fit` é o que faz o painel CRESCER quando a coluna entra, em vez de
+        // redistribuir o espaço por dentro. Medido: esticado à largura do
+        // container ele ficava em 1104px nos dois estados, e a coluna só
+        // aparecia às custas do corpo encolher — o mini-calendário diminuía na
+        // frente de quem tinha acabado de clicar nele, que é o oposto da
+        // sensação de "abriu" que a máquina de três tempos existe para dar.
+        //
+        // No celular continua ocupando tudo: lá não há para onde crescer, e os
+        // três tempos empilham.
+        "flex min-h-[450px] flex-col overflow-hidden rounded-lg border border-border bg-surface md:w-fit md:flex-row",
         className,
       )}
     >
@@ -163,7 +172,7 @@ export function PainelDeMarcacao({
         className="flex min-w-0 flex-1 flex-col p-4 md:min-w-[420px]"
       >
         <div className="mb-3 flex items-center justify-between">
-          <span className="text-sm font-semibold capitalize">
+          <span className="text-sm font-semibold first-letter:uppercase">
             {format(mes, "MMMM 'de' yyyy", { locale: ptBR })}
           </span>
           <div className="flex items-center gap-1">
@@ -281,7 +290,7 @@ export function PainelDeMarcacao({
         className="agenda-coluna-horarios shrink-0"
       >
         <div className="flex h-full w-[240px] flex-col p-3 lg:w-[280px]">
-          <p className="mb-2 shrink-0 text-xs font-semibold capitalize text-text-muted">
+          <p className="mb-2 shrink-0 text-xs font-semibold text-text-muted first-letter:uppercase">
             {dia ? format(dia, "EEEE, d 'de' MMM", { locale: ptBR }) : ""}
           </p>
           <div className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto pr-1">

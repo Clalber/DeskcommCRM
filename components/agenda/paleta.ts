@@ -12,14 +12,14 @@ import type { TrilhaDeCor } from "./tipos";
  * `title`/`aria-label` de quem só enxerga a bolinha, e para a legenda.
  */
 export const TRILHAS: ReadonlyArray<{ trilha: TrilhaDeCor; nome: string }> = [
-  { trilha: 1, nome: "Azul" },
-  { trilha: 2, nome: "Terracota" },
-  { trilha: 3, nome: "Jade" },
-  { trilha: 4, nome: "Ameixa" },
-  { trilha: 5, nome: "Framboesa" },
-  { trilha: 6, nome: "Ocre" },
-  { trilha: 7, nome: "Petróleo" },
-  { trilha: 8, nome: "Índigo" },
+  { trilha: 1, nome: "Telha" },
+  { trilha: 2, nome: "Âmbar" },
+  { trilha: 3, nome: "Oliva" },
+  { trilha: 4, nome: "Turquesa" },
+  { trilha: 5, nome: "Azul" },
+  { trilha: 6, nome: "Índigo" },
+  { trilha: 7, nome: "Violeta" },
+  { trilha: 8, nome: "Framboesa" },
 ];
 
 /** A variável CSS da trilha — use sempre isto, nunca um hex. */

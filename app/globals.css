@@ -148,14 +148,34 @@
    * com ela ficaria monocromática — e azul — na instalação que comprou a
    * marca em azul.
    *
-   * Os OITO MATIZES saem de Okabe-Ito, a paleta desenhada para daltonismo
-   * (protanopia/deuteranopia/tritanopia): a separação entre eles não é gosto
-   * meu, é a escolha publicada que já resolveu esse problema. O que ajustei
-   * foi luminosidade e saturação — o original é saturado demais para uma
-   * tela que alguém encara 8h/dia, e o amarelo #F0E442 dele tem contraste
-   * indefensável sobre fundo claro. Nenhum matiz cai na faixa da Sage
-   * (verde-amarelado ~110°), para cor de pessoa nunca ser confundida com
-   * estado do sistema.
+   * OS VALORES SÃO DERIVADOS, NÃO ESCOLHIDOS A OLHO — e a primeira versão
+   * destas linhas dizia "os matizes saem de Okabe-Ito", o que a medição
+   * desmentiu: eu tinha ajustado tanto a luminosidade que a separação da
+   * referência não sobreviveu. Medido no par mais próximo, em OKLab:
+   *
+   *     versão anterior (azul x petróleo) : 0.0507   <- indistinguíveis
+   *     Okabe-Ito, a referência (n=7)     : 0.1558
+   *     esta versão, pior par             : 0.1162
+   *
+   * A régua é a distância OKLab entre os pares, e ela vem da própria
+   * referência em vez de um número inventado. Não alcançamos os 0.1558 dela
+   * por duas razões declaradas: são OITO trilhas no espaço em que ela põe
+   * sete, e o croma fica limitado a 0.13 porque este produto é para quem
+   * encara a tela oito horas por dia — a Okabe-Ito não tem essa restrição.
+   *
+   * Os matizes (30 70 100 190 225 262 300 340) são espalhados de propósito, e
+   * não pelo que maximiza a distância: uma busca livre chegou a 0.1155 pondo
+   * TRÊS trilhas na faixa dos roxos. Distância mede distinguibilidade e não
+   * mede NOMEABILIDADE — "o roxo da Ana" e "o roxo do Bruno" não servem numa
+   * equipe. Por isso Telha, Âmbar, Oliva, Turquesa, Azul, Índigo, Violeta,
+   * Framboesa: oito palavras diferentes.
+   *
+   * A faixa 113-165 é vetada: é onde mora a accent Sage (139 graus). Cor de
+   * PESSOA não pode ser confundida com cor de ESTADO do sistema.
+   *
+   * A luminosidade ALTERNA entre vizinhos, que é o truque da Okabe-Ito para
+   * separar o azul-céu do azul — e foi exatamente o que a minha versão
+   * anterior perdeu ao uniformizar o brilho.
    *
    * MESMO ASSIM, cor nunca é a única informação: todo lugar que usa uma
    * destas trilhas carrega junto a inicial da pessoa.
@@ -164,14 +184,14 @@
    * não duplicado aqui — assim a relação entre a faixa e o fundo é uma só,
    * e não dois hex que envelhecem separados.
    */
-  --agenda-pessoa-1: #1b6494;   /* azul */
-  --agenda-pessoa-2: #a75a30;   /* terracota */
-  --agenda-pessoa-3: #0f7358;   /* jade */
-  --agenda-pessoa-4: #7b4a92;   /* ameixa */
-  --agenda-pessoa-5: #a8455f;   /* framboesa */
-  --agenda-pessoa-6: #7f6a1a;   /* ocre */
-  --agenda-pessoa-7: #136e80;   /* petróleo */
-  --agenda-pessoa-8: #5a55a3;   /* índigo */
+  --agenda-pessoa-1: #ac4d40;   /* telha */
+  --agenda-pessoa-2: #bd7c20;   /* âmbar */
+  --agenda-pessoa-3: #7e6f01;   /* oliva */
+  --agenda-pessoa-4: #11a19b;   /* turquesa */
+  --agenda-pessoa-5: #0b7a9a;   /* azul */
+  --agenda-pessoa-6: #608bda;   /* índigo */
+  --agenda-pessoa-7: #7b5bad;   /* violeta */
+  --agenda-pessoa-8: #cc77b1;   /* framboesa */
 }
 
 /* ─────────────────────────────────────────────────────────────────────────
@@ -274,14 +294,14 @@
    * dentro de página escura herdaria os valores escuros, e a amostra de cor
    * mentiria sobre a cor que a pessoa tem.
    */
-  --agenda-pessoa-1: #1b6494;   /* azul */
-  --agenda-pessoa-2: #a75a30;   /* terracota */
-  --agenda-pessoa-3: #0f7358;   /* jade */
-  --agenda-pessoa-4: #7b4a92;   /* ameixa */
-  --agenda-pessoa-5: #a8455f;   /* framboesa */
-  --agenda-pessoa-6: #7f6a1a;   /* ocre */
-  --agenda-pessoa-7: #136e80;   /* petróleo */
-  --agenda-pessoa-8: #5a55a3;   /* índigo */
+  --agenda-pessoa-1: #ac4d40;   /* telha */
+  --agenda-pessoa-2: #bd7c20;   /* âmbar */
+  --agenda-pessoa-3: #7e6f01;   /* oliva */
+  --agenda-pessoa-4: #11a19b;   /* turquesa */
+  --agenda-pessoa-5: #0b7a9a;   /* azul */
+  --agenda-pessoa-6: #608bda;   /* índigo */
+  --agenda-pessoa-7: #7b5bad;   /* violeta */
+  --agenda-pessoa-8: #cc77b1;   /* framboesa */
 }
 
 [data-theme="dark"] {
@@ -374,14 +394,14 @@
    * Mais claras e menos saturadas que as do claro: sobre `#161510` a versão
    * escura de cada matiz sumiria. Mesma ordem, mesmos nomes.
    */
-  --agenda-pessoa-1: #7cb8dd;
-  --agenda-pessoa-2: #e6a077;
-  --agenda-pessoa-3: #5cc3a0;
-  --agenda-pessoa-4: #c79bd8;
-  --agenda-pessoa-5: #e88ba0;
-  --agenda-pessoa-6: #cfb457;
-  --agenda-pessoa-7: #5fbdd0;
-  --agenda-pessoa-8: #a49ee8;
+  --agenda-pessoa-1: #f89080;
+  --agenda-pessoa-2: #ca8931;
+  --agenda-pessoa-3: #d1bf55;
+  --agenda-pessoa-4: #0cafa8;
+  --agenda-pessoa-5: #4ccffb;
+  --agenda-pessoa-6: #6c97e7;
+  --agenda-pessoa-7: #be9ef6;
+  --agenda-pessoa-8: #cc77b1;
 }
 
 @layer base {

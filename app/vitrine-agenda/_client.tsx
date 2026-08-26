@@ -82,7 +82,7 @@ export function VitrineDaAgenda() {
       <Secao
         id="paleta"
         titulo="As oito trilhas de cor"
-        descricao="Matizes de Okabe-Ito, ajustados em luminosidade para este produto. Cor nunca vem sozinha: a inicial acompanha sempre."
+        descricao="Oito matizes espalhados e nomeáveis, derivados por cálculo: cada par passa em contraste (mínimo 3:1) e nenhum encosta no verde da marca. O par mais próximo fica a 0,119 no claro e 0,116 no escuro — a paleta de referência para daltonismo faz 0,156 com sete cores. Cor nunca vem sozinha: a inicial acompanha sempre."
       >
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
           {TRILHAS.map(({ trilha, nome }) => (
@@ -121,7 +121,7 @@ export function VitrineDaAgenda() {
                 <CaretRight size={16} weight="bold" aria-hidden />
               </Button>
             </div>
-            <span data-testid="periodo" className="text-sm font-semibold capitalize">
+            <span data-testid="periodo" className="text-sm font-semibold first-letter:uppercase">
               {format(ANCORA, "MMMM 'de' yyyy", { locale: ptBR })}
             </span>
           </div>

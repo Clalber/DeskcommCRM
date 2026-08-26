@@ -85,7 +85,25 @@ export function AgendaClient({ fusoDeApresentacao }: { fusoDeApresentacao: strin
           <Button variant="outline" size="sm" onClick={() => setAncora(new Date())}>
             Hoje
           </Button>
-          <Button size="sm">
+          {/*
+            DESABILITADO COM O MOTIVO À VISTA, e não ligado a um `onClick` vazio.
+            Enquanto a frente 1 não expõe `/api/v1/agenda` não há o que marcar, e
+            um botão primário, com cor de ação e sem `disabled`, que não faz nada
+            ao clique é pior do que não existir: quem clica conclui que o produto
+            está quebrado e não tem o que reportar além de "não abre". É o
+            anti-pattern de controle decorativo, e esta base já pagou por ele.
+
+            O motivo vai em texto ao lado, não só no `title`: atributo de
+            hover não existe para quem usa toque, que é o dono de clínica no
+            celular.
+          */}
+          <span
+            data-testid="motivo-novo-agendamento"
+            className="hidden text-xs text-text-subtle sm:inline"
+          >
+            Disponível quando a agenda estiver conectada
+          </span>
+          <Button size="sm" disabled title="Disponível quando a agenda estiver conectada">
             <CalendarPlus size={16} weight="bold" aria-hidden />
             <span>Novo agendamento</span>
           </Button>
@@ -114,7 +132,17 @@ export function AgendaClient({ fusoDeApresentacao }: { fusoDeApresentacao: strin
               <CaretRight size={16} weight="bold" aria-hidden />
             </Button>
           </div>
-          <span data-testid="periodo" className="truncate text-sm font-semibold capitalize">
+          {/*
+            `first-letter:uppercase` e NÃO `capitalize`: o `capitalize` do CSS
+            maiúscula toda palavra, e o date-fns em pt-br devolve "23 de ago" —
+            virava "23 De Ago". Preposição com maiúscula é o detalhe que faz o
+            produto parecer traduzido em vez de escrito, e fica na primeira
+            linha abaixo do título.
+          */}
+          <span
+            data-testid="periodo"
+            className="truncate text-sm font-semibold first-letter:uppercase"
+          >
             {periodo}
           </span>
         </div>
