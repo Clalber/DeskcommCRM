@@ -15,14 +15,33 @@ import { JANELA_DA_GRADE } from "./GradeDaAgenda";
  * página trocou. As mesmas 7 colunas e a mesma janela de horas da grade real.
  */
 export function AgendaCarregando() {
-  // `bg-border` em cada Skeleton, e não o default: o `components/ui/skeleton.tsx`
-  // usa `bg-primary/10`, que é a accent do produto a 10% de opacidade. Sobre o
-  // branco do tema claro isso dá contraste ~1.06 — o esqueleto fica INVISÍVEL, e
-  // a espera vira uma grade vazia em vez de uma promessa de conteúdo. Visto no
-  // screenshot de evidência, não no código.
+  // `bg-neutral-400` em cada Skeleton, e não o default do primitivo.
   //
-  // Não mexo no primitivo: ele é usado por todo o produto e a correção lá é
-  // decisão de quem cuida do design system, não drive-by no PR do calendário.
+  // `components/ui/skeleton.tsx` usa `bg-primary/10` — a accent a 10% —, que dá
+  // contraste 1.146:1 sobre o branco: o esqueleto some, e a espera vira uma
+  // grade vazia em vez de promessa de conteúdo. Visto no screenshot, não no
+  // código.
+  //
+  // O primeiro conserto foi `bg-border`, e o maestro mediu que era insuficiente:
+  // 1.281:1, doze por cento melhor e ainda invisível. Ele também levantou o que
+  // ninguém tinha medido — o esqueleto PULSA (`animate-pulse` oscila a opacidade
+  // entre 1 e .5 a cada 2s), então ele vive entre DOIS contrastes e o olho lê o
+  // movimento entre eles. Medido, sobre superfície branca:
+  //
+  //     candidato          cheio    apagado   delta L*
+  //     bg-primary/10      1.146     1.067      2.81
+  //     bg-border          1.281     1.129      4.85
+  //     border-strong      1.588     1.249      8.82
+  //     neutral-400        2.512     1.525     16.77   <- escolhido
+  //
+  // `neutral-400` foi escolhido por ser quase SIMÉTRICO entre os temas (2.512 no
+  // claro, 2.622 no escuro): um esqueleto que aparece num tema e some no outro é
+  // o mesmo defeito resolvido pela metade. Fica abaixo do piso WCAG de 3:1 para
+  // gráfico não-textual — aceitável porque o esqueleto não carrega informação
+  // que se lê, e o pulso de 16.77 em L* o torna inequívoco.
+  //
+  // Não mexo no primitivo: 113 usos em 51 arquivos da main. A correção lá é item
+  // de produto, escalado pelo QAVivo, não drive-by no PR do calendário.
   const linhas = JANELA_DA_GRADE.ultima - JANELA_DA_GRADE.primeira + 1;
   return (
     <div
@@ -35,7 +54,7 @@ export function AgendaCarregando() {
         <div className="h-8 border-b border-border" />
         {Array.from({ length: linhas }).map((_, i) => (
           <div key={i} className="flex h-12 items-start justify-end border-b border-border/50 p-1">
-            <Skeleton className="h-2.5 w-6 bg-border" />
+            <Skeleton className="h-2.5 w-6 bg-neutral-400" />
           </div>
         ))}
       </div>
@@ -43,13 +62,13 @@ export function AgendaCarregando() {
         {Array.from({ length: 7 }).map((_, col) => (
           <div key={col} className="min-w-0 flex-1 border-r border-border last:border-r-0">
             <div className="flex h-8 items-center justify-center border-b border-border">
-              <Skeleton className="h-3 w-10 bg-border" />
+              <Skeleton className="h-3 w-10 bg-neutral-400" />
             </div>
             <div className="space-y-2 p-1.5">
               {/* Alturas diferentes por coluna: um esqueleto perfeitamente
                   regular parece uma tabela, não uma agenda. */}
-              <Skeleton className="h-10 w-full bg-border" style={{ marginTop: (col % 3) * 28 }} />
-              {col % 2 === 0 && <Skeleton className="h-16 w-full bg-border" />}
+              <Skeleton className="h-10 w-full bg-neutral-400" style={{ marginTop: (col % 3) * 28 }} />
+              {col % 2 === 0 && <Skeleton className="h-16 w-full bg-neutral-400" />}
             </div>
           </div>
         ))}

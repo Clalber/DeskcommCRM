@@ -172,7 +172,7 @@ export function PainelDeMarcacao({
         className="flex min-w-0 flex-1 flex-col p-4 md:min-w-[420px]"
       >
         <div className="mb-3 flex items-center justify-between">
-          <span className="text-sm font-semibold capitalize">
+          <span className="text-sm font-semibold first-letter:uppercase">
             {format(mes, "MMMM 'de' yyyy", { locale: ptBR })}
           </span>
           <div className="flex items-center gap-1">
@@ -290,7 +290,7 @@ export function PainelDeMarcacao({
         className="agenda-coluna-horarios shrink-0"
       >
         <div className="flex h-full w-[240px] flex-col p-3 lg:w-[280px]">
-          <p className="mb-2 shrink-0 text-xs font-semibold capitalize text-text-muted">
+          <p className="mb-2 shrink-0 text-xs font-semibold text-text-muted first-letter:uppercase">
             {dia ? format(dia, "EEEE, d 'de' MMM", { locale: ptBR }) : ""}
           </p>
           <div className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto pr-1">

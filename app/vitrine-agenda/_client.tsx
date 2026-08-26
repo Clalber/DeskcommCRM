@@ -121,7 +121,7 @@ export function VitrineDaAgenda() {
                 <CaretRight size={16} weight="bold" aria-hidden />
               </Button>
             </div>
-            <span data-testid="periodo" className="text-sm font-semibold capitalize">
+            <span data-testid="periodo" className="text-sm font-semibold first-letter:uppercase">
               {format(ANCORA, "MMMM 'de' yyyy", { locale: ptBR })}
             </span>
           </div>
