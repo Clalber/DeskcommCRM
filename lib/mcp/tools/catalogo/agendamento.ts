@@ -20,9 +20,25 @@
  * partida entre dois pacotes é pior que ela inteira no pacote vizinho, porque o
  * dono liga "Atender" e ganha metade da agenda sem saber qual metade.
  *
- * `vender` tem 11 e comporta as cinco (11+5=16). E é defensável sem apelar para
- * o número: numa clínica, marcar consulta É a conversão — é o "ganho" do funil,
- * não uma resposta a mais na conversa.
+ * `vender` tem folga para as cinco. E é defensável sem apelar para o número: numa
+ * clínica, marcar consulta É a conversão — é o "ganho" do funil, não uma resposta
+ * a mais na conversa.
+ *
+ * ⚠️ NÃO CRAVO O NÚMERO AQUI, e a razão é que ele já me pegou uma vez: a versão
+ * anterior deste comentário dizia "vender tem 11 (11+5=16)" e estava errada — eram
+ * 12 antes desta tool, 13 depois. O erro não foi de leitura, foi de INSTRUMENTO:
+ * medi com regex sobre o texto do catálogo, com janela de 900 caracteres entre
+ * `name:` e `pacotes:`, e `crm_propose_contact_field` tem 1930. A janela truncou
+ * em silêncio e o script não tinha como avisar.
+ *
+ * Quem for reabrir a decisão de pacote mede pelo OBJETO, não pelo texto:
+ *
+ *   pnpm exec tsx -e 'import("@/lib/mcp/tools/catalogo").then(({TOOL_CATALOG})=>{
+ *     const p={}; for(const t of TOOL_CATALOG) for(const b of t.pacotes) p[b]=(p[b]??0)+1;
+ *     console.log(p, "total:", TOOL_CATALOG.length)})'
+ *
+ * O total serve de controle: se a soma dos pacotes não fizer sentido contra
+ * `TOOL_CATALOG.length`, o instrumento está perdendo entrada.
  *
  * Medido: acrescentar esta capacidade a `atender` levaria o pacote a 19 e
  * quebraria `tests/e2e/capacidades-do-agente.spec.ts` em DOIS pontos — a
