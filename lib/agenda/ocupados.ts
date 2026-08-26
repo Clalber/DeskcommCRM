@@ -161,3 +161,35 @@ export const SITUACOES_QUE_OCUPAM = SITUACOES_DO_AGENDAMENTO.filter(
 export const SITUACOES_QUE_LIBERAM = SITUACOES_DO_AGENDAMENTO.filter((s) =>
   LIBERAM_O_HORARIO.has(s),
 );
+
+/** Uma linha de `calendar_connections`, no que interessa para saber se dá para confiar. */
+export interface LinhaDeConexao {
+  status: string;
+  last_sync_at: string | null;
+}
+
+/**
+ * A agenda externa deste dono é confiável AGORA?
+ *
+ * ⚠️ "NÃO TEM GOOGLE" E "TEM GOOGLE QUE NUNCA FOI LIDO" PRODUZEM A MESMA LISTA
+ * VAZIA DE OCUPADOS — e são coisas opostas.
+ *
+ * Sem conexão nenhuma, não há nada lá fora e oferecer o dia inteiro está certo.
+ * Com conexão que nunca sincronizou (`last_sync_at is null`), há compromissos no
+ * Google que ninguém trouxe para cá — e o motor oferece a hora da cirurgia que
+ * está na agenda do médico. O paciente chega e o médico está no centro
+ * cirúrgico.
+ *
+ * É o mesmo formato de `publicouHorarios` e de `fusoSuposto`: um sinal que
+ * preserva a distinção que o dado normalizado apaga. Sem ele, quem lê a lista
+ * vazia conclui "está livre", e a conclusão errada não gera chamado nenhum.
+ *
+ * ⚠️ NÃO CONFUNDIR COM `fontesDefasadas`, que é outra pergunta: lá a conexão
+ * JÁ trouxe eventos e parou de atualizar (e eles continuam ocupando, DECISÃO
+ * 3.2). Aqui ela nunca trouxe nada.
+ */
+export function agendaExternaNuncaLida(conexoes: LinhaDeConexao[]): boolean {
+  const vivas = conexoes.filter((c) => c.status !== "disconnected");
+  if (vivas.length === 0) return false;
+  return vivas.every((c) => c.last_sync_at === null);
+}

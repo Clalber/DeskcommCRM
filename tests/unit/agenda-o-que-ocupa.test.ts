@@ -14,6 +14,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  agendaExternaNuncaLida,
   ocupadosDoDono,
   SITUACOES_QUE_LIBERAM,
   SITUACOES_QUE_OCUPAM,
@@ -171,5 +172,46 @@ describe("toda situação do vocabulário está classificada", () => {
     // mais ocupa. Se um dia a relação se inverter, alguém trocou blocklist por
     // allowlist — e aí um status novo passa a liberar por omissão.
     expect(SITUACOES_QUE_OCUPAM.length).toBeGreaterThan(SITUACOES_QUE_LIBERAM.length);
+  });
+});
+
+/**
+ * "NÃO TEM GOOGLE" E "TEM GOOGLE QUE NUNCA FOI LIDO" dão a mesma lista vazia.
+ *
+ * Levantado pelo maestro como risco de ORDEM entre as frentes: se o POST entrar
+ * antes de o sync existir, a agenda do atendente é oferecida inteira como livre
+ * — inclusive na hora da cirurgia que está no Google e que ninguém trouxe.
+ *
+ * O risco é de ordem, mas o SINAL é do motor: quem lê a lista vazia precisa
+ * saber se ela significa "livre" ou "não perguntei ainda".
+ */
+describe("a agenda externa é confiável agora?", () => {
+  it("sem conexão nenhuma NÃO é alerta — não há nada lá fora", () => {
+    expect(agendaExternaNuncaLida([])).toBe(false);
+  });
+
+  it("conexão que JÁ sincronizou não é alerta", () => {
+    expect(
+      agendaExternaNuncaLida([{ status: "healthy", last_sync_at: "2026-08-26T10:00:00Z" }]),
+    ).toBe(false);
+  });
+
+  it("conexão que NUNCA sincronizou é alerta — há compromisso lá que não veio", () => {
+    expect(agendaExternaNuncaLida([{ status: "healthy", last_sync_at: null }])).toBe(true);
+  });
+
+  it("uma sincronizada entre várias já basta para não alertar", () => {
+    expect(
+      agendaExternaNuncaLida([
+        { status: "healthy", last_sync_at: null },
+        { status: "healthy", last_sync_at: "2026-08-26T10:00:00Z" },
+      ]),
+    ).toBe(false);
+  });
+
+  it("conexão DESCONECTADA não conta — quem desconectou sabe que desconectou", () => {
+    // Diferente de "nunca li": aqui houve um ato deliberado, e a tela da agenda
+    // já mostra a faixa de reconectar.
+    expect(agendaExternaNuncaLida([{ status: "disconnected", last_sync_at: null }])).toBe(false);
   });
 });
