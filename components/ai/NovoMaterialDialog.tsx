@@ -132,7 +132,13 @@ export function NovoMaterialDialog({ aberto, onFechar, onCriado, podeIndexar }: 
 
   return (
     <Dialog open={aberto} onOpenChange={(v) => !v && onFechar()}>
-      <DialogContent className="sm:max-w-2xl">
+      {/* O CORPO ROLA, O RODAPÉ FICA.
+          Sem isto o diálogo cresce até empurrar "Adicionar ao acervo" para fora
+          da tela: num monitor de 720px de altura o botão existia e era
+          inalcançável — medido pelo e2e, que não conseguiu clicar nele. Um
+          formulário cujo botão de enviar não cabe na tela é um formulário que
+          não se envia. */}
+      <DialogContent className="flex max-h-[85vh] flex-col sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>Ensinar algo novo ao agente</DialogTitle>
           <DialogDescription>
@@ -140,7 +146,7 @@ export function NovoMaterialDialog({ aberto, onFechar, onCriado, podeIndexar }: 
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4">
+        <div className="flex-1 space-y-4 overflow-y-auto pr-1">
           <div className="space-y-2">
             <Label>Que tipo de material é</Label>
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2" data-testid="material-tipos">

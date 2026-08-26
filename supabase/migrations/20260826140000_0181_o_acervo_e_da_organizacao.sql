@@ -104,11 +104,28 @@ alter table public.ai_knowledge_sources
 comment on column public.ai_knowledge_sources.agent_id is
   'HISTÓRICO: o agente a partir do qual a fonte foi criada. NÃO é dono — desde a 0181 quem lê o quê é `ai_agent_versions.knowledge_source_ids`. Nullable e ON DELETE SET NULL de propósito.';
 
+-- A VERSÃO DE ÍNDICE TAMBÉM DEIXA DE PERTENCER A UM AGENTE.
+--
+-- `agent_id` era NOT NULL aqui, e um material da organização (sem agente
+-- nenhum) não tinha como ser indexado: `createKnowledgeVersion` batia em
+-- "null value in column agent_id violates not-null constraint" — medido na
+-- prova de tela, com o material parado em `indexando` para sempre.
+--
+-- E o CASCADE sai junto, por uma razão pior: os chunks apontam para a VERSÃO
+-- (`ai_chunks.kb_version_id ... on delete cascade`), então apagar o agente
+-- levava a versão, e a versão levava os trechos — o material da EMPRESA sumia
+-- porque alguém apagou um assistente. `SET NULL`: a versão pertence à fonte.
+alter table public.ai_knowledge_versions
+  alter column agent_id drop not null;
+
 alter table public.ai_knowledge_versions
   drop constraint if exists ai_knowledge_versions_agent_id_fkey;
 alter table public.ai_knowledge_versions
   add constraint ai_knowledge_versions_agent_id_fkey
-  foreign key (agent_id) references public.ai_agents(id) on delete cascade;
+  foreign key (agent_id) references public.ai_agents(id) on delete set null;
+
+comment on column public.ai_knowledge_versions.agent_id is
+  'HISTÓRICO: o agente a partir do qual esta indexação foi disparada. Nullable desde a 0181 — a versão pertence à FONTE, e o acervo é da organização.';
 
 -- ---------------------------------------------------------------------------
 -- 2. Vocabulário de tipo: sinônimos somem, "documento" nasce

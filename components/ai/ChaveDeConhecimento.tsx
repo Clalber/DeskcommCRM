@@ -74,12 +74,34 @@ export function ChaveDeConhecimento({ estado, onChaveCadastrada }: Props) {
       toast.success("Chave salva. Estamos conferindo com a OpenAI — leva alguns segundos.");
       setChave("");
       setAbrindo(false);
+      // Quem recarrega até a validação voltar é o `refetchInterval` do hook: a
+      // resposta do POST vem ANTES da confirmação com o provedor, e chamar isto
+      // uma vez só deixaria a tela parada no aviso.
       onChaveCadastrada();
     } catch (err) {
       showApiError(err);
     } finally {
       setEnviando(false);
     }
+  }
+
+  // A chave existe e ainda não serve: a validação com o provedor está em curso.
+  // Sem dizer isto, a tela repete "falta uma chave" para quem acabou de colar
+  // uma — e a pessoa cola outra, achando que errou a primeira.
+  const conferindo =
+    !estado.pode_indexar &&
+    estado.credenciais_openai.some((c) => c.is_active && !c.validated_at && !c.validation_error);
+
+  if (conferindo) {
+    return (
+      <div
+        data-testid="conhecimento-chave-conferindo"
+        className="flex items-center gap-2 text-xs text-text-muted"
+      >
+        <KeyRound className="h-3.5 w-3.5 animate-pulse" aria-hidden />
+        <span>Conferindo a chave com a OpenAI — leva alguns segundos.</span>
+      </div>
+    );
   }
 
   if (estado.pode_indexar) {

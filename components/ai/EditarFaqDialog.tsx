@@ -96,7 +96,7 @@ export function EditarFaqDialog({ sourceId, nome, aberto, onFechar, onSalvo }: P
 
   return (
     <Dialog open={aberto} onOpenChange={(v) => !v && onFechar()}>
-      <DialogContent className="sm:max-w-2xl">
+      <DialogContent className="flex max-h-[85vh] flex-col sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>Editar “{nome}”</DialogTitle>
           <DialogDescription>
@@ -104,7 +104,7 @@ export function EditarFaqDialog({ sourceId, nome, aberto, onFechar, onSalvo }: P
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-2">
+        <div className="flex-1 space-y-2 overflow-y-auto pr-1">
           <Label htmlFor="faq-texto">Conteúdo</Label>
           <Textarea
             id="faq-texto"
