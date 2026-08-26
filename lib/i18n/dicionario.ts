@@ -2600,6 +2600,28 @@ export const DICIONARIO: Traducoes = {
   },
   "Aparência clara": { es: "Apariencia clara" },
   "Aparência escura": { es: "Apariencia oscura" },
+  "Selecione uma conversa para visualizar": {
+    es: "Selecciona una conversación para visualizar",
+  },
+  "Modo somente-leitura. Use “Impersonate” para responder como atendente do tenant.": {
+    es: "Modo de solo lectura. Usa “Impersonate” para responder como agente del tenant.",
+  },
+  "Sem nome": { es: "Sin nombre" },
+  "Buscar mensagem...": { es: "Buscar mensaje..." },
+  "Falha ao carregar conversas.": { es: "No se pudieron cargar las conversaciones." },
+  "Nenhuma conversa encontrada.": { es: "No se encontró ninguna conversación." },
+  "Falha ao carregar conversa.": { es: "No se pudo cargar la conversación." },
+  "Sem mensagens nesta conversa.": { es: "No hay mensajes en esta conversación." },
+  "Modo somente-leitura.": { es: "Modo de solo lectura." },
+  "Use “Impersonate” (em breve, S-11.07) para responder.": {
+    es: "Usa “Impersonate” (próximamente, S-11.07) para responder.",
+  },
+  "Contato anonimizado": { es: "Contacto anonimizado" },
+  "Sem contato vinculado.": { es: "Sin contacto vinculado." },
+  "Abrir tenant": { es: "Abrir tenant" },
+  "Sem organização vinculada.": { es: "Sin organización vinculada." },
+  "Status:": { es: "Estado:" },
+  Carregando: { es: "Cargando" },
 };
 
 /**
