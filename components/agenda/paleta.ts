@@ -54,12 +54,14 @@ export function iniciaisDe(nome: string): string {
 }
 
 /**
- * Distribui trilhas por posição na lista, e volta ao começo depois da oitava.
+ * A trilha de quem ainda não escolheu uma vive em `lib/agenda/tipos.ts`
+ * (`corPadraoDoMembro`), e NÃO aqui.
  *
- * Determinístico de propósito: a cor de alguém não pode mudar entre um render e
- * outro — a pessoa aprende "o Jade é a Ana", e uma cor sorteada destruiria isso.
+ * Esta função derivava da POSIÇÃO na lista de membros. A do Arquiteto deriva do
+ * `user_id`, e a diferença é concreta: a minha fazia todo mundo trocar de cor
+ * quando alguém entrava na equipe — justamente o que a estabilidade existe para
+ * impedir, porque a pessoa aprende "o Jade é a Ana".
+ *
+ * Apagada em favor da dele. Este módulo continua dono de traduzir trilha em COR
+ * (`corDaTrilha`), que é o lado da tela.
  */
-export function trilhaPorPosicao(posicao: number): TrilhaDeCor {
-  const indice = ((posicao % TRILHAS.length) + TRILHAS.length) % TRILHAS.length;
-  return (TRILHAS[indice]?.trilha ?? 1) as TrilhaDeCor;
-}

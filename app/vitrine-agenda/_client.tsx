@@ -211,6 +211,22 @@ export function VitrineDaAgenda() {
       </Secao>
 
       <Secao
+        id="nao-configurado"
+        titulo="Quando ninguém publicou horário — e o que a rota conta além dos slots"
+        descricao="“Não publiquei meus horários” e “não tenho vaga” chegariam como a mesma lista vazia se a API não os separasse. A rota separa, e a tela usa: aqui aparecem os três avisos que ela devolve além dos horários — jornada não publicada, fuso suposto por ninguém ter escolhido, e agenda conectada que parou de atualizar."
+      >
+        <PainelDeMarcacao
+          ancora={ANCORA}
+          agora={ANCORA}
+          responsavel={PESSOAS[3]!}
+          horariosPorDia={{}}
+          publicouHorarios={false}
+          fusoSuposto
+          fontesDefasadas={[{ nome: "Google · ana@clinica.com", desde: "ontem às 18h" }]}
+        />
+      </Secao>
+
+      <Secao
         id="estados"
         titulo="Os estados"
         descricao="Vazio, carregando e erro — os três que aparecem antes de qualquer dado existir, e que decidem a primeira impressão de quem acabou de instalar."

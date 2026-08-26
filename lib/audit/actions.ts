@@ -336,6 +336,20 @@ export const AUDIT_ACTIONS = [
   // demais para a chamada seguinte do expurgo alcançar — a trilha registra
   // a própria erosão em vez de encolher sem deixar marca.
   "retention.sweep_run",
+
+  // ---- Agenda · conexão com o Google (frente 3) ----
+  //
+  // Acrescentadas por @VPS para DESTRAVAR o build da base integrada, que estava
+  // vermelho porque `app/api/v1/agenda/google/connect/route.ts` já emite estes
+  // dois códigos e eles não existiam aqui. É aditivo e não muda comportamento
+  // de nada — o union existe exatamente para uma ação nova não entrar sem
+  // alguém declarar, e declarar é o conserto certo (castar no emissor seria
+  // desligar o mecanismo em vez de usá-lo).
+  //
+  // Avisei o DevGatilhos antes com o caminho deste arquivo; se ele fizer igual,
+  // o merge combina as duas listas em vez de conflitar.
+  "agenda.google.conexao_iniciada",
+  "agenda.google.conexao_falhou",
 ] as const;
 
 /** Um código de auditoria. Derivado de `AUDIT_ACTIONS` — não redigite a lista. */
