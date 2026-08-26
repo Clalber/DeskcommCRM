@@ -8,6 +8,8 @@ Se você roda o DeskcommCRM numa VPS, **leia a seção da versão para a qual es
 
 ## [Não lançado]
 
+## [1.6.0] — 2026-08-26
+
 ### Adicionado
 
 - **Formulários do Respondi entram como lead, com as respostas na ficha.** Antes, quem ligava
