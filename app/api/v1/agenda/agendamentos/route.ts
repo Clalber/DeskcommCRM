@@ -38,17 +38,25 @@ import { randomUUID } from "node:crypto";
 import { type NextRequest } from "next/server";
 import { z } from "zod";
 
-import { horariosLivres, type ExcecaoDeData } from "@/lib/agenda/horarios-livres";
-import { lerJornadaDoBanco } from "@/lib/agenda/jornada";
+import { horariosLivresDaOrg } from "@/lib/agenda/consulta";
 import { atividadeDaTransicao, precisaEmpurrarAoGoogle } from "@/lib/agenda/laco";
-import { ocupadosDoDono, type LinhaDeAgendamento, type LinhaDeEventoExterno } from "@/lib/agenda/ocupados";
 import { ALVO_DE_VINCULO_DO_AGENDAMENTO, VINCULO_DE_AGENDAMENTO } from "@/lib/agenda/tipos";
 import { fail, ok } from "@/lib/api/wrappers";
 import { audit } from "@/lib/audit";
 import { requireRole } from "@/lib/auth/require-role";
+import { resolveActiveLeadForContact, type LeadCandidate } from "@/lib/leads/active-lead";
 import { emitLeadActivity } from "@/lib/leads/activity-emitter";
 import { registraFalhaDeAtividade } from "@/lib/leads/activity-write-failure";
 import { createClient } from "@/lib/supabase/server";
+
+/** A recusa da coleta vira o código de wire da API — um mapa, não um `if` espalhado. */
+const CODIGO_DA_RECUSA = {
+  tipo_desconhecido: "not_found",
+  tipo_desativado: "agenda_tipo_desativado",
+  sem_responsavel: "agenda_sem_responsavel",
+  jornada_mal_configurada: "agenda_disponibilidade_invalida",
+  erro_interno: "internal_error",
+} as const;
 
 const corpoSchema = z.object({
   event_type_id: z.string().uuid(),
@@ -103,23 +111,32 @@ export async function POST(req: NextRequest): Promise<Response> {
     );
   }
 
-  const { data: disponibilidade } = await supabase
-    .from("attendant_availability")
-    .select("schedule")
-    .eq("organization_id", activeOrg.orgId)
-    .eq("user_id", donoId)
-    .maybeSingle();
+  const fim = new Date(inicio.getTime() + tipo.duration_minutes * 60_000);
 
-  const leitura = lerJornadaDoBanco(disponibilidade?.schedule);
-  if (!leitura.ok) {
-    return fail(
-      "agenda_disponibilidade_invalida",
-      `A disponibilidade deste responsável está mal configurada: ${leitura.motivoParaOperador}`,
-      422,
-      { requestId },
-    );
+  // ⚠️ A MESMA COLETA QUE RESPONDE O GET E AS FERRAMENTAS MCP — não uma segunda.
+  //
+  // A versão anterior desta rota refazia as buscas aqui, com um comentário
+  // dizendo que era "o mesmo motor". Era o mesmo motor e uma SEGUNDA COLETA, e
+  // isso diverge no primeiro ajuste: se a regra do que OCUPA mudar (por
+  // exemplo, `pending` deixar de ocupar), `consulta.ts` muda e a cópia não —
+  // e aí a tela oferece horário que este POST recusa, ou pior, o POST aceita um
+  // que a tela não ofereceu e alguém chega numa hora que já tinha dono.
+  //
+  // Duplicação consciente diverge igual à inconsciente; a única diferença é que
+  // a consciente tem a quem perguntar. O comentário que admitia não impedia
+  // nada — só registrava quem avisar depois. (Achado do MaestroConexoes.)
+  const consulta = await horariosLivresDaOrg(supabase, activeOrg.orgId, {
+    eventTypeId: tipo.id,
+    ownerUserId: donoId,
+    de: inicio,
+    ate: fim,
+    agora: new Date(),
+  });
+
+  if (!consulta.ok) {
+    return fail(CODIGO_DA_RECUSA[consulta.codigo], consulta.motivoParaOperador, 422, { requestId });
   }
-  if (!leitura.publicouHorarios) {
+  if (!consulta.publicouHorarios) {
     return fail(
       "agenda_fora_da_jornada",
       "Este responsável ainda não publicou horários de atendimento.",
@@ -128,21 +145,8 @@ export async function POST(req: NextRequest): Promise<Response> {
     );
   }
 
-  const fim = new Date(inicio.getTime() + tipo.duration_minutes * 60_000);
-  const livres = await horariosLivresDoDia({
-    supabase,
-    orgId: activeOrg.orgId,
-    donoId,
-    jornada: leitura.jornada,
-    tipo,
-    de: inicio,
-    ate: fim,
-  });
-
-  const oferecido = livres.some((s) => s.inicio.getTime() === inicio.getTime());
+  const oferecido = consulta.slots.some((s) => s.inicio.getTime() === inicio.getTime());
   if (!oferecido) {
-    // Não é 409 nem 500: o horário pedido simplesmente não está entre os que
-    // esta agenda oferece. A frase diz o que fazer, não só que não deu.
     return fail(
       "agenda_horario_indisponivel",
       "Este horário não está disponível. Consulte os horários livres e escolha outro.",
@@ -169,7 +173,7 @@ export async function POST(req: NextRequest): Promise<Response> {
       // no fuso do TENANT, e o compromisso tem o dele. Sem este campo no
       // payload, o handler adivinha — e adivinhar fuso é como este produto já
       // errou antes.
-      time_zone: leitura.jornada.timezone,
+      time_zone: consulta.fusoDaRegra,
       status: tipo.requires_confirmation ? "pending" : "confirmed",
       owner_user_id: donoId,
       contact_id: parsed.data.contact_id ?? null,
@@ -208,86 +212,6 @@ export async function POST(req: NextRequest): Promise<Response> {
   });
 
   return ok(criado, { status: 201, requestId });
-}
-
-/** Os horários livres do recorte pedido — o MESMO motor que responde o `GET`. */
-async function horariosLivresDoDia(args: {
-  supabase: Awaited<ReturnType<typeof createClient>>;
-  orgId: string;
-  donoId: string;
-  jornada: { timezone: string; windows: { dow: number; start: string; end: string }[] };
-  tipo: {
-    duration_minutes: number;
-    buffer_before_minutes: number;
-    buffer_after_minutes: number;
-    minimum_notice_minutes: number;
-    slot_interval_minutes: number | null;
-    booking_window_days: number;
-  };
-  de: Date;
-  ate: Date;
-}) {
-  const dia = args.de.toISOString().slice(0, 10);
-  const [{ data: excecoesRaw }, { data: agendaRaw }, { data: externosRaw }] = await Promise.all([
-    args.supabase
-      .from("calendar_availability_exceptions")
-      .select("exception_date, is_unavailable, start_minute, end_minute")
-      .eq("organization_id", args.orgId)
-      .eq("user_id", args.donoId)
-      .eq("exception_date", dia),
-    args.supabase
-      .from("calendar_appointments")
-      .select("starts_at, ends_at, status")
-      .eq("organization_id", args.orgId)
-      .eq("owner_user_id", args.donoId)
-      .lt("starts_at", args.ate.toISOString())
-      .gt("ends_at", args.de.toISOString()),
-    args.supabase
-      .from("calendar_external_events")
-      .select("starts_at, ends_at, transparency, status, calendar_connections!inner(user_id, status)")
-      .eq("organization_id", args.orgId)
-      .eq("calendar_connections.user_id", args.donoId)
-      .lt("starts_at", args.ate.toISOString())
-      .gt("ends_at", args.de.toISOString()),
-  ]);
-
-  const excecoes: ExcecaoDeData[] = (excecoesRaw ?? []).map((l) => ({
-    data: String(l.exception_date).slice(0, 10),
-    indisponivel: l.is_unavailable,
-    inicioMinuto: l.start_minute,
-    fimMinuto: l.end_minute,
-  }));
-
-  const { ocupados } = ocupadosDoDono(
-    (agendaRaw ?? []) as LinhaDeAgendamento[],
-    (externosRaw ?? []).map((l) => {
-      const conexao = l.calendar_connections as unknown as { status?: string } | null;
-      return {
-        starts_at: l.starts_at,
-        ends_at: l.ends_at,
-        transparency: l.transparency,
-        status: l.status,
-        situacaoDaConexao: conexao?.status ?? "error",
-      } satisfies LinhaDeEventoExterno;
-    }),
-  );
-
-  return horariosLivres({
-    jornada: args.jornada,
-    excecoes,
-    ocupados,
-    tipo: {
-      duracaoMin: args.tipo.duration_minutes,
-      bufferAntesMin: args.tipo.buffer_before_minutes,
-      bufferDepoisMin: args.tipo.buffer_after_minutes,
-      avisoMinimoMin: args.tipo.minimum_notice_minutes,
-      intervaloMin: args.tipo.slot_interval_minutes,
-      janelaDias: args.tipo.booking_window_days,
-    },
-    de: args.de,
-    ate: args.ate,
-    agora: new Date(),
-  });
 }
 
 /**
@@ -407,20 +331,42 @@ async function fecharOLaco(args: {
   });
 }
 
+/**
+ * O negócio ativo do contato — pela MESMA régua do resto do produto.
+ *
+ * ⚠️ A versão anterior reimplementava a decisão aqui, com um comentário dizendo
+ * que era "a mesma régua de `resolveActiveLeadForContact`". Era uma SEGUNDA
+ * implementação declarada, e duplicação consciente diverge no primeiro ajuste
+ * igual à inconsciente — a única diferença é que a consciente tem a quem
+ * perguntar depois. O comentário que admite não impede; só registra quem avisar.
+ *
+ * A regra de verdade mora em `lib/leads/active-lead.ts` e distingue três
+ * desfechos que um `limit(2)` não distingue: roteou, `no_open_lead` e
+ * `ambiguous_open_leads`. Os dois últimos NÃO são erro — o agendamento existe e
+ * a atividade não nasce, porque não há negócio a que ancorar.
+ */
 async function leadAtivoDoContato(
   supabase: Awaited<ReturnType<typeof createClient>>,
   orgId: string,
   contactId: string,
 ): Promise<string | null> {
-  const { data } = await supabase
-    .from("crm_leads")
-    .select("id")
-    .eq("organization_id", orgId)
-    .eq("contact_id", contactId)
-    .not("status", "in", "(won,lost)")
-    .order("last_activity_at", { ascending: false })
-    .limit(2);
-  // Dois negócios abertos = ambíguo, e o produto NÃO adivinha (é a mesma régua
-  // de `resolveActiveLeadForContact`). Sem âncora certa, o rastro vira evento.
-  return data?.length === 1 ? (data[0]?.id ?? null) : null;
+  const [{ data: candidatos }, { data: padrao }] = await Promise.all([
+    supabase
+      .from("crm_leads")
+      .select("id, organization_id, pipeline_id, status, last_activity_at, created_at")
+      .eq("organization_id", orgId)
+      .eq("contact_id", contactId),
+    supabase
+      .from("crm_pipelines")
+      .select("id")
+      .eq("organization_id", orgId)
+      .eq("is_default", true)
+      .eq("is_archived", false)
+      .maybeSingle(),
+  ]);
+
+  const rota = resolveActiveLeadForContact((candidatos ?? []) as LeadCandidate[], {
+    defaultPipelineId: (padrao as { id: string } | null)?.id ?? null,
+  });
+  return rota.routed ? rota.leadId : null;
 }
