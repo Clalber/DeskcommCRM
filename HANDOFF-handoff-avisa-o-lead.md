@@ -76,7 +76,29 @@ garantia; o desarme é. Congelado em `tests/unit/aviso-ao-lead.test.ts`.
 - `tests/unit/handoff-por-orcamento.test.ts` 24/24 (3 casos novos).
 - `pnpm typecheck` 0, `pnpm lint:channels` ok.
 
+## O corte de release — o trabalho NÃO termina no merge
+
+Instrução do Rafael (2026-08-26): *"toda nova atualização deve respeitar a
+doutrina de packaging e releases, senão os usuários não conseguem atualizar na
+VPS deles."* Merge na `main` não chega a instalação nenhuma — o self-hoster puxa
+IMAGEM PUBLICADA por número de versão.
+
+**Esta entrega é MINOR: v1.5.0 → v1.6.0** (muda comportamento visível ao cliente).
+
+Checklist em `docs/doctrine/packaging.md` (12 itens). Já verificado ANTES do merge:
+
+| Item | Estado |
+|---|---|
+| 1 — seção no CHANGELOG | ✅ três entradas na voz de quem opera |
+| 2 — nenhuma variável nova obrigatória | ✅ `git diff ... -- .env.example` vazio |
+| 3 — o número nunca foi publicado | ✅ tag local vazia; `ghcr_status deskcommcrm 1.6.0` → 404, com controle positivo (1.5.0 → 200) e negativo (9.9.9 → 404) |
+| 4 — pins upstream revisitados | ⬜ fazer no corte |
+| 5..12 | ⬜ dependem do merge |
+
+O item 12 (ensaio de `update.sh` numa instalação real) é o único que exige VPS e
+**é ele que responde a pergunta do Rafael** — se o cliente consegue atualizar.
+
 ## O que NÃO foi provado ainda
 
-- Envio real por WhatsApp: só na VPS (próximo passo).
+- Envio real por WhatsApp: só na VPS, depois do corte da v1.6.0.
 - E2E de tela: não escrito.
