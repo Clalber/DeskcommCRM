@@ -15,7 +15,11 @@
  * Por isso, na dúvida, OCUPA. Vale para status que ainda não existe no
  * vocabulário, para evento tentativo, e para a conexão do Google que caiu.
  */
-import { SITUACOES_DO_AGENDAMENTO, type SituacaoDaConexao } from "./tipos";
+import {
+  SITUACOES_DO_AGENDAMENTO,
+  type SituacaoDaConexao,
+  type SituacaoExterna,
+} from "./tipos";
 
 import type { Ocupado } from "./horarios-livres";
 
@@ -63,8 +67,23 @@ export interface OQueOcupa {
  */
 const LIBERAM_O_HORARIO = new Set<string>(["cancelled", "no_show"]);
 
-/** O `transparent` do Google é o "estou livre" — quem o marca aceita compromisso por cima. */
-const NAO_OCUPA_NO_GOOGLE = new Set<string>(["cancelled"]);
+/**
+ * O que cada situação de evento externo faz com o horário.
+ *
+ * ⚠️ `Record` EXAUSTIVO, e não um `Set` de literais, pela mesma razão que
+ * `SITUACOES_QUE_OCUPAM` deixou de ser lista solta: um `Set` parece guarda e não
+ * guarda nada — situação nova cairia no padrão sem ninguém decidir. Aqui o
+ * compilador cobra a decisão, porque `SituacaoExterna` é união fechada.
+ *
+ * `tentative` ocupa: "talvez eu vá" é a pessoa segurando aquele horário, e o
+ * desfecho seguro é não oferecê-lo. `cancelled` libera — o horário voltou a
+ * existir de verdade.
+ */
+const OCUPA_NO_GOOGLE: Record<SituacaoExterna, boolean> = {
+  confirmed: true,
+  tentative: true,
+  cancelled: false,
+};
 
 function intervaloValido(inicioISO: string, fimISO: string): Ocupado | null {
   const inicio = new Date(inicioISO);
@@ -89,7 +108,9 @@ export function ocupadosDoDono(
 
   for (const linha of externos) {
     if (linha.transparency === "transparent") continue;
-    if (NAO_OCUPA_NO_GOOGLE.has(linha.status)) continue;
+    // Situação fora do vocabulário ocupa — o mesmo desfecho seguro do lado do
+    // CRM: o que não se conhece bloqueia, nunca libera.
+    if (OCUPA_NO_GOOGLE[linha.status as SituacaoExterna] === false) continue;
     const intervalo = intervaloValido(linha.starts_at, linha.ends_at);
     if (!intervalo) continue;
 
