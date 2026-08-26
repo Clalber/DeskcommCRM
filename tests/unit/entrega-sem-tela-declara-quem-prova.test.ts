@@ -32,8 +32,17 @@ import { describe, expect, it } from "vitest";
  *
  * ## O contrato
  *
- * Relatório de entrega em `evidence/calendario/ENTREGA-*.md` que contenha uma
- * linha `prova-em-tela: <caminho>` precisa que aquele caminho EXISTA. Relatório
+ * QUALQUER `.md` de `evidence/calendario/` que contenha uma linha
+ * `prova-em-tela: <caminho>` precisa que aquele caminho EXISTA e tenha teste.
+ *
+ * ⚠️ Varre TODO `.md` de propósito, e não só `ENTREGA-*`. O primeiro desenho
+ * casava um padrão de nome — e o MaestroConexoes mediu que ZERO arquivos da
+ * pasta o satisfaziam, incluindo o `PROVA-EM-TELA-do-maestro.md` que o próprio
+ * autor deste gate havia escrito. Quem chegasse depois seguiria o precedente
+ * visível e a declaração não seria varrida — não por má-fé, por seguir o
+ * exemplo errado. E a ironia que ele nomeou fecha o argumento: um gate criado
+ * sob a tese "regra não protege, mecanismo protege" estava pendurado numa
+ * CONVENÇÃO DE NOME que ninguém mecanizou. Relatório
  * sem a linha não é cobrado aqui — quem cobra é a revisão; este teste garante
  * apenas que **endereço declarado é endereço real**.
  */
@@ -62,7 +71,7 @@ describe("frente sem tela declara quem a prova em tela", () => {
     if (!existsSync(PASTA)) return; // a entrega ainda não produziu evidência
 
     const quebrados: string[] = [];
-    for (const arquivo of readdirSync(PASTA).filter((f) => /^ENTREGA-.*\.md$/.test(f))) {
+    for (const arquivo of readdirSync(PASTA).filter((f) => f.endsWith(".md"))) {
       const conteudo = readFileSync(path.join(PASTA, arquivo), "utf-8");
       for (const [, alvo] of conteudo.matchAll(DECLARACAO)) {
         if (!existsSync(path.join(RAIZ, alvo))) quebrados.push(`${arquivo} → ${alvo}`);
@@ -81,7 +90,7 @@ describe("frente sem tela declara quem a prova em tela", () => {
     if (!existsSync(PASTA)) return;
 
     const vazias: string[] = [];
-    for (const arquivo of readdirSync(PASTA).filter((f) => /^ENTREGA-.*\.md$/.test(f))) {
+    for (const arquivo of readdirSync(PASTA).filter((f) => f.endsWith(".md"))) {
       const conteudo = readFileSync(path.join(PASTA, arquivo), "utf-8");
       for (const [, alvo] of conteudo.matchAll(DECLARACAO)) {
         const caminho = path.join(RAIZ, alvo);
@@ -97,6 +106,22 @@ describe("frente sem tela declara quem a prova em tela", () => {
         "Enquanto a frente está aberta, a spec pulada é o marcador legítimo (DECISÃO 21.3); " +
         "o relatório ENTREGA-*.md, porém, é o artefato de FECHAMENTO — escrevê-lo exige o teste real.",
     ).toEqual([]);
+  });
+
+  it("CONTROLE: a varredura alcança a pasta — zero relatórios não é verde de graça", () => {
+    // O outro controle exercita a REGEX contra string literal. Este exercita a
+    // VARREDURA: se ela deixar de enxergar a pasta, os dois casos acima ficam
+    // verdes percorrendo lista vazia — e verde por instrumento morto é
+    // indistinguível de verde por estar tudo certo. Buraco apontado pelo
+    // MaestroConexoes, comparando com o gate do VPS, que afirma um piso de
+    // arquivos justamente por isto.
+    if (!existsSync(PASTA)) return;
+    const lidos = readdirSync(PASTA).filter((f) => f.endsWith(".md"));
+    expect(
+      lidos.length,
+      `A varredura não achou nenhum .md em evidence/calendario. Ou a pasta esvaziou, ` +
+        `ou o filtro parou de casar — e nos dois casos os testes acima passam sem medir nada.`,
+    ).toBeGreaterThan(0);
   });
 
   it("CONTROLE: o detector de spec-vazia enxerga uma spec vazia", () => {
