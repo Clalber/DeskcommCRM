@@ -13,8 +13,16 @@
 /** As três visões da grade. A semana é o padrão de quem atende. */
 export type VisaoDaAgenda = "dia" | "semana" | "mes";
 
-/** Índice da trilha de cor, 1..8 — casa com `--agenda-pessoa-N` no globals.css. */
-export type TrilhaDeCor = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
+/**
+ * Índice da trilha de cor, 1..8 — casa com `--agenda-pessoa-N` no globals.css.
+ *
+ * Vem de `lib/agenda/tipos.ts` e não é redeclarado aqui: o Arquiteto expôs
+ * `TRILHAS_DA_AGENDA` depois de adotar o argumento deste módulo (o modelo
+ * escolhe QUAL trilha, nunca QUE cor). Manter uma segunda declaração de 1..8
+ * seria repetir, no eixo do número, o mesmo defeito que o vocabulário de
+ * situação teve — dois símbolos com o mesmo sentido em módulos diferentes.
+ */
+export type TrilhaDeCor = TrilhaDaAgenda;
 
 export type Pessoa = {
   id: string;
@@ -43,7 +51,7 @@ export type Pessoa = {
  */
 export type { OrigemDoAgendamento, SituacaoDoAgendamento } from "@/lib/agenda/tipos";
 
-import type { OrigemDoAgendamento, SituacaoDoAgendamento } from "@/lib/agenda/tipos";
+import type { OrigemDoAgendamento, SituacaoDoAgendamento, TrilhaDaAgenda } from "@/lib/agenda/tipos";
 
 export type Agendamento = {
   id: string;

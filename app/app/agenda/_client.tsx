@@ -4,6 +4,9 @@ import { addDays, format, startOfWeek } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import * as React from "react";
 
+import { AvisoDaConexaoGoogle } from "./_components/AvisoDaConexaoGoogle";
+import { CartaoDaConexaoGoogle } from "./_components/CartaoDaConexaoGoogle";
+
 import { FiltroDePessoas } from "@/components/agenda/FiltroDePessoas";
 import { GradeDaAgenda } from "@/components/agenda/GradeDaAgenda";
 import type { Agendamento, Pessoa, VisaoDaAgenda } from "@/components/agenda/tipos";
@@ -43,7 +46,15 @@ const VISOES: Array<{ id: VisaoDaAgenda; rotulo: string }> = [
  * `tests/unit/telas-sem-dado-de-mentira.test.ts` impede que alguém religue os
  * imports sem querer.
  */
-export function AgendaClient({ fusoDeApresentacao }: { fusoDeApresentacao: string | null }) {
+export function AgendaClient({
+  fusoDeApresentacao,
+  googleConfigurado,
+  faltaNoGoogle,
+}: {
+  fusoDeApresentacao: string | null;
+  googleConfigurado: boolean;
+  faltaNoGoogle: string[];
+}) {
   const [visao, setVisao] = React.useState<VisaoDaAgenda>("semana");
   const [isolada, setIsolada] = React.useState<string | null>(null);
   const [ancora, setAncora] = React.useState(() => new Date());
@@ -74,6 +85,17 @@ export function AgendaClient({ fusoDeApresentacao }: { fusoDeApresentacao: strin
       data-fuso={fusoDeApresentacao ?? "organizacao"}
       className="flex h-full flex-col gap-4 p-6"
     >
+      {/*
+        Em Suspense porque `useSearchParams` obriga: sem a fronteira, o Next
+        reprova o build da rota. Fallback nulo porque a ausência do aviso é o
+        estado normal — quem chega pela navegação não tem query nenhuma.
+      */}
+      <React.Suspense fallback={null}>
+        <AvisoDaConexaoGoogle />
+      </React.Suspense>
+
+      <CartaoDaConexaoGoogle configurado={googleConfigurado} falta={faltaNoGoogle} />
+
       <header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
         <div className="min-w-0">
           <h1 className="text-2xl font-semibold tracking-tight">Agenda</h1>

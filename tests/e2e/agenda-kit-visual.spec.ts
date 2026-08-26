@@ -572,6 +572,40 @@ test.describe("kit visual da Agenda", () => {
     await expect(page.getByTestId("faltou-c12")).toHaveCount(0);
   });
 
+  test("a tela distingue “não publiquei horário” de “não tenho vaga”", async () => {
+    // Os dois chegariam como a MESMA lista vazia se a rota não os separasse, e
+    // a tela diria "nenhum horário disponível" para quem nunca configurou nada.
+    // Verdadeiro e inútil: manda procurar vaga onde não existe agenda.
+    const painel = page.getByTestId("secao-nao-configurado").getByTestId("painel-de-marcacao");
+    await painel.scrollIntoViewIfNeeded();
+
+    const aviso = painel.getByTestId("sem-jornada-publicada");
+    await expect(aviso).toBeVisible({ timeout: ESPERA });
+    await expect(aviso).toContainText("ainda não publicou");
+    // Diz o PRÓXIMO PASSO, não só a ausência.
+    await expect(aviso).toContainText(/configure|disponibilidade/i);
+
+    // E o painel do caso normal NÃO mostra este aviso — senão ele apareceria
+    // sempre, e aviso que aparece sempre não informa nada.
+    const normal = page.getByTestId("secao-marcacao").getByTestId("painel-de-marcacao");
+    await expect(normal.getByTestId("sem-jornada-publicada")).toHaveCount(0);
+  });
+
+  test("o que a API conta além dos slots chega à tela", async () => {
+    // `fuso_suposto` e `fontes_defasadas` existem no contrato da rota para a
+    // tela ser honesta, não só correta. Campo que a API devolve e a tela ignora
+    // é o mesmo defeito de "tela oferece o que o código ignora", invertido.
+    const painel = page.getByTestId("secao-nao-configurado").getByTestId("painel-de-marcacao");
+
+    await expect(painel.getByTestId("fuso-suposto")).toContainText(/supondo o fuso/i);
+
+    const defasada = painel.getByTestId("fontes-defasadas");
+    await expect(defasada).toBeVisible();
+    // Falha fechado na AÇÃO e aberto na INFORMAÇÃO: diz que bloqueou E desde quando.
+    await expect(defasada).toContainText(/bloquead/i);
+    await expect(defasada).toContainText(/desde/i);
+  });
+
   test("evidência visual: claro, escuro e celular", async () => {
     await page.setViewportSize({ width: 1440, height: 1000 });
     await expect(page.getByTestId("grade-da-agenda")).toBeVisible({ timeout: ESPERA });

@@ -206,6 +206,7 @@ jobs:
         automacao-diz-a-verdade.spec.ts
         inbox-quem-manda.spec.ts
         agenda-kit-visual.spec.ts
+        agenda-conectar-google.spec.ts
       # Cada item aqui tem o motivo MEDIDO, não presumido — e o gate cobra que a
       # lista exista e some com as outras duas.
       #
@@ -313,7 +314,6 @@ jobs:
         vps-fresh-onboarding.spec.ts
         inbox-tempo-real.spec.ts
         agenda-marcar-pela-tela.spec.ts
-        agenda-conectar-google.spec.ts
     steps:
       - uses: actions/checkout@v7
 
