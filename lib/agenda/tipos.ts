@@ -109,7 +109,33 @@ export const ROTULO_DA_SITUACAO: Record<SituacaoDoAgendamento, string> = {
  * tem interesse?" de quem marcou para amanhã é o tipo de erro que faz
  * desinstalar o produto.
  */
-export const SITUACOES_VIVAS: readonly SituacaoDoAgendamento[] = ["pending", "confirmed"];
+export const SITUACAO_SEGURA_O_LEAD: Record<SituacaoDoAgendamento, boolean> = {
+  pending: true,
+  confirmed: true,
+  cancelled: false,
+  completed: false,
+  no_show: false,
+};
+
+/**
+ * As situações em que o compromisso ainda está DE PÉ, derivadas da decisão
+ * acima e não escritas à mão.
+ *
+ * ⚠️ Aqui havia `["pending", "confirmed"]` — um array de literais —, e a
+ * diferença não é estilo. Provado sabotando: acrescentei `"reagendado"` ao
+ * vocabulário sem tocar em nada mais, e o array passou CALADO, enquanto os
+ * `Record` exaustivos reprovaram nomeando o que faltava. Um estado novo entraria
+ * no produto sem ninguém decidir se ele segura o lead — e quem paga é o motor de
+ * follow-up, cobrando "ainda tem interesse?" de quem tem consulta marcada.
+ *
+ * O `Record` obriga a DECISÃO, não a cobertura: o compilador não deixa
+ * acrescentar situação sem responder a pergunta. O achado é do @DevVivo, que
+ * pagou o mesmo defeito em `SITUACOES_QUE_OCUPAM` e escreveu a regra que separa
+ * os dois casos — dar consumidor a um símbolo não o torna vivo; o que importa é
+ * o que QUEBRA se ele estiver errado.
+ */
+export const SITUACOES_VIVAS: readonly SituacaoDoAgendamento[] =
+  SITUACOES_DO_AGENDAMENTO.filter((s) => SITUACAO_SEGURA_O_LEAD[s]);
 
 /**
  * Quem marcou.
@@ -171,12 +197,27 @@ export const ROTULO_DA_SITUACAO_DA_CONEXAO: Record<SituacaoDaConexao, string> = 
  * Fonte que não responde é pior que fonte nenhuma: contá-la faria a agenda
  * marcar em cima de compromisso real que ela não consegue mais enxergar.
  */
-export const CONEXOES_QUE_NAO_CONTAM: readonly SituacaoDaConexao[] = [
-  "token_expired",
-  "scope_missing",
-  "disconnected",
-  "error",
-];
+export const CONEXAO_CONTA_COMO_OCUPACAO: Record<SituacaoDaConexao, boolean> = {
+  connecting: false,
+  healthy: true,
+  rate_limited: true,
+  token_expired: false,
+  scope_missing: false,
+  disconnected: false,
+  error: false,
+};
+
+/**
+ * As situações em que o calendário conectado NÃO deve contar como ocupação —
+ * derivadas da decisão acima, pelo mesmo motivo de `SITUACOES_VIVAS`.
+ *
+ * `rate_limited` conta: o Google pediu para esperar, mas o que ele já nos contou
+ * continua verdadeiro. `connecting` não conta porque ainda não contou nada.
+ * Fonte que não responde é pior que fonte nenhuma — contá-la faria a agenda
+ * marcar em cima de compromisso real que ela não enxerga mais.
+ */
+export const CONEXOES_QUE_NAO_CONTAM: readonly SituacaoDaConexao[] =
+  SITUACOES_DA_CONEXAO.filter((s) => !CONEXAO_CONTA_COMO_OCUPACAO[s]);
 
 /** Quem fornece a agenda conectada. */
 export const PROVEDORES_DE_AGENDA = ["google_calendar"] as const;
