@@ -47,6 +47,10 @@ export const AGENDAMENTOS: Agendamento[] = [
   { id: "c8", titulo: "Reunião comercial", quemSeraAtendido: "Loja Verde", responsavelId: "clara", comeca: em(addDays(SEG, 4), 11, 0), termina: em(addDays(SEG, 4), 12, 0), tipo: "Call", origem: "deskcomm", situacao: "confirmado" },
   { id: "c9", titulo: "Bloqueado (particular)", responsavelId: "clara", comeca: em(addDays(SEG, 5), 9, 0), termina: em(addDays(SEG, 5), 11, 0), origem: "google", situacao: "confirmado" },
   { id: "c10", titulo: "Consulta", quemSeraAtendido: "Sofia Braga", responsavelId: "davi", comeca: em(addDays(SEG, 5), 13, 30), termina: em(addDays(SEG, 5), 14, 15), tipo: "Consulta", origem: "deskcomm", situacao: "confirmado" },
+  // Um passado JÁ RESOLVIDO, de propósito: sem ele o teste da decisão 17 só
+  // poderia provar que os botões APARECEM, e não que eles somem depois de a
+  // pessoa já ter respondido "aconteceu?".
+  { id: "c12", titulo: "Consulta", quemSeraAtendido: "Vera Lins", responsavelId: "bruno", comeca: em(addDays(SEG, 1), 15, 0), termina: em(addDays(SEG, 1), 15, 30), tipo: "Consulta", origem: "deskcomm", situacao: "realizado" },
   { id: "c11", titulo: "Encaixe", quemSeraAtendido: "Léo Martins", responsavelId: "ana", comeca: em(ANCORA, 16, 0), termina: em(ANCORA, 16, 30), tipo: "Consulta", origem: "deskcomm", situacao: "confirmado" },
 ];
 
