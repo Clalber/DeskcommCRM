@@ -26,8 +26,10 @@ export default async function AgendaPage() {
   const activeOrg = await resolveActiveOrg(user);
   if (!activeOrg) redirect("/app");
 
-  const doPerfil = (user.user_metadata as { timezone?: unknown } | null)?.timezone;
-  const fusoDeApresentacao = typeof doPerfil === "string" && doPerfil ? doPerfil : null;
+  // `user.timezone` e não `user_metadata.timezone`: o AuthUser deste projeto
+  // não expõe o metadata cru — ele extrai o que toda tela precisa no primeiro
+  // render, como já fazia com o `locale`. O fuso entrou lá pela mesma razão.
+  const fusoDeApresentacao = user.timezone ?? null;
 
   return <AgendaClient fusoDeApresentacao={fusoDeApresentacao} />;
 }
