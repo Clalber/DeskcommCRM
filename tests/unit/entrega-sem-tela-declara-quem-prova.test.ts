@@ -66,6 +66,24 @@ function temTesteVivo(fonte: string): boolean {
   return /(^|[^.\w])(test|it)\s*\(/.test(semComentarios);
 }
 
+/**
+ * Os caminhos declarados num relatório.
+ *
+ * ⚠️ O `throw` não é defensivismo: `DECLARACAO` exige `(\S+)`, então um match
+ * SEM grupo 1 é impossível por construção. Ele existe porque a alternativa
+ * óbvia sob `noUncheckedIndexedAccess` — `m[1] ?? ""` — faz o gate ficar VERDE
+ * pelo motivo errado: `existsSync(path.join(RAIZ, ""))` é a raiz do repo, que
+ * sempre existe. Um instrumento que não sabe medir tem de vermelhecer, nunca
+ * devolver "está tudo certo".
+ */
+function alvosDeclarados(conteudo: string): string[] {
+  return [...conteudo.matchAll(DECLARACAO)].map((m) => {
+    const alvo = m[1];
+    if (alvo === undefined) throw new Error(`declaração casou sem alvo: ${m[0]}`);
+    return alvo;
+  });
+}
+
 describe("frente sem tela declara quem a prova em tela", () => {
   it("toda spec citada como prova-em-tela existe no disco", () => {
     if (!existsSync(PASTA)) return; // a entrega ainda não produziu evidência
@@ -73,7 +91,7 @@ describe("frente sem tela declara quem a prova em tela", () => {
     const quebrados: string[] = [];
     for (const arquivo of readdirSync(PASTA).filter((f) => f.endsWith(".md"))) {
       const conteudo = readFileSync(path.join(PASTA, arquivo), "utf-8");
-      for (const [, alvo] of conteudo.matchAll(DECLARACAO)) {
+      for (const alvo of alvosDeclarados(conteudo)) {
         if (!existsSync(path.join(RAIZ, alvo))) quebrados.push(`${arquivo} → ${alvo}`);
       }
     }
@@ -92,7 +110,7 @@ describe("frente sem tela declara quem a prova em tela", () => {
     const vazias: string[] = [];
     for (const arquivo of readdirSync(PASTA).filter((f) => f.endsWith(".md"))) {
       const conteudo = readFileSync(path.join(PASTA, arquivo), "utf-8");
-      for (const [, alvo] of conteudo.matchAll(DECLARACAO)) {
+      for (const alvo of alvosDeclarados(conteudo)) {
         const caminho = path.join(RAIZ, alvo);
         if (!existsSync(caminho)) continue; // o caso acima já cobre
         if (!temTesteVivo(readFileSync(caminho, "utf-8"))) vazias.push(`${arquivo} → ${alvo}`);
