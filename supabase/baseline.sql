@@ -15022,3 +15022,79 @@ create policy calendar_connections_dono_ou_manager_read on public.calendar_conne
 revoke all on public.calendar_connections from anon;
 
 notify pgrst, 'reload schema';
+
+-- ---- dois cliques não marcam duas vezes (migration 0182) ----
+--
+-- Entre a validação do motor de slots e o INSERT há uma janela em que o banco
+-- não repete a pergunta: dois POSTs simultâneos para o mesmo horário passam OS
+-- DOIS na checagem e criam dois agendamentos. É o duplo clique, e é a corrida
+-- entre duas pessoas marcando o mesmo slot.
+--
+-- Não é a constraint de sobreposição que a 0177 recusou, e a distinção importa:
+-- `exclude using gist` proibiria SOBREPOSIÇÃO (14h-15h contra 14h30-15h30, que é
+-- o encaixe legítimo) e exigiria `btree_gist`, ausente deste baseline. Índice
+-- único parcial é btree PURO e proíbe só a COINCIDÊNCIA EXATA de instante para o
+-- mesmo dono.
+--
+-- ⚠️ `owner_user_id is not null` NÃO conserta buraco nenhum, e a primeira versão
+-- deste comentário dizia que sim. Medido num pg17 descartável: com a condição e
+-- sem ela, duas linhas com dono NULL no mesmo instante entram IGUAL — `NULL`
+-- nunca colide com `NULL` numa UNIQUE, esteja a linha dentro ou fora do índice.
+-- A condição fica porque mantém fora do índice o que nunca colidiria e porque
+-- DECLARA o alcance da guarda (ela é sobre a agenda de uma PESSOA), não porque
+-- proteja. Comentário que promete guarda inexistente é pior que nenhum: quem lê
+-- para de procurar.
+--
+-- Custo declarado: proíbe dois compromissos do mesmo atendente no MESMO
+-- instante, que numa clínica às vezes é o encaixe deliberado. A troca é
+-- consciente, e a contrapartida é a rota devolver 409 dizendo QUAL compromisso
+-- está ali — senão troca-se uma corrida rara por uma parede diária.
+--
+-- Deduplica ANTES da constraint, e deslocando em vez de apagar: cancelar a
+-- duplicata destruiria um compromisso combinado com uma pessoa real, e isso uma
+-- migration não faz. Nenhum clone tem linha nesta tabela hoje (nasceu na 0177 e
+-- a rota que grava não existe); o bloco é para o clone que vier a ter.
+-- ─── 1 · deduplicar deslocando, sem perder nenhum compromisso ──────────────
+-- Empurra a 2ª, 3ª… ocorrência em 1 segundo cada, levando `ends_at` junto para
+-- a duração não mudar. Em laço porque um deslocamento pode cair em cima de
+-- outro instante já ocupado; 10 passadas cobrem qualquer caso real e o teto
+-- impede laço infinito num dado patológico.
+do $$
+declare
+  mexidas integer;
+  passada integer := 0;
+begin
+  loop
+    with duplicadas as (
+      select id,
+             row_number() over (
+               partition by organization_id, owner_user_id, starts_at
+               order by created_at, id
+             ) - 1 as posicao
+        from public.calendar_appointments
+       where status in ('pending', 'confirmed')
+         and owner_user_id is not null
+    )
+    update public.calendar_appointments a
+       set starts_at = a.starts_at + (d.posicao * interval '1 second'),
+           ends_at   = a.ends_at   + (d.posicao * interval '1 second')
+      from duplicadas d
+     where d.id = a.id
+       and d.posicao > 0;
+
+    get diagnostics mexidas = row_count;
+    passada := passada + 1;
+    exit when mexidas = 0 or passada >= 10;
+  end loop;
+end
+$$;
+
+-- ─── 2 · a guarda ─────────────────────────────────────────────────────────
+create unique index if not exists calendar_appointments_sem_duplicata_idx
+  on public.calendar_appointments (organization_id, owner_user_id, starts_at)
+  where status in ('pending', 'confirmed') and owner_user_id is not null;
+
+comment on index public.calendar_appointments_sem_duplicata_idx is
+  'Fecha a janela entre a validação do motor de slots e o INSERT: dois POSTs simultâneos para o mesmo instante e o mesmo atendente não viram dois compromissos. Parcial em (pending, confirmed) porque cancelado e realizado não ocupam ninguém, e em owner_user_id não nulo porque NULL não colide com NULL numa UNIQUE — e porque agendamento sem atendente não ocupa agenda. Quem captura o 23505 é a rota, que devolve 409 dizendo qual compromisso está ali.';
+
+notify pgrst, 'reload schema';
