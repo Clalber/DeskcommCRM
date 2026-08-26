@@ -21,6 +21,7 @@ import {
   ehConfirmacao,
   latestRepeatIndex,
   occupancyEventCount,
+  actionTurnCompleted,
   processNode,
   repeatTakenFromEvents,
   repeatTotalFromEvents,
@@ -338,15 +339,41 @@ async function applyResult(
   }
 
   const idemKey = `${node.id}:${enrollment.steps_taken}`;
+  const wantedType = eventTypeFor(result);
   const { inserted } = await db.insertEnrollmentEvent({
     organization_id: enrollment.organization_id,
     enrollment_id: enrollment.id,
     node_id: node.id,
-    event_type: eventTypeFor(result),
+    event_type: wantedType,
     payload: eventPayload(result),
     idempotency_key: idemKey,
   });
   const isReplay = !inserted;
+
+  // Corrida clássica: completeTurn grava `action_sent` com a chave N:steps e
+  // avança; um tick/inbound paralelo tenta `action_recheck` com a MESMA chave,
+  // perde o insert (replay) e AINDA assim reescrevia current_node_id pro action.
+  // Se o evento que já existe é de OUTRO tipo, não aplicar o patch deste result.
+  if (isReplay) {
+    const frescos = await db.loadEnrollmentEvents(enrollment.id);
+    const prior = frescos.find((e) => e.idempotency_key === idemKey);
+    if (prior?.event_type && prior.event_type !== wantedType) {
+      if (result.kind === "advance" && prior.event_type === "action_sent") {
+        // action_sent gravado; o update do completeTurn pode ter se perdido —
+        // aplica só o avanço sem inventar outro evento.
+        await db.updateEnrollment(enrollment.id, enrollment.organization_id, {
+          current_node_id: result.next_node_id,
+          status: "active",
+          next_eval_at: result.next_eval_at.toISOString(),
+          steps_taken: enrollment.steps_taken + 1,
+          claimed_until: null,
+          updated_at: clock().toISOString(),
+        });
+        tallyOutcome(result, summary);
+      }
+      return;
+    }
+  }
 
   const patch: EnrollmentPatch = {
     steps_taken: enrollment.steps_taken + 1,
@@ -495,6 +522,7 @@ async function processEnrollment(
   let wokeEarly: boolean | undefined;
   let actionEnqueued: boolean | undefined;
   let actionRecheckCount: number | undefined;
+  let actionCompleted: boolean | undefined;
   let planEnqueued: boolean | undefined;
   let planRecheckCount: number | undefined;
   let repeatTaken: number | undefined;
@@ -536,6 +564,7 @@ async function processEnrollment(
     if (node.type === "action") {
       actionEnqueued = waitElapsed;
       actionRecheckCount = occupancyEventCount(events, node.id);
+      actionCompleted = actionTurnCompleted(events, node.id);
     }
   }
   const textoInbound = inboundBodyOverride?.trim() ?? "";
@@ -583,6 +612,7 @@ async function processEnrollment(
     lastInboundBody,
     actionEnqueued,
     actionRecheckCount,
+    actionCompleted,
     smartWaits,
     planEnqueued,
     planRecheckCount,

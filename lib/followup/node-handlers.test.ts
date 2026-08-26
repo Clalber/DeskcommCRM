@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 
 import {
   BACKOFF_MS,
+  actionTurnCompleted,
   occupancyEventCount,
   processNode,
   resolveWaitPhase,
@@ -138,6 +139,65 @@ describe("occupancyEventCount", () => {
     const events = [{ node_id: "cap_nome", idempotency_key: "cap_nome:3" }];
     expect(resolveWaitPhase(events, "cap_nome", 8)).toBe(false);
     expect(occupancyEventCount(events, "cap_nome")).toBe(1);
+  });
+});
+
+describe("actionTurnCompleted", () => {
+  it("is true when action_sent sits in the current occupancy suffix", () => {
+    const events = [
+      { node_id: "prev", idempotency_key: "prev:1", event_type: "node_advanced" },
+      { node_id: "msg", idempotency_key: "msg:8", event_type: "turn_enqueued" },
+      { node_id: "msg", idempotency_key: "msg:9", event_type: "action_sent" },
+      { node_id: "msg", idempotency_key: "msg:10", event_type: "action_recheck" },
+    ];
+    expect(actionTurnCompleted(events, "msg")).toBe(true);
+  });
+
+  it("is false when the send has not closed yet", () => {
+    const events = [
+      { node_id: "msg", idempotency_key: "msg:8", event_type: "turn_enqueued" },
+      { node_id: "msg", idempotency_key: "msg:8:wake", event_type: "inbound_woke" },
+    ];
+    expect(actionTurnCompleted(events, "msg")).toBe(false);
+  });
+});
+
+describe("processNode — action after send closed", () => {
+  const node: FlowNode = {
+    id: "a1",
+    type: "action",
+    label: "Send",
+    position: { x: 0, y: 0 },
+    config: { mode: "text", body: "oi" },
+  };
+  const edges = [edge({ source: "a1", target: "cap", condition: { type: "always" } })];
+
+  it("advances when action_sent already landed (heals recheck race)", () => {
+    const result = processNode({
+      node,
+      edges,
+      enrollment: enrollment({ current_node_id: "a1" }),
+      lead: lead(),
+      clock,
+      actionEnqueued: true,
+      actionCompleted: true,
+      actionRecheckCount: 3,
+    });
+    expect(result).toMatchObject({ kind: "advance", next_node_id: "cap" });
+  });
+
+  it("still rechecks while the turn is in flight without action_sent", () => {
+    const result = processNode({
+      node,
+      edges,
+      enrollment: enrollment({ current_node_id: "a1" }),
+      lead: lead(),
+      clock,
+      actionEnqueued: true,
+      actionCompleted: false,
+      actionRecheckCount: 1,
+    });
+    expect(result.kind).toBe("recheck");
   });
 });
 

@@ -240,6 +240,19 @@ export function occupancyEventCount(events: EnrollmentEventRef[], nodeId: string
   return n;
 }
 
+/**
+ * O turno de envio desta estadia no `action` já fechou (`action_sent`).
+ * Se o enrollment ainda aponta pro action, foi corrida com `action_recheck`
+ * (ou update perdido no completeTurn) — o motor deve avançar, não rechecar.
+ */
+export function actionTurnCompleted(events: EnrollmentEventRef[], nodeId: string): boolean {
+  for (let i = events.length - 1; i >= 0; i--) {
+    if (events[i]!.node_id !== nodeId) break;
+    if (events[i]!.event_type === "action_sent") return true;
+  }
+  return false;
+}
+
 export function repeatTakenFromEvents(events: EnrollmentEventRef[], nodeId: string): number {
   return events.filter(
     (e) => e.node_id === nodeId && typeof e.payload?.repeat_index === "number",
@@ -339,6 +352,8 @@ export function processNode(input: {
   /** action dead-man counter: number of events already accumulated on this action node — used to
    *  bound rechecks so a turn that never completes routes to `dead` instead of looping forever. */
   actionRecheckCount?: number;
+  /** action: `action_sent` já existe nesta estadia — o envio fechou; avançar (sara corrida com recheck). */
+  actionCompleted?: boolean;
   /** trigger: as esperas adaptativas do grafo pinado (`coletarEsperasAdaptativas`). Vazio/ausente
    *  ⇒ não há o que planejar e o acionamento NÃO paga uma chamada de modelo. */
   smartWaits?: EsperaAdaptativa[];
@@ -366,6 +381,7 @@ export function processNode(input: {
     lastInboundBody,
     actionEnqueued,
     actionRecheckCount,
+    actionCompleted,
     smartWaits,
     planEnqueued,
     planRecheckCount,
@@ -587,7 +603,7 @@ export function processNode(input: {
       // which the action node lacked (steps_taken increments every recheck, so the
       // `${node}:${steps}` idempotency_key was a FRESH key each tick → a 2nd job → a 2nd
       // real send that the send sink's (job_id,seq) dedup can't catch).
-      if (!actionEnqueued) {
+      if (!actionEnqueued && !actionCompleted) {
         if (
           proximo?.type === "match_reply" &&
           proximo.config.save_to &&
@@ -601,6 +617,13 @@ export function processNode(input: {
           }
         }
         return { kind: "enqueue_turn", purpose: "send_message", wake_status: "active" };
+      }
+      // Envio já fechou (action_sent) mas o enrollment ainda está no action —
+      // típico de corrida: completeTurn avançou e um recheck concorrente reverteu.
+      if (actionCompleted) {
+        const edge = selectEdge(edges, node.id, { type: "always" });
+        if (!edge) return { kind: "fail", error: `action node "${node.id}" has no outbound edge` };
+        return { kind: "advance", next_node_id: edge.target, next_eval_at: clock() };
       }
       // Dead-man: the turn never completed. Rechecks count THIS occupancy only
       // (`occupancyEventCount`) so a `repeat` that volta no mesmo nó de ação não
