@@ -74,6 +74,8 @@ export function HistoricoDaAgenda({
   agora,
   onRemarcar,
   onCancelar,
+  onRealizado,
+  onFaltou,
   className,
 }: {
   agendamentos: Agendamento[];
@@ -81,6 +83,15 @@ export function HistoricoDaAgenda({
   agora: Date;
   onRemarcar?: (id: string) => void;
   onCancelar?: (id: string) => void;
+  /**
+   * Decisão 17: sem estes dois, `realizado` e `faltou` ficam SEM ESCRITOR.
+   * O vocabulário existe no tipo, o banco aceita, e nenhuma tela produz o
+   * valor — e o aviso da Central que pede "este atendimento aconteceu?" não
+   * tem para onde mandar o clique. Campo sem escritor é o mesmo defeito de
+   * evento sem consumidor, visto do outro lado.
+   */
+  onRealizado?: (id: string) => void;
+  onFaltou?: (id: string) => void;
   className?: string;
 }) {
   const [aba, setAba] = React.useState<AbaDoHistorico>("proximos");
@@ -177,9 +188,14 @@ export function HistoricoDaAgenda({
                     {situacao.rotulo}
                   </Badge>
                   <div className="flex shrink-0 items-center gap-1">
-                    {/* Ações só onde fazem sentido: remarcar um agendamento que
-                        já passou, ou cancelar um cancelado, são ofertas falsas —
-                        o mesmo defeito do botão que promete e não faz. */}
+                    {/*
+                      Ação por aba, e a lista de CADA aba tem razão própria.
+                      A primeira versão disto oferecia ação só em "próximos" e
+                      "aguardando", com o argumento de que remarcar o que já
+                      passou é ação sem sentido. O argumento vale para REMARCAR
+                      e eu o generalizei para todas — errado: o passado tem as
+                      duas ações mais importantes do histórico.
+                    */}
                     {(aba === "proximos" || aba === "aguardando") && (
                       <>
                         <Button
@@ -201,6 +217,33 @@ export function HistoricoDaAgenda({
                           onClick={() => onCancelar?.(a.id)}
                         >
                           Cancelar
+                        </Button>
+                      </>
+                    )}
+                    {aba === "passados" && a.situacao !== "realizado" && a.situacao !== "faltou" && (
+                      // Decisão 17. Só enquanto o desfecho NÃO foi registrado:
+                      // oferecer "Realizado" num que já está realizado seria
+                      // pedir de novo o que a pessoa já respondeu.
+                      <>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          data-testid={`realizado-${a.id}`}
+                          disabled={!onRealizado}
+                          title={onRealizado ? undefined : "Disponível quando a agenda estiver conectada"}
+                          onClick={() => onRealizado?.(a.id)}
+                        >
+                          Realizado
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          data-testid={`faltou-${a.id}`}
+                          disabled={!onFaltou}
+                          title={onFaltou ? undefined : "Disponível quando a agenda estiver conectada"}
+                          onClick={() => onFaltou?.(a.id)}
+                        >
+                          Faltou
                         </Button>
                       </>
                     )}

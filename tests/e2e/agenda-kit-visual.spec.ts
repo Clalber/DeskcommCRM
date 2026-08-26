@@ -537,10 +537,35 @@ test.describe("kit visual da Agenda", () => {
     await expect(remarcar).toBeVisible({ timeout: ESPERA });
     await expect(remarcar).toBeDisabled();
 
-    // E em "Passados" a ação nem é oferecida: remarcar o que já aconteceu não é
-    // uma ação indisponível, é uma ação sem sentido.
+    // E em "Passados" REMARCAR nem é oferecido: remarcar o que já aconteceu não
+    // é ação indisponível, é ação sem sentido. As duas coisas se tratam
+    // diferente — desabilitar sugeriria que um dia vai poder.
     await page.getByTestId("aba-passados").click();
     await expect(page.locator('[data-testid^="remarcar-"]')).toHaveCount(0);
+  });
+
+  test("o passado registra o desfecho — senão `realizado` e `faltou` ficam sem escritor", async () => {
+    // Decisão 17. Sem estes dois botões o vocabulário existe no tipo, o banco
+    // aceita, e NENHUMA tela produz o valor — e o aviso da Central que pergunta
+    // "este atendimento aconteceu?" não tem para onde mandar o clique. Campo sem
+    // escritor é evento sem consumidor visto do outro lado.
+    //
+    // Eu tinha deixado o passado SEM ação nenhuma, com um argumento que valia
+    // para "remarcar" e que eu generalizei para todas. O passado tem as duas
+    // ações mais importantes do histórico.
+    await page.getByTestId("aba-passados").click();
+    await expect(page.getByTestId("historico-da-agenda")).toHaveAttribute("data-aba", "passados");
+
+    // c1 é passado e ainda SEM desfecho: oferece os dois.
+    await expect(page.getByTestId("realizado-c1")).toBeVisible({ timeout: ESPERA });
+    await expect(page.getByTestId("faltou-c1")).toBeVisible();
+    // e, sem API ligada, nascem desabilitados — não habilitados e inertes
+    await expect(page.getByTestId("realizado-c1")).toBeDisabled();
+
+    // c12 é passado e JÁ resolvido: não pergunta de novo o que já foi respondido.
+    await expect(page.getByTestId("linha-c12")).toBeVisible();
+    await expect(page.getByTestId("realizado-c12")).toHaveCount(0);
+    await expect(page.getByTestId("faltou-c12")).toHaveCount(0);
   });
 
   test("evidência visual: claro, escuro e celular", async () => {
