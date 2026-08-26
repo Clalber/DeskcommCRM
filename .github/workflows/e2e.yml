@@ -290,10 +290,30 @@ jobs:
       # `GET /api/v1/agenda/horarios-livres` e o POST de criação: aí há clique
       # para dirigir, e a condição que a exclui deixa de existir. Enquanto isso,
       # rodá-la no CI custaria um job para exercitar um `skip`.
+      #
+      # `agenda-conectar-google` entra pela MESMA 21.3 e pela frente 3 (Google
+      # Calendar BYO), que também não tem pixel: o botão "Conectar Google" e a
+      # faixa de estado moram na tela da Agenda, da frente 2.
+      #
+      # São DUAS condições de saída, e a primeira depende só de tela:
+      #
+      #  (a) o caso SEM CHAVE sai daqui assim que a tela consumir
+      #      `googleEstaConfigurado()` — ele não precisa de Google nenhum, porque
+      #      o que prova é a instalação SEM `GOOGLE_CALENDAR_CLIENT_ID`, que é o
+      #      estado de 100% dos deploys novos (DECISÃO 3.1, envs opcionais). É o
+      #      caso que vem PRIMEIRO no arquivo de propósito: spec que só cobre o
+      #      caminho feliz deixa sem prova justamente a primeira tela que todo
+      #      self-hoster encontra;
+      #
+      #  (b) o caso COM CHAVE precisa, além da tela, de uma conta Google de teste
+      #      com consentimento pré-aprovado. Sem ela o job pararia num
+      #      `accounts.google.com` esperando login humano — e é por isto que ela
+      #      fica FORA do CI em vez de ficar sem existir.
       FORA_DO_CI: >-
         vps-fresh-onboarding.spec.ts
         inbox-tempo-real.spec.ts
         agenda-marcar-pela-tela.spec.ts
+        agenda-conectar-google.spec.ts
     steps:
       - uses: actions/checkout@v7
 
