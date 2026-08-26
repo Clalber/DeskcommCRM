@@ -33,6 +33,24 @@ Se você roda o DeskcommCRM numa VPS, **leia a seção da versão para a qual es
 
 ### Corrigido
 
+- **A IA avisa o cliente antes de chamar uma pessoa — antes ela saía de campo calada.**
+  Quando o atendimento automático parava e a conversa ia para a fila humana, o cliente
+  não recebia mensagem nenhuma: ele falava, e ninguém respondia. Acontecia nos dois
+  caminhos que param a IA, e o pior deles era o silencioso — a IA tinha acabado de
+  **perguntar o e-mail do cliente**, o sistema detectou insatisfação na mensagem dele e
+  desligou o automático; o cliente respondeu a pergunta e ela caiu no vazio. Agora, em
+  qualquer um dos caminhos, sai uma mensagem antes do silêncio, e ela é honesta com o
+  estado da sua equipe: com gente disponível ela convida a aguardar; sem ninguém livre
+  no momento, diz que o pedido ficou registrado; e numa instalação que ainda não
+  configurou atendente nenhum, **não promete contato**. Quem pediu para **parar** de
+  receber mensagens recebe a confirmação da parada, não uma oferta de atendente.
+- **Quem vai assumir a conversa agora sabe se o cliente foi avisado.** O aviso na Central
+  passou a dizer, em uma linha, se a pessoa do outro lado já sabe que alguém está vindo —
+  é o que muda a primeira frase que o atendente digita.
+- **Conversa parada por insatisfação detectada agora abre aviso na Central.** Esse caminho
+  devolvia a conversa à fila e calava a IA sem avisar ninguém: o cliente sem resposta e a
+  equipe sem sinal de que havia alguém esperando. Agora ele abre o mesmo aviso que os
+  outros caminhos já abriam, e sem duplicar quando dois motivos disparam na mesma conversa.
 - **O agente voltou a ouvir os áudios que chegam.** Quem mandava um áudio ouvia de volta
   "não consigo ouvir mensagens de voz" — e a transcrição ficava pronta no sistema meio
   minuto depois, sem ninguém para usá-la. A causa era de ritmo: as tarefas de bastidor
