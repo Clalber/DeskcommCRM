@@ -2378,6 +2378,25 @@ export const DICIONARIO: Traducoes = {
   "Mínimo de 10 caracteres": { es: "Mínimo de 10 caracteres" },
   "Resolvendo...": { es: "Resolviendo..." },
   "Confirmar resolução": { es: "Confirmar resolución" },
+
+  // ─── Admin de plataforma: Audit Log (lista + detalhe) ───
+  evento: { es: "evento" },
+  eventos: { es: "eventos" },
+  "Buscar...": { es: "Buscar..." },
+  "Limpar seleção": { es: "Limpiar selección" },
+  "Filtrar por actor user ID": { es: "Filtrar por actor user ID" },
+  "Data de início": { es: "Fecha de inicio" },
+  "Data de fim": { es: "Fecha de fin" },
+  "Limpar": { es: "Limpiar" },
+  "Recurso": { es: "Recurso" },
+  "Nenhum evento encontrado": { es: "Ningún evento encontrado" },
+  "Ajuste os filtros para ver entradas do audit log.": {
+    es: "Ajusta los filtros para ver entradas del audit log.",
+  },
+  "Entrada de audit não encontrada.": { es: "No se encontró la entrada de audit." },
+  "Sem actor registrado": { es: "Sin actor registrado" },
+  "Ver tenant": { es: "Ver tenant" },
+  "Abrir recurso": { es: "Abrir recurso" },
 };
 
 /**
