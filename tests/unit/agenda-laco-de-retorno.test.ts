@@ -18,7 +18,11 @@
  */
 import { describe, expect, it } from "vitest";
 
-import { atividadeDaTransicao, precisaEmpurrarAoGoogle } from "@/lib/agenda/laco";
+import {
+  atividadeDaTransicao,
+  autorParaTimeline,
+  precisaEmpurrarAoGoogle,
+} from "@/lib/agenda/laco";
 
 describe("qual atividade cada transição emite", () => {
   it("nascer confirmado é 'marcado'", () => {
@@ -74,5 +78,44 @@ describe("quando o Google precisa saber", () => {
 
   it("o que não muda nada não empurra", () => {
     expect(precisaEmpurrarAoGoogle("confirmed", "confirmed")).toBe(false);
+  });
+});
+
+/**
+ * O AUTOR ATRAVESSA DUAS LISTAS QUE DIVERGEM NA PONTA.
+ *
+ *   `AUTORES_DO_AGENDAMENTO`              user · ai · system · contact · sync
+ *   `crm_lead_activities.actor_kind` CHECK user · ai · system · rule · contact
+ *
+ * `sync` só existe de um lado, `rule` só do outro. Gravar `sync` na timeline é
+ * 23514 em RUNTIME, dentro de caminho fire-and-forget — invisível para
+ * typecheck, lint, test:unit e CI. O sintoma seria a atividade não nascendo, em
+ * silêncio.
+ */
+describe("o autor traduzido para a timeline", () => {
+  it("os três que existem nos dois lados passam intactos", () => {
+    expect(autorParaTimeline("user")).toBe("user");
+    expect(autorParaTimeline("ai")).toBe("ai");
+    expect(autorParaTimeline("contact")).toBe("contact");
+  });
+
+  it("SYNC vira system — e é por significado, não por conveniência", () => {
+    // Quem sincronizou não é pessoa nem IA: é o produto trazendo um fato de
+    // fora. A origem específica não se perde, continua em
+    // `calendar_appointments.created_by_kind`.
+    expect(autorParaTimeline("sync")).toBe("system");
+  });
+
+  it("valor desconhecido também vira system, nunca explode em runtime", () => {
+    // O desfecho seguro é a atividade NASCER como do sistema. Deixar passar
+    // seria trocar uma linha genérica por linha nenhuma.
+    expect(autorParaTimeline("um_autor_que_nao_existe")).toBe("system");
+  });
+
+  it("NENHUMA saída está fora do CHECK do banco", () => {
+    const doCheck = ["user", "ai", "system", "rule", "contact"];
+    for (const entrada of ["user", "ai", "system", "contact", "sync", "inventado"]) {
+      expect(doCheck).toContain(autorParaTimeline(entrada));
+    }
   });
 });

@@ -90,13 +90,13 @@ export async function POST(req: NextRequest): Promise<Response> {
   if (erroTipo) return fail("internal_error", erroTipo.message, 500, { requestId });
   if (!tipo) return fail("not_found", "Tipo de agendamento não encontrado.", 404, { requestId });
   if (!tipo.is_active) {
-    return fail("validation_failed", `"${tipo.name}" está desativado.`, 422, { requestId });
+    return fail("agenda_tipo_desativado", `"${tipo.name}" está desativado.`, 422, { requestId });
   }
 
   const donoId = parsed.data.owner_user_id ?? tipo.default_owner_user_id;
   if (!donoId) {
     return fail(
-      "validation_failed",
+      "agenda_sem_responsavel",
       `"${tipo.name}" não tem responsável definido, e sem responsável não há agenda.`,
       422,
       { requestId },
@@ -113,7 +113,7 @@ export async function POST(req: NextRequest): Promise<Response> {
   const leitura = lerJornadaDoBanco(disponibilidade?.schedule);
   if (!leitura.ok) {
     return fail(
-      "validation_failed",
+      "agenda_disponibilidade_invalida",
       `A disponibilidade deste responsável está mal configurada: ${leitura.motivoParaOperador}`,
       422,
       { requestId },
@@ -121,7 +121,7 @@ export async function POST(req: NextRequest): Promise<Response> {
   }
   if (!leitura.publicouHorarios) {
     return fail(
-      "validation_failed",
+      "agenda_fora_da_jornada",
       "Este responsável ainda não publicou horários de atendimento.",
       422,
       { requestId },
@@ -144,7 +144,7 @@ export async function POST(req: NextRequest): Promise<Response> {
     // Não é 409 nem 500: o horário pedido simplesmente não está entre os que
     // esta agenda oferece. A frase diz o que fazer, não só que não deu.
     return fail(
-      "validation_failed",
+      "agenda_horario_indisponivel",
       "Este horário não está disponível. Consulte os horários livres e escolha outro.",
       422,
       { requestId },

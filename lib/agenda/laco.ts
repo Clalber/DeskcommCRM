@@ -81,3 +81,33 @@ export function precisaEmpurrarAoGoogle(de: SituacaoAnterior, para: Transicao): 
   if (de === null) return para === "pending" || para === "confirmed";
   return para === "rescheduled" || para === "cancelled";
 }
+
+/**
+ * O autor do agendamento traduzido para o vocabulário da TIMELINE.
+ *
+ * ⚠️ AS DUAS LISTAS SE PARECEM E DIVERGEM NA PONTA — medido:
+ *
+ *   `AUTORES_DO_AGENDAMENTO` (lib/agenda/tipos.ts)  user · ai · system · contact · sync
+ *   `crm_lead_activities.actor_kind` CHECK           user · ai · system · rule · contact
+ *
+ * Divergem nos DOIS sentidos: `sync` só existe na agenda, `rule` só existe no
+ * CHECK. Gravar `sync` na timeline é rejeitado pelo Postgres com 23514 — em
+ * RUNTIME, dentro de caminho fire-and-forget, sem passar por typecheck, lint,
+ * test:unit nem CI. O sintoma seria a atividade não nascendo, em silêncio.
+ *
+ * A escolha é mapear em vez de estender o CHECK, e a razão é de significado:
+ * quem sincronizou não é uma pessoa nem a IA — é o próprio produto trazendo um
+ * fato de fora, que é exatamente o que `system` já quer dizer na timeline. A
+ * origem específica não se perde: ela continua em
+ * `calendar_appointments.created_by_kind`, cujo CHECK tem `sync` de propósito.
+ *
+ * Estender o CHECK custaria migration + apêndice no baseline + MANIFEST para
+ * distinguir, na tela, "o sistema registrou" de "o sistema registrou vindo do
+ * Google" — distinção que nenhuma tela pede hoje.
+ */
+export function autorParaTimeline(autor: string): "user" | "ai" | "system" | "contact" {
+  if (autor === "user" || autor === "ai" || autor === "contact") return autor;
+  // `sync` e `system` caem aqui, e qualquer valor novo também: o desfecho
+  // seguro é a atividade NASCER como do sistema, nunca ser rejeitada em runtime.
+  return "system";
+}
