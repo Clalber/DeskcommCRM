@@ -110,7 +110,12 @@ export async function executarTickDoRelogio(): Promise<{
       enqueueJob: enfileirarFollowup,
     };
     const acordados = await aplicarRespostasQueChegaram(admin, deps);
-    if (acordados > 0) mexeu = true;
+    if (acordados > 0) {
+      mexeu = true;
+      // Sem esta linha o SIM que o WAHA gravou e o Hobby não processou some
+      // do radar — o sintoma é "Aguardando resposta" com mensagem na inbox.
+      logger.info("[relogio] follow-up avancou por resposta inbound", { acordados });
+    }
     const summary = await runFollowupTick(deps);
     if (
       summary.claim_falhou ||

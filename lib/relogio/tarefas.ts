@@ -36,3 +36,8 @@ export function comandoCurlDoRelogio(appUrl: string): string {
   const base = appUrl.replace(/\/$/, "");
   return `curl -fsS -X POST -H "Authorization: Bearer $INTERNAL_SECRET" "${base}${CAMINHO_DO_TICK}"`;
 }
+
+/** URL absoluta do tick — para colar em cron-job.org / GitHub Actions. */
+export function urlDoTickDoRelogio(appUrl: string): string {
+  return `${appUrl.replace(/\/$/, "")}${CAMINHO_DO_TICK}`;
+}
