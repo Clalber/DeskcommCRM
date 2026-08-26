@@ -174,3 +174,83 @@ Tests  1 failed | 30 passed (31)
 $ git status --porcelain lib/agenda/    # (vazio)
 Tests  31 passed (31)
 ```
+
+---
+
+# Segunda leva — a subtração da DECISÃO 11
+
+Medido em 2026-08-26 ~14:35 -0300, SHA `d01cc63b`, mesmo worktree. A suíte do
+motor tem 26 casos aqui (eram 19; a DECISÃO 11 trouxe 8 e converteu 1).
+
+## S7 — a subtração não subtrai
+
+**Previsto: 6 falhas. Medido: 6.**
+
+```console
+Tests  6 failed | 20 passed (26)
+  × exceção que bloqueia o dia inteiro zera aquele dia, e só aquele
+  × indisponível NO MEIO do dia tira só aquelas horas — o resto do dia continua
+  × subtrair no meio parte a janela em DUAS, e a grade renasce em cada pedaço
+  × disponível E indisponível no mesmo dia: a segunda subtrai o que a primeira abriu
+  × bloqueio de dia inteiro VENCE exceção disponível do mesmo dia — decidido, não acidental
+  × dois bloqueios no mesmo dia subtraem os dois, em qualquer ordem de cadastro
+```
+
+## S8 — a guarda de não-sobreposição removida
+
+**Eu previ que era REDUNDANTE. A medição me contradisse.**
+
+Meu raciocínio: com o corte fora da faixa, os dois `if` seguintes já produziriam
+a faixa intacta, então a guarda não faria diferença. Errado — e o caso que me
+escapou é o segundo corte:
+
+> jornada 09:00–18:00, cortes `(15:00,16:00)` e depois `(10:00,11:00)`.
+> Depois do primeiro, sobram `[09:00–15:00]` e `[16:00–18:00]`. O segundo corte
+> está inteiramente ANTES da faixa `16:00–18:00` — e sem a guarda o ramo
+> `corte.fim < faixa.fim` empurra `{11:00, 18:00}`, **reabrindo as 15h–16h que o
+> primeiro corte tinha removido**.
+
+```console
+Tests  1 failed | 25 passed (26)
+  × dois bloqueios no mesmo dia subtraem os dois, em qualquer ordem de cadastro
+```
+
+Quem pegou foi um teste que eu tinha escrito por completude, não por suspeita.
+
+## S9 — o sinal da adjacência (`<=` vira `<` na guarda)
+
+**Previsto pelo QAVivo como "um sinal trocado ali come um slot inteiro".
+Medido: não come. 26/26 verdes.**
+
+```console
+Tests  26 passed (26)
+```
+
+Não é que o teste dele seja decorativo — ver S10. É que **a adjacência está
+correta por construção**, não por escolha de sinal na guarda: quando o corte
+encosta na faixa, os dois ramos do corpo (`corte.inicio > faixa.inicio` e
+`corte.fim < faixa.fim`, ambos estritos) reconstroem a faixa idêntica. A guarda
+chega antes e devolve a mesma coisa. As duas rotas concordam, então trocar o
+sinal de uma não é observável — é o ramo redundante que engana a sabotagem.
+
+## S10 — a guarda DESCARTA a faixa em vez de preservá-la
+
+A sabotagem que os testes de adjacência **de fato** vigiam, e o modo de falha
+realista de quem reescrever a função (esquecer o `resto.push(faixa)` antes do
+`continue`).
+
+**Medido: 3 falhas.**
+
+```console
+Tests  3 failed | 23 passed (26)
+  × ADJACÊNCIA NÃO É SOBREPOSIÇÃO: bloqueio que termina às 12h não come o slot das 12h
+  × bloqueio que encosta no FIM da janela também não a toca
+  × dois bloqueios no mesmo dia subtraem os dois, em qualquer ordem de cadastro
+```
+
+## O que esta leva ensina, e não é sobre agenda
+
+Três previsões, três desfechos diferentes: uma bateu (S7), uma me contradisse
+(S8 — eu ia declarar redundante o que era essencial), e uma contradisse quem a
+propôs (S9). **Nenhuma das três seria descoberta sem rodar.** Prever é o que
+torna a medição informativa; nunca é o que a substitui.
