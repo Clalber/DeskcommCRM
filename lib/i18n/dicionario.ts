@@ -2237,6 +2237,31 @@ export const DICIONARIO: Traducoes = {
   },
   "Reativando...": { es: "Reactivando..." },
   "Confirmar reativação": { es: "Confirmar reactivación" },
+
+  // ─── Admin de plataforma: Tenant health ───
+  "Não foi possível carregar o status de saúde do tenant. Tente recarregar a página.": {
+    es: "No se pudo cargar el estado de salud del tenant. Intenta recargar la página.",
+  },
+  "Status de Saúde": { es: "Estado de Salud" },
+  "Atualizado às": { es: "Actualizado a las" },
+  "Sem sessões": { es: "Sin sesiones" },
+  conectada: { es: "conectada" },
+  conectadas: { es: "conectadas" },
+  "Não conectado": { es: "No conectado" },
+  "Última sync": { es: "Última sync" },
+  "Expira em": { es: "Expira en" },
+  "Token expira": { es: "Token expira" },
+  usado: { es: "usado" },
+  "Sem orçamento": { es: "Sin presupuesto" },
+  Consumido: { es: "Consumido" },
+  "Orçamento": { es: "Presupuesto" },
+  Ilimitado: { es: "Ilimitado" },
+  Limite: { es: "Límite" },
+  "Não aplicado": { es: "No aplicado" },
+  "Só avisa": { es: "Solo avisa" },
+  "Para a IA no limite": { es: "Detiene la IA en el límite" },
+  "Último evento": { es: "Último evento" },
+  "Orçamento IA": { es: "Presupuesto IA" },
 };
 
 /**
