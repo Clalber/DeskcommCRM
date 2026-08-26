@@ -8,7 +8,7 @@ Se você roda o DeskcommCRM numa VPS, **leia a seção da versão para a qual es
 
 ## [Não lançado]
 
-## [1.6.0] — 2026-08-26
+## [1.7.0] — 2026-08-26
 
 ### Adicionado
 
@@ -64,6 +64,9 @@ Se você roda o DeskcommCRM numa VPS, **leia a seção da versão para a qual es
   do acervo aceitavam escrita de qualquer papel, inclusive o mais restrito, por fora das telas
   do produto. Agora exigem gerente ou administrador, como as telas sempre exigiram.
 
+## [1.6.0] — 2026-08-26
+
+### Adicionado
 
 - **Formulários do Respondi entram como lead, com as respostas na ficha.** Antes, quem ligava
   um formulário do Respondi ao CRM recebia um erro e **nenhum lead era criado** — o webhook

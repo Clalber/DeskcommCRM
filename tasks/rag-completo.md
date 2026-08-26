@@ -96,7 +96,9 @@ categoria por agente.
 
 ## Doutrina de packaging (o Rafael declarou: este é um **minor**)
 
-Alvo: **1.6.0** — capacidade nova de schema, sem quebrar quem já instalou.
+Alvo: **1.7.0** — capacidade nova de schema, sem quebrar quem já instalou. (Era 1.6.0
+até a `main` cortar essa versão em 2026-08-26, no meio desta frente; o número de uma
+release só se sabe na hora do merge, e não antes.)
 Obrigações que entram NESTE PR (não no "polimento final"):
 
 1. Migration `0181` + apêndice idempotente no `baseline.sql` + linha no MANIFEST — **feito**.
