@@ -57,6 +57,8 @@ import { logger } from "@/lib/logger";
 import {
   RETENCAO_AUDITORIA_DIAS_PADRAO,
   RETENCAO_AUDITORIA_DIAS_PISO,
+  RETENCAO_ESPELHO_AGENDA_DIAS_PADRAO,
+  RETENCAO_ESPELHO_AGENDA_DIAS_PISO,
   RETENCAO_FILA_DIAS_PADRAO,
   RETENCAO_FILA_DIAS_PISO,
   interpretarRetencao,
@@ -88,8 +90,13 @@ export interface ResultadoDaRetencao {
   /** O último lote veio cheio e o teto foi atingido: sobrou trabalho para amanhã. */
   fila_tem_resto: boolean;
   auditoria_tem_resto: boolean;
+  /** O espelho da agenda conectada — cache com prazo (migration 0187). */
+  espelho_apagado: number;
+  lotes_espelho: number;
+  espelho_tem_resto: boolean;
   retencao_fila_dias: number;
   retencao_auditoria_dias: number;
+  retencao_espelho_dias: number;
   /** Avisos de configuração — nunca ausentes em silêncio quando existem. */
   avisos: string[];
 }
@@ -97,14 +104,14 @@ export interface ResultadoDaRetencao {
 /** Só a superfície que este cron usa — o teste injeta uma implementação. */
 export interface PodaDb {
   rpc(
-    nome: "fn_podar_fila_de_jobs" | "fn_expurgar_auditoria_vencida",
+    nome: "fn_podar_fila_de_jobs" | "fn_expurgar_auditoria_vencida" | "fn_expurgar_espelho_da_agenda",
     args: { p_retencao_dias: number; p_limite: number },
   ): Promise<{ data: number | null; error: { message: string } | null }>;
 }
 
 async function drenar(
   db: PodaDb,
-  nome: "fn_podar_fila_de_jobs" | "fn_expurgar_auditoria_vencida",
+  nome: "fn_podar_fila_de_jobs" | "fn_expurgar_auditoria_vencida" | "fn_expurgar_espelho_da_agenda",
   dias: number,
 ): Promise<{ apagadas: number; lotes: number; temResto: boolean }> {
   let apagadas = 0;
@@ -132,7 +139,11 @@ async function drenar(
  */
 export async function podarHistorico(
   db: PodaDb,
-  ambiente: { JOB_QUEUE_RETENTION_DAYS?: string; AUDIT_LOG_RETENTION_DAYS?: string },
+  ambiente: {
+    JOB_QUEUE_RETENTION_DAYS?: string;
+    AUDIT_LOG_RETENTION_DAYS?: string;
+    CALENDAR_MIRROR_RETENTION_DAYS?: string;
+  },
 ): Promise<ResultadoDaRetencao> {
   const fila = interpretarRetencao(ambiente.JOB_QUEUE_RETENTION_DAYS, {
     chave: "JOB_QUEUE_RETENTION_DAYS",
@@ -145,19 +156,32 @@ export async function podarHistorico(
     piso: RETENCAO_AUDITORIA_DIAS_PISO,
   });
 
+  const espelho = interpretarRetencao(ambiente.CALENDAR_MIRROR_RETENTION_DAYS, {
+    chave: "CALENDAR_MIRROR_RETENTION_DAYS",
+    padrao: RETENCAO_ESPELHO_AGENDA_DIAS_PADRAO,
+    piso: RETENCAO_ESPELHO_AGENDA_DIAS_PISO,
+  });
+
   const jobs = await drenar(db, "fn_podar_fila_de_jobs", fila.dias);
   const linhas = await drenar(db, "fn_expurgar_auditoria_vencida", auditoria.dias);
+  const eventos = await drenar(db, "fn_expurgar_espelho_da_agenda", espelho.dias);
 
   return {
     jobs_apagados: jobs.apagadas,
     auditoria_apagada: linhas.apagadas,
+    espelho_apagado: eventos.apagadas,
     lotes_fila: jobs.lotes,
     lotes_auditoria: linhas.lotes,
+    lotes_espelho: eventos.lotes,
     fila_tem_resto: jobs.temResto,
     auditoria_tem_resto: linhas.temResto,
+    espelho_tem_resto: eventos.temResto,
     retencao_fila_dias: fila.dias,
     retencao_auditoria_dias: auditoria.dias,
-    avisos: [fila.aviso, auditoria.aviso].filter((a): a is string => a !== null),
+    retencao_espelho_dias: espelho.dias,
+    avisos: [fila.aviso, auditoria.aviso, espelho.aviso].filter(
+      (a): a is string => a !== null,
+    ),
   };
 }
 
@@ -167,7 +191,14 @@ export async function podarHistorico(
  * não fez nada" sozinho é satisfeito por um cron que nunca audita.
  */
 export function houveEfeito(resultado: ResultadoDaRetencao): boolean {
-  return resultado.jobs_apagados > 0 || resultado.auditoria_apagada > 0;
+  return (
+    resultado.jobs_apagados > 0 ||
+    resultado.auditoria_apagada > 0 ||
+    // A terceira conta: sem ela, uma rodada que só podou o espelho apagaria
+    // linhas e não deixaria registro — e o CLAUDE.md manda auditar QUANDO HÁ
+    // EFEITO, não parar de auditar.
+    resultado.espelho_apagado > 0
+  );
 }
 
 async function handle(req: NextRequest): Promise<Response> {

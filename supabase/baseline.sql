@@ -13639,6 +13639,56 @@ revoke execute on function public.fn_semear_tipos_de_agendamento_na_org_nova() f
 grant  execute on function public.fn_semear_tipos_de_agendamento(uuid) to service_role;
 grant  execute on function public.fn_semear_tipos_de_agendamento_na_org_nova() to service_role;
 
+-- ---- o espelho do Google é cache com prazo: função (migration 0187) ----
+--
+-- A PRIMEIRA metade da 0187, aqui porque cria FUNÇÃO e a VARREDURA anon proíbe
+-- `create function` depois dela.
+--
+-- `calendar_external_events` ficou fora da cascata de LGPD (0184) por não ter
+-- `contact_id`. A decisão foi declarar ESPELHO — a fonte da verdade é a agenda do
+-- Google do próprio cliente. Mas essa declaração só é honesta com três
+-- propriedades, e faltava a terceira: PRAZO. Sem ele, "espelho" é um nome mais
+-- simpático para arquivo permanente de compromissos de terceiros.
+--
+-- Corta por `ends_at`, nunca por `created_at`: compromisso futuro não envelhece,
+-- e apagá-lo faria a agenda marcar em cima de hora ocupada. Piso de 7 dias e não
+-- 90 como o da auditoria — auditoria é rastro que precisa sobreviver a um
+-- incidente; isto é cache que o sync repõe.
+create or replace function public.fn_expurgar_espelho_da_agenda(
+  p_retencao_dias int default null,
+  p_limite int default null
+) returns int
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  -- 90 dias de passado visível; piso de 7 porque isto é cache reconstruível pelo
+  -- sync, e não rastro que precise sobreviver a um incidente.
+  v_dias int := greatest(coalesce(p_retencao_dias, 90), 7);
+  v_limite int := least(greatest(coalesce(p_limite, 1000), 1), 10000);
+  v_apagadas int;
+begin
+  with vencidos as (
+    select e.id
+      from public.calendar_external_events e
+     -- `ends_at` e não `created_at`: um compromisso futuro não envelhece, e
+     -- apagá-lo faria a agenda marcar em cima de hora ocupada.
+     where e.ends_at < now() - make_interval(days => v_dias)
+     order by e.ends_at
+     limit v_limite
+  )
+  delete from public.calendar_external_events e
+   using vencidos v
+   where e.id = v.id;
+  get diagnostics v_apagadas = row_count;
+  return v_apagadas;
+end;
+$$;
+
+revoke execute on function public.fn_expurgar_espelho_da_agenda(int, int) from public, anon, authenticated;
+grant  execute on function public.fn_expurgar_espelho_da_agenda(int, int) to service_role;
+
 -- ---- VARREDURA anon: função nova nasce exposta em quem ATUALIZA (migration 0116) ----
 --
 -- ⚠️ ESTE BLOCO É, DE PROPÓSITO, O ÚLTIMO DO ARQUIVO. Apêndice novo entra ANTES
@@ -15357,5 +15407,16 @@ alter table public.calendar_event_types
   drop constraint if exists calendar_event_types_color_format;
 alter table public.calendar_event_types
   drop column if exists color;
+
+notify pgrst, 'reload schema';
+
+-- ---- o espelho do Google é cache com prazo (migration 0187) ----
+--
+-- A SEGUNDA metade da 0187. A função está ANTES do bloco da VARREDURA anon.
+comment on table public.calendar_external_events is
+  'ESPELHO, somente-leitura, do que já existe na agenda conectada. Ocupa horário e aparece na grade, mas NÃO é compromisso nosso: não tem lead, não tem estado de atendimento e nunca é reescrito por nós. É CACHE — reconstruível pelo sync, apagado em cascata quando a conexão sai, e com prazo (fn_expurgar_espelho_da_agenda, migration 0187). Fica FORA da cascata de LGPD por não ter contact_id: o único vínculo com a pessoa é o title copiado do Google, e a fonte da verdade daquele dado é a agenda do próprio cliente, onde o titular exerce o direito com o controlador de lá. A mira de verdade só nasce com o escritor do sync, que terá o ical_uid para ligar — decisão de QUANDO, não de SE.';
+
+create index if not exists calendar_external_events_poda_idx
+  on public.calendar_external_events (ends_at);
 
 notify pgrst, 'reload schema';
