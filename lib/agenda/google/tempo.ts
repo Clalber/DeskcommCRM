@@ -61,7 +61,10 @@
  * - nos 13 fusos que `lib/tempo/fusos.ts` oferece, 2018 a 2027, meses inteiros
  *   (com os dias 29, 30 e 31, que é onde mora a virada de fim de mês):
  *   **47.476 pares, zero divergências**;
- * - fora desse conjunto, **três pares divergem**, e o lado errado é o do motor:
+ * - fora desse conjunto, **divergem 20 pares em 83.996** (23 fusos, 2018 a 2027)
+ *   — e não são anomalias avulsas: é **uma por virada de horário de verão, por
+ *   ano**, concentradas em `Asia/Beirut` e `Asia/Tehran`. O lado errado é o do
+ *   motor:
  *
  *   ```
  *   Asia/Beirut 2026-03-29  daqui 2026-03-28T22:00Z (parede 29/03 01:00 — dia certo)
