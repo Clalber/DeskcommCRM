@@ -18,6 +18,9 @@ export const PUBLIC_PATHS: RegExp[] = [
   // Heartbeat do agente do host (bearer INTERNAL_SECRET/INTERNAL_CRON_SECRET,
   // checado dentro da própria rota) — sem cookie de sessão, igual /cron/.
   /^\/api\/v1\/system\/agent$/,
+  // Relógio Hobby (GitHub Actions / cron-job.org). Auth é Bearer na própria
+  // rota — sem isto o proxy devolve 401 e o follow-up waiting_reply nunca anda.
+  /^\/api\/v1\/system\/relogio\/tick$/,
   /^\/api\/internal\//,
   /^\/api\/mcp(\/.*)?$/,
   /^\/_next\//,
@@ -29,6 +32,7 @@ export const PUBLIC_PATHS: RegExp[] = [
   // antes desta linha: `GET /icon` → 307 para `/login?next=%2Ficon`, enquanto
   // `/icon.png` (inexistente) devolvia 404 — a diferença é só a extensão.
   /^\/icon$/,
+  /^\/manifest\.webmanifest$/,
   /^\/team\/accept-invite\/.+$/,
   /^\/account-suspended$/,
   // Documentos legais. O checkbox obrigatório de `/onboarding/welcome` linka os

@@ -58,6 +58,10 @@ const DIR = join(process.cwd(), "lib", "followup");
  * `agenda` = 'nenhum' → menciona a coluna sem agendar (leitura, tradução).
  */
 const ESCRITORES: Record<string, { agenda: "agora" | "futuro" | "nenhum"; nota: string }> = {
+  "enroll.ts": {
+    agenda: "agora",
+    nota: "o enrollment nasce vencido — o insert omite next_eval_at e o default now() do banco decide (0147).",
+  },
   "gatilho-etapa.ts": {
     agenda: "agora",
     nota: "o enrollment nasce vencido — o insert omite a coluna e o default now() do banco decide (0147).",
