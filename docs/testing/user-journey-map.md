@@ -595,6 +595,17 @@ espaço e acento, que era o gatilho do defeito #6.
 
 ## Acervo de conhecimento — o acervo é da organização (2026-08-26)
 
+> **O que o CI NÃO prova aqui.** `tests/e2e/acervo-de-conhecimento.spec.ts` tem 6
+> casos, e **4 deles pulam no CI** por falta de `OPENAI_API_KEY_E2E` — chave paga,
+> que não vai para segredo de repositório público. Medido, não suposto: a parte 2
+> do `e2e` era `73 passed / 0 skipped` na main sem a spec e virou `75 passed /
+> 4 skipped` com ela. O CI prova que a tela DIZ que falta chave e que o material
+> sem chave fica esperando; **que o material vira trecho buscável — o produto — só
+> é provado rodando a spec com a chave**, e essa rodada está em
+> `evidence/acervo-de-conhecimento/`. Mesmo formato do aviso que a doutrina já dá
+> sobre `vps-fresh-onboarding`: um `skip` silencioso é indistinguível de um `pass`
+> no placar agregado.
+
 **A afirmação de 2026-07-30 abaixo ("implementado e provado") era verdadeira para
 UM caminho e falsa para o produto.** O que estava provado era: FAQ colada, pelo
 agente padrão, numa organização com a chave no `.env`. Fora disso, medido agora:

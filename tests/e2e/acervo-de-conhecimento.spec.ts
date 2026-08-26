@@ -25,6 +25,28 @@
  * embedding com dublê provaria que o código chama a função, não que o material
  * fica buscável. Sem a chave no ambiente, os casos que dependem dela são
  * PULADOS com motivo escrito — nunca passam por omissão.
+ *
+ * ═══ O QUE O CI **NÃO** PROVA (leia antes de confiar no `e2e` verde) ═══
+ *
+ * O CI não tem `OPENAI_API_KEY_E2E` — é uma chave paga, e segredo de repositório
+ * público não é lugar para ela. Então **4 dos 6 casos PULAM lá**, e é medido, não
+ * suposto: a parte 2 do `e2e` tinha `73 passed / 0 skipped` na main sem esta spec
+ * e passou a `75 passed / 4 skipped` com ela (run 33020704572 × 33017042426).
+ *
+ * O que o CI prova, portanto, são os dois casos que não dependem da chave: a tela
+ * DIZ que falta chave, e o material cadastrado sem chave fica esperando em vez de
+ * mentir. **Que o material vira trecho buscável de verdade — o produto — só é
+ * provado rodando esta spec com a chave**, como está em
+ * `evidence/acervo-de-conhecimento/prova-de-tela-pos-merge.txt`.
+ *
+ * É o mesmo formato do aviso que a doutrina já dá sobre `vps-fresh-onboarding`
+ * (o `e2e` verde não prova a jornada de instalação fresca). Um `skip` silencioso
+ * é indistinguível de um `pass` no placar agregado; por isso o número está aqui.
+ *
+ * Para rodar a prova inteira, localmente:
+ *
+ *     OPENAI_API_KEY_E2E=sk-... E2E_BASE_URL=http://localhost:3011 \
+ *       pnpm exec playwright test tests/e2e/acervo-de-conhecimento.spec.ts
  */
 import * as fs from "node:fs";
 import * as path from "node:path";
