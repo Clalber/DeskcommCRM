@@ -281,11 +281,28 @@ export function classificarErroDoGoogle(erro: unknown, operacao: OperacaoNoGoogl
 }
 
 /**
- * O vocabulário de estado de conexão que este repo já usa
- * (`tenant_integrations.status`, `channel_sessions`). Não se inventa palavra
- * nova: `needs_reauth` não existe aqui.
+ * O vocabulário de estado da conexão — **o do banco, não um subconjunto meu**.
+ *
+ * Estes sete valores são exatamente o `calendar_connections_status_check` da
+ * migration 0177, que por sua vez repete o de `tenant_integrations`. Não se
+ * inventa palavra nova aqui: `needs_reauth`, que a v1 da arquitetura propunha,
+ * não existe neste repo.
+ *
+ * ⚠️ Esta lista já foi menor, e a razão de ter sido é uma armadilha de ordem:
+ * quando escrevi este arquivo o schema ainda não existia, então declarei os
+ * quatro estados que os desfechos produziam. O CHECK do banco tem sete — e
+ * `rate_limited` é justamente o estado que faltava para o desfecho `recuar` ter
+ * para onde ir. Tipo que nasce antes da coluna tem de ser corrigido CONTRA a
+ * coluna quando ela chega, nunca o contrário.
  */
-export type StatusDaConexao = "healthy" | "token_expired" | "scope_missing" | "error";
+export type StatusDaConexao =
+  | "connecting"
+  | "healthy"
+  | "token_expired"
+  | "scope_missing"
+  | "disconnected"
+  | "rate_limited"
+  | "error";
 
 /**
  * Em que estado este desfecho deixa a agenda conectada — e, com isso, se ela
@@ -310,7 +327,10 @@ export function estadoDaConexaoApos(desfecho: DesfechoDoGoogle): StatusDaConexao
       return "error";
     case "ja_esta_feito":
       return "healthy";
+    // O Google mandou desacelerar. O estado existe no banco e é diferente de
+    // "quebrada": a conexão está boa, só não pode ser consultada agora.
     case "recuar":
+      return "rate_limited";
     case "transitorio":
     case "ressincronizar":
     case "evento_sumiu":
@@ -322,7 +342,13 @@ export function estadoDaConexaoApos(desfecho: DesfechoDoGoogle): StatusDaConexao
  * Esta conexão pode ser contada no cálculo de horário livre?
  *
  * Só `healthy` conta. Qualquer outro estado significa que não sabemos o que há
- * naquela agenda — e "não sei" nunca pode ser lido como "está livre".
+ * naquela agenda — e **"não sei" nunca pode ser lido como "está livre"**.
+ *
+ * Isso vale inclusive para `rate_limited`, que é o mais tentador de tratar como
+ * benigno: a conexão está saudável, só não respondeu agora. Mas o motor de
+ * horários não pergunta se a conexão está bem — pergunta o que há na agenda. E
+ * a resposta, enquanto ela não responde, é "não sei". Quem lê `false` aqui
+ * PARA de oferecer horário daquele calendário; não passa a oferecer tudo.
  */
 export function contaComoConflito(status: StatusDaConexao): boolean {
   return status === "healthy";
