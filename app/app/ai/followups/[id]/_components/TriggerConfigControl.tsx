@@ -67,7 +67,13 @@ const KIND_LABEL: Record<TriggerKind, string> = {
   manual: "Manual",
   silence: "Silêncio",
   stage_change: "Etapa do funil",
-  case_opened: "Pedido de ajuda",
+  // "Agente pediu ajuda", e não "Pedido de ajuda": numa lista ao lado de
+  // "Manual", "Silêncio" e "Etapa do funil", o rótulo sem sujeito não diz
+  // QUEM pediu. O resumo do botão (`resumoDoGatilho`) e o vocabulário
+  // (`lib/followup/vocabulario.ts`) já falam de "o agente pede ajuda" —
+  // esta era a única das três grafias sem sujeito, e as duas specs que
+  // cercam o gatilho procuram por ela com `exact: true`.
+  case_opened: "Agente pediu ajuda",
   webhook: "Automação (Webhooks)",
 };
 

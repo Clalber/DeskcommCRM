@@ -3,7 +3,7 @@
  *
  * Auth: sessão admin OU Bearer INTERNAL_SECRET (GitHub Actions / cron externo).
  */
-import { randomUUID } from "node:crypto";
+import { randomUUID, timingSafeEqual } from "node:crypto";
 import type { NextRequest } from "next/server";
 
 import { fail, ok } from "@/lib/api/wrappers";
@@ -16,12 +16,30 @@ import { executarTickDoRelogio } from "@/lib/relogio/executar";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
+/**
+ * Comparação em TEMPO CONSTANTE, e não `includes()`.
+ *
+ * `===`/`includes` de string sai no primeiro byte diferente: medindo o tempo
+ * da resposta dá para descobrir o segredo byte a byte. Numa rota que está em
+ * `PUBLIC_PATHS` — ou seja, que responde a quem chegar, sem cookie — isso é
+ * um oráculo aberto.
+ *
+ * A forma é a mesma do irmão `app/api/v1/system/agent/route.ts`, que usa o
+ * MESMO segredo: `timingSafeEqual` LANÇA quando os tamanhos diferem, então o
+ * curto-circuito de tamanho evita que um segredo do tamanho errado vire 500
+ * em vez de 403.
+ */
 function bearerValido(req: NextRequest): boolean {
   const auth = req.headers.get("authorization") ?? "";
   const bearer = auth.startsWith("Bearer ") ? auth.slice("Bearer ".length).trim() : "";
   const provided = bearer || (req.headers.get("x-cron-secret")?.trim() ?? "");
+  if (!provided) return false;
   const accepted = [env.INTERNAL_CRON_SECRET, env.INTERNAL_SECRET].filter(Boolean);
-  return accepted.length > 0 && Boolean(provided) && accepted.includes(provided);
+  return accepted.some((expected) => {
+    const a = Buffer.from(provided);
+    const b = Buffer.from(expected);
+    return a.length === b.length && timingSafeEqual(a, b);
+  });
 }
 
 async function sessaoAdmin(): Promise<boolean> {
