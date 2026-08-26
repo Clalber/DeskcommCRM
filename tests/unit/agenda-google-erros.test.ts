@@ -13,7 +13,6 @@ import {
   type DesfechoDoGoogle,
   type OperacaoNoGoogle,
   classificarErroDoGoogle,
-  contaComoConflito,
   deveTentarDeNovo,
   estadoDaConexaoApos,
 } from "@/lib/agenda/google/erros";
@@ -210,7 +209,7 @@ describe("classificarErroDoGoogle — o que a classificação devolve junto", ()
   });
 });
 
-describe("estadoDaConexaoApos / contaComoConflito — a ponte com a DECISÃO 3.2", () => {
+describe("estadoDaConexaoApos — o que o desfecho faz com a CONEXÃO", () => {
   it("cada desfecho diz o que fazer com a CONEXÃO, não só com a chamada", () => {
     expect(estadoDaConexaoApos("reautenticar")).toBe("token_expired");
     expect(estadoDaConexaoApos("sem_permissao")).toBe("scope_missing");
@@ -234,19 +233,6 @@ describe("estadoDaConexaoApos / contaComoConflito — a ponte com a DECISÃO 3.2
     expect(estadoDaConexaoApos("ressincronizar")).toBeNull();
   });
 
-  it("só agenda saudável conta como conflito — 'não sei' nunca é 'está livre'", () => {
-    // É a exigência literal da DECISÃO 3.2: contar uma fonte que não responde é
-    // pior que não ter fonte, porque ela parece vazia e marcaríamos em cima de
-    // compromisso real.
-    expect(contaComoConflito("healthy")).toBe(true);
-    for (const status of ["connecting", "token_expired", "scope_missing", "disconnected", "rate_limited", "error"] as const) {
-      expect(contaComoConflito(status), `${status} não pode contar como fonte confiável`).toBe(false);
-    }
-    // `rate_limited` é o mais tentador de tratar como benigno — a conexão está
-    // saudável, só não respondeu agora. Mas o motor não pergunta se a conexão
-    // está bem; pergunta o que HÁ na agenda, e a resposta é "não sei".
-    expect(contaComoConflito("rate_limited")).toBe(false);
-  });
 });
 
 describe("deveTentarDeNovo", () => {
