@@ -218,11 +218,18 @@ describe("estadoDaConexaoApos / contaComoConflito — a ponte com a DECISÃO 3.2
     expect(estadoDaConexaoApos("ja_esta_feito")).toBe("healthy");
   });
 
+  it("limite de uso tem estado PRÓPRIO no banco, e não é `null`", () => {
+    // `rate_limited` existe no CHECK da 0177. Enquanto o tipo daqui tinha só
+    // quatro dos sete estados, o desfecho `recuar` não tinha para onde ir e
+    // devolvia `null` — a conexão continuava marcada como saudável enquanto o
+    // Google recusava, e a agenda seguia sendo contada como fonte confiável.
+    expect(estadoDaConexaoApos("recuar")).toBe("rate_limited");
+  });
+
   it("desfecho sobre um EVENTO não mexe no estado da conexão", () => {
     // Rebaixar a conexão porque um evento sumiu desligaria a agenda inteira
     // por causa de um caso isolado.
     expect(estadoDaConexaoApos("evento_sumiu")).toBeNull();
-    expect(estadoDaConexaoApos("recuar")).toBeNull();
     expect(estadoDaConexaoApos("transitorio")).toBeNull();
     expect(estadoDaConexaoApos("ressincronizar")).toBeNull();
   });
@@ -232,9 +239,13 @@ describe("estadoDaConexaoApos / contaComoConflito — a ponte com a DECISÃO 3.2
     // pior que não ter fonte, porque ela parece vazia e marcaríamos em cima de
     // compromisso real.
     expect(contaComoConflito("healthy")).toBe(true);
-    expect(contaComoConflito("token_expired")).toBe(false);
-    expect(contaComoConflito("scope_missing")).toBe(false);
-    expect(contaComoConflito("error")).toBe(false);
+    for (const status of ["connecting", "token_expired", "scope_missing", "disconnected", "rate_limited", "error"] as const) {
+      expect(contaComoConflito(status), `${status} não pode contar como fonte confiável`).toBe(false);
+    }
+    // `rate_limited` é o mais tentador de tratar como benigno — a conexão está
+    // saudável, só não respondeu agora. Mas o motor não pergunta se a conexão
+    // está bem; pergunta o que HÁ na agenda, e a resposta é "não sei".
+    expect(contaComoConflito("rate_limited")).toBe(false);
   });
 });
 
