@@ -21,6 +21,15 @@ Se você roda o DeskcommCRM numa VPS, **leia a seção da versão para a qual es
   **não** aceita receber mensagens, isso vira um evento visível na ficha dela — em vez de a
   equipe descobrir o silêncio depois, sem saber por quê. Recusa é informação, não ausência
   de informação.
+- **Todo lead que chega pelo formulário do Respondi já entra triado.** Cada envio é lido na
+  hora e ganha, na ficha, uma classe (A, B, C ou D) calculada a partir da pontuação do próprio
+  formulário — e, quando falta a pontuação, o valor honesto **"não avaliado"**, nunca uma
+  classe chutada. Quem não tem telefone utilizável ou recusou o contato entra marcado como
+  **desqualificado**, com o motivo. E o que **precisa de olho humano** — nome que parece spam,
+  o mesmo telefone chegando com outro nome, ou um valor de investimento que contradiz o outro —
+  fica sinalizado como **aguardando revisão**, sem travar nada: o lead entra no funil do mesmo
+  jeito e continua elegível para o primeiro contato. Tudo isso aparece na linha do tempo da
+  ficha, então dá para ver **por que** um lead foi parar onde foi parar.
 
 ### Corrigido
 
