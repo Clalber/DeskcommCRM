@@ -39,6 +39,16 @@ export type ActivityType =
   | "reactivation_dismissed"
   | "reactivation_expired"
   | "followup_scheduled"
+  // DECISÃO 22 — a agenda na timeline do lead. `appointment_completed` e
+  // `appointment_no_show` são o PAR que a DECISÃO 17 exige: sem os dois,
+  // "aconteceu" e "faltou" não chegam à timeline, e o Radar não distingue lead
+  // atendido de lead que sumiu. A lista-espelho vive em `lib/agenda/tipos.ts`
+  // (`ATIVIDADES_DA_AGENDA`), e o compilador amarra as duas lá.
+  | "appointment_scheduled"
+  | "appointment_rescheduled"
+  | "appointment_cancelled"
+  | "appointment_completed"
+  | "appointment_no_show"
   | "followup_cancelled"
   /**
    * As quatro formas de INTERVIR num follow-up em andamento, sem matá-lo.
@@ -116,6 +126,11 @@ export const ACTIVITY_LABELS: Record<ActivityType, string> = {
   // quê — e é justamente o cancelamento que o agente precisa enxergar ao
   // retomar, para não repropor o que uma pessoa já desmarcou.
   followup_scheduled: "Retorno agendado",
+  appointment_scheduled: "Consulta marcada",
+  appointment_rescheduled: "Consulta remarcada",
+  appointment_cancelled: "Consulta cancelada",
+  appointment_completed: "Compareceu",
+  appointment_no_show: "Não compareceu",
   followup_cancelled: "Retorno cancelado",
   // PAUSAR NÃO É CANCELAR, e a diferença importa para quem pega o atendimento
   // depois: cancelado é decisão fechada, pausado é o fluxo parado esperando uma

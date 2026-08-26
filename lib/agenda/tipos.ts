@@ -16,6 +16,8 @@
  * mora num `Record` à parte, cuja exaustividade quem cobra é o compilador.
  */
 
+import type { ActivityType } from "@/lib/leads/activity-vocabulary";
+
 /**
  * O que esta organização marca. Espelha os nichos que o onboarding já usa
  * (`lib/onboarding/pacotes-de-funil.ts`): clínica, imobiliária, serviços,
@@ -222,6 +224,26 @@ export const ATIVIDADES_DA_AGENDA = [
   "appointment_no_show",
 ] as const;
 export type AtividadeDaAgenda = (typeof ATIVIDADES_DA_AGENDA)[number];
+
+/**
+ * A AMARRA ENTRE AS DUAS LISTAS — e ela é do compilador, não de comentário.
+ *
+ * Esta lista vive aqui; `ActivityType` vive em
+ * `lib/leads/activity-vocabulary.ts`, e é ele que `emitLeadActivity` exige. Por
+ * um tempo as duas não se conheciam: esta tinha ZERO consumidor e nenhum dos
+ * cinco valores estava lá — duplicação sem source of truth declarado, o
+ * anti-pattern nº 2 do `CLAUDE.md`, em formação.
+ *
+ * A linha abaixo faz o compilador reprovar se alguém acrescentar valor numa e
+ * esquecer da outra. Provado sabotando: com um sexto valor só aqui, o `tsc`
+ * aponta `Type '"appointment_inventado_agora"' is not assignable to type
+ * 'ActivityType'` — nomeando o divergente, não só reclamando.
+ *
+ * É o critério da DECISÃO 20.3: decisão que existe só como comentário não é
+ * vigiada; com o tipo, o compilador participa.
+ */
+const _todaAtividadeDaAgendaEhAtividadeDoLead: readonly ActivityType[] = ATIVIDADES_DA_AGENDA;
+void _todaAtividadeDaAgendaEhAtividadeDoLead;
 
 /**
  * A paleta da grade: oito cores distinguíveis entre si.
