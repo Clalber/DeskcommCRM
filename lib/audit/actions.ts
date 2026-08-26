@@ -336,6 +336,30 @@ export const AUDIT_ACTIONS = [
   // demais para a chamada seguinte do expurgo alcançar — a trilha registra
   // a própria erosão em vez de encolher sem deixar marca.
   "retention.sweep_run",
+
+  // A Agenda (entrega do Calendário). Duas famílias, e elas auditam por razões
+  // diferentes — por isso não viraram um código só com `metadata.tipo`:
+  //
+  //  `agenda.google.*` — conectar a agenda de fora é ato de INTEGRAÇÃO: dá a
+  //  esta instalação uma credencial que lê e escreve no calendário de uma
+  //  pessoa real. Quem ligou, quando, e o que falhou é a pergunta que se faz
+  //  depois de um incidente, e a tentativa que FALHA importa tanto quanto a que
+  //  passa: uma sequência de `conexao_falhou` é como um consentimento sendo
+  //  tentado com o app errado se parece na trilha.
+  //
+  //  `agenda.appointment_*` — marcar, remarcar e cancelar são mutações de um
+  //  compromisso com hora e pessoa. Cancelar em especial: é a única das três
+  //  que alguém pode querer negar ter feito.
+  //
+  // Não há `agenda.appointment_completed` nem `_no_show` aqui de propósito.
+  // Esses dois não são mutação de intenção — são o registro de um fato que já
+  // aconteceu no mundo, e vivem na timeline do lead (`ATIVIDADES_DA_AGENDA`,
+  // em `lib/agenda/tipos.ts`), não na trilha de quem-fez-o-quê.
+  "agenda.google.conexao_iniciada",
+  "agenda.google.conexao_falhou",
+  "agenda.appointment_created",
+  "agenda.appointment_rescheduled",
+  "agenda.appointment_cancelled",
 ] as const;
 
 /** Um código de auditoria. Derivado de `AUDIT_ACTIONS` — não redigite a lista. */
