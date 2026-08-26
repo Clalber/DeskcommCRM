@@ -96,14 +96,14 @@ describe("o que o banco pode devolver e NÃO pode passar", () => {
     const r = lerJornadaDoBanco({ timezone: "UTC", windows: null });
     expect(r.ok).toBe(false);
     if (r.ok) return;
-    expect(r.motivo).toMatch(/array/i);
+    expect(r.motivoParaOperador).toMatch(/array/i);
   });
 
   it("fuso com acento é recusado — o erro que já custou um bug a esta base", () => {
     const r = lerJornadaDoBanco({ timezone: "America/Asunción", windows: [] });
     expect(r.ok).toBe(false);
     if (r.ok) return;
-    expect(r.motivo).toMatch(/fuso/i);
+    expect(r.motivoParaOperador).toMatch(/fuso/i);
   });
 
   it("janela invertida é recusada", () => {
@@ -119,12 +119,86 @@ describe("o que o banco pode devolver e NÃO pode passar", () => {
     for (const ruim of [{ windows: null }, { timezone: "X/Y", windows: [] }, { timezone: "UTC", windows: [{ dow: 9, start: "09:00", end: "10:00" }] }]) {
       const r = lerJornadaDoBanco(ruim);
       expect(r.ok).toBe(false);
-      if (!r.ok) expect(r.motivo.length).toBeGreaterThan(0);
+      if (!r.ok) expect(r.motivoParaOperador.length).toBeGreaterThan(0);
     }
   });
 
   it("null e undefined — a linha que não existe — são recusados sem explodir", () => {
     expect(lerJornadaDoBanco(null).ok).toBe(false);
     expect(lerJornadaDoBanco(undefined).ok).toBe(false);
+  });
+});
+
+/**
+ * AS DUAS FACES DO ERRO, E O FUSO QUE NINGUÉM ESCOLHEU.
+ *
+ * Decisões 20.3 e 20.4, propostas pelo MaestroConexoes depois de ele LER este
+ * arquivo para alinhar o contrato dele em vez de inventar uma terceira lista.
+ */
+describe("o erro tem duas plateias, e elas não podem receber a mesma frase", () => {
+  it("o operador recebe o campo; o cliente final, não", () => {
+    const r = lerJornadaDoBanco({ timezone: "America/Asunción", windows: [] });
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    // Quem vai corrigir precisa saber ONDE.
+    expect(r.motivoParaOperador).toMatch(/timezone/);
+    // Quem está do outro lado do WhatsApp não pode receber nome de coluna.
+    expect(r.motivoParaCliente).not.toMatch(/timezone|windows|zod|schema/i);
+    expect(r.motivoParaCliente.length).toBeGreaterThan(0);
+  });
+
+  it("NENHUM motivo para cliente vaza nome de campo, em nenhuma recusa", () => {
+    // Um comentário pedindo cuidado não é vigiado por ninguém; isto é.
+    for (const ruim of [
+      { windows: null },
+      { timezone: "X/Y", windows: [] },
+      { timezone: "UTC", windows: [{ dow: 9, start: "09:00", end: "10:00" }] },
+      null,
+      "nem objeto é",
+    ]) {
+      const r = lerJornadaDoBanco(ruim);
+      expect(r.ok).toBe(false);
+      // ⚠️ `\b` importa: a primeira versão deste regex tinha `end` solto e batia
+      // em "at**end**imento", reprovando a frase correta. Teste que reprova o
+      // certo é tão ruim quanto o que aprova o errado.
+      if (!r.ok) {
+        expect(r.motivoParaCliente).not.toMatch(
+          /\btimezone\b|\bwindows\b|\bdow\b|\bstart_minute\b|\bexpected\b|\breceived\b|`/i,
+        );
+      }
+    }
+  });
+});
+
+describe("fusoSuposto — a distinção que o parse apaga", () => {
+  it("quem NUNCA configurou e quem ESCOLHEU São Paulo são indistinguíveis DEPOIS do parse", () => {
+    // Medido: os dois devolvem {timezone:"America/Sao_Paulo", windows:[]}.
+    // Por isso a marca é capturada antes, e não derivada do resultado.
+    const nunca = lerJornadaDoBanco({});
+    const escolheu = lerJornadaDoBanco({ timezone: "America/Sao_Paulo" });
+    expect(nunca.ok && escolheu.ok).toBe(true);
+    if (!nunca.ok || !escolheu.ok) return;
+    expect(nunca.jornada).toEqual(escolheu.jornada);
+    // …e mesmo assim o motor sabe qual é qual:
+    expect(nunca.fusoSuposto).toBe(true);
+    expect(escolheu.fusoSuposto).toBe(false);
+  });
+
+  it("fuso em BRANCO é recusado, e não vira 'suposto' — medido, não suposto por mim", () => {
+    // Eu tinha escrito o contrário e o teste me corrigiu: `"   "` não passa pelo
+    // Zod (não é fuso que o `Intl` conheça), então nem chega a ser suposição.
+    // `fusoSuposto` só existe quando o parse PASSA.
+    const r = lerJornadaDoBanco({ timezone: "   ", windows: [] });
+    expect(r.ok).toBe(false);
+  });
+
+  it("a chave AUSENTE é o caso real da suposição", () => {
+    const r = lerJornadaDoBanco({ windows: [{ dow: 1, start: "09:00", end: "18:00" }] });
+    expect(r.ok && r.fusoSuposto).toBe(true);
+  });
+
+  it("quem escolheu OUTRO fuso obviamente não é suposição", () => {
+    const r = lerJornadaDoBanco({ timezone: "America/Manaus", windows: [] });
+    expect(r.ok && r.fusoSuposto).toBe(false);
   });
 });

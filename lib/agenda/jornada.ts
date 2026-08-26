@@ -45,6 +45,25 @@ export type LeituraDaJornada =
       ok: true;
       jornada: JornadaDaAgenda;
       /**
+       * ⚠️ O FUSO FOI SUPOSTO, NÃO ESCOLHIDO — e depois do parse isso é
+       * INDISTINGUÍVEL.
+       *
+       * `availabilityScheduleSchema` tem `.default("America/Sao_Paulo")`.
+       * Medido: quem nunca configurou devolve `{timezone:"America/Sao_Paulo",
+       * windows:[]}` e quem ESCOLHEU São Paulo devolve exatamente a mesma
+       * coisa. O default preenche e não deixa rastro, então esta distinção só
+       * existe se for capturada AQUI, no único ponto que ainda tem o jsonb cru
+       * na mão.
+       *
+       * Não é preciosismo de tela: a IA OFERECE horário pelas ferramentas MCP.
+       * Se ela disser "tenho terça às 14h" com um fuso suposto errado, o
+       * paciente aparece uma hora fora — e ninguém liga uma coisa à outra.
+       *
+       * Mesmo formato de `publicouHorarios`: um booleano que preserva uma
+       * distinção que o dado normalizado apaga.
+       */
+      fusoSuposto: boolean;
+      /**
        * ⚠️ "NÃO PUBLIQUEI" E "NÃO TENHO VAGA" SÃO ESTADOS DIFERENTES.
        *
        * Sem janela publicada a agenda devolve zero horário — e a tela **não**
@@ -57,8 +76,26 @@ export type LeituraDaJornada =
     }
   | {
       ok: false;
-      /** Legível por humano — vai para a tela e para o aviso, nunca só para o log. */
-      motivo: string;
+      /**
+       * Para o OPERADOR: a tela do dono da agenda e a Central. Nomeia o campo
+       * (`fuso horário inválido (em \`timezone\`)`), porque quem vai corrigir
+       * precisa saber onde.
+       */
+      motivoParaOperador: string;
+      /**
+       * ⚠️ PARA O CLIENTE FINAL — e existe como campo separado de propósito.
+       *
+       * As ferramentas MCP falam com quem está do outro lado do WhatsApp, e um
+       * único campo `motivo` disponível faz o repasse virar o caminho de menor
+       * esforço: o paciente receberia "fuso horário inválido em `timezone`".
+       * Nome de coluna vazando para o cliente é falha de produto, e um
+       * comentário pedindo cuidado não é vigiado por ninguém — com dois campos,
+       * quem escreve MCP precisa ESCOLHER, e o compilador participa da escolha.
+       *
+       * (Decisão do MaestroConexoes, que foi ler este arquivo para alinhar o
+       * contrato dele em vez de inventar uma terceira lista.)
+       */
+      motivoParaCliente: string;
     };
 
 /**
@@ -74,17 +111,27 @@ export type LeituraDaJornada =
  * ninguém descobre.
  */
 export function lerJornadaDoBanco(scheduleDoBanco: unknown): LeituraDaJornada {
+  // ANTES do parse, e só aqui: depois dele o default já preencheu o fuso e a
+  // suposição some sem rastro.
+  const cru = (scheduleDoBanco ?? {}) as { timezone?: unknown };
+  const fusoSuposto = typeof cru.timezone !== "string" || cru.timezone.trim() === "";
+
   const lido = availabilityScheduleSchema.safeParse(scheduleDoBanco ?? undefined);
 
   if (!lido.success) {
     const primeiro = lido.error.issues[0];
     const onde = primeiro?.path?.length ? ` (em \`${primeiro.path.join(".")}\`)` : "";
-    return { ok: false, motivo: `${primeiro?.message ?? "formato inesperado"}${onde}` };
+    return {
+      ok: false,
+      motivoParaOperador: `${primeiro?.message ?? "formato inesperado"}${onde}`,
+      motivoParaCliente: "Os horários de atendimento ainda não estão disponíveis.",
+    };
   }
 
   return {
     ok: true,
     jornada: { timezone: lido.data.timezone, windows: lido.data.windows },
     publicouHorarios: lido.data.windows.length > 0,
+    fusoSuposto,
   };
 }

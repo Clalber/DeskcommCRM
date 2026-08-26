@@ -136,7 +136,10 @@ export async function GET(req: NextRequest): Promise<Response> {
     // errada não gera chamado nenhum.
     return fail(
       "validation_failed",
-      `A disponibilidade deste responsável está mal configurada: ${leitura.motivo}`,
+      // O consumidor desta rota é a TELA DO OPERADOR, então vai o motivo com o
+      // nome do campo. Quem fala com o cliente final (as ferramentas MCP) usa
+      // `motivoParaCliente` — dois campos para a escolha ser explícita.
+      `A disponibilidade deste responsável está mal configurada: ${leitura.motivoParaOperador}`,
       422,
       { requestId },
     );
@@ -222,6 +225,9 @@ export async function GET(req: NextRequest): Promise<Response> {
       // "Não publiquei meus horários" e "não tenho vaga" chegam como a mesma
       // lista vazia se a tela não puder distingui-los (DECISÃO 1.1).
       publicou_horarios: leitura.publicouHorarios,
+      // O fuso não foi escolhido por ninguém: veio do default. A tela precisa
+      // poder pedir que a pessoa confirme, porque a IA oferece horário com ele.
+      fuso_suposto: leitura.fusoSuposto,
       // Fechado na ação, aberto na informação: o horário fica bloqueado, e a
       // tela pode dizer desde quando a agenda conectada parou de atualizar.
       fontes_defasadas: fontesDefasadas,
