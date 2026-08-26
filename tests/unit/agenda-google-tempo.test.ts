@@ -54,6 +54,36 @@ describe("instanteDaParede", () => {
     expect(paredeEm(naoNulo(i), "America/Sao_Paulo")).toBe("2018-11-04 01:30");
   });
 
+  it("na hora que acontece DUAS vezes, devolve a primeira — e agora isso é medido", () => {
+    // ⚠️ ESTE TESTE EXISTE PORQUE O CABEÇALHO MENTIA. Ele afirmava "devolve a
+    // primeira (…) e por isso está escrito aqui e tem teste" — e teste não
+    // havia. Promessa em comentário sem implementação atrás é a mesma família
+    // do defeito que a revisão fria achou em `erros.ts`, onde o comentário
+    // prometia ler um campo que o código não lia. Comentário não é gate.
+    //
+    // Na volta do horário de verão em Nova York, 2026-11-01 01:30 acontece em
+    // DOIS instantes: 05:30Z (ainda no horário de verão) e 06:30Z (já fora).
+    // Escolher é obrigatório — o que não pode é escolher em silêncio.
+    expect(
+      instanteDaParede({ ano: 2026, mes: 11, dia: 1, hora: 1, minuto: 30 }, "America/New_York")?.toISOString(),
+    ).toBe("2026-11-01T05:30:00.000Z");
+
+    // Lisboa, mesma classe, deslocamento de outro sinal.
+    expect(
+      instanteDaParede({ ano: 2026, mes: 10, dia: 25, hora: 0, minuto: 30 }, "Europe/Lisbon")?.toISOString(),
+    ).toBe("2026-10-24T23:30:00.000Z");
+  });
+
+  it("na hora que NÃO existe fora das Américas, o dia continua certo", () => {
+    // O sinal do deslocamento é o que separa esta classe: onde ele é POSITIVO,
+    // devolver "o primeiro candidato" cai na VÉSPERA. Beirute vira o relógio à
+    // meia-noite, então 00:00 de 2026-03-29 não existe — e o primeiro instante
+    // daquele dia é 01:00 local.
+    const i = instanteDaParede({ ano: 2026, mes: 3, dia: 29, hora: 0, minuto: 0 }, "Asia/Beirut");
+    expect(i?.toISOString()).toBe("2026-03-28T22:00:00.000Z");
+    expect(paredeEm(naoNulo(i), "Asia/Beirut")).toBe("2026-03-29 01:00");
+  });
+
   it("recusa hora impossível e fuso desconhecido, em vez de chutar", () => {
     expect(instanteDaParede({ ano: 2026, mes: 2, dia: 31 }, "UTC")).toBeNull();
     expect(instanteDaParede({ ano: 2026, mes: 9, dia: 2, hora: 25 }, "UTC")).toBeNull();
