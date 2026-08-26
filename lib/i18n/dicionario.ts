@@ -1255,6 +1255,134 @@ export const DICIONARIO: Traducoes = {
   "Salvar e validar": { es: "Guardar y validar" },
   "Obrigatório": { es: "Obligatorio" },
   "API key muito curta": { es: "API key demasiado corta" },
+  Casos: { es: "Casos" },
+  "Quando a IA trava em algo que só um humano resolve, ela abre um caso aqui — e continua conversando com o cliente enquanto espera sua resposta.":
+    {
+      es: "Cuando la IA se traba en algo que solo un humano resuelve, abre un caso aquí — y sigue conversando con el cliente mientras espera tu respuesta.",
+    },
+  Abertos: { es: "Abiertos" },
+  "Concluídos": { es: "Concluidos" },
+  "Nenhum caso aberto": { es: "Ningún caso abierto" },
+  "Nenhum caso concluído": { es: "Ningún caso concluido" },
+  "Quando a IA precisar de você, aparece aqui.": { es: "Cuando la IA te necesite, aparece aquí." },
+  "Casos concluídos, cancelados ou repassados ficam aqui.": {
+    es: "Los casos concluidos, cancelados o transferidos quedan aquí.",
+  },
+  "Contato sem nome": { es: "Contacto sin nombre" },
+  "Selecione um caso à esquerda": { es: "Selecciona un caso a la izquierda" },
+  "Os detalhes e a resposta aparecem aqui.": { es: "Los detalles y la respuesta aparecen aquí." },
+  "Sem telefone": { es: "Sin teléfono" },
+  "Aberto automaticamente": { es: "Abierto automáticamente" },
+  "Aberto automaticamente pelo sistema — a IA prometeu passar pra humano mas não abriu o caso, então o sistema abriu por ela.":
+    {
+      es: "Abierto automáticamente por el sistema — la IA prometió pasar a un humano pero no abrió el caso, así que el sistema lo abrió por ella.",
+    },
+  "O que o cliente precisa": { es: "Qué necesita el cliente" },
+  "Por que a IA travou": { es: "Por qué se trabó la IA" },
+  "O que você quer fazer?": { es: "¿Qué quieres hacer?" },
+  "Resposta enviada.": { es: "Respuesta enviada." },
+  "Escreva sua resposta para a IA...": { es: "Escribe tu respuesta para la IA..." },
+  "Escolha uma das opções acima para enviar.": { es: "Elige una de las opciones de arriba para enviar." },
+  "Enviando...": { es: "Enviando..." },
+  "Um roteador entende o que o cliente quer e entrega a conversa para o agente certo — plugado em um número de WhatsApp.":
+    {
+      es: "Un enrutador entiende lo que el cliente quiere y entrega la conversación al agente correcto — conectado a un número de WhatsApp.",
+    },
+  "Novo roteador": { es: "Nuevo enrutador" },
+  "Um roteador entende o que o cliente quer e entrega a conversa para o agente certo — um número de vendas fala com quem quer comprar, um de suporte com quem já é cliente, tudo no mesmo WhatsApp. Crie um para o seu número e escolha quais agentes ele aciona.":
+    {
+      es: "Un enrutador entiende lo que el cliente quiere y entrega la conversación al agente correcto — un número de ventas habla con quien quiere comprar, uno de soporte con quien ya es cliente, todo en el mismo WhatsApp. Crea uno para tu número y elige qué agentes activa.",
+    },
+  "Criar meu primeiro roteador": { es: "Crear mi primer enrutador" },
+  "Número removido": { es: "Número eliminado" },
+  "Sem intenções configuradas": { es: "Sin intenciones configuradas" },
+  "intenção": { es: "intención" },
+  "intenções": { es: "intenciones" },
+  "Roteador criado — agora escolha as intenções.": {
+    es: "Enrutador creado — ahora elige las intenciones.",
+  },
+  "Escolha o número de WhatsApp que ele vai atender. Depois de criado, você define as intenções e para qual agente cada uma vai.":
+    {
+      es: "Elige el número de WhatsApp que va a atender. Después de creado, defines las intenciones y a qué agente va cada una.",
+    },
+  "Número de WhatsApp": { es: "Número de WhatsApp" },
+  "Só é possível ter um roteador ativo por número.": { es: "Solo es posible tener un enrutador activo por número." },
+  "Criar roteador": { es: "Crear enrutador" },
+  ativo: { es: "activo" },
+  inativo: { es: "inactivo" },
+  "Excluir roteador": { es: "Eliminar enrutador" },
+  "Identificação": { es: "Identificación" },
+  "O número não pode ser trocado depois de criado — crie outro roteador para um número diferente.": {
+    es: "El número no se puede cambiar después de creado — crea otro enrutador para un número diferente.",
+  },
+  "Ativo — está roteando as conversas deste número": { es: "Activo — está enrutando las conversaciones de este número" },
+  "Inativo — não roteia nada": { es: "Inactivo — no enruta nada" },
+  "Modelo que identifica a intenção": { es: "Modelo que identifica la intención" },
+  "Modelo do classificador": { es: "Modelo del clasificador" },
+  "Automático — usa o provedor da organização": { es: "Automático — usa el proveedor de la organización" },
+  "chave desta instalação": { es: "clave de esta instalación" },
+  "Nenhuma chave de IA utilizável nesta organização — cadastre uma em Agentes IA › Credenciais para poder escolher o modelo.":
+    {
+      es: "No hay ninguna clave de IA utilizable en esta organización — registra una en Agentes IA › Credenciales para poder elegir el modelo.",
+    },
+  "Só aparecem modelos de provedores com chave cadastrada aqui. Se a conta do provedor estiver sem crédito, a identificação falha e tudo cai no fallback.":
+    {
+      es: "Solo aparecen modelos de proveedores con clave registrada aquí. Si la cuenta del proveedor se queda sin crédito, la identificación falla y todo cae en el fallback.",
+    },
+  "Se nenhuma intenção casar": { es: "Si ninguna intención coincide" },
+  "Agente de fallback": { es: "Agente de fallback" },
+  "Nenhum — responde com o atendimento padrão": { es: "Ninguno — responde con la atención estándar" },
+  "Quando a IA não tem certeza do que o cliente quer, ela chama este agente em vez de travar a conversa.": {
+    es: "Cuando la IA no está segura de lo que quiere el cliente, llama a este agente en vez de trabar la conversación.",
+  },
+  "Intenções": { es: "Intenciones" },
+  "Cada intenção descreve uma situação e diz qual agente deve assumir a conversa quando o cliente quer aquilo.": {
+    es: "Cada intención describe una situación y dice qué agente debe asumir la conversación cuando el cliente quiere eso.",
+  },
+  "Intenção": { es: "Intención" },
+  "Nenhuma intenção ainda. Sem intenções, toda conversa cai direto no agente de fallback (ou fica sem resposta automática, se você não escolher um).":
+    {
+      es: "Todavía no hay ninguna intención. Sin intenciones, toda conversación cae directo en el agente de fallback (o se queda sin respuesta automática, si no eliges uno).",
+    },
+  "O número volta a ser atendido pelos gatilhos normais dos agentes (sem roteamento por intenção). As intenções deste roteador são apagadas junto. Não é possível desfazer.":
+    {
+      es: "El número vuelve a ser atendido por los disparadores normales de los agentes (sin enrutamiento por intención). Las intenciones de este enrutador se borran junto. No se puede deshacer.",
+    },
+  "Nome da intenção": { es: "Nombre de la intención" },
+  "Ex.: quer comprar": { es: "Ej.: quiere comprar" },
+  "Agente que atende": { es: "Agente que atiende" },
+  "Selecione o agente": { es: "Selecciona el agente" },
+  "Remover intenção": { es: "Quitar intención" },
+  "Quando escolher esta intenção": { es: "Cuándo elegir esta intención" },
+  "Escreva como explicaria para um atendente novo: em que situação o cliente cai aqui.": {
+    es: "Escribe como se lo explicarías a un atendente nuevo: en qué situación cae aquí el cliente.",
+  },
+  "Já existe outra intenção com este nome.": { es: "Ya existe otra intención con este nombre." },
+  "Frases de exemplo (opcional)": { es: "Frases de ejemplo (opcional)" },
+  "Remover exemplo": { es: "Quitar ejemplo" },
+  "Sem frases de exemplo.": { es: "Sin frases de ejemplo." },
+  "Ex.: quanto custa? (Enter)": { es: "Ej.: ¿cuánto cuesta? (Enter)" },
+  "Testar classificação": { es: "Probar clasificación" },
+  "Escreva uma frase como um cliente escreveria e veja qual intenção e qual agente o roteador escolheria — sem afetar nenhuma conversa real.":
+    {
+      es: "Escribe una frase como la escribiría un cliente y mira qué intención y qué agente elegiría el enrutador — sin afectar ninguna conversación real.",
+    },
+  "Ative o roteador para poder testar a classificação.": { es: "Activa el enrutador para poder probar la clasificación." },
+  "Ex.: oi, quero saber o preço do plano premium": { es: "Ej.: hola, quiero saber el precio del plan premium" },
+  "Testando…": { es: "Probando…" },
+  "nenhuma casou": { es: "ninguna coincidió" },
+  "confiança": { es: "confianza" },
+  "Confiança": { es: "Confianza" },
+  "abaixo do mínimo de": { es: "por debajo del mínimo de" },
+  "cairia no atendimento padrão em produção.": { es: "caería en la atención estándar en producción." },
+  "Agente que atenderia": { es: "Agente que atendería" },
+  "nenhum (sem fallback)": { es: "ninguno (sin fallback)" },
+  "Resolva os campos destacados antes de salvar.": { es: "Resuelve los campos resaltados antes de guardar." },
+  "Roteador salvo.": { es: "Enrutador guardado." },
+  "Roteador removido.": { es: "Enrutador eliminado." },
+  "Escolha o agente que atende esta intenção.": { es: "Elige el agente que atiende esta intención." },
+  "Dê um nome curto para a intenção.": { es: "Dale un nombre corto a la intención." },
+  "Descreva quando a IA deve escolher esta intenção.": { es: "Describe cuándo la IA debe elegir esta intención." },
 };
 
 /**

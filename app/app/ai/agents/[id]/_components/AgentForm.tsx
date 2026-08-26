@@ -732,7 +732,7 @@ export function AgentForm(props: Props) {
                       */}
                       {s.display_name}
                       {s.phone_number ? ` · ${s.phone_number}` : ""} ·{" "}
-                      {rotuloDoEstadoDoCanal(s.status)}
+                      {rotuloDoEstadoDoCanal(s.status, t)}
                     </SelectItem>
                   ))}
                   {props.channelSessions.length === 0 ? (
