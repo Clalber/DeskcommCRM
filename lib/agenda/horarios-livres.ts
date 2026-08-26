@@ -16,7 +16,8 @@
  * ─── A ordem das subtrações, e por que a grade é ancorada na JANELA ────────
  *
  * 1. As janelas do dia, no fuso da jornada.
- * 2. Menos as exceções de data (bloqueiam o dia ou o substituem).
+ * 2. Menos as exceções de data: as disponíveis SUBSTITUEM a base, as
+ *    indisponíveis SUBTRAEM dela (DECISÃO 11 — ver `janelasDoDia`).
  * 3. A grade nasce no início de CADA janela, de `intervaloMin` em `intervaloMin`.
  * 4. Menos os ocupados, com os buffers inflando cada um.
  * 5. Menos o que começa antes de `agora + avisoMinimo`.
@@ -50,15 +51,23 @@ export interface JornadaDaAgenda {
   windows: ScheduleWindow[];
 }
 
-/** Uma linha de `calendar_availability_exceptions`, já em vocabulário de domínio. */
+/**
+ * Uma linha de `calendar_availability_exceptions`, já em vocabulário de domínio.
+ *
+ * ⚠️ A FAIXA É SEMPRE PREENCHIDA, inclusive quando o dia inteiro está bloqueado
+ * — aí ela é `(0, 1440)`. Não é detalhe de serialização: numa UNIQUE do
+ * Postgres, NULL não colide com NULL, então dois "dia 12 bloqueado" da mesma
+ * pessoa passariam os dois, em silêncio, e a tela mostraria a exceção
+ * duplicada. `(0, 1440)` é a mesma informação e colide como deve.
+ */
 export interface ExcecaoDeData {
   /** Data local, `YYYY-MM-DD` — a mesma régua de `diaLocalISO`. */
   data: string;
-  /** `true` zera o dia inteiro. */
+  /** `true` SUBTRAI a faixa do dia (ver `janelasDoDia`); não zera o dia por si só. */
   indisponivel: boolean;
-  /** Minutos desde a meia-noite local; só valem quando `indisponivel` é `false`. */
-  inicioMinuto: number | null;
-  fimMinuto: number | null;
+  /** Minutos desde a meia-noite local. Dia inteiro é `0`…`1440`. */
+  inicioMinuto: number;
+  fimMinuto: number;
 }
 
 /** Um intervalo que já está tomado: agendamento do dono ou evento vindo do Google. */
@@ -138,6 +147,30 @@ function paredeDeMinutos(ano: number, mes: number, dia: number, minuto: number):
 }
 
 /**
+ * Subtrai uma faixa de uma lista de faixas.
+ *
+ * ⚠️ ADJACÊNCIA NÃO É SOBREPOSIÇÃO, e é aqui que um sinal trocado come um slot
+ * inteiro sem nenhum outro teste reclamar: um bloqueio que termina às 12:00 não
+ * toca a janela que começa às 12:00. Por isso `<=` e `>=` na guarda, e `<` e `>`
+ * nos dois pedaços que sobram.
+ *
+ * Cortar no MEIO devolve DUAS faixas — é o caso "almoço estendido", e é a razão
+ * de a assinatura ser lista, não faixa única.
+ */
+function subtraiFaixa(base: FaixaEmMinutos[], corte: FaixaEmMinutos): FaixaEmMinutos[] {
+  const resto: FaixaEmMinutos[] = [];
+  for (const faixa of base) {
+    if (corte.fim <= faixa.inicio || corte.inicio >= faixa.fim) {
+      resto.push(faixa);
+      continue;
+    }
+    if (corte.inicio > faixa.inicio) resto.push({ inicio: faixa.inicio, fim: corte.inicio });
+    if (corte.fim < faixa.fim) resto.push({ inicio: corte.fim, fim: faixa.fim });
+  }
+  return resto;
+}
+
+/**
  * As faixas de trabalho de um dia — e o ponto onde a agenda diverge do roteamento.
  *
  * ⚠️ `windows` VAZIO SIGNIFICA COISAS OPOSTAS NOS DOIS USOS DESTA MESMA COLUNA:
@@ -151,29 +184,46 @@ function paredeDeMinutos(ano: number, mes: number, dia: number, minuto: number):
  * consumidor em produção e não deve mudar. Quem quiser "unificar as duas" daqui
  * a seis meses está prestes a oferecer madrugada para o paciente de alguém.
  *
- * A exceção de data, quando existe, SUBSTITUI o dia: é ela que sabe dizer "dia
- * 12 não atendo" e "sábado 15, das 9h às 12h" — coisas que a jornada semanal
- * não tem como expressar.
+ * ─── Os três passos, nesta ordem (DECISÃO 11) ──────────────────────────────
+ *
+ * 1. **Base**: as janelas da jornada semanal daquele dia.
+ * 2. **Exceções DISPONÍVEIS** substituem a base, se houver ao menos uma — é o
+ *    sábado excepcional, que vale NO LUGAR da jornada, não somado a ela.
+ * 3. **Exceções INDISPONÍVEIS** subtraem do que sobrou.
+ *
+ * "Dia inteiro bloqueado" NÃO é caso especial: é subtrair `(0, 1440)`, e o
+ * resultado é vazio pela regra geral. A versão anterior desta função fazia
+ * `if (algumaIndisponivel) return []`, e com a faixa preenchida isso virou um
+ * defeito: quem bloqueasse duas horas perdia o dia inteiro.
+ *
+ * ⚠️ CONSEQUÊNCIA CONHECIDA E ACEITA: um `(0, 1440)` indisponível VENCE uma
+ * exceção disponível do mesmo dia, porque subtrai depois. Quem cadastrou "não
+ * atendo" mais "mas das 9h às 12h sim" fica sem o dia. Inverter a ordem
+ * consertaria este caso e quebraria o sábado excepcional do passo 2 — trocar um
+ * defeito por outro não é conserto. Quem tem de avisar é a TELA, ao salvar a
+ * segunda linha. Está fixado em teste, com o porquê no nome.
  */
 function janelasDoDia(
   jornada: JornadaDaAgenda,
   excecoesDoDia: ExcecaoDeData[],
   dow: number,
 ): FaixaEmMinutos[] {
-  if (excecoesDoDia.length > 0) {
-    if (excecoesDoDia.some((e) => e.indisponivel)) return [];
-    return excecoesDoDia
-      .filter((e) => e.inicioMinuto !== null && e.fimMinuto !== null)
-      .map((e) => ({ inicio: e.inicioMinuto as number, fim: e.fimMinuto as number }))
-      .filter((f) => f.fim > f.inicio)
-      .sort((a, b) => a.inicio - b.inicio);
+  const disponiveis = excecoesDoDia.filter((e) => !e.indisponivel);
+
+  const base: FaixaEmMinutos[] =
+    disponiveis.length > 0
+      ? disponiveis.map((e) => ({ inicio: e.inicioMinuto, fim: e.fimMinuto }))
+      : jornada.windows
+          .filter((w) => w.dow === dow)
+          .map((w) => ({ inicio: hhmmParaMinutos(w.start), fim: hhmmParaMinutos(w.end) }));
+
+  let faixas = base.filter((f) => f.fim > f.inicio).sort((a, b) => a.inicio - b.inicio);
+
+  for (const corte of excecoesDoDia.filter((e) => e.indisponivel)) {
+    faixas = subtraiFaixa(faixas, { inicio: corte.inicioMinuto, fim: corte.fimMinuto });
   }
 
-  return jornada.windows
-    .filter((w) => w.dow === dow)
-    .map((w) => ({ inicio: hhmmParaMinutos(w.start), fim: hhmmParaMinutos(w.end) }))
-    .filter((f) => f.fim > f.inicio)
-    .sort((a, b) => a.inicio - b.inicio);
+  return faixas.sort((a, b) => a.inicio - b.inicio);
 }
 
 /** Os ocupados já inflados pelos buffers, em instantes, prontos para comparar. */

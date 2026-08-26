@@ -239,10 +239,29 @@ describe("os dois cortes do tempo: aviso mínimo e janela de agendamento", () =>
   });
 });
 
+/**
+ * A EXCEÇÃO SUBTRAI (DECISÃO 11) — e "dia inteiro" deixou de ser caso especial.
+ *
+ * O schema guarda a faixa da exceção NOT NULL, com `(0, 1440)` para o dia
+ * inteiro. O motivo é uma armadilha real do Postgres: numa UNIQUE, NULL não
+ * colide com NULL, então dois "dia 12 bloqueado" da mesma pessoa passariam os
+ * dois, em silêncio, e a tela mostraria a exceção duplicada.
+ *
+ * A consequência é que `is_unavailable = true` com `(600, 720)` virou
+ * representável — "dia 12, das 10h às 12h, não atendo". A primeira versão deste
+ * motor zerava o dia inteiro nesse caso: quem bloqueasse duas horas perderia o
+ * dia. Agora a exceção indisponível SUBTRAI do que sobrou, e o dia inteiro é
+ * apenas a subtração de `(0, 1440)`.
+ *
+ * Por que subtrair em vez de restringir: "das 12h às 14h não atendo" é o caso
+ * comum — almoço estendido, reunião, compromisso pessoal. Com restrição, a
+ * pessoa teria de cadastrar os pedaços que SOBRAM, e pensar ao contrário é o que
+ * faz errar em tela de agenda.
+ */
 describe("exceções por data — o que a jornada semanal não sabe dizer", () => {
-  it("exceção que bloqueia o dia zera aquele dia, e só aquele", () => {
+  it("exceção que bloqueia o dia inteiro zera aquele dia, e só aquele", () => {
     const excecoes: ExcecaoDeData[] = [
-      { data: "2026-03-10", indisponivel: true, inicioMinuto: null, fimMinuto: null },
+      { data: "2026-03-10", indisponivel: true, inicioMinuto: 0, fimMinuto: 1440 },
     ];
     const slots = horariosLivres({
       jornada: JORNADA_COMERCIAL,
@@ -286,6 +305,135 @@ describe("exceções por data — o que a jornada semanal não sabe dizer", () =
     });
     // A segunda tinha 9-12 e 13-18; a exceção diz "neste dia, só 15h-17h".
     expect(horas(slots)).toEqual(["15:00", "16:00"]);
+  });
+
+  it("indisponível NO MEIO do dia tira só aquelas horas — o resto do dia continua", () => {
+    // O caso comum: almoço estendido, reunião interna, compromisso pessoal.
+    // A versão anterior deste motor perdia o dia inteiro aqui.
+    const excecoes: ExcecaoDeData[] = [
+      { data: "2026-03-09", indisponivel: true, inicioMinuto: 12 * 60, fimMinuto: 14 * 60 },
+    ];
+    const slots = horariosLivres({
+      jornada: { timezone: SP, windows: [{ dow: 1, start: "09:00", end: "18:00" }] },
+      excecoes,
+      ocupados: [],
+      tipo: CONSULTA_DE_1H,
+      ...oDiaDe("2026-03-09"),
+      agora: new Date("2026-03-01T12:00:00Z"),
+    });
+    expect(horas(slots)).toEqual([
+      "09:00", "10:00", "11:00",
+      "14:00", "15:00", "16:00", "17:00",
+    ]);
+  });
+
+  it("subtrair no meio parte a janela em DUAS, e a grade renasce em cada pedaço", () => {
+    const excecoes: ExcecaoDeData[] = [
+      { data: "2026-03-09", indisponivel: true, inicioMinuto: 10 * 60, fimMinuto: 11 * 60 },
+    ];
+    const slots = horariosLivres({
+      jornada: { timezone: SP, windows: [{ dow: 1, start: "09:00", end: "13:00" }] },
+      excecoes,
+      ocupados: [],
+      tipo: CONSULTA_DE_1H,
+      ...oDiaDe("2026-03-09"),
+      agora: new Date("2026-03-01T12:00:00Z"),
+    });
+    // 09:00-10:00 de um lado; 11:00-13:00 do outro. Nada às 10h.
+    expect(horas(slots)).toEqual(["09:00", "11:00", "12:00"]);
+  });
+
+  it("disponível E indisponível no mesmo dia: a segunda subtrai o que a primeira abriu", () => {
+    const excecoes: ExcecaoDeData[] = [
+      { data: "2026-03-09", indisponivel: false, inicioMinuto: 9 * 60, fimMinuto: 12 * 60 },
+      { data: "2026-03-09", indisponivel: true, inicioMinuto: 10 * 60, fimMinuto: 11 * 60 },
+    ];
+    const slots = horariosLivres({
+      jornada: JORNADA_COMERCIAL,
+      excecoes,
+      ocupados: [],
+      tipo: CONSULTA_DE_1H,
+      ...oDiaDe("2026-03-09"),
+      agora: new Date("2026-03-01T12:00:00Z"),
+    });
+    // Vale das 9h às 10h e das 11h às 12h.
+    expect(horas(slots)).toEqual(["09:00", "11:00"]);
+  });
+
+  it("bloqueio de dia inteiro VENCE exceção disponível do mesmo dia — decidido, não acidental", () => {
+    // Levantado pelo MaestroConexoes: as duas linhas coexistem (a UNIQUE é por
+    // `start_minute`, e 0 ≠ 540), e quem as cadastrou provavelmente queria
+    // "não atendo, MENOS das 9h às 12h". A regra faz outra coisa: o disponível
+    // substitui a base, e o `(0, 1440)` subtrai tudo depois.
+    //
+    // Fica assim de propósito. Inverter a ordem consertaria este caso e
+    // quebraria o "sábado excepcional substitui", que é o caso que motivou o
+    // passo 2 — trocar um defeito por outro não é conserto. Quem tem de avisar
+    // é a TELA, ao salvar a segunda linha.
+    const excecoes: ExcecaoDeData[] = [
+      { data: "2026-03-09", indisponivel: false, inicioMinuto: 9 * 60, fimMinuto: 12 * 60 },
+      { data: "2026-03-09", indisponivel: true, inicioMinuto: 0, fimMinuto: 1440 },
+    ];
+    const slots = horariosLivres({
+      jornada: JORNADA_COMERCIAL,
+      excecoes,
+      ocupados: [],
+      tipo: CONSULTA_DE_1H,
+      ...oDiaDe("2026-03-09"),
+      agora: new Date("2026-03-01T12:00:00Z"),
+    });
+    expect(slots).toEqual([]);
+  });
+
+  it("ADJACÊNCIA NÃO É SOBREPOSIÇÃO: bloqueio que termina às 12h não come o slot das 12h", () => {
+    // Levantado pelo QAVivo. É um `<=` contra `<`: trocar o sinal aqui come um
+    // slot inteiro, e nenhum dos casos da decisão pegaria.
+    const excecoes: ExcecaoDeData[] = [
+      { data: "2026-03-09", indisponivel: true, inicioMinuto: 10 * 60, fimMinuto: 12 * 60 },
+    ];
+    const slots = horariosLivres({
+      jornada: { timezone: SP, windows: [{ dow: 1, start: "12:00", end: "15:00" }] },
+      excecoes,
+      ocupados: [],
+      tipo: CONSULTA_DE_1H,
+      ...oDiaDe("2026-03-09"),
+      agora: new Date("2026-03-01T12:00:00Z"),
+    });
+    // A janela começa exatamente onde o bloqueio termina: intacta.
+    expect(horas(slots)).toEqual(["12:00", "13:00", "14:00"]);
+  });
+
+  it("bloqueio que encosta no FIM da janela também não a toca", () => {
+    const excecoes: ExcecaoDeData[] = [
+      { data: "2026-03-09", indisponivel: true, inicioMinuto: 12 * 60, fimMinuto: 14 * 60 },
+    ];
+    const slots = horariosLivres({
+      jornada: { timezone: SP, windows: [{ dow: 1, start: "09:00", end: "12:00" }] },
+      excecoes,
+      ocupados: [],
+      tipo: CONSULTA_DE_1H,
+      ...oDiaDe("2026-03-09"),
+      agora: new Date("2026-03-01T12:00:00Z"),
+    });
+    expect(horas(slots)).toEqual(["09:00", "10:00", "11:00"]);
+  });
+
+  it("dois bloqueios no mesmo dia subtraem os dois, em qualquer ordem de cadastro", () => {
+    const excecoes: ExcecaoDeData[] = [
+      { data: "2026-03-09", indisponivel: true, inicioMinuto: 15 * 60, fimMinuto: 16 * 60 },
+      { data: "2026-03-09", indisponivel: true, inicioMinuto: 10 * 60, fimMinuto: 11 * 60 },
+    ];
+    const slots = horariosLivres({
+      jornada: { timezone: SP, windows: [{ dow: 1, start: "09:00", end: "18:00" }] },
+      excecoes,
+      ocupados: [],
+      tipo: CONSULTA_DE_1H,
+      ...oDiaDe("2026-03-09"),
+      agora: new Date("2026-03-01T12:00:00Z"),
+    });
+    expect(horas(slots)).toEqual([
+      "09:00", "11:00", "12:00", "13:00", "14:00", "16:00", "17:00",
+    ]);
   });
 });
 
