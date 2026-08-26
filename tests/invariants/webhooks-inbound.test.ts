@@ -799,14 +799,17 @@ describe("POST /api/v1/webhooks/in/[token] — Respondi (payload aninhado, achad
 
 /**
  * Classificação inicial (lib/leads/classificacao-inicial.ts), integrada na
- * mesma rota. `CONFIG_CLASSIFICACAO_INICIAL` é `null` nesta suíte (config
- * pendente, ver o arquivo) — os 3 casos abaixo provam o que É determinístico
- * hoje: os 3 motivos exatos de desqualificação, o pedido de revisão humana, e
- * que uma classe nunca é adivinhada quando o config não existe.
+ * mesma rota. `CONFIG_CLASSIFICACAO_INICIAL` está CONFIRMADO nesta suíte
+ * (maxScoreConhecido: 100, bandas A≥70/B 40-69/C 1-39 — decisão de Matheus,
+ * 2026-08-25) — os casos abaixo provam os 2 motivos exatos de
+ * desqualificação (só bloqueio técnico/legal real), os 3 sinais de revisão
+ * humana (nenhum bloqueia envio), e a classificação A/B/C/D de verdade,
+ * inclusive o caso que motivou a segunda rodada da decisão: orçamento baixo
+ * sozinho NÃO força D.
  */
 describe("POST /api/v1/webhooks/in/[token] — classificação inicial (2026-08-25)", () => {
-  it("caso 9 — 'Ainda não posso investir' desqualifica: lead criado, custom_fields marca motivo, atividade na timeline", async () => {
-    const payload = respondiPayload("resp-int-desq-invest-0009", "55 15988880009", "maria.exemplo+0009@example.com", (p) => {
+  it("caso 9 — 'Ainda não posso investir' NÃO desqualifica: vira classe D (sinal forte, lead continua no CRM)", async () => {
+    const payload = respondiPayload("resp-int-classe-d-0009", "55 15988880009", "maria.exemplo+0009@example.com", (p) => {
       const respondent = p.respondent as Record<string, unknown>;
       (respondent.answers as Record<string, unknown>)[
         "Considerando estratégia, tecnologia, atendimento e mídia, qual faixa de investimento seria viável para sua empresa crescer?"
@@ -818,13 +821,40 @@ describe("POST /api/v1/webhooks/in/[token] — classificação inicial (2026-08-
 
     const lead = rows(`select * from public.crm_leads where id = '${leadId}'`)[0]!;
     const cf = lead.custom_fields as Record<string, unknown>;
-    expect(cf.classificacao_inicial_status).toBe("desqualificado");
-    expect(cf.classificacao_inicial_motivo).toBe("sem_capacidade_de_investimento");
+    expect(cf.classificacao_inicial_status).toBe("classificado");
+    expect(cf.classificacao_inicial_classe).toBe("D");
 
+    // Não é mais desqualificação — não deve existir atividade lead_disqualified.
     const activityRows = rows(
-      `select * from public.crm_lead_activities where lead_id = '${leadId}' and type = 'lead_disqualified'`,
+      `select id from public.crm_lead_activities where lead_id = '${leadId}' and type = 'lead_disqualified'`,
     );
-    expect(activityRows.length).toBe(1);
+    expect(activityRows).toHaveLength(0);
+  });
+
+  it("caso 9b — REGRESSÃO: faixa de orçamento baixa mas SEM a frase exata não força D — score decide (fixture: score 55 → classe B)", async () => {
+    // Este é o caso que Matheus rejeitou na primeira versão da regra: uma
+    // empresa de alto potencial que declara orçamento inicial modesto não
+    // pode despencar pra D só por causa deste UM campo.
+    const payload = respondiPayload("resp-int-nao-forca-d-0009b", "55 15988880019", "maria.exemplo+0019@example.com", (p) => {
+      const respondent = p.respondent as Record<string, unknown>;
+      const answers = respondent.answers as Record<string, unknown>;
+      answers[
+        "Considerando estratégia, tecnologia, atendimento e mídia, qual faixa de investimento seria viável para sua empresa crescer?"
+      ] = "Até R$ 2 mil";
+      // Coerente com a faixa viável acima — sem isto o padrão da fixture
+      // ("investe hoje" R$5-10mil > "viável" R$2mil) dispara
+      // incoerencia_investimento, que não é o que este caso testa.
+      answers["Quanto sua empresa investe atualmente em marketing por mês?"] = "Até R$ 2 mil";
+    });
+    const res = await POST(jsonReq(TOKEN_RESPONDI, payload), reqCtx(TOKEN_RESPONDI));
+    expect(res.status).toBe(200);
+    const leadId = ((await res.json()) as { data: { lead_id: string } }).data.lead_id;
+
+    const lead = rows(`select * from public.crm_leads where id = '${leadId}'`)[0]!;
+    const cf = lead.custom_fields as Record<string, unknown>;
+    expect(cf.classificacao_inicial_classe, "orçamento baixo sozinho não pode forçar D").not.toBe("D");
+    expect(cf.classificacao_inicial_classe).toBe("B");
+    expect(cf.classificacao_inicial_percentual).toBe("55");
   });
 
   it("caso 10 — consentimento recusado desqualifica a classificação (motivo sem_consentimento), além de gerar consent_declined", async () => {
@@ -880,8 +910,16 @@ describe("POST /api/v1/webhooks/in/[token] — classificação inicial (2026-08-
     expect(reviewRows.length).toBe(1);
   });
 
-  it("caso 12 — sem config numérica: lead válido classifica como nao_avaliado, nunca uma classe adivinhada", async () => {
-    const payload = respondiPayload("resp-int-naoavaliado-0012", "55 15988880012", "maria.exemplo+0012@example.com");
+  it("caso 12 — sem respondi_score no envio: lead válido classifica como nao_avaliado, nunca uma classe adivinhada", async () => {
+    const payload = respondiPayload("resp-int-naoavaliado-0012", "55 15988880012", "maria.exemplo+0012@example.com", (p) => {
+      const respondent = p.respondent as Record<string, unknown>;
+      delete respondent.score;
+      // Coerente com a faixa viável padrão da fixture (R$4-7mil) — sem isto o
+      // padrão ("investe hoje" R$5-10mil > "viável" R$4-7mil) dispara
+      // incoerencia_investimento, que não é o que este caso testa.
+      (respondent.answers as Record<string, unknown>)["Quanto sua empresa investe atualmente em marketing por mês?"] =
+        "Até R$ 2 mil";
+    });
     const res = await POST(jsonReq(TOKEN_RESPONDI, payload), reqCtx(TOKEN_RESPONDI));
     expect(res.status).toBe(200);
     const leadId = ((await res.json()) as { data: { lead_id: string } }).data.lead_id;
@@ -898,5 +936,75 @@ describe("POST /api/v1/webhooks/in/[token] — classificação inicial (2026-08-
       `select type from public.crm_lead_activities where lead_id = '${leadId}' and type in ('lead_disqualified', 'lead_needs_review')`,
     );
     expect(activityRows).toHaveLength(0);
+  });
+
+  it("caso 13 — envio padrão da fixture (score 55): classifica como B, e a classe fica visível no lead", async () => {
+    const payload = respondiPayload("resp-int-classe-b-0013", "55 15988880013", "maria.exemplo+0013@example.com", (p) => {
+      const respondent = p.respondent as Record<string, unknown>;
+      // Coerente com a faixa viável padrão da fixture (R$4-7mil) — sem isto o
+      // padrão ("investe hoje" R$5-10mil > "viável" R$4-7mil) dispara
+      // incoerencia_investimento, que não é o que este caso testa.
+      (respondent.answers as Record<string, unknown>)["Quanto sua empresa investe atualmente em marketing por mês?"] =
+        "Até R$ 2 mil";
+    });
+    const res = await POST(jsonReq(TOKEN_RESPONDI, payload), reqCtx(TOKEN_RESPONDI));
+    expect(res.status).toBe(200);
+    const leadId = ((await res.json()) as { data: { lead_id: string } }).data.lead_id;
+
+    const lead = rows(`select * from public.crm_leads where id = '${leadId}'`)[0]!;
+    const cf = lead.custom_fields as Record<string, unknown>;
+    expect(cf.classificacao_inicial_status).toBe("classificado");
+    expect(cf.classificacao_inicial_classe).toBe("B");
+    expect(cf.classificacao_inicial_percentual).toBe("55");
+  });
+
+  it("caso 14 — nome com sinal de spam: revisão humana (spam_suspeito), não bloqueia a criação do lead", async () => {
+    const payload = respondiPayload("resp-int-spam-0014", "55 15988880014", "maria.exemplo+0014@example.com", (p) => {
+      const respondent = p.respondent as Record<string, unknown>;
+      (respondent.answers as Record<string, unknown>)["Qual é o seu nome?"] = "aaaaaaaa";
+      const rawAnswers = respondent.raw_answers as Array<Record<string, unknown>>;
+      const nameAnswer = rawAnswers.find((r) => (r.question as Record<string, unknown>).question_type === "name")!;
+      nameAnswer.answer = "aaaaaaaa";
+    });
+    const res = await POST(jsonReq(TOKEN_RESPONDI, payload), reqCtx(TOKEN_RESPONDI));
+    expect(res.status).toBe(200);
+    const leadId = ((await res.json()) as { data: { lead_id: string } }).data.lead_id;
+
+    const lead = rows(`select * from public.crm_leads where id = '${leadId}'`)[0]!;
+    const cf = lead.custom_fields as Record<string, unknown>;
+    expect(cf.classificacao_inicial_status).toBe("revisao_humana");
+    expect(cf.classificacao_inicial_motivo).toBe("spam_suspeito");
+
+    const reviewRows = rows(
+      `select id from public.crm_lead_activities where lead_id = '${leadId}' and type = 'lead_needs_review'`,
+    );
+    expect(reviewRows.length).toBe(1);
+  });
+
+  it("caso 15 — investimento atual maior que o viável declarado: revisão humana (incoerencia_investimento), lead segue elegível pro 1º contato", async () => {
+    const payload = respondiPayload("resp-int-incoerencia-0015", "55 15988880015", "maria.exemplo+0015@example.com", (p) => {
+      const respondent = p.respondent as Record<string, unknown>;
+      const answers = respondent.answers as Record<string, unknown>;
+      answers["Quanto sua empresa investe atualmente em marketing por mês?"] = "De R$ 10 mil a R$ 15 mil";
+      answers[
+        "Considerando estratégia, tecnologia, atendimento e mídia, qual faixa de investimento seria viável para sua empresa crescer?"
+      ] = "Até R$ 2 mil";
+    });
+    const res = await POST(jsonReq(TOKEN_RESPONDI, payload), reqCtx(TOKEN_RESPONDI));
+    expect(res.status).toBe(200);
+    const leadId = ((await res.json()) as { data: { lead_id: string } }).data.lead_id;
+
+    const lead = rows(`select * from public.crm_leads where id = '${leadId}'`)[0]!;
+    const cf = lead.custom_fields as Record<string, unknown>;
+    expect(cf.classificacao_inicial_status).toBe("revisao_humana");
+    expect(cf.classificacao_inicial_motivo).toBe("incoerencia_investimento");
+
+    // Revisão humana NÃO é gate de envio — guarda-do-contato.ts (telefone +
+    // consentimento) é quem decide isso, e não lê classificação nenhuma. A
+    // prova de que o lead segue elegível é o consentimento ter sido gravado
+    // normalmente, igual a qualquer outro envio com aceite.
+    const contact = rows(`select consent from public.contacts where id = '${lead.contact_id}'`)[0]!;
+    const consent = contact.consent as { marketing: { granted_at: string | null } };
+    expect(consent.marketing.granted_at).not.toBeNull();
   });
 });

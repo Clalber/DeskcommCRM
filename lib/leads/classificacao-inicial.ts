@@ -2,17 +2,50 @@
  * Classificação inicial do lead — roda UMA vez, na ingestão do webhook, antes
  * de qualquer humano ou IA conversar com o lead. Três saídas possíveis:
  *
- *   1. `desqualificado` — bateu um dos 3 motivos EXATOS abaixo. Determinístico,
- *      sem exceção por regra mal configurada (mesmo raciocínio do gate de
- *      consentimento em `lib/automation/guarda-do-contato.ts`: invariante de
- *      negócio fica em código, não em config).
- *   2. `revisao_humana` — o dado não é claramente bom nem claramente
- *      desqualificável (conflito de identidade). Não é uma classe A/B/C/D:
- *      é um pedido de olho humano ANTES de classificar.
- *   3. `A` | `B` | `C` | `D` | `nao_avaliado` — a classe de score, quando
- *      computável. `nao_avaliado` é o valor honesto enquanto
- *      `CONFIG_CLASSIFICACAO_INICIAL` for `null` (ver esse arquivo pro
- *      porquê) — nunca um "C" ou "frio" adivinhado por omissão.
+ *   1. `desqualificado` — bateu um dos 2 motivos EXATOS abaixo, os dois
+ *      BLOQUEIOS TÉCNICOS/LEGAIS reais (sem telefone válido não há canal;
+ *      sem consentimento não há base legal). Determinístico, sem exceção por
+ *      regra mal configurada (mesmo raciocínio do gate de consentimento em
+ *      `lib/automation/guarda-do-contato.ts`).
+ *   2. `revisao_humana` — o dado pede um olho humano antes de seguir
+ *      (conflito de identidade, sinal de spam, ou contradição entre o que a
+ *      empresa diz investir hoje e o que diz que seria viável). NÃO bloqueia
+ *      o primeiro contato automático — é sinal para quem acompanha o funil,
+ *      não um gate de envio (esse gate é outro, e vive em
+ *      `guarda-do-contato.ts`, olhando telefone/consentimento, não
+ *      classificação).
+ *   3. `A` | `B` | `C` | `D` | `nao_avaliado` — a classe de score.
+ *      `nao_avaliado` é o valor honesto quando `respondi_score` está ausente
+ *      ou não é numérico — nunca uma classe adivinhada por omissão (mesmo
+ *      raciocínio de `lib/leads/score-writer.ts`: zero é uma afirmação).
+ *
+ * ═══ A REGRA DE D, E POR QUE MUDOU (decisão de Matheus, 2026-08-25) ═══
+ *
+ * Versão anterior: `viable_investment_range` abaixo de um corte numérico
+ * (R$3.000/mês) forçava D sozinho, sobrescrevendo A/B/C. Rejeitada: uma
+ * empresa de alto potencial que declara um orçamento inicial modesto não
+ * pode despencar pra D só por causa desse UM campo — orçamento tem que ser
+ * parte da pontuação, não o veredito sozinho.
+ *
+ * Resolução: NÃO existe mais um corte numérico de orçamento aqui. O
+ * `respondent.score` do Respondi já é, ele mesmo, um critério COMBINADO — a
+ * pergunta de faixa de investimento é uma das ~15 perguntas do caminho
+ * condicional que alimentam esse score, então orçamento já pesa no
+ * percentual sem eu duplicar o desconto. D só é alcançado por dois caminhos,
+ * os dois vindos do critério COMBINADO, nunca de um campo isolado:
+ *
+ *   (a) o score do Respondi computou para o PISO (percentual === 0) — o
+ *       conjunto de respostas, combinado, não rendeu pontuação nenhuma; ou
+ *   (b) o respondente disse, com as próprias palavras, "Ainda não posso
+ *       investir" — não é um corte que eu inventei, é a frase exata que a
+ *       pessoa escolheu no formulário. Sinal FORTE o bastante pra forçar D
+ *       mesmo que o score numérico fosse mais alto, mas ainda assim um sinal
+ *       do respondente, não uma inferência sobre um número de R$.
+ *
+ * As duas vias cumprem "leads efetivamente desqualificados pelos critérios
+ * combinados do scoring, e não apenas pelo orçamento declarado" — e D
+ * continua sendo classe, não desqualificação: o lead segue no CRM, elegível
+ * pra a cadência própria de D (oferta de entrada, D+3, D+10).
  *
  * Este módulo é PURO (nenhum I/O) — testável sem banco, chamado pela rota do
  * webhook com os `custom_fields` já mapeados pelo normalizador do Respondi.
@@ -25,8 +58,8 @@ export type ResultadoClassificacaoInicial =
   | { status: "revisao_humana"; motivo: MotivoRevisaoHumana }
   | { status: "classificado"; classe: ClasseInicial; percentual: number | null };
 
-export type MotivoDesqualificacao = "sem_capacidade_de_investimento" | "contato_invalido" | "sem_consentimento";
-export type MotivoRevisaoHumana = "conflito_de_identidade";
+export type MotivoDesqualificacao = "contato_invalido" | "sem_consentimento";
+export type MotivoRevisaoHumana = "conflito_de_identidade" | "spam_suspeito" | "incoerencia_investimento";
 
 export interface EntradaClassificacaoInicial {
   customFields: Record<string, unknown>;
@@ -43,92 +76,98 @@ export interface EntradaClassificacaoInicial {
   nomeDoEnvio: string | null;
 }
 
-/**
- * As frases-exatas de "sem capacidade de investimento" que o form
- * "Imobiliárias e Incorporadoras" do Respondi usa como opção do radio de
- * faixa de investimento viável. Comparação exata (case-insensitive, trim) —
- * NUNCA substring/regex frouxo, porque "Ainda não posso investir" é o único
- * motivo dos 3 que é DIRETO do usuário (os outros dois são inferência nossa),
- * e um match frouxo desqualificaria por engano uma resposta que só MENCIONA
- * a frase sem ser ela.
- *
- * Hoje só tem a forma exata citada na diretiva. Se o Respondi tiver outra
- * variante (typo do form, opção duplicada), adicione aqui — não crie um
- * segundo lugar de verdade.
- */
-const FRASES_SEM_CAPACIDADE = ["ainda não posso investir"];
+/** A frase exata que sinaliza "sem capacidade de investimento agora" — sinal forte pra D, não desqualificação. */
+const FRASE_SEM_CAPACIDADE = "ainda não posso investir";
 
 function normalizaTexto(v: unknown): string | null {
   return typeof v === "string" && v.trim() ? v.trim().toLowerCase() : null;
 }
 
 /**
- * Os 3 motivos EXATOS de desqualificação, na ordem em que a diretiva os lista.
- * Qualquer outro sinal ruim (spam, incoerência) NÃO desqualifica — vai para
- * `avaliarRevisaoHumana` ou fica pendente de config, nunca vira um 4º motivo
- * inventado aqui.
+ * Os 2 motivos EXATOS de desqualificação — os únicos que são bloqueio
+ * TÉCNICO/LEGAL real (não dá pra mandar WhatsApp sem telefone válido; não dá
+ * base legal pra mandar sem consentimento). "Ainda não posso investir" NÃO
+ * está mais aqui — vira sinal de classe (D), não motivo de exclusão (decisão
+ * de 2026-08-25, ver cabeçalho do arquivo). Spam/incoerência também não —
+ * vão pra `avaliarRevisaoHumana`, que não bloqueia nada.
  */
 export function avaliarDesqualificacao(input: EntradaClassificacaoInicial): MotivoDesqualificacao | null {
-  // 1. "Ainda não posso investir" — testado contra o campo de faixa de
-  // investimento viável, que é onde a diretiva ancora a frase.
-  const faixaViavel = normalizaTexto(input.customFields.viable_investment_range);
-  if (faixaViavel && FRASES_SEM_CAPACIDADE.includes(faixaViavel)) {
-    return "sem_capacidade_de_investimento";
-  }
-
-  // 2. Contato inválido — o canal de follow-up (WhatsApp) não existe depois
-  // da normalização E.164. Um lead sem telefone válido não tem como receber
-  // nenhuma das cadências por classe.
   if (!input.phoneNormalizado) return "contato_invalido";
-
-  // 3. Consentimento recusado/ausente — mesmo estado no schema hoje
-  // (`consent.marketing.granted_at` null nos dois casos; ver
-  // guarda-do-contato.ts pro mesmo raciocínio do lado do envio).
   if (!input.consentGranted) return "sem_consentimento";
-
   return null;
 }
 
+const AFIRMACOES_URL = /https?:\/\/|www\./i;
+const SEQUENCIA_DE_DIGITOS_LONGA = /\d{8,}/;
+const CARACTERE_REPETIDO = /(.)\1{4,}/;
+const MARCADORES_DE_TESTE = new Set(["teste", "test", "asdf", "spam", "xxx", "aaaa", "qwerty", "n/a", "-"]);
+
+/** Nome que não parece nome: só dígito, e-mail/URL, caractere repetido, ou um marcador conhecido de teste/spam. */
+function nomePareceSpam(nome: string | null): boolean {
+  if (!nome) return false;
+  const n = nome.trim();
+  if (!n) return false;
+  const nLower = n.toLowerCase();
+  if (MARCADORES_DE_TESTE.has(nLower)) return true;
+  if (/^\d+$/.test(n)) return true;
+  if (n.includes("@") || AFIRMACOES_URL.test(n)) return true;
+  if (CARACTERE_REPETIDO.test(n)) return true;
+  return false;
+}
+
+/** Campo de texto livre com URL ou sequência de dígitos longa (telefone/WhatsApp embutido) — divulgação, não resposta. */
+function textoLivrePareceSpam(texto: unknown): boolean {
+  if (typeof texto !== "string" || !texto.trim()) return false;
+  return AFIRMACOES_URL.test(texto) || SEQUENCIA_DE_DIGITOS_LONGA.test(texto);
+}
+
 /**
- * Único caso de revisão humana implementado agora: conflito de identidade
- * DETERMINÍSTICO — o envio casou com um contato já existente (mesmo telefone
- * ou e-mail) cujo nome gravado diverge do nome que ESTE envio trouxe. É o
- * sinal mais barato de "duas pessoas atrás do mesmo contato" ou "nome digitado
- * errado da vez passada" — os dois merecem olho humano antes de classificar.
- *
- * "Spam" e "incoerência" (pedidos pela diretiva) NÃO estão aqui: exigem
- * julgamento sobre texto livre (nome sem sentido, respostas contraditórias
- * entre si) que este módulo, deliberadamente determinístico, não tenta
- * adivinhar sem um critério escrito por Matheus — ver o TODO no relatório
- * desta sessão. Ficam PENDENTES, não inventadas.
+ * Extrai o MAIOR valor em reais mencionado num texto de faixa do Respondi
+ * ("De R$ 4 mil a R$ 7 mil por mês" → 7000; "Até R$ 2 mil" → 2000).
+ * `null` quando não há nenhum padrão "N mil" reconhecível — nunca um valor
+ * chutado a partir de texto que não bate no formato conhecido.
+ */
+function extraiValorMaximoBRL(texto: unknown): number | null {
+  if (typeof texto !== "string") return null;
+  const matches = [...texto.matchAll(/(\d+(?:[.,]\d+)?)\s*mil/gi)];
+  if (!matches.length) return null;
+  const valores = matches.map((m) => Number(m[1]!.replace(",", ".")) * 1000);
+  return Math.max(...valores);
+}
+
+/**
+ * Os 3 sinais de revisão humana — NENHUM deles bloqueia envio automático.
+ * São pedido de olho humano, não gate: quem controla se a mensagem sai é
+ * `guarda-do-contato.ts` (telefone/consentimento), que não lê nada disto.
  */
 export function avaliarRevisaoHumana(input: EntradaClassificacaoInicial): MotivoRevisaoHumana | null {
-  if (!input.contatoExistente) return null;
-  const nomeExistente = normalizaTexto(input.contatoExistente.name);
+  const nomeExistente = normalizaTexto(input.contatoExistente?.name);
   const nomeNovo = normalizaTexto(input.nomeDoEnvio);
-  if (nomeExistente && nomeNovo && nomeExistente !== nomeNovo) {
+  if (input.contatoExistente && nomeExistente && nomeNovo && nomeExistente !== nomeNovo) {
     return "conflito_de_identidade";
   }
+
+  if (
+    nomePareceSpam(input.nomeDoEnvio) ||
+    textoLivrePareceSpam(input.customFields.company_name) ||
+    textoLivrePareceSpam(input.customFields.commercial_challenge)
+  ) {
+    return "spam_suspeito";
+  }
+
+  const investeHoje = extraiValorMaximoBRL(input.customFields.current_marketing_investment);
+  const faixaViavel = extraiValorMaximoBRL(input.customFields.viable_investment_range);
+  if (investeHoje !== null && faixaViavel !== null && investeHoje > faixaViavel) {
+    return "incoerencia_investimento";
+  }
+
   return null;
 }
 
-/**
- * O percentual — numerador confirmado (`respondi_score`), denominador
- * PENDENTE (`CONFIG_CLASSIFICACAO_INICIAL.maxScoreConhecido`). Devolve `null`
- * enquanto o config não existir; nunca inventa um teto.
- */
-function calcularPercentual(customFields: Record<string, unknown>): number | null {
-  if (!CONFIG_CLASSIFICACAO_INICIAL) return null;
-  const bruto = Number(customFields.respondi_score);
-  if (!Number.isFinite(bruto)) return null;
-  const max = CONFIG_CLASSIFICACAO_INICIAL.maxScoreConhecido;
-  if (!(max > 0)) return null;
-  return Math.max(0, Math.min(100, (bruto / max) * 100));
-}
-
-function bandaDoPercentual(percentual: number, cfg: NonNullable<typeof CONFIG_CLASSIFICACAO_INICIAL>): "A" | "B" | "C" {
-  if (percentual >= cfg.bandas.A.min) return "A";
-  if (percentual >= cfg.bandas.B.min) return "B";
+function bandaDoPercentual(percentual: number): "A" | "B" | "C" {
+  const { bandas } = CONFIG_CLASSIFICACAO_INICIAL;
+  if (percentual >= bandas.A.min) return "A";
+  if (percentual >= bandas.B.min) return "B";
   return "C";
 }
 
@@ -139,19 +178,29 @@ export function classificarLeadInicial(input: EntradaClassificacaoInicial): Resu
   const motivoRevisao = avaliarRevisaoHumana(input);
   if (motivoRevisao) return { status: "revisao_humana", motivo: motivoRevisao };
 
-  const percentual = calcularPercentual(input.customFields);
-  const cfg = CONFIG_CLASSIFICACAO_INICIAL;
+  const bruto = Number(input.customFields.respondi_score);
+  if (!Number.isFinite(bruto)) {
+    // Sem pontuação suficiente pra avaliar — nunca uma classe adivinhada.
+    return { status: "classificado", classe: "nao_avaliado", percentual: null };
+  }
+  // Arredondado a 2 casas: divisão seguida de multiplicação por 100 gera
+  // ruído de ponto flutuante (55/100*100 = 55.00000000000001) mesmo quando o
+  // resultado matemático é exato — sem isto, todo teste de igualdade (e toda
+  // comparação de banda) fica refém do float.
+  const bruta = Math.max(0, Math.min(100, (bruto / CONFIG_CLASSIFICACAO_INICIAL.maxScoreConhecido) * 100));
+  const percentual = Math.round(bruta * 100) / 100;
 
-  // D é sobre ORÇAMENTO declarado, não sobre score — checa antes da banda de
-  // percentual e a sobrepõe quando bate (um lead pode ter score alto e
-  // orçamento baixo ao mesmo tempo; a diretiva pede que isso vire D, não A).
-  if (cfg) {
-    const faixaViavel = normalizaTexto(input.customFields.viable_investment_range);
-    if (faixaViavel && cfg.orcamentoBaixoRegex.test(faixaViavel)) {
-      return { status: "classificado", classe: "D", percentual };
-    }
+  // D via sinal FORTE e direto do respondente — não um corte de R$ inventado.
+  const faixaViavel = normalizaTexto(input.customFields.viable_investment_range);
+  if (faixaViavel === FRASE_SEM_CAPACIDADE) {
+    return { status: "classificado", classe: "D", percentual };
   }
 
-  if (percentual === null || !cfg) return { status: "classificado", classe: "nao_avaliado", percentual };
-  return { status: "classificado", classe: bandaDoPercentual(percentual, cfg), percentual };
+  // D via piso do critério COMBINADO (o score do Respondi já pesa orçamento
+  // como uma das ~15 perguntas do caminho condicional — sem desconto extra).
+  if (percentual === 0) {
+    return { status: "classificado", classe: "D", percentual };
+  }
+
+  return { status: "classificado", classe: bandaDoPercentual(percentual), percentual };
 }

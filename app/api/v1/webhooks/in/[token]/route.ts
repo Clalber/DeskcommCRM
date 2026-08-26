@@ -377,12 +377,15 @@ export async function POST(req: NextRequest, ctx: RouteCtx): Promise<NextRespons
     }
   }
 
-  // Classificação inicial (só Respondi por ora — os 3 motivos de
-  // desqualificação e o campo de orçamento são específicos do form
+  // Classificação inicial (só Respondi por ora — os motivos de
+  // desqualificação/revisão e o campo de orçamento são específicos do form
   // "Imobiliárias e Incorporadoras"; um webhook genérico não tem
   // `custom_fields.viable_investment_range` nem `consent` estruturado do
   // mesmo jeito). Escreve em `custom_fields` do PRÓPRIO lead sendo criado —
   // não dispara automação nenhuma, não manda mensagem: é dado, não ação.
+  // "revisao_humana" (conflito de identidade, spam, incoerência de
+  // investimento) também não bloqueia nada — quem controla envio é
+  // guarda-do-contato.ts, que não lê classificação nenhuma.
   let classificacaoInicial: ResultadoClassificacaoInicial | null = null;
   if (respondiMapped) {
     classificacaoInicial = classificarLeadInicial({
