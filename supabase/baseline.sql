@@ -13532,6 +13532,50 @@ $$;
 revoke execute on function public.fn_limpar_vinculos_do_agendamento() from public, anon, authenticated;
 grant  execute on function public.fn_limpar_vinculos_do_agendamento() to service_role;
 
+-- ---- LGPD alcança a agenda: função (migration 0184) ----
+--
+-- A PRIMEIRA metade da 0184. Está aqui, e não no fim, porque cria FUNÇÃO — e a
+-- VARREDURA anon (logo abaixo) proíbe `create function` depois dela: a função
+-- nasceria com EXECUTE para `anon` em quem ATUALIZA, sem nada adiante para tirar.
+-- O trigger vai no bloco do fim; a ordem não importa, porque o corpo de uma
+-- plpgsql só resolve nomes na execução e nada dispara UPDATE durante o baseline.
+--
+-- `fn_lgpd_cascade_redact_contact` percorre uma lista escrita à mão e
+-- `calendar_appointments` não estava nela — e a tabela guarda `title`,
+-- `description`, `notes` (numa clínica, queixa clínica), `location_details` e
+-- `cancellation_reason`. A função reportava sucesso, a rota reportava sucesso, o
+-- SLA de D+15 era marcado como cumprido, e a queixa continuava legível.
+--
+-- Trigger e não passo dentro da função: ela vem do dump com ~180 linhas, e um
+-- passo novo exigiria carregar uma CÓPIA inteira dela aqui — duas cópias que
+-- divergem no primeiro conserto. E o trigger escuta a COLUNA, não o chamador,
+-- então alcança qualquer caminho de anonimização.
+create or replace function public.fn_redigir_agenda_do_contato_anonimizado()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+begin
+  update public.calendar_appointments
+     set title               = 'Compromisso anonimizado',
+         description         = null,
+         notes               = null,
+         location_details    = null,
+         meeting_url         = null,
+         cancellation_reason = null
+   where organization_id = new.organization_id
+     and contact_id = new.id;
+  return new;
+end;
+$$;
+
+-- Função de trigger não exige EXECUTE de quem dispara o UPDATE, então revogar
+-- das três origens não a quebra — e a mantém fora da lista de exceções do
+-- invariante de hardening, que é congelada.
+revoke execute on function public.fn_redigir_agenda_do_contato_anonimizado() from public, anon, authenticated;
+grant  execute on function public.fn_redigir_agenda_do_contato_anonimizado() to service_role;
+
 -- ---- VARREDURA anon: função nova nasce exposta em quem ATUALIZA (migration 0116) ----
 --
 -- ⚠️ ESTE BLOCO É, DE PROPÓSITO, O ÚLTIMO DO ARQUIVO. Apêndice novo entra ANTES
@@ -15096,5 +15140,73 @@ create unique index if not exists calendar_appointments_sem_duplicata_idx
 
 comment on index public.calendar_appointments_sem_duplicata_idx is
   'Fecha a janela entre a validação do motor de slots e o INSERT: dois POSTs simultâneos para o mesmo instante e o mesmo atendente não viram dois compromissos. Parcial em (pending, confirmed) porque cancelado e realizado não ocupam ninguém, e em owner_user_id não nulo porque NULL não colide com NULL numa UNIQUE — e porque agendamento sem atendente não ocupa agenda. Quem captura o 23505 é a rota, que devolve 409 dizendo qual compromisso está ali.';
+
+notify pgrst, 'reload schema';
+
+-- ---- a grade da agenda não se move sozinha (migration 0183) ----
+--
+-- `calendar_appointments` não estava na publicação: o `.channel()` sobe, o
+-- `subscribe` devolve SUBSCRIBED, nenhum erro em lugar nenhum, e nenhum evento
+-- chega nunca. Duas pessoas com a agenda aberta não veem o que a outra marcou.
+-- Agravante de diagnóstico: nesta base o canal já morre calado por outro motivo
+-- quando o token não chega ao socket, então quem investigar vai para o `setAuth`
+-- e não para a publicação — dois defeitos com o MESMO sintoma.
+--
+-- SÓ ela entra, e a doutrina julga tabela a tabela: `calendar_external_events` é
+-- espelho reescrito em lote pelo sync (200 eventos = 200 pulsos: o "pulso que
+-- mente" da 0075 em forma de calendário); `calendar_connections` guarda token; as
+-- de configuração mudam com quem já está na tela.
+--
+-- ⚠️ NÃO resolve o DELETE: `replica identity` tem zero ocorrência neste schema,
+-- então o payload de DELETE traz só o `id` e um canal com `filter` por
+-- `owner_user_id` não o recebe — o card apagado fica na tela até o F5. Não ligo
+-- `replica identity full` aqui porque hoje não há assinante nenhum, e o custo em
+-- WAL seria para servir um consumidor que não existe.
+do $$
+begin
+  if not exists (
+    select 1 from pg_publication where pubname = 'supabase_realtime'
+  ) then
+    create publication supabase_realtime;
+  end if;
+
+  if not exists (
+    select 1 from pg_publication_tables
+     where pubname = 'supabase_realtime'
+       and schemaname = 'public'
+       and tablename = 'calendar_appointments'
+  ) then
+    execute 'alter publication supabase_realtime add table public.calendar_appointments';
+  end if;
+end $$;
+
+comment on table public.calendar_appointments is
+  'O compromisso COMBINADO: hora marcada, com alguém, ocupando a agenda de um atendente. Distinto do RETORNO agendado (cron_jobs kind=at, job_kind=followup_turn), que é decisão interna do sistema, não ocupa agenda de ninguém e o cliente não sabe. ESTÁ na publicação supabase_realtime (migration 0183) porque marcar e cancelar é mudança de estado, não telemetria — mas o DELETE só traz o id, então um canal com filter por owner_user_id não o recebe.';
+
+notify pgrst, 'reload schema';
+
+-- ---- LGPD alcança a agenda: trigger (migration 0184) ----
+--
+-- A SEGUNDA metade da 0184. A função está ANTES do bloco da VARREDURA anon, e a
+-- razão está escrita lá.
+--
+-- Redige o texto livre e PRESERVA `starts_at`, `ends_at`, `status` e
+-- `owner_user_id`: a clínica precisa responder "quantos atendimentos houve em
+-- março" depois de anonimizar. O QUE aconteceu e QUANDO fica; COM QUEM e SOBRE O
+-- QUÊ sai.
+--
+-- `calendar_external_events` fica de fora e NÃO por esquecimento: ela não tem
+-- `contact_id`, e o único vínculo com a pessoa é o `title` copiado do Google.
+-- Alcançá-la exige uma decisão de produto — declarar que é espelho de terceiro,
+-- ou apagar a janela da conexão.
+drop trigger if exists trg_redigir_agenda_ao_anonimizar on public.contacts;
+create trigger trg_redigir_agenda_ao_anonimizar
+  after update of is_anonymized on public.contacts
+  for each row
+  when (new.is_anonymized is true and old.is_anonymized is distinct from true)
+  execute function public.fn_redigir_agenda_do_contato_anonimizado();
+
+comment on column public.calendar_appointments.notes is
+  'Anotação livre do atendimento — numa clínica, queixa clínica. É dado pessoal: o trigger trg_redigir_agenda_ao_anonimizar (migration 0184) a apaga quando o contato é anonimizado, junto com title, description, location_details, meeting_url e cancellation_reason. Horário, status e dono são PRESERVADOS: o que aconteceu e quando é registro de operação.';
 
 notify pgrst, 'reload schema';
