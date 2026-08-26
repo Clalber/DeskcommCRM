@@ -53,14 +53,75 @@
  * consentimento pré-aprovado — que é o motivo de esta spec entrar em
  * `FORA_DO_CI` no `e2e.yml`, e não de ela ficar sem existir.
  */
-import { test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
-test.skip("sem chave do Google, a Agenda abre e explica o que falta", async () => {
-  // Bloqueada pela frente 2: a tela ainda não consome `googleEstaConfigurado()`.
-  // Ver o cabeçalho para o que ela vai afirmar.
-});
+import { lerCreds, loginComoAdmin } from "./helpers/login-admin";
 
-test.skip("conectar a agenda do Google pela tela e ver a faixa mudar", async () => {
-  // Bloqueada pela frente 2 (o botão) e por uma conta Google de teste.
-  // Ver o cabeçalho.
+const ESPERA = 60_000;
+test.describe.configure({ mode: "serial", timeout: 180_000 });
+
+/**
+ * ─── ATUALIZAÇÃO (@VPS, frente 2) ─────────────────────────────────────────
+ *
+ * O caso 1 DEIXOU de ser `skip`: a tela agora consome `googleEstaConfigurado()`
+ * e `faltaParaConectarOGoogle()`, resolvidos no servidor e passados por prop —
+ * a env nunca atravessa para o cliente.
+ *
+ * E ele roda no CI de graça, sem conta Google nenhuma: o ambiente de teste NÃO
+ * tem `GOOGLE_CALENDAR_CLIENT_ID`, então ele já está no estado que 100% dos
+ * self-hosters têm no dia 1. O caso mais importante era o mais barato de provar,
+ * e por isso ele vinha primeiro no plano do DevGatilhos.
+ *
+ * O caso 2 continua `skip`, e o motivo não mudou: precisa de conta Google com
+ * consentimento pré-aprovado.
+ */
+test.describe("conectar a agenda do Google", () => {
+  let page: Page;
+
+  test.beforeAll(async ({ browser }) => {
+    test.setTimeout(240_000);
+    page = await browser.newPage();
+    await loginComoAdmin(page, lerCreds());
+  });
+
+  test.afterAll(async () => {
+    await page.close();
+  });
+
+  test("sem chave do Google, a Agenda abre e explica o que falta", async () => {
+    await page.goto("/app/agenda");
+
+    // 1. A TELA ABRE INTEIRA. Env opcional ausente degrada com explicação, não
+    //    derruba o módulo — é o que `configuracaoDoGoogle()` devolvendo `null`
+    //    existe para permitir.
+    await expect(page.getByTestId("tela-agenda")).toBeVisible({ timeout: ESPERA });
+    await expect(page.getByRole("heading", { name: "Agenda" })).toBeVisible();
+
+    // 2. O BOTÃO NÃO APARECE — e não é "aparece desabilitado". Desabilitado
+    //    diria "você não pode"; o certo é "esta instalação ainda não tem".
+    await expect(page.getByTestId("conectar-google")).toHaveCount(0);
+
+    // 3. E NO LUGAR DELE há explicação, com três propriedades que importam:
+    const explicacao = page.getByTestId("google-nao-configurado");
+    await expect(explicacao).toBeVisible();
+    //    (a) não culpa quem está lendo
+    await expect(explicacao).toContainText(/não é nada que você tenha feito/i);
+    //    (b) diz QUEM resolve
+    await expect(explicacao).toContainText(/quem instalou/i);
+    //    (c) diz o que continua funcionando — senão a pessoa acha que a agenda quebrou
+    await expect(explicacao).toContainText(/funciona normalmente/i);
+
+    // 4. E o texto NÃO despeja código: nada de nome de variável com underscore
+    //    no meio da frase para quem não programa. A exceção é o bloco `o-que-falta`,
+    //    que é deliberadamente o nome técnico da chave — quem instalou precisa dele.
+    const corpo = await explicacao.innerText();
+    const semOBloco = corpo.replace((await page.getByTestId("o-que-falta").innerText().catch(() => "")) || "\u0000", "");
+    expect(semOBloco, `código cru na frase: ${semOBloco}`).not.toMatch(/[a-z]+_[a-z]+_[a-z]+/);
+  });
+
+  test.skip("conectar a agenda do Google pela tela e ver a faixa mudar", async () => {
+    // Continua bloqueada, e NÃO pela frente 2: o botão existe agora. Falta uma
+    // conta Google de teste com consentimento pré-aprovado — por isso esta spec
+    // fica em FORA_DO_CI, e não sem existir.
+  });
 });

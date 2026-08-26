@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 
+import { faltaParaConectarOGoogle, googleEstaConfigurado } from "@/lib/agenda/google/config";
 import { requireAuth, resolveActiveOrg } from "@/lib/auth/server";
 
 import { AgendaClient } from "./_client";
@@ -31,5 +32,17 @@ export default async function AgendaPage() {
   // render, como já fazia com o `locale`. O fuso entrou lá pela mesma razão.
   const fusoDeApresentacao = user.timezone ?? null;
 
-  return <AgendaClient fusoDeApresentacao={fusoDeApresentacao} />;
+  // Resolvido no SERVIDOR: `GOOGLE_CALENDAR_*` é env de servidor e não pode
+  // atravessar para o cliente. A tela recebe o booleano e a lista do que falta,
+  // nunca o segredo.
+  const googleConfigurado = googleEstaConfigurado();
+  const faltaNoGoogle = googleConfigurado ? [] : faltaParaConectarOGoogle();
+
+  return (
+    <AgendaClient
+      fusoDeApresentacao={fusoDeApresentacao}
+      googleConfigurado={googleConfigurado}
+      faltaNoGoogle={faltaNoGoogle}
+    />
+  );
 }
