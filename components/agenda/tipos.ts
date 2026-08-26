@@ -24,19 +24,26 @@ export type Pessoa = {
 };
 
 /**
- * De onde veio o agendamento. `google` entra como OCUPAÇÃO, não como
- * agendamento nosso: não se edita, não se cancela, não se remarca por aqui —
- * quem manda nele é a agenda de origem. A grade mostra isso desenhando-o
- * esmaecido e hachurado, e escondendo as ações.
+ * O VOCABULÁRIO DE BANCO NÃO MORA AQUI — é importado.
+ *
+ * Estes dois tipos tinham definição PRÓPRIA neste arquivo, com valores em pt-br
+ * (`faltou`, `deskcomm`) enquanto `lib/agenda/tipos.ts` — que espelha o CHECK
+ * da migration 0176 — declara `no_show` e `google_sync`. Mesmo NOME de símbolo,
+ * conjuntos sem intersecção, em módulos diferentes.
+ *
+ * O modo de falha era o pior dos três possíveis: **não** dava erro de
+ * compilação (são módulos distintos) e **não** dava erro em runtime — daria
+ * CARD EM BRANCO no dia em que a frente 1 ligasse a tela ao banco, porque o
+ * dado chegaria `no_show` e o `Record` de rótulos não teria a chave. Achado
+ * pelo Arquiteto antes de a ligação existir.
+ *
+ * A regra que fica: o que tem lado no BANCO vem de `lib/agenda/tipos.ts`; o que
+ * é só da TELA (visão, trilha de cor, Pessoa) fica aqui, porque não tem lado no
+ * banco e não deve ter.
  */
-export type OrigemDoAgendamento = "deskcomm" | "google";
+export type { OrigemDoAgendamento, SituacaoDoAgendamento } from "@/lib/agenda/tipos";
 
-export type SituacaoDoAgendamento =
-  | "confirmado"
-  | "aguardando"
-  | "cancelado"
-  | "realizado"
-  | "faltou";
+import type { OrigemDoAgendamento, SituacaoDoAgendamento } from "@/lib/agenda/tipos";
 
 export type Agendamento = {
   id: string;

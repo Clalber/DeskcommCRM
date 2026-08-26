@@ -10,6 +10,8 @@ import { cn } from "@/lib/utils";
 
 import { AvatarDaPessoa } from "./AvatarDaPessoa";
 import { corDaTrilha } from "./paleta";
+import { ROTULO_DA_SITUACAO } from "@/lib/agenda/tipos";
+
 import type { Agendamento, Pessoa, SituacaoDoAgendamento } from "./tipos";
 
 /**
@@ -30,17 +32,25 @@ const ABAS = [
 export type AbaDoHistorico = (typeof ABAS)[number]["id"];
 
 /**
- * O rótulo de cada situação, na língua de quem usa.
+ * A VARIANTE do selo por situação. O RÓTULO não mora aqui.
  *
- * "Booking ACCEPTED" e "no-show" não aparecem: o produto renomeia termo técnico
- * na cara do usuário, e quem lê isto é dona de clínica, não engenheira.
+ * `ROTULO_DA_SITUACAO` (`lib/agenda/tipos.ts`) já traduz os cinco valores do
+ * banco para pt-br, espelhado no CHECK da migration por invariante. Manter uma
+ * segunda tradução aqui seria um segundo lugar para a mesma verdade — e foi
+ * exatamente esse duplo vocabulário que o Arquiteto pegou antes de a tela ligar
+ * ao banco.
+ *
+ * O que é da TELA e fica: qual cor de selo cada situação recebe.
  */
-const SITUACAO: Record<SituacaoDoAgendamento, { rotulo: string; variante: "default" | "neutral" | "success" | "warning" | "error" }> = {
-  confirmado: { rotulo: "Confirmado", variante: "default" },
-  aguardando: { rotulo: "Aguardando confirmação", variante: "warning" },
-  cancelado: { rotulo: "Cancelado", variante: "neutral" },
-  realizado: { rotulo: "Realizado", variante: "success" },
-  faltou: { rotulo: "Faltou", variante: "error" },
+const VARIANTE_DA_SITUACAO: Record<
+  SituacaoDoAgendamento,
+  "default" | "neutral" | "success" | "warning" | "error"
+> = {
+  confirmed: "default",
+  pending: "warning",
+  cancelled: "neutral",
+  completed: "success",
+  no_show: "error",
 };
 
 function separar(agendamentos: Agendamento[], agora: Date): Record<AbaDoHistorico, Agendamento[]> {
@@ -51,8 +61,8 @@ function separar(agendamentos: Agendamento[], agora: Date): Record<AbaDoHistoric
     // Cancelado sai das outras abas SEMPRE, mesmo sendo futuro: quem abre
     // "Próximos" está perguntando o que vai acontecer, e um cancelado ali seria
     // uma resposta errada com cara de certa.
-    if (a.situacao === "cancelado") { vazio.cancelados.push(a); continue; }
-    if (a.situacao === "aguardando") { vazio.aguardando.push(a); continue; }
+    if (a.situacao === "cancelled") { vazio.cancelados.push(a); continue; }
+    if (a.situacao === "pending") { vazio.aguardando.push(a); continue; }
     (isBefore(new Date(a.comeca), agora) ? vazio.passados : vazio.proximos).push(a);
   }
   return vazio;
@@ -153,7 +163,7 @@ export function HistoricoDaAgenda({
           <ul>
             {daAba.map((a) => {
               const pessoa = pessoas.find((p) => p.id === a.responsavelId);
-              const situacao = SITUACAO[a.situacao];
+              const variante = VARIANTE_DA_SITUACAO[a.situacao];
               const comeca = new Date(a.comeca);
               return (
                 <li
@@ -184,8 +194,8 @@ export function HistoricoDaAgenda({
                     </div>
                   </div>
                   {pessoa && <AvatarDaPessoa pessoa={pessoa} tamanho="sm" />}
-                  <Badge variant={situacao.variante} className="shrink-0">
-                    {situacao.rotulo}
+                  <Badge variant={variante} className="shrink-0">
+                    {ROTULO_DA_SITUACAO[a.situacao]}
                   </Badge>
                   <div className="flex shrink-0 items-center gap-1">
                     {/*
@@ -220,7 +230,7 @@ export function HistoricoDaAgenda({
                         </Button>
                       </>
                     )}
-                    {aba === "passados" && a.situacao !== "realizado" && a.situacao !== "faltou" && (
+                    {aba === "passados" && a.situacao !== "completed" && a.situacao !== "no_show" && (
                       // Decisão 17. Só enquanto o desfecho NÃO foi registrado:
                       // oferecer "Realizado" num que já está realizado seria
                       // pedir de novo o que a pessoa já respondeu.

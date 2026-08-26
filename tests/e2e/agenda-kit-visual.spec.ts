@@ -350,7 +350,11 @@ test.describe("kit visual da Agenda", () => {
   });
 
   test("ocupação vinda do Google é ocupação, não agendamento: não abre", async () => {
-    const doGoogle = page.locator('[data-testid^="agendamento-"][data-origem="google"]').first();
+    // `google_sync` e `ui`, e não `google`/`deskcomm`: o vocabulário de origem
+    // agora vem de `lib/agenda/tipos.ts`, que espelha o CHECK do banco. Os
+    // valores em pt-br que estavam aqui eram um SEGUNDO vocabulário com os
+    // mesmos nomes de símbolo — pegado pelo Arquiteto antes de a tela ligar.
+    const doGoogle = page.locator('[data-testid^="agendamento-"][data-origem="google_sync"]').first();
     await expect(doGoogle).toBeVisible({ timeout: ESPERA });
     await expect(doGoogle).toBeDisabled();
 
@@ -361,7 +365,7 @@ test.describe("kit visual da Agenda", () => {
     const corDeFora = await page
       .getByTestId(`faixa-${idDoGoogle!.replace("agendamento-", "")}`)
       .evaluate((el) => getComputedStyle(el).backgroundColor);
-    const nosso = page.locator('[data-testid^="agendamento-"][data-origem="deskcomm"]').first();
+    const nosso = page.locator('[data-testid^="agendamento-"][data-origem="ui"]').first();
     const idNosso = await nosso.getAttribute("data-testid");
     const corNossa = await page
       .getByTestId(`faixa-${idNosso!.replace("agendamento-", "")}`)

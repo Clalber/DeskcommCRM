@@ -128,8 +128,8 @@ function BlocoDeAgendamento({
   const termina = new Date(agendamento.termina);
   const duracao = Math.max(differenceInMinutes(termina, comeca), 15);
   const trilha = pessoa?.trilha ?? 1;
-  const doGoogle = agendamento.origem === "google";
-  const cancelado = agendamento.situacao === "cancelado";
+  const doGoogle = agendamento.origem === "google_sync";
+  const cancelado = agendamento.situacao === "cancelled";
 
   return (
     <button
