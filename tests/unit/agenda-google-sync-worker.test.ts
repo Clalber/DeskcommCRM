@@ -1,0 +1,193 @@
+/**
+ * A VOLTA: o que o Google diz que ocupa entra no sistema.
+ *
+ * Antes desta rodada, `git grep` por `calendar_external_events` achava só
+ * leitura — o pedido do dono do produto diz "ida e volta" e havia só ida, e o
+ * tradutor aprovado numa revisão independente não traduzia nada porque ninguém
+ * o chamava.
+ *
+ * O caso que dá nome ao arquivo não é o caminho feliz: é o ANTI-ECO. Um
+ * agendamento nosso vira evento no Google e VOLTA nesta listagem; gravá-lo faria
+ * o MESMO compromisso ocupar dois horários. E medido antes de escrever: nem
+ * `ocupados.ts` nem `consulta.ts` descontam evento externo que seja nosso — os
+ * dois contam tudo o que está na tabela. Logo o filtro tem de ser na ESCRITA.
+ */
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+import { audit } from "@/lib/audit";
+import { decryptWebhookSecret } from "@/lib/webhooks/secrets";
+import { icalUidDoAgendamento } from "@/lib/agenda/google/evento";
+import { sincronizarAgendasDoGoogle } from "@/app/api/v1/cron/agenda-google-sync/route";
+
+vi.mock("@/lib/audit", () => ({ audit: vi.fn(async () => undefined), isServiceRoleConfigured: vi.fn(() => true) }));
+vi.mock("@/lib/webhooks/secrets", () => ({ decryptWebhookSecret: vi.fn(async () => "ya29.token") }));
+
+const AGORA = new Date("2026-08-26T12:00:00.000Z");
+
+let gravados: Array<Record<string, unknown>> = [];
+let removidos: number;
+let tokensGravados: Array<string | null>;
+
+function admin() {
+  return {
+    from: (tabela: string) => {
+      const cadeia: Record<string, unknown> = {
+        upsert: async (linha: Record<string, unknown>) => {
+          gravados.push(linha);
+          return { error: null };
+        },
+        delete: () => {
+          const d = { eq: () => d, then: undefined };
+          removidos += 1;
+          return new Proxy(d, { get: (alvo, p) => (p === "eq" ? () => new Proxy(d, {} as never) : Reflect.get(alvo, p)) });
+        },
+        update: (campos: Record<string, unknown>) => ({
+          eq: async () => {
+            if (tabela === "calendar_connection_calendars") tokensGravados.push((campos.sync_token as string) ?? null);
+            return { error: null };
+          },
+        }),
+      };
+      return cadeia as never;
+    },
+  } as never;
+}
+
+function calendario(sobrescreve: Record<string, unknown> = {}) {
+  return {
+    id: "cal-1",
+    organization_id: "org-1",
+    connection_id: "conn-1",
+    external_calendar_id: "ana@clinica.com.br",
+    sync_token: null,
+    fuso: "America/Sao_Paulo",
+    access_token_encrypted: "\\xACCESS",
+    ...sobrescreve,
+  } as never;
+}
+
+function pagina(corpo: unknown, status = 200): Response {
+  return { ok: status >= 200 && status < 300, status, json: async () => corpo } as unknown as Response;
+}
+
+const eventoDeTerceiro = {
+  id: "evt-alheio",
+  summary: "Reunião do condomínio",
+  iCalUID: "abc@google.com",
+  start: { dateTime: "2026-09-02T14:00:00-03:00" },
+  end: { dateTime: "2026-09-02T15:00:00-03:00" },
+};
+
+beforeEach(() => {
+  gravados = [];
+  removidos = 0;
+  tokensGravados = [];
+  vi.stubGlobal("fetch", vi.fn());
+  vi.mocked(audit).mockClear();
+  vi.mocked(decryptWebhookSecret).mockResolvedValue("ya29.token");
+});
+afterEach(() => vi.unstubAllGlobals());
+
+describe("sincronizarAgendasDoGoogle", () => {
+  it("grava o evento de terceiro traduzido, com a identidade junto", async () => {
+    vi.mocked(fetch).mockResolvedValue(pagina({ items: [eventoDeTerceiro], nextSyncToken: "T1" }));
+
+    const r = await sincronizarAgendasDoGoogle(admin(), { agora: AGORA, calendarios: [calendario()] });
+
+    expect(r.gravados).toBe(1);
+    expect(gravados[0]).toMatchObject({
+      external_event_id: "evt-alheio",
+      starts_at: "2026-09-02T17:00:00.000Z",
+      transparency: "opaque",
+      ical_uid: "abc@google.com",
+    });
+  });
+
+  it("O ANTI-ECO: o que NÓS criamos não vira evento externo", async () => {
+    // Sem este filtro o mesmo compromisso ocupa dois horários — a linha externa
+    // e o `calendar_appointments`. E no caso mais comum, a pessoa MOVER o
+    // compromisso no Google, o externo ocupa o horário novo enquanto o
+    // agendamento continua ocupando o antigo, sem nada que os ligue.
+    const nosso = {
+      ...eventoDeTerceiro,
+      id: "evt-nosso",
+      iCalUID: icalUidDoAgendamento("22222222-2222-4222-8222-222222222222"),
+    };
+    vi.mocked(fetch).mockResolvedValue(pagina({ items: [nosso, eventoDeTerceiro], nextSyncToken: "T1" }));
+
+    const r = await sincronizarAgendasDoGoogle(admin(), { agora: AGORA, calendarios: [calendario()] });
+
+    expect(r.nossosIgnorados).toBe(1);
+    expect(r.gravados).toBe(1);
+    expect(gravados.map((g) => g.external_event_id)).toEqual(["evt-alheio"]);
+  });
+
+  it("evento cancelado no Google sai da tabela", async () => {
+    vi.mocked(fetch).mockResolvedValue(
+      pagina({ items: [{ id: "evt-morto", status: "cancelled" }], nextSyncToken: "T1" }),
+    );
+    const r = await sincronizarAgendasDoGoogle(admin(), { agora: AGORA, calendarios: [calendario()] });
+    expect(r.removidos).toBe(1);
+    expect(gravados).toEqual([]);
+  });
+
+  it("`410 fullSyncRequired` limpa o token e refaz NA MESMA rodada", async () => {
+    // Sem isto o worker repetiria a mesma requisição com o mesmo token morto
+    // para sempre, e a agenda congelaria em silêncio — o defeito que a
+    // referência do cal.com carrega até hoje.
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(
+        pagina({ error: { code: 410, errors: [{ reason: "fullSyncRequired" }] } }, 410),
+      )
+      .mockResolvedValueOnce(pagina({ items: [eventoDeTerceiro], nextSyncToken: "T-NOVO" }));
+
+    const r = await sincronizarAgendasDoGoogle(admin(), {
+      agora: AGORA,
+      calendarios: [calendario({ sync_token: "MORTO" })],
+    });
+
+    expect(r.ressincronizados).toBe(1);
+    expect(r.gravados).toBe(1);
+    // O token limpo primeiro, o novo depois.
+    expect(tokensGravados).toEqual([null, "T-NOVO"]);
+  });
+
+  it("evento-mestre de série é RECUSADO, não gravado pela metade", async () => {
+    // Ele descreve só a primeira ocorrência: gravá-lo esconderia as outras e a
+    // agenda diria "livre" em cima de compromisso semanal.
+    vi.mocked(fetch).mockResolvedValue(
+      pagina({
+        items: [{ ...eventoDeTerceiro, id: "evt-serie", recurrence: ["RRULE:FREQ=WEEKLY"] }],
+        nextSyncToken: "T1",
+      }),
+    );
+    const r = await sincronizarAgendasDoGoogle(admin(), { agora: AGORA, calendarios: [calendario()] });
+    expect(r.recusados).toBe(1);
+    expect(gravados).toEqual([]);
+  });
+
+  it("cifra indisponível não grava nada e não rebaixa nada", async () => {
+    vi.mocked(decryptWebhookSecret).mockResolvedValue(null);
+    const r = await sincronizarAgendasDoGoogle(admin(), { agora: AGORA, calendarios: [calendario()] });
+    expect(r.falhas).toBe(1);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("rodada sem calendário não audita", async () => {
+    const r = await sincronizarAgendasDoGoogle(admin(), { agora: AGORA, calendarios: [] });
+    expect(r.calendarios).toBe(0);
+    expect(audit).not.toHaveBeenCalled();
+  });
+
+  it("a contagem do anti-eco vai para o audit — é a prova de que ele agiu", async () => {
+    const nosso = { ...eventoDeTerceiro, id: "n", iCalUID: icalUidDoAgendamento("x") };
+    vi.mocked(fetch).mockResolvedValue(pagina({ items: [nosso, eventoDeTerceiro], nextSyncToken: "T1" }));
+    await sincronizarAgendasDoGoogle(admin(), { agora: AGORA, calendarios: [calendario()] });
+    expect(audit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "agenda.google.sync_executado",
+        metadata: expect.objectContaining({ nossos_ignorados: 1, gravados: 1 }),
+      }),
+    );
+  });
+});

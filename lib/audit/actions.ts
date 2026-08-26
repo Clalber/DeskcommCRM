@@ -358,6 +358,15 @@ export const AUDIT_ACTIONS = [
   "agenda.google.conexao_iniciada",
   "agenda.google.conexao_falhou",
   "agenda.google.conexao_concluida",
+  // A rodada de renovação — e ela só audita quando FEZ algo, como manda a regra
+  // do cron desta base. Uma linha por rodada com efeito, carregando a contagem:
+  // é o que permite responder "quantas agendas precisaram reconectar esta
+  // semana" sem varrer log de worker.
+  "agenda.google.renovacao_executada",
+  // A rodada da VOLTA. Também só audita quando fez algo, e a contagem carrega
+  // `nossos_ignorados` de propósito: é o número que prova o anti-eco
+  // funcionando — sem ele, esses eventos teriam virado compromisso fantasma.
+  "agenda.google.sync_executado",
 
   // ── O compromisso em si (frentes 1 e 5 do Calendário Vivo) ──────────────
   // Marcar, remarcar e cancelar são mutações de um compromisso com hora e
