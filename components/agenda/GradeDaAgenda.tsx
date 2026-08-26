@@ -14,7 +14,7 @@ import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 
 import { corDaTrilha, fundoDaTrilha } from "./paleta";
-import type { Compromisso, Pessoa, VisaoDaAgenda } from "./tipos";
+import type { Agendamento, Pessoa, VisaoDaAgenda } from "./tipos";
 
 /**
  * Altura de uma hora, em pixels. É a régua de toda a grade: posição e duração
@@ -22,7 +22,7 @@ import type { Compromisso, Pessoa, VisaoDaAgenda } from "./tipos";
  *
  * 48px e não os 56px da linha de lista do produto: numa semana de trabalho de
  * 14 horas, 56 dá 784px de rolagem e o dia deixa de caber numa tela de notebook.
- * 48 mantém 12h visíveis em 1080p — e um compromisso de 30 minutos ainda tem
+ * 48 mantém 12h visíveis em 1080p — e um agendamento de 30 minutos ainda tem
  * 24px, altura suficiente para uma linha de texto legível.
  */
 const ALTURA_DA_HORA = 48;
@@ -50,46 +50,106 @@ function diasDaSemanaDe(ancora: Date): Date[] {
 }
 
 /**
- * O bloco de um compromisso dentro de um dia.
+ * Onde cada bloco cabe quando dois caem no mesmo horário.
+ *
+ * Sem isto o segundo agendamento das 16h desenha EM CIMA do primeiro e some da
+ * tela — e o pior é que a agenda continua parecendo correta: quem olha vê um
+ * compromisso onde há dois, e a única pista é que a pessoa some do dia. Numa
+ * clínica com dois profissionais atendendo em paralelo esse é o caso normal,
+ * não a exceção.
+ *
+ * O algoritmo é o de qualquer agenda: agrupa os que se encavalam (transitivo —
+ * A com B e B com C põe os três no mesmo grupo, mesmo que A e C não se toquem),
+ * dá a cada um a primeira coluna livre do grupo, e reparte a largura pelo
+ * número de colunas que o grupo precisou.
+ */
+type Posicionado = { agendamento: Agendamento; coluna: number; colunas: number };
+
+function repartirSobrepostos(agendamentos: Agendamento[]): Posicionado[] {
+  const ordenados = [...agendamentos].sort(
+    (a, b) => new Date(a.comeca).getTime() - new Date(b.comeca).getTime(),
+  );
+
+  const resultado: Posicionado[] = [];
+  let grupo: Array<{ agendamento: Agendamento; coluna: number }> = [];
+  let fimDoGrupo = 0;
+
+  const fecharGrupo = () => {
+    if (grupo.length === 0) return;
+    const colunas = Math.max(...grupo.map((g) => g.coluna)) + 1;
+    for (const g of grupo) resultado.push({ ...g, colunas });
+    grupo = [];
+    fimDoGrupo = 0;
+  };
+
+  for (const a of ordenados) {
+    const comeca = new Date(a.comeca).getTime();
+    const termina = new Date(a.termina).getTime();
+    // Começou depois de TUDO do grupo acabar: o grupo fechou.
+    if (grupo.length > 0 && comeca >= fimDoGrupo) fecharGrupo();
+
+    const ocupadas = new Set(
+      grupo
+        .filter((g) => new Date(g.agendamento.termina).getTime() > comeca)
+        .map((g) => g.coluna),
+    );
+    let coluna = 0;
+    while (ocupadas.has(coluna)) coluna += 1;
+
+    grupo.push({ agendamento: a, coluna });
+    fimDoGrupo = Math.max(fimDoGrupo, termina);
+  }
+  fecharGrupo();
+  return resultado;
+}
+
+/**
+ * O bloco de um agendamento dentro de um dia.
  *
  * A faixa lateral tem 3px, e não os 2px do card do funil, porque ali a cor diz
  * *estado* (informação secundária, ao lado de um título de duas linhas) e aqui
  * ela diz *de quem é* — que é o que se lê primeiro num bloco de 24px de altura,
  * antes de qualquer texto.
  */
-function BlocoDeCompromisso({
-  compromisso,
+function BlocoDeAgendamento({
+  agendamento,
   pessoa,
   onAbrir,
+  coluna,
+  colunas,
 }: {
-  compromisso: Compromisso;
+  agendamento: Agendamento;
   pessoa: Pessoa | undefined;
   onAbrir?: (id: string) => void;
+  coluna: number;
+  colunas: number;
 }) {
-  const comeca = new Date(compromisso.comeca);
-  const termina = new Date(compromisso.termina);
+  const comeca = new Date(agendamento.comeca);
+  const termina = new Date(agendamento.termina);
   const duracao = Math.max(differenceInMinutes(termina, comeca), 15);
   const trilha = pessoa?.trilha ?? 1;
-  const doGoogle = compromisso.origem === "google";
-  const cancelado = compromisso.situacao === "cancelado";
+  const doGoogle = agendamento.origem === "google";
+  const cancelado = agendamento.situacao === "cancelado";
 
   return (
     <button
       type="button"
-      data-testid={`compromisso-${compromisso.id}`}
-      data-origem={compromisso.origem}
+      data-testid={`agendamento-${agendamento.id}`}
+      data-origem={agendamento.origem}
       data-trilha={trilha}
-      data-situacao={compromisso.situacao}
+      data-situacao={agendamento.situacao}
+      data-colunas={colunas}
+      data-coluna={coluna}
       // Ocupação do Google não abre: não há o que editar deste lado. Deixar o
       // clique disponível prometeria uma ação que não existe — o defeito do
       // "controle decorativo" que esta base já pagou uma vez.
       disabled={doGoogle}
-      onClick={doGoogle ? undefined : () => onAbrir?.(compromisso.id)}
-      aria-label={`${compromisso.titulo}, ${format(comeca, "HH:mm")} às ${format(termina, "HH:mm")}${
+      onClick={doGoogle ? undefined : () => onAbrir?.(agendamento.id)}
+      aria-label={`${agendamento.titulo}, ${format(comeca, "HH:mm")} às ${format(termina, "HH:mm")}${
         pessoa ? `, com ${pessoa.nome}` : ""
       }${doGoogle ? ", ocupado na agenda do Google" : ""}`}
       className={cn(
-        "absolute left-0.5 right-0.5 flex flex-col items-start overflow-hidden rounded-sm px-1.5 py-0.5 text-left",
+        "absolute flex flex-col items-start overflow-hidden rounded-sm px-1.5 py-0.5 text-left",
         "border border-border/60 transition-colors duration-fast ease-out",
         doGoogle ? "cursor-default" : "cursor-pointer hover:border-border-strong",
         cancelado && "opacity-55",
@@ -97,8 +157,12 @@ function BlocoDeCompromisso({
       style={{
         top: pixelsDe(minutosDesdeOTopo(comeca)),
         height: Math.max(pixelsDe(duracao) - 2, 18),
+        // `calc` em vez de porcentagem crua para os 2px de respiro entre
+        // colunas vizinhas não saírem da largura útil de cada bloco.
+        left: `calc(${(coluna / colunas) * 100}% + 2px)`,
+        width: `calc(${(1 / colunas) * 100}% - 4px)`,
         background: doGoogle
-          ? // Hachura: diz "ocupado" sem fingir que é um compromisso nosso. A cor
+          ? // Hachura: diz "ocupado" sem fingir que é um agendamento nosso. A cor
             // é neutra de propósito — a agenda de fora não pertence a ninguém da
             // equipe, então não recebe trilha.
             "repeating-linear-gradient(135deg, var(--color-surface-elevated) 0 6px, var(--color-surface) 6px 12px)"
@@ -108,17 +172,17 @@ function BlocoDeCompromisso({
     >
       <span
         aria-hidden
-        data-testid={`faixa-${compromisso.id}`}
+        data-testid={`faixa-${agendamento.id}`}
         className="absolute inset-y-0 left-0 w-[3px] rounded-l-sm"
         style={{ backgroundColor: doGoogle ? "var(--color-border-strong)" : corDaTrilha(trilha) }}
       />
       <span className="ml-1 truncate text-[11px] font-semibold leading-4 text-text">
-        {compromisso.titulo}
+        {agendamento.titulo}
       </span>
       {duracao >= 45 && (
         <span className="ml-1 truncate text-[10px] leading-3 tabular-nums text-text-muted">
           {format(comeca, "HH:mm")}
-          {compromisso.quemSeraAtendido ? ` · ${compromisso.quemSeraAtendido}` : ""}
+          {agendamento.quemSeraAtendido ? ` · ${agendamento.quemSeraAtendido}` : ""}
         </span>
       )}
     </button>
@@ -168,19 +232,19 @@ function ColunaDeHoras() {
 function ColunaDeDia({
   dia,
   agora,
-  compromissos,
+  agendamentos,
   pessoas,
   onAbrir,
   destacado,
 }: {
   dia: Date;
   agora: Date;
-  compromissos: Compromisso[];
+  agendamentos: Agendamento[];
   pessoas: Pessoa[];
   onAbrir?: (id: string) => void;
   destacado: boolean;
 }) {
-  const doDia = compromissos.filter((c) => isSameDay(new Date(c.comeca), dia));
+  const doDia = agendamentos.filter((c) => isSameDay(new Date(c.comeca), dia));
   const ehHoje = isSameDay(dia, agora);
 
   return (
@@ -217,12 +281,14 @@ function ColunaDeDia({
             style={{ height: ALTURA_DA_HORA }}
           />
         ))}
-        {doDia.map((c) => (
-          <BlocoDeCompromisso
-            key={c.id}
-            compromisso={c}
-            pessoa={pessoas.find((p) => p.id === c.responsavelId)}
+        {repartirSobrepostos(doDia).map(({ agendamento, coluna, colunas }) => (
+          <BlocoDeAgendamento
+            key={agendamento.id}
+            agendamento={agendamento}
+            pessoa={pessoas.find((p) => p.id === agendamento.responsavelId)}
             onAbrir={onAbrir}
+            coluna={coluna}
+            colunas={colunas}
           />
         ))}
         {ehHoje && <ReguaDoAgora agora={agora} />}
@@ -234,12 +300,12 @@ function ColunaDeDia({
 function VisaoDeMes({
   ancora,
   agora,
-  compromissos,
+  agendamentos,
   pessoas,
 }: {
   ancora: Date;
   agora: Date;
-  compromissos: Compromisso[];
+  agendamentos: Agendamento[];
   pessoas: Pessoa[];
 }) {
   const primeiro = startOfWeek(startOfMonth(ancora), { weekStartsOn: 0 });
@@ -267,7 +333,7 @@ function VisaoDeMes({
       </div>
       <div className="grid min-h-0 flex-1 grid-cols-7 grid-rows-[repeat(auto-fit,minmax(0,1fr))]">
         {semanas.flat().map((d) => {
-          const doDia = compromissos.filter((c) => isSameDay(new Date(c.comeca), d));
+          const doDia = agendamentos.filter((c) => isSameDay(new Date(c.comeca), d));
           const doMes = isSameMonth(d, ancora);
           return (
             <div
@@ -332,8 +398,8 @@ export function GradeDaAgenda({
   ancora,
   agora,
   pessoas,
-  compromissos,
-  onAbrirCompromisso,
+  agendamentos,
+  onAbrirAgendamento,
   className,
 }: {
   visao: VisaoDaAgenda;
@@ -348,8 +414,8 @@ export function GradeDaAgenda({
    */
   agora: Date;
   pessoas: Pessoa[];
-  compromissos: Compromisso[];
-  onAbrirCompromisso?: (id: string) => void;
+  agendamentos: Agendamento[];
+  onAbrirAgendamento?: (id: string) => void;
   className?: string;
 }) {
   const dias = visao === "dia" ? [ancora] : diasDaSemanaDe(ancora);
@@ -364,7 +430,7 @@ export function GradeDaAgenda({
       )}
     >
       {visao === "mes" ? (
-        <VisaoDeMes ancora={ancora} agora={agora} compromissos={compromissos} pessoas={pessoas} />
+        <VisaoDeMes ancora={ancora} agora={agora} agendamentos={agendamentos} pessoas={pessoas} />
       ) : (
         // A rolagem mora AQUI dentro, e não na página: `html, body` têm
         // `overflow-x: hidden` no globals.css, então uma grade que estourasse a
@@ -377,9 +443,9 @@ export function GradeDaAgenda({
                 key={d.toISOString()}
                 dia={d}
                 agora={agora}
-                compromissos={compromissos}
+                agendamentos={agendamentos}
                 pessoas={pessoas}
-                onAbrir={onAbrirCompromisso}
+                onAbrir={onAbrirAgendamento}
                 destacado={visao === "semana" && isSameDay(d, agora)}
               />
             ))}

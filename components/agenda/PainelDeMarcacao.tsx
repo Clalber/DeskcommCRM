@@ -5,7 +5,7 @@ import { ptBR } from "date-fns/locale";
 import * as React from "react";
 
 import { Button } from "@/components/ui/button";
-import { CaretLeft, CaretRight, CheckCircle, Clock, MapPin } from "@/lib/ui/icons";
+import { CaretLeft, CaretRight, CheckCircle, Clock, MapPin, Warning } from "@/lib/ui/icons";
 import { cn } from "@/lib/utils";
 
 import { AvatarDaPessoa } from "./AvatarDaPessoa";
@@ -35,6 +35,7 @@ export function PainelDeMarcacao({
   local = "Presencial · Sala 2",
   fuso = "America/Sao_Paulo",
   horariosPorDia,
+  quemSeraAtendido,
   onConfirmar,
   className,
 }: {
@@ -47,6 +48,16 @@ export function PainelDeMarcacao({
   fuso?: string;
   /** `yyyy-MM-dd` → horários livres. Dia ausente = sem horário, nasce apagado. */
   horariosPorDia: Record<string, HorarioLivre[]>;
+  /**
+   * Quem vai ser atendido, e se ele aceita receber mensagem.
+   *
+   * `aceitaMensagem: false` NÃO impede marcar — opt-out é vontade sobre o
+   * canal, e marcar consulta não é consentir em receber mensagem (decisão 10 da
+   * entrega). O que ele impede é o LEMBRETE, e é justamente por isso que a tela
+   * tem de dizer isso aqui, antes de confirmar: o produto não mandar é uma
+   * decisão; o produto não avisar que não ia mandar é um bug.
+   */
+  quemSeraAtendido?: { nome: string; aceitaMensagem: boolean };
   onConfirmar?: (instante: string) => void;
   className?: string;
 }) {
@@ -91,6 +102,14 @@ export function PainelDeMarcacao({
           <p className="mt-0.5 text-xs text-text-subtle">
             {tipo} · {duracaoMin} min · com {responsavel.nome}
           </p>
+          {quemSeraAtendido && !quemSeraAtendido.aceitaMensagem && (
+            // Repetido aqui de propósito: o aviso do passo anterior sumiu da
+            // tela junto com o formulário, e quem fecha o painel agora não tem
+            // como saber que aquele agendamento não terá lembrete.
+            <p data-testid="aviso-sem-lembrete-no-resumo" className="mt-2 text-xs text-warning">
+              Sem lembrete automático — {quemSeraAtendido.nome} pediu para não receber mensagens.
+            </p>
+          )}
           <div className="mt-5 flex gap-2">
             <Button variant="outline" size="sm" onClick={() => { setMarcado(null); setHorario(null); setDia(null); }}>
               Marcar outro
@@ -220,6 +239,25 @@ export function PainelDeMarcacao({
                 {format(new Date(horario.instante), "EEEE, d 'de' MMMM 'às' HH:mm", { locale: ptBR })}
               </span>
             </p>
+
+            {quemSeraAtendido && !quemSeraAtendido.aceitaMensagem && (
+              // Aviso, não bloqueio: o botão de confirmar continua ativo logo
+              // abaixo. E ele diz o que FAZER no lugar ("combine por telefone"),
+              // porque uma tela que só informa a restrição deixa a pessoa parada
+              // decidindo sozinha o que fazer com a informação.
+              <div
+                data-testid="aviso-sem-lembrete"
+                role="status"
+                className="mt-3 flex gap-2 rounded-sm border border-warning/40 bg-warning-bg p-2.5"
+              >
+                <Warning size={16} weight="fill" className="mt-0.5 shrink-0 text-warning" aria-hidden />
+                <p className="text-xs leading-4 text-text">
+                  <span className="font-semibold">{quemSeraAtendido.nome} pediu para não receber
+                  mensagens.</span>{" "}
+                  O lembrete não será enviado — combine por telefone.
+                </p>
+              </div>
+            )}
             <div className="mt-3 flex items-center justify-end gap-2">
               <Button variant="ghost" size="sm" onClick={() => setHorario(null)}>
                 Voltar

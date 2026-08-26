@@ -5,7 +5,7 @@ import { ptBR } from "date-fns/locale";
 import * as React from "react";
 
 import { AgendaCarregando, AgendaComErro } from "@/components/agenda/estados";
-import { ANCORA, COMPROMISSOS, HORARIOS_POR_DIA, PESSOAS } from "@/components/agenda/dados-de-mentira";
+import { ANCORA, AGENDAMENTOS, HORARIOS_POR_DIA, PESSOAS } from "@/components/agenda/dados-de-mentira";
 import { FiltroDePessoas } from "@/components/agenda/FiltroDePessoas";
 import { GradeDaAgenda } from "@/components/agenda/GradeDaAgenda";
 import { PainelDeMarcacao } from "@/components/agenda/PainelDeMarcacao";
@@ -51,7 +51,7 @@ export function VitrineDaAgenda() {
   const { theme, setTheme } = useTheme();
 
   const visiveis = React.useMemo(
-    () => (isolada === null ? COMPROMISSOS : COMPROMISSOS.filter((c) => c.responsavelId === isolada)),
+    () => (isolada === null ? AGENDAMENTOS : AGENDAMENTOS.filter((c) => c.responsavelId === isolada)),
     [isolada],
   );
 
@@ -163,7 +163,7 @@ export function VitrineDaAgenda() {
           ancora={ANCORA}
           agora={ANCORA}
           pessoas={PESSOAS}
-          compromissos={visiveis}
+          agendamentos={visiveis}
           className="h-[560px]"
         />
       </Secao>
@@ -178,6 +178,21 @@ export function VitrineDaAgenda() {
           agora={ANCORA}
           responsavel={PESSOAS[0]!}
           horariosPorDia={HORARIOS_POR_DIA}
+          quemSeraAtendido={{ nome: "Marina Alves", aceitaMensagem: true }}
+        />
+      </Secao>
+
+      <Secao
+        id="sem-lembrete"
+        titulo="Quando a pessoa pediu para não receber mensagens"
+        descricao="Marcar continua permitido — opt-out é vontade sobre o canal, não sobre o atendimento. O que muda é o lembrete, e a tela diz isso ANTES de confirmar: o produto não mandar é uma decisão, o produto não avisar que não ia mandar é um bug."
+      >
+        <PainelDeMarcacao
+          ancora={ANCORA}
+          agora={ANCORA}
+          responsavel={PESSOAS[2]!}
+          horariosPorDia={HORARIOS_POR_DIA}
+          quemSeraAtendido={{ nome: "Pedro Lima", aceitaMensagem: false }}
         />
       </Secao>
 
@@ -194,7 +209,7 @@ export function VitrineDaAgenda() {
         </div>
         <div className="flex h-[200px]">
           <AgendaComErro
-            motivo="A agenda do Google de Ana Prado desconectou — o Google recusou a credencial guardada. Reconectar resolve; até lá, os compromissos dela vindos de fora não aparecem."
+            motivo="A agenda do Google de Ana Prado desconectou — o Google recusou a credencial guardada. Reconectar resolve; até lá, os agendamentos dela vindos de fora não aparecem."
             onTentarDeNovo={() => {}}
           />
         </div>

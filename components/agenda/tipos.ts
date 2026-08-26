@@ -3,7 +3,7 @@
  *
  * O produto renomeia termo técnico na cara do usuário ("Kanban" virou "Funis",
  * "Templates" virou "Respostas rápidas"), então aqui não existe `Booking`,
- * `Event` nem `Slot`: existe compromisso, pessoa e horário.
+ * `Event` nem `Slot`: existe agendamento, pessoa e horário.
  *
  * Este arquivo é só forma. Enquanto o schema da Wave 0 não existe, a tela é
  * alimentada por `dados-de-mentira.ts` — e quando existir, o que muda é a
@@ -24,21 +24,21 @@ export type Pessoa = {
 };
 
 /**
- * De onde veio o compromisso. `google` entra como OCUPAÇÃO, não como
- * compromisso nosso: não se edita, não se cancela, não se remarca por aqui —
+ * De onde veio o agendamento. `google` entra como OCUPAÇÃO, não como
+ * agendamento nosso: não se edita, não se cancela, não se remarca por aqui —
  * quem manda nele é a agenda de origem. A grade mostra isso desenhando-o
  * esmaecido e hachurado, e escondendo as ações.
  */
-export type OrigemDoCompromisso = "deskcomm" | "google";
+export type OrigemDoAgendamento = "deskcomm" | "google";
 
-export type SituacaoDoCompromisso =
+export type SituacaoDoAgendamento =
   | "confirmado"
   | "aguardando"
   | "cancelado"
   | "realizado"
   | "faltou";
 
-export type Compromisso = {
+export type Agendamento = {
   id: string;
   titulo: string;
   /** Quem vai ser atendido. Ausente em ocupação vinda do Google. */
@@ -50,8 +50,8 @@ export type Compromisso = {
   termina: string;
   tipo?: string;
   local?: string;
-  origem: OrigemDoCompromisso;
-  situacao: SituacaoDoCompromisso;
+  origem: OrigemDoAgendamento;
+  situacao: SituacaoDoAgendamento;
 };
 
 /** Um horário oferecido pelo painel de marcação. */

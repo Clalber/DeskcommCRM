@@ -1,5 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
+import { lerCreds, loginComoAdmin } from "./helpers/login-admin";
+
 /**
  * Kit visual da Agenda — prova pela TELA, clique a clique.
  *
@@ -13,8 +15,30 @@ import { expect, test, type Page } from "@playwright/test";
  */
 const ESPERA = 60_000;
 
-/** A vitrine é pública e não toca banco — sem login, sem seed, sem fixture. */
 const VITRINE = "/vitrine-agenda";
+
+/**
+ * A vitrine não toca banco, mas EXIGE SESSÃO — e essa distinção custou uma
+ * medição do maestro para aparecer.
+ *
+ * `proxy.ts` manda todo path por `isPublicPath` (`lib/auth/public-paths.ts`), e
+ * o que não estiver na lista leva 307 para `/login`. Eu tinha procurado por um
+ * `middleware.ts`, não achei, e concluí que não havia proteção global: procurei
+ * pelo NOME que eu esperava em vez de pelo mecanismo.
+ *
+ * A saída NÃO é pôr a vitrine em `PUBLIC_PATHS`. Medido antes de decidir: o
+ * próprio `/design`, o showcase de design do repo, também dá `false` em
+ * `isPublicPath` — este produto não tem precedente de tela de desenvolvimento
+ * aberta, e ele roda na VPS de outra pessoa. Abrir uma rota interna para não
+ * escrever três linhas de login seria decidir uma questão de segurança por
+ * conveniência de teste.
+ *
+ * UM login só, para o describe inteiro. Cada teste logando de novo obrigaria a
+ * esperar a virada da janela TOTP entre eles (o servidor recusa código
+ * repetido) e consumiria o teto de logins por IP — dois modos de falha que esta
+ * base já pagou e que nada têm a ver com o que esta spec mede.
+ */
+test.describe.configure({ mode: "serial", timeout: 180_000 });
 
 /** sRGB → OKLab, para medir distância entre cores como o olho a percebe. */
 const OKLAB_NO_BROWSER = `
@@ -96,12 +120,36 @@ async function medirTrilhas(page: Page) {
 }
 
 test.describe("kit visual da Agenda", () => {
-  test.beforeEach(async ({ page }) => {
+  let page: Page;
+
+  test.beforeAll(async ({ browser }) => {
+    page = await browser.newPage();
+    await loginComoAdmin(page, lerCreds());
+  });
+
+  test.afterAll(async () => {
+    await page.close();
+  });
+
+  test.beforeEach(async () => {
+    // `goto` a cada teste devolve a tela ao estado inicial sem novo login — a
+    // sessão vive no contexto, não na página. O localStorage do tema NÃO volta
+    // sozinho, e sem limpá-lo o teste que troca para o escuro contaminaria o
+    // seguinte: ele mediria "as cores do tema claro" num tema escuro e passaria,
+    // porque a régua de contraste vale para os dois.
     await page.goto(VITRINE);
+    await page.evaluate(() => {
+      try {
+        window.localStorage.removeItem("deskcomm-theme");
+      } catch {
+        /* modo privado: o tema já é o default */
+      }
+    });
+    await page.reload();
     await expect(page.getByTestId("grade-da-agenda")).toBeVisible({ timeout: ESPERA });
   });
 
-  test("a grade troca de visão pelo clique, e cada visão desenha o que promete", async ({ page }) => {
+  test("a grade troca de visão pelo clique, e cada visão desenha o que promete", async () => {
     const grade = page.getByTestId("grade-da-agenda");
     await expect(grade).toHaveAttribute("data-visao", "semana");
 
@@ -122,7 +170,7 @@ test.describe("kit visual da Agenda", () => {
     await expect(grade).toHaveAttribute("data-visao", "semana", { timeout: ESPERA });
   });
 
-  test("a régua do agora cai no minuto certo, medida em pixels", async ({ page }) => {
+  test("a régua do agora cai no minuto certo, medida em pixels", async () => {
     const regua = page.getByTestId("regua-do-agora");
     await expect(regua).toBeVisible({ timeout: ESPERA });
 
@@ -132,16 +180,25 @@ test.describe("kit visual da Agenda", () => {
     expect(medido).toBeCloseTo((14 - 7) * 48 + (37 / 60) * 48, 1);
   });
 
-  test("a coluna de horários NÃO está lá, e entra quando o dia é escolhido", async ({ page }) => {
-    const painel = page.getByTestId("painel-de-marcacao");
-    const coluna = page.getByTestId("coluna-de-horarios");
+  test("a coluna de horários NÃO está lá, e entra quando o dia é escolhido", async () => {
+    const painel = page.getByTestId("secao-marcacao").getByTestId("painel-de-marcacao");
+    const coluna = painel.getByTestId("coluna-de-horarios");
     await painel.scrollIntoViewIfNeeded();
 
     // ANTES: o painel está no primeiro tempo e a coluna tem largura ZERO.
+    //
+    // Medido com `getBoundingClientRect` e NÃO com `boundingBox()` do
+    // Playwright: aquele devolve `null` para elemento que ele considera
+    // invisível, e largura zero é exatamente esse caso. O teste falharia por
+    // não conseguir medir, e a mensagem diria "esperava 0, recebeu -1" — que
+    // parece defeito do componente e é defeito do instrumento.
+    const largura = (loc: typeof coluna) =>
+      loc.evaluate((el) => el.getBoundingClientRect().width);
+
     await expect(painel).toHaveAttribute("data-tempo", "escolhendo-dia", { timeout: ESPERA });
-    const larguraAntes = (await coluna.boundingBox())?.width ?? -1;
+    const larguraAntes = await largura(coluna);
     expect(larguraAntes).toBe(0);
-    const painelAntes = (await painel.boundingBox())?.width ?? 0;
+    const painelAntes = await largura(painel);
 
     // Escolhe um dia que TEM horário (a fixture garante).
     await page.getByTestId("dia-2026-08-24").click();
@@ -153,9 +210,13 @@ test.describe("kit visual da Agenda", () => {
     // e o painel INTEIRO cresceu — é o painel crescer, e não trocar de conteúdo,
     // que dá a sensação de "abriu".
     await expect
-      .poll(async () => Math.round((await coluna.boundingBox())?.width ?? 0), { timeout: ESPERA })
+      .poll(async () => Math.round(await largura(coluna)), { timeout: ESPERA })
       .toBeGreaterThanOrEqual(240);
-    const painelDepois = (await painel.boundingBox())?.width ?? 0;
+    const painelDepois = await largura(painel);
+    console.info(
+      `[coluna de horários] fechada=${larguraAntes}px  aberta=${Math.round(await largura(coluna))}px  ` +
+        `painel ${Math.round(painelAntes)}px -> ${Math.round(painelDepois)}px`,
+    );
     expect(painelDepois).toBeGreaterThan(painelAntes);
 
     // E os horários estão lá, clicáveis, levando ao terceiro tempo.
@@ -166,16 +227,58 @@ test.describe("kit visual da Agenda", () => {
     await expect(page.getByText("Marcado.")).toBeVisible();
   });
 
-  test("dia sem horário nasce apagado e não aceita clique", async ({ page }) => {
-    await page.getByTestId("painel-de-marcacao").scrollIntoViewIfNeeded();
+  test("quem pediu para não receber mensagem: marca igual, mas a tela avisa ANTES", async () => {
+    // Decisão 10 da entrega. O opt-out não impede marcar — impede o lembrete —
+    // e o requisito é que a tela diga isso no momento em que se marca.
+    const painel = page.getByTestId("secao-sem-lembrete").getByTestId("painel-de-marcacao");
+    await painel.scrollIntoViewIfNeeded();
+
+    await painel.getByTestId("dia-2026-08-24").click();
+    await painel.getByTestId("horario-10:00").click();
+    await expect(painel).toHaveAttribute("data-tempo", "confirmando", { timeout: ESPERA });
+
+    const aviso = painel.getByTestId("aviso-sem-lembrete");
+    await expect(aviso).toBeVisible();
+    await expect(aviso).toContainText("pediu para não receber mensagens");
+    // Diz o que fazer no lugar — informar a restrição sem dar saída deixa a
+    // pessoa parada decidindo sozinha.
+    await expect(aviso).toContainText("combine por telefone");
+
+    // E CONFIRMAR CONTINUA ATIVO: aviso, não bloqueio. Se o botão estivesse
+    // desabilitado, a tela teria transformado "não recebe mensagem" em "não
+    // pode ser atendido", que é outra coisa e é errado.
+    const confirmar = painel.getByTestId("confirmar-marcacao");
+    await expect(confirmar).toBeEnabled();
+    await confirmar.click();
+
+    // O aviso sobrevive ao sucesso: quem fecha o painel agora não teria como
+    // saber que aquele agendamento não terá lembrete.
+    await expect(painel).toHaveAttribute("data-tempo", "marcado", { timeout: ESPERA });
+    await expect(painel.getByTestId("aviso-sem-lembrete-no-resumo")).toBeVisible();
+  });
+
+  test("e quem aceita mensagem NÃO vê o aviso", async () => {
+    // O par do teste acima. Sem ele, um aviso que aparecesse SEMPRE passaria
+    // nos dois — e um aviso que aparece sempre não informa nada.
+    const painel = page.getByTestId("secao-marcacao").getByTestId("painel-de-marcacao");
+    await painel.scrollIntoViewIfNeeded();
+    await painel.getByTestId("dia-2026-08-24").click();
+    await painel.getByTestId("horario-10:00").click();
+    await expect(painel).toHaveAttribute("data-tempo", "confirmando", { timeout: ESPERA });
+    await expect(painel.getByTestId("aviso-sem-lembrete")).toHaveCount(0);
+  });
+
+  test("dia sem horário nasce apagado e não aceita clique", async () => {
+    const painel = page.getByTestId("secao-marcacao").getByTestId("painel-de-marcacao");
+    await painel.scrollIntoViewIfNeeded();
     // A fixture não publica horário na quinta (2026-08-27).
-    const vazio = page.getByTestId("dia-2026-08-27");
+    const vazio = painel.getByTestId("dia-2026-08-27");
     await expect(vazio).toHaveAttribute("data-disponivel", "false", { timeout: ESPERA });
     await expect(vazio).toBeDisabled();
   });
 
-  test("filtrar por pessoa isola a agenda dela — e só a dela", async ({ page }) => {
-    const blocos = page.locator('[data-testid^="compromisso-"]');
+  test("filtrar por pessoa isola a agenda dela — e só a dela", async () => {
+    const blocos = page.locator('[data-testid^="agendamento-"]');
     const antes = await blocos.count();
     expect(antes).toBeGreaterThan(3);
 
@@ -198,22 +301,58 @@ test.describe("kit visual da Agenda", () => {
     await expect.poll(async () => await blocos.count(), { timeout: ESPERA }).toBe(antes);
   });
 
-  test("ocupação vinda do Google é ocupação, não compromisso: não abre", async ({ page }) => {
-    const doGoogle = page.locator('[data-testid^="compromisso-"][data-origem="google"]').first();
+  test("dois agendamentos no mesmo horário dividem a largura — nenhum some atrás do outro", async () => {
+    // A fixture põe dois às 16h da quarta, de pessoas diferentes (Ana e Davi).
+    // Sem repartição eles desenhariam um EM CIMA do outro, e a agenda pareceria
+    // correta mostrando um só — o modo de falha é invisível a olho.
+    const a = page.getByTestId("agendamento-c11");
+    const b = page.getByTestId("agendamento-c6");
+    await expect(a).toBeVisible({ timeout: ESPERA });
+    await expect(b).toBeVisible();
+
+    await expect(a).toHaveAttribute("data-colunas", "2");
+    await expect(b).toHaveAttribute("data-colunas", "2");
+    const colunas = [
+      await a.getAttribute("data-coluna"),
+      await b.getAttribute("data-coluna"),
+    ].sort();
+    expect(colunas).toEqual(["0", "1"]);
+
+    // A prova que vale é geométrica: os retângulos NÃO se cruzam no eixo x.
+    const rect = (l: typeof a) =>
+      l.evaluate((el) => {
+        const r = el.getBoundingClientRect();
+        return { esquerda: r.left, direita: r.right, largura: r.width };
+      });
+    const ra = await rect(a);
+    const rb = await rect(b);
+    const cruzam = ra.esquerda < rb.direita && rb.esquerda < ra.direita;
+    expect(cruzam, `os dois blocos das 16h se sobrepõem: ${JSON.stringify({ ra, rb })}`).toBe(
+      false,
+    );
+    expect(ra.largura).toBeGreaterThan(20);
+    expect(rb.largura).toBeGreaterThan(20);
+    console.info(
+      `[16h da quarta] dois agendamentos, larguras ${Math.round(ra.largura)}px e ${Math.round(rb.largura)}px, sem cruzar`,
+    );
+  });
+
+  test("ocupação vinda do Google é ocupação, não agendamento: não abre", async () => {
+    const doGoogle = page.locator('[data-testid^="agendamento-"][data-origem="google"]').first();
     await expect(doGoogle).toBeVisible({ timeout: ESPERA });
     await expect(doGoogle).toBeDisabled();
 
     // E a faixa DELE é neutra: ocupação de fora não pertence a ninguém da
     // equipe, então não recebe trilha. Comparado contra a faixa de um
-    // compromisso NOSSO — "existe uma cor" passaria com qualquer valor.
+    // agendamento NOSSO — "existe uma cor" passaria com qualquer valor.
     const idDoGoogle = await doGoogle.getAttribute("data-testid");
     const corDeFora = await page
-      .getByTestId(`faixa-${idDoGoogle!.replace("compromisso-", "")}`)
+      .getByTestId(`faixa-${idDoGoogle!.replace("agendamento-", "")}`)
       .evaluate((el) => getComputedStyle(el).backgroundColor);
-    const nosso = page.locator('[data-testid^="compromisso-"][data-origem="deskcomm"]').first();
+    const nosso = page.locator('[data-testid^="agendamento-"][data-origem="deskcomm"]').first();
     const idNosso = await nosso.getAttribute("data-testid");
     const corNossa = await page
-      .getByTestId(`faixa-${idNosso!.replace("compromisso-", "")}`)
+      .getByTestId(`faixa-${idNosso!.replace("agendamento-", "")}`)
       .evaluate((el) => getComputedStyle(el).backgroundColor);
     expect(corDeFora).not.toBe(corNossa);
     const neutra = await page.evaluate(() =>
@@ -222,9 +361,7 @@ test.describe("kit visual da Agenda", () => {
     expect(neutra, "a faixa de fora usa a cor de borda forte, não uma trilha").toBeTruthy();
   });
 
-  test("as oito trilhas passam em contraste e são distinguíveis — nos DOIS temas", async ({
-    page,
-  }) => {
+  test("as oito trilhas passam em contraste e são distinguíveis — nos DOIS temas", async () => {
     const relatorio: string[] = [];
 
     for (const tema of ["claro", "escuro"] as const) {
@@ -262,10 +399,24 @@ test.describe("kit visual da Agenda", () => {
     console.info("\n[medidas das trilhas]\n" + relatorio.join("\n\n") + "\n");
   });
 
-  test("evidência visual: claro, escuro e celular", async ({ page }) => {
+  test("evidência visual: claro, escuro e celular", async () => {
     await page.setViewportSize({ width: 1440, height: 1000 });
     await expect(page.getByTestId("grade-da-agenda")).toBeVisible({ timeout: ESPERA });
     await page.screenshot({ path: "evidence/calendario/kit-visual-claro.png", fullPage: true });
+
+    // O painel ABERTO, em foto própria. Nos screenshots de página inteira ele
+    // aparece sempre no primeiro tempo — e o primeiro tempo é justamente o
+    // estado em que a peça de design mais importante desta entrega (a coluna de
+    // horários) ainda não existe. Sem esta foto, a evidência mostraria tudo
+    // menos aquilo que se foi construir.
+    const painelDaFoto = page.getByTestId("secao-marcacao").getByTestId("painel-de-marcacao");
+    await painelDaFoto.getByTestId("dia-2026-08-25").click();
+    await expect(painelDaFoto.getByTestId("coluna-de-horarios")).toHaveAttribute(
+      "data-aberta",
+      "true",
+      { timeout: ESPERA },
+    );
+    await painelDaFoto.screenshot({ path: "evidence/calendario/painel-coluna-aberta.png" });
 
     await page.getByTestId("alternar-tema").click();
     await expect

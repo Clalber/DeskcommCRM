@@ -1,6 +1,6 @@
 import { addDays, format, startOfWeek } from "date-fns";
 
-import type { Compromisso, HorarioLivre, Pessoa } from "./tipos";
+import type { Agendamento, HorarioLivre, Pessoa } from "./tipos";
 
 /**
  * Dados de mentira da vitrine.
@@ -36,7 +36,7 @@ const SEG = startOfWeek(ANCORA, { weekStartsOn: 0 });
  * vazia no domingo, com uma ocupação vinda do Google e um cancelado — os três
  * estados que a grade precisa desenhar diferente.
  */
-export const COMPROMISSOS: Compromisso[] = [
+export const AGENDAMENTOS: Agendamento[] = [
   { id: "c1", titulo: "Avaliação inicial", quemSeraAtendido: "Marina Alves", responsavelId: "ana", comeca: em(addDays(SEG, 1), 9, 0), termina: em(addDays(SEG, 1), 9, 45), tipo: "Consulta", origem: "deskcomm", situacao: "confirmado" },
   { id: "c2", titulo: "Retorno", quemSeraAtendido: "Pedro Lima", responsavelId: "bruno", comeca: em(addDays(SEG, 1), 10, 30), termina: em(addDays(SEG, 1), 11, 0), tipo: "Retorno", origem: "deskcomm", situacao: "confirmado" },
   { id: "c3", titulo: "Visita ao imóvel", quemSeraAtendido: "Família Souza", responsavelId: "clara", comeca: em(addDays(SEG, 2), 14, 0), termina: em(addDays(SEG, 2), 15, 30), tipo: "Visita", origem: "deskcomm", situacao: "confirmado" },

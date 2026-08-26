@@ -150,10 +150,10 @@ export function EmptyAgenda({ primary, secondary }: VariantProps = {}) {
     <EmptyState
       icon={CalendarBlank}
       headline="Sua agenda está livre esta semana"
-      // O vazio diz de onde VEM o próximo compromisso, em vez de constatar a
+      // O vazio diz de onde VEM o próximo agendamento, em vez de constatar a
       // ausência. "Nenhum agendamento encontrado" é verdadeiro e inútil: quem
       // acabou de instalar não sabe o que fazer com essa frase.
-      subcopy="Compromissos aparecem aqui quando alguém marca pela tela, quando o agente marca por você, ou quando chegam da agenda do Google conectada."
+      subcopy="Agendamentos aparecem aqui quando alguém marca pela tela, quando o agente marca por você, ou quando chegam da agenda do Google conectada."
       primary={primary}
       secondary={secondary}
     />
