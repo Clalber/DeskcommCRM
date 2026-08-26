@@ -52,6 +52,13 @@ export type ActivityType =
   | "demand_closed"
   | "promise_unowned"
   /**
+   * O respondente disse NÃO no formulário de captação (ex.: Respondi). A
+   * recusa é sinal, não ausência de sinal — sem linha na timeline, "por que
+   * ninguém mandou WhatsApp pra este lead" fica sem resposta visível, e é
+   * justamente esse silêncio que a automação de 1º toque precisa respeitar.
+   */
+  | "consent_declined"
+  /**
    * A TROCA DE COMANDO ENTRE PESSOAS. A ida e a volta IA↔humano já estavam aqui
    * (`handoff_triggered`/`handoff_resolved`); assumir, transferir e liberar não
    * geravam linha nenhuma — grep nas três rotas devolvia zero. O efeito era uma
@@ -133,6 +140,7 @@ export const ACTIVITY_LABELS: Record<ActivityType, string> = {
   // invisível na timeline — só existia em audit e event_log, que ninguém lê na
   // tela — e o dossiê de um negócio fechado terminava sem dizer que fechou.
   demand_closed: "Demanda encerrada",
+  consent_declined: "Consentimento de contato recusado no formulário",
   // Rótulos com OBJETO, nunca verbo nu: "Liberou" sozinho não diz o quê, e numa
   // clínica "liberar" é o que se faz com um exame. O resto do arquivo já segue
   // essa régua ("Retorno agendado", "Demanda encerrada").

@@ -21,6 +21,29 @@
  * ⚠️ NÃO RECARREGA A PÁGINA depois de abrir o inbox, e isso é o teste. Se
  * alguém acrescentar um `reload()` aqui "para estabilizar", ele passa a medir o
  * F5 — exatamente o sintoma que existe para proibir.
+ *
+ * ─── O QUE ELE NÃO PROVA — medido em 2026-08-26, contra este mesmo HEAD ─────
+ *
+ * Ele **não discrimina o conserto do token**. Medido, com Supabase local, build
+ * de produção, revertendo SÓ `lib/supabase/browser.ts` para a versão da `main`
+ * (e conferindo no bundle: `grep -rc realtime-token .next/static` → 0, com
+ * controle positivo em `sb-deskcomm-auth` → 1):
+ *
+ *   com o conserto      → 1 passed
+ *   sem o conserto      → 1 passed   ← aqui está o problema
+ *
+ * Quem discrimina é `tests/unit/realtime-token-do-socket.test.ts`, que cobra a
+ * callback INSTALADA e o token que ela devolve — e que reprova 6 de 7 casos
+ * quando a callback some.
+ *
+ * A explicação mais provável do empate é que a tela tem mais de um caminho para
+ * a mesma mensagem: `useMessagesRealtime` liga `refetchOnWindowFocus: true`, e
+ * o `execFileSync` que injeta a mensagem devolve o foco à janela. Dois caminhos
+ * com a mesma saída — a sabotagem de um é invisível na asserção.
+ *
+ * Então o que este spec É: a cerca de ponta a ponta contra o SINTOMA relatado
+ * (a mensagem não aparece sem F5), por qualquer causa. É valioso, e é menos do
+ * que o cabeçalho acima sugeria antes desta medição.
  */
 import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
@@ -218,14 +241,27 @@ test.describe("inbox em tempo real", () => {
     );
 
     // ⚠️ SEM reload. Se aparecer, o canal entregou.
+    //
+    // Escopado ao THREAD de propósito, e não por estilo: quando os dois canais
+    // funcionam, o mesmo texto aparece DUAS vezes na tela — na bolha da conversa
+    // e na prévia do item da lista, que o outro canal acabou de atualizar. Um
+    // `page.getByText(corpo)` solto resolve para 2 elementos e o modo estrito do
+    // Playwright reprova o teste **por excesso de sucesso**:
+    //
+    //   strict mode violation: getByText('chegou em tempo real …') resolved to
+    //   2 elements: 1) <p class="…truncate text-xs…"> (a prévia na lista)
+    //               2) <p class="whitespace-pre-wrap…"> (a bolha no thread)
+    //
+    // Medido localmente contra o Supabase local, build de produção, com o
+    // conserto aplicado. A lista ter reagido é asserido no fim, no seu lugar.
+    const thread = page.getByTestId("chat-thread");
     try {
-      await expect(page.getByText(corpo)).toBeVisible({ timeout: 25_000 });
+      await expect(thread.getByText(corpo)).toBeVisible({ timeout: 25_000 });
     } catch (err) {
       // Sem isto, a falha diz só "element(s) not found" — que é verdade para
       // todas as causas já vistas e não separa nenhuma. O que segue é o que
       // distingue: estado dos DOIS canais, contadores de perda, e o que o
       // browser falou.
-      const thread = page.getByTestId("chat-thread");
       const diag = {
         canalDaLista: await page
           .locator("[data-realtime-status]")
