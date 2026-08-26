@@ -61,6 +61,10 @@ export async function drainEventLog(
   // A janela é generosa de propósito: o handler mais lento do registry é um
   // turno de agente, e reclamar cedo demais faria DOIS workers agirem sobre o
   // mesmo evento — trocar um evento parado por um efeito em dobro.
+  //
+  // `updated_at` é confiável como "quando alguém tocou esta linha": o trigger
+  // `trg_event_log_touch` (BEFORE UPDATE) o reescreve em toda atualização, então
+  // a linha carrega o instante do CLAIM enquanto o handler não volta.
   const limiteDePresos = new Date(Date.now() - PROCESSING_STALE_MS).toISOString();
   const { data: reclamados } = await admin
     .from("event_log")
