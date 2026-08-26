@@ -177,6 +177,75 @@ export const DICIONARIO: Traducoes = {
   Excluir: { es: "Eliminar" },
   Editar: { es: "Editar" },
   Voltar: { es: "Volver" },
+  // ─── Configurações: hub, perfil e tenant ───
+  "Dados inválidos.": { es: "Datos inválidos." },
+  "Perfil atualizado.": { es: "Perfil actualizado." },
+  "Organização atualizada.": { es: "Organización actualizada." },
+  "Salvando…": { es: "Guardando…" },
+  "Nome completo": { es: "Nombre completo" },
+  "Trocar email — em breve.": { es: "Cambiar email — próximamente." },
+  "Fuso horário": { es: "Huso horario" },
+  "Avatar URL": { es: "URL de avatar" },
+  "Upload de arquivo — em breve. Cole uma URL pública.": {
+    es: "Subida de archivo — próximamente. Pega una URL pública.",
+  },
+  "Nome de exibição": { es: "Nombre para mostrar" },
+  "Razão social": { es: "Razón social" },
+  "DPO email": { es: "Email del DPO" },
+  "Retenção de mídia (dias)": { es: "Retención de medios (días)" },
+  "URL política de privacidade": { es: "URL de la política de privacidad" },
+  "Motivos de perda extras (separados por vírgula)": {
+    es: "Motivos de pérdida adicionales (separados por coma)",
+  },
+  "ex: Sem orçamento, Concorrente": { es: "ej.: Sin presupuesto, Competencia" },
+  "Adicionados ao set padrão. Cada pipeline pode ter seus próprios motivos.": {
+    es: "Se agregan al conjunto predeterminado. Cada pipeline puede tener sus propios motivos.",
+  },
+  "Informações pessoais. Email só pode ser trocado em breve.": {
+    es: "Información personal. El email solo se puede cambiar próximamente.",
+  },
+  "Dados da empresa, retenção de mídia, DPO. Admin only.": {
+    es: "Datos de la empresa, retención de medios, DPO. Solo administradores.",
+  },
+  // ─── Hub de Configurações (NavHub: seções, rótulos e descrições das cards) ───
+  "Sua conta": { es: "Tu cuenta" },
+  "Sua empresa": { es: "Tu empresa" },
+  "Dados e acesso": { es: "Datos y acceso" },
+  Segurança: { es: "Seguridad" },
+  Notificações: { es: "Notificaciones" },
+  Equipe: { es: "Equipo" },
+  "Distribuição de atendimento": { es: "Distribución de atención" },
+  "Sua conta, os dados da empresa e quem tem acesso ao quê.": {
+    es: "Tu cuenta, los datos de la empresa y quién tiene acceso a qué.",
+  },
+  "Seu nome, idioma, fuso horário e avatar.": {
+    es: "Tu nombre, idioma, huso horario y avatar.",
+  },
+  "Verificação em duas etapas, códigos de recuperação e sessões.": {
+    es: "Verificación en dos pasos, códigos de recuperación y sesiones.",
+  },
+  "Por onde e sobre o quê você quer ser avisado.": {
+    es: "Por dónde y sobre qué quieres recibir avisos.",
+  },
+  "Quem trabalha aqui, com qual papel e quanta conversa cada um aguenta.": {
+    es: "Quién trabaja aquí, con qué rol y cuántas conversaciones puede tomar cada uno.",
+  },
+  "Quem recebe cada cliente novo, e o que cada atendente enxerga.": {
+    es: "Quién recibe cada cliente nuevo y qué ve cada agente.",
+  },
+  "Dados da empresa, retenção de dados e encarregado de LGPD.": {
+    es: "Datos de la empresa, retención de datos y encargado de LGPD.",
+  },
+  "O nome e a cor que sua empresa mostra dentro do sistema.": {
+    es: "El nombre y el color que tu empresa muestra dentro del sistema.",
+  },
+  "Plano e cobrança.": { es: "Plan y facturación." },
+  "Pedidos de exportação e exclusão de dados feitos por clientes.": {
+    es: "Solicitudes de exportación y eliminación de datos hechas por clientes.",
+  },
+  "Chaves para outro sistema conversar com o seu CRM.": {
+    es: "Claves para que otro sistema converse con tu CRM.",
+  },
 };
 
 /**
