@@ -13576,6 +13576,69 @@ $$;
 revoke execute on function public.fn_redigir_agenda_do_contato_anonimizado() from public, anon, authenticated;
 grant  execute on function public.fn_redigir_agenda_do_contato_anonimizado() to service_role;
 
+-- ---- a agenda nasce com o que marcar: funções (migration 0185) ----
+--
+-- A PRIMEIRA metade da 0185, aqui porque cria FUNÇÃO e a VARREDURA anon (logo
+-- abaixo) proíbe `create function` depois dela.
+--
+-- Zero INSERT em `calendar_event_types` em todo o repo, medido com controle
+-- positivo. Instalação fresca abria a Agenda numa semana em branco, sem nada
+-- para clicar e sem mensagem — e grade vazia é indistinguível de "ninguém marcou
+-- hoje". É o P0 da doutrina de QA Visual.
+--
+-- NEUTRO de propósito: o nicho não é persistido em lugar nenhum (a inferência
+-- roda em memória no passo do funil e morre lá), e o trigger dispara no INSERT
+-- da organização, antes de existir qualquer texto para inferir. Este é o PISO;
+-- o enriquecimento por nicho vive onde o nicho existe, no passo do onboarding.
+create or replace function public.fn_semear_tipos_de_agendamento(p_organization_id uuid)
+returns integer
+language plpgsql
+set search_path = public, pg_temp
+as $$
+declare
+  v_criados integer := 0;
+  r record;
+begin
+  for r in
+    select * from (values
+      ('Consulta',    'consulta',    'consulta', 30, 1000::numeric),
+      ('Reunião',     'reuniao',     'reuniao',  30, 2000::numeric),
+      ('Atendimento', 'atendimento', 'outro',    30, 3000::numeric)
+    ) as t(nome, slug, categoria, duracao, posicao)
+  loop
+    insert into public.calendar_event_types
+      (organization_id, name, slug, category, duration_minutes, position)
+    values
+      (p_organization_id, r.nome, r.slug, r.categoria, r.duracao, r.posicao)
+    on conflict (organization_id, slug) do nothing;
+
+    if found then
+      v_criados := v_criados + 1;
+    end if;
+  end loop;
+
+  return v_criados;
+end;
+$$;
+
+create or replace function public.fn_semear_tipos_de_agendamento_na_org_nova()
+returns trigger
+language plpgsql
+set search_path = public, pg_temp
+as $$
+begin
+  perform public.fn_semear_tipos_de_agendamento(new.id);
+  return new;
+end;
+$$;
+
+-- Função de trigger não exige EXECUTE de quem dispara o INSERT, e a de seed é
+-- chamada por ela e pelo backfill — nenhum dos dois passa pelo PostgREST.
+revoke execute on function public.fn_semear_tipos_de_agendamento(uuid) from public, anon, authenticated;
+revoke execute on function public.fn_semear_tipos_de_agendamento_na_org_nova() from public, anon, authenticated;
+grant  execute on function public.fn_semear_tipos_de_agendamento(uuid) to service_role;
+grant  execute on function public.fn_semear_tipos_de_agendamento_na_org_nova() to service_role;
+
 -- ---- VARREDURA anon: função nova nasce exposta em quem ATUALIZA (migration 0116) ----
 --
 -- ⚠️ ESTE BLOCO É, DE PROPÓSITO, O ÚLTIMO DO ARQUIVO. Apêndice novo entra ANTES
@@ -15208,5 +15271,45 @@ create trigger trg_redigir_agenda_ao_anonimizar
 
 comment on column public.calendar_appointments.notes is
   'Anotação livre do atendimento — numa clínica, queixa clínica. É dado pessoal: o trigger trg_redigir_agenda_ao_anonimizar (migration 0184) a apaga quando o contato é anonimizado, junto com title, description, location_details, meeting_url e cancellation_reason. Horário, status e dono são PRESERVADOS: o que aconteceu e quando é registro de operação.';
+
+notify pgrst, 'reload schema';
+
+-- ---- a agenda nasce com o que marcar: trigger e backfill (migration 0185) ----
+--
+-- A SEGUNDA metade da 0185. As funções estão ANTES do bloco da VARREDURA anon.
+--
+-- TRIGGER e BACKFILL, e não um só: o baseline nunca semeia organização que ainda
+-- não existe (só faz backfill das de hoje), e o único mecanismo que alcança
+-- organização FUTURA é trigger em `organizations`. Só backfill deixaria a
+-- segunda organização do dono vazia; só trigger deixaria sem nada todo clone que
+-- já instalou.
+--
+-- `on conflict do nothing` e nunca `do update`: o `update.sh` re-aplica este
+-- arquivo a cada atualização, e `do update` sobrescreveria em silêncio o tipo
+-- que o dono já editou. É a diferença entre semear e mandar.
+drop trigger if exists trg_semear_tipos_de_agendamento on public.organizations;
+create trigger trg_semear_tipos_de_agendamento
+  after insert on public.organizations
+  for each row
+  execute function public.fn_semear_tipos_de_agendamento_na_org_nova();
+
+-- Backfill: os clones que JÁ instalaram. Guardado por `not exists` para o
+-- `update.sh` poder re-aplicar sem duplicar e sem tocar em quem já editou.
+do $$
+declare o record;
+begin
+  for o in
+    select id from public.organizations
+     where not exists (
+       select 1 from public.calendar_event_types t where t.organization_id = organizations.id
+     )
+  loop
+    perform public.fn_semear_tipos_de_agendamento(o.id);
+  end loop;
+end
+$$;
+
+comment on function public.fn_semear_tipos_de_agendamento(uuid) is
+  'O PISO da agenda: três tipos neutros (Consulta, Reunião, Atendimento) para que instalação fresca tenha o que marcar. Não é o teto — o enriquecimento por nicho vive no passo do funil do onboarding, onde o nicho existe. `on conflict do nothing` para nunca sobrescrever o que o dono editou.';
 
 notify pgrst, 'reload schema';
