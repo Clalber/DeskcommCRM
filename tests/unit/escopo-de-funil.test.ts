@@ -186,6 +186,49 @@ describe("a chamada de ferramenta", () => {
     if (v.permitido) return;
     expect(v.motivo).toBe("ferramenta_nao_classificada");
   });
+
+  it("`funil_vem_do_lead` SEM `lead_id` PASSA — decisão, não esquecimento", async () => {
+    // Este ramo decidia permissão e não tinha teste nenhum. Ele devolve
+    // `permitido: true`, e isso é deliberado: a ferramenta aceita alvo por
+    // CONTATO (`crm_schedule_followup` pede lead_id OU contact_id), e recusar
+    // aqui bloquearia um caminho legítimo.
+    //
+    // ⚠️ A CONSEQUÊNCIA, dita em voz alta porque o nome do alvo a esconde:
+    // quando `lead_id` é opcional, o escopo de funil vira OPCIONAL na prática —
+    // basta omitir o campo. Um agente restrito ao funil A pode operar sobre um
+    // contato do funil B informando só `contact_id`.
+    //
+    // Isso não é buraco a fechar aqui: fechar recusaria o follow-up por contato,
+    // que é caminho legítimo e vivo. É buraco a CONHECER — quem lê
+    // `funil_vem_do_lead` na tabela conclui "escopado por funil" e erra. Quem
+    // limita de verdade é o RBAC da tabela e o risco/pacote da capacidade.
+    //
+    // Vale em dobro para as ferramentas de agenda que estão sendo desenhadas:
+    // elas têm `contact_id` obrigatório e `lead_id` opcional (o vínculo com o
+    // lead é polimórfico, via `crm_lead_links`), então caem exatamente aqui.
+    const v = await podeChamarFerramenta({
+      ...base,
+      ferramenta: "crm_schedule_followup",
+      argumentos: { contact_id: "c0a7aaaa-0000-4000-8000-000000000001" },
+    });
+    expect(v.permitido).toBe(true);
+  });
+
+  it("...e COM `lead_id` fora do escopo ela recusa — o gate não passa tudo", async () => {
+    // Controle positivo do caso acima. Sem ele, aquele teste continuaria verde
+    // se `podeChamarFerramenta` passasse a liberar TODA escrita: a asserção
+    // `permitido === true` não distingue "passou por ser sem lead" de "passou
+    // porque o gate morreu". A MESMA ferramenta, mudando só o argumento.
+    const v = await podeChamarFerramenta({
+      ...base,
+      ferramenta: "crm_schedule_followup",
+      argumentos: { lead_id: "1eadaaaa-0000-4000-8000-000000000003" },
+      resolvePipelineDoLead: resolveFixo(FUNIL_B),
+    });
+    expect(v.permitido).toBe(false);
+    if (v.permitido) return;
+    expect(v.motivo).toBe("funil_fora_do_escopo");
+  });
 });
 
 describe("o que o modelo lê", () => {
