@@ -15313,3 +15313,49 @@ comment on function public.fn_semear_tipos_de_agendamento(uuid) is
   'O PISO da agenda: três tipos neutros (Consulta, Reunião, Atendimento) para que instalação fresca tenha o que marcar. Não é o teto — o enriquecimento por nicho vive no passo do funil do onboarding, onde o nicho existe. `on conflict do nothing` para nunca sobrescrever o que o dono editou.';
 
 notify pgrst, 'reload schema';
+
+-- ---- a cor da pessoa é uma trilha, e a do tipo não existe (migration 0186) ----
+--
+-- A 0177 criou duas colunas de cor guardando hex. As duas estavam erradas, e o
+-- argumento é do @VPS: hex guardado é "um segundo lugar para a mesma verdade, e
+-- o tema escuro fica de fora". Medido: as cores vivem em `--agenda-pessoa-1..8`
+-- no globals.css, em TRÊS blocos de tema, e a mesma trilha tem hex diferente em
+-- cada um.
+--
+-- `calendar_color` VIRA TRILHA e a escolha manual FICA: a derivação a partir do
+-- `user_id` é estável mas COLIDE (oito trilhas, mais de oito pessoas), e quem
+-- administra vai querer desempatar. NULL = use a derivada.
+--
+-- `calendar_event_types.color` SAI: há UM pixel por compromisso na grade, e duas
+-- colorações competindo pelo mesmo lugar significam que uma delas mente. O pedido
+-- é cor POR PESSOA. Se voltar um dia, volta como trilha, com alternador.
+--
+-- ⚠️ DROP COLUMN é destrutivo. O que autoriza: as colunas nasceram na 0177 hoje,
+-- o seed da 0185 não preenche nenhuma, e a varredura por consumidor devolveu zero
+-- com controle positivo. Não há dado de cliente a perder porque não há caminho
+-- que grave.
+-- ─── 1 · a cor da pessoa vira trilha ──────────────────────────────────────
+alter table public.user_organizations
+  add column if not exists calendar_trilha smallint;
+
+alter table public.user_organizations
+  drop constraint if exists user_organizations_calendar_trilha_valida;
+alter table public.user_organizations
+  add constraint user_organizations_calendar_trilha_valida
+  check (calendar_trilha is null or calendar_trilha between 1 and 8);
+
+comment on column public.user_organizations.calendar_trilha is
+  'A trilha de cor desta pessoa na grade da Agenda, nesta organização (1..8). NULL = use a derivada de trilhaPadraoDoMembro(user_id), que é estável mas colide para alguns pares — esta coluna existe para quem administra desempatar. A COR de cada trilha vive em app/globals.css (--agenda-pessoa-N) e muda com o tema; guardar hex aqui seria um segundo lugar para a mesma verdade, sem tema escuro. ⚠️ A policy de SELECT desta tabela é self-OU-manager+: um `agent` não lê a linha dos colegas pelo PostgREST, então as trilhas chegam à tela pela rota que monta o roster com service role.';
+
+alter table public.user_organizations
+  drop constraint if exists user_organizations_calendar_color_format;
+alter table public.user_organizations
+  drop column if exists calendar_color;
+
+-- ─── 2 · a cor do tipo de agendamento sai ─────────────────────────────────
+alter table public.calendar_event_types
+  drop constraint if exists calendar_event_types_color_format;
+alter table public.calendar_event_types
+  drop column if exists color;
+
+notify pgrst, 'reload schema';
