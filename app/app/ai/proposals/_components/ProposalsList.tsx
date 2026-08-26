@@ -14,6 +14,7 @@ import {
   type PropostaPendente,
 } from "@/hooks/leads/useProposals";
 import { Check, X } from "@/lib/ui/icons";
+import { useT } from "@/hooks/i18n/useT";
 
 function quando(iso: string): string {
   const d = new Date(iso);
@@ -22,6 +23,7 @@ function quando(iso: string): string {
 }
 
 export function ProposalsList({ canDecide }: { canDecide: boolean }) {
+  const t = useT();
   const [tab, setTab] = useState<"pending" | "history">("pending");
   const { data, isLoading } = useProposals();
   const decidir = useDecidirProposta();
@@ -31,9 +33,9 @@ export function ProposalsList({ canDecide }: { canDecide: boolean }) {
       <Tabs value={tab} onValueChange={(v) => setTab(v as "pending" | "history")}>
         <TabsList>
           <TabsTrigger value="pending">
-            Aguardando decisão{data ? ` (${data.pending.length})` : ""}
+            {t("Aguardando decisão")}{data ? ` (${data.pending.length})` : ""}
           </TabsTrigger>
-          <TabsTrigger value="history">Já decididas</TabsTrigger>
+          <TabsTrigger value="history">{t("Já decididas")}</TabsTrigger>
         </TabsList>
       </Tabs>
 
@@ -67,11 +69,14 @@ function Pendentes({
   pending: boolean;
   onDecidir: (leadId: string, decision: "approve" | "dismiss", seq: number) => void;
 }) {
+  const t = useT();
   if (itens.length === 0) {
     return (
       <Vazio
-        titulo="Nenhuma proposta esperando você"
-        detalhe="Quando o assistente sugerir um próximo passo, ele aparece aqui — e some daqui assim que você decidir."
+        titulo={t("Nenhuma proposta esperando você")}
+        detalhe={t(
+          "Quando o assistente sugerir um próximo passo, ele aparece aqui — e some daqui assim que você decidir.",
+        )}
       />
     );
   }
@@ -93,7 +98,7 @@ function Pendentes({
             {/* Há quanto tempo espera é a informação que decide a ORDEM de quem
                 olha — por isso fica na linha do título, não escondida embaixo. */}
             <span className="text-xs text-muted-foreground">
-              proposta {quando(p.proposed_at)}
+              {t("proposta")} {quando(p.proposed_at)}
             </span>
           </div>
 
@@ -104,20 +109,20 @@ function Pendentes({
               size="sm"
               disabled={!canDecide || pending}
               onClick={() => onDecidir(p.lead_id, "approve", p.seq)}
-              aria-label={`Aprovar: ${p.next_action}`}
+              aria-label={`${t("Aprovar")}: ${p.next_action}`}
             >
               <Check size={14} aria-hidden />
-              Aprovar
+              {t("Aprovar")}
             </Button>
             <Button
               size="sm"
               variant="outline"
               disabled={!canDecide || pending}
               onClick={() => onDecidir(p.lead_id, "dismiss", p.seq)}
-              aria-label={`Ignorar: ${p.next_action}`}
+              aria-label={`${t("Ignorar")}: ${p.next_action}`}
             >
               <X size={14} aria-hidden />
-              Ignorar
+              {t("Ignorar")}
             </Button>
           </div>
         </li>
@@ -127,11 +132,14 @@ function Pendentes({
 }
 
 function Historico({ itens }: { itens: DecisaoPassada[] }) {
+  const t = useT();
   if (itens.length === 0) {
     return (
       <Vazio
-        titulo="Nenhuma decisão registrada ainda"
-        detalhe="Aprovar e ignorar viram registro — os dois. Quando você decidir a primeira, ela fica aqui."
+        titulo={t("Nenhuma decisão registrada ainda")}
+        detalhe={t(
+          "Aprovar e ignorar viram registro — os dois. Quando você decidir a primeira, ela fica aqui.",
+        )}
       />
     );
   }
@@ -145,11 +153,11 @@ function Historico({ itens }: { itens: DecisaoPassada[] }) {
                 aprovar, porque a wave 4 existe exatamente para que a recusa
                 seja uma decisão registrada e não uma ausência. */}
             <Badge variant={d.decision === "approve" ? "success" : "secondary"}>
-              {d.decision === "approve" ? "Aprovada" : "Ignorada"}
+              {d.decision === "approve" ? t("Aprovada") : t("Ignorada")}
             </Badge>
             <span className="text-sm font-medium">{d.lead_title}</span>
             <span className="text-xs text-muted-foreground">
-              por {d.decided_by ?? "—"} · {quando(d.decided_at)}
+              {t("por")} {d.decided_by ?? "—"} · {quando(d.decided_at)}
             </span>
           </div>
           <p className="text-sm text-muted-foreground">{d.next_action}</p>

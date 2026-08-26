@@ -1,6 +1,7 @@
 "use client";
 import { Brain, Lightbulb, PuzzlePiece } from "@/lib/ui/icons";
 import type { TimelineItem } from "@/lib/ai/evolution/aggregate";
+import { useT } from "@/hooks/i18n/useT";
 
 /**
  * A linha do tempo do aprendizado. Cada linha responde "o que entrou na cabeça do
@@ -39,16 +40,17 @@ function dia(s: string): string {
 }
 
 export function EvolutionTimeline({ items }: { items: TimelineItem[] }) {
+  const t = useT();
   return (
     <ol className="max-h-80 divide-y divide-border overflow-y-auto">
       {items.map((it, i) => {
-        const t = TIPOS[it.kind];
+        const tipo = TIPOS[it.kind];
         return (
           <li key={`${it.day}-${it.kind}-${i}`} className="flex items-start gap-3 py-3">
-            <t.Icone size={18} className={`mt-0.5 shrink-0 ${t.cor}`} aria-hidden />
+            <tipo.Icone size={18} className={`mt-0.5 shrink-0 ${tipo.cor}`} aria-hidden />
             <div className="min-w-0 flex-1">
               <p className="text-xs text-text-muted">
-                {dia(it.day)} · {t.rotulo}
+                {dia(it.day)} · {t(tipo.rotulo)}
               </p>
               <p className="mt-0.5 break-words text-sm">{titulo(it.title)}</p>
             </div>
