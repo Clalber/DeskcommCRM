@@ -66,10 +66,13 @@ export type ActivityType =
    */
   | "lead_disqualified"
   /**
-   * Classificação inicial achou conflito de identidade (nome do envio diverge
-   * do nome já gravado no contato casado por telefone/e-mail) e NÃO
-   * classificou — pediu olho humano antes. Sem linha, ninguém sabe que o lead
-   * está parado esperando alguém decidir quem é quem.
+   * Classificação inicial pediu olho humano antes de classificar. São TRÊS
+   * motivos possíveis — conflito de identidade (o nome do envio diverge do já
+   * gravado no contato casado por telefone/e-mail), sinal de spam, ou
+   * contradição entre o que a empresa diz investir hoje e o que diz ser
+   * viável. Qual deles foi vai no `reason` da atividade; o rótulo não nomeia
+   * um só, porque nomear um dos três seria descrever errado os outros dois.
+   * Sem linha, ninguém sabe que o lead está parado esperando alguém decidir.
    */
   | "lead_needs_review"
   /**
@@ -156,7 +159,7 @@ export const ACTIVITY_LABELS: Record<ActivityType, string> = {
   demand_closed: "Demanda encerrada",
   consent_declined: "Consentimento de contato recusado no formulário",
   lead_disqualified: "Desqualificado na triagem inicial",
-  lead_needs_review: "Aguardando revisão humana (conflito de identidade)",
+  lead_needs_review: "Aguardando revisão humana",
   // Rótulos com OBJETO, nunca verbo nu: "Liberou" sozinho não diz o quê, e numa
   // clínica "liberar" é o que se faz com um exame. O resto do arquivo já segue
   // essa régua ("Retorno agendado", "Demanda encerrada").

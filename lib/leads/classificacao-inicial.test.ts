@@ -11,6 +11,7 @@ function base(overrides: Partial<EntradaClassificacaoInicial> = {}): EntradaClas
     customFields: { viable_investment_range: "De R$ 4 mil a R$ 7 mil por mês", respondi_score: "55" },
     phoneNormalizado: "+5515988887777",
     consentGranted: true,
+    consentPerguntado: true,
     contatoExistente: null,
     nomeDoEnvio: "Maria Exemplo",
     ...overrides,
@@ -22,8 +23,22 @@ describe("avaliarDesqualificacao — só os 2 bloqueios técnicos/legais reais",
     expect(avaliarDesqualificacao(base({ phoneNormalizado: null }))).toBe("contato_invalido");
   });
 
-  it("consentimento não concedido desqualifica: sem_consentimento", () => {
-    expect(avaliarDesqualificacao(base({ consentGranted: false }))).toBe("sem_consentimento");
+  it("consentimento RECUSADO desqualifica: sem_consentimento", () => {
+    expect(avaliarDesqualificacao(base({ consentGranted: false, consentPerguntado: true }))).toBe(
+      "sem_consentimento",
+    );
+  });
+
+  /**
+   * O formulário que NÃO TEM a pergunta de autorização devolve `granted: false`
+   * pelo mapeador (leitura defensiva correta: silêncio nunca vira concessão).
+   * Desqualificar por isso desqualificaria TODO lead de um formulário assim —
+   * é a mesma distinção que a guarda de envio faz com `declined_at`.
+   */
+  it("formulário que nem PERGUNTA não desqualifica — ninguém dizer não é diferente de dizer não", () => {
+    expect(
+      avaliarDesqualificacao(base({ consentGranted: false, consentPerguntado: false })),
+    ).toBeNull();
   });
 
   it("'Ainda não posso investir' NÃO desqualifica mais (decisão 2026-08-25 — vira sinal de classe D)", () => {

@@ -882,6 +882,38 @@ describe("POST /api/v1/webhooks/in/[token] — classificação inicial (2026-08-
     expect(disqualified.length).toBe(1);
   });
 
+  it("caso 10b — formulário SEM a pergunta de autorização: NÃO desqualifica (ninguém perguntou ≠ disse não)", async () => {
+    // `extractConsent` devolve `granted: false` quando não acha a pergunta —
+    // leitura defensiva correta. Tratar isso como recusa desqualificaria todo
+    // lead de um formulário do Respondi que não faz a pergunta, e um formulário
+    // assim é normal (nem toda captação pede autorização no próprio form).
+    const payload = respondiPayload("resp-int-sem-pergunta-0010b", "55 15988880018", "maria.exemplo+0018@example.com", (p) => {
+      const respondent = p.respondent as Record<string, unknown>;
+      respondent.raw_answers = (respondent.raw_answers as Array<Record<string, unknown>>).filter(
+        (r) => (r.question as Record<string, unknown>).question_type !== "legaltext",
+      );
+      const answers = respondent.answers as Record<string, unknown>;
+      for (const k of Object.keys(answers)) {
+        if (/autoriza|aceito receber|consent/i.test(k)) delete answers[k];
+      }
+    });
+    const res = await POST(jsonReq(TOKEN_RESPONDI, payload), reqCtx(TOKEN_RESPONDI));
+    expect(res.status).toBe(200);
+    const leadId = ((await res.json()) as { data: { lead_id: string } }).data.lead_id;
+
+    const lead = rows(`select * from public.crm_leads where id = '${leadId}'`)[0]!;
+    const cf = lead.custom_fields as Record<string, unknown>;
+    expect(cf.classificacao_inicial_status).not.toBe("desqualificado");
+    expect(cf.classificacao_inicial_motivo ?? null).not.toBe("sem_consentimento");
+
+    // E nenhuma atividade de desqualificação — a timeline não pode contar uma
+    // história que não aconteceu.
+    const disqualified = rows(
+      `select id from public.crm_lead_activities where lead_id = '${leadId}' and type = 'lead_disqualified'`,
+    );
+    expect(disqualified.length).toBe(0);
+  });
+
   it("caso 11 — segundo envio com o MESMO telefone mas nome diferente do contato existente: revisão humana, lead ainda criado", async () => {
     const telefone = "55 15988880011";
     const primeiro = respondiPayload("resp-int-rev-a-0011", telefone, "maria.exemplo+0011a@example.com");

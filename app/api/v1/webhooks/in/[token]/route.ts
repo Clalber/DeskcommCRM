@@ -392,6 +392,7 @@ export async function POST(req: NextRequest, ctx: RouteCtx): Promise<NextRespons
       customFields: respondiMapped.custom_fields,
       phoneNormalizado: mapped.phone,
       consentGranted: respondiMapped.consent.granted,
+      consentPerguntado: respondiMapped.consent.detectedVia !== "not_found",
       contatoExistente: existingContactName !== undefined ? { name: existingContactName } : null,
       nomeDoEnvio: mapped.name,
     });

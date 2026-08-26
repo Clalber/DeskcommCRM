@@ -67,6 +67,17 @@ export interface EntradaClassificacaoInicial {
   phoneNormalizado: string | null;
   consentGranted: boolean;
   /**
+   * O formulário CHEGOU A PERGUNTAR? `false` quando o mapeador não achou a
+   * pergunta de autorização (`detectedVia === "not_found"`).
+   *
+   * Existe porque `consentGranted` é `false` nos DOIS casos — a pessoa disse
+   * não, e ninguém perguntou —, e desqualificar o segundo é desqualificar todo
+   * lead de um formulário que não faz a pergunta. Mesma distinção que a guarda
+   * de envio faz com `consent.marketing.declined_at`
+   * (`lib/automation/guarda-do-contato.ts`).
+   */
+  consentPerguntado: boolean;
+  /**
    * Presente só quando o contato foi casado com um JÁ EXISTENTE (mesmo
    * telefone ou mesmo e-mail) — necessário pra checar conflito de identidade.
    * `null` = contato novo, sem conflito possível.
@@ -93,7 +104,8 @@ function normalizaTexto(v: unknown): string | null {
  */
 export function avaliarDesqualificacao(input: EntradaClassificacaoInicial): MotivoDesqualificacao | null {
   if (!input.phoneNormalizado) return "contato_invalido";
-  if (!input.consentGranted) return "sem_consentimento";
+  // A recusa desqualifica; a AUSÊNCIA DA PERGUNTA, não. Ver `consentPerguntado`.
+  if (input.consentPerguntado && !input.consentGranted) return "sem_consentimento";
   return null;
 }
 
