@@ -224,41 +224,39 @@ export const ATIVIDADES_DA_AGENDA = [
 export type AtividadeDaAgenda = (typeof ATIVIDADES_DA_AGENDA)[number];
 
 /**
- * A paleta da grade: oito cores distinguíveis entre si.
+ * A TRILHA de cor da pessoa — o número, não a cor.
  *
- * Formato `#rrggbb`, que é o que o CHECK de `user_organizations.calendar_color`
- * e o de `calendar_event_types.color` aceitam — a mesma forma de
- * `crm_stages.color`, e não a de `platform_branding.accent_hex`, que exige
- * minúscula porque é cor de MARCA e tem outra régua.
+ * ⚠️ Aqui havia oito hex literais, e estavam errados. A cor mora em
+ * `app/globals.css`, nas variáveis `--agenda-pessoa-1..8`, e cada trilha tem
+ * hex DIFERENTE por tema — medido: a trilha 1 é `#ac4d40` no claro e `#f89080`
+ * noutro bloco. Um hex guardado aqui (ou numa coluna do banco) seria o segundo
+ * lugar para a mesma verdade, e o tema escuro ficaria de fora.
  *
- * ⚠️ Cor NUNCA é a única informação (daltonismo): a inicial ou o avatar da
- * pessoa acompanha sempre.
+ * O argumento é do @VPS, no cabeçalho de `components/agenda/paleta.ts`, e ele
+ * está certo: este módulo escolhe QUAL trilha, nunca QUE cor. Quem traduz
+ * trilha em cor é `corDaTrilha()`, do lado da tela, que devolve a variável CSS.
  */
-export const PALETA_DA_AGENDA = [
-  "#2F6F5E",
-  "#C2703D",
-  "#4A5D8A",
-  "#8C5A7D",
-  "#5B7A3A",
-  "#A34A48",
-  "#3E7B8C",
-  "#7A6A3F",
-] as const;
+export const TRILHAS_DA_AGENDA = [1, 2, 3, 4, 5, 6, 7, 8] as const;
+export type TrilhaDaAgenda = (typeof TRILHAS_DA_AGENDA)[number];
 
 /**
- * A cor de quem ainda não escolheu uma — estável, para a mesma pessoa não
+ * A trilha de quem ainda não escolheu uma — estável, para a mesma pessoa não
  * trocar de cor entre um carregamento e outro.
  *
- * `calendar_color` nasce NULL de propósito: ninguém deveria precisar
+ * Deriva do `user_id` e não da posição na lista de membros, e a diferença é
+ * concreta: derivar da posição faz todo mundo trocar de cor quando alguém entra
+ * na equipe.
+ *
+ * A pessoa nasce sem trilha escolhida de propósito — ninguém deveria precisar
  * configurar cor antes de ver a própria agenda funcionando.
  */
-export function corPadraoDoMembro(userId: string): string {
+export function trilhaPadraoDoMembro(userId: string): TrilhaDaAgenda {
   let soma = 0;
   for (let i = 0; i < userId.length; i += 1) {
     soma = (soma * 31 + userId.charCodeAt(i)) % 1_000_003;
   }
-  const cor = PALETA_DA_AGENDA[soma % PALETA_DA_AGENDA.length];
+  const trilha = TRILHAS_DA_AGENDA[soma % TRILHAS_DA_AGENDA.length];
   // O índice é sempre válido (módulo do tamanho), mas o TypeScript não sabe
   // disso com `noUncheckedIndexedAccess`.
-  return cor ?? PALETA_DA_AGENDA[0];
+  return trilha ?? TRILHAS_DA_AGENDA[0];
 }
