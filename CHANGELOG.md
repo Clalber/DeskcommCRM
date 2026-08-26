@@ -49,6 +49,18 @@ Se você roda o DeskcommCRM numa VPS, **leia a seção da versão para a qual es
   hora, e ela também se recupera sozinha: se a conexão em tempo real cair, a lista e a
   conversa voltam a se sincronizar em pouco tempo em vez de ficar congeladas num passado que
   parece presente. Nada para você fazer — vale assim que atualizar.
+- **A automação parou de dizer "Sucesso" para mensagem que ela nem tentou mandar.** Quando o
+  envio era pulado — contato sem telefone, contato bloqueado, contato que recusou receber
+  mensagens — a execução aparecia na aba Atividade como bem-sucedida. Pior que o defeito que a
+  versão passada corrigiu: aquele pelo menos tinha tentado. Agora aparece como **Falhou**, com
+  a razão.
+- **Quem recusa receber mensagens no formulário para de receber automação.** A recusa já ficava
+  visível na linha do tempo, mas nada no motor a lia — as automações de WhatsApp saíam do
+  mesmo jeito. Agora a recusa fica registrada na ficha da pessoa e as duas ações de envio
+  automático (mensagem escrita por você e mensagem escrita pela IA) a respeitam. Vale também
+  quando a pessoa **já era seu contato** e mudou de ideia num envio novo. **Quem nunca
+  respondeu à pergunta continua recebendo normalmente** — não perguntar não é a mesma coisa
+  que ouvir "não".
 
 ## [1.5.0] — 2026-08-25
 
