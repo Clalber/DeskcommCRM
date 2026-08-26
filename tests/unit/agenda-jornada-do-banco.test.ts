@@ -44,7 +44,7 @@
  */
 import { describe, expect, it } from "vitest";
 
-import { lerJornadaDoBanco } from "@/lib/agenda/jornada";
+import { lerJornadaDoBanco, RECUSA_PARA_O_CLIENTE } from "@/lib/agenda/jornada";
 
 describe("o que o banco devolve de verdade", () => {
   it("`{}` — o DEFAULT da coluna — vira jornada válida sem horário publicado", () => {
@@ -200,5 +200,31 @@ describe("fusoSuposto — a distinção que o parse apaga", () => {
   it("quem escolheu OUTRO fuso obviamente não é suposição", () => {
     const r = lerJornadaDoBanco({ timezone: "America/Manaus", windows: [] });
     expect(r.ok && r.fusoSuposto).toBe(false);
+  });
+});
+
+describe("a recusa para o cliente diz o que FAZER, não só o que não dá", () => {
+  it("proíbe as três saídas ruins que uma recusa apenas informativa deixaria à mão", () => {
+    // Medido com LLM real na doutrina de `lib/mcp/recusa-para-o-modelo.ts`: um
+    // texto que só constata a falha deixa o modelo escolher entre dizer "estamos
+    // sem vagas" (falso — é configuração quebrada, não lotação), inventar
+    // horário, ou encerrar sem caminho. A recusa precisa fechar as três.
+    expect(RECUSA_PARA_O_CLIENTE).toMatch(/não ofereça horários/i);
+    expect(RECUSA_PARA_O_CLIENTE).toMatch(/não diga que está lotado/i);
+    expect(RECUSA_PARA_O_CLIENTE).toMatch(/alguém da equipe/i);
+  });
+
+  it("é a MESMA frase que a leitura devolve — uma fonte, não uma cópia por consumidor", () => {
+    // Três consumidores vêm aí (MCP, tela e Central). Se cada um escrever a sua,
+    // o cliente ouve uma coisa pelo WhatsApp e lê outra na tela para o mesmo
+    // estado.
+    const r = lerJornadaDoBanco({ windows: null });
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.motivoParaCliente).toBe(RECUSA_PARA_O_CLIENTE);
+  });
+
+  it("e continua sem vazar nome de campo", () => {
+    expect(RECUSA_PARA_O_CLIENTE).not.toMatch(/\btimezone\b|\bwindows\b|`/i);
   });
 });
