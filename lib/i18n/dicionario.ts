@@ -263,6 +263,61 @@ export const DICIONARIO: Traducoes = {
   Sair: { es: "Cerrar sesión" },
   "Central de avisos": { es: "Central de avisos" },
   "em aberto": { es: "abiertos" },
+  // ─── Agentes de IA: lista ───
+  "Agents de IA": { es: "Agentes de IA" },
+  "Configure o comportamento dos agents que respondem no WhatsApp.": {
+    es: "Configura el comportamiento de los agentes que responden en WhatsApp.",
+  },
+  "Nenhum agent configurado": { es: "Ningún agente configurado" },
+  "Crie um agent para responder a conversas no WhatsApp com IA. Você configura prompt, tools, gatilhos e janela de contexto.": {
+    es: "Crea un agente para responder conversaciones de WhatsApp con IA. Configuras el prompt, las herramientas, los disparadores y la ventana de contexto.",
+  },
+  "Novo agente": { es: "Nuevo agente" },
+  "Nenhum agent corresponde aos filtros atuais.": {
+    es: "Ningún agente coincide con los filtros actuales.",
+  },
+  "Buscar por nome…": { es: "Buscar por nombre…" },
+  "Buscar agents": { es: "Buscar agentes" },
+  "Filtrar por status": { es: "Filtrar por estado" },
+  Status: { es: "Estado" },
+  status: { es: "estado" },
+  Todos: { es: "Todos" },
+  Publicado: { es: "Publicado" },
+  Rascunho: { es: "Borrador" },
+  Pausado: { es: "Pausado" },
+  Arquivado: { es: "Archivado" },
+  Inválido: { es: "Inválido" },
+  default: { es: "predeterminado" },
+  "Incluir arquivados": { es: "Incluir archivados" },
+  "Menu de ações": { es: "Menú de acciones" },
+  Duplicar: { es: "Duplicar" },
+  Renomear: { es: "Renombrar" },
+  Despausar: { es: "Reanudar" },
+  Pausar: { es: "Pausar" },
+  Arquivar: { es: "Archivar" },
+  "Agent duplicado.": { es: "Agente duplicado." },
+  "Agent reativado.": { es: "Agente reactivado." },
+  "Agent pausado.": { es: "Agente pausado." },
+  "Agent arquivado.": { es: "Agente archivado." },
+  Falha: { es: "Error" },
+  "Erro ao executar ação.": { es: "Error al ejecutar la acción." },
+  "O agent deixa de responder gatilhos e some das listas ativas. Versões publicadas são preservadas para auditoria. Não é possível desarquivar pela UI nesta versão.": {
+    es: "El agente deja de responder disparadores y desaparece de las listas activas. Las versiones publicadas se conservan para auditoría. No es posible desarchivar desde la interfaz en esta versión.",
+  },
+  "Renomear agent": { es: "Renombrar agente" },
+  "Apenas o nome interno muda. Versões publicadas e histórico são preservados.": {
+    es: "Solo cambia el nombre interno. Las versiones publicadas y el historial se conservan.",
+  },
+  "Renomeado.": { es: "Renombrado." },
+  "Modelo da versão publicada — é o que atende o cliente.": {
+    es: "Modelo de la versión publicada — es el que atiende al cliente.",
+  },
+  "Modelo do cadastro; nenhuma versão publicada ainda.": {
+    es: "Modelo del registro; todavía no hay versión publicada.",
+  },
+  Tipo: { es: "Tipo" },
+  Prioridade: { es: "Prioridad" },
+  Visualizar: { es: "Ver" },
 };
 
 /**
