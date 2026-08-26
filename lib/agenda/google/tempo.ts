@@ -54,17 +54,39 @@
  * Aquele arquivo não está nesta branch — releia antes de agir, ele pode ter
  * mudado.
  *
- * **Medição do domínio comum, para a unificação não ser decidida no escuro:**
- * comparei as duas funções na única pergunta que ambas respondem — o primeiro
- * instante de um dia — em 47.476 pares (13 fusos, inclusive os treze que
- * `lib/tempo/fusos.ts` oferece, de 2018 a 2027, meses inteiros com os dias 29,
- * 30 e 31). **Zero divergências.** O QA relatou 3 divergências em 18.250 pares
- * apontando o motor como o lado errado; não consegui reproduzir no domínio
- * comum, e as duas medições provavelmente olham objetos diferentes (a dele
- * cobre horas de parede fora da meia-noite, que esta função aqui nem responde).
- * Antes de escolher um lado na unificação, peça os 3 pares e meça o MESMO
- * objeto — a divergência, se existir, é em hora que não é meia-noite, e aí ela
- * é do motor e não daqui.
+ * **A unificação NÃO pode adotar a do motor sem consertar o salto de DST, e
+ * isto está medido nos dois sentidos.** Comparei as duas funções na única
+ * pergunta que ambas respondem — o primeiro instante de um dia:
+ *
+ * - nos 13 fusos que `lib/tempo/fusos.ts` oferece, 2018 a 2027, meses inteiros
+ *   (com os dias 29, 30 e 31, que é onde mora a virada de fim de mês):
+ *   **47.476 pares, zero divergências**;
+ * - fora desse conjunto, **três pares divergem**, e o lado errado é o do motor:
+ *
+ *   ```
+ *   Asia/Beirut 2026-03-29  daqui 2026-03-28T22:00Z (parede 29/03 01:00 — dia certo)
+ *                           motor 2026-03-28T21:00Z (parede 28/03 23:00 — DIA ERRADO)
+ *   Asia/Beirut 2018-03-25  idem, 1h
+ *   Asia/Tehran 2018-03-22  daqui 2018-03-21T20:30Z (22/03 01:00) · motor 19:30Z (21/03 23:00)
+ *   ```
+ *
+ * **A causa, e ela explica por que São Paulo concorda e Beirute não.** Nos dois
+ * a meia-noite cai dentro do salto do horário de verão. A diferença é o SINAL
+ * do deslocamento: onde ele é negativo (as Américas), o primeiro candidato já é
+ * o instante mais tarde, e devolvê-lo acerta por acidente. Onde é positivo
+ * (Beirute, Teerã), a ordem se inverte e o primeiro candidato cai na VÉSPERA.
+ * Por isso aqui a escolha é explícita — `Math.max` dos dois candidatos, que é o
+ * primeiro instante que de fato existe naquele dia — e lá é "fica o primeiro".
+ *
+ * Nenhum dos fusos que o produto oferece hoje cai nessa classe, então isto não
+ * bloqueia nada. Mas a unificação anunciada acima trocaria uma função certa por
+ * uma errada nessa borda, e é exatamente o tipo de troca que ninguém revisa
+ * porque "as duas fazem a mesma coisa". Ao unificar: leve o `Math.max` daqui
+ * para lá, ou mantenha esta.
+ *
+ * (Achado do QAVivo. A divergência inicial entre a medição dele e a minha era
+ * régua implícita: ele mediu 25 fusos, eu medi os 13 da lista canônica, e os
+ * três divergentes moram inteiramente fora dela.)
  */
 
 import { fusoValido } from "@/lib/tempo/fusos";
