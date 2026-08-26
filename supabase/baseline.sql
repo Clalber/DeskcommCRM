@@ -15313,3 +15313,16 @@ comment on function public.fn_semear_tipos_de_agendamento(uuid) is
   'O PISO da agenda: três tipos neutros (Consulta, Reunião, Atendimento) para que instalação fresca tenha o que marcar. Não é o teto — o enriquecimento por nicho vive no passo do funil do onboarding, onde o nicho existe. `on conflict do nothing` para nunca sobrescrever o que o dono editou.';
 
 notify pgrst, 'reload schema';
+
+-- ---- a volta do Google precisa de identidade (migration 0188) ----
+-- `calendar_appointments.google_ical_uid` existe desde a 0177 e diz qual evento
+-- do Google é nosso. A linha de VOLTA não tinha equivalente, e sem chave entre
+-- os dois o mesmo compromisso movido no Google passa a bloquear DOIS horários —
+-- o novo, pela linha externa, e o antigo, pelo agendamento — sem nada que os
+-- ligue para desfazer. Aditiva e idempotente.
+alter table public.calendar_external_events
+  add column if not exists ical_uid text;
+
+create index if not exists calendar_external_events_ical_uid_idx
+  on public.calendar_external_events (organization_id, ical_uid)
+  where ical_uid is not null;
