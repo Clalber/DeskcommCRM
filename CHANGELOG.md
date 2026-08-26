@@ -24,6 +24,13 @@ Se você roda o DeskcommCRM numa VPS, **leia a seção da versão para a qual es
 
 ### Corrigido
 
+- **O agente voltou a ouvir os áudios que chegam.** Quem mandava um áudio ouvia de volta
+  "não consigo ouvir mensagens de voz" — e a transcrição ficava pronta no sistema meio
+  minuto depois, sem ninguém para usá-la. A causa era de ritmo: as tarefas de bastidor
+  (baixar o áudio, transcrever, tratar mídia) só eram acordadas uma vez por minuto, e a
+  resposta ao cliente não espera tanto. Medido numa instalação real: a cadeia levava de
+  103 a 188 segundos, e passou a levar 18. A transcrição em si sempre levou 4 segundos —
+  o resto era fila. Nada para você fazer: vale assim que atualizar.
 - **A caixa de conversas voltou a se atualizar sozinha — antes só recarregando a página.**
   A mensagem do cliente chegava, ficava guardada certinho, e a tela continuava parada: quem
   estava com a conversa aberta, olhando, não via nada até apertar F5. Valia também para o
