@@ -52,15 +52,28 @@
  *       conhece preço/desconto/parcelas. O semântico também não é a rede: a instrução dele
  *       exclui em letra "próximos passos vagos SEM compromisso concreto".
  *
- *       A rede REAL é o OPERADOR, e ela é boa: a instrução da declaração do turno
- *       (`lib/agent-engine/agent/declaracao.ts`) manda declarar "tudo que você prometeu a
- *       ela — INCLUSIVE 'vou verificar e te aviso'", e `promessasEmAberto` faz o Operador
- *       apurar se alguém assumiu; sem dono, abre aviso na Central.
+ *       A rede que existe é a do OPERADOR, e ela é DECLARATIVA — não detectiva. A instrução
+ *       da declaração do turno (`lib/agent-engine/agent/declaracao.ts:99`) manda declarar
+ *       "tudo que você prometeu a ela — INCLUSIVE 'vou verificar e te aviso'", que é a frase
+ *       exata deste caso, e `promessasEmAberto` faz o Operador apurar se alguém assumiu.
  *
- *       ⚠️ LIMITE, escrito no próprio operator-turn.ts: a apuração diz se alguém ficou
- *       RESPONSÁVEL, não se a promessa foi cumprida — "agendar um retorno não é cumprir". E
- *       ela é DECLARATIVA: nasce do Conversador declarar. Modelo que promete e não declara
- *       não gera rede nenhuma, e nesse caminho não há detecção, só a declaração.
+ *       ⚠️ NÃO LEIA ISSO COMO COBERTURA. Esta linha já disse "e ela é boa", e essa conclusão
+ *       andava um passo à frente da medição. O elo é o modelo DECLARAR, e `promessasEmAberto`
+ *       devolve lista vazia em três situações que ninguém distingue: sem declaração,
+ *       declaração com `promessas: []`, e `nada_a_declarar: true` depois de ter prometido —
+ *       as três são estados VÁLIDOS, e as três significam "não há o que cobrar". O corpo
+ *       enviado nunca é consultado: `grep nada_a_declarar lib/agent-engine/guardrails/`
+ *       devolve ZERO. Os dois lados não se olham.
+ *
+ *       E o limite está escrito no próprio `operator-turn.ts`: a apuração diz se alguém ficou
+ *       RESPONSÁVEL, não se a promessa foi cumprida — "agendar um retorno não é cumprir".
+ *
+ *       O conserto seria barato e SEM LLM (proposta do Arquiteto, não implementada): quando a
+ *       declaração vem sem promessa, varrer o corpo enviado por marcador de promessa de
+ *       MÁQUINA ("te confirmo", "te aviso", "já te falo", "volto com"). É o motor do
+ *       `detectHumanPromise` com o outro vocabulário — o dele exige alvo humano, e é por isso
+ *       que não pega este caso. Divergência entre o dito e o declarado é sinal, e os dois
+ *       lados já estão na mesma transação.
  *
  * ⚠️ O QUE NINGUÉM MEDIU AINDA: como o modelo se comporta, de fato, num tenant com a
  * família só no Operador. Há lugar de observação — `before_send_traces` é durável e
