@@ -57,13 +57,28 @@
  *       "tudo que você prometeu a ela — INCLUSIVE 'vou verificar e te aviso'", que é a frase
  *       exata deste caso, e `promessasEmAberto` faz o Operador apurar se alguém assumiu.
  *
- *       ⚠️ NÃO LEIA ISSO COMO COBERTURA. Esta linha já disse "e ela é boa", e essa conclusão
- *       andava um passo à frente da medição. O elo é o modelo DECLARAR, e `promessasEmAberto`
- *       devolve lista vazia em três situações que ninguém distingue: sem declaração,
- *       declaração com `promessas: []`, e `nada_a_declarar: true` depois de ter prometido —
- *       as três são estados VÁLIDOS, e as três significam "não há o que cobrar". O corpo
- *       enviado nunca é consultado: `grep nada_a_declarar lib/agent-engine/guardrails/`
- *       devolve ZERO. Os dois lados não se olham.
+ *       ⚠️ NÃO LEIA ISSO COMO COBERTURA — e esta linha já errou DUAS vezes na direção
+ *       otimista, o que é o próprio aviso. Primeiro disse "e ela é boa"; depois disse que os
+ *       três estados de declaração eram "indistinguíveis", lendo `promessasEmAberto` (uma
+ *       linha, que de fato não consulta `nada_a_declarar`) e concluindo sobre a CADEIA. Quem
+ *       consulta está noutro arquivo. Seguida até onde o efeito acontece:
+ *
+ *         nada_a_declarar: true  -> `decidirSeRoda` (operator-turn.ts:233) CURTO-CIRCUITA:
+ *                                   o Operador NÃO RODA. Pior dos três, e exige um ato
+ *                                   deliberado do modelo — a declaração falsa DESLIGA a rede.
+ *         declaração AUSENTE     -> o Operador RODA, por desenho escrito (idem:25: "ausente
+ *                                   significa que NINGUÉM avaliou"). Ele age com o contexto
+ *                                   que tem, e loga `declaracao_ausente: true`.
+ *         promessas: []          -> roda, e não acha o que cobrar.
+ *
+ *       ⚠️ MAS "RODA" NÃO É "COBRE A PROMESSA", e é aqui que a cadeia termina:
+ *       `apurarComRetorno` (idem:510) abre com `if (promessasDeclaradas === 0) return null`.
+ *       Nos TRÊS estados a contagem é zero, então em nenhum deles a apuração de dono
+ *       acontece e nenhum aviso de promessa-sem-dono é aberto. O que difere entre os três é
+ *       se o Operador AGE, não se a promessa é COBRADA.
+ *
+ *       E o corpo enviado nunca é consultado por gate nenhum:
+ *       `grep nada_a_declarar lib/agent-engine/guardrails/` devolve ZERO.
  *
  *       E o limite está escrito no próprio `operator-turn.ts`: a apuração diz se alguém ficou
  *       RESPONSÁVEL, não se a promessa foi cumprida — "agendar um retorno não é cumprir".
