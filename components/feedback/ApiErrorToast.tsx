@@ -1,6 +1,7 @@
 "use client";
 
 import { toast } from "sonner";
+import { useT } from "@/hooks/i18n/useT";
 import { ApiError } from "@/lib/api/types";
 
 type Variant = "error" | "warning" | "info";
@@ -101,7 +102,18 @@ const COPY: Record<string, { variant: Variant; msg?: string }> = {
   agenda_listagem_sem_recorte: { variant: "info" },
 };
 
-export function showApiError(err: unknown): void {
+/**
+ * A tradução mora aqui dentro, não no parâmetro: `showApiError` é passado por
+ * REFERÊNCIA como `onError: showApiError` em ~77 lugares, a maioria dentro de
+ * `useMutation` — e o TanStack Query chama `onError(error, variables, context)`.
+ * Um segundo parâmetro `t` receberia `variables` no lugar (foi exatamente o
+ * que aconteceu e quebrou o typecheck em cadeia): a única forma seguro de
+ * adicionar tradução sem migrar todos os call sites é resolver o idioma POR
+ * DENTRO, sem mudar a assinatura pública. `useApiErrorHandler()` — hoje sem
+ * consumidor — é o único ponto preparado para oferecer uma versão traduzida
+ * no dia em que algum call site precisar dela.
+ */
+function toastFor(err: unknown, t: (texto: string) => string): void {
   if (err instanceof ApiError) {
     const entry = COPY[err.code];
     const description = err.requestId ? `ID: ${err.requestId}` : undefined;
@@ -114,15 +126,22 @@ export function showApiError(err: unknown): void {
             : toast.error;
       // `entry.msg ?? err.message`: entrada sem `msg` declara só o tom e deixa
       // passar o texto da rota, que costuma ser mais específico.
-      fn(entry.msg ?? err.message ?? err.code, { description });
+      fn(entry.msg ? t(entry.msg) : (err.message ?? err.code), { description });
       return;
     }
     toast.error(err.message || err.code, { description });
     return;
   }
-  toast.error("Erro inesperado. Tente novamente.");
+  toast.error(t("Erro inesperado. Tente novamente."));
+}
+
+const identidade = (texto: string) => texto;
+
+export function showApiError(err: unknown): void {
+  toastFor(err, identidade);
 }
 
 export function useApiErrorHandler(): (err: unknown) => void {
-  return showApiError;
+  const t = useT();
+  return (err: unknown) => toastFor(err, t);
 }

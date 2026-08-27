@@ -5451,6 +5451,71 @@ export const DICIONARIO: Traducoes = {
   "Atendente atualizado.": { es: "Agente actualizado." },
   "Roteamento atualizado.": { es: "Enrutamiento actualizado." },
   "Papel atualizado.": { es: "Rol actualizado." },
+
+  // ─── Feedback: catálogo genérico de erros de API (ApiErrorToast) ───
+  "Requisição inválida. Recarregue e tente de novo.": {
+    es: "Solicitud inválida. Recarga e intenta de nuevo.",
+  },
+  "Falha ao paginar. Volte ao início.": { es: "Fallo al paginar. Vuelve al inicio." },
+  "Dados inválidos. Confira os campos destacados.": {
+    es: "Datos inválidos. Revisa los campos destacados.",
+  },
+  "Sessão expirada. Faça login novamente.": { es: "Sesión vencida. Inicia sesión de nuevo." },
+  "Você não tem permissão para esta ação.": { es: "No tienes permiso para esta acción." },
+  "Recurso não encontrado ou já removido.": { es: "Recurso no encontrado o ya eliminado." },
+  "Organização não encontrada.": { es: "Organización no encontrada." },
+  "Operação já processada.": { es: "Operación ya procesada." },
+  "Outro atendente já assumiu.": { es: "Otro agente ya lo asumió." },
+  "Este caso já foi respondido ou fechado.": { es: "Este caso ya fue respondido o cerrado." },
+  "Calma — muitas tentativas. Espere alguns segundos.": {
+    es: "Calma — demasiados intentos. Espera unos segundos.",
+  },
+  "Esta ação não pode ser desfeita: o contato já foi anonimizado.": {
+    es: "Esta acción no se puede deshacer: el contacto ya fue anonimizado.",
+  },
+  "Erro interno. Tente de novo em instantes.": { es: "Error interno. Intenta de nuevo en instantes." },
+
+  // ─── Segment error boundary genérico ───
+  "Algo deu errado": { es: "Algo salió mal" },
+  "Tente novamente em instantes. Se persistir, contate o suporte com o ID abaixo.": {
+    es: "Intenta de nuevo en instantes. Si persiste, contacta al soporte con el ID de abajo.",
+  },
+  "Copiado!": { es: "¡Copiado!" },
+  "Copiar ID": { es: "Copiar ID" },
+
+  // ─── Impersonate banner (platform admin atuando como tenant) ───
+  "Falha ao encerrar impersonate": { es: "Fallo al terminar el impersonate" },
+  "Erro de rede ao encerrar impersonate": { es: "Error de red al terminar el impersonate" },
+  "Modo Impersonate — atuando como": { es: "Modo Impersonate — actuando como" },
+  "Encerrar impersonate e voltar ao admin": { es: "Terminar impersonate y volver al admin" },
+  "Encerrando…": { es: "Terminando…" },
+
+  // ─── Radar de risco ───
+  "Radar de risco": { es: "Radar de riesgo" },
+  "Demandas abertas que esfriaram e precisam de você. Se o assistente já agendou um retorno, aparece como “em voo”; sem próximo passo, é risco de perder o cliente.": {
+    es: "Demandas abiertas que se enfriaron y necesitan de ti. Si el asistente ya agendó un retorno, aparece como “en vuelo”; sin próximo paso, es riesgo de perder al cliente.",
+  },
+  "parado há": { es: "parado hace" },
+  "Nenhuma demanda em risco": { es: "Ninguna demanda en riesgo" },
+  "Toda demanda aberta teve atividade recente ou já tem um retorno agendado.": {
+    es: "Toda demanda abierta tuvo actividad reciente o ya tiene un retorno agendado.",
+  },
+  "demanda aberta sem próximo passo": { es: "demanda abierta sin próximo paso" },
+  "demandas abertas sem próximo passo": { es: "demandas abiertas sin próximo paso" },
+  "Ninguém marcou o que acontece a seguir. Cada uma é alguém esperando sem que nada esteja combinado.": {
+    es: "Nadie marcó lo que pasa a continuación. Cada una es alguien esperando sin que nada esté acordado.",
+  },
+  "aberta há": { es: "abierta hace" },
+  "crítico": { es: "crítico" },
+  "em risco": { es: "en riesgo" },
+  "em voo": { es: "en vuelo" },
+  "Agente:": { es: "Agente:" },
+  "sem nome": { es: "sin nombre" },
+  "Com atendente": { es: "Con agente" },
+  "Assistente na conversa": { es: "Asistente en la conversación" },
+  "Sem dono": { es: "Sin dueño" },
+  "Você assumiu a demanda": { es: "Asumiste la demanda" },
+  "Assistente retorna": { es: "El asistente vuelve" },
 };
 
 /**
