@@ -383,10 +383,26 @@ if (!env.AI_GATEWAY_API_KEY && !env.ANTHROPIC_API_KEY && !env.OPENROUTER_API_KEY
       "o agente vai pular toda resposta com reason='ai_gateway_key_missing'.",
   );
 }
+// Este aviso ANUNCIAVA UM DESFECHO que o boot não tem como saber, e a correção
+// aqui é a mesma que o bloco de cima já pagou uma vez. Ele dizia "RAG embedding
+// unavailable" e "voice-note transcription is off" — as duas afirmações são
+// falsas numa instalação onde a organização cadastrou a chave PELA TELA:
+// o preparo de material resolve a chave por uma escada (ponto de IA →
+// credencial da organização → gateway → este env — `lib/ai/embeddings/chave.ts`),
+// e a transcrição já caía na credencial da org antes disso
+// (`workers/media-derive-worker.ts`).
+//
+// Quem lê um aviso de boot não consegue conferir o desfecho; ele acredita. E
+// acreditar em "está desligado" quando está ligado faz a pessoa ir cadastrar
+// uma chave que ela já tem — ou, pior, desistir do recurso. Então o aviso passou
+// a dizer só o que ESTE processo sabe: o que a variável é, e o que fazer se não
+// houver chave em lugar nenhum.
 if (!env.OPENAI_API_KEY) {
   console.warn(
-    "[env] No OPENAI_API_KEY set — RAG embedding unavailable (bot answers without retrieved context) " +
-      "AND voice-note transcription is off (the agent will ask leads to resend audio as text).",
+    "[env] OPENAI_API_KEY ausente — ela é o ÚLTIMO degrau da escada de chave da OpenAI " +
+      "(preparo de material do acervo e transcrição de áudio). Se alguma organização já " +
+      "cadastrou a chave em IA › Credenciais, os dois seguem funcionando por ela; se não " +
+      "cadastrou nenhuma, ambos ficam parados até que alguém cadastre — pela tela ou aqui.",
   );
 }
 if (!env.IMPERSONATE_COOKIE_SECRET || env.IMPERSONATE_COOKIE_SECRET.length < 32) {

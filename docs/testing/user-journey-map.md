@@ -668,6 +668,49 @@ espaço e acento, que era o gatilho do defeito #6.
 
 **Nota de ambiente:** o `.env` da VPS foi apontado para `ghcr.io/...:latest` durante o QA, porque o fluxo de release novo fixa a imagem numa tag (`1.1.0`) e as correções desta sessão estão à frente dela. Para voltar ao comportamento de release, basta repor `APP_IMAGE` com a tag desejada.
 
+## Acervo de conhecimento — o acervo é da organização (2026-08-26)
+
+> **O que o CI NÃO prova aqui.** `tests/e2e/acervo-de-conhecimento.spec.ts` tem 6
+> casos, e **4 deles pulam no CI** por falta de `OPENAI_API_KEY_E2E` — chave paga,
+> que não vai para segredo de repositório público. Medido, não suposto: a parte 2
+> do `e2e` era `73 passed / 0 skipped` na main sem a spec e virou `75 passed /
+> 4 skipped` com ela. O CI prova que a tela DIZ que falta chave e que o material
+> sem chave fica esperando; **que o material vira trecho buscável — o produto — só
+> é provado rodando a spec com a chave**, e essa rodada está em
+> `evidence/acervo-de-conhecimento/`. Mesmo formato do aviso que a doutrina já dá
+> sobre `vps-fresh-onboarding`: um `skip` silencioso é indistinguível de um `pass`
+> no placar agregado.
+
+**A afirmação de 2026-07-30 abaixo ("implementado e provado") era verdadeira para
+UM caminho e falsa para o produto.** O que estava provado era: FAQ colada, pelo
+agente padrão, numa organização com a chave no `.env`. Fora disso, medido agora:
+
+| # | Achado | O que a pessoa via |
+|---|---|---|
+| 1 | 🔴 **O indexador resolvia o agente pela ORGANIZAÇÃO** (`resolveAgent(organizationId)` → `is_default desc, created_at asc, limit 1`) e ignorava o `agent_id` que os três emissores mandavam no payload | com dois assistentes, o material do segundo nunca virava trecho. Sem erro, sem estado, sem nada na tela |
+| 2 | 🔴 **A tela de conhecimento era presa a `is_default = true`** — e todo agente criado pela interface nasce `is_default: false` | o acervo de qualquer assistente que você criasse era inalcançável |
+| 3 | 🔴 **Cadastrar a chave da OpenAI pela tela não habilitava nada.** `lib/ai/embed.ts` lia só `process.env`, enquanto `lib/ai/pontos/provedores.ts` promete na tela que a OpenAI é "necessária para indexar o seu material" | a pessoa cadastrava a chave em IA › Credenciais e o material continuava parado |
+| 4 | 🔴 **Sem chave, o evento era consumido para sempre.** O worker devolvia `skipped`, e `drain.ts` conta `skipped` como sucesso | cadastrar a chave depois não recuperava o que ficou para trás |
+| 5 | 🔴 **Upload de arquivo extraía o texto e DESCARTAVA** (`ingestPolicyFile` devolvia `{ chunkCount }` sem persistir), e a rota não tinha chamador nenhum na interface | o PDF subia e o agente nunca sabia o que estava nele |
+| 6 | 🔴 **Preparar um material derrubava o outro**: a ingestão de conversas e a de FAQ competiam pelo único `active_kb_version_id` do agente | quem indexasse por último apagava o acervo do outro |
+| 7 | 🔴 **Debounce sem timeout travava o evento para SEMPRE.** Com o Redis configurado e inalcançável — VPS com o contêiner caído —, `redis.set()` não voltava; `drainEventLog` marca `processing` ANTES do handler e **nada devolvia a linha** (o `job_queue` tem reaper, o `event_log` não tinha) | material cadastrado, nada acontece, e nem tentar de novo resolve |
+| 8 | 🟠 **Arquivar não liberava o espaço** — nenhuma linha do repo jamais escreveu `is_active = false` | não dava para criar outro material do mesmo tipo, nunca mais |
+| 9 | 🟠 **O limiar do código (0.72) vencia o calibrado (0.40)** em três sítios | paráfrase descartada: "posso trocar se não servir?" não achava a resposta escrita |
+| 10 | 🟠 **Duplicar assistente perdia `pipeline_ids`**, e três INSERTs aceitavam `operator_*`/`pipeline_ids` no corpo e os descartavam | a cópia nascia sem escopo, com 201 dizendo que deu certo |
+| 11 | 🔴 **Segurança**: as 4 tabelas do acervo aceitavam escrita de `viewer` pelo PostgREST | qualquer membro apagava a base de conhecimento da organização |
+| 12 | 🟠 **O diálogo de cadastro não cabia na tela** — o botão "Adicionar ao acervo" ficava fora da viewport em 720px | o formulário existia e não se enviava (achado pela prova de tela) |
+
+**Prova**: `tests/e2e/acervo-de-conhecimento.spec.ts` (6 casos, jornada inteira
+pela tela) + `tests/invariants/rag-acervo-da-organizacao.test.ts` (recorte da
+busca, versões legadas, imutabilidade do escopo, RBAC das 4 tabelas) +
+`tests/unit/dreno-nao-perde-evento.test.ts`.
+
+**NÃO MEDIDO**: o comportamento com acervo grande (milhares de trechos). O índice
+vetorial `ivfflat` existe e o planner não o escolhe com o recorte de tenant — a
+busca é exata e linear, correta e sem teto de recall. Vira issue.
+
+---
+
 ## RAG do tenant — implementado e provado (2026-07-30)
 
 Autorizado pelo dono, o RAG saiu do stub. **Cinco defeitos encadeados**: cada
