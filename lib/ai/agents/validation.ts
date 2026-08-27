@@ -154,6 +154,15 @@ const versionShapeSchema = z
      * organização) mora no servidor, junto do resto.
      */
     pipeline_ids: z.array(z.string().uuid()).default([]),
+    /**
+     * Materiais que este agente consulta (0181). Vazio = NENHUM.
+     *
+     * Sem `.refine()` de existência pelo mesmo motivo de `pipeline_ids` logo
+     * acima: material é linha de tabela, e um schema compartilhado com o browser
+     * não faz consulta cross-row. Quem confere que o material existe e é desta
+     * organização é o servidor.
+     */
+    knowledge_source_ids: z.array(z.string().uuid()).default([]),
   })
   .strict();
 

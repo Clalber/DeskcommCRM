@@ -217,6 +217,7 @@ jobs:
         historico-de-captacao.spec.ts
         automacao-diz-a-verdade.spec.ts
         inbox-quem-manda.spec.ts
+        acervo-de-conhecimento.spec.ts
         agenda-kit-visual.spec.ts
         agenda-conectar-google.spec.ts
         agenda-escopo-da-organizacao.spec.ts
