@@ -159,9 +159,17 @@ export async function sincronizarAgendasDoGoogle(
         continue;
       }
 
-      if (lido.tipo !== "recusado") {
-        vistos.add(lido.tipo === "cancelado" ? lido.externalEventId : lido.evento.external_event_id);
-      }
+      // Todo evento que o tradutor conseguiu ler entra em `vistos`, inclusive o
+      // cancelado: a reconciliação lá embaixo apaga o que NÃO veio, e um evento
+      // que veio como cancelado JÁ foi tratado — contá-lo como sumido seria
+      // apagá-lo duas vezes.
+      //
+      // Não há guarda contra `recusado` aqui: o `continue` acima já o eliminou,
+      // e a guarda que eu tinha escrito era um ramo INALCANÇÁVEL — o compilador
+      // acusou (TS2367, "os tipos não têm sobreposição"). É a mesma classe da
+      // guarda morta que este mesmo dia me fez apagar em `config.ts`: defesa que
+      // não pode ser exercitada dá sensação de proteção sem proteger.
+      vistos.add(lido.tipo === "cancelado" ? lido.externalEventId : lido.evento.external_event_id);
 
       if (lido.tipo === "cancelado") {
         await admin
