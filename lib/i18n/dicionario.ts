@@ -5442,6 +5442,15 @@ export const DICIONARIO: Traducoes = {
   "Criar template": { es: "Crear template" },
   "Pessoal": { es: "Personal" },
   "Compartilhado": { es: "Compartido" },
+
+  // ─── Hooks: toasts diversos (AI runs, orçamento, transferência, atendentes) ───
+  "Nova execução iniciada.": { es: "Nueva ejecución iniciada." },
+  "Execução concluída.": { es: "Ejecución concluida." },
+  "Orçamento atualizado": { es: "Presupuesto actualizado" },
+  "Conversa transferida.": { es: "Conversación transferida." },
+  "Atendente atualizado.": { es: "Agente actualizado." },
+  "Roteamento atualizado.": { es: "Enrutamiento actualizado." },
+  "Papel atualizado.": { es: "Rol actualizado." },
 };
 
 /**
