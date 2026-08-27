@@ -66,6 +66,22 @@ const TELAS = ["/app/inbox", "/app/kanban", "/app/contacts", "/app/metrics", "/a
  * régua: aparecer igual nos dois idiomas é o comportamento correto delas, e
  * incluí-las produziria acusação em cima do que está certo.
  */
+/**
+ * Textos que a régua acusa e NÃO são vazamento: são DADO, e dado não se traduz.
+ *
+ * O comentário do cabeçalho diz que nenhum dado de banco coincide com uma chave
+ * de interface por acaso. Coincidiu: "Entregue" é nome de etapa do funil
+ * (`crm_stages.name`) semeado pelo e2e, e o produto o mostra exatamente como o
+ * tenant o cadastrou — traduzir seria o erro. A afirmação do cabeçalho fica,
+ * porque continua verdadeira como regra; esta lista é a exceção medida, com o
+ * nome de quem a produz.
+ *
+ * Ela SÓ ENCOLHE, e entrada nova precisa nomear a COLUNA de onde o texto vem.
+ */
+const DADO_DO_TENANT = new Set([
+  "Entregue", // crm_stages.name, do seed de e2e
+]);
+
 const CHAVES_QUE_MUDAM = new Set(
   Object.entries(DICIONARIO)
     .filter(([chave, t]) => t.es && t.es !== chave)
@@ -94,12 +110,40 @@ async function textosVisiveis(page: Page): Promise<string[]> {
   });
 }
 
-async function trocarIdiomaPeloTopo(page: Page, codigo: "pt-BR" | "es"): Promise<void> {
-  await page.getByTestId("seletor-de-idioma").click();
+/**
+ * Põe a interface no idioma pedido, clicando como uma pessoa clicaria.
+ *
+ * Independente do estado inicial DE PROPÓSITO: o banco do e2e é compartilhado e
+ * sobrevive entre execuções, então a preferência do `e2e-admin` é o que a
+ * rodada anterior deixou. Uma spec que assume "começa em português" passa uma
+ * vez e falha na seguinte por um motivo que não tem nada a ver com o produto.
+ *
+ * O botão mostra o código em vigor ("PT"/"ES"), então ele é a própria sonda.
+ */
+async function porIdiomaEm(page: Page, codigo: "pt-BR" | "es"): Promise<void> {
+  const curto = codigo === "es" ? "ES" : "PT";
+  const botao = page.getByTestId("seletor-de-idioma");
+  if ((await botao.innerText()).trim() === curto) return;
+
+  // Carimba o documento ATUAL. O seletor grava e recarrega a página (o porquê
+  // está no comentário dele), e a recarga cria um documento novo — o carimbo
+  // some. Esperar por isso é esperar exatamente a recarga, sem depender de um
+  // evento que pode ser emitido antes de o listener existir.
+  //
+  // Medir antes de a recarga terminar é medir o meio do caminho: a spec lia a
+  // tela ainda no idioma antigo e acusava vazamento que não existia.
+  await page.evaluate(() => {
+    (window as unknown as { __antesDaTroca?: boolean }).__antesDaTroca = true;
+  });
+  await botao.click();
   await page.getByTestId(`idioma-${codigo}`).click();
-  // A troca pinta a tela antes do servidor responder; esperar a rede assentar
-  // evita medir o instante entre o clique e a gravação.
+  await page.waitForFunction(
+    () => !(window as unknown as { __antesDaTroca?: boolean }).__antesDaTroca,
+    undefined,
+    { timeout: PRAZO },
+  );
   await page.waitForLoadState("networkidle", { timeout: PRAZO });
+  await expect(botao, `o seletor não passou a mostrar ${curto} depois da troca`).toHaveText(curto);
 }
 
 test.describe("o idioma escolhido chega à tela", () => {
@@ -107,6 +151,13 @@ test.describe("o idioma escolhido chega à tela", () => {
 
   test("espanhol cobre a interface, e o português volta byte a byte", async ({ page }) => {
     await loginComoAdmin(page, creds);
+
+    // O banco do e2e é compartilhado e guarda a preferência da rodada anterior.
+    // O retrato de referência tem de ser em português, então isto é precondição,
+    // não medição.
+    await page.goto(TELAS[0]!);
+    await page.waitForLoadState("networkidle", { timeout: PRAZO });
+    await porIdiomaEm(page, "pt-BR");
 
     // ── 1. O retrato em português, ANTES de qualquer troca ──────────────────
     const antes = new Map<string, string[]>();
@@ -119,7 +170,7 @@ test.describe("o idioma escolhido chega à tela", () => {
     // ── 2. Troca pelo topo — é o seletor que se está provando, não a API ────
     await page.goto(TELAS[0]!);
     await page.waitForLoadState("networkidle", { timeout: PRAZO });
-    await trocarIdiomaPeloTopo(page, "es");
+    await porIdiomaEm(page, "es");
     await page.screenshot({ path: path.join(EVIDENCIA, "01-inbox-em-espanhol.png"), fullPage: true });
 
     // ── 3. A tela MUDOU. Sem isto, um seletor quebrado passaria em tudo ─────
@@ -141,7 +192,9 @@ test.describe("o idioma escolhido chega à tela", () => {
       await page.goto(tela);
       await page.waitForLoadState("networkidle", { timeout: PRAZO });
       for (const texto of await textosVisiveis(page)) {
-        if (CHAVES_QUE_MUDAM.has(texto)) vazando.push(`${tela} → ${JSON.stringify(texto)}`);
+        if (CHAVES_QUE_MUDAM.has(texto) && !DADO_DO_TENANT.has(texto)) {
+          vazando.push(`${tela} → ${JSON.stringify(texto)}`);
+        }
       }
     }
     expect(
@@ -160,7 +213,7 @@ test.describe("o idioma escolhido chega à tela", () => {
     // PR #352 e nada ficou vermelho.
     await page.goto(TELAS[0]!);
     await page.waitForLoadState("networkidle", { timeout: PRAZO });
-    await trocarIdiomaPeloTopo(page, "pt-BR");
+    await porIdiomaEm(page, "pt-BR");
     for (const tela of TELAS) {
       await page.goto(tela);
       await page.waitForLoadState("networkidle", { timeout: PRAZO });

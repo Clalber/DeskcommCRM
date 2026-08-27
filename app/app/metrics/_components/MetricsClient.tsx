@@ -34,8 +34,8 @@ function formatDuration(seconds: number | null): string {
   return rest === 0 ? `${m}min` : `${m}min ${rest}s`;
 }
 
-function attendantLabel(a: AttendantMetric): string {
-  return a.name ?? a.email ?? `Atendente ${a.user_id.slice(0, 8)}`;
+function attendantLabel(a: AttendantMetric, t: (texto: string) => string): string {
+  return a.name ?? a.email ?? `${t("Atendente")} ${a.user_id.slice(0, 8)}`;
 }
 
 interface Props {
@@ -63,7 +63,7 @@ export function MetricsClient({ canCompare, currentUserId }: Props) {
     <div className="flex flex-col gap-6">
       {canCompare ? (
         <div className="flex items-center gap-3">
-          <span className="text-sm text-muted-foreground">Atendente</span>
+          <span className="text-sm text-muted-foreground">{t("Atendente")}</span>
           <Select value={owner} onValueChange={setOwner}>
             <SelectTrigger className="w-64">
               <SelectValue placeholder={t("Todos os atendentes")} />
@@ -92,8 +92,8 @@ export function MetricsClient({ canCompare, currentUserId }: Props) {
       <Card>
         <CardHeader>
           <CardTitle className="text-base">
-            Funil {selectedOwner ? "do atendente" : ""} · {funnelTotal}{" "}
-            {funnelTotal === 1 ? "aberto" : "abertos"}
+            {t("Funil")} {selectedOwner ? t("do atendente") : ""} · {funnelTotal}{" "}
+            {funnelTotal === 1 ? t("aberto") : t("abertos")}
           </CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
@@ -142,7 +142,7 @@ export function MetricsClient({ canCompare, currentUserId }: Props) {
                 {metrics.attendants.map((a) => (
                   <TableRow key={a.user_id}>
                     <TableCell className="font-medium">
-                      {attendantLabel(a)}
+                      {attendantLabel(a, t)}
                       {a.user_id === currentUserId ? (
                         <span className="text-muted-foreground"> {t("(você)")}</span>
                       ) : null}

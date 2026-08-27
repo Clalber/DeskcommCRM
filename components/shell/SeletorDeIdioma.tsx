@@ -57,7 +57,29 @@ export function SeletorDeIdioma() {
       if (!r.ok) {
         aplicar(anterior);
         toast.error(t("Não foi possível trocar o idioma. Tente de novo."));
+        return;
       }
+      // ⚠️ RECARGA INTEIRA, e não `router.refresh()` — os dois foram MEDIDOS.
+      //
+      // O problema: `revalidatePath` invalida o cache do SERVIDOR. O Router
+      // Cache do CLIENTE é outro, e guarda o layout de `/app` já renderizado —
+      // que é justamente quem monta o `IdiomaProvider`. Numa sonda Playwright,
+      // sem nada disto: logo após o clique a tela mostrava o idioma novo (o
+      // estado local pintando), ao NAVEGAR ela voltava ao antigo, e só um
+      // reload acertava. A troca parecia funcionar e se desfazia sozinha no
+      // primeiro clique seguinte — o pior desfecho possível.
+      //
+      // `router.refresh()` melhora e não resolve: medido na mesma sonda, a
+      // PRIMEIRA navegação depois do clique ainda vinha no idioma antigo e só a
+      // SEGUNDA vinha certa. Ele é assíncrono, e quem clica em "ES" e sai
+      // navegando ganha a corrida dele. "Funciona porque o humano é lento" não
+      // é garantia — é a corrida esperando um dia ruim.
+      //
+      // A recarga é determinística e é o que qualquer produto faz ao trocar de
+      // idioma. O preço é o estado não salvo da tela, e ele é pequeno aqui:
+      // trocar o idioma da interface é ação rara, deliberada, e feita antes de
+      // trabalhar — não no meio de uma mensagem pela metade.
+      window.location.reload();
     });
   };
 

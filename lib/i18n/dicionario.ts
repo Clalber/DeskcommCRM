@@ -15,12 +15,21 @@
  *      compreensível. Com chave simbólica devolveria `inbox.claim`, que não é
  *      nada para ninguém.
  *
- * ─── Parcial, e de propósito ───────────────────────────────────────────────
+ * ─── Foi parcial; hoje o que decide é um guarda, não esta frase ────────────
  *
- * Só as telas do dia a dia. Traduzir as 229 telas de uma vez é um projeto, e um
- * projeto entregue pela metade deixa a interface em dois idiomas ao mesmo
- * tempo. O que não está aqui aparece em português, que é o comportamento de
- * antes desta feature — nunca pior.
+ * Este bloco dizia "só as telas do dia a dia", e era verdade. Deixou de ser: o
+ * PR #352 trouxe IA e Admin, e o passe seguinte fechou Agenda, Desempenho,
+ * Radar e Respostas rápidas.
+ *
+ * Não vale trocar por um número novo — ele envelheceria igual. Quem responde
+ * "o que falta" é `tests/unit/i18n-espanhol-cobre-a-tela`, que varre o AST de
+ * toda tela: chave usada sem espanhol reprova, e prosa portuguesa fora de `t()`
+ * reprova. Uma tela nova entra na conta no dia em que é escrita, sem ninguém
+ * lembrar de atualizar prosa nenhuma.
+ *
+ * O que segue valendo: falta de tradução DEGRADA para português, nunca para a
+ * chave crua nem para erro. Uma tradução incompleta não pode deixar a tela pior
+ * do que estava.
  */
 import type { Idioma } from "./idiomas";
 
@@ -5415,6 +5424,41 @@ export const DICIONARIO: Traducoes = {
     es: "No se pudo cambiar el idioma. Inténtalo de nuevo.",
   },
   "[{ \"key\": \"size\", \"label\": \"Tamanho\", \"type\": \"text\" }]": { es: "[{ \"key\": \"size\", \"label\": \"Tamaño\", \"type\": \"text\" }]" },
+
+  // ─── Índice de Atrito: os rótulos nascem em lib/metrics/atrito.ts ───
+  //
+  // Aquele arquivo é lógica pura e não conhece idioma; quem traduz é o ponto
+  // de renderização (`AtritoPanel`). Eles chegavam à tela em português com a
+  // interface em espanhol — achado pela spec e2e, não pelo guarda estático:
+  // `{par.titulo}` é uma expressão, e o guarda só enxerga literal.
+  "Atrito máximo: a pessoa pediu para sair.": { es: "Fricción máxima: la persona pidió darse de baja." },
+  "Confiança perdida na automação.": { es: "Confianza perdida en la automatización." },
+  "Contenção": { es: "Contención" },
+  "Conversão": { es: "Conversión" },
+  "Custo humano": { es: "Costo humano" },
+  "Demandas abertas sem próximo passo": { es: "Demandas abiertas sin próximo paso" },
+  "Demandas encerradas": { es: "Demandas cerradas" },
+  "Demandas que precisaram subir de nível": { es: "Demandas que necesitaron escalar" },
+  "Descadastros no período": { es: "Bajas en el período" },
+  "Espera na fila humana (mediana)": { es: "Espera en la cola humana (mediana)" },
+  "Espera na fila humana (p90)": { es: "Espera en la cola humana (p90)" },
+  "Insistência do agente (média de retornos)": { es: "Insistencia del agente (promedio de retornos)" },
+  "Insistência no pior caso": { es: "Insistencia en el peor caso" },
+  "Intervenções humanas por demanda": { es: "Intervenciones humanas por demanda" },
+  "Mensagens enviadas pelo agente": { es: "Mensajes enviados por el agente" },
+  "Negócios ganhos": { es: "Negocios ganados" },
+  "O cliente que mais recebeu retornos. A média esconde o exagero pontual.": { es: "El cliente que más retornos recibió. El promedio esconde el exceso puntual." },
+  "O time respondeu pelo celular, contornando a ferramenta.": { es: "El equipo respondió por el celular, esquivando la herramienta." },
+  "Passagens para humano": { es: "Pases a humano" },
+  "Perguntas que a pessoa teve de repetir": { es: "Preguntas que la persona tuvo que repetir" },
+  "Quanto o sistema precisou ser contido de si mesmo antes de falar.": { es: "Cuánto el sistema necesitó ser contenido de sí mismo antes de hablar." },
+  "Respostas dadas pelo agente": { es: "Respuestas dadas por el agente" },
+  "Respostas humanas fora do sistema": { es: "Respuestas humanas fuera del sistema" },
+  "Turnos até o desfecho (mediana)": { es: "Turnos hasta el desenlace (mediana)" },
+  "Vetos por execução": { es: "Vetos por ejecución" },
+  "do atendente": { es: "del agente" },
+  "aberto": { es: "abierto" },
+  "abertos": { es: "abiertos" },
 };
 
 /**

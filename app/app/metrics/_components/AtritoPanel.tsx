@@ -23,11 +23,16 @@ import { formatarMedida, type Medida, type Par } from "@/lib/metrics/atrito";
  */
 
 function MedidaLinha({ m }: { m: Medida }) {
+  // Os rótulos do Atrito nascem em `lib/metrics/atrito.ts`, que é lógica pura e
+  // não conhece idioma. Traduzir no PONTO DE RENDERIZAÇÃO é o padrão adotado no
+  // resto do produto: o texto fixo casa no dicionário, e o que traz número
+  // interpolado degrada para português sem quebrar nada.
+  const t = useT();
   return (
     <div className="flex items-baseline justify-between gap-4 py-1.5">
       <div className="min-w-0">
-        <p className="truncate text-sm">{m.rotulo}</p>
-        {m.nota ? <p className="mt-0.5 text-xs text-muted-foreground">{m.nota}</p> : null}
+        <p className="truncate text-sm">{t(m.rotulo)}</p>
+        {m.nota ? <p className="mt-0.5 text-xs text-muted-foreground">{t(m.nota)}</p> : null}
       </div>
       <span className="shrink-0 text-sm font-medium tabular-nums">{formatarMedida(m)}</span>
     </div>
@@ -39,15 +44,15 @@ function ParCard({ par }: { par: Par }) {
   return (
     <Card>
       <CardHeader className="pb-3">
-        <CardTitle className="text-sm font-normal text-muted-foreground">{par.titulo}</CardTitle>
+        <CardTitle className="text-sm font-normal text-muted-foreground">{t(par.titulo)}</CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col gap-4 sm:flex-row">
         {/* Eficiência — o que o sistema é empurrado a maximizar. */}
         <div className="sm:w-48 sm:shrink-0">
           <p className="text-2xl font-semibold tabular-nums">{formatarMedida(par.eficiencia)}</p>
-          <p className="mt-1 text-sm text-muted-foreground">{par.eficiencia.rotulo}</p>
+          <p className="mt-1 text-sm text-muted-foreground">{t(par.eficiencia.rotulo)}</p>
           {par.eficiencia.nota ? (
-            <p className="mt-1 text-xs text-muted-foreground">{par.eficiencia.nota}</p>
+            <p className="mt-1 text-xs text-muted-foreground">{t(par.eficiencia.nota)}</p>
           ) : null}
         </div>
 
