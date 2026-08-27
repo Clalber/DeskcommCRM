@@ -53,9 +53,15 @@ export default async function AgendaPage() {
    * A SEMENTE vem do servidor, e não de um hook — porque a rota de leitura ainda
    * não existe.
    *
-   * `GET /api/v1/agenda/agendamentos` não foi escrito: a rota tem POST, PATCH e
-   * DELETE (medido). Sem ela, um hook no cliente não tem onde bater, e o cookie
-   * `httpOnly` impede o supabase-js do browser de consultar direto.
+   * ⚠️ ESTE PARÁGRAFO VENCEU e foi reescrito. Ele dizia que
+   * `GET /api/v1/agenda/agendamentos` "não foi escrito (medido)" — e o GET existe:
+   * `grep -n "^export async function" app/api/v1/agenda/agendamentos/route.ts` → GET:95.
+   * A medição estava certa no dia; a frase não tinha como saber que envelheceu.
+   *
+   * O que esta consulta faz HOJE é a PRIMEIRA PINTURA: o RSC entrega a grade já
+   * desenhada, sem piscar e sem spinner, e o `useAgendamentos` assume a partir
+   * dali para as atualizações. O cookie `httpOnly` segue impedindo o supabase-js
+   * do browser de consultar direto — por isso o caminho do cliente é a rota.
    *
    * O servidor PODE: ele tem a sessão, e a RLS filtra por organização como em
    * qualquer outra tela. Então a Agenda nasce com dado REAL em vez de vazia — o
@@ -75,7 +81,7 @@ export default async function AgendaPage() {
   const [{ data: tipos }, { data: linhas }] = await Promise.all([
     supabase
       .from("calendar_event_types")
-      .select("id, name, duration_minutes, location_kind, location_details, is_active")
+      .select("id, name, duration_minutes, location_kind, location_details, is_active, default_owner_user_id")
       .eq("is_active", true)
       .order("name"),
     supabase
@@ -100,6 +106,10 @@ export default async function AgendaPage() {
         id: t.id,
         nome: t.name,
         duracaoMin: t.duration_minutes,
+        // Quem DE FATO atende este tipo. Sem isto a tela mostrava o primeiro da
+        // lista de pessoas como responsável e marcava na agenda dele — enquanto
+        // os horários oferecidos vinham da jornada de outra pessoa.
+        donoId: t.default_owner_user_id ?? null,
       }))}
       agendamentosIniciais={(linhas ?? []).map((a) => ({
         id: a.id,

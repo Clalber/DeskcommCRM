@@ -331,6 +331,7 @@ export interface AgendamentoListado {
   situacao: string;
   donoId: string | null;
   contatoId: string | null;
+  contatoNome: string | null;
 }
 
 export interface ParametrosDaLista {
@@ -370,6 +371,14 @@ export interface ParametrosDaLista {
 export type ResultadoDaLista =
   | { ok: true; agendamentos: AgendamentoListado[] }
   | { ok: false; codigo: "erro_interno" | "sem_alvo"; motivoParaOperador: string; motivoParaCliente: string };
+
+/** O embed do PostgREST vem objeto ou array conforme o gerador de tipos; aceite os dois. */
+function nomeDoContato(
+  c: { name: string | null; display_name: string | null } | { name: string | null; display_name: string | null }[] | null | undefined,
+): string | null {
+  const alvo = Array.isArray(c) ? c[0] : c;
+  return alvo?.name ?? alvo?.display_name ?? null;
+}
 
 export async function listaAgendamentos(
   supabase: SupabaseClient,
@@ -418,7 +427,9 @@ export async function listaAgendamentos(
 
   let q = supabase
     .from("calendar_appointments")
-    .select("id, title, starts_at, ends_at, time_zone, status, owner_user_id, contact_id")
+    .select(
+      "id, title, starts_at, ends_at, time_zone, status, owner_user_id, contact_id, contacts(name, display_name)",
+    )
     .eq("organization_id", organizationId)
     .order("starts_at", { ascending: true })
     .limit(params.limite);
@@ -458,6 +469,11 @@ export async function listaAgendamentos(
       situacao: String(l.status),
       donoId: l.owner_user_id ? String(l.owner_user_id) : null,
       contatoId: l.contact_id ? String(l.contact_id) : null,
+      // O ID sozinho não serve a nenhum dos dois consumidores: a grade precisa do
+      // nome para dizer "com quem", e o AGENTE recebia um uuid cru onde devia
+      // dizer "você já tem consulta marcada, Maria". Mesma coluna que a tela do
+      // produto lê, mesmo precedente de `name` antes de `display_name`.
+      contatoNome: nomeDoContato(l.contacts),
     })),
   };
 }

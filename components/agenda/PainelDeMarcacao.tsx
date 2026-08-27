@@ -73,7 +73,7 @@ export function PainelDeMarcacao({
    * decisão; o produto não avisar que não ia mandar é um bug.
    */
   quemSeraAtendido?: { nome: string; aceitaMensagem: boolean };
-  onConfirmar?: (instante: string) => void;
+  onConfirmar?: (instante: string) => void | Promise<unknown>;
   className?: string;
 }) {
   const [dia, setDia] = React.useState<Date | null>(null);
@@ -324,7 +324,25 @@ export function PainelDeMarcacao({
               <Button
                 size="sm"
                 data-testid="confirmar-marcacao"
-                onClick={() => { setMarcado(horario); onConfirmar?.(horario.instante); }}
+                onClick={async () => {
+                  // ⚠️ ERA `setMarcado(horario); onConfirmar?.(...)` — nesta ordem
+                  // e sem esperar. A vista de sucesso aparecia por estado local do
+                  // React, ANTES de o servidor responder, e continuava aparecendo
+                  // quando o POST falhava. Medido: a rota devolvia 422
+                  // `agenda_disponibilidade_invalida` e a tela dizia "Marcado ✓".
+                  //
+                  // Dizer que marcou é uma AFIRMAÇÃO sobre o mundo, não sobre a
+                  // tela. Ela agora espera o servidor; se der erro, o toast do
+                  // `showApiError` aparece e o painel fica onde estava, com o
+                  // horário ainda escolhido para tentar de novo.
+                  try {
+                    await onConfirmar?.(horario.instante);
+                    setMarcado(horario);
+                  } catch {
+                    // silêncio proposital: quem reporta é o `showApiError` da
+                    // mutação, e engolir aqui não esconde nada que não seja dito.
+                  }
+                }}
               >
                 Confirmar
               </Button>

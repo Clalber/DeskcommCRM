@@ -24,6 +24,7 @@ interface AgendamentoListado {
   situacao: string;
   donoId: string | null;
   contatoId: string | null;
+  contatoNome: string | null;
 }
 
 export interface RecorteDaGrade {
@@ -82,6 +83,11 @@ export function useAgendamentos(recorte: RecorteDaGrade | null) {
           termina: a.terminaEm,
           origem: "ui" as const,
           situacao: a.situacao as Agendamento["situacao"],
+          // Sem esta linha, montar o hook REGREDIRIA o conserto do "com quem":
+          // a prop do servidor traz o nome, e o refetch o apagaria da grade.
+          // Campo novo é optional e a rota pode ainda não mandá-lo — `?? undefined`
+          // mantém o wire tolerante a servidor mais velho que o cliente.
+          quemSeraAtendido: a.contatoNome ?? undefined,
         }));
       } catch (err) {
         showApiError(err);
