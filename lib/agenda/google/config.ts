@@ -152,10 +152,14 @@ async function linhaDoBanco(): Promise<LinhaDoApp | null> {
 /**
  * A configuração em vigor, ou `null` quando a instalação não tem app OAuth.
  *
- * BANCO PRIMEIRO, `.env` COMO FALLBACK. A ordem é a do
- * `lib/channels/zernio/credentials.ts`, e o argumento é o mesmo: no contrário,
- * um env esquecido silenciaria a configuração feita pela tela e o operador não
- * entenderia por que nada mudou.
+ * BANCO PRIMEIRO, `.env` COMO FALLBACK. A ordem é a que os adapters de canal
+ * já usam em `lib/channels/<provider>/credentials.ts`, e o argumento é o mesmo:
+ * no contrário, um env esquecido silenciaria a configuração feita pela tela e o
+ * operador não entenderia por que nada mudou.
+ *
+ * O provider não é nomeado aqui de propósito. `lint:channels` proíbe o nome
+ * fora de `lib/channels/`, e lê comentário como lê código — corretamente: a
+ * prosa que nomeia um provider é a que ensina o próximo a acoplar a ele.
  *
  * Nunca lança — ver o cabeçalho.
  */

@@ -81,6 +81,24 @@ beforeAll(() => {
   // Partir de estado conhecido é o que impede um caso de passar por causa de uma
   // fixture de rodada anterior.
   sql(`delete from public.${TABELA};`);
+
+  // A CHAVE MESTRA DE CIFRA, sem a qual `fn_encrypt_oauth` levanta. O banco
+  // efêmero do harness nasce sem ela, e é por isso que o caso da cifra reprovou
+  // no CI: o teste foi escrito numa máquina onde o Docker estava caído e nunca
+  // passou pelo harness.
+  //
+  // `on conflict do nothing`, e a escolha importa: `private.app_secrets` é
+  // compartilhada, a mesma chave serve o conector de loja, e esta suíte roda no
+  // MESMO banco que os outros arquivos. Sobrescrever aqui faria um teste
+  // decidir o segredo dos outros; apagar no `afterAll` faria pior — quebraria
+  // quem rodasse depois. Se já houver chave, ela vence.
+  //
+  // 44 caracteres: a função exige >= 32 e recusa abaixo disso.
+  sql(`
+    insert into private.app_secrets (name, value)
+    values ('nuvemshop_oauth_key', 'chave-de-teste-do-harness-0201-nao-e-segredo')
+    on conflict (name) do nothing;
+  `);
 });
 
 afterAll(() => {
