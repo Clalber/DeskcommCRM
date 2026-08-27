@@ -75,11 +75,25 @@ describe("fragmento — o que o PR declara", () => {
 });
 
 describe("o número é consequência do efeito declarado", () => {
-  // Exercita a FUNÇÃO com cada chave do vocabulário: uma tabela conferida a
-  // olho não pega o dia em que alguém acrescenta um impacto e esquece o mapa.
-  it.each(Impacto.options)("%s tem bump declarado e calculável", (impacto) => {
-    expect(BUMP_DO_IMPACTO[impacto]).toBeDefined();
-    expect(calcularBump([impacto])).toBe(BUMP_DO_IMPACTO[impacto]);
+  // A régua ESCRITA, presa por valor. Comparar `calcularBump(x)` com
+  // `BUMP_DO_IMPACTO[x]` não serve de guarda: as duas pontas derivam da mesma
+  // fonte, então inverter a tabela move as duas juntas e o teste passa —
+  // medido, sabotando `nada_mudou` para `minor` (a régua que causou o
+  // problema): aquele caso ficou VERDE. O que vigia a régua é esta tabela
+  // literal, que é a mesma de `docs/doctrine/versionamento.md`.
+  it.each([
+    ["nada_mudou", "patch"],
+    ["capacidade_nova", "minor"],
+    ["exige_acao", "major"],
+  ] as const)("%s produz %s", (impacto, esperado) => {
+    expect(BUMP_DO_IMPACTO[impacto]).toBe(esperado);
+    expect(calcularBump([impacto])).toBe(esperado);
+  });
+
+  it("todo impacto do vocabulário tem bump — nenhum cai no vazio", () => {
+    for (const impacto of Impacto.options) {
+      expect(BUMP_DO_IMPACTO[impacto], `impacto sem bump: ${impacto}`).toBeDefined();
+    }
   });
 
   it("o conjunto vale pelo mais severo, em qualquer ordem", () => {

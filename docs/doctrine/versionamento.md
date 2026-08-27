@@ -123,12 +123,31 @@ e escreve o texto que o operador vai ler.
 
 ```markdown
 ---
-impacto: patch          # patch | minor | major
-secao: Corrigido        # Adicionado | Alterado | Corrigido
+impacto: nada_mudou     # nada_mudou | capacidade_nova | exige_acao
+secao: corrigido        # adicionado | alterado | corrigido
+titulo: A IA avisa o cliente antes de chamar uma pessoa
 ---
 
-**A IA avisa o cliente antes de chamar uma pessoa.** Quando o atendimento automático
-parava e a conversa ia para a fila humana, o cliente não recebia mensagem nenhuma.
+Quando o atendimento automático parava e a conversa ia para a fila humana, o
+cliente não recebia mensagem nenhuma: ele falava, e ninguém respondia.
+```
+
+**O campo é o efeito, não o número** — e essa escolha é a régua inteira. Pedir
+`impacto: minor` convidaria de volta exatamente o erro que este documento existe para
+corrigir, porque "minor" é a *resposta*, e responder a resposta é o que se faz quando não
+se tem a pergunta. `nada_mudou` não tem como ser respondido errado por quem sabe o que
+fez. O número sai de `BUMP_DO_IMPACTO`, em `lib/release/fragmento.ts`, e a régua está
+presa por valor no teste ao lado — inverter a tabela reprova o CI.
+
+Quando `impacto: exige_acao`, o fragmento traz também um bloco `## Requer atenção` com o
+que o operador precisa fazer; sem ele o fragmento é recusado, e o contrário também
+(aviso com impacto mais brando). Quem emite o `### ⚠️ Requer atenção` que a tela procura é
+o montador, uma vez só.
+
+Para conferir o que os fragmentos de agora produziriam, sem escrever nada:
+
+```bash
+pnpm release:conferir
 ```
 
 Três propriedades, e cada uma resolve um defeito medido:
