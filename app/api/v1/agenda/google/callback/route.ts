@@ -114,6 +114,39 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   const app = configuracaoDoGoogle();
   if (!app) return voltar("erro=google_nao_configurado");
 
+  // ⚠️ QUEIMA DO NONCE — e ela vem ANTES de trocar o código, não depois.
+  //
+  // O `state` é assinado e tem prazo de dez minutos; dentro dele valia quantas
+  // vezes fosse apresentado. A chave primária da tabela é o próprio nonce
+  // (migration 0190): a segunda tentativa viola a unicidade, e é assim que o
+  // replay é recusado.
+  //
+  // A ORDEM É A PARTE FÁCIL DE PERDER. Queimar DEPOIS da troca gastaria o
+  // `code` do Google — que é de uso único — antes de descobrir que o `state`
+  // era repetido, e quem apresentasse o legítimo receberia "código já usado",
+  // um erro que aponta para o Google e não para o replay.
+  const admin = createAdminClient();
+  const { error: erroDoNonce } = await admin.from("calendar_oauth_nonces").insert({
+    nonce: estado.nonce,
+    organization_id: organizationId,
+    user_id: userId,
+    expira_em: new Date(estado.expiraEmMs).toISOString(),
+  });
+  if (erroDoNonce) {
+    // `23505` é unicidade: o nonce já foi usado. Qualquer outro erro também
+    // recusa — não dá para garantir uso único sem conseguir gravar, e seguir
+    // seria abrir a porta justamente quando o guarda está indisponível.
+    await audit({
+      action: "agenda.google.conexao_falhou",
+      organizationId,
+      metadata: {
+        reason: erroDoNonce.code === "23505" ? "state_reutilizado" : "nonce_indisponivel",
+        user_id: userId,
+      },
+    });
+    return voltar("erro=retorno_nao_verificavel");
+  }
+
   // 3. Troca o código pelos tokens.
   const leitura = await trocarCodigoPorToken(app, code, { agora: new Date() });
   if (!leitura.ok) {
@@ -151,8 +184,6 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   // 6. Cifra ANTES de gravar. `encryptWebhookSecret` devolve `null` quando a
   //    chave de cifra da instalação não está ativa — e aqui isso vira uma
   //    recusa em português, não a exceção do Postgres que nomeia um parceiro.
-  const admin = createAdminClient();
-
   // ⚠️ SEM `refresh_token` A CONEXÃO NASCE MORTA, e o pior é que ela nasce
   // parecendo viva. Todo o argumento do `prompt=consent` na rota de ida existe
   // para garantir que ele venha; se ainda assim não vier, gravar `healthy` faz a

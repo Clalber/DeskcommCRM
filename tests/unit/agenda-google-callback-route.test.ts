@@ -49,6 +49,9 @@ function pedido(query: Record<string, string>): NextRequest {
 let upsertRecebido: Record<string, unknown> | null = null;
 /** O que já está gravado para esta conta, quando o teste quer simular reconexão. */
 let linhaExistente: Record<string, unknown> | null = null;
+/** Erro que o INSERT do nonce devolve — `23505` simula state reapresentado. */
+let erroDoNonce: { code: string; message: string } | null = null;
+let noncesGravados: string[] = [];
 let opcoesDoUpsert: Record<string, unknown> | null = null;
 let erroDoUpsert: { message: string } | null = null;
 
@@ -68,6 +71,8 @@ beforeEach(() => {
   upsertRecebido = null;
   opcoesDoUpsert = null;
   linhaExistente = null;
+  erroDoNonce = null;
+  noncesGravados = [];
   erroDoUpsert = null;
   vi.stubGlobal("fetch", vi.fn());
   vi.mocked(encryptWebhookSecret).mockResolvedValue("\\xdeadbeef");
@@ -83,6 +88,10 @@ beforeEach(() => {
   } as never);
   vi.mocked(createAdminClient).mockReturnValue({
     from: () => ({
+      insert: async (linha: Record<string, unknown>) => {
+        noncesGravados.push(String(linha.nonce));
+        return { error: erroDoNonce };
+      },
       select: () => {
         const cadeia = {
           eq: () => cadeia,
@@ -298,6 +307,50 @@ describe("GET /api/v1/agenda/google/callback", () => {
     googleRespondendoBem();
     vi.mocked(loadAuthUser).mockResolvedValue(null as never);
 
+    const res = await chamar({ code: "c", state: estadoValido() });
+    expect(destino(res)).toBe("https://crm.exemplo/app/agenda?erro=retorno_nao_verificavel");
+    expect(upsertRecebido).toBeNull();
+  });
+
+  it("o mesmo state NÃO vale duas vezes — o nonce é queimado no primeiro uso", async () => {
+    // Ele é assinado e tem dez minutos de prazo; dentro deles valia quantas
+    // vezes fosse apresentado. A chave primária da tabela é o próprio nonce: a
+    // segunda tentativa viola a unicidade.
+    googleRespondendoBem();
+    erroDoNonce = { code: "23505", message: "duplicate key value" };
+
+    const res = await chamar({ code: "c", state: estadoValido() });
+    expect(destino(res)).toBe("https://crm.exemplo/app/agenda?erro=retorno_nao_verificavel");
+    expect(upsertRecebido).toBeNull();
+    expect(audit).toHaveBeenCalledWith(
+      expect.objectContaining({ metadata: expect.objectContaining({ reason: "state_reutilizado" }) }),
+    );
+  });
+
+  it("a queima vem ANTES da troca do código — senão o `code` é gasto à toa", async () => {
+    // O `code` do Google é de uso único. Queimar depois gastaria ele antes de
+    // descobrir que o state era repetido, e quem apresentasse o legítimo
+    // receberia "código já usado" — um erro que aponta para o Google e não para
+    // o replay.
+    erroDoNonce = { code: "23505", message: "duplicate key value" };
+    await chamar({ code: "c", state: estadoValido() });
+    expect(fetch).not.toHaveBeenCalled();
+    // Controle positivo: o nonce FOI tentado, então o `fetch` ausente é ordem
+    // correta e não rota que parou antes.
+    expect(noncesGravados).toHaveLength(1);
+  });
+
+  it("nonce indisponível por OUTRO motivo também recusa — falhar fechado", async () => {
+    // Sem conseguir gravar não há como garantir uso único, e seguir abriria a
+    // porta justamente quando o guarda está indisponível.
+    //
+    // ⚠️ O Google é mockado AQUI de propósito, e a razão saiu de uma sabotagem:
+    // sem isto o caso passava a depender de a queima vir antes do `fetch` —
+    // mover a ordem o deixava vermelho por FALTA DE MOCK, não pelo que ele
+    // afirma. Teste tem de falhar pelo próprio motivo, senão vira testemunha de
+    // uma propriedade que não é a dele.
+    googleRespondendoBem();
+    erroDoNonce = { code: "08006", message: "connection failure" };
     const res = await chamar({ code: "c", state: estadoValido() });
     expect(destino(res)).toBe("https://crm.exemplo/app/agenda?erro=retorno_nao_verificavel");
     expect(upsertRecebido).toBeNull();
