@@ -1,5 +1,7 @@
 "use client";
 
+import { useT } from "@/hooks/i18n/useT";
+
 import { addDays, endOfMonth, format, startOfDay, startOfMonth, startOfWeek } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import * as React from "react";
@@ -73,6 +75,7 @@ export function AgendaClient({
   /** A semana corrente, resolvida no servidor: `GET /agendamentos` não existe. */
   agendamentosIniciais: Agendamento[];
 }) {
+  const t = useT();
   const [marcando, setMarcando] = React.useState(false);
   // REMARCAR reusa o painel de marcação: escolher horário novo é o MESMO gesto
   // de escolher o primeiro, e uma segunda tela para a mesma pergunta seria duas
@@ -229,9 +232,9 @@ export function AgendaClient({
 
       <header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
         <div className="min-w-0">
-          <h1 className="text-2xl font-semibold tracking-tight">Agenda</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">{t("Agenda")}</h1>
           <p className="text-sm text-muted-foreground">
-            O que está marcado, com quem, e quem atende — seu e da equipe.
+            {t("O que está marcado, com quem, e quem atende — seu e da equipe.")}
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
@@ -258,7 +261,7 @@ export function AgendaClient({
               data-testid="motivo-novo-agendamento"
               className="hidden text-xs text-text-subtle sm:inline"
             >
-              Cadastre um tipo de agendamento para começar
+              {t("Cadastre um tipo de agendamento para começar")}
             </span>
           )}
           <Button
@@ -279,7 +282,7 @@ export function AgendaClient({
             <Button
               variant="ghost"
               size="icon"
-              aria-label="Período anterior"
+              aria-label={t("Período anterior")}
               data-testid="periodo-anterior"
               onClick={() => setAncora((d) => addDays(d, -passo))}
             >
@@ -288,7 +291,7 @@ export function AgendaClient({
             <Button
               variant="ghost"
               size="icon"
-              aria-label="Próximo período"
+              aria-label={t("Próximo período")}
               data-testid="periodo-seguinte"
               onClick={() => setAncora((d) => addDays(d, passo))}
             >
@@ -363,24 +366,24 @@ export function AgendaClient({
           </SheetHeader>
           {tiposIniciais.length > 1 && (
             <div className="mt-4" data-testid="tipos-de-agendamento">
-              <p className="mb-2 text-xs font-medium text-text-muted">Tipo de agendamento</p>
+              <p className="mb-2 text-xs font-medium text-text-muted">{t("Tipo de agendamento")}</p>
               <div className="flex flex-wrap gap-1.5">
-                {tiposIniciais.map((t) => (
+                {tiposIniciais.map((opcao) => (
                   <button
-                    key={t.id}
+                    key={opcao.id}
                     type="button"
-                    data-testid={`tipo-${t.id}`}
-                    aria-pressed={t.id === tipo?.id}
-                    onClick={() => setTipoId(t.id)}
+                    data-testid={`tipo-${opcao.id}`}
+                    aria-pressed={opcao.id === tipo?.id}
+                    onClick={() => setTipoId(opcao.id)}
                     className={cn(
                       "rounded-full border px-3 py-1 text-xs transition-colors duration-fast",
-                      t.id === tipo?.id
+                      opcao.id === tipo?.id
                         ? "border-transparent bg-accent text-accent-foreground"
                         : "border-border text-text-muted hover:border-border-strong hover:text-text",
                     )}
                   >
-                    {t.nome}
-                    <span className="ml-1 opacity-70 tabular-nums">{t.duracaoMin}min</span>
+                    {opcao.nome}
+                    <span className="ml-1 opacity-70 tabular-nums">{opcao.duracaoMin}min</span>
                   </button>
                 ))}
               </div>
@@ -462,7 +465,7 @@ export function AgendaClient({
               })()}
             </p>
             <label className="block text-xs font-medium text-text-muted" htmlFor="motivo-do-cancelamento">
-              Por que está cancelando?
+              {t("Por que está cancelando?")}
             </label>
             <textarea
               id="motivo-do-cancelamento"
@@ -471,7 +474,7 @@ export function AgendaClient({
               onChange={(e) => setMotivo(e.target.value)}
               rows={3}
               className="w-full rounded-md border border-border bg-surface p-2 text-sm outline-none focus:border-border-strong"
-              placeholder="O paciente pediu para remarcar por telefone"
+              placeholder={t("O paciente pediu para remarcar por telefone")}
             />
             <div className="flex justify-end gap-2">
               <Button variant="ghost" size="sm" onClick={() => setCancelandoId(null)}>

@@ -1,5 +1,7 @@
 "use client";
 
+import { useT } from "@/hooks/i18n/useT";
+
 import { format, isBefore } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import * as React from "react";
@@ -104,6 +106,7 @@ export function HistoricoDaAgenda({
   onFaltou?: (id: string) => void;
   className?: string;
 }) {
+  const t = useT();
   const [aba, setAba] = React.useState<AbaDoHistorico>("proximos");
   const grupos = React.useMemo(() => separar(agendamentos, agora), [agendamentos, agora]);
   const daAba = grupos[aba];
@@ -112,7 +115,7 @@ export function HistoricoDaAgenda({
     <div data-testid="historico-da-agenda" data-aba={aba} className={cn("flex min-h-0 flex-col", className)}>
       <div
         role="tablist"
-        aria-label="Filtrar o histórico"
+        aria-label={t("Filtrar o histórico")}
         className="flex flex-wrap items-center gap-0.5 rounded-md border border-border bg-surface p-0.5"
       >
         {ABAS.map((a) => {
@@ -154,10 +157,10 @@ export function HistoricoDaAgenda({
       <div className="mt-3 min-h-0 flex-1 overflow-auto rounded-lg border border-border bg-surface">
         {daAba.length === 0 ? (
           <p data-testid="historico-vazio" className="p-8 text-center text-sm text-text-muted">
-            {aba === "proximos" && "Nada marcado daqui para a frente."}
-            {aba === "aguardando" && "Ninguém esperando confirmação."}
-            {aba === "passados" && "Ainda não há atendimentos concluídos."}
-            {aba === "cancelados" && "Nenhum cancelamento."}
+            {aba === "proximos" && t("Nada marcado daqui para a frente.")}
+            {aba === "aguardando" && t("Ninguém esperando confirmação.")}
+            {aba === "passados" && t("Ainda não há atendimentos concluídos.")}
+            {aba === "cancelados" && t("Nenhum cancelamento.")}
           </p>
         ) : (
           <ul>

@@ -1,5 +1,7 @@
 "use client";
 
+import { useT } from "@/hooks/i18n/useT";
+
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ArrowsClockwise, WarningOctagon } from "@/lib/ui/icons";
@@ -91,6 +93,7 @@ export function AgendaComErro({
   motivo: string;
   onTentarDeNovo?: () => void;
 }) {
+  const t = useT();
   return (
     <div
       data-testid="agenda-com-erro"
@@ -99,7 +102,7 @@ export function AgendaComErro({
     >
       <WarningOctagon size={28} weight="duotone" className="text-error" aria-hidden />
       <div>
-        <p className="text-sm font-semibold text-text">Não consegui carregar a agenda</p>
+        <p className="text-sm font-semibold text-text">{t("Não consegui carregar a agenda")}</p>
         <p className="mt-1 max-w-sm text-xs text-text-muted">{motivo}</p>
       </div>
       {onTentarDeNovo && (

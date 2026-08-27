@@ -523,12 +523,12 @@ export function AgentForm(props: Props) {
       <div className="flex flex-wrap gap-1 border-b" role="tablist" aria-label={t("Papéis do agente")}>
         {(
           [
-            ["conversa", "Conversa com o cliente"],
-            ["operacao", "Organiza o sistema"],
+            ["conversa", t("Conversa com o cliente")],
+            ["operacao", t("Organiza o sistema")],
             // O TERCEIRO PAPEL. O rótulo diz o que ele FAZ, como os outros dois:
             // "Segurança" é o nosso nome; quem configura quer saber o que é
             // conferido antes de a mensagem chegar ao cliente dele.
-            ["seguranca", "Confere antes de enviar"],
+            ["seguranca", t("Confere antes de enviar")],
           ] as const
         ).map(([id, rotulo]) => (
           <button

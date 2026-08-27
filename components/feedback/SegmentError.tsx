@@ -2,6 +2,7 @@
 
 import * as Sentry from "@sentry/nextjs";
 import { useEffect, useState } from "react";
+import { useT } from "@/hooks/i18n/useT";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { copyToClipboard } from "@/lib/clipboard";
@@ -13,6 +14,7 @@ export interface SegmentErrorProps {
 }
 
 export function SegmentError({ error, reset, segment }: SegmentErrorProps) {
+  const t = useT();
   const [eventId, setEventId] = useState<string | undefined>(undefined);
   const [copied, setCopied] = useState(false);
 
@@ -39,7 +41,7 @@ export function SegmentError({ error, reset, segment }: SegmentErrorProps) {
       <Card className="w-full max-w-md p-8 text-center">
         <h1 className="text-xl font-semibold">Algo deu errado</h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          Tente novamente em instantes. Se persistir, contate o suporte com o ID abaixo.
+          {t("Tente novamente em instantes. Se persistir, contate o suporte com o ID abaixo.")}
         </p>
         <div className="mt-4 break-all rounded-md bg-muted px-3 py-2 font-mono text-xs">
           ID: {displayId}

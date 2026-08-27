@@ -1,5 +1,7 @@
 "use client";
 
+import { useT } from "@/hooks/i18n/useT";
+
 import { cn } from "@/lib/utils";
 
 import { AvatarDaPessoa } from "./AvatarDaPessoa";
@@ -29,6 +31,7 @@ export function FiltroDePessoas({
   onIsolar: (id: string | null) => void;
   className?: string;
 }) {
+  const t = useT();
   // Um filtro com uma opção só não é um filtro — é um enfeite que ocupa espaço
   // e sugere uma escolha inexistente. O produto já faz isso no alternador do
   // inbox ("só aparece com 2+"), e a regra vale igual aqui.
@@ -74,7 +77,7 @@ export function FiltroDePessoas({
           onClick={() => onIsolar(null)}
           className="rounded-sm px-2 py-1 text-xs text-text-muted transition-colors duration-fast hover:bg-surface-elevated hover:text-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-500"
         >
-          Todos
+          {t("Todos")}
         </button>
       )}
     </div>

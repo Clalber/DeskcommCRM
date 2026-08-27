@@ -164,7 +164,7 @@ function PipelineEditor({ pipeline }: { pipeline: PipelineRow }) {
           spellCheck={false}
         />
         <p className="text-xs text-muted-foreground">
-          {t("Ex:")} <code>{`[{ "key": "size", "label": "Tamanho", "type": "text" }]`}</code>
+          {t("Ex:")} <code>{t('[{ "key": "size", "label": "Tamanho", "type": "text" }]')}</code>
         </p>
       </div>
 

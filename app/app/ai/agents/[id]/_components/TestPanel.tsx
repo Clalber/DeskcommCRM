@@ -287,7 +287,7 @@ export function TestPanel({ agent, draft, published, readOnly }: Props) {
             <RunTrace
               toolCalls={result.tool_calls}
               finalText={result.final_text ?? null}
-              emptyMessage="Sem tool calls (resposta direta do LLM)."
+              emptyMessage={t("Sem tool calls (resposta direta do LLM).")}
             />
 
             {result.guardrails ? <Verificacoes g={result.guardrails} /> : null}

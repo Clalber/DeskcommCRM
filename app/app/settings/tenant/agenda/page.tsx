@@ -1,6 +1,8 @@
 import { redirect } from "next/navigation";
 
 import { requireAuth, resolveActiveOrg } from "@/lib/auth/server";
+import { traduzir } from "@/lib/i18n/dicionario";
+import { normalizarIdioma } from "@/lib/i18n/idiomas";
 import { ROLE_RANK } from "@/lib/auth/types";
 import { createClient } from "@/lib/supabase/server";
 
@@ -52,13 +54,19 @@ export default async function TiposDeAgendamentoPage() {
       .is("revoked_at", null),
   ]);
 
+  const idioma = normalizarIdioma(user.locale);
+
   return (
     <div className="flex h-full flex-col gap-6 p-6">
       <header>
-        <h1 className="text-2xl font-semibold tracking-tight">Tipos de agendamento</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">
+          {traduzir("Tipos de agendamento", idioma)}
+        </h1>
         <p className="mt-1 text-sm text-text-muted">
-          O que se pode marcar, quanto dura e quem atende. É isto que a tela de marcar e o
-          agente de IA oferecem ao cliente.
+          {traduzir(
+            "O que se pode marcar, quanto dura e quem atende. É isto que a tela de marcar e o agente de IA oferecem ao cliente.",
+            idioma,
+          )}
         </p>
       </header>
       <TiposDeAgendamentoClient
