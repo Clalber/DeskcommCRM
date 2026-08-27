@@ -19,7 +19,8 @@
  */
 import { z } from "zod";
 
-import { horariosLivresDaOrg, MAXIMO_DE_DIAS } from "@/lib/agenda/consulta";
+import { horariosLivresDaOrg, listaAgendamentos, MAXIMO_DE_DIAS } from "@/lib/agenda/consulta";
+import { SITUACOES_DO_AGENDAMENTO } from "@/lib/agenda/tipos";
 import type { McpToolDefinition } from "@/lib/mcp/types";
 
 /** Teto do horizonte pedido — espelha o da rota, e o excesso é erro de chamada. */
@@ -120,6 +121,72 @@ export const crmFindFreeSlots: McpToolDefinition<typeof horariosLivresShape> = {
       fuso_suposto: consulta.fusoSuposto,
       /** Agendas externas que não estão saudáveis: o horário pode estar defasado. */
       fontes_defasadas: consulta.fontesDefasadas,
+    };
+  },
+};
+
+
+const listarShape = {
+  contact_id: z.string().uuid().optional(),
+  lead_id: z.string().uuid().optional(),
+  dia: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .optional()
+    .describe("um dia específico, no formato AAAA-MM-DD"),
+  owner_user_id: z.string().uuid().optional(),
+  /**
+   * ⚠️ A constante, NUNCA os literais. `SITUACOES_DO_AGENDAMENTO` é a fonte
+   * (`lib/agenda/tipos.ts`), e o invariante `vocabulario-banco-x-typescript` existe
+   * para impedir a terceira lista. Escrevi `scheduled|done|cancelled` no contrato antes
+   * de ler a fonte, e estava errado nos três.
+   */
+  situacao: z.enum(SITUACOES_DO_AGENDAMENTO).optional(),
+  limite: z.number().int().min(1).max(50).optional(),
+};
+
+export const crmListAppointments: McpToolDefinition<typeof listarShape> = {
+  name: "crm_list_appointments",
+  description:
+    "Lista os compromissos com HORA MARCADA de um cliente, ou de um dia da equipe, com a " +
+    "situação de cada um. Informe pelo menos um recorte: contact_id, lead_id, dia ou " +
+    "owner_user_id — sem recorte a chamada é recusada, porque varrer a agenda inteira não " +
+    "responde pergunta nenhuma. " +
+    "NÃO CONFUNDA COM `crm_list_followups`, que lista os RETORNOS — as vezes em que nós " +
+    "decidimos voltar a falar, sem nada combinado com o cliente. Aqui é o que foi combinado " +
+    "COM ele e ocupa o tempo de um atendente. O mesmo cliente pode ter os dois. " +
+    "USE ANTES DE MARCAR e antes de cobrar: cliente que já tem consulta marcada não deve " +
+    "receber oferta de horário como se não tivesse, nem ser cobrado como se estivesse parado.",
+  inputSchema: listarShape,
+  category: "read",
+  requiresRole: "agent",
+  requiresScope: "mcp:read",
+  handler: async (input, ctx) => {
+    const r = await listaAgendamentos(ctx.supabase, ctx.organizationId, {
+      contactId: input.contact_id ?? null,
+      leadId: input.lead_id ?? null,
+      dia: input.dia ?? null,
+      ownerUserId: input.owner_user_id ?? null,
+      situacao: input.situacao ?? null,
+      limite: input.limite ?? 20,
+    });
+
+    // Recusa de negócio é RESPOSTA, e a face que sai é a do CLIENTE (DECISÃO 20).
+    if (!r.ok) {
+      return { compromissos: [], motivo: r.codigo, mensagem: r.motivoParaCliente };
+    }
+
+    return {
+      compromissos: r.agendamentos.map((a) => ({
+        id: a.id,
+        titulo: a.titulo,
+        inicio: a.iniciaEm,
+        fim: a.terminaEm,
+        fuso: a.fuso,
+        situacao: a.situacao,
+        contato_id: a.contatoId,
+        atendente_id: a.donoId,
+      })),
     };
   },
 };

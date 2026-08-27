@@ -63,4 +63,14 @@ export const TOOLS_AGENDAMENTO = declararTools([
     risco: "seguro",
     pacotes: ["vender"],
   },
+  {
+    name: "crm_list_appointments",
+    category: "read",
+    rotulo: "Ver os compromissos marcados",
+    explicacao:
+      "Lista os compromissos com hora marcada de um cliente ou de um dia, com a situação de cada um: marcado, realizado ou desmarcado.",
+    oQueToca: "Agenda da equipe",
+    risco: "seguro",
+    pacotes: ["vender"],
+  },
 ]);

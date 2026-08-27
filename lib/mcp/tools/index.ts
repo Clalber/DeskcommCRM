@@ -63,7 +63,7 @@ import {
   crmSetWebhookSourceActive,
   crmUpdateStage,
 } from "./operacao";
-import { crmFindFreeSlots } from "./agendamento";
+import { crmFindFreeSlots, crmListAppointments } from "./agendamento";
 import {
   crmScheduleFollowup,
   crmCancelFollowup,
@@ -81,6 +81,7 @@ import {
 export const allTools: ReadonlyArray<McpToolDefinition> = [
   // read
   crmFindFreeSlots,
+  crmListAppointments,
   crmSearchContacts,
   crmGetContact,
   crmProposeContactField,
