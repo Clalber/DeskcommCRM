@@ -5289,6 +5289,124 @@ export const DICIONARIO: Traducoes = {
   "Email inválido": { es: "Correo inválido" },
   "Senha deve ter pelo menos 8 caracteres": { es: "La contraseña debe tener al menos 8 caracteres" },
   "As senhas não coincidem": { es: "Las contraseñas no coinciden" },
+
+  // ─── Metrics: painel de desempenho e Índice de Atrito ───
+  "Atrito, funil e performance por atendente nos últimos 30 dias.": {
+    es: "Fricción, embudo y desempeño por agente en los últimos 30 días.",
+  },
+  "Atrito, seu funil e sua performance nos últimos 30 dias.": {
+    es: "Fricción, tu embudo y tu desempeño en los últimos 30 días.",
+  },
+  "Erro ao carregar métricas.": { es: "Error al cargar las métricas." },
+  "Todos os atendentes": { es: "Todos los agentes" },
+  "do atendente": { es: "del agente" },
+  "aberto": { es: "abierto" },
+  "abertos": { es: "abiertos" },
+  "Nenhuma etapa configurada.": { es: "Ninguna etapa configurada." },
+  "Performance por atendente": { es: "Desempeño por agente" },
+  "Sua performance": { es: "Tu desempeño" },
+  "Sem atividade no período (ganhos/perdidos, conversas ou respostas).": {
+    es: "Sin actividad en el período (ganados/perdidos, conversaciones o respuestas).",
+  },
+  "1ª resposta (média)": { es: "1.ª respuesta (media)" },
+  "O que isso custou": { es: "Lo que eso costó" },
+  "Uma conversa conta como perdida no silêncio após": {
+    es: "Una conversación cuenta como perdida en el silencio después de",
+  },
+  "sem resposta": { es: "sin respuesta" },
+  "Contar como perdida no silêncio após": {
+    es: "Contar como perdida en el silencio después de",
+  },
+  "Horas de silêncio até considerar a conversa perdida": {
+    es: "Horas de silencio hasta considerar la conversación perdida",
+  },
+  "horas sem resposta.": { es: "horas sin respuesta." },
+  "Use um número inteiro entre 1 e 2160.": { es: "Usa un número entero entre 1 y 2160." },
+  "Não foi possível salvar. Tente de novo.": { es: "No se pudo guardar. Intenta de nuevo." },
+  "Carregando o índice de atrito…": { es: "Cargando el índice de fricción…" },
+  "Erro ao carregar o índice de atrito.": { es: "Error al cargar el índice de fricción." },
+  "Atrito": { es: "Fricción" },
+  "O que o resultado custou para os dois lados.": {
+    es: "Lo que el resultado costó para los dos lados.",
+  },
+  "Nenhuma demanda encerrada no período — os números abaixo ainda não têm base.": {
+    es: "Ninguna demanda cerrada en el período — los números de abajo todavía no tienen base.",
+  },
+  "Base:": { es: "Base:" },
+  "demanda encerrada": { es: "demanda cerrada" },
+  "demandas encerradas": { es: "demandas cerradas" },
+  "nos últimos 30 dias, e": { es: "en los últimos 30 días, y" },
+  "ainda abertas.": { es: "todavía abiertas." },
+  "\"—\" significa que não houve dado suficiente para medir, e não que o valor seja zero.": {
+    es: "\"—\" significa que no hubo dato suficiente para medir, y no que el valor sea cero.",
+  },
+  "Sobre as demandas encerradas no período.": { es: "Sobre las demandas cerradas en el período." },
+  "Conversão": { es: "Conversión" },
+  "Negócios ganhos": { es: "Negocios ganados" },
+  "Turnos até o desfecho (mediana)": { es: "Turnos hasta el desenlace (mediana)" },
+  "Insistência do agente (média de retornos)": {
+    es: "Insistencia del agente (media de retornos)",
+  },
+  "Quantas vezes o agente voltou ao cliente por conta própria. Medido sobre as": {
+    es: "Cuántas veces el agente volvió al cliente por cuenta propia. Medido sobre las",
+  },
+  "demandas que passaram por atendimento humano.": {
+    es: "demandas que pasaron por atención humana.",
+  },
+  "Insistência no pior caso": { es: "Insistencia en el peor caso" },
+  "O cliente que mais recebeu retornos. A média esconde o exagero pontual.": {
+    es: "El cliente que más recibió retornos. La media esconde el exceso puntual.",
+  },
+  "Descadastros no período": { es: "Bajas en el período" },
+  "Atrito máximo: a pessoa pediu para sair.": {
+    es: "Fricción máxima: la persona pidió salir.",
+  },
+  "Conversas que morreram no silêncio (após": {
+    es: "Conversaciones que murieron en el silencio (después de",
+  },
+  "conversas em que falamos: a pessoa não respondeu e ninguém encerrou.": {
+    es: "conversaciones en las que hablamos: la persona no respondió y nadie cerró.",
+  },
+  "Respostas dadas pelo agente": { es: "Respuestas dadas por el agente" },
+  "Passagens para humano": { es: "Traspasos a humano" },
+  "Confiança perdida na automação.": { es: "Confianza perdida en la automatización." },
+  "Respostas humanas fora do sistema": { es: "Respuestas humanas fuera del sistema" },
+  "O time respondeu pelo celular, contornando a ferramenta.": {
+    es: "El equipo respondió por el celular, evadiendo la herramienta.",
+  },
+  "Perguntas que a pessoa teve de repetir": { es: "Preguntas que la persona tuvo que repetir" },
+  "Piso:": { es: "Piso:" },
+  "Conta só a repergunta quase literal — reformulada com outras palavras escapa desta medida.": {
+    es: "Cuenta solo la repregunta casi literal — reformulada con otras palabras escapa de esta medida.",
+  },
+  "Custo humano": { es: "Costo humano" },
+  "Demandas encerradas": { es: "Demandas cerradas" },
+  "Intervenções humanas por demanda": { es: "Intervenciones humanas por demanda" },
+  "Espera na fila humana (mediana)": { es: "Espera en la cola humana (mediana)" },
+  "Espera na fila humana (p90)": { es: "Espera en la cola humana (p90)" },
+  "Igual à mediana: há poucas esperas medidas no período para os dois se separarem.": {
+    es: "Igual a la mediana: hay pocas esperas medidas en el período para que los dos se separen.",
+  },
+  "O p90 é a experiência de quem espera mais — a mediana a esconde.": {
+    es: "El p90 es la experiencia de quien espera más — la mediana la esconde.",
+  },
+  "Demandas abertas sem próximo passo": { es: "Demandas abiertas sin próximo paso" },
+  "abertas agora. Cada uma é alguém esperando sem que nada esteja marcado para acontecer.": {
+    es: "abiertas ahora. Cada una es alguien esperando sin que nada esté programado para pasar.",
+  },
+  "Demandas que precisaram subir de nível": { es: "Demandas que necesitaron escalar de nivel" },
+  "Esperas sem nenhuma resposta por mais de": {
+    es: "Esperas sin ninguna respuesta por más de",
+  },
+  "falas do cliente. Quem sabe que vai esperar, espera; quem não sabe, desiste.": {
+    es: "hablas del cliente. Quien sabe que va a esperar, espera; quien no sabe, desiste.",
+  },
+  "Contenção": { es: "Contención" },
+  "Mensagens enviadas pelo agente": { es: "Mensajes enviados por el agente" },
+  "Vetos por execução": { es: "Vetos por ejecución" },
+  "Quanto o sistema precisou ser contido de si mesmo antes de falar.": {
+    es: "Cuánto el sistema tuvo que ser contenido de sí mismo antes de hablar.",
+  },
 };
 
 /**
