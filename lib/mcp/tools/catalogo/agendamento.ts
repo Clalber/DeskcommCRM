@@ -11,6 +11,44 @@
  * que lê esta tela diz CONSULTA, SESSÃO e HORÁRIO. As palavras de wire ficam
  * só no `name`, que é contrato e não texto.
  *
+ * ⚠️ O PLAYBOOK `agendamento` CITA ESTES QUATRO NOMES AO CONVERSADOR — e a doutrina
+ * do repo diz que a cura do vazamento é o Conversador NUNCA TER VISTO o vocabulário
+ * (`lib/agent-engine/agent/entrega-de-capacidade.ts:7`, `operator-turn.ts:5`: "a separação
+ * é por AUSÊNCIA"). Aqui a mitigação é por REDAÇÃO, que é filtro. A tensão é real e fica
+ * escrita, não resolvida — quem reabrir decide com ela à vista.
+ *
+ * O CENÁRIO CONCRETO, para não ficar em abstração: o playbook é injetado no
+ * `inbound_turn` (`lib/agent-engine/agent/inbound-turn.ts:1617`), por GATILHO, não sempre.
+ * O turno monta as tools MCP **habilitadas na tela** (idem:2415). Se um tenant habilitar a
+ * família de agenda apenas em `operator_tool_ids`, o Conversador lê quatro nomes que não
+ * pode chamar. Três desfechos, e cada um tem ONDE ser observado:
+ *
+ *   (a) repete o nome ao cliente ...... `internal_vocabulary` no before-send. Medido no
+ *       HEAD, não deduzido: as tools de agenda são pegas pela lista derivada do
+ *       `TOOL_CATALOG` E pela regra snake_case — que pega até nome INVENTADO. O veto
+ *       volta ao modelo como erro instrutivo. Remedir:
+ *
+ *         pnpm exec tsx -e 'import("@/lib/agent-engine/guardrails/vazamento-interno")
+ *           .then(({detectarVazamentoInterno:d})=>{
+ *             console.log(d("vou usar crm_book_appointment"), d("quinta as 14h, pode ser?"))})'
+ *
+ *       O segundo argumento é o CONTROLE: se ele também acusar, o detector está gritando
+ *       com tudo e o primeiro resultado não prova nada.
+ *
+ *   (b) tenta CHAMAR tool ausente ..... não é vazamento, é erro de tool call, e aparece no
+ *       log de invocação do run.
+ *
+ *   (c) promete a capacidade sem tê-la . os gates `promise`/`semantic_promise` da mesma
+ *       cadeia. É o desfecho que (a) e (b) não cobrem: nenhum nome sai e nenhuma chamada
+ *       acontece.
+ *
+ * ⚠️ O QUE NINGUÉM MEDIU AINDA: como o modelo se comporta, de fato, num tenant com a
+ * família só no Operador. Há lugar de observação — `before_send_traces` é durável e
+ * exportável por run, então olhar não precisa ser síncrono com o evento. Isso é trabalho
+ * ADIADO com endereço, não risco sem instrumento: quem quiser fechar, olha o traço do
+ * primeiro tenant nessa configuração. (Achado do Arquiteto; a ressalva mora aqui, e não no
+ * briefing da entrega, porque briefing morre com a entrega e este arquivo não.)
+ *
  * ⚠️ PACOTE: `vender`, e a razão é ARITMÉTICA antes de ser semântica.
  *
  * `atender` seria a primeira escolha — marcar consulta é o desfecho de um
