@@ -145,9 +145,16 @@ function BlocoDeAgendamento({
       // "controle decorativo" que esta base já pagou uma vez.
       disabled={doGoogle}
       onClick={doGoogle ? undefined : () => onAbrir?.(agendamento.id)}
+      // "com" nesta tela significa QUEM SERÁ ATENDIDO — é o vocabulário do
+      // próprio subtítulo ("O que está marcado, com quem, e quem atende"). O
+      // rótulo dizia `, com ${pessoa.nome}`, que é o ATENDENTE: quem usa leitor
+      // de tela ouvia os dois papéis trocados, e o card visual não desmente
+      // porque em compromisso de 30min ele nem mostra o contato.
       aria-label={`${agendamento.titulo}, ${format(comeca, "HH:mm")} às ${format(termina, "HH:mm")}${
-        pessoa ? `, com ${pessoa.nome}` : ""
-      }${doGoogle ? ", ocupado na agenda do Google" : ""}`}
+        agendamento.quemSeraAtendido ? `, com ${agendamento.quemSeraAtendido}` : ""
+      }${pessoa ? `, atendido por ${pessoa.nome}` : ""}${
+        doGoogle ? ", ocupado na agenda do Google" : ""
+      }`}
       className={cn(
         "absolute flex flex-col items-start overflow-hidden rounded-sm px-1.5 py-0.5 text-left",
         "border border-border/60 transition-colors duration-fast ease-out",
