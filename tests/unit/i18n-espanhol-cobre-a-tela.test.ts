@@ -378,6 +378,20 @@ describe("a chave é o texto em português, e o português não muda", () => {
     expect(declaramPt).toEqual([]);
   });
 
+  /**
+   * ⚠️ ESTA ASSERÇÃO NÃO PODE FALHAR SOZINHA HOJE — medido por sabotagem.
+   *
+   * `traduzir()` devolve `texto` num curto-circuito ANTES de olhar o
+   * dicionário (`if (idioma === "pt-BR") return texto`). Declarei uma entrada
+   * `"pt-BR": "Sabotagem"` e só a asserção de cima ficou vermelha; esta seguiu
+   * verde. Ela só acorda quando o curto-circuito SAI — sabotei os dois juntos e
+   * aí ela reprovou.
+   *
+   * Fica, então, como a rede para esse dia: se alguém "simplificar" `traduzir`
+   * fazendo o português passar pelo dicionário, o português volta a poder mudar
+   * — e é aqui que isso vira vermelho. O que ela NÃO é: prova independente. Está
+   * escrito para ninguém contar duas vezes a mesma garantia.
+   */
   it("traduzir() devolve a própria chave em português, para TODA chave", () => {
     const mudaram = Object.keys(DICIONARIO).filter((k) => traduzir(k, "pt-BR") !== k);
     expect(mudaram).toEqual([]);
