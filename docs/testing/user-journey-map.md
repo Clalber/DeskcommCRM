@@ -419,6 +419,43 @@ divide o servidor. Só aparece exercitando o produto pela tela.
 > não roda quando um caso falha). Corrigidos antes da primeira execução; o
 > resultado real entra aqui quando o CI disser.
 
+## J12 — A Agenda como o dono do produto a usou na VPS `[P0]`
+
+**Por que P0:** é a primeira impressão de um módulo que acabou de sair (v1.7.0).
+O dono instalou na VPS dele, usou como um cliente usaria, e achou **seis defeitos
+em quinze minutos**. Um sétimo aparecia no log de produção a cada cinco minutos e
+ninguém tinha visto; um oitavo saiu de varredura. Todo módulo novo tem uma janela
+em que ninguém o usou de verdade — esta jornada existe porque ela custou oito.
+
+**O que a suíte não conseguia enxergar, e por quê.** Toda spec até aqui roda com
+usuário de UMA organização. O defeito de escopo (D4) é invisível nesse cenário
+por construção: sem duas organizações, a RLS e o filtro explícito devolvem
+exatamente o mesmo conjunto. `scripts/seed-e2e-duas-organizacoes.ts` monta o
+cenário que faltava — o MESMO usuário em duas orgs, com um tipo exclusivo em cada
+uma, para a asserção poder ser sobre o CONJUNTO DE NOMES e não sobre a contagem.
+
+| # | Caso | Resultado |
+|---|---|---|
+| J12.1 | Membro de duas organizações abre a Agenda e vê só os tipos da org ativa; trocar de organização troca a lista | **PASS** — `agenda-escopo-da-organizacao.spec.ts`, contra o app real. Evidência: `evidence/calendario/d4-agenda-escopo-org-b.png` |
+| J12.2 | O aviso "você ainda não publicou seus horários" LEVA até onde se publica, e a aba de Atendimento se anuncia como o lugar dos horários | **PASS** — `agenda-caminho-ate-os-horarios.spec.ts`. Evidência: `evidence/calendario/d1-aba-atendimento.png` |
+| J12.3 | Endereço de aba desconhecido cai na aba padrão, não numa tela sem conteúdo | **PASS** — mesma spec |
+| J12.4 | O tipo de agendamento NASCE com responsável; quem escolhe "Definir depois" é avisado e o aviso ABRE o seletor | **PASS** — `agenda-tipos-de-agendamento.spec.ts`. Evidência: `evidence/calendario/d6-tipo-com-responsavel.png` |
+| J12.5 | O dia apagado diz POR QUÊ, e o rótulo genérico antigo não volta | **PASS** — `agenda-kit-visual.spec.ts` |
+| J12.6 | O teto de capacidades recusa a passagem explicando quantas vagas faltam | **PASS** — `capacidades-do-agente.spec.ts`, com o teto em 25 |
+| J12.7 | A ida ao Google seleciona os pendentes (o filtro antigo devolvia HTTP 400) | **PASS** — medido contra o PostgREST real do ambiente e2e: filtro antigo `400 / 22007`, filtro novo `200` com as linhas pendentes |
+| J12.8 | Sincronizar tira a linha da fila, e editar recoloca (o laço dos dois relógios) | **PASS** — medido no Postgres real: `true` → `false` com delta `00:00:00` → `true` |
+| J12.9 | A credencial do Google não é servida pelo PostgREST | **PASS** — `anon` recebe `42501 permission denied`; `service_role` recebe 200 (controle positivo) |
+| J12.10 | Cadastrar a credencial do Google pela tela do admin | **NÃO EXERCITADO** — a tela e a server action existem e o `next build` passa, mas o ambiente e2e não tem a chave mestra de cifra semeada (`fn_encrypt_oauth` levanta `NUVEMSHOP_OAUTH_ENCRYPTION_KEY ausente`), que é justamente o caminho em que a action RECUSA gravar. Falta o caso pela tela com a chave presente |
+
+**Registro honesto do que NÃO foi exercitado:** `pnpm test:db` não rodou nesta
+máquina — o daemon do Docker travou depois de o disco encher, e o harness de
+invariantes exige contêiner. Os dois invariantes novos
+(`agenda-ida-ao-google-termina`, `credencial-do-google-e-server-side`) estão
+escritos e a SUBSTÂNCIA deles foi medida à mão contra o Postgres real do
+ambiente e2e; falta a passada do harness no CI.
+
+---
+
 ## J7 — Exploração completa `[P2]`
 
 Andar por TODAS as rotas navegáveis logado como admin e como agent: settings, contacts,
