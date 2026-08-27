@@ -337,8 +337,31 @@ export interface ParametrosDaLista {
   contactId?: string | null;
   /** Resolvido por `crm_lead_links` — ver o aviso acima. */
   leadId?: string | null;
-  /** `YYYY-MM-DD` no fuso do dado; filtra o dia inteiro. */
+  /**
+   * `YYYY-MM-DD`; filtra o dia inteiro.
+   *
+   * ⚠️ O CORTE É EM UTC, e para fuso negativo isso NÃO é o dia do usuário.
+   * Medido para `America/Sao_Paulo`, dia 12: o filtro pega de 11/03 21:00 até
+   * 12/03 20:59 na parede de quem olha — três horas do dia ANTERIOR entram, e as
+   * três últimas do dia pedido ficam de fora. Um compromisso das 22h some da
+   * lista do próprio dia.
+   *
+   * Quem precisa de recorte exato usa `de`/`ate`, que são INSTANTES e não têm
+   * ambiguidade. `dia` fica para quem só quer um recorte grosseiro — e agora
+   * sabe o que está pedindo.
+   */
   dia?: string | null;
+  /**
+   * Recorte por PERÍODO, em instantes ISO. É o que a grade da tela usa: ela é
+   * semanal e mensal (`startOfWeek`, seis semanas no mês), então `dia` não a
+   * serve — e sete requisições para desenhar uma semana seria a alternativa.
+   *
+   * Instante em vez de data resolve o fuso na origem: quem chama calcula os
+   * limites no fuso de APRESENTAÇÃO e manda o instante, sem esta função
+   * precisar adivinhar em que fuso o "dia" foi pedido.
+   */
+  de?: string | null;
+  ate?: string | null;
   ownerUserId?: string | null;
   situacao?: SituacaoDoAgendamento | null;
   limite: number;
@@ -353,14 +376,17 @@ export async function listaAgendamentos(
   organizationId: string,
   params: ParametrosDaLista,
 ): Promise<ResultadoDaLista> {
-  const temAlvo = Boolean(params.contactId || params.leadId || params.dia || params.ownerUserId);
+  const temAlvo = Boolean(
+    params.contactId || params.leadId || params.dia || params.ownerUserId || (params.de && params.ate),
+  );
   if (!temAlvo) {
     // Sem recorte, isto varreria a agenda inteira da organização. Recusa com ensino,
     // não lista vazia: vazio faria o modelo concluir que não há nada marcado.
     return {
       ok: false,
       codigo: "sem_alvo",
-      motivoParaOperador: "listagem sem recorte: informe contato, lead, dia ou responsável.",
+      motivoParaOperador:
+        "listagem sem recorte: informe contato, lead, dia, período (de+ate) ou responsável.",
       motivoParaCliente:
         "Preciso saber de quem ou de que dia. Pergunte de qual cliente ou de qual data você quer ver os compromissos.",
     };
@@ -403,6 +429,12 @@ export async function listaAgendamentos(
   if (params.situacao) q = q.eq("status", params.situacao);
   if (params.dia) {
     q = q.gte("starts_at", `${params.dia}T00:00:00Z`).lt("starts_at", `${params.dia}T23:59:59.999Z`);
+  }
+  // O período vence o dia quando os dois vêm: quem manda instante está pedindo
+  // recorte exato, e sobrepor o corte grosseiro do `dia` devolveria a interseção
+  // — que não é o que nenhum dos dois pediu.
+  if (params.de && params.ate) {
+    q = q.gte("starts_at", params.de).lt("starts_at", params.ate);
   }
 
   const { data, error } = await q;
