@@ -42,6 +42,7 @@ export const ApiErrorCodes = {
   agenda_tipo_desativado: "agenda_tipo_desativado",
   agenda_sem_responsavel: "agenda_sem_responsavel",
   agenda_disponibilidade_invalida: "agenda_disponibilidade_invalida",
+  agenda_ja_cancelado: "agenda_ja_cancelado",
 
   // 409 — conflito
   idempotency_conflict: "idempotency_conflict",

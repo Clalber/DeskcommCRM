@@ -17,8 +17,10 @@ import { audit } from "@/lib/audit";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { encryptWebhookSecret } from "@/lib/webhooks/secrets";
 import { emitirEstado } from "@/lib/agenda/google/estado";
+import { loadAuthUser } from "@/lib/auth/server";
 
 vi.mock("@/lib/audit", () => ({ audit: vi.fn(async () => undefined), isServiceRoleConfigured: vi.fn(() => true) }));
+vi.mock("@/lib/auth/server", () => ({ loadAuthUser: vi.fn() }));
 vi.mock("@/lib/supabase/admin", () => ({ createAdminClient: vi.fn() }));
 vi.mock("@/lib/webhooks/secrets", () => ({ encryptWebhookSecret: vi.fn(async () => "\\xdeadbeef") }));
 
@@ -70,6 +72,15 @@ beforeEach(() => {
   vi.stubGlobal("fetch", vi.fn());
   vi.mocked(encryptWebhookSecret).mockResolvedValue("\\xdeadbeef");
   vi.mocked(audit).mockClear();
+  // A sessão de quem volta é, por padrão, a MESMA que pediu o consentimento.
+  vi.mocked(loadAuthUser).mockResolvedValue({
+    id: ANA,
+    email: "ana@clinica.com.br",
+    full_name: "Ana",
+    avatar_url: null,
+    is_platform_admin: false,
+    organizations: [{ organization_id: ORG, organization_name: "Clínica", role: "agent" }],
+  } as never);
   vi.mocked(createAdminClient).mockReturnValue({
     from: () => ({
       select: () => {
@@ -251,6 +262,45 @@ describe("GET /api/v1/agenda/google/callback", () => {
     const res = await chamar({ error: "access_denied", state: estadoValido() });
     expect(destino(res)).toBe("https://crm.exemplo/app/agenda?erro=conexao_cancelada");
     expect(audit).not.toHaveBeenCalled();
+  });
+
+  it("state de OUTRA pessoa não grava — assinatura não é identidade", async () => {
+    // Assinatura prova que o `state` foi emitido por nós; NÃO prova que quem
+    // volta é quem pediu. Sem esta checagem, quem interceptar o `state` de
+    // outra pessoa dentro dos dez minutos grava a agenda DELA apontando para a
+    // conta Google DELE — e os compromissos daquela pessoa passam a ser lidos e
+    // escritos numa agenda que não é a dela.
+    googleRespondendoBem();
+    vi.mocked(loadAuthUser).mockResolvedValue({
+      id: "88888888-8888-4888-8888-888888888888",
+      email: "outro@exemplo.com",
+      full_name: "Outro",
+      avatar_url: null,
+      is_platform_admin: false,
+      organizations: [],
+    } as never);
+
+    const res = await chamar({ code: "c", state: estadoValido() });
+    expect(destino(res)).toBe("https://crm.exemplo/app/agenda?erro=retorno_nao_verificavel");
+    expect(upsertRecebido).toBeNull();
+    expect(audit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "agenda.google.conexao_falhou",
+        metadata: expect.objectContaining({ reason: "sessao_de_outra_pessoa" }),
+      }),
+    );
+  });
+
+  it("sem sessão nenhuma também não grava, e o destino é o MESMO", async () => {
+    // Um destino só para os dois: distinguir "não tem sessão" de "é outra
+    // pessoa" na URL contaria a quem ataca se o `state` que ele tem pertence a
+    // alguém logado naquele navegador.
+    googleRespondendoBem();
+    vi.mocked(loadAuthUser).mockResolvedValue(null as never);
+
+    const res = await chamar({ code: "c", state: estadoValido() });
+    expect(destino(res)).toBe("https://crm.exemplo/app/agenda?erro=retorno_nao_verificavel");
+    expect(upsertRecebido).toBeNull();
   });
 
   it("state inválido dá UM motivo só — distinguir na URL ajudaria um atacante", async () => {

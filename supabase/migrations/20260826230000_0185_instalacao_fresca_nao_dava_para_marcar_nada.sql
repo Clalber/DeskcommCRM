@@ -32,6 +32,12 @@
 -- organização roda antes de existir qualquer texto para inferir: o nome da
 -- organização é tudo o que há, e `welcome.o_que_faz` ainda não foi preenchido.
 --
+-- E há um segundo argumento, que o maestro mediu e que sobrevive à mudança do
+-- instalador: `scripts/bootstrap-owner.ts` NÃO é invocado pelo `install.sh` do
+-- kit nem por script do `package.json`. Ninguém sabe com certeza QUEM cria a
+-- organização numa VPS fresca. Semear por script exigiria acertar o caminho;
+-- semear por TRIGGER pega qualquer caminho que seja um INSERT de verdade.
+--
 -- Isto é o PISO, não o teto. O enriquecimento por nicho — que é o que o item 7
 -- pede de verdade — vive onde o nicho EXISTE, vivo, em
 -- `app/actions/onboarding/montarQuadro.ts`, e entra em commit próprio. Os dois

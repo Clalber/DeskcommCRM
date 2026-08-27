@@ -71,6 +71,27 @@ export const ALVO_DE_FUNIL: Record<string, AlvoDeFunil> = {
   crm_schedule_followup: "funil_vem_do_lead",
   crm_cancel_followup: "funil_vem_do_lead",
 
+  // ---- agenda: DECLARADAS `sem_funil`, e a declaração é o ponto ----
+  //
+  // As três operam por `contact_id` (marcar) ou `appointment_id` (remarcar e
+  // cancelar). NENHUMA recebe `lead_id`. Classificá-las `funil_vem_do_lead` seria
+  // TEATRO: o gate procuraria um argumento que nunca vem, cairia no ramo de
+  // "sem lead" e liberaria 100% das vezes — com aparência de escopado. Quem lesse
+  // a tabela concluiria "está protegido" e estaria errado.
+  //
+  // `sem_funil` e `funil_vem_do_lead`-que-nunca-resolve têm comportamento IDÊNTICO
+  // e legibilidade oposta. Declarar o que não protege é o uso correto deste valor,
+  // que existe — nas palavras do próprio tipo — "porque 'não se aplica' e 'ninguém
+  // decidiu' precisam ser distinguíveis".
+  //
+  // Quem limita estas três é o RBAC (agent+ escreve compromisso) e o risco
+  // `critico` do cancelar, que não entra por pacote. O alvo `funil_vem_do_contato`
+  // (DECISÃO 27) fecharia `crm_book_appointment` de verdade, porque ali o
+  // `contact_id` é OBRIGATÓRIO — entra em seguida, com resolvedor próprio.
+  crm_book_appointment: "sem_funil",
+  crm_reschedule_appointment: "sem_funil",
+  crm_cancel_appointment: "sem_funil",
+
   // ---- não têm funil, e isso é declarado ----
   crm_send_whatsapp_message: "sem_funil",
   crm_add_case_note: "sem_funil",
@@ -164,31 +185,64 @@ export async function podeChamarFerramenta(entrada: {
     };
   }
 
-  if (alvo === "sem_funil") return { permitido: true };
+  // ⚠️ SWITCH EXAUSTIVO, E O `never` NO DEFAULT É O PONTO DESTE BLOCO.
+  //
+  // Antes isto era uma cadeia de `if`s com o último ramo IMPLÍCITO
+  // (`funil_vem_do_lead` sem `case`). Um valor novo em `AlvoDeFunil` — e a
+  // entrega da agenda acrescenta dois — caía nesse ramo, procurava um
+  // `lead_id` que aquela ferramenta nem tem, não achava, e LIBERAVA. Escopo
+  // que morre em silêncio é o modo de falha que este arquivo inteiro existe
+  // para impedir, e ele estava aberto na porta de trás.
+  //
+  // Agora quem acrescenta valor ao tipo sem tratar aqui é reprovado pelo
+  // COMPILADOR, não por teste: `const naoTratado: never = alvo` só compila
+  // enquanto todos os casos estiverem cobertos. É impossível de esquecer, que
+  // é a diferença entre guarda e lembrete.
+  switch (alvo) {
+    case "sem_funil":
+      return { permitido: true };
 
-  if (alvo === "pipeline_no_argumento") {
-    const p = entrada.argumentos.pipeline_id;
-    return podeOperarNoFunil(entrada.escopo, typeof p === "string" ? p : null);
-  }
-
-  if (alvo === "alvo_polimorfico") {
-    // `crm_manage_tags` marca conversa, contato OU lead. Só o terceiro tem funil.
-    if (entrada.argumentos.target_kind !== "lead") return { permitido: true };
-    const id = entrada.argumentos.target_id;
-    if (typeof id !== "string") {
-      return { permitido: false, motivo: "indisponivel", detalhe: "target_id ausente" };
+    case "pipeline_no_argumento": {
+      const p = entrada.argumentos.pipeline_id;
+      return podeOperarNoFunil(entrada.escopo, typeof p === "string" ? p : null);
     }
-    return resolverPeloLead(entrada, id);
-  }
 
-  // funil_vem_do_lead
-  const leadId = entrada.argumentos.lead_id;
-  if (typeof leadId !== "string") {
-    // A ferramenta aceita alvo por contato (é o caso do follow-up). Sem lead não
-    // há funil a checar — e recusar aqui bloquearia um caminho legítimo.
-    return { permitido: true };
+    case "alvo_polimorfico": {
+      // `crm_manage_tags` marca conversa, contato OU lead. Só o terceiro tem funil.
+      if (entrada.argumentos.target_kind !== "lead") return { permitido: true };
+      const id = entrada.argumentos.target_id;
+      if (typeof id !== "string") {
+        return { permitido: false, motivo: "indisponivel", detalhe: "target_id ausente" };
+      }
+      return resolverPeloLead(entrada, id);
+    }
+
+    case "funil_vem_do_lead": {
+      const leadId = entrada.argumentos.lead_id;
+      if (typeof leadId !== "string") {
+        // A ferramenta aceita alvo por contato (é o caso do follow-up). Sem lead
+        // não há funil a checar — e recusar aqui bloquearia um caminho legítimo.
+        // A consequência está medida em `tests/unit/escopo-de-funil.test.ts`:
+        // com `lead_id` opcional, o escopo vira opcional na prática.
+        return { permitido: true };
+      }
+      return resolverPeloLead(entrada, leadId);
+    }
+
+    default: {
+      // O compilador já garantiu que isto é inalcançável em TypeScript. O ramo
+      // existe para o RUNTIME: `ALVO_DE_FUNIL` é um Record indexado por string,
+      // e um valor escrito à mão (ou vindo de JS puro) chega aqui. Falha
+      // FECHADA, pela mesma razão da vacuidade acima — liberar o desconhecido
+      // é como o escopo morre.
+      const naoTratado: never = alvo;
+      return {
+        permitido: false,
+        motivo: "ferramenta_nao_classificada",
+        ferramenta: `${entrada.ferramenta} (alvo não tratado: ${String(naoTratado)})`,
+      };
+    }
   }
-  return resolverPeloLead(entrada, leadId);
 }
 
 async function resolverPeloLead(

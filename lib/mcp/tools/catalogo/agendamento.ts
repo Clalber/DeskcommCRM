@@ -63,4 +63,50 @@ export const TOOLS_AGENDAMENTO = declararTools([
     risco: "seguro",
     pacotes: ["vender"],
   },
+  {
+    name: "crm_list_appointments",
+    category: "read",
+    rotulo: "Ver os compromissos marcados",
+    explicacao:
+      "Lista os compromissos com hora marcada de um cliente ou de um dia, com a situação de cada um: marcado, realizado ou desmarcado.",
+    oQueToca: "Agenda da equipe",
+    risco: "seguro",
+    pacotes: ["vender"],
+  },
+  {
+    name: "crm_book_appointment",
+    category: "write",
+    rotulo: "Marcar consulta ou sessão",
+    explicacao:
+      "Reserva um horário do atendente para receber o cliente. A pessoa passa a contar com esse horário, então não é um registro interno.",
+    oQueToca: "Agenda da equipe",
+    // `atencao` e não `critico`: marcar errado se desfaz — remarca ou desmarca.
+    risco: "atencao",
+    pacotes: ["vender"],
+  },
+  {
+    name: "crm_reschedule_appointment",
+    category: "write",
+    rotulo: "Remarcar um compromisso",
+    explicacao:
+      "Move um compromisso já marcado para outro horário, mantendo o mesmo cliente e o mesmo tipo de atendimento.",
+    oQueToca: "Agenda da equipe",
+    risco: "atencao",
+    pacotes: ["vender"],
+  },
+  {
+    name: "crm_cancel_appointment",
+    category: "write",
+    rotulo: "Desmarcar um compromisso",
+    explicacao:
+      "Desmarca um horário combinado e devolve esse horário para outra pessoa poder pegar, o que não dá para desfazer.",
+    oQueToca: "Agenda da equipe",
+    // ⚠️ `critico` INVERTE a intuição, e a régua do repo decide sozinha: crítico é
+    // "efeito que não dá para desfazer". Marcar errado se desfaz; CANCELAR não —
+    // o horário volta ao pool e some em segundos. Consequência deliberada: crítico
+    // nunca entra por pacote, então a IA marca assim que o pacote é ligado e só
+    // desmarca se o dono ligar explicitamente. Falha fechado no lado certo.
+    risco: "critico",
+    pacotes: ["vender"],
+  },
 ]);

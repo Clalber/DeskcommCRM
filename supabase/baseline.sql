@@ -13639,6 +13639,56 @@ revoke execute on function public.fn_semear_tipos_de_agendamento_na_org_nova() f
 grant  execute on function public.fn_semear_tipos_de_agendamento(uuid) to service_role;
 grant  execute on function public.fn_semear_tipos_de_agendamento_na_org_nova() to service_role;
 
+-- ---- o espelho do Google é cache com prazo: função (migration 0187) ----
+--
+-- A PRIMEIRA metade da 0187, aqui porque cria FUNÇÃO e a VARREDURA anon proíbe
+-- `create function` depois dela.
+--
+-- `calendar_external_events` ficou fora da cascata de LGPD (0184) por não ter
+-- `contact_id`. A decisão foi declarar ESPELHO — a fonte da verdade é a agenda do
+-- Google do próprio cliente. Mas essa declaração só é honesta com três
+-- propriedades, e faltava a terceira: PRAZO. Sem ele, "espelho" é um nome mais
+-- simpático para arquivo permanente de compromissos de terceiros.
+--
+-- Corta por `ends_at`, nunca por `created_at`: compromisso futuro não envelhece,
+-- e apagá-lo faria a agenda marcar em cima de hora ocupada. Piso de 7 dias e não
+-- 90 como o da auditoria — auditoria é rastro que precisa sobreviver a um
+-- incidente; isto é cache que o sync repõe.
+create or replace function public.fn_expurgar_espelho_da_agenda(
+  p_retencao_dias int default null,
+  p_limite int default null
+) returns int
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  -- 90 dias de passado visível; piso de 7 porque isto é cache reconstruível pelo
+  -- sync, e não rastro que precise sobreviver a um incidente.
+  v_dias int := greatest(coalesce(p_retencao_dias, 90), 7);
+  v_limite int := least(greatest(coalesce(p_limite, 1000), 1), 10000);
+  v_apagadas int;
+begin
+  with vencidos as (
+    select e.id
+      from public.calendar_external_events e
+     -- `ends_at` e não `created_at`: um compromisso futuro não envelhece, e
+     -- apagá-lo faria a agenda marcar em cima de hora ocupada.
+     where e.ends_at < now() - make_interval(days => v_dias)
+     order by e.ends_at
+     limit v_limite
+  )
+  delete from public.calendar_external_events e
+   using vencidos v
+   where e.id = v.id;
+  get diagnostics v_apagadas = row_count;
+  return v_apagadas;
+end;
+$$;
+
+revoke execute on function public.fn_expurgar_espelho_da_agenda(int, int) from public, anon, authenticated;
+grant  execute on function public.fn_expurgar_espelho_da_agenda(int, int) to service_role;
+
 -- ---- VARREDURA anon: função nova nasce exposta em quem ATUALIZA (migration 0116) ----
 --
 -- ⚠️ ESTE BLOCO É, DE PROPÓSITO, O ÚLTIMO DO ARQUIVO. Apêndice novo entra ANTES
@@ -15313,3 +15363,94 @@ comment on function public.fn_semear_tipos_de_agendamento(uuid) is
   'O PISO da agenda: três tipos neutros (Consulta, Reunião, Atendimento) para que instalação fresca tenha o que marcar. Não é o teto — o enriquecimento por nicho vive no passo do funil do onboarding, onde o nicho existe. `on conflict do nothing` para nunca sobrescrever o que o dono editou.';
 
 notify pgrst, 'reload schema';
+
+-- ---- a cor da pessoa é uma trilha, e a do tipo não existe (migration 0186) ----
+--
+-- A 0177 criou duas colunas de cor guardando hex. As duas estavam erradas, e o
+-- argumento é do @VPS: hex guardado é "um segundo lugar para a mesma verdade, e
+-- o tema escuro fica de fora". Medido: as cores vivem em `--agenda-pessoa-1..8`
+-- no globals.css, em TRÊS blocos de tema, e a mesma trilha tem hex diferente em
+-- cada um.
+--
+-- `calendar_color` VIRA TRILHA e a escolha manual FICA: a derivação a partir do
+-- `user_id` é estável mas COLIDE (oito trilhas, mais de oito pessoas), e quem
+-- administra vai querer desempatar. NULL = use a derivada.
+--
+-- `calendar_event_types.color` SAI: há UM pixel por compromisso na grade, e duas
+-- colorações competindo pelo mesmo lugar significam que uma delas mente. O pedido
+-- é cor POR PESSOA. Se voltar um dia, volta como trilha, com alternador.
+--
+-- ⚠️ DROP COLUMN é destrutivo. O que autoriza: as colunas nasceram na 0177 hoje,
+-- o seed da 0185 não preenche nenhuma, e a varredura por consumidor devolveu zero
+-- com controle positivo. Não há dado de cliente a perder porque não há caminho
+-- que grave.
+-- ─── 1 · a cor da pessoa vira trilha ──────────────────────────────────────
+alter table public.user_organizations
+  add column if not exists calendar_trilha smallint;
+
+alter table public.user_organizations
+  drop constraint if exists user_organizations_calendar_trilha_valida;
+alter table public.user_organizations
+  add constraint user_organizations_calendar_trilha_valida
+  check (calendar_trilha is null or calendar_trilha between 1 and 8);
+
+comment on column public.user_organizations.calendar_trilha is
+  'A trilha de cor desta pessoa na grade da Agenda, nesta organização (1..8). NULL = use a derivada de trilhaPadraoDoMembro(user_id), que é estável mas colide para alguns pares — esta coluna existe para quem administra desempatar. A COR de cada trilha vive em app/globals.css (--agenda-pessoa-N) e muda com o tema; guardar hex aqui seria um segundo lugar para a mesma verdade, sem tema escuro. ⚠️ A policy de SELECT desta tabela é self-OU-manager+: um `agent` não lê a linha dos colegas pelo PostgREST, então as trilhas chegam à tela pela rota que monta o roster com service role.';
+
+alter table public.user_organizations
+  drop constraint if exists user_organizations_calendar_color_format;
+alter table public.user_organizations
+  drop column if exists calendar_color;
+
+-- ─── 2 · a cor do tipo de agendamento sai ─────────────────────────────────
+alter table public.calendar_event_types
+  drop constraint if exists calendar_event_types_color_format;
+alter table public.calendar_event_types
+  drop column if exists color;
+
+notify pgrst, 'reload schema';
+
+-- ---- o espelho do Google é cache com prazo (migration 0187) ----
+--
+-- A SEGUNDA metade da 0187. A função está ANTES do bloco da VARREDURA anon.
+comment on table public.calendar_external_events is
+  'ESPELHO, somente-leitura, do que já existe na agenda conectada. Ocupa horário e aparece na grade, mas NÃO é compromisso nosso: não tem lead, não tem estado de atendimento e nunca é reescrito por nós. É CACHE — reconstruível pelo sync, apagado em cascata quando a conexão sai, e com prazo (fn_expurgar_espelho_da_agenda, migration 0187). Fica FORA da cascata de LGPD por não ter contact_id: o único vínculo com a pessoa é o title copiado do Google, e a fonte da verdade daquele dado é a agenda do próprio cliente, onde o titular exerce o direito com o controlador de lá. A mira de verdade só nasce com o escritor do sync, que terá o ical_uid para ligar — decisão de QUANDO, não de SE.';
+
+create index if not exists calendar_external_events_poda_idx
+  on public.calendar_external_events (ends_at);
+
+notify pgrst, 'reload schema';
+
+-- ---- o espelho não se limpa sozinho (migration 0189) ----
+--
+-- A 0187 deu prazo ao espelho e o comentário passou a dizer "cache com prazo".
+-- Está certo e é insuficiente: quem ler aquilo conclui que ele se limpa sozinho.
+--
+-- O caso que a poda NÃO alcança: evento com `ends_at` no FUTURO, de conexão
+-- VIVA, apagado no Google. Nunca envelhece — o corte é `ends_at < now() - N`, e
+-- futuro não vence. Fica aqui para sempre, ocupando horário que na agenda do
+-- cliente já está livre, e fazendo a agenda RECUSAR hora que existe. Quem limpa
+-- é a RECONCILIAÇÃO do sync, que é de outra frente e não existe hoje.
+--
+-- Merece migration e não linha de doc porque `comment on table` é o que se lê no
+-- `\d+` e é a única declaração que viaja com o schema para todo clone. Ressalva
+-- que fica no briefing morre com a entrega.
+comment on table public.calendar_external_events is
+  'ESPELHO, somente-leitura, do que já existe na agenda conectada. Ocupa horário e aparece na grade, mas NÃO é compromisso nosso: não tem lead, não tem estado de atendimento e nunca é reescrito por nós. '
+  'É CACHE — reconstruível pelo sync, apagado em cascata quando a conexão sai, e com prazo para o PASSADO (fn_expurgar_espelho_da_agenda, migration 0187). '
+  '⚠️ O PRAZO NÃO LIMPA O FANTASMA: evento com ends_at no FUTURO, de conexão viva, apagado lá no Google, nunca envelhece e fica aqui para sempre — ocupando um horário que na agenda do cliente já está livre, e fazendo a agenda RECUSAR hora que existe. Quem limpa isso é a RECONCILIAÇÃO do sync (remover o que não veio na resposta da janela), que é da frente do Google e não existe hoje. '
+  'Fica FORA da cascata de LGPD por não ter contact_id: o único vínculo com a pessoa é o title copiado do Google, e a fonte da verdade daquele dado é a agenda do próprio cliente, onde o titular exerce o direito com o controlador de lá. A mira de verdade só nasce com o escritor do sync, que terá o ical_uid para ligar — decisão de QUANDO, não de SE.';
+
+notify pgrst, 'reload schema';
+-- ---- a volta do Google precisa de identidade (migration 0188) ----
+-- `calendar_appointments.google_ical_uid` existe desde a 0177 e diz qual evento
+-- do Google é nosso. A linha de VOLTA não tinha equivalente, e sem chave entre
+-- os dois o mesmo compromisso movido no Google passa a bloquear DOIS horários —
+-- o novo, pela linha externa, e o antigo, pelo agendamento — sem nada que os
+-- ligue para desfazer. Aditiva e idempotente.
+alter table public.calendar_external_events
+  add column if not exists ical_uid text;
+
+create index if not exists calendar_external_events_ical_uid_idx
+  on public.calendar_external_events (organization_id, ical_uid)
+  where ical_uid is not null;
