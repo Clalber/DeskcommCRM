@@ -54,28 +54,6 @@ jobs:
       - name: Unit tests
         run: pnpm test:unit
 
-      # O NÚMERO DA PRÓXIMA VERSÃO, decidido por regra e não pelo olho.
-      #
-      # Precisa das TAGS e do histórico (`fetch-depth: 0`), porque o veredito sai
-      # do diff desde a última release — e o `actions/checkout` cru traz um
-      # commit e nenhuma tag. Sem isto o passo mediria o nada e ficaria verde,
-      # que é pior do que não existir: um instrumento quebrado devolve zero e a
-      # ausência de reprovação é lida como aprovação.
-      #
-      # Roda em TODO PR de propósito, mesmo nos que não cortam release: assim ele
-      # pode ser status check obrigatório. Um job com filtro de `paths` fica
-      # `pending` para sempre nos PRs que o filtro exclui, e um check obrigatório
-      # que não roda trava o merge de todo mundo.
-      #
-      # Em PR que não corta release ele só INFORMA que nível o trabalho acumulado
-      # exige. Reprova em dois casos: o CHANGELOG declara um número que o
-      # conteúdo não pede, ou há `### ⚠️ Requer atenção` sem dizer se o operador
-      # precisa agir. A régua e a calibração estão em lib/release/nivel-da-versao.ts.
-      - name: Fetch tags (o veredito de versão precisa do histórico)
-        run: git fetch --prune --unshallow --tags origin || git fetch --tags origin
-
-      - name: Nível da versão
-        run: pnpm release:nivel
 
       # Scripts do kit self-host num repo git descartável (docker/crontab
       # dublados). É o único gate que exercita o update.sh — um erro aqui

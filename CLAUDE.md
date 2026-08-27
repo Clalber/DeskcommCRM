@@ -252,24 +252,6 @@ O não-negociável, em quatro linhas:
 Bump de versão **não pode** exigir que o operador da VPS edite `.env`, compose
 ou qualquer arquivo à mão. Se exigir, não entra: vira issue com plano de
 migração e vai para uma major.
-
-5. **O NÍVEL do bump não se escolhe, se calcula.** `pnpm release:nivel` diz o
-   número que a próxima release precisa ter, e por quê; roda no `verify` de todo
-   PR e falha fechado (`rc=2`) se o clone não tiver as tags. **MAJOR** = a
-   atualização não se aplica sozinha (editar arquivo, promover usuário,
-   reconectar canal) — e isso se DECLARA, com `<!-- exige-acao-do-operador: sim -->`
-   dentro do bloco `### ⚠️ Requer atenção`. **MINOR** = capacidade nova, detectada
-   por rota/tela/porta nova **ou** por `### Adicionado`. **PATCH** = o resto.
-   Regra e calibração em `lib/release/nivel-da-versao.ts`; lei em
-   [`docs/doctrine/packaging.md`](docs/doctrine/packaging.md) (invariante 6-b).
-
-   **Não invente o número olhando o tamanho do trabalho.** Uma auditoria de
-   2026-08-26 mediu as 8 releases: inflação de minor = **zero casos**; o desvio
-   real corre no sentido oposto — a v1.4.1 saiu PATCH com `### Adicionado` no
-   próprio CHANGELOG, e a v1.2.1 saiu PATCH mandando "promova a pessoa a
-   administrador antes de atualizar". Para conferir uma release passada:
-   `pnpm release:nivel v1.4.0 v1.4.1`.
-
 ---
 
 ## Como rodar local
@@ -440,5 +422,15 @@ Antes de declarar uma task pronta:
     ([`docs/audits/2026-08-14-afirmacoes-de-estado.md`](docs/audits/2026-08-14-afirmacoes-de-estado.md)).
     Onde a afirmação puder virar **comando**, troque em vez de corrigir: um número corrigido
     envelhece de novo; um `rode isto para saber` não envelhece nunca
+
+17. **Se o PR muda comportamento visível a quem opera uma VPS, ele traz o seu fragmento em
+    `.changes/`** (lei em [`docs/doctrine/versionamento.md`](docs/doctrine/versionamento.md)).
+    O fragmento declara **o efeito no operador** — `nada_mudou` / `capacidade_nova` /
+    `exige_acao` —, nunca o número: o número é calculado a partir do conjunto, e é por isso
+    que duas sessões paralelas não colidem mais. Confira com `pnpm release:conferir`.
+    O CI valida a FORMA de todo fragmento, mas **não** cobra a presença de um — cobrar
+    presença num check obrigatório reprovaria PR de Dependabot, PR de fork, e o próprio PR
+    de release, que consome os fragmentos e deixa o diretório vazio. A presença é cobrada
+    aqui, e por quem revisa.
 
 Um staff engineer aprovaria? Se não, itera.

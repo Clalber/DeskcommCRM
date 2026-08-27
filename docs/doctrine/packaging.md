@@ -223,51 +223,6 @@ default que preserva o comportamento anterior**; se ela precisa existir, quem a 
   default seguro (já cobrado no DoD); mudança que exija chave nova no `.env` de instalação
   existente só entra com o `update.sh` sabendo acrescentá-la.
 
-### 6-b. O NÍVEL do bump sai de uma regra, não do olho
-
-O invariante 6 diz o que um bump **não pode exigir**. Ele nunca disse **qual número usar** — e
-essa ausência tinha consequência medida. Em 2026-08-26, no SHA `1037d7e9`: os cinco status
-checks obrigatórios não leem CHANGELOG nem tag, `grep -ciE "major|minor|patch" CONTRIBUTING.md`
-devolvia `0`, e nenhum arquivo de doutrina definia o critério. O número era escolhido no olho,
-uma vez por release.
-
-**O critério, agora escrito.** O eixo não é "quão grande foi o trabalho", é **o que muda para
-quem opera a VPS**:
-
-| nível | o que caracteriza | como se decide |
-|---|---|---|
-| **MAJOR** | a atualização **não se aplica sozinha**, ou tira capacidade que alguém tinha: editar arquivo, promover usuário, reconectar canal, rodar o `update.sh` duas vezes | **declarado** no bloco `### ⚠️ Requer atenção`, com `<!-- exige-acao-do-operador: sim -->` |
-| **MINOR** | capacidade nova, aplica-se sozinha | **detectado**: rota, tela ou porta de navegação nova **OU** `### Adicionado` na seção |
-| **PATCH** | só conserta o que já devia funcionar, aplica-se sozinho | nenhum dos dois acima |
-
-**Por que MINOR é detectado por DUAS fontes.** Estrutura sozinha erra: a ingestão do Respondi
-(v1.6.0) e as três formas de conectar o WhatsApp (v1.4.1) são capacidade nova em arquivo que já
-existia — nenhuma rota, nenhuma tela. `### Adicionado` sozinho seria catraca satisfeita pelo
-próprio autor, que escreve a seção e escolhe o número. Juntas se cobrem, e **a discordância
-entre elas é achado**: código que entrega recurso sem prosa que o anuncie foi a v1.3.0, cujo
-CHANGELOG só tinha `### Corrigido` enquanto o diff trazia 6 rotas e a aba "Provedor parceiro".
-
-**Por que MAJOR se DECLARA em vez de se detectar.** Foi tentado derivar do SQL e não funciona:
-`drop policy` aparece **24 vezes** nas 2 migrations da v1.2.1, porque todo refactor de RLS
-derruba e recria a policy. Detector por assinatura reprovaria quase toda release — catraca que
-nasce vermelha é catraca que ninguém respeita. O marcador não adivinha: ele **obriga a resposta
-no momento em que o aviso é escrito**, que é o único momento em que quem escreve sabe.
-
-- **Por quê:** o número é a única coisa que o operador lê antes de decidir aplicar. Um PATCH
-  que exige promover usuário a admin antes de atualizar (v1.2.1) entrega risco sob a etiqueta
-  de rotina. Não é o alcance que quebra — nenhum código do produto compara segmentos de versão,
-  medido: `grep -rniE '\bmajor\b|\bminor\b|\bpatch\b' hostgator-setup-kit/ .github/workflows/`
-  casa **uma** linha, o `{{major}}.{{minor}}` do `publish-image.yml`. É a **comunicação** que
-  quebra, e ela é o que separa uma atualização aplicada de uma adiada.
-- **Calibração (o que torna isto instrumento e não opinião):** a régua foi rodada contra as 8
-  releases reais. Ela concorda com 7 e reprova 1 — a v1.4.1, que saiu PATCH com `### Adicionado`
-  no próprio CHANGELOG. Zero falso positivo no histórico. A tabela está congelada em
-  `lib/release/nivel-da-versao.test.ts`, com o comando para refazê-la do zero.
-- **Verificação:** `pnpm release:nivel` (regra em `lib/release/nivel-da-versao.ts`, coletor em
-  `scripts/nivel-da-versao.ts`), rodado no job `verify` de todo PR. Ele **falha fechado**: sem
-  as tags no clone, sai com `rc=2` em vez de medir o nada e ficar verde. Para conferir uma
-  release passada: `pnpm release:nivel v1.4.0 v1.4.1`.
-
 ### 7. A versão que roda é observável de fora
 
 `GET /api/v1/health` responde a versão real da imagem em execução.

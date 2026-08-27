@@ -8,62 +8,6 @@ Se você roda o DeskcommCRM numa VPS, **leia a seção da versão para a qual es
 
 ## [Não lançado]
 
-## [1.7.0] — 2026-08-26
-
-### Adicionado
-
-- **O material do seu negócio agora é da empresa, e cada assistente escolhe o que lê.** Antes, o
-  que o agente sabia pertencia a UM assistente: dois times com o mesmo manual de trocas
-  precisavam cadastrá-lo duas vezes, indexá-lo duas vezes e pagar por ele duas vezes. Agora o
-  acervo é da organização — em **IA › Conhecimento** — e na tela de cada assistente há uma
-  seção **"O que ele consulta antes de responder"**, onde você marca o que aquele assistente
-  pode ler. O mesmo documento serve a quantos assistentes você quiser.
-- **Enviar arquivo passou a funcionar.** PDF, Markdown ou texto, até 20 MB — ou cole o texto
-  direto na tela, se preferir. Antes só existia o formato pergunta/resposta; quem tentava subir
-  um PDF não tinha por onde.
-- **Dá para ver o que o agente aprendeu de cada material.** O botão "Ver o que ele aprendeu"
-  mostra os trechos exatos que ele procura antes de responder. Quando ele erra sobre um assunto,
-  é ali que se descobre o porquê — antes a tela mostrava só um número.
-- **A tela diz quem consulta cada material.** Um documento que nenhum assistente lê aparece
-  marcado como tal: acervo que ninguém consulta é dinheiro gasto sem efeito, e isso era invisível.
-
-### Corrigido
-
-- **⚠️ O conhecimento cadastrado ia parar no assistente errado.** Se a sua organização tem mais
-  de um assistente, todo material cadastrado era preparado para o *primeiro* deles — sempre.
-  O segundo assistente nunca aprendia nada, sem erro, sem aviso, sem nada na tela. Além disso,
-  a tela de conhecimento só existia para o assistente que veio com a instalação: qualquer
-  assistente criado por você era invisível ali. **Depois de atualizar, confira em cada
-  assistente o que ele consulta** — a atualização preserva o que já valia, mas é o momento certo
-  de marcar o que faltava.
-- **⚠️ Cadastrar a chave da OpenAI pela tela não ligava a base de conhecimento.** O produto
-  dizia, em duas telas, que a OpenAI é necessária "para indexar o seu material" — e o motor só
-  olhava para a chave do arquivo de configuração da instalação. Quem cadastrou a chave em
-  IA › Credenciais e viu o material parado estava vendo esse defeito. Agora a chave sai da sua
-  organização, e a tela de conhecimento **diz qual está valendo**.
-- **Sem chave, o material ficava parado para sempre e ninguém era avisado.** Ele nascia como
-  "pronto", nada acontecia, e cadastrar a chave depois não recuperava o que ficou para trás.
-  Agora o material mostra **"Esperando a chave"**, um aviso abre na Central, a própria tela de
-  conhecimento oferece cadastrar a chave ali mesmo — e a preparação recomeça sozinha quando ela
-  chega. Nada do que você enviou é perdido.
-- **Preparar um material derrubava o outro.** Enquanto havia um único índice por assistente, a
-  rotina de conversas e a de perguntas frequentes competiam: a que rodasse por último apagava o
-  acervo da outra, em silêncio. Cada material passa a ter o índice dele.
-- **Arquivar um material não liberava o espaço.** Arquivada, a fonte continuava ocupando o lugar
-  e não dava para criar outra do mesmo tipo — nunca mais, sem mensagem que explicasse.
-- **O agente descartava paráfrases.** O corte de semelhança usado no atendimento era mais
-  rígido do que o calibrado com medição: "posso trocar se não servir?" era jogado fora mesmo com
-  a resposta escrita no seu material. Agora os três lugares que decidiam isso usam o mesmo valor.
-- **Duplicar um assistente perdia o escopo dele.** A cópia nascia sem os funis em que o original
-  mexia — e teria nascido sem os materiais também. Criar assistente pela API tinha o mesmo
-  problema: o pedido era aceito e metade dos campos, descartada.
-- **Conversas marcadas como aproveitáveis eram perdidas.** A rotina que as prepara gravava zero
-  trechos por um erro de configuração do banco, e mesmo assim as marcava como aproveitadas — o
-  que as tirava da fila para sempre.
-- **Segurança: qualquer pessoa da equipe podia apagar a base de conhecimento.** As quatro tabelas
-  do acervo aceitavam escrita de qualquer papel, inclusive o mais restrito, por fora das telas
-  do produto. Agora exigem gerente ou administrador, como as telas sempre exigiram.
-
 ## [1.6.0] — 2026-08-26
 
 ### Adicionado

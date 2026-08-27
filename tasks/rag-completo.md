@@ -96,9 +96,13 @@ categoria por agente.
 
 ## Doutrina de packaging (o Rafael declarou: este é um **minor**)
 
-Alvo: **1.7.0** — capacidade nova de schema, sem quebrar quem já instalou. (Era 1.6.0
-até a `main` cortar essa versão em 2026-08-26, no meio desta frente; o número de uma
-release só se sabe na hora do merge, e não antes.)
+Alvo: **o que os fragmentos de `.changes/` calcularem** — hoje `1.6.0 + minor = 1.7.0`,
+conferível com `pnpm release:conferir`. Este PR chegou a digitar `## [1.7.0]` no CHANGELOG à
+mão; enquanto ele estava aberto, a `main` mergeou o PR #357 e o número passou a ser CALCULADO
+dos fragmentos, nunca digitado — justamente para duas sessões paralelas não escolherem o mesmo
+número. A seção escrita à mão virou os 13 fragmentos em `.changes/`, e o `release:conferir`,
+que lia a minha seção como versão já lançada e ia cortar 1.8.0, voltou a calcular 1.7.0.
+
 Obrigações que entram NESTE PR (não no "polimento final"):
 
 1. Migration `0181` + apêndice idempotente no `baseline.sql` + linha no MANIFEST — **feito**.
