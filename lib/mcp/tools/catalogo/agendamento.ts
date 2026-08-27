@@ -38,9 +38,29 @@
  *   (b) tenta CHAMAR tool ausente ..... não é vazamento, é erro de tool call, e aparece no
  *       log de invocação do run.
  *
- *   (c) promete a capacidade sem tê-la . os gates `promise`/`semantic_promise` da mesma
- *       cadeia. É o desfecho que (a) e (b) não cobrem: nenhum nome sai e nenhuma chamada
- *       acontece.
+ *   (c) promete a capacidade sem tê-la . NÃO é do before-send, e esta linha já afirmou o
+ *       contrário: dizia "os gates promise/semantic_promise da mesma cadeia", e os dois são
+ *       de outra categoria. Medido, com controle positivo para provar que as funções estão
+ *       vivas:
+ *
+ *         "vou verificar a agenda e já te confirmo"  -> detectHumanPromise=false, promise=[]
+ *         "vou verificar com a EQUIPE e te confirmo" -> detectHumanPromise=TRUE   (controle+)
+ *         "consigo fazer por R$ 200 à vista"         -> promise=["price"]         (controle+)
+ *         "quinta às 14h, pode ser?"                 -> ambos false               (controle-)
+ *
+ *       `human-promise` exige ALVO HUMANO (verificar COM alguém) e `promise/engine` só
+ *       conhece preço/desconto/parcelas. O semântico também não é a rede: a instrução dele
+ *       exclui em letra "próximos passos vagos SEM compromisso concreto".
+ *
+ *       A rede REAL é o OPERADOR, e ela é boa: a instrução da declaração do turno
+ *       (`lib/agent-engine/agent/declaracao.ts`) manda declarar "tudo que você prometeu a
+ *       ela — INCLUSIVE 'vou verificar e te aviso'", e `promessasEmAberto` faz o Operador
+ *       apurar se alguém assumiu; sem dono, abre aviso na Central.
+ *
+ *       ⚠️ LIMITE, escrito no próprio operator-turn.ts: a apuração diz se alguém ficou
+ *       RESPONSÁVEL, não se a promessa foi cumprida — "agendar um retorno não é cumprir". E
+ *       ela é DECLARATIVA: nasce do Conversador declarar. Modelo que promete e não declara
+ *       não gera rede nenhuma, e nesse caminho não há detecção, só a declaração.
  *
  * ⚠️ O QUE NINGUÉM MEDIU AINDA: como o modelo se comporta, de fato, num tenant com a
  * família só no Operador. Há lugar de observação — `before_send_traces` é durável e
