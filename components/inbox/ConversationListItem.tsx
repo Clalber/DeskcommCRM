@@ -10,6 +10,7 @@ import { comandoDaConversa } from "@/lib/inbox/comando-da-conversa";
 import { cn } from "@/lib/utils";
 import type { ConversationWithContact } from "@/hooks/inbox/useConversationsRealtime";
 import { rotuloDoContato } from "@/lib/contacts/rotulo-do-contato";
+import { phoneForDisplay } from "@/lib/channels/phone-variants";
 
 interface Props {
   conversation: ConversationWithContact;
@@ -96,7 +97,7 @@ export function ConversationListItem({
   const t = useT();
   const c = conversation.contacts ?? null;
   const displayName = rotuloDoContato(c);
-  const phoneFallback = c?.phone_number ?? "??";
+  const phoneFallback = c?.phone_number ? phoneForDisplay(c.phone_number) : "??";
   const tags = c?.tags ?? [];
   const visibleTags = tags.slice(0, 2);
   const overflow = tags.length - visibleTags.length;

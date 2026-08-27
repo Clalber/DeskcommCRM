@@ -26,6 +26,7 @@ import { InboxKeyboardShortcuts } from "./InboxKeyboardShortcuts";
 import { CONVERSATION_QUEUE_STATUSES } from "@/lib/schemas";
 
 import { ShortcutsHelpDialog } from "./ShortcutsHelpDialog";
+import { OpenConversationProvider } from "@/hooks/notifications/OpenConversationContext";
 // ADR-05: ícone de feature sai do mapa canônico, nunca do pacote direto.
 import { CaretLeft, IdentificationCard } from "@/lib/ui/icons";
 import { Button } from "@/components/ui/button";
@@ -292,6 +293,7 @@ export function InboxLayout({ initialSelectedId = null }: InboxLayoutProps = {})
   // piso do composer (370px), em vez dos 2px que a versão de uma faixa só
   // deixava. Margem de 2px não é margem, é sorte.
   return (
+    <OpenConversationProvider conversationId={selectedId}>
     <div
       className="grid h-[calc(100dvh-3.5rem-2*var(--space-6))] w-full grid-cols-1 md:grid-cols-[300px_1fr] xl:grid-cols-[272px_1fr_296px] 2xl:grid-cols-[300px_1fr_320px]"
       /*
@@ -339,8 +341,8 @@ export function InboxLayout({ initialSelectedId = null }: InboxLayoutProps = {})
         <InboxFilters value={filterValue} onChange={setFilterValue} />
         <div className="min-h-0 flex-1 overflow-hidden">
           <ConversationList
+            listQuery={listQ}
             filters={filters}
-            orgId={orgId}
             selectedId={selectedId}
             onSelect={handleSelect}
             clientFilter={clientFilter}
@@ -453,5 +455,6 @@ export function InboxLayout({ initialSelectedId = null }: InboxLayoutProps = {})
       />
       <ShortcutsHelpDialog open={helpOpen} onOpenChange={setHelpOpen} />
     </div>
+    </OpenConversationProvider>
   );
 }

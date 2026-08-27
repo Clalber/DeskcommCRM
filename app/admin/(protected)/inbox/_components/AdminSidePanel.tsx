@@ -3,6 +3,7 @@ import Link from "next/link";
 import type { AdminConversationDetailResponse } from "@/hooks/useAdminConversation";
 import { Buildings, Phone, ArrowRight } from "@/lib/ui/icons";
 import { useT } from "@/hooks/i18n/useT";
+import { phoneForDisplay } from "@/lib/channels/phone-variants";
 
 interface Props {
   data: AdminConversationDetailResponse;
@@ -48,7 +49,7 @@ export function AdminSidePanel({ data }: Props) {
             {contact.phone_number && (
               <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                 <Phone size={12} weight="duotone" aria-hidden />
-                {contact.phone_number}
+                {phoneForDisplay(contact.phone_number)}
               </div>
             )}
             {contact.email && (

@@ -55,6 +55,7 @@ export const DICIONARIO: Traducoes = {
   Funis: { es: "Embudos" },
   "Etapas do funil": { es: "Etapas del embudo" },
   "Tipos de agendamento": { es: "Tipos de cita" },
+  Automação: { es: "Automatización" },
   Agentes: { es: "Agentes" },
   "Follow-ups": { es: "Seguimientos" },
   Roteadores: { es: "Enrutadores" },
@@ -4573,7 +4574,6 @@ export const DICIONARIO: Traducoes = {
   "Pausou o automático": { es: "Pausó el automático" },
   "Atividade registrada": { es: "Actividad registrada" },
   "Você/time": { es: "Tú/equipo" },
-  "Automação": { es: "Automatización" },
   "Sistema": { es: "Sistema" },
   "Autor não registrado": { es: "Autor no registrado" },
 
@@ -5516,6 +5516,56 @@ export const DICIONARIO: Traducoes = {
   "Sem dono": { es: "Sin dueño" },
   "Você assumiu a demanda": { es: "Asumiste la demanda" },
   "Assistente retorna": { es: "El asistente vuelve" },
+
+  // ─── Merge PR #365 (Web Push, relógio HTTP e follow-up reativo) — i18n ───
+  "Adicionar campo": { es: "Agregar campo" },
+  "Aparecem no dossiê do negócio. No follow-up, você escolhe em qual campo gravar a resposta.": {
+    es: "Aparecen en el dossier del negocio. En el follow-up, eliges en qué campo guardar la respuesta.",
+  },
+  "Campos do funil": { es: "Campos del embudo" },
+  "Campos do lead neste funil": { es: "Campos del lead en este embudo" },
+  "Chave do campo": { es: "Clave del campo" },
+  "Contato excluído.": { es: "Contacto eliminado." },
+  "Disparado por uma automação em Webhooks": { es: "Disparado por una automatización en Webhooks" },
+  "Email ainda não está disponível. In-app (toast) e Push (Chrome) já funcionam para as cinco categorias.": {
+    es: "Email aún no está disponible. In-app (toast) y Push (Chrome) ya funcionan para las cinco categorías.",
+  },
+  "Escolha um fluxo publicado": { es: "Elige un flujo publicado" },
+  "Excluindo…": { es: "Eliminando…" },
+  "Excluir contato": { es: "Eliminar contacto" },
+  "Excluir contato?": { es: "¿Eliminar contacto?" },
+  "Fluxo de follow-up": { es: "Flujo de follow-up" },
+  "Fluxo excluído.": { es: "Flujo eliminado." },
+  "Fluxos automáticos de reengajamento — silêncio, etapa, webhook ou resposta do contato, sem intervenção em cada mensagem.": {
+    es: "Flujos automáticos de reenganche — silencio, etapa, webhook o respuesta del contacto, sin intervención en cada mensaje.",
+  },
+  "Follow-ups reengajam contatos após silêncio, mudança de etapa, uma regra em Webhooks ou a resposta do contato — sem depender de alguém lembrar de mandar mensagem.": {
+    es: "Los follow-ups reenganchan contactos tras silencio, cambio de etapa, una regla en Webhooks o la respuesta del contacto — sin depender de que alguien recuerde enviar un mensaje.",
+  },
+  "Iniciar conversa com": { es: "Iniciar conversación con" },
+  "Iniciar conversa no Inbox": { es: "Iniciar conversación en el Inbox" },
+  "Isso remove": { es: "Esto elimina" },
+  "Nenhum fluxo ativo. Publique um follow-up em Follow-ups para usá-lo aqui.": {
+    es: "Ningún flujo activo. Publica un follow-up en Follow-ups para usarlo aquí.",
+  },
+  "Novo campo": { es: "Nuevo campo" },
+  "O fluxo começa quando uma regra em Webhooks usa a ação «Iniciar fluxo de mensagem» apontando para este fluxo publicado.": {
+    es: "El flujo comienza cuando una regla en Webhooks usa la acción «Iniciar flujo de mensaje» apuntando a este flujo publicado.",
+  },
+  "O navegador bloqueou as notificações. Libere-as nas configurações do site e recarregue.": {
+    es: "El navegador bloqueó las notificaciones. Habilítalas en la configuración del sitio y recarga.",
+  },
+  "Opções do campo": { es: "Opciones del campo" },
+  "Opções, separadas por vírgula": { es: "Opciones, separadas por coma" },
+  "Remover campo": { es: "Quitar campo" },
+  "Rótulo (Endereço)": { es: "Etiqueta (Dirección)" },
+  "Rótulo do campo": { es: "Etiqueta del campo" },
+  "Só entram fluxos publicados e ativos.": { es: "Solo entran flujos publicados y activos." },
+  "Tipo do campo": { es: "Tipo del campo" },
+  "chave (endereco)": { es: "clave (direccion)" },
+  "e a conversa associada, se houver. Esta ação não pode ser desfeita.": {
+    es: "y la conversación asociada, si la hay. Esta acción no puede deshacerse.",
+  },
 };
 
 /**

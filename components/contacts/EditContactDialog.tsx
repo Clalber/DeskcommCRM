@@ -17,6 +17,7 @@ import { Label } from "@/components/ui/label";
 import { contactPatchSchema, type ContactPatch } from "@/lib/schemas/contacts";
 import { useUpdateContact } from "@/hooks/contacts/useUpdateContact";
 import type { Contact } from "@/lib/types/contacts";
+import { phoneForDisplay } from "@/lib/channels/phone-variants";
 
 interface FormShape {
   name?: string;
@@ -40,7 +41,7 @@ export function EditContactDialog({ contact, open, onOpenChange }: Props) {
     defaultValues: {
       name: contact.name ?? "",
       email: contact.email ?? "",
-      phone_number: contact.phone_number ?? "",
+      phone_number: contact.phone_number ? phoneForDisplay(contact.phone_number) : "",
       tagsRaw: contact.tags.join(", "),
     },
   });
@@ -50,7 +51,7 @@ export function EditContactDialog({ contact, open, onOpenChange }: Props) {
       form.reset({
         name: contact.name ?? "",
         email: contact.email ?? "",
-        phone_number: contact.phone_number ?? "",
+        phone_number: contact.phone_number ? phoneForDisplay(contact.phone_number) : "",
         tagsRaw: contact.tags.join(", "),
       });
     }

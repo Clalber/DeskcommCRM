@@ -44,6 +44,8 @@ interface Props {
   stages: Stage[];
   /** Vincula o lead criado a este contato de origem (ex.: painel do Inbox). */
   contactId?: string | null;
+  /** Depois do INSERT — o inbox relê o resumo para o lead novo aparecer no formulário. */
+  onCreated?: () => void;
 }
 
 function defaultStageId(stages: Stage[]): string {
@@ -51,7 +53,14 @@ function defaultStageId(stages: Stage[]): string {
   return open?.id ?? stages[0]?.id ?? "";
 }
 
-export function NewLeadDialog({ open, onOpenChange, pipelineId, stages, contactId }: Props) {
+export function NewLeadDialog({
+  open,
+  onOpenChange,
+  pipelineId,
+  stages,
+  contactId,
+  onCreated,
+}: Props) {
   const t = useT();
   const create = useCreateLead(pipelineId);
   const initialStage = useMemo(() => defaultStageId(stages), [stages]);
@@ -113,6 +122,7 @@ export function NewLeadDialog({ open, onOpenChange, pipelineId, stages, contactI
     try {
       await create.mutateAsync(parsed.data as CreateLeadInput);
       toast.success(t("Lead criado"));
+      onCreated?.();
       form.reset({
         title: "",
         description: "",

@@ -16,6 +16,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useContactList } from "@/hooks/contacts/useContactList";
 import { parseDialablePhone, phoneToWhatsappId } from "@/lib/messaging/contact-card";
+import { phoneForDisplay } from "@/lib/channels/phone-variants";
+import { rotuloDoContato } from "@/lib/contacts/rotulo-do-contato";
 import { MagnifyingGlass, UserCircle } from "@/lib/ui/icons";
 import { cn } from "@/lib/utils";
 import type { Contact } from "@/lib/types/contacts";
@@ -37,7 +39,7 @@ interface Props {
 }
 
 function displayName(c: Contact, t: (texto: string) => string = (texto) => texto): string {
-  return c.display_name ?? c.name ?? c.phone_number ?? t("Sem nome");
+  return rotuloDoContato(c, t);
 }
 
 export function ContactPickerDialog({
@@ -167,7 +169,7 @@ export function ContactPickerDialog({
                     <span className="min-w-0 flex-1">
                       <span className="block truncate font-medium">{displayName(c, t)}</span>
                       {c.phone_number && (
-                        <span className="block truncate text-xs text-muted-foreground">{c.phone_number}</span>
+                        <span className="block truncate text-xs text-muted-foreground">{phoneForDisplay(c.phone_number)}</span>
                       )}
                     </span>
                   </button>

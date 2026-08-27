@@ -39,7 +39,7 @@ export default async function FollowupFlowsPage() {
           <h1 className="text-2xl font-semibold tracking-tight">{traduzir("Follow-ups", idioma)}</h1>
           <p className="text-sm text-text-muted">
             {traduzir(
-              "Fluxos automáticos de reengajamento — silêncio, mudança de etapa ou fim de conversa disparam mensagens sem intervenção manual.",
+              "Fluxos automáticos de reengajamento — silêncio, etapa, webhook ou resposta do contato, sem intervenção em cada mensagem.",
               idioma,
             )}
           </p>

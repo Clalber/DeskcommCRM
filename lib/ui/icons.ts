@@ -43,6 +43,7 @@ export {
   ArrowBendUpLeft,
   List,
   Bell,
+  BellSlash,
   PaperPlaneTilt,
   Smiley,
   Check,
