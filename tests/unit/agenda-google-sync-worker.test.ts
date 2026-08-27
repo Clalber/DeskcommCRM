@@ -31,6 +31,9 @@ let apagados: string[] = [];
 let removidos: number;
 let tokensGravados: Array<string | null>;
 
+const FUSO_DA_ORG = "America/Sao_Paulo";
+const ORG_DO_TESTE = "org-1";
+
 function admin() {
   return {
     from: (tabela: string) => {
@@ -42,6 +45,11 @@ function admin() {
         select: () => {
           const c: Record<string, unknown> = {
             eq: () => c,
+            // `organizations` é lida com `.in(...)` para resolver o fuso de fallback do sync.
+            in: () =>
+              tabela === "organizations"
+                ? { then: (r: (v: unknown) => void) => r({ data: [{ id: ORG_DO_TESTE, timezone: FUSO_DA_ORG }], error: null }) }
+                : { then: (r: (v: unknown) => void) => r({ data: [], error: null }) },
             then: (resolver: (v: unknown) => void) => resolver({ data: jaGuardados, error: null }),
           };
           return c;
@@ -123,6 +131,34 @@ describe("sincronizarAgendasDoGoogle", () => {
       transparency: "opaque",
       ical_uid: "abc@google.com",
     });
+  });
+
+  it("calendário SEM fuso cai no fuso da ORGANIZAÇÃO, nunca em UTC", async () => {
+    // O defeito que este caso fecha: `cal.fuso` era cravado em `null` no mapeamento da
+    // rota, e o fallback `|| "UTC"` disparava SEMPRE. Em `America/Sao_Paulo` um evento de
+    // DIA INTEIRO lido como UTC começa à meia-noite UTC — 21h do dia ANTERIOR na parede da
+    // pessoa —, então a agenda bloqueia a noite do dia errado e recusa hora que existe.
+    //
+    // Aqui o calendário vem sem fuso (é o estado real: ninguém grava `time_zone` ainda) e o
+    // esperado é o instante da meia-noite EM SÃO PAULO: 03:00Z. Se o fallback voltasse a
+    // ser UTC, este número viraria 00:00Z — e é essa diferença de três horas que o caso
+    // vigia, não a mera presença de um campo.
+    const diaInteiro = {
+      ...eventoDeTerceiro,
+      id: "evt-dia-inteiro",
+      iCalUID: "dia-inteiro@google.com",
+      start: { date: "2026-09-02" },
+      end: { date: "2026-09-03" },
+    };
+    vi.mocked(fetch).mockResolvedValue(pagina({ items: [diaInteiro], nextSyncToken: "T1" }));
+
+    const r = await sincronizarAgendasDoGoogle(admin(), {
+      agora: AGORA,
+      calendarios: [{ ...calendario(), fuso: null }],
+    });
+
+    expect(r.gravados).toBe(1);
+    expect(gravados[0]).toMatchObject({ external_event_id: "evt-dia-inteiro", starts_at: "2026-09-02T03:00:00.000Z" });
   });
 
   it("O ANTI-ECO: o que NÓS criamos não vira evento externo", async () => {

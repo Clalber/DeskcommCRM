@@ -104,6 +104,18 @@ export async function sincronizarAgendasDoGoogle(
     falhas: 0,
   };
 
+  // Fuso de cada organização envolvida, buscado UMA vez — segundo degrau do
+  // fallback do fuso (ver o comentário no `const fuso` abaixo).
+  const fusoDaOrg = new Map<string, string>();
+  const orgsDoLote = [...new Set(opcoes.calendarios.map((c) => c.organization_id))];
+  if (orgsDoLote.length > 0) {
+    const { data: linhasDeOrg } = await admin.from("organizations").select("id, timezone").in("id", orgsDoLote);
+    for (const o of (linhasDeOrg ?? []) as { id: string; timezone: string | null }[]) {
+      const tz = o.timezone?.trim();
+      if (tz) fusoDaOrg.set(String(o.id), tz);
+    }
+  }
+
   for (const cal of opcoes.calendarios.slice(0, TETO_DE_CALENDARIOS)) {
     resumo.calendarios += 1;
 
@@ -149,7 +161,18 @@ export async function sincronizarAgendasDoGoogle(
       }
     }
 
-    const fuso = cal.fuso?.trim() || "UTC";
+    // O fuso do CALENDÁRIO, depois o da ORGANIZAÇÃO. `UTC` é o último recurso e hoje é
+    // inalcançável — `organizations.timezone` é NOT NULL com default.
+    //
+    // ⚠️ Era `cal.fuso?.trim() || "UTC"` com `cal.fuso` cravado em `null` no mapeamento
+    // da rota: o fallback disparava SEMPRE. Em `America/Sao_Paulo`, evento de dia inteiro
+    // lido como UTC bloqueia das 21h do dia anterior às 21h do seguinte — a noite do
+    // próprio dia vaza, e a agenda recusa hora que existe.
+    //
+    // Enquanto ninguém grava `calendar_connection_calendars.time_zone` (medido: zero
+    // inserts na tabela hoje), o fuso da organização é o palpite CERTO — o mesmo que a
+    // pessoa escolheu no onboarding. UTC nunca foi palpite: era ausência disfarçada.
+    const fuso = cal.fuso?.trim() || fusoDaOrg.get(cal.organization_id) || "UTC";
     const vistos = new Set<string>();
     for (const bruto of leitura.pagina.eventos) {
       const lido = doEventoDoGoogle(bruto, { fusoDoCalendario: fuso });
@@ -286,7 +309,7 @@ async function executar(req: NextRequest): Promise<Response> {
   const { data } = await admin
     .from("calendar_connection_calendars")
     .select(
-      "id, organization_id, connection_id, external_calendar_id, sync_token, calendar_connections!inner(status, oauth_access_token_encrypted)",
+      "id, organization_id, connection_id, external_calendar_id, sync_token, time_zone, calendar_connections!inner(status, oauth_access_token_encrypted)",
     )
     .eq("counts_for_conflicts", true)
     .limit(TETO_DE_CALENDARIOS);
@@ -304,7 +327,7 @@ async function executar(req: NextRequest): Promise<Response> {
         connection_id: String(l.connection_id),
         external_calendar_id: String(l.external_calendar_id),
         sync_token: (l.sync_token as string | null) ?? null,
-        fuso: null,
+        fuso: (l.time_zone as string | null) ?? null,
         access_token_encrypted: conexao.oauth_access_token_encrypted ?? null,
       },
     ];
