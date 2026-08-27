@@ -66,29 +66,26 @@ function playbooksSemeados(): Map<string, string> {
 }
 
 /**
- * ⚠️ DÍVIDA CONGELADA — a catraca nasceria VERMELHA sem isto, e catraca vermelha não entra.
+ * ⚠️ A LISTA ESTÁ VAZIA, E ISSO É O ESTADO CERTO — não um esquecimento.
  *
- * O corpo do playbook `agendamento` no baseline é anterior às ferramentas de agenda: ele
- * fala de marcar, remarcar e cancelar sem citar nenhuma, e no passo 5 manda o CONTRÁRIO da
- * `description` de `crm_reschedule_appointment` (cancelar-e-remarcar).
+ * Ela nasceu com `agendamento` dentro: o corpo do playbook era anterior às ferramentas de
+ * agenda e a catraca teria nascido vermelha. A dívida foi PAGA na migration 0191, que
+ * publicou o corpo novo e repontou `skill_pointers` — e o Arquiteto mediu o desfecho da
+ * forma errada antes, num pg17 efêmero: aplicar o corpo novo no formato `if not exists` da
+ * 0069 deixava **1 versão, ponteiro no corpo ANTIGO e NENHUM erro**. Um bloco que vira
+ * no-op e não reclama é indistinguível de um que funcionou.
  *
- * O texto novo já existe — `cal-briefings/TEXTO-playbook-agendamento.md`, DECISÃO 25 —, mas
- * publicá-lo exige mexer no seed, e a mecânica tem uma armadilha que não é desta frente: o
- * bloco é `if not exists (select 1 from skill_pointers ... name='agendamento')`, então um
- * clone JÁ INSTALADO tem o pointer e nunca receberia o corpo novo. Publicar versão exige
- * `insert` em `skill_versions` **mais** repontar `skill_pointers`.
+ * ⚠️ E POR QUE A ENTRADA NÃO PODIA FICAR DEPOIS DE PAGA: enquanto ela existe, o `continue`
+ * abaixo pula justamente o playbook que ela nomeia. Antes do pagamento isso era dívida
+ * declarada; depois, viraria um DESLIGADOR PERMANENTE da vigilância sobre esse playbook —
+ * verde e cego, no lugar exato onde o gate foi feito para olhar. (O argumento é do
+ * Arquiteto, que provou que sem a entrada fica verde e mesmo assim não a removeu, porque
+ * o arquivo vive noutra árvore.)
  *
- * Então a dívida fica CONGELADA e NOMEADA, com dono e endereço, em vez de o gate nascer
- * vermelho e ser desligado por incômodo. O que ele impede a partir de agora é o
- * CRESCIMENTO: playbook novo, ou ferramenta nova declarada, tem de citar.
- *
- * ⚠️ Ao publicar o corpo novo, REMOVA a entrada daqui. Uma lista de dívida que só cresce é
- * a dívida com aparência de decisão.
+ * Se alguma dívida nova entrar aqui, ela vem com motivo escrito — e sai no dia em que for
+ * paga, não no dia em que alguém lembrar.
  */
-const DIVIDA_CONGELADA: Record<string, string> = {
-  agendamento:
-    "corpo anterior às ferramentas de agenda; texto novo pronto em TEXTO-playbook-agendamento.md (DECISÃO 25), pendente da mecânica de republicar versão (Arquiteto)",
-};
+const DIVIDA_CONGELADA: Record<string, string> = {};
 
 describe("playbook semeado cita a ferramenta que fala da mesma ação", () => {
   const corpos = playbooksSemeados();
