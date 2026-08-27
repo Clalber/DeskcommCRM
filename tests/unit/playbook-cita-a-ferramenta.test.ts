@@ -70,9 +70,9 @@ function playbooksSemeados(): Map<string, string> {
  *
  * Ela nasceu com `agendamento` dentro: o corpo do playbook era anterior às ferramentas de
  * agenda e a catraca teria nascido vermelha. A dívida foi PAGA na migration 0191, que
- * publicou o corpo novo e repontou `skill_pointers` — e o Arquiteto mediu o desfecho da
- * forma errada antes, num pg17 efêmero: aplicar o corpo novo no formato `if not exists` da
- * 0069 deixava **1 versão, ponteiro no corpo ANTIGO e NENHUM erro**. Um bloco que vira
+ * publicou o corpo novo e repontou `skill_pointers` — e o Arquiteto mediu, num pg17 efêmero, o que acontece
+ * ao publicar NO FORMATO DA 0069: aplicar o corpo novo com `if not exists` sobre um banco
+ * que já a tinha deixava **1 versão, ponteiro no corpo ANTIGO e NENHUM erro**. Um bloco que vira
  * no-op e não reclama é indistinguível de um que funcionou.
  *
  * ⚠️ E POR QUE A ENTRADA NÃO PODIA FICAR DEPOIS DE PAGA: enquanto ela existe, o `continue`
@@ -82,8 +82,14 @@ function playbooksSemeados(): Map<string, string> {
  * Arquiteto, que provou que sem a entrada fica verde e mesmo assim não a removeu, porque
  * o arquivo vive noutra árvore.)
  *
- * Se alguma dívida nova entrar aqui, ela vem com motivo escrito — e sai no dia em que for
- * paga, não no dia em que alguém lembrar.
+ * Se alguma dívida nova entrar aqui, ela vem com motivo escrito — e o caso
+ * "dívida congelada que JÁ FOI PAGA" abaixo a expulsa sozinho quando o playbook passar a
+ * citar as ferramentas. Isso deixou de ser promessa e virou mecanismo.
+ *
+ * ⚠️ LIMITE, para não herdar frase otimista: aquele caso só alcança dívida de playbook
+ * que esteja em `PLAYBOOK_FALA_DE`. Dívida congelada por OUTRO motivo continua sem
+ * expiração automática e segue dependendo de alguém lembrar. Fecha a classe que temos
+ * hoje, não a categoria.
  */
 const DIVIDA_CONGELADA: Record<string, string> = {};
 
@@ -110,6 +116,31 @@ describe("playbook semeado cita a ferramenta que fala da mesma ação", () => {
       expect(motivo.length, `${playbook} está congelado sem motivo escrito`).toBeGreaterThan(40);
       expect(corpos.has(playbook), `${playbook} está congelado e não existe no baseline`).toBe(true);
     }
+  });
+
+  it("dívida congelada que JÁ FOI PAGA não pode continuar aqui", () => {
+    // Nasceu de um estado REAL, não de hipótese: a integração ficou com o corpo novo
+    // publicado (`a86c0e9d`) E a entrada ainda na lista, porque o commit que a removia
+    // (`47121eaa`) veio por outra branch. Medido pelo Arquiteto sabotando as quatro
+    // citações no baseline: o gate da `integra/w0` passava 4/4 e o do `cal/w2-mcp`
+    // reprovava — mesmo arquivo quebrado, um dos dois cego.
+    //
+    // O comentário do topo prometia "sai no dia em que for paga, não no dia em que alguém
+    // lembrar". Isso era INTENÇÃO. Este caso é o mecanismo — e a diferença entre os dois é
+    // a lição que o dia inteiro repetiu.
+    const obsoletas: string[] = [];
+    for (const playbook of Object.keys(DIVIDA_CONGELADA)) {
+      const corpo = corpos.get(playbook);
+      const ferramentas = PLAYBOOK_FALA_DE[playbook];
+      if (corpo === undefined || ferramentas === undefined) continue;
+      if (ferramentas.every((f) => corpo.includes(f))) obsoletas.push(playbook);
+    }
+    expect(
+      obsoletas,
+      "A dívida foi PAGA — o playbook já cita todas as ferramentas declaradas — e a entrada " +
+        "continua na lista. A partir de agora ela não adia nada: ela DESLIGA a vigilância " +
+        "sobre esse playbook. Remova a entrada.",
+    ).toEqual([]);
   });
 
   it("todo playbook declarado cita as ferramentas que falam da mesma ação", () => {
