@@ -28,8 +28,15 @@ export function CartaoDaConexaoGoogle({
   falta,
   contaConectada,
   enderecoDeRetorno,
+  linkDeConfiguracao,
 }: {
   configurado: boolean;
+  /**
+   * Para onde mandar quem PODE resolver — a tela do app OAuth no admin da
+   * plataforma. Só vem preenchido para quem administra a INSTALAÇÃO: para o
+   * resto, nomear a tela seria oferecer uma porta que dá em `notFound()`.
+   */
+  linkDeConfiguracao?: string;
   /** O que falta, PELO NOME — para a tela dizer em vez de só esconder o botão. */
   falta: string[];
   contaConectada?: string | null;
@@ -46,20 +53,45 @@ export function CartaoDaConexaoGoogle({
         className="rounded-lg border border-border bg-surface-elevated/50 p-3"
       >
         <p className="text-sm font-medium text-text">Sincronizar com o Google ainda não está disponível</p>
-        <p className="mt-1 text-xs leading-4 text-text-muted">
-          Esta instalação não tem as credenciais do Google cadastradas — não é nada que você
-          tenha feito. Quem instalou o sistema precisa configurar
-          {falta.length > 0 ? (
-            <>
-              {" "}
-              <span data-testid="o-que-falta" className="font-mono text-[11px]">
-                {falta.join(" e ")}
-              </span>
-            </>
-          ) : (
-            " as credenciais"
-          )}
-        </p>
+        {/*
+          DUAS FRASES, porque são duas pessoas.
+          
+          Quem administra a instalação PODE resolver, e para essa pessoa nomear
+          variáveis de ambiente é pior que inútil: elas não são mais o caminho —
+          a credencial se cadastra pela tela desde a migration 0201. Para quem
+          não administra, o texto continua o de antes: dizer o que falta sem
+          oferecer uma porta que dá em `notFound()`.
+        */}
+        {linkDeConfiguracao ? (
+          <p className="mt-1 text-xs leading-4 text-text-muted">
+            Falta cadastrar o aplicativo do Google desta instalação. Leva um minuto e você
+            faz por aqui mesmo.
+          </p>
+        ) : (
+          <p className="mt-1 text-xs leading-4 text-text-muted">
+            Esta instalação não tem as credenciais do Google cadastradas — não é nada que você
+            tenha feito. Quem instalou o sistema precisa configurar
+            {falta.length > 0 ? (
+              <>
+                {" "}
+                <span data-testid="o-que-falta" className="font-mono text-[11px]">
+                  {falta.join(" e ")}
+                </span>
+              </>
+            ) : (
+              " as credenciais"
+            )}
+          </p>
+        )}
+        {linkDeConfiguracao ? (
+          <a
+            href={linkDeConfiguracao}
+            data-testid="ir-configurar-google"
+            className="mt-2 inline-block text-xs font-medium text-accent underline underline-offset-2 hover:text-accent-strong"
+          >
+            Cadastrar as credenciais do Google
+          </a>
+        ) : null}
         {enderecoDeRetorno ? (
           <p className="mt-2 text-xs leading-4 text-text-muted">
             {/* ⚠️ ESTE BLOCO EXISTE PORQUE A AUSÊNCIA DELE JÁ CUSTOU UMA SESSÃO.

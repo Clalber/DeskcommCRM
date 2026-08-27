@@ -78,7 +78,17 @@ async function executar(req: NextRequest): Promise<Response> {
     .select(
       "id, organization_id, owner_user_id, title, description, starts_at, ends_at, time_zone, status, location_kind, location_details, google_event_id",
     )
-    .or("google_synced_at.is.null,updated_at.gt.google_synced_at")
+    // ⚠️ NÃO volte a `.or("…,updated_at.gt.google_synced_at")`.
+    //
+    // O PostgREST trata o lado DIREITO de `gt.` como VALOR LITERAL, nunca como
+    // nome de coluna: ele tentava converter a string "google_synced_at" em
+    // `timestamptz` e recusava a consulta INTEIRA. Em produção isso era um
+    // `warn` a cada 5 minutos desde o deploy da v1.7.0 e ZERO compromissos
+    // empurrados — a ida ao Google nunca aconteceu em instalação nenhuma.
+    //
+    // `needs_google_push` é coluna GERADA (migration 0200) que carrega
+    // exatamente a mesma pergunta, num filtro que o PostgREST sabe fazer.
+    .eq("needs_google_push", true)
     .not("owner_user_id", "is", null)
     .order("starts_at", { ascending: true })
     .limit(TETO_POR_RODADA);

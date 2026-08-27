@@ -2,6 +2,7 @@
 
 import { addDays, format, isSameDay, isSameMonth, startOfMonth, startOfWeek } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import Link from "next/link";
 import * as React from "react";
 
 import { Button } from "@/components/ui/button";
@@ -32,10 +33,11 @@ export function PainelDeMarcacao({
   responsavel,
   tipo = "Consulta",
   duracaoMin = 30,
-  local = "Presencial · Sala 2",
-  fuso = "America/Sao_Paulo",
+  local,
+  fuso,
   horariosPorDia,
   publicouHorarios = true,
+  erroAoCarregar = false,
   fusoSuposto = false,
   fontesDefasadas,
   quemSeraAtendido,
@@ -47,7 +49,32 @@ export function PainelDeMarcacao({
   responsavel: Pessoa;
   tipo?: string;
   duracaoMin?: number;
+  /**
+   * ⚠️ SEM DEFAULT, e isto é o conserto.
+   *
+   * Era `local = "Presencial · Sala 2"` e `fuso = "America/Sao_Paulo"`, defaults
+   * de PARÂMETRO — e `app/app/agenda/_client.tsx` não passava nenhum dos dois.
+   * Os defaults venciam em 100% das marcações do produto: toda clínica, de toda
+   * instalação, via "Sala 2" numa tela real.
+   *
+   * O cabeçalho de `_client.tsx` proíbe exatamente isso, com a razão escrita:
+   * dado falso PLAUSÍVEL numa tela de produto multi-tenant é indistinguível de
+   * VAZAMENTO, e o relato que chega não é "tem dado de teste na tela", é "estou
+   * vendo paciente de outra clínica". Sobreviveu porque veio por default de
+   * parâmetro em vez de import de `dados-de-mentira.ts`, que é o que a varredura
+   * `tests/unit/telas-sem-dado-de-mentira.test.ts` vigia.
+   *
+   * Sem valor, a linha não é renderizada. O próximo caller que esquecer mostra
+   * uma linha a menos — não uma sala inventada.
+   */
   local?: string;
+  /**
+   * ⚠️ SEM DEFAULT, pela mesma razão do `local` acima — e aqui o custo é maior:
+   * "America/Sao_Paulo" chutado para quem atende em Manaus não é só feio, é uma
+   * hora de diferença no horário oferecido ao cliente. A rota JÁ devolve
+   * `fuso_da_regra` e o hook JÁ o tipa; ninguém em tela o lia. A IA sabia o fuso
+   * certo (`lib/mcp/tools/agendamento.ts`) e o operador não.
+   */
   fuso?: string;
   /** `yyyy-MM-dd` → horários livres. Dia ausente = sem horário, nasce apagado. */
   horariosPorDia: Record<string, HorarioLivre[]>;
@@ -59,6 +86,14 @@ export function PainelDeMarcacao({
    * Decisão 1.1 da entrega.
    */
   publicouHorarios?: boolean;
+  /**
+   * A consulta de horários FALHOU. Sem este fio a tela mente por default: o
+   * `publicouHorarios` do chamador é `horarios?.publicou_horarios ?? true`, e
+   * com a resposta ausente (erro) o `?? true` diz "publicou" — dias travados,
+   * aviso nenhum. É o estado exato de uma instalação fresca, onde a rota devolve
+   * 422 porque ninguém está em `attendant_availability`.
+   */
+  erroAoCarregar?: boolean;
   /** O fuso veio do padrão, ninguém escolheu — e o agente oferece horário com ele. */
   fusoSuposto?: boolean;
   /** Agenda conectada que parou de atualizar: o horário fica bloqueado, e a tela diz desde quando. */
@@ -95,6 +130,67 @@ export function PainelDeMarcacao({
       Array.from({ length: 7 }, (_, d) => addDays(primeiro, s * 7 + d)),
     );
   }, [mes]);
+
+  /**
+   * POR QUE A GRADE ESTÁ TRAVADA — um motivo só, derivado da MESMA conta que
+   * apaga os dias.
+   *
+   * O que o usuário via: o calendário do mês inteiro, todos os dias sem clique,
+   * e nada explicando. O aviso existia, mas dependia de OUTRO dado: o dia é
+   * desabilitado por `livres.length > 0 && isSameMonth(...)` (os slots daquela
+   * data), e o aviso por `publicouHorarios` (as janelas lidas do banco). Dois
+   * booleanos independentes — então havia estado em que trava sem avisar nada:
+   *
+   *   - instalação fresca: ninguém em `attendant_availability` ⇒ a rota devolve
+   *     422 ⇒ o hook joga o erro num toast e `data` fica `undefined` ⇒ o
+   *     `?? true` do chamador diz "publicou" ⇒ 42 dias mortos, zero aviso;
+   *   - navegar para frente: a consulta pede 30 dias e o mês visível é estado
+   *     LOCAL deste painel. Dois cliques em "Próximo mês", numa organização
+   *     perfeitamente configurada, e a grade some — sem toast e sem aviso.
+   *
+   * `nenhumDiaClicavel` é LITERALMENTE a expressão do `disponivel` de cada dia,
+   * negada e universal. Por construção os dois não voltam a divergir.
+   */
+  /**
+   * Existe algum dia CONSULTADO depois do mês visível?
+   *
+   * Deriva das chaves de `horariosPorDia`, que é o recorte que a consulta de
+   * fato cobriu — e não de uma constante de 30 dias copiada para cá, que
+   * envelheceria no dia em que a janela mudasse.
+   */
+  const temDiaConsultadoDepois = React.useMemo(() => {
+    const fimDoMes = startOfMonth(addDays(startOfMonth(mes), 32));
+    return Object.keys(horariosPorDia).some((chave) => new Date(`${chave}T12:00:00`) >= fimDoMes);
+  }, [horariosPorDia, mes]);
+
+  const nenhumDiaClicavel = React.useMemo(
+    () =>
+      semanas
+        .flat()
+        .every(
+          (d) =>
+            !((horariosPorDia[format(d, "yyyy-MM-dd")]?.length ?? 0) > 0 && isSameMonth(d, mes)),
+        ),
+    [semanas, horariosPorDia, mes],
+  );
+
+  const motivoDoBloqueio: "sem-jornada" | "erro" | "sem-vaga" | null = !publicouHorarios
+    ? "sem-jornada"
+    : erroAoCarregar
+      ? "erro"
+      : nenhumDiaClicavel
+        ? "sem-vaga"
+        : null;
+
+  /** O mesmo motivo, na voz de quem olha UM dia apagado. */
+  const razaoDoDia = (noMes: boolean): string =>
+    !noMes
+      ? "fora deste mês"
+      : motivoDoBloqueio === "sem-jornada"
+        ? "você ainda não publicou seus horários"
+        : motivoDoBloqueio === "erro"
+          ? "não consegui carregar os horários"
+          : "nenhum horário livre neste dia";
 
   const doDia = dia ? (horariosPorDia[format(dia, "yyyy-MM-dd")] ?? []) : [];
 
@@ -170,14 +266,18 @@ export function PainelDeMarcacao({
             <Clock size={14} aria-hidden />
             <dd className="tabular-nums">{duracaoMin} minutos</dd>
           </div>
-          <div className="flex items-center gap-1.5">
-            <MapPin size={14} aria-hidden />
-            <dd className="truncate">{local}</dd>
-          </div>
+          {local ? (
+            <div className="flex items-center gap-1.5">
+              <MapPin size={14} aria-hidden />
+              <dd className="truncate">{local}</dd>
+            </div>
+          ) : null}
         </dl>
-        <p className="mt-4 border-t border-border pt-3 text-[11px] leading-4 text-text-subtle">
-          Horários no fuso <span className="font-mono">{fuso.replace("_", " ")}</span>.
-        </p>
+        {fuso ? (
+          <p className="mt-4 border-t border-border pt-3 text-[11px] leading-4 text-text-subtle">
+            Horários no fuso <span className="font-mono">{fuso.replace("_", " ")}</span>.
+          </p>
+        ) : null}
       </aside>
 
       {/* CORPO — o mês. 420–480px é a faixa medida no cal.com; aqui ela é
@@ -205,6 +305,15 @@ export function PainelDeMarcacao({
               size="icon"
               aria-label="Próximo mês"
               data-testid="mes-seguinte"
+              // NÃO leva a um mês que a consulta nunca cobriu.
+              //
+              // O mês visível é estado LOCAL deste painel e navegar não
+              // reconsulta nada: a busca pede 30 dias a partir de hoje. Dois
+              // cliques aqui, numa organização perfeitamente configurada,
+              // entregavam 42 dias mortos sem toast e sem aviso. O bloco de
+              // motivo acima já explica quando acontece; desabilitar evita
+              // PRODUZIR o estado, que é melhor que explicá-lo.
+              disabled={!temDiaConsultadoDepois}
               onClick={() => setMes((m) => startOfMonth(addDays(startOfMonth(m), 32)))}
             >
               <CaretRight size={16} weight="bold" aria-hidden />
@@ -212,7 +321,7 @@ export function PainelDeMarcacao({
           </div>
         </div>
 
-        {!publicouHorarios && (
+        {motivoDoBloqueio === "sem-jornada" && (
           // Não é estado vazio: é estado NÃO CONFIGURADO, e o texto diz o
           // próximo passo em vez de constatar a ausência.
           <div
@@ -223,15 +332,78 @@ export function PainelDeMarcacao({
               Você ainda não publicou seus horários de atendimento
             </p>
             <p className="mt-1 text-xs leading-4 text-text-muted">
-              Sem eles ninguém consegue marcar — nem você, nem o agente. Configure a sua
-              disponibilidade e os horários aparecem aqui.
+              Sem eles ninguém consegue marcar — nem você, nem o agente.
+            </p>
+            {/*
+              O AVISO VIRA PORTA.
+
+              Ele dizia "Configure a sua disponibilidade" e não levava a lugar
+              nenhum — e a tela EXISTE: é a aba "Atendimento" de Equipe, atrás de
+              um botão só de ícone que nada nomeia como "meus horários". O dono do
+              produto procurou e não achou; concluiu que a tela não existia, e o
+              comentário do registro de navegação dizia o mesmo, por estar vencido.
+
+              Instrução sem caminho é acusação: ela diz ao usuário que ele deixou
+              de fazer algo e não mostra onde fazer.
+            */}
+            <Link
+              href="/app/team?aba=atendimento"
+              data-testid="ir-configurar-horarios"
+              className="mt-2 inline-block text-xs font-medium text-accent underline underline-offset-2 hover:text-accent-strong"
+            >
+              Configurar meus horários de atendimento
+            </Link>
+          </div>
+        )}
+
+        {/*
+          Os outros dois motivos ganham testid PRÓPRIO, e isso não é capricho: a
+          spec do kit visual assere `sem-jornada-publicada` VISÍVEL na seção
+          "não configurado" e `toHaveCount(0)` na seção normal. Reusar o mesmo
+          testid aqui deixaria a segunda asserção vermelha no dia em que o mês
+          visível da vitrine não tivesse dia livre.
+        */}
+        {motivoDoBloqueio === "erro" && (
+          <div
+            data-testid="motivo-do-bloqueio"
+            data-motivo="erro"
+            className="mb-3 rounded-sm border border-warning/40 bg-warning-bg p-3"
+          >
+            <p className="text-sm font-semibold text-text">Não consegui carregar os horários</p>
+            <p className="mt-1 text-xs leading-4 text-text-muted">
+              Os dias ficam bloqueados até eu conseguir — é mais seguro que oferecer um
+              horário que talvez não exista. Numa instalação nova, isso costuma ser a
+              jornada de atendimento que ainda não foi publicada.
+            </p>
+            <Link
+              href="/app/team?aba=atendimento"
+              data-testid="ir-configurar-horarios"
+              className="mt-2 inline-block text-xs font-medium text-accent underline underline-offset-2 hover:text-accent-strong"
+            >
+              Configurar meus horários de atendimento
+            </Link>
+          </div>
+        )}
+
+        {motivoDoBloqueio === "sem-vaga" && (
+          <div
+            data-testid="motivo-do-bloqueio"
+            data-motivo="sem-vaga"
+            className="mb-3 rounded-sm border border-border bg-surface-sunken p-3"
+          >
+            <p className="text-sm font-semibold text-text">
+              Nenhum horário livre em {format(mes, "MMMM", { locale: ptBR })}
+            </p>
+            <p className="mt-1 text-xs leading-4 text-text-muted">
+              Os próximos 30 dias são o que está publicado hoje — meses adiante aparecem
+              conforme a data se aproxima.
             </p>
           </div>
         )}
 
         {fusoSuposto && (
           <p data-testid="fuso-suposto" className="mb-2 text-[11px] leading-4 text-text-subtle">
-            Estamos supondo o fuso <span className="font-mono">{fuso.replace("_", " ")}</span> —
+            Estamos supondo o fuso <span className="font-mono">{(fuso ?? "").replace("_", " ")}</span> —
             ninguém escolheu ainda. O agente oferece horário usando ele.
           </p>
         )}
@@ -268,11 +440,18 @@ export function PainelDeMarcacao({
                 data-testid={`dia-${chave}`}
                 data-disponivel={disponivel}
                 disabled={!disponivel}
+                // O DIA DIZ POR QUÊ. O rótulo era `— sem horário` para tudo:
+                // dia de outro mês, dia sem vaga e dia com a consulta quebrada
+                // liam igual, e quem usa leitor de tela recebia a constatação da
+                // ausência sem a causa. O `title` é o mesmo texto — e é EXTRA, não
+                // a única via: atributo de hover não existe para quem usa toque,
+                // e é por isso que o motivo também está em texto no bloco acima.
                 aria-label={
                   disponivel
                     ? `${format(d, "d 'de' MMMM", { locale: ptBR })} — ${livres.length} horários`
-                    : `${format(d, "d 'de' MMMM", { locale: ptBR })} — sem horário`
+                    : `${format(d, "d 'de' MMMM", { locale: ptBR })} — ${razaoDoDia(isSameMonth(d, mes))}`
                 }
+                title={disponivel ? undefined : razaoDoDia(isSameMonth(d, mes))}
                 onClick={() => { setDia(d); setHorario(null); }}
                 className={cn(
                   "flex h-9 items-center justify-center rounded-sm text-sm tabular-nums transition-colors duration-fast ease-out",

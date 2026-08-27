@@ -123,7 +123,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     return voltar("erro=retorno_incompleto");
   }
 
-  const app = configuracaoDoGoogle();
+  const app = await configuracaoDoGoogle();
   if (!app) return voltar("erro=google_nao_configurado");
 
   // ⚠️ QUEIMA DO NONCE — e ela vem ANTES de trocar o código, não depois.

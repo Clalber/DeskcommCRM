@@ -76,7 +76,7 @@ fonte só (`lib/onboarding/passos.ts`) — eram três listas que discordavam. Ga
 >
 > O que travava a virada era o editor novo exigir `credential_id`, enquanto instalação pelo kit funciona com a chave de plataforma do `.env` e não tem nenhuma linha em `ai_provider_credentials` — o dono cairia numa tela onde não consegue salvar nada. Resolvido nas duas pontas: `versionShapeSchema` aceita `credential_id: null` (= a chave da instalação), o seletor oferece essa opção, e a rota de versões **recusa** o nulo quando o ambiente não tem chave daquele provedor (falha fechada — senão publicaria um agente que morre em toda mensagem).
 >
-> MEDIDO na tela, num tenant fresco: o funcionário criado no wizard abre no editor atual, com "Chave de acesso: A chave desta instalação (anthropic)", "12 de 20 capacidades ligadas" e "Vender e mover o funil" ativo.
+> MEDIDO na tela, num tenant fresco: o funcionário criado no wizard abre no editor atual, com "Chave de acesso: A chave desta instalação (anthropic)", o pacote "Vender e mover o funil" ativo, e a contagem de capacidades que ele traz. (O número saiu daqui: já dizia 12 quando eram 16, e o teto foi de 20 para 25. Para o valor de hoje: `pnpm exec tsx -e 'import("@/lib/ai/agents/capacidades-padrao").then(m => console.log(m.capacidadesPadraoDoOnboarding().length))'`.)
 
 ## J2 — Conectar WhatsApp e Central de Conexões `[P0]`
 
@@ -106,9 +106,9 @@ fonte só (`lib/onboarding/passos.ts`) — eram três listas que discordavam. Ga
 | J3.10 | Escolher o que o agente pode fazer, por jornada de trabalho | 6 pacotes em português, com explicação e contagem — não uma lista de `crm_*` monoespaçado · **PASS** (`tests/e2e/capacidades-do-agente.spec.ts`) |
 | J3.11 | Ligar "Atender e responder" NÃO dá direito de mandar WhatsApp | a capacidade de risco crítico fica destacada, exigindo marcação individual; desligar a jornada leva ela junto · **PASS** |
 | J3.12 | Modo avançado: ficha por capacidade + nome técnico | o `name` técnico só aparece aqui; fora dele o leigo lê rótulo, o que toca e risco · **PASS** |
-| J3.13 | A escolha sobrevive ao salvar e recarregar | o servidor aceita a lista (mesmo teto de 20 da tela) e o estado volta igual · **PASS** |
+| J3.13 | A escolha sobrevive ao salvar e recarregar | o servidor aceita a lista (o mesmo teto da tela, `TETO_TOOLS_POR_AGENTE`, fonte única) e o estado volta igual · **PASS** |
 | J3.14 | Ver se o que está ligado está funcionando (aba Capacidades) | usos, falhas, quantos vieram de teste, última vez — e o que fazer com cada número · **PASS** (números escritos pelo emissor real de audit) |
-| J3.15 | Teto de 20 recusa a passagem, explicando em português | **NÃO EXERCITÁVEL HOJE**: com 16 capacidades no catálogo, ligar tudo não chega a 20. Coberto por teste unitário; vira exercitável quando as waves de capacidades entregarem |
+| J3.15 | O teto recusa a passagem, explicando em português | **PASS** — exercitável desde que o catálogo cresceu (57 capacidades). `capacidades-do-agente.spec.ts` liga "Atender" sobre as 8 do seed e prova a recusa por 1 vaga. A afirmação "não exercitável hoje, com 16 capacidades no catálogo" VENCEU |
 
 ## J4 — CRM e Pipelines `[P1]`
 
@@ -491,6 +491,41 @@ aba fechada. Depende do serviço de push do navegador (FCM), de rede externa e d
 um par VAPID real — não é reproduzível num runner, e fingir com mock seria pior
 que a ausência declarada. O que está provado é o contrato entre a TELA e o
 SERVIDOR. Continua aberto na issue #366.
+
+## J13 — A Agenda como o dono do produto a usou na VPS `[P0]`
+
+**Por que P0:** é a primeira impressão de um módulo que acabou de sair (v1.7.0).
+O dono instalou na VPS dele, usou como um cliente usaria, e achou **seis defeitos
+em quinze minutos**. Um sétimo aparecia no log de produção a cada cinco minutos e
+ninguém tinha visto; um oitavo saiu de varredura. Todo módulo novo tem uma janela
+em que ninguém o usou de verdade — esta jornada existe porque ela custou oito.
+
+**O que a suíte não conseguia enxergar, e por quê.** Toda spec até aqui roda com
+usuário de UMA organização. O defeito de escopo (D4) é invisível nesse cenário
+por construção: sem duas organizações, a RLS e o filtro explícito devolvem
+exatamente o mesmo conjunto. `scripts/seed-e2e-duas-organizacoes.ts` monta o
+cenário que faltava — o MESMO usuário em duas orgs, com um tipo exclusivo em cada
+uma, para a asserção poder ser sobre o CONJUNTO DE NOMES e não sobre a contagem.
+
+| # | Caso | Resultado |
+|---|---|---|
+| J13.1 | Membro de duas organizações abre a Agenda e vê só os tipos da org ativa; trocar de organização troca a lista | **PASS** — `agenda-escopo-da-organizacao.spec.ts`, contra o app real. Evidência: `evidence/calendario/d4-agenda-escopo-org-b.png` |
+| J13.2 | O aviso "você ainda não publicou seus horários" LEVA até onde se publica, e a aba de Atendimento se anuncia como o lugar dos horários | **PASS** — `agenda-caminho-ate-os-horarios.spec.ts`. Evidência: `evidence/calendario/d1-aba-atendimento.png` |
+| J13.3 | Endereço de aba desconhecido cai na aba padrão, não numa tela sem conteúdo | **PASS** — mesma spec |
+| J13.4 | O tipo de agendamento NASCE com responsável; quem escolhe "Definir depois" é avisado e o aviso ABRE o seletor | **PASS** — `agenda-tipos-de-agendamento.spec.ts`. Evidência: `evidence/calendario/d6-tipo-com-responsavel.png` |
+| J13.5 | O dia apagado diz POR QUÊ, e o rótulo genérico antigo não volta | **PASS** — `agenda-kit-visual.spec.ts` |
+| J13.6 | O teto de capacidades recusa a passagem explicando quantas vagas faltam | **PASS** — `capacidades-do-agente.spec.ts`, com o teto em 25 |
+| J13.7 | A ida ao Google seleciona os pendentes (o filtro antigo devolvia HTTP 400) | **PASS** — medido contra o PostgREST real do ambiente e2e: filtro antigo `400 / 22007`, filtro novo `200` com as linhas pendentes |
+| J13.8 | Sincronizar tira a linha da fila, e editar recoloca (o laço dos dois relógios) | **PASS** — medido no Postgres real: `true` → `false` com delta `00:00:00` → `true` |
+| J13.9 | A credencial do Google não é servida pelo PostgREST | **PASS** — `anon` recebe `42501 permission denied`; `service_role` recebe 200 (controle positivo) |
+| J13.10 | Cadastrar a credencial do Google pela tela do admin | **NÃO EXERCITADO** — a tela e a server action existem e o `next build` passa, mas o ambiente e2e não tem a chave mestra de cifra semeada (`fn_encrypt_oauth` levanta `NUVEMSHOP_OAUTH_ENCRYPTION_KEY ausente`), que é justamente o caminho em que a action RECUSA gravar. Falta o caso pela tela com a chave presente |
+
+**Registro honesto do que NÃO foi exercitado:** `pnpm test:db` não rodou nesta
+máquina — o daemon do Docker travou depois de o disco encher, e o harness de
+invariantes exige contêiner. Os dois invariantes novos
+(`agenda-ida-ao-google-termina`, `credencial-do-google-e-server-side`) estão
+escritos e a SUBSTÂNCIA deles foi medida à mão contra o Postgres real do
+ambiente e2e; falta a passada do harness no CI.
 
 ---
 

@@ -56,3 +56,46 @@ export function useCancelarAgendamento() {
     onError: (err) => showApiError(err),
   });
 }
+
+/**
+ * Registra o DESFECHO — `PATCH /api/v1/agenda/agendamentos` com `status`.
+ *
+ * ═══ O mesmo defeito, nos outros dois botões do mesmo componente ═══
+ *
+ * O cabeçalho deste arquivo narra o conserto de `onRemarcar`/`onCancelar` — e
+ * ele alcançou DOIS dos QUATRO botões de `HistoricoDaAgenda`. "Realizado" e
+ * "Faltou" seguiram com `disabled={!onRealizado}` e ZERO callers no repo
+ * inteiro, ainda cinzas em toda linha de toda organização, ainda com a mesma
+ * frase falsa: "Disponível quando a agenda estiver conectada". PATCH de status
+ * não toca o Google.
+ *
+ * É a lição de "conserto por instância, não por classe" cobrada com juros: as
+ * quatro props nasceram juntas, no mesmo componente, com o mesmo padrão — e a
+ * varredura que consertaria as quatro custaria um `grep` a mais.
+ *
+ * A capacidade existia inteira do outro lado: a rota já aceita
+ * `status: z.enum(["confirmed", "completed", "no_show"])` e o handler já aplica.
+ * Faltava só o fio.
+ *
+ * ⚠️ EFEITO COLATERAL QUE NINGUÉM ANTECIPA AO CLICAR, e por isso está escrito:
+ * `no_show` está em `SITUACOES_QUE_LIBERAM` (com `cancelled`), então marcar
+ * "Faltou" DEVOLVE o horário para outra pessoa poder pegar. É o comportamento
+ * correto — a vaga de quem não veio não pode ficar reservada —, mas é a razão de
+ * o toast dizer o que aconteceu em vez de um "ok" mudo.
+ */
+export function useRegistrarDesfecho() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (entrada: { id: string; status: "completed" | "no_show" }) =>
+      apiClient.patch<{ data: { id: string } }>("/api/v1/agenda/agendamentos", entrada),
+    onSuccess: (_dados, entrada) => {
+      toast.success(
+        entrada.status === "completed"
+          ? "Marcado como realizado."
+          : "Marcado como falta — o horário volta a ficar livre.",
+      );
+      void qc.invalidateQueries({ queryKey: ["agenda"] });
+    },
+    onError: (err) => showApiError(err),
+  });
+}
