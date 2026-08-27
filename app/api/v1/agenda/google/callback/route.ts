@@ -34,6 +34,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 import { audit } from "@/lib/audit";
+import { loadAuthUser } from "@/lib/auth/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { encryptWebhookSecret } from "@/lib/webhooks/secrets";
 import { configuracaoDoGoogle } from "@/lib/agenda/google/config";
@@ -72,6 +73,34 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     return voltar("erro=retorno_nao_verificavel");
   }
   const { organizationId, userId } = estado;
+
+  // ⚠️ O `state` ASSINADO NÃO BASTA, e esta é a segunda porta.
+  //
+  // Assinatura prova que o `state` foi emitido por nós; NÃO prova que quem está
+  // voltando é a mesma pessoa que o pediu. Sem ler a sessão, qualquer navegador
+  // que apresente um `state` válido grava a conexão — quem interceptar o de
+  // outra pessoa dentro dos dez minutos de prazo grava a agenda DELA apontando
+  // para a conta Google DELE, e a partir daí os compromissos daquela pessoa
+  // passam a ser lidos e escritos numa agenda que não é a dela.
+  //
+  // Queimar o nonce (dívida declarada em `estado.ts`) fecha REPLAY, não fecha
+  // isto: são portas diferentes, e esta é a mais grave porque um único uso já
+  // basta.
+  const usuario = await loadAuthUser();
+  if (!usuario || usuario.id !== userId) {
+    await audit({
+      action: "agenda.google.conexao_falhou",
+      organizationId,
+      metadata: {
+        reason: usuario ? "sessao_de_outra_pessoa" : "sem_sessao",
+        user_id: userId,
+      },
+    });
+    // Um destino só para os dois casos: distinguir "não tem sessão" de "é outra
+    // pessoa" na URL contaria a quem ataca se o `state` que ele tem pertence a
+    // alguém logado naquele navegador.
+    return voltar("erro=retorno_nao_verificavel");
+  }
 
   if (!code) {
     await audit({
