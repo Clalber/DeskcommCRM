@@ -314,6 +314,7 @@ jobs:
         vps-fresh-onboarding.spec.ts
         inbox-tempo-real.spec.ts
         agenda-marcar-pela-tela.spec.ts
+        agente-marca-consulta.spec.ts
     steps:
       - uses: actions/checkout@v7
 

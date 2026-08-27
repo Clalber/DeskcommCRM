@@ -164,31 +164,64 @@ export async function podeChamarFerramenta(entrada: {
     };
   }
 
-  if (alvo === "sem_funil") return { permitido: true };
+  // ⚠️ SWITCH EXAUSTIVO, E O `never` NO DEFAULT É O PONTO DESTE BLOCO.
+  //
+  // Antes isto era uma cadeia de `if`s com o último ramo IMPLÍCITO
+  // (`funil_vem_do_lead` sem `case`). Um valor novo em `AlvoDeFunil` — e a
+  // entrega da agenda acrescenta dois — caía nesse ramo, procurava um
+  // `lead_id` que aquela ferramenta nem tem, não achava, e LIBERAVA. Escopo
+  // que morre em silêncio é o modo de falha que este arquivo inteiro existe
+  // para impedir, e ele estava aberto na porta de trás.
+  //
+  // Agora quem acrescenta valor ao tipo sem tratar aqui é reprovado pelo
+  // COMPILADOR, não por teste: `const naoTratado: never = alvo` só compila
+  // enquanto todos os casos estiverem cobertos. É impossível de esquecer, que
+  // é a diferença entre guarda e lembrete.
+  switch (alvo) {
+    case "sem_funil":
+      return { permitido: true };
 
-  if (alvo === "pipeline_no_argumento") {
-    const p = entrada.argumentos.pipeline_id;
-    return podeOperarNoFunil(entrada.escopo, typeof p === "string" ? p : null);
-  }
-
-  if (alvo === "alvo_polimorfico") {
-    // `crm_manage_tags` marca conversa, contato OU lead. Só o terceiro tem funil.
-    if (entrada.argumentos.target_kind !== "lead") return { permitido: true };
-    const id = entrada.argumentos.target_id;
-    if (typeof id !== "string") {
-      return { permitido: false, motivo: "indisponivel", detalhe: "target_id ausente" };
+    case "pipeline_no_argumento": {
+      const p = entrada.argumentos.pipeline_id;
+      return podeOperarNoFunil(entrada.escopo, typeof p === "string" ? p : null);
     }
-    return resolverPeloLead(entrada, id);
-  }
 
-  // funil_vem_do_lead
-  const leadId = entrada.argumentos.lead_id;
-  if (typeof leadId !== "string") {
-    // A ferramenta aceita alvo por contato (é o caso do follow-up). Sem lead não
-    // há funil a checar — e recusar aqui bloquearia um caminho legítimo.
-    return { permitido: true };
+    case "alvo_polimorfico": {
+      // `crm_manage_tags` marca conversa, contato OU lead. Só o terceiro tem funil.
+      if (entrada.argumentos.target_kind !== "lead") return { permitido: true };
+      const id = entrada.argumentos.target_id;
+      if (typeof id !== "string") {
+        return { permitido: false, motivo: "indisponivel", detalhe: "target_id ausente" };
+      }
+      return resolverPeloLead(entrada, id);
+    }
+
+    case "funil_vem_do_lead": {
+      const leadId = entrada.argumentos.lead_id;
+      if (typeof leadId !== "string") {
+        // A ferramenta aceita alvo por contato (é o caso do follow-up). Sem lead
+        // não há funil a checar — e recusar aqui bloquearia um caminho legítimo.
+        // A consequência está medida em `tests/unit/escopo-de-funil.test.ts`:
+        // com `lead_id` opcional, o escopo vira opcional na prática.
+        return { permitido: true };
+      }
+      return resolverPeloLead(entrada, leadId);
+    }
+
+    default: {
+      // O compilador já garantiu que isto é inalcançável em TypeScript. O ramo
+      // existe para o RUNTIME: `ALVO_DE_FUNIL` é um Record indexado por string,
+      // e um valor escrito à mão (ou vindo de JS puro) chega aqui. Falha
+      // FECHADA, pela mesma razão da vacuidade acima — liberar o desconhecido
+      // é como o escopo morre.
+      const naoTratado: never = alvo;
+      return {
+        permitido: false,
+        motivo: "ferramenta_nao_classificada",
+        ferramenta: `${entrada.ferramenta} (alvo não tratado: ${String(naoTratado)})`,
+      };
+    }
   }
-  return resolverPeloLead(entrada, leadId);
 }
 
 async function resolverPeloLead(

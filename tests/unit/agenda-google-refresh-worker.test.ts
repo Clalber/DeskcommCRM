@@ -1,0 +1,229 @@
+/**
+ * O anti-morte da agenda conectada — a rodada que impede o token de vencer.
+ *
+ * Este arquivo é o único worker de refresh de OAuth deste repo: medido antes de
+ * escrever, `tenant_integrations` carrega colunas de refresh desde sempre com
+ * ZERO leitores, porque o token da Nuvemshop não expira. O do Google expira em
+ * cerca de uma hora — sem esta rodada a agenda conectada morre no fim do
+ * primeiro dia útil, calada.
+ *
+ * As duas propriedades que mais importam aqui não aparecem no caminho feliz:
+ * a rodada não pode APAGAR a chave de renovação ao gravar, e não pode desistir
+ * das outras conexões quando uma falha.
+ */
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+import { audit } from "@/lib/audit";
+import { decryptWebhookSecret, encryptWebhookSecret } from "@/lib/webhooks/secrets";
+
+vi.mock("@/lib/audit", () => ({ audit: vi.fn(async () => undefined), isServiceRoleConfigured: vi.fn(() => true) }));
+vi.mock("@/lib/webhooks/secrets", () => ({
+  encryptWebhookSecret: vi.fn(async () => "\\xNOVO"),
+  decryptWebhookSecret: vi.fn(async () => "1//refresh-guardado"),
+}));
+
+// ⚠️ `import` é IÇADO: atribuir `process.env` no corpo do arquivo acontece
+// DEPOIS de `@/lib/env` já ter lido o ambiente. O worker então enxergava a
+// instalação como "sem app OAuth" e devolvia zero em tudo — sete casos
+// vermelhos por defeito do instrumento, não do código. A carga vai por import
+// dinâmico, com o ambiente montado antes.
+const AMBIENTE = {
+  GOOGLE_CALENDAR_CLIENT_ID: "123.apps.googleusercontent.com",
+  GOOGLE_CALENDAR_CLIENT_SECRET: "GOCSPX-segredo",
+  NEXT_PUBLIC_APP_URL: "https://crm.exemplo",
+};
+
+async function carregarWorker(sobrescreve: Record<string, string> = {}) {
+  vi.resetModules();
+  for (const [k, v] of Object.entries({ ...AMBIENTE, ...sobrescreve })) process.env[k] = v;
+  return import("@/app/api/v1/cron/agenda-google-refresh/route");
+}
+
+const AGORA = new Date("2026-08-26T12:00:00.000Z");
+
+/** As atualizações que a rodada mandou ao banco, por id de conexão. */
+let atualizacoes: Array<{ id: string; campos: Record<string, unknown> }> = [];
+let linhas: Array<Record<string, unknown>> = [];
+
+function admin() {
+  return {
+    from: () => {
+      const consulta = {
+        select: () => consulta,
+        in: () => consulta,
+        not: () => consulta,
+        lte: () => consulta,
+        order: () => consulta,
+        limit: async () => ({ data: linhas, error: null }),
+        update: (campos: Record<string, unknown>) => ({
+          eq: async (_coluna: string, id: string) => {
+            atualizacoes.push({ id, campos });
+            return { error: null };
+          },
+        }),
+      };
+      return consulta;
+    },
+  } as never;
+}
+
+function conexao(sobrescreve: Record<string, unknown> = {}) {
+  return {
+    id: "conn-1",
+    organization_id: "org-1",
+    user_id: "user-1",
+    account_email: "ana@clinica.com.br",
+    status: "healthy",
+    token_expires_at: "2026-08-26T12:05:00.000Z",
+    oauth_access_token_encrypted: "\\xVELHO",
+    oauth_refresh_token_encrypted: "\\xREFRESH",
+    scopes: ["https://www.googleapis.com/auth/calendar.events"],
+    ...sobrescreve,
+  };
+}
+
+function respostaHttp(corpo: unknown, status = 200): Response {
+  return { ok: status >= 200 && status < 300, status, json: async () => corpo } as unknown as Response;
+}
+
+beforeEach(() => {
+  atualizacoes = [];
+  linhas = [];
+  vi.stubGlobal("fetch", vi.fn());
+  vi.mocked(audit).mockClear();
+  vi.mocked(decryptWebhookSecret).mockResolvedValue("1//refresh-guardado");
+  vi.mocked(encryptWebhookSecret).mockResolvedValue("\\xNOVO");
+});
+afterEach(() => vi.unstubAllGlobals());
+
+describe("renovarAgendasDoGoogle", () => {
+  it("renova quem está para vencer e grava o novo vencimento", async () => {
+    linhas = [conexao()];
+    vi.mocked(fetch).mockResolvedValue(respostaHttp({ access_token: "ya29.novo", expires_in: 3599 }));
+
+    const { renovarAgendasDoGoogle } = await carregarWorker();
+    const resumo = await renovarAgendasDoGoogle(admin(), { agora: AGORA });
+
+    expect(resumo).toMatchObject({ examinadas: 1, renovadas: 1, falhas: 0 });
+    expect(atualizacoes[0]?.campos).toMatchObject({
+      oauth_access_token_encrypted: "\\xNOVO",
+      token_expires_at: "2026-08-26T12:59:59.000Z",
+      status: "healthy",
+    });
+  });
+
+  it("NUNCA escreve na coluna do refresh — é ela que faz a conexão sobreviver", async () => {
+    // A resposta da renovação vem SEM `refresh_token`. Se a rodada gravasse o
+    // que chegou, apagaria a chave que acabou de renovar e a conexão morreria na
+    // hora seguinte — parecendo que a renovação funcionou.
+    linhas = [conexao()];
+    vi.mocked(fetch).mockResolvedValue(respostaHttp({ access_token: "ya29.novo", expires_in: 3599 }));
+
+    const { renovarAgendasDoGoogle } = await carregarWorker();
+    await renovarAgendasDoGoogle(admin(), { agora: AGORA });
+
+    expect(atualizacoes[0]?.campos).not.toHaveProperty("oauth_refresh_token_encrypted");
+    // Controle positivo: a atualização ACONTECEU, então a ausência acima é
+    // omissão deliberada e não rodada que não gravou nada.
+    expect(atualizacoes[0]?.campos).toHaveProperty("token_expires_at");
+  });
+
+  it("`invalid_grant` marca para reconectar — não fica tentando para sempre", async () => {
+    linhas = [conexao()];
+    vi.mocked(fetch).mockResolvedValue(respostaHttp({ error: "invalid_grant" }, 400));
+
+    const { renovarAgendasDoGoogle } = await carregarWorker();
+    const resumo = await renovarAgendasDoGoogle(admin(), { agora: AGORA });
+
+    expect(resumo.reautenticar).toBe(1);
+    expect(atualizacoes[0]?.campos).toMatchObject({ status: "token_expired" });
+  });
+
+  it("uma conexão que falha NÃO leva as outras junto", async () => {
+    // Um timeout numa agenda não pode deixar as demais sem renovar — é o motivo
+    // de `renovarToken` e `classificarErroDoGoogle` não lançarem.
+    linhas = [conexao({ id: "conn-1" }), conexao({ id: "conn-2" }), conexao({ id: "conn-3" })];
+    vi.mocked(fetch)
+      .mockRejectedValueOnce(new Error("fetch failed"))
+      .mockResolvedValue(respostaHttp({ access_token: "ya29.novo", expires_in: 3599 }));
+
+    const { renovarAgendasDoGoogle } = await carregarWorker();
+    const resumo = await renovarAgendasDoGoogle(admin(), { agora: AGORA });
+
+    expect(resumo.examinadas).toBe(3);
+    expect(resumo.renovadas).toBe(2);
+    expect(atualizacoes.map((a) => a.id)).toContain("conn-3");
+  });
+
+  it("conexão sem chave guardada vai direto para reconectar, sem chamar o Google", async () => {
+    linhas = [conexao({ oauth_refresh_token_encrypted: null })];
+    const { renovarAgendasDoGoogle } = await carregarWorker();
+    const resumo = await renovarAgendasDoGoogle(admin(), { agora: AGORA });
+
+    expect(resumo.reautenticar).toBe(1);
+    expect(fetch).not.toHaveBeenCalled();
+    expect(atualizacoes[0]?.campos).toMatchObject({ status: "token_expired" });
+  });
+
+  it("cifra indisponível NÃO rebaixa a conexão — o problema é do servidor", async () => {
+    // Marcar `token_expired` aqui mandaria a pessoa reconectar uma agenda que
+    // está boa: o que falhou foi a chave de cifra da instalação, não a
+    // autorização dela.
+    linhas = [conexao()];
+    vi.mocked(decryptWebhookSecret).mockResolvedValue(null);
+
+    const { renovarAgendasDoGoogle } = await carregarWorker();
+    const resumo = await renovarAgendasDoGoogle(admin(), { agora: AGORA });
+
+    expect(resumo.falhas).toBe(1);
+    expect(resumo.reautenticar).toBe(0);
+    expect(atualizacoes).toEqual([]);
+  });
+
+  it("rodada VAZIA não audita — cron que não fez nada não é mutação", async () => {
+    // Esta base já pagou 51.840 linhas/mês de batida vazia de cron.
+    linhas = [];
+    const { renovarAgendasDoGoogle } = await carregarWorker();
+    const resumo = await renovarAgendasDoGoogle(admin(), { agora: AGORA });
+    expect(resumo.examinadas).toBe(0);
+    expect(audit).not.toHaveBeenCalled();
+  });
+
+  it("rodada COM efeito audita, com a contagem dentro", async () => {
+    linhas = [conexao()];
+    vi.mocked(fetch).mockResolvedValue(respostaHttp({ access_token: "ya29.novo", expires_in: 3599 }));
+    const { renovarAgendasDoGoogle } = await carregarWorker();
+    await renovarAgendasDoGoogle(admin(), { agora: AGORA });
+    expect(audit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "agenda.google.renovacao_executada",
+        metadata: expect.objectContaining({ renovadas: 1 }),
+      }),
+    );
+  });
+
+  it("instalação sem app OAuth não faz nada e não audita", async () => {
+    // É o estado de quem nunca conectou o Google — não é falha.
+    const { renovarAgendasDoGoogle } = await carregarWorker({ GOOGLE_CALENDAR_CLIENT_ID: "" });
+    const resumo = await renovarAgendasDoGoogle(admin(), { agora: AGORA });
+    expect(resumo.semAppOAuth).toBe(true);
+    expect(audit).not.toHaveBeenCalled();
+  });
+
+  // ⚠️ A METADE DO LAÇO DE RETORNO QUE AINDA NÃO EXISTE — e ela está declarada
+  // aqui, e não num relatório, pelo mesmo motivo que a spec da frente 3 virou
+  // arquivo: promessa em texto depende de alguém reler.
+  //
+  // Hoje a rodada marca `token_expired` e escreve o motivo em `last_sync_error`.
+  // Isso muda o BANCO, e a tela da Agenda pode ler — mas ninguém é AVISADO. O
+  // invariante 7 do Sistema Vivo pede que a falha apareça onde o humano olha, e
+  // o lugar disso nesta base é `agent_inbox_items`.
+  //
+  // Falta um `kind` no CHECK de `agent_inbox_items` (algo como
+  // `agenda_google_desconectada`). Acrescentá-lo é mudança de schema — migration
+  // + apêndice no `baseline.sql` + MANIFEST —, e schema é de outra frente. Está
+  // com o maestro. Este caso nasce vermelho no dia em que o kind existir.
+  it.skip("agenda que perdeu a autorização abre aviso na Central", async () => {
+    // Ver o comentário acima. Bloqueado por `kind` novo em `agent_inbox_items`.
+  });
+});
