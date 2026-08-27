@@ -95,7 +95,11 @@ test.describe("conectar a agenda do Google", () => {
     //    derruba o módulo — é o que `configuracaoDoGoogle()` devolvendo `null`
     //    existe para permitir.
     await expect(page.getByTestId("tela-agenda")).toBeVisible({ timeout: ESPERA });
-    await expect(page.getByRole("heading", { name: "Agenda" })).toBeVisible();
+    // `exact` porque o nome casa por SUBSTRING: com a agenda vazia, o aviso
+    // "Sua agenda está livre esta semana" é um segundo heading, e os dois
+    // coexistem desde que o vazio deixou de esconder a grade. Sem `exact`, dois
+    // elementos → strict mode → vermelho. A spec irmã já tinha pago isto.
+    await expect(page.getByRole("heading", { name: "Agenda", exact: true })).toBeVisible();
 
     // 2. O BOTÃO NÃO APARECE — e não é "aparece desabilitado". Desabilitado
     //    diria "você não pode"; o certo é "esta instalação ainda não tem".
