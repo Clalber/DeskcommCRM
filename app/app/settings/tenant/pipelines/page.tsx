@@ -4,6 +4,8 @@ import { requireAuth, resolveActiveOrg } from "@/lib/auth/server";
 import { ROLE_RANK } from "@/lib/auth/types";
 import { createClient } from "@/lib/supabase/server";
 import { PipelinesClient, type PipelineRow } from "./_client";
+import { normalizarIdioma } from "@/lib/i18n/idiomas";
+import { traduzir } from "@/lib/i18n/dicionario";
 
 export const dynamic = "force-dynamic";
 
@@ -39,14 +41,20 @@ export default async function PipelinesSettingsPage() {
     .order("position");
 
   const pipelines = (data ?? []) as PipelineRow[];
+  const idioma = normalizarIdioma(user.locale);
 
   return (
     <div className="flex h-full flex-col gap-6 p-6">
       <header>
-        <h1 className="text-2xl font-semibold tracking-tight">Etapas do funil</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">
+          {traduzir("Etapas do funil", idioma)}
+        </h1>
         <p className="text-sm text-muted-foreground">
-          Para onde o agente leva o card em cada passo do atendimento
-          {podeEditarConfig ? ", vocabulário, custom fields e motivos de perda" : ""}.
+          {traduzir("Para onde o agente leva o card em cada passo do atendimento", idioma)}
+          {podeEditarConfig
+            ? traduzir(", vocabulário, custom fields e motivos de perda", idioma)
+            : ""}
+          .
         </p>
       </header>
       <PipelinesClient pipelines={pipelines} podeEditarConfig={podeEditarConfig} />

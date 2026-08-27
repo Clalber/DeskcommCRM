@@ -3231,6 +3231,479 @@ export const DICIONARIO: Traducoes = {
   Inglês: { es: "Inglés" },
   "Inglês (EUA)": { es: "Inglés (EE. UU.)" },
   "Inglês (Reino Unido)": { es: "Inglés (Reino Unido)" },
+  // ─── Configurações: API Tokens ───
+  "Selecione ao menos um escopo.": { es: "Selecciona al menos un alcance." },
+  "Criar token": { es: "Crear token" },
+  "Nenhum token criado ainda.": { es: "Ningún token creado todavía." },
+  Prefixo: { es: "Prefijo" },
+  Escopos: { es: "Alcances" },
+  Expira: { es: "Expira" },
+  "Token revogado.": { es: "Token revocado." },
+  Revogar: { es: "Revocar" },
+  "Criar novo token": { es: "Crear nuevo token" },
+  "O plaintext será mostrado apenas uma vez.": {
+    es: "El plaintext se mostrará solo una vez.",
+  },
+  "Worker de import": { es: "Worker de import" },
+  "Expira em (dias) — opcional": { es: "Expira en (días) — opcional" },
+  Criar: { es: "Crear" },
+  "Token criado": { es: "Token creado" },
+  "Copie e guarde agora — não conseguiremos exibir novamente.": {
+    es: "Cópialo y guárdalo ahora — no podremos mostrarlo de nuevo.",
+  },
+  "Token copiado.": { es: "Token copiado." },
+  "Não foi possível copiar — selecione o token acima.": {
+    es: "No se pudo copiar — selecciona el token de arriba.",
+  },
+  "Copiar para clipboard": { es: "Copiar al portapapeles" },
+  "Tokens server-to-server. Plaintext exibido": {
+    es: "Tokens server-to-server. El plaintext se muestra",
+  },
+  "na criação.": { es: "en la creación." },
+  "Agentes de IA podem LER o CRM (MCP)": { es: "Los agentes de IA pueden LEER el CRM (MCP)" },
+  "Agentes de IA podem AGIR no CRM (MCP)": {
+    es: "Los agentes de IA pueden ACTUAR en el CRM (MCP)",
+  },
+  "Tratar o token como gerente (necessário p/ criar e atribuir)": {
+    es: "Tratar el token como gerente (necesario para crear y asignar)",
+  },
+  "Ler contatos": { es: "Leer contactos" },
+  "Criar e editar contatos": { es: "Crear y editar contactos" },
+  "Ler leads": { es: "Leer leads" },
+  "Criar e editar leads": { es: "Crear y editar leads" },
+  "Ler mensagens": { es: "Leer mensajes" },
+  "Enviar mensagens": { es: "Enviar mensajes" },
+  "Ler o log de auditoria": { es: "Leer el registro de auditoría" },
+  // ─── Configurações: Distribuição de atendimento ───
+  "Distribuição de atendimento salva.": { es: "Distribución de atención guardada." },
+  "Não consegui salvar.": { es: "No pude guardar." },
+  "Quem recebe o cliente novo": { es: "Quién recibe al cliente nuevo" },
+  "Vale para conversa que chega sem dono.": { es: "Vale para conversación que llega sin dueño." },
+  "Tentativas antes de desistir": { es: "Intentos antes de desistir" },
+  "Quando não há ninguém disponível, o sistema tenta de novo mais tarde. Ao estourar, a conversa fica na fila esperando alguém.": {
+    es: "Cuando no hay nadie disponible, el sistema lo intenta de nuevo más tarde. Al agotarse, la conversación queda en la fila esperando a alguien.",
+  },
+  "Espera entre tentativas (segundos)": { es: "Espera entre intentos (segundos)" },
+  "O que cada atendente enxerga": { es: "Qué ve cada agente" },
+  "Restringe apenas quem tem o papel": { es: "Restringe solo a quien tiene el rol" },
+  "Gerente e administrador continuam vendo a operação inteira.": {
+    es: "Gerente y administrador siguen viendo toda la operación.",
+  },
+  Com: { es: "Con" },
+  "só os seus": { es: "solo los tuyos" },
+  "e distribuição manual, ninguém enxerga a fila para pegar — e nenhum cliente é atendido. Ligue o rodízio para que alguém receba.": {
+    es: "y distribución manual, nadie ve la fila para tomar — y ningún cliente es atendido. Activa la rotación para que alguien reciba.",
+  },
+  "Há mudanças não salvas.": { es: "Hay cambios sin guardar." },
+  "Cada um pega o que quiser": { es: "Cada uno toma el que quiera" },
+  "Todo cliente novo cai numa fila aberta e o primeiro atendente que clicar assume. Simples, e é onde nasce a discussão de quem furou a fila.": {
+    es: "Todo cliente nuevo cae en una fila abierta y el primer agente que hace clic lo toma. Simple, y es donde nace la discusión de quién se coló en la fila.",
+  },
+  "Rodízio automático entre os atendentes": { es: "Rotación automática entre los agentes" },
+  "Cliente 1 vai para o atendente A, cliente 2 para o B, e ao acabar a lista volta ao primeiro. Quem recebe é sempre quem está há mais tempo sem receber — entre os que estão disponíveis e dentro do horário. Ninguém escolhe, então não há fila furada.": {
+    es: "El cliente 1 va al agente A, el cliente 2 al B, y al terminar la lista vuelve al primero. Quien recibe siempre es quien lleva más tiempo sin recibir — entre los que están disponibles y dentro del horario. Nadie elige, así que no hay quien se cuele.",
+  },
+  "Todos veem tudo": { es: "Todos ven todo" },
+  "Qualquer atendente abre a conversa e o negócio de qualquer colega.": {
+    es: "Cualquier agente abre la conversación y el negocio de cualquier colega.",
+  },
+  "Os seus, mais os que ainda não têm dono": {
+    es: "Los tuyos, más los que todavía no tienen dueño",
+  },
+  "O atendente vê a própria carteira e a fila de quem chegou agora. Não vê o que já é de um colega.": {
+    es: "El agente ve su propia cartera y la fila de quien acaba de llegar. No ve lo que ya es de un colega.",
+  },
+  "Só os seus": { es: "Solo los tuyos" },
+  "O atendente vê apenas o que foi direcionado a ele — nem a fila. Combine com o rodízio: sem alguém distribuindo, ninguém recebe nada e as telas ficam vazias.": {
+    es: "El agente ve solo lo que le fue asignado — ni la fila. Combínalo con la rotación: sin alguien distribuyendo, nadie recibe nada y las pantallas quedan vacías.",
+  },
+  "Quem recebe cada cliente novo, e o que cada atendente enxerga. As duas decisões andam juntas: distribuir sem restringir deixa todo mundo vendo a carteira do colega; restringir sem distribuir deixa o funil de cada um vazio.": {
+    es: "Quién recibe a cada cliente nuevo, y qué ve cada agente. Las dos decisiones van juntas: distribuir sin restringir deja a todos viendo la cartera del colega; restringir sin distribuir deja el embudo de cada uno vacío.",
+  },
+  // ─── Configurações: Atualização do sistema ───
+  "Não consegui iniciar a atualização. Tente de novo em instantes.": {
+    es: "No pude iniciar la actualización. Intenta de nuevo en instantes.",
+  },
+  "Atualizando para a versão": { es: "Actualizando a la versión" },
+  "O sistema sai do ar por alguns instantes e volta sozinho. Pode deixar esta página aberta.": {
+    es: "El sistema se apaga por unos instantes y vuelve solo. Puedes dejar esta página abierta.",
+  },
+  "A atualização para a versão": { es: "La actualización a la versión" },
+  "não deu certo": { es: "no funcionó" },
+  "Voltei o sistema para a versão": { es: "Volví el sistema a la versión" },
+  "que é a que está no ar agora, e os seus dados estão intactos. O banco de dados já tinha sido atualizado e permanece assim — isso é seguro, a versão": {
+    es: "que es la que está activa ahora, y tus datos están intactos. La base de datos ya había sido actualizada y sigue así — eso es seguro, la versión",
+  },
+  "funciona com ele. Se quiser desfazer também o banco, use a cópia de segurança feita antes da tentativa (": {
+    es: "funciona con ella. Si quieres deshacer también la base de datos, usa la copia de seguridad hecha antes del intento (",
+  },
+  "Para deixar o servidor inteiro de volta na versão": {
+    es: "Para dejar el servidor entero de vuelta en la versión",
+  },
+  "— inclusive o código, que já foi trocado —, quem tem acesso pode rodar:": {
+    es: "— incluyendo el código, que ya fue cambiado —, quien tenga acceso puede ejecutar:",
+  },
+  "E eu": { es: "Y yo" },
+  "não consegui": { es: "no pude" },
+  "voltar sozinho para a versão": { es: "volver solo a la versión" },
+  "o sistema pode estar rodando a versão": { es: "el sistema puede estar corriendo la versión" },
+  "com defeito, ou fora do ar. Seus dados estão intactos e a cópia de segurança feita antes da tentativa continua guardada no servidor.": {
+    es: "con defecto, o caído. Tus datos están intactos y la copia de seguridad hecha antes del intento sigue guardada en el servidor.",
+  },
+  "Para colocar o sistema de volta no ar na versão": {
+    es: "Para poner el sistema de vuelta en marcha en la versión",
+  },
+  ", quem tem acesso ao servidor precisa rodar:": {
+    es: ", quien tenga acceso al servidor necesita ejecutar:",
+  },
+  "Não sei dizer como terminou": { es: "No sé decir cómo terminó" },
+  "Comecei a atualização para a versão": { es: "Empecé la actualización a la versión" },
+  "mas perdi contato com o servidor antes do fim. Confira se o sistema está funcionando normalmente — se estiver, provavelmente deu certo.": {
+    es: "pero perdí contacto con el servidor antes del final. Revisa si el sistema está funcionando normalmente — si es así, probablemente funcionó.",
+  },
+  "Para conferir pelo servidor, quem tem acesso pode rodar:": {
+    es: "Para confirmarlo por el servidor, quien tenga acceso puede ejecutar:",
+  },
+  "Atualização automática indisponível": { es: "Actualización automática no disponible" },
+  "Não estou conseguindo falar com o servidor onde o sistema está instalado, então não posso atualizar sozinho. Quem tem acesso ao servidor pode entrar na pasta onde o sistema foi instalado e rodar este comando — se for a primeira vez, rode duas vezes: a primeira baixa o programa novo e a segunda liga o botão desta tela.": {
+    es: "No estoy pudiendo hablar con el servidor donde el sistema está instalado, así que no puedo actualizar solo. Quien tenga acceso al servidor puede entrar en la carpeta donde el sistema fue instalado y ejecutar este comando — si es la primera vez, ejecútalo dos veces: la primera baja el programa nuevo y la segunda activa el botón de esta pantalla.",
+  },
+  "Versão instalada:": { es: "Versión instalada:" },
+  "Não consegui checar se há versão nova": { es: "No pude comprobar si hay una versión nueva" },
+  "O servidor não conseguiu comparar a sua versão (": {
+    es: "El servidor no pudo comparar tu versión (",
+  },
+  ") com a última publicada — normalmente é internet instável ou falta de espaço em disco na hora da checagem.": {
+    es: ") con la última publicada — normalmente es internet inestable o falta de espacio en disco al momento de la comprobación.",
+  },
+  "Não quer dizer que esteja desatualizado, nem que esteja em dia": {
+    es: "No quiere decir que esté desactualizado, ni que esté al día",
+  },
+  "quer dizer que eu não sei.": { es: "quiere decir que yo no sé." },
+  "Vou tentar de novo sozinho a cada poucos minutos. Se continuar assim, quem tem acesso ao servidor pode conferir na hora com:": {
+    es: "Voy a intentarlo de nuevo solo cada pocos minutos. Si sigue así, quien tenga acceso al servidor puede confirmarlo al instante con:",
+  },
+  "Você está na versão": { es: "Estás en la versión" },
+  "É a mais recente. Não há nada a fazer.": { es: "Es la más reciente. No hay nada que hacer." },
+  "Ainda não há nenhuma versão publicada": { es: "Todavía no hay ninguna versión publicada" },
+  "Este projeto ainda não tem nenhuma versão publicada para comparar com a sua instalação — normal em um fork novo ou recém-criado a partir do código-fonte.": {
+    es: "Este proyecto todavía no tiene ninguna versión publicada para comparar con tu instalación — normal en un fork nuevo o recién creado a partir del código fuente.",
+  },
+  "Não há nada a atualizar agora": { es: "No hay nada que actualizar ahora" },
+  "e isso não é um problema.": { es: "y eso no es un problema." },
+  "Quando sair a primeira versão publicada, ela aparece aqui sozinha. Quem tem acesso ao servidor pode conferir a qualquer momento com o comando abaixo — ele não muda nada sem avisar:": {
+    es: "Cuando salga la primera versión publicada, aparece aquí sola. Quien tenga acceso al servidor puede confirmarlo en cualquier momento con el comando de abajo — no cambia nada sin avisar:",
+  },
+  "Você está à frente da versão publicada": { es: "Estás por delante de la versión publicada" },
+  "Seu sistema roda uma versão mais nova do que a última publicada, então": {
+    es: "Tu sistema corre una versión más nueva que la última publicada, entonces",
+  },
+  "não há nada a atualizar": { es: "no hay nada que actualizar" },
+  "É assim mesmo quando a instalação acompanha o desenvolvimento, e nada aqui está errado por causa disso — a marca da sua versão é": {
+    es: "Es así cuando la instalación acompaña el desarrollo, y nada aquí está mal por eso — la marca de tu versión es",
+  },
+  "Quando sair uma versão publicada mais nova que a sua, ela aparece aqui sozinha. Quem tem acesso ao servidor pode conferir a qualquer momento com o comando abaixo — ele não muda nada sem avisar:": {
+    es: "Cuando salga una versión publicada más nueva que la tuya, aparece aquí sola. Quien tenga acceso al servidor puede confirmarlo en cualquier momento con el comando de abajo — no cambia nada sin avisar:",
+  },
+  "Sua instalação está numa versão de desenvolvimento. Atualizar vai levá-la para a versão publicada": {
+    es: "Tu instalación está en una versión de desarrollo. Actualizar la llevará a la versión publicada",
+  },
+  "Requer atenção": { es: "Requiere atención" },
+  "O que muda": { es: "Qué cambia" },
+  "Iniciando…": { es: "Iniciando…" },
+  "Atualizar agora": { es: "Actualizar ahora" },
+  "O sistema sai do ar por cerca de 2 minutos e volta sozinho. Faço uma cópia de segurança dos seus dados antes.": {
+    es: "El sistema se apaga por cerca de 2 minutos y vuelve solo. Hago una copia de seguridad de tus datos antes.",
+  },
+  "Detalhes técnicos (útil se for pedir ajuda)": {
+    es: "Detalles técnicos (útil si vas a pedir ayuda)",
+  },
+  "Atualização do sistema": { es: "Actualización del sistema" },
+  "Reiniciando…": { es: "Reiniciando…" },
+  "O sistema está voltando. Esta página se atualiza sozinha em alguns instantes.": {
+    es: "El sistema está volviendo. Esta página se actualiza sola en unos instantes.",
+  },
+  Copiado: { es: "Copiado" },
+  // ─── Configurações: Billing ───
+  "Planos, faturas e cobrança.": { es: "Planes, facturas y cobros." },
+  "Em breve — Fase 2": { es: "Próximamente — Fase 2" },
+  "Billing entra na Fase 2 do roadmap.": { es: "Billing entra en la Fase 2 del roadmap." },
+  "Para questões de pagamento, contate": { es: "Para temas de pago, contacta a" },
+  "Para questões de pagamento, fale com quem administra este sistema.": {
+    es: "Para temas de pago, habla con quien administra este sistema.",
+  },
+  // ─── Configurações: Marca da organização ───
+  "você definiu aqui": { es: "tú lo definiste aquí" },
+  "é o padrão do sistema": { es: "es el predeterminado del sistema" },
+  "veio de quem instalou o sistema": { es: "vino de quien instaló el sistema" },
+  "Como sua empresa aparece": { es: "Cómo aparece tu empresa" },
+  "Nome da sua empresa": { es: "Nombre de tu empresa" },
+  "Aparece no menu lateral, para quem trabalha aqui. Deixe em branco para usar": {
+    es: "Aparece en el menú lateral, para quien trabaja aquí. Déjalo en blanco para usar",
+  },
+  "Cor da sua marca": { es: "Color de tu marca" },
+  "Deixe em branco para voltar à cor que o sistema já usa.": {
+    es: "Déjalo en blanco para volver al color que el sistema ya usa.",
+  },
+  "Considerando o que está nos campos acima.": {
+    es: "Considerando lo que está en los campos de arriba.",
+  },
+  "Do jeito que está, esta cor não chegaria à tela: o sistema continuaria com a cor que já usa.": {
+    es: "Tal como está, este color no llegaría a la pantalla: el sistema seguiría con el color que ya usa.",
+  },
+  "O que isto ainda não muda": { es: "Lo que esto todavía no cambia" },
+  "O título da aba do navegador continua com o nome do sistema, e não com o da sua empresa.": {
+    es: "El título de la pestaña del navegador sigue con el nombre del sistema, y no con el de tu empresa.",
+  },
+  "A tela de entrada é sempre a do sistema: quando alguém digita a senha, ainda não dá para saber de qual empresa ele é.": {
+    es: "La pantalla de entrada siempre es la del sistema: cuando alguien escribe la contraseña, todavía no se puede saber de qué empresa es.",
+  },
+  "Os e-mails que este sistema envia (convite de time, pedidos de LGPD) já saem com o nome da sua empresa.": {
+    es: "Los correos que este sistema envía (invitación de equipo, solicitudes de LGPD) ya salen con el nombre de tu empresa.",
+  },
+  "O aplicativo de verificação em duas etapas continua registrando o nome do sistema: o cadastro acontece antes de saber de qual empresa a pessoa é.": {
+    es: "La app de verificación en dos pasos sigue registrando el nombre del sistema: el registro ocurre antes de saber de qué empresa es la persona.",
+  },
+  "O logo que você subir aqui aparece no menu lateral, para quem trabalha nesta empresa. A tela de entrada continua com o logo de quem instalou o sistema: ali ainda não dá para saber de qual empresa a pessoa é.": {
+    es: "El logo que subas aquí aparece en el menú lateral, para quien trabaja en esta empresa. La pantalla de entrada sigue con el logo de quien instaló el sistema: ahí todavía no se puede saber de qué empresa es la persona.",
+  },
+  "O nome e a cor que a sua empresa mostra para quem trabalha aqui dentro.": {
+    es: "El nombre y el color que tu empresa muestra para quien trabaja aquí dentro.",
+  },
+  // ─── Configurações: Notificações ───
+  "Canais e categorias.": { es: "Canales y categorías." },
+  "Preferências de notificação em breve. Por enquanto, alertas críticos são enviados por email.": {
+    es: "Preferencias de notificación próximamente. Por ahora, las alertas críticas se envían por correo.",
+  },
+  "Lead atribuído a você": { es: "Lead asignado a ti" },
+  "Lead ganho": { es: "Lead ganado" },
+  "Lead perdido": { es: "Lead perdido" },
+  "Você foi mencionado": { es: "Te mencionaron" },
+  Email: { es: "Correo" },
+  "In-app": { es: "En la app" },
+  Push: { es: "Push" },
+  // ─── Configurações: Segurança ───
+  "Gerar novos códigos invalida TODOS os atuais. Tem certeza?": {
+    es: "Generar nuevos códigos invalida TODOS los actuales. ¿Estás seguro?",
+  },
+  "Novos códigos gerados.": { es: "Nuevos códigos generados." },
+  "Erro:": { es: "Error:" },
+  "Sair de TODOS os dispositivos? Você precisará fazer login de novo.": {
+    es: "¿Salir de TODOS los dispositivos? Vas a tener que iniciar sesión de nuevo.",
+  },
+  "Verificação em duas etapas": { es: "Verificación en dos pasos" },
+  "Além da senha, o sistema pede um código de 6 dígitos que só existe no seu celular. É a proteção que segura uma senha vazada.": {
+    es: "Además de la contraseña, el sistema pide un código de 6 dígitos que solo existe en tu celular. Es la protección que frena una contraseña filtrada.",
+  },
+  Ativada: { es: "Activada" },
+  Desativada: { es: "Desactivada" },
+  "Ela é obrigatória para administradores desta empresa, então não dá para desligar aqui. Um administrador pode mudar essa regra abaixo.": {
+    es: "Es obligatoria para los administradores de esta empresa, así que no se puede desactivar aquí. Un administrador puede cambiar esta regla abajo.",
+  },
+  "Desligar a verificação em duas etapas desta conta?": {
+    es: "¿Desactivar la verificación en dos pasos de esta cuenta?",
+  },
+  "Verificação desligada.": { es: "Verificación desactivada." },
+  "Desligando…": { es: "Desactivando…" },
+  Ativar: { es: "Activar" },
+  "Exigir de quem administra": { es: "Exigir a quien administra" },
+  "Agora os administradores precisam da verificação.": {
+    es: "Ahora los administradores necesitan la verificación.",
+  },
+  "A verificação deixou de ser obrigatória.": { es: "La verificación dejó de ser obligatoria." },
+  "Todo administrador desta empresa precisa configurar a verificação em duas etapas.": {
+    es: "Todo administrador de esta empresa necesita configurar la verificación en dos pasos.",
+  },
+  "Quando ligado, quem administra vê uma tela pedindo a configuração antes de usar o sistema. Ligue se a sua equipe mexe com dados de clientes — é a diferença entre uma senha vazada virar um susto ou virar um vazamento.": {
+    es: "Cuando está activado, quien administra ve una pantalla pidiendo la configuración antes de usar el sistema. Actívalo si tu equipo maneja datos de clientes — es la diferencia entre que una contraseña filtrada sea un susto o una filtración.",
+  },
+  "Códigos de recuperação": { es: "Códigos de recuperación" },
+  "Use se perder acesso ao autenticador. Cada código é de uso único.": {
+    es: "Úsalos si pierdes acceso al autenticador. Cada código es de un solo uso.",
+  },
+  "Gerando…": { es: "Generando…" },
+  "Regenerar códigos de recuperação": { es: "Regenerar códigos de recuperación" },
+  "Habilite MFA antes de gerar códigos.": { es: "Habilita MFA antes de generar códigos." },
+  "Sessões ativas": { es: "Sesiones activas" },
+  "Listagem de sessões — em breve. Por enquanto, deslogue todos os dispositivos:": {
+    es: "Listado de sesiones — próximamente. Por ahora, cierra sesión en todos los dispositivos:",
+  },
+  "Saindo…": { es: "Saliendo…" },
+  "Sair de todos os dispositivos": { es: "Salir de todos los dispositivos" },
+  "A verificação em duas etapas da sua conta, os códigos de recuperação e as sessões abertas.": {
+    es: "La verificación en dos pasos de tu cuenta, los códigos de recuperación y las sesiones abiertas.",
+  },
+  // ─── Configurações: Funis (etapas + mapeamento do assistente) ───
+  "Você ainda não tem nenhum funil. Enquanto for assim, o agente atende normalmente, mas não tem para onde levar o card de ninguém — não há etapas para onde mover. Criar o funil é feito por quem instalou o sistema, direto no banco; depois ele aparece aqui para você escolher a etapa de cada passo.": {
+    es: "Todavía no tienes ningún embudo. Mientras sea así, el agente atiende normalmente, pero no tiene adónde llevar la tarjeta de nadie — no hay etapas adonde mover. Crear el embudo lo hace quien instaló el sistema, directo en la base de datos; después aparece aquí para que elijas la etapa de cada paso.",
+  },
+  "Custom fields: JSON inválido. Esperado um array.": {
+    es: "Custom fields: JSON inválido. Se esperaba un array.",
+  },
+  "atualizado.": { es: "actualizado." },
+  "Vocabulário e campos": { es: "Vocabulario y campos" },
+  "Motivos de perda (separados por vírgula)": { es: "Motivos de pérdida (separados por coma)" },
+  "Ex:": { es: "Ej:" },
+  "Salvar vocabulário e campos": { es: "Guardar vocabulario y campos" },
+  "As etapas que serviriam para este passo já estão sendo usadas por outros passos. Libere uma delas para poder escolhê-la aqui.": {
+    es: "Las etapas que servirían para este paso ya están siendo usadas por otros pasos. Libera una de ellas para poder elegirla aquí.",
+  },
+  "Este funil não tem nenhuma etapa marcada como fechamento, então não há para onde levar o card quando a pessoa fecha. Marque uma etapa como «aqui o cliente fecha» em «Etapas deste funil».": {
+    es: "Este embudo no tiene ninguna etapa marcada como cierre, así que no hay adónde llevar la tarjeta cuando la persona cierra. Marca una etapa como «aquí el cliente cierra» en «Etapas de este embudo».",
+  },
+  "Este funil não tem nenhuma etapa marcada como perda, então não há para onde levar o card quando a pessoa desiste. Marque uma etapa como «aqui o cliente desiste» em «Etapas deste funil».": {
+    es: "Este embudo no tiene ninguna etapa marcada como pérdida, así que no hay adónde llevar la tarjeta cuando la persona desiste. Marca una etapa como «aquí el cliente desiste» en «Etapas de este embudo».",
+  },
+  "Este funil só tem etapas de fechamento e de perda, então não há etapa comum para receber o card neste passo. Crie as etapas do meio do caminho em «Etapas deste funil».": {
+    es: "Este embudo solo tiene etapas de cierre y de pérdida, así que no hay una etapa común para recibir la tarjeta en este paso. Crea las etapas intermedias en «Etapas de este embudo».",
+  },
+  "Sua sessão expirou. Entre de novo para salvar suas escolhas.": {
+    es: "Tu sesión expiró. Vuelve a entrar para guardar tus elecciones.",
+  },
+  "Você não tem permissão para mudar a configuração deste funil.": {
+    es: "No tienes permiso para cambiar la configuración de este embudo.",
+  },
+  "Não deu para salvar agora. Tente de novo em instantes.": {
+    es: "No se pudo guardar ahora. Intenta de nuevo en instantes.",
+  },
+  "Não foi possível carregar as etapas deste funil agora. Recarregue a página.": {
+    es: "No se pudieron cargar las etapas de este embudo ahora. Recarga la página.",
+  },
+  "Carregando as etapas deste funil…": { es: "Cargando las etapas de este embudo…" },
+  "Escolhas salvas.": { es: "Elecciones guardadas." },
+  "Para onde o card vai em cada passo": { es: "Adónde va la tarjeta en cada paso" },
+  "Quando o agente avança no atendimento, o card do cliente pode andar sozinho no seu funil. Escolha para qual etapa ele vai em cada momento. Deixar em «não mover» é uma escolha válida — o card fica onde está e o agente segue trabalhando.": {
+    es: "Cuando el agente avanza en la atención, la tarjeta del cliente puede moverse sola en tu embudo. Elige a qué etapa va en cada momento. Dejarlo en «no mover» es una elección válida — la tarjeta se queda donde está y el agente sigue trabajando.",
+  },
+  "Ir para as etapas do funil": { es: "Ir a las etapas del embudo" },
+  "Etapa para": { es: "Etapa para" },
+  "Não mover o card": { es: "No mover la tarjeta" },
+  "As escolhas voltaram para o que está gravado agora — confira e escolha de novo.": {
+    es: "Las elecciones volvieron a lo que está guardado ahora — revisa y elige de nuevo.",
+  },
+  "Salvar estas escolhas": { es: "Guardar estas elecciones" },
+  negócio: { es: "negocio" },
+  negócios: { es: "negocios" },
+  "Etapa atualizada.": { es: "Etapa actualizada." },
+  "Só uma etapa pode ser a de fechamento. Marcar esta desmarca": {
+    es: "Solo una etapa puede ser la de cierre. Marcar esta desmarca",
+  },
+  "Só uma etapa pode ser a de perda. Marcar esta desmarca": {
+    es: "Solo una etapa puede ser la de pérdida. Marcar esta desmarca",
+  },
+  "saiu do quadro.": { es: "salió del tablero." },
+  "entrou no fim do funil.": { es: "entró al final del embudo." },
+  "Etapas deste funil": { es: "Etapas de este embudo" },
+  "Estas são as colunas do seu quadro, na ordem em que o cliente avança. Você pode renomear, criar, reordenar e arquivar.": {
+    es: "Estas son las columnas de tu tablero, en el orden en que el cliente avanza. Puedes renombrar, crear, reordenar y archivar.",
+  },
+  "Duas colunas têm papel especial: a": { es: "Dos columnas tienen un rol especial: la" },
+  "de fechamento": { es: "de cierre" },
+  "é onde o negócio vira venda, e a": { es: "es donde el negocio se convierte en venta, y la" },
+  "de perda": { es: "de pérdida" },
+  "é onde ele se perde. Cada funil precisa de uma de cada — por isso a marcação se muda de lugar, não se apaga.": {
+    es: "es donde se pierde. Cada embudo necesita una de cada — por eso la marca se cambia de lugar, no se borra.",
+  },
+  Mover: { es: "Mover" },
+  "uma coluna para trás": { es: "una columna hacia atrás" },
+  "uma coluna para frente": { es: "una columna hacia adelante" },
+  "Papel de": { es: "Rol de" },
+  "no funil": { es: "en el embudo" },
+  "O assistente usa esta etapa para": { es: "El asistente usa esta etapa para" },
+  "Mudar isso": { es: "Cambiar esto" },
+  "Marcar mesmo assim": { es: "Marcar de todas formas" },
+  "A coluna sai do quadro e para de receber negócios novos. Nada é apagado — o histórico de quem passou por ela continua guardado —, mas": {
+    es: "La columna sale del tablero y deja de recibir negocios nuevos. Nada se borra — el historial de quien pasó por ella sigue guardado —, pero",
+  },
+  "não dá para trazer a coluna de volta por aqui": {
+    es: "no se puede traer la columna de vuelta por aquí",
+  },
+  "está nesta etapa e não há outra coluna em aberto para recebê-lo.": {
+    es: "está en esta etapa y no hay otra columna abierta para recibirlo.",
+  },
+  "estão nesta etapa e não há outra coluna em aberto para recebê-los.": {
+    es: "están en esta etapa y no hay otra columna abierta para recibirlos.",
+  },
+  "Crie uma etapa antes de arquivar": { es: "Crea una etapa antes de archivar" },
+  "está nesta etapa. Para onde ele vai?": { es: "está en esta etapa. ¿Adónde va?" },
+  "estão nesta etapa. Para onde eles vão?": { es: "están en esta etapa. ¿Adónde van?" },
+  "Para onde vão os negócios de": { es: "Adónde van los negocios de" },
+  "Esta etapa é a que o assistente usa para": { es: "Esta es la etapa que el asistente usa para" },
+  "Arquivando, ele para de mover o card nesse passo até você escolher outra etapa em": {
+    es: "Al archivar, deja de mover la tarjeta en ese paso hasta que elijas otra etapa en",
+  },
+  "Mover os negócios e arquivar": { es: "Mover los negocios y archivar" },
+  "Ir para o mapeamento do assistente": { es: "Ir al mapeo del asistente" },
+  "Acrescentar etapa ao fim": { es: "Agregar etapa al final" },
+  "Nome da nova coluna": { es: "Nombre de la nueva columna" },
+  "Nome da nova etapa": { es: "Nombre de la nueva etapa" },
+  "Nome da etapa": { es: "Nombre de la etapa" },
+  "Para onde o agente leva o card em cada passo do atendimento": {
+    es: "Adónde lleva el agente la tarjeta en cada paso de la atención",
+  },
+  ", vocabulário, custom fields e motivos de perda": {
+    es: ", vocabulario, custom fields y motivos de pérdida",
+  },
+  "Nada especial": { es: "Nada especial" },
+  "Aqui o cliente fecha": { es: "Aquí el cliente cierra" },
+  "Aqui o cliente desiste": { es: "Aquí el cliente desiste" },
+  "Nome da coluna (clique para renomear)": {
+    es: "Nombre de la columna (haz clic para renombrar)",
+  },
+  Ordem: { es: "Orden" },
+  "O que acontece nesta coluna": { es: "Qué pasa en esta columna" },
+  "a pessoa acabou de chamar e ninguém respondeu ainda": {
+    es: "la persona acaba de escribir y todavía nadie respondió",
+  },
+  "o agente já respondeu pela primeira vez": { es: "el agente ya respondió por primera vez" },
+  "o agente está entendendo o que a pessoa precisa": {
+    es: "el agente está entendiendo qué necesita la persona",
+  },
+  "o agente já entendeu a necessidade": { es: "el agente ya entendió la necesidad" },
+  "conversa de preço, proposta ou agendamento": { es: "conversación de precio, propuesta o turno" },
+  "a pessoa fechou": { es: "la persona cerró" },
+  "a pessoa desistiu ou parou de responder": { es: "la persona desistió o dejó de responder" },
+  "Novo lead": { es: "Lead nuevo" },
+  "Primeiro contato": { es: "Primer contacto" },
+  "Em qualificação": { es: "En calificación" },
+  Qualificado: { es: "Calificado" },
+  "Em negociação": { es: "En negociación" },
+  Ganho: { es: "Ganado" },
+  Perdido: { es: "Perdido" },
+  // ─── Achados: chamadas com aspas simples (ponto cego do checker por regex) ───
+  "O relatório de LGPD entregue ao cliente traz a RAZÃO SOCIAL da sua empresa, e não o nome aqui de cima — é ela que responde legalmente pelos dados. Confira o campo \"Razão social\" em Configurações → Organização.": {
+    es: "El informe de LGPD entregado al cliente trae la RAZÓN SOCIAL de tu empresa, y no el nombre de aquí arriba — es ella la que responde legalmente por los datos. Revisa el campo \"Razón social\" en Configuración → Organización.",
+  },
+  "Use a ação \"Webhooks\" → POST, apontando para o endereço acima.": {
+    es: "Usa la acción \"Webhooks\" → POST, apuntando a la dirección de arriba.",
+  },
+  // ─── Gaps reais achados na varredura completa do codebase (áreas ai/admin já fechadas) ───
+  Incidentes: { es: "Incidentes" },
+  "Último acesso": { es: "Último acceso" },
+  "Este follow-up ainda não deu nenhum passo.": {
+    es: "Este seguimiento todavía no dio ningún paso.",
+  },
+  "Mostrando os primeiros passos — este follow-up tem histórico maior que o desta tela.": {
+    es: "Mostrando los primeros pasos — este seguimiento tiene un historial más grande que el de esta pantalla.",
+  },
+  "Carregando o follow-up…": { es: "Cargando el seguimiento…" },
+  "Não consegui carregar este follow-up. Recarregue a página; se persistir, ele pode ter sido removido.": {
+    es: "No pude cargar este seguimiento. Recarga la página; si persiste, puede haber sido eliminado.",
+  },
+  "Voltar para a fila": { es: "Volver a la cola" },
+  Fluxo: { es: "Flujo" },
+  Adiar: { es: "Posponer" },
+  "Ex.: Roteador de vendas": { es: "Ej.: Enrutador de ventas" },
+  Perfil: { es: "Perfil" },
+  CNPJ: { es: "CNPJ" },
+  "Cole o endereço acima no campo \"Action\" (ou \"URL de envio\") do seu formulário.": {
+    es: "Pega la dirección de arriba en el campo \"Action\" (o \"URL de envío\") de tu formulario.",
+  },
+  Descartar: { es: "Descartar" },
+  Você: { es: "Tú" },
+  Cliente: { es: "Cliente" },
+  "(sem texto)": { es: "(sin texto)" },
+  "Cancelar resposta": { es: "Cancelar respuesta" },
   // ─── Saúde do canal (bolinha da sidebar + estado do canal) ───
   "Todas as conexões ativas": { es: "Todas las conexiones activas" },
   "Conectando…": { es: "Conectando…" },
