@@ -450,7 +450,9 @@ informação ausente.
 VAPID. Sem as chaves o aviso na bandeja **ainda funciona com a aba aberta** —
 é `new Notification()` em `lib/notifications/emit.ts`, que não depende de
 inscrição nenhuma. Desabilitar trocaria prometer demais por entregar de menos, e
-o segundo não deixa rastro. J12.3 existe para impedir esse conserto.
+o segundo não deixa rastro. **J12.5** existe para impedir esse conserto (era
+J12.3, no `e2e`, até a medição mostrar que ali ela não era observável — ver
+abaixo).
 
 Spec: `tests/e2e/notificacoes-diz-o-que-falta.spec.ts` (estado SEM as chaves —
 o do `.env.e2e` e o do primeiro deploy).
@@ -464,8 +466,25 @@ num job que já leva meia hora.
 |---|------|-------------|-----------|
 | J12.1 | Sem VAPID, a tela não fica muda | aviso `push-status-faltando-chaves` visível, e o de «pronto» ausente | PASS |
 | J12.2 | Ela diz o que FAZER, não só o que falta | o comando `npx web-push generate-vapid-keys` e as duas chaves, nominalmente | PASS |
-| J12.3 | O interruptor de Push continua ligável | não nasce desabilitado — a capacidade com a aba aberta existe | PASS |
+| J12.3 | O controle de Push não some, e a tela diz por que está travado | interruptor visível + «o navegador bloqueou as notificações» | PASS |
+| J12.5 | VAPID ausente NÃO desabilita o Push | com `granted` e sem chaves, nasce habilitado | PASS (unit) |
 | J12.4 | Com VAPID, anuncia a aba fechada | e para de mandar gerar o par que já existe | PASS (unit) |
+
+**Por que J12.5 não é `e2e`, medido e não suposto.** Ela nasceu como asserção
+`toBeEnabled()` na spec, e não podia viver lá. Medido no Chromium do Playwright,
+contra um servidor HTTP local:
+
+    baseline headless                              -> denied
+    grantPermissions(["notifications"]) sem origin -> denied
+    grant com origin explícito                     -> denied
+    headless:false + grant                         -> granted
+
+`Notification.permission` é **`denied` em headless, sempre**, e o CI roda
+headless. Como `_client.tsx` desabilita por `denied || unsupported`, o controle
+está travado ali por um motivo que nada tem a ver com VAPID — e nenhuma
+permissão concedida muda isso. A asserção passou uma vez só porque ganhava a
+corrida contra a hidratação; fechada a janela (`useSyncExternalStore` no hook),
+ela passaria a falhar sempre, e com razão.
 
 **NÃO COBERTO, declarado:** a notificação chegando na bandeja do sistema com a
 aba fechada. Depende do serviço de push do navegador (FCM), de rede externa e de
