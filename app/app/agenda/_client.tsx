@@ -9,9 +9,11 @@ import { CartaoDaConexaoGoogle } from "./_components/CartaoDaConexaoGoogle";
 
 import { FiltroDePessoas } from "@/components/agenda/FiltroDePessoas";
 import { GradeDaAgenda } from "@/components/agenda/GradeDaAgenda";
-import type { Agendamento, Pessoa, VisaoDaAgenda } from "@/components/agenda/tipos";
+import { HistoricoDaAgenda } from "@/components/agenda/HistoricoDaAgenda";
+import type { Agendamento, VisaoDaAgenda } from "@/components/agenda/tipos";
 import { EmptyAgenda } from "@/components/empty";
 import { Button } from "@/components/ui/button";
+import { usePessoasDaAgenda } from "@/hooks/agenda/usePessoasDaAgenda";
 import { CalendarPlus, CaretLeft, CaretRight } from "@/lib/ui/icons";
 import { cn } from "@/lib/utils";
 
@@ -59,11 +61,17 @@ export function AgendaClient({
   const [isolada, setIsolada] = React.useState<string | null>(null);
   const [ancora, setAncora] = React.useState(() => new Date());
 
-  // A frente 1 troca estas duas linhas por um hook em `/api/v1/agenda`. O resto
-  // da tela não muda — é para isso que ela foi desenhada contra os tipos, e não
-  // contra uma fixture.
+  // AS PESSOAS SÃO REAIS: vêm de `/api/v1/team`, com a trilha de cor derivada do
+  // `user_id`. Até esta linha o filtro por pessoa era invisível na tela do
+  // produto — `FiltroDePessoas` devolve `null` com menos de duas pessoas, e a
+  // lista estava vazia. Ele existia, estava provado na vitrine, e ninguém o via
+  // aqui.
+  const { data: pessoas = [] } = usePessoasDaAgenda();
+
+  // OS AGENDAMENTOS AINDA NÃO: `GET /api/v1/agenda/agendamentos` não existe —
+  // a rota tem POST e só. Enquanto ela não existir, a grade fica no estado
+  // vazio, que é honesto, em vez de mostrar dado de mentira (decisão 18).
   const todos: Agendamento[] = React.useMemo(() => [], []);
-  const pessoas: Pessoa[] = React.useMemo(() => [], []);
 
   const agendamentos = React.useMemo(
     () => (isolada === null ? todos : todos.filter((a) => a.responsavelId === isolada)),
@@ -196,6 +204,18 @@ export function AgendaClient({
           </div>
         </div>
       </div>
+
+      {/*
+        O HISTÓRICO na tela do produto, e não só na vitrine. Ele aparece mesmo
+        sem dado: as quatro abas com contador zero respondem "não há nada" sem
+        gastar um clique, e some-lo faria a tela parecer menor do que é.
+      */}
+      <HistoricoDaAgenda
+        agendamentos={agendamentos}
+        pessoas={pessoas}
+        agora={new Date()}
+        className="max-h-[320px]"
+      />
 
       {agendamentos.length === 0 ? (
         <div className="flex min-h-0 flex-1 items-center justify-center rounded-lg border border-border bg-surface">
