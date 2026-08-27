@@ -1,6 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { SupabaseClient } from "@supabase/supabase-js";
+
 import type { ResultadoDaConsulta } from "@/lib/agenda/consulta";
+import type { McpContext } from "@/lib/mcp/types";
 
 /**
  * `crm_find_free_slots` — o COMPORTAMENTO, não a declaração.
@@ -27,13 +30,19 @@ vi.mock("@/lib/agenda/consulta", async (original) => {
 const { horariosLivresDaOrg } = await import("@/lib/agenda/consulta");
 const { crmFindFreeSlots } = await import("@/lib/mcp/tools/agendamento");
 
-const ctx = {
+// O dublê do client existe só para satisfazer o contrato: `horariosLivresDaOrg` está
+// mockada, então nada aqui toca banco. `as never` NÃO servia — `never` não é atribuível
+// a `SupabaseClient`, e esse erro ficou ESCONDIDO atrás do erro de input enquanto o
+// primeiro parâmetro não compilava. Dois defeitos, um mascarando o outro.
+const ctx: McpContext = {
   organizationId: "org-1",
-  role: "agent" as const,
-  actor: { type: "ai_agent" as const, id: "ag-1" },
+  role: "agent",
+  // `role` é obrigatório na variante `ai_agent` do `Actor` — foi o TERCEIRO defeito
+  // desta constante, e cada um só apareceu depois de o anterior ser corrigido.
+  actor: { type: "ai_agent", id: "ag-1", role: "ai_operator" },
   apiTokenId: "tok-1",
   requestId: "req-1",
-  supabase: {} as never,
+  supabase: {} as unknown as SupabaseClient,
 };
 
 function respondeCom(r: ResultadoDaConsulta) {
