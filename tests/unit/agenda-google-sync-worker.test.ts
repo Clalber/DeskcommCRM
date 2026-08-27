@@ -25,6 +25,9 @@ vi.mock("@/lib/webhooks/secrets", () => ({ decryptWebhookSecret: vi.fn(async () 
 const AGORA = new Date("2026-08-26T12:00:00.000Z");
 
 let gravados: Array<Record<string, unknown>> = [];
+/** O que já está na tabela para este calendário, quando o teste simula histórico. */
+let jaGuardados: Array<{ external_event_id: string }> = [];
+let apagados: string[] = [];
 let removidos: number;
 let tokensGravados: Array<string | null>;
 
@@ -36,10 +39,27 @@ function admin() {
           gravados.push(linha);
           return { error: null };
         },
+        select: () => {
+          const c: Record<string, unknown> = {
+            eq: () => c,
+            then: (resolver: (v: unknown) => void) => resolver({ data: jaGuardados, error: null }),
+          };
+          return c;
+        },
         delete: () => {
-          const d = { eq: () => d, then: undefined };
           removidos += 1;
-          return new Proxy(d, { get: (alvo, p) => (p === "eq" ? () => new Proxy(d, {} as never) : Reflect.get(alvo, p)) });
+          let ultimoId = "";
+          const d: Record<string, unknown> = {
+            eq: (coluna: string, valor: string) => {
+              if (coluna === "external_event_id") {
+                ultimoId = valor;
+                apagados.push(valor);
+              }
+              return d;
+            },
+            then: (resolver: (v: unknown) => void) => resolver({ error: null, id: ultimoId }),
+          };
+          return d;
         },
         update: (campos: Record<string, unknown>) => ({
           eq: async () => {
@@ -80,6 +100,8 @@ const eventoDeTerceiro = {
 
 beforeEach(() => {
   gravados = [];
+  jaGuardados = [];
+  apagados = [];
   removidos = 0;
   tokensGravados = [];
   vi.stubGlobal("fetch", vi.fn());
@@ -171,6 +193,48 @@ describe("sincronizarAgendasDoGoogle", () => {
     const r = await sincronizarAgendasDoGoogle(admin(), { agora: AGORA, calendarios: [calendario()] });
     expect(r.falhas).toBe(1);
     expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("A RECONCILIAÇÃO: leitura completa apaga o que não veio — o fantasma", async () => {
+    // No sync incremental o Google manda lápide para o que foi apagado. No
+    // COMPLETO não há lápide: o evento apagado simplesmente NÃO VEM, e a linha
+    // antiga fica ocupando horário para sempre. A poda por prazo não alcança
+    // isso — ela apaga o VELHO, e este evento pode ser de semana que vem.
+    jaGuardados = [{ external_event_id: "evt-alheio" }, { external_event_id: "evt-fantasma" }];
+    vi.mocked(fetch).mockResolvedValue(pagina({ items: [eventoDeTerceiro], nextSyncToken: "T1" }));
+
+    const r = await sincronizarAgendasDoGoogle(admin(), { agora: AGORA, calendarios: [calendario()] });
+
+    expect(r.reconciliados).toBe(1);
+    expect(apagados).toContain("evt-fantasma");
+    // Controle: o que VEIO na lista não pode ser apagado junto.
+    expect(apagados).not.toContain("evt-alheio");
+  });
+
+  it("leitura INCREMENTAL não reconcilia — ausência ali não é apagamento", async () => {
+    // Com `syncToken`, o Google manda só o que MUDOU. Um evento que não veio
+    // simplesmente não mudou; apagá-lo destruiria a agenda inteira a cada tick.
+    jaGuardados = [{ external_event_id: "evt-que-nao-mudou" }];
+    vi.mocked(fetch).mockResolvedValue(pagina({ items: [], nextSyncToken: "T2" }));
+
+    const r = await sincronizarAgendasDoGoogle(admin(), {
+      agora: AGORA,
+      calendarios: [calendario({ sync_token: "T1" })],
+    });
+
+    expect(r.reconciliados).toBe(0);
+    expect(apagados).toEqual([]);
+  });
+
+  it("leitura TRUNCADA não reconcilia — ausência ali significa `não li`", async () => {
+    // Apagar por não ter lido é destruir dado por falta de paciência.
+    jaGuardados = [{ external_event_id: "evt-que-estava-na-pagina-que-eu-nao-li" }];
+    vi.mocked(fetch).mockResolvedValue(pagina({ items: [eventoDeTerceiro], nextPageToken: "sempre" }));
+
+    const r = await sincronizarAgendasDoGoogle(admin(), { agora: AGORA, calendarios: [calendario()] });
+
+    expect(r.reconciliados).toBe(0);
+    expect(apagados).toEqual([]);
   });
 
   it("rodada sem calendário não audita", async () => {

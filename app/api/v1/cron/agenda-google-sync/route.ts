@@ -25,6 +25,24 @@
  * contam tudo o que está na tabela. Logo o filtro tem de ser na ESCRITA, e é
  * `ehIcalUidNosso` que o faz. É o que tira aquela função da prateleira.
  *
+ * ─── A RECONCILIAÇÃO, e o fantasma que a poda por prazo não alcança ──────
+ *
+ * No sync INCREMENTAL o Google manda uma lápide `cancelled` para o que foi
+ * apagado, e a rodada remove a linha. No sync COMPLETO — o primeiro, e todo o
+ * que vem depois de um `410` — não há lápide: o evento apagado simplesmente NÃO
+ * VEM na lista. A linha antiga fica, e continua ocupando horário para sempre.
+ *
+ * A poda por prazo do `data-retention` não alcança isso: ela apaga o que está
+ * VELHO, e este evento pode ser de semana que vem. O que o apaga é comparar o
+ * que veio com o que está guardado, e remover a diferença — e só dá para fazer
+ * isso quando a leitura foi COMPLETA.
+ *
+ * ⚠️ E é por isso que a reconciliação NÃO roda quando a listagem foi truncada
+ * pelo teto de páginas: ali a ausência de um evento significa "não li", não
+ * "foi apagado", e apagar por não ter lido é destruir dado por falta de
+ * paciência. `listarEventos` já devolve `truncada` justamente para esta
+ * decisão.
+ *
  * ─── `410 fullSyncRequired` ────────────────────────────────────────────────
  *
  * O `syncToken` morre (expira, ou a ACL do calendário muda). O Google responde
@@ -56,6 +74,8 @@ export interface ResumoDoSync {
   nossosIgnorados: number;
   recusados: number;
   ressincronizados: number;
+  /** Linhas apagadas por não virem numa leitura COMPLETA. */
+  reconciliados: number;
   falhas: number;
 }
 
@@ -80,6 +100,7 @@ export async function sincronizarAgendasDoGoogle(
     nossosIgnorados: 0,
     recusados: 0,
     ressincronizados: 0,
+    reconciliados: 0,
     falhas: 0,
   };
 
@@ -98,6 +119,9 @@ export async function sincronizarAgendasDoGoogle(
       continue;
     }
 
+    // Leitura COMPLETA é a que não usou `syncToken`: a primeira da agenda, ou a
+    // que veio depois de um `410`. Só ela permite reconciliar.
+    let leituraCompleta = !cal.sync_token;
     let leitura = await listarEventos(accessToken, cal.external_calendar_id, {
       syncToken: cal.sync_token,
       agora: opcoes.agora,
@@ -113,6 +137,7 @@ export async function sincronizarAgendasDoGoogle(
           .update({ sync_token: null })
           .eq("id", cal.id);
         resumo.ressincronizados += 1;
+        leituraCompleta = true;
         leitura = await listarEventos(accessToken, cal.external_calendar_id, {
           syncToken: null,
           agora: opcoes.agora,
@@ -125,12 +150,17 @@ export async function sincronizarAgendasDoGoogle(
     }
 
     const fuso = cal.fuso?.trim() || "UTC";
+    const vistos = new Set<string>();
     for (const bruto of leitura.pagina.eventos) {
       const lido = doEventoDoGoogle(bruto, { fusoDoCalendario: fuso });
 
       if (lido.tipo === "recusado") {
         resumo.recusados += 1;
         continue;
+      }
+
+      if (lido.tipo !== "recusado") {
+        vistos.add(lido.tipo === "cancelado" ? lido.externalEventId : lido.evento.external_event_id);
       }
 
       if (lido.tipo === "cancelado") {
@@ -174,6 +204,31 @@ export async function sincronizarAgendasDoGoogle(
       else resumo.gravados += 1;
     }
 
+    // A RECONCILIAÇÃO. Ver o cabeçalho: só em leitura COMPLETA e NÃO truncada.
+    if (leituraCompleta && !leitura.pagina.truncada) {
+      const { data: guardados } = await admin
+        .from("calendar_external_events")
+        .select("external_event_id")
+        .eq("organization_id", cal.organization_id)
+        .eq("connection_id", cal.connection_id)
+        .eq("external_calendar_id", cal.external_calendar_id);
+
+      const sumidos = (guardados ?? [])
+        .map((l) => String((l as { external_event_id: unknown }).external_event_id))
+        .filter((id) => !vistos.has(id));
+
+      for (const id of sumidos) {
+        await admin
+          .from("calendar_external_events")
+          .delete()
+          .eq("organization_id", cal.organization_id)
+          .eq("connection_id", cal.connection_id)
+          .eq("external_calendar_id", cal.external_calendar_id)
+          .eq("external_event_id", id);
+        resumo.reconciliados += 1;
+      }
+    }
+
     // Só guarda o token quando a leitura chegou ao fim — `listarEventos` já
     // devolve `null` quando cortou.
     if (leitura.pagina.syncToken) {
@@ -184,7 +239,13 @@ export async function sincronizarAgendasDoGoogle(
     }
   }
 
-  if (resumo.gravados > 0 || resumo.removidos > 0 || resumo.ressincronizados > 0 || resumo.falhas > 0) {
+  if (
+    resumo.gravados > 0 ||
+    resumo.removidos > 0 ||
+    resumo.reconciliados > 0 ||
+    resumo.ressincronizados > 0 ||
+    resumo.falhas > 0
+  ) {
     await audit({
       action: "agenda.google.sync_executado",
       metadata: {
@@ -193,6 +254,7 @@ export async function sincronizarAgendasDoGoogle(
         removidos: resumo.removidos,
         nossos_ignorados: resumo.nossosIgnorados,
         recusados: resumo.recusados,
+        reconciliados: resumo.reconciliados,
         ressincronizados: resumo.ressincronizados,
         falhas: resumo.falhas,
       },
