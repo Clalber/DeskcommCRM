@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 
@@ -58,7 +59,22 @@ interface Creds {
 function lerCreds(): Creds {
   const p = path.join(RAIZ, ".e2e-creds.json");
   if (!fs.existsSync(p)) throw new Error("`.e2e-creds.json` ausente — rode `scripts/seed-e2e-credentials.ts`");
-  return JSON.parse(fs.readFileSync(p, "utf8")) as Creds;
+  let c = JSON.parse(fs.readFileSync(p, "utf8")) as Creds;
+  if (!c.agenda) {
+    // ⚠️ A SPEC SEMEIA O QUE PRECISA, e isto não é conveniência.
+    //
+    // O workflow do CI não roda `seed-e2e-agenda.ts` nos passos — quem o roda é
+    // `agente-marca-consulta`, no `beforeAll` dela. Depender disso seria depender
+    // da ORDEM de execução: a spec passaria por outra spec ter rodado antes, que
+    // é exatamente o defeito que `agenda-tela-do-produto` já pagou nesta entrega
+    // (ela só passava com o banco sujo de outra spec).
+    //
+    // O seed é idempotente, então chamá-lo aqui não atrapalha quem já o chamou.
+    execFileSync("npx", ["tsx", "scripts/seed-e2e-agenda.ts"], { stdio: "inherit" });
+    c = JSON.parse(fs.readFileSync(p, "utf8")) as Creds;
+  }
+  if (!c.agenda) throw new Error("seed-e2e-agenda não gravou o bloco `agenda`");
+  return c;
 }
 
 /** Compromissos desenhados na grade — o `aria-label` traz "HH:mm às HH:mm". */

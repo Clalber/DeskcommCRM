@@ -198,7 +198,7 @@ jobs:
       # o molde dela, `agente-organiza-operacao`; o comentário antigo dizia PARTE_1 e estava
       # errado sobre o próprio vizinho.
       SPECS_PARTE_2: >-
-        agente-marca-consulta.spec.ts
+        agente-marca-consulta.spec.ts agenda-marcar-pela-tela.spec.ts
         agente-novo-e-uso.spec.ts agente-organiza-operacao.spec.ts
         central-de-avisos-capacidades.spec.ts escalacao-ciclo.spec.ts
         navegacao.spec.ts olhar-telas-do-epico.spec.ts pipelines-gestao.spec.ts
@@ -291,14 +291,26 @@ jobs:
       #      execução quando a issue #347 entregar entrega determinística (o
       #      caminho provável é desligar o `refetchOnWindowFocus` durante a
       #      asserção, para sobrar um caminho só).
-      # `agenda-marcar-pela-tela` nasceu `skip` de propósito, pela DECISÃO 21.3 da
-      # entrega do Calendário: a frente 1 é API e não tem pixel próprio, então em
-      # vez de CITAR num relatório qual spec vai prová-la em tela — declaração que
-      # depende de alguém reler o relatório — a spec é CRIADA, com o motivo no
-      # cabeçalho, e entra neste gate como qualquer outra.
+      # ✅ `agenda-marcar-pela-tela` SAIU DAQUI — e o registro é o motivo.
       #
-      # Ela sai daqui quando a tela de marcar (frente 2) consumir
-      # `GET /api/v1/agenda/horarios-livres` e o POST de criação: aí há clique
+      # Ela nasceu `skip` pela DECISÃO 21.3: a frente 1 é API e não tem pixel
+      # próprio, então em vez de CITAR num relatório qual spec vai prová-la em
+      # tela, a spec é CRIADA com a condição de saída no cabeçalho.
+      #
+      # ⚠️ E ESSA CONDIÇÃO VENCEU SEM NINGUÉM VOLTAR PARA CONFERIR. Declarar a
+      # condição foi a coisa certa; o que faltou é que ninguém relê condição de
+      # saída. Medido quando alguém foi olhar:
+      #
+      #     grep -n "^export async function" app/api/v1/agenda/agendamentos/route.ts
+      #     # GET:95  POST:145  PATCH:149  DELETE:153
+      #
+      # Escrita e executada, ela achou CINCO defeitos que nenhuma leitura de
+      # código tinha achado — entre eles a tela dizendo "Marcado ✓" sem criar
+      # linha nenhuma, e um laço de requisições no painel de marcação.
+      #
+      # Entra na PARTE_2 ao lado de `agente-marca-consulta` porque as duas usam
+      # `seed-e2e-agenda.ts` — e cada uma o chama por si, para nenhuma depender
+      # da ordem em que a outra rodou.
       # para dirigir, e a condição que a exclui deixa de existir. Enquanto isso,
       # rodá-la no CI custaria um job para exercitar um `skip`.
       #
@@ -323,7 +335,6 @@ jobs:
       FORA_DO_CI: >-
         vps-fresh-onboarding.spec.ts
         inbox-tempo-real.spec.ts
-        agenda-marcar-pela-tela.spec.ts
     steps:
       - uses: actions/checkout@v7
 
