@@ -94,10 +94,20 @@ function hoje(): string {
 
 function main(argv: readonly string[]): number {
   const escrever = argv.includes("--escrever");
-  const desconhecido = argv.find((a) => a !== "--escrever");
+  const soAVersao = argv.includes("--versao-do-changelog");
+  const conhecidos = new Set(["--escrever", "--versao-do-changelog"]);
+  const desconhecido = argv.find((a) => !conhecidos.has(a));
   if (desconhecido) {
     process.stderr.write(`argumento desconhecido: ${desconhecido}\n`);
     return 2;
+  }
+
+  // O workflow de release usa isto para saber se o merge que acabou de entrar
+  // na main trouxe uma versão nova. Imprime só o número, sem mais nada, para
+  // caber num `$(...)`.
+  if (soAVersao) {
+    process.stdout.write(`${versaoBase(fs.readFileSync(CHANGELOG, "utf8"))}\n`);
+    return 0;
   }
 
   const fragmentos = lerFragmentos(DIR_FRAGMENTOS);
