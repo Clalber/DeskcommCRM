@@ -3750,6 +3750,284 @@ export const DICIONARIO: Traducoes = {
   Admin: { es: "Administrador" },
   Manager: { es: "Gerente" },
   Viewer: { es: "Visualizador" },
+
+  // ─── Inbox (lado tenant): lista, filtros, cabeçalho da conversa ───
+  Aguardando: { es: "Esperando" },
+  "Erro ao carregar conversas.": { es: "Error al cargar las conversaciones." },
+  "Tentar novamente": { es: "Intentar de nuevo" },
+  "Buscar conversas": { es: "Buscar conversaciones" },
+  "Filtrar por número de WhatsApp": { es: "Filtrar por número de WhatsApp" },
+  "Filtrar por tag": { es: "Filtrar por etiqueta" },
+  Anonimizado: { es: "Anonimizado" },
+  "Entrou por": { es: "Entró por" },
+  "Posição": { es: "Posición" },
+  "na fila": { es: "en la cola" },
+  Arquivada: { es: "Archivada" },
+  "Aguardando o cliente": { es: "Esperando al cliente" },
+
+  // ─── Inbox: painel lateral CRM (demandas, leads, pedidos, atividade) ───
+  "Nenhuma demanda aberta.": { es: "No hay demandas abiertas." },
+  "Demandas abertas": { es: "Demandas abiertas" },
+  "Leads recentes": { es: "Leads recientes" },
+  "Pedidos recentes": { es: "Pedidos recientes" },
+  "O que acontece a seguir?": { es: "¿Qué pasa a continuación?" },
+  "Próximo passo desta demanda": { es: "Próximo paso de esta demanda" },
+  "Não consegui salvar o próximo passo. Tente de novo.": {
+    es: "No pude guardar el próximo paso. Intenta de nuevo.",
+  },
+  "Nenhum funil configurado nesta organização.": {
+    es: "No hay ningún embudo configurado en esta organización.",
+  },
+  "Não consegui ler estes dados.": { es: "No pude leer estos datos." },
+  "Selecione uma conversa para ver detalhes do contato.": {
+    es: "Selecciona una conversación para ver los detalles del contacto.",
+  },
+
+  // ─── Inbox: layout, cabeçalho de conversa e thread ───
+  "Conversa não encontrada ou fora do seu acesso.": {
+    es: "Conversación no encontrada o fuera de tu acceso.",
+  },
+  "Selecione uma conversa": { es: "Selecciona una conversación" },
+  Ficha: { es: "Ficha" },
+  "Ficha do contato": { es: "Ficha del contacto" },
+  Hoje: { es: "Hoy" },
+  Ontem: { es: "Ayer" },
+  "Erro ao carregar mensagens.": { es: "Error al cargar los mensajes." },
+  "Nenhuma mensagem nesta conversa.": { es: "No hay mensajes en esta conversación." },
+  "Carregar mais antigas": { es: "Cargar más antiguas" },
+  Lida: { es: "Leído" },
+  Entregue: { es: "Entregado" },
+  Enviada: { es: "Enviado" },
+  "Responder a esta mensagem": { es: "Responder a este mensaje" },
+  "Esta mensagem foi apagada": { es: "Este mensaje fue eliminado" },
+  editada: { es: "editado" },
+  "O autor editou esta mensagem": { es: "El autor editó este mensaje" },
+  "Erro desconhecido": { es: "Error desconocido" },
+  "Você passa a responder esta conversa e o atendimento automático para aqui.": {
+    es: "Pasas a responder esta conversación y la atención automática se detiene aquí.",
+  },
+  "Religa o atendimento automático para este cliente — vale para todas as conversas dele.": {
+    es: "Reactiva la atención automática para este cliente — vale para todas sus conversaciones.",
+  },
+  "Devolve esta conversa ao atendimento automático.": {
+    es: "Devuelve esta conversación a la atención automática.",
+  },
+  "Devolvendo...": { es: "Devolviendo..." },
+  "O atendimento automático para nesta conversa. O dono não muda.": {
+    es: "La atención automática se detiene en esta conversación. El dueño no cambia.",
+  },
+  "Pausando...": { es: "Pausando..." },
+  "Fechar esta conversa?": { es: "¿Cerrar esta conversación?" },
+  Automático: { es: "Automático" },
+  Alguém: { es: "Alguien" },
+  "Nota interna · só o time vê": { es: "Nota interna · solo la ve el equipo" },
+  "Excluir nota": { es: "Eliminar nota" },
+
+  // ─── Inbox: transferir conversa / atalhos de teclado ───
+  "Transferir conversa": { es: "Transferir conversación" },
+  "A transferência é imediata: o atendente escolhido vira o responsável agora e a mudança fica registrada no histórico.": {
+    es: "La transferencia es inmediata: el agente elegido se vuelve responsable ahora y el cambio queda registrado en el historial.",
+  },
+  "Transferir para": { es: "Transferir a" },
+  "Carregando atendentes…": { es: "Cargando agentes…" },
+  "Nenhum outro atendente disponível nesta organização.": {
+    es: "No hay ningún otro agente disponible en esta organización.",
+  },
+  "Motivo (opcional)": { es: "Motivo (opcional)" },
+  "Ex.: cliente pediu falar com o financeiro": { es: "Ej.: el cliente pidió hablar con finanzas" },
+  "Transferindo…": { es: "Transfiriendo…" },
+  Gestor: { es: "Gestor" },
+  "Atalhos de teclado": { es: "Atajos de teclado" },
+  "Próxima conversa": { es: "Siguiente conversación" },
+  "Conversa anterior": { es: "Conversación anterior" },
+  "Focar resposta": { es: "Enfocar respuesta" },
+  "Enviar a mensagem": { es: "Enviar el mensaje" },
+  "Quebrar linha sem enviar": { es: "Salto de línea sin enviar" },
+  "Assumir conversa": { es: "Asumir conversación" },
+  "Fechar conversa": { es: "Cerrar conversación" },
+  "Mostrar atalhos": { es: "Mostrar atajos" },
+
+  // ─── Inbox: tags de contato/conversa ───
+  "Sem tags no contato.": { es: "Sin etiquetas en el contacto." },
+  "Adicionar tag ao contato": { es: "Agregar etiqueta al contacto" },
+  "Remover tag": { es: "Quitar etiqueta" },
+  "Tags da conversa": { es: "Etiquetas de la conversación" },
+
+  // ─── Inbox: janela de 24h fechada / seletor de modelo aprovado ───
+  "Modelo enviado — a janela reabre quando o cliente responder.": {
+    es: "Modelo enviado — la ventana se reabre cuando el cliente responda.",
+  },
+  "Não consegui enviar o modelo.": { es: "No pude enviar el modelo." },
+  "Nenhum modelo aprovado ainda. Crie um em": { es: "Todavía no hay ningún modelo aprobado. Crea uno en" },
+  "Conexões → Templates": { es: "Conexiones → Plantillas" },
+  "e envie quando a plataforma aprovar.": { es: "y envíalo cuando la plataforma lo apruebe." },
+  "Modelo aprovado": { es: "Modelo aprobado" },
+  "Este modelo pede": { es: "Este modelo pide" },
+  "valor(es) e ainda não dá para preenchê-los aqui — envie por": {
+    es: "valor(es) y todavía no se pueden completar aquí — envía por",
+  },
+  "ou escolha um modelo sem parâmetros.": { es: "o elige un modelo sin parámetros." },
+  "O cliente nunca escreveu": { es: "El cliente nunca escribió" },
+  "Janela fechada há": { es: "Ventana cerrada hace" },
+  "só modelo": { es: "solo modelo" },
+  "Passaram 24h desde a última mensagem do cliente. Só um modelo aprovado sai daqui — texto livre é recusado pela plataforma.": {
+    es: "Pasaron 24h desde el último mensaje del cliente. Solo un modelo aprobado sale de aquí — el texto libre es rechazado por la plataforma.",
+  },
+  "Tempo restante para escrever texto livre. Depois disso, só modelo aprovado.": {
+    es: "Tiempo restante para escribir texto libre. Después de eso, solo modelo aprobado.",
+  },
+  Janela: { es: "Ventana" },
+  "Lembrete ativo": { es: "Recordatorio activo" },
+  "Cancelar lembrete": { es: "Cancelar recordatorio" },
+  "Em 1 hora": { es: "En 1 hora" },
+  "Em 3 horas": { es: "En 3 horas" },
+  "Em 24 horas": { es: "En 24 horas" },
+
+  // ─── Inbox: composer (anexos, áudio, contato, templates) ───
+  Anexar: { es: "Adjuntar" },
+  "Fotos e vídeos": { es: "Fotos y vídeos" },
+  Documento: { es: "Documento" },
+  "Enviar anexo": { es: "Enviar adjunto" },
+  "Legenda (opcional)": { es: "Descripción (opcional)" },
+  Legenda: { es: "Descripción" },
+  "Gravar áudio": { es: "Grabar audio" },
+  "Cancelar gravação": { es: "Cancelar grabación" },
+  "Enviar áudio": { es: "Enviar audio" },
+  "Não consegui acessar o microfone. Verifique a permissão do navegador.": {
+    es: "No pude acceder al micrófono. Verifica el permiso del navegador.",
+  },
+  "Enviar contato": { es: "Enviar contacto" },
+  "Escolha alguém da base ou informe nome e telefone — como no WhatsApp.": {
+    es: "Elige a alguien de la base o indica nombre y teléfono — como en WhatsApp.",
+  },
+  "Buscar por nome ou telefone…": { es: "Buscar por nombre o teléfono…" },
+  "Nenhum contato encontrado na base.": { es: "No se encontró ningún contacto en la base." },
+  "Nenhum contato com telefone na base.": { es: "No hay ningún contacto con teléfono en la base." },
+  "Enviar número informado": { es: "Enviar número indicado" },
+  "Ou informe um contato": { es: "O indica un contacto" },
+  "Como aparece no cartão": { es: "Cómo aparece en la tarjeta" },
+  "Sugerir resposta": { es: "Sugerir respuesta" },
+  Emoji: { es: "Emoji" },
+  "Templates de script": { es: "Plantillas de guion" },
+  "Nenhum template. Crie em Configurações.": { es: "Ningún modelo. Crea uno en Configuración." },
+
+  // ─── Inbox: mídia (áudio, imagem, figurinha, vídeo, documento) ───
+  "Mídia indisponível": { es: "Contenido no disponible" },
+  Áudio: { es: "Audio" },
+  Imagem: { es: "Imagen" },
+  Figurinha: { es: "Figurita" },
+  Vídeo: { es: "Vídeo" },
+  "Pausar áudio": { es: "Pausar audio" },
+  "Reproduzir áudio": { es: "Reproducir audio" },
+  "Progresso do áudio": { es: "Progreso del audio" },
+  "Velocidade de reprodução": { es: "Velocidad de reproducción" },
+  "Ampliar imagem": { es: "Ampliar imagen" },
+  "Imagem recebida": { es: "Imagen recibida" },
+  Baixar: { es: "Descargar" },
+  "Abrir conversa com este contato": { es: "Abrir conversación con este contacto" },
+  "Não foi possível abrir a conversa.": { es: "No se pudo abrir la conversación." },
+  "Enter salva a nota · Shift+Enter quebra linha": { es: "Enter guarda la nota · Shift+Enter salta de línea" },
+  "Enter envia · Shift+Enter quebra linha": { es: "Enter envía · Shift+Enter salta de línea" },
+
+  // ─── Inbox: aviso de retenção (before_send) ───
+  "sem domingo": { es: "sin domingo" },
+  "Fora da janela de envio": { es: "Fuera de la ventana de envío" },
+  "A resposta fica agendada para a próxima abertura da janela, às": {
+    es: "La respuesta queda programada para la próxima apertura de la ventana, a las",
+  },
+  "isso protege o número contra bloqueio do WhatsApp.": {
+    es: "esto protege el número contra el bloqueo de WhatsApp.",
+  },
+  "Este número ainda está em aquecimento e o limite diário de envios dele foi atingido. Enviar além disso arriscaria bloqueio pelo WhatsApp — libera de novo amanhã, a partir das": {
+    es: "Este número todavía está en calentamiento y se alcanzó su límite diario de envíos. Enviar más arriesgaría el bloqueo por WhatsApp — se libera de nuevo mañana, a partir de las",
+  },
+  "O limite diário de envios do número foi atingido — proteção contra bloqueio do WhatsApp. Libera de novo amanhã, a partir das": {
+    es: "Se alcanzó el límite diario de envíos del número — protección contra el bloqueo de WhatsApp. Se libera de nuevo mañana, a partir de las",
+  },
+  "A mesma mensagem estava se repetindo em massa por este número. O envio foi segurado para variar o texto e não parecer robô para o WhatsApp.": {
+    es: "El mismo mensaje se estaba repitiendo en masa por este número. El envío se retuvo para variar el texto y no parecer un robot para WhatsApp.",
+  },
+  "O contato pediu para não receber mensagens (opt-out). Nada será enviado a ele.": {
+    es: "El contacto pidió no recibir mensajes (opt-out). No se le enviará nada.",
+  },
+  "Este contato foi anonimizado (LGPD) — é proibido enviar qualquer mensagem a ele.": {
+    es: "Este contacto fue anonimizado (LGPD) — está prohibido enviarle cualquier mensaje.",
+  },
+  "Não há base legal (LGPD) para o primeiro contato de prospecção com este lead. O time precisa regularizar o cadastro antes de abordar.": {
+    es: "No hay base legal (LGPD) para el primer contacto de prospección con este lead. El equipo necesita regularizar el registro antes de contactarlo.",
+  },
+  "A resposta prometia um preço ou condição fora da tabela aprovada. O assistente foi orientado a corrigir antes de enviar.": {
+    es: "La respuesta prometía un precio o condición fuera de la tabla aprobada. Se orientó al asistente a corregir antes de enviar.",
+  },
+  "A resposta continha uma promessa não autorizada. O assistente foi orientado a reescrever antes de enviar.": {
+    es: "La respuesta contenía una promesa no autorizada. Se orientó al asistente a reescribir antes de enviar.",
+  },
+  "A primeira mensagem a um contato novo precisa se apresentar como assistente virtual. O assistente foi orientado a corrigir antes de enviar.": {
+    es: "El primer mensaje a un contacto nuevo debe presentarse como asistente virtual. Se orientó al asistente a corregir antes de enviar.",
+  },
+  "Uma trava de segurança segurou esta resposta": { es: "Un bloqueo de seguridad retuvo esta respuesta" },
+  "Ela não foi enviada ao contato.": { es: "No se le envió al contacto." },
+  "Resposta segurada pela proteção do número": { es: "Respuesta retenida por la protección del número" },
+  "Resposta bloqueada por conformidade": { es: "Respuesta bloqueada por cumplimiento" },
+  "Resposta retida para correção": { es: "Respuesta retenida para corrección" },
+
+  // ─── Inbox: gaps achados na varredura completa (ambas as aspas) ───
+  "Você não tem nenhuma organização ativa. Aceite um convite ou contate o admin.": {
+    es: "No tienes ninguna organización activa. Acepta una invitación o contacta al admin.",
+  },
+  "Adicionar tag à conversa": { es: "Agregar etiqueta a la conversación" },
+  "Fechar conversa?": { es: "¿Cerrar conversación?" },
+  "O cliente ainda não escreveu — a janela de 24h nunca abriu. Só um modelo aprovado sai daqui.": {
+    es: "El cliente todavía no escribió — la ventana de 24h nunca se abrió. Solo un modelo aprobado sale de aquí.",
+  },
+  "A janela de 24h fechou há": { es: "La ventana de 24h se cerró hace" },
+  "Só um modelo aprovado sai daqui — texto livre é recusado pela plataforma.": {
+    es: "Solo un modelo aprobado sale de aquí — el texto libre es rechazado por la plataforma.",
+  },
+  "Contato bloqueado — envio de mensagens desabilitado.": {
+    es: "Contacto bloqueado — envío de mensajes deshabilitado.",
+  },
+  "Contato anonimizado — não é possível enviar mensagens.": {
+    es: "Contacto anonimizado — no es posible enviar mensajes.",
+  },
+  "Responsável": { es: "Responsable" },
+
+  // ─── Estados vazios compartilhados (components/empty/variants.tsx) ───
+  "Sem conversas por aqui": { es: "Sin conversaciones por aquí" },
+  "Quando chegarem mensagens, elas aparecem aqui em tempo real.": {
+    es: "Cuando lleguen mensajes, aparecerán aquí en tiempo real.",
+  },
+  "Quadro vazio": { es: "Tablero vacío" },
+  "Ainda não há nenhum cliente aqui. Assim que a primeira conversa começar, o cartão aparece nesta coluna.": {
+    es: "Todavía no hay ningún cliente aquí. En cuanto empiece la primera conversación, la tarjeta aparece en esta columna.",
+  },
+  "Nenhum contato ainda": { es: "Ningún contacto todavía" },
+  "Contatos chegam automaticamente via WhatsApp ou Nuvemshop.": {
+    es: "Los contactos llegan automáticamente vía WhatsApp o Nuvemshop.",
+  },
+  "Sem eventos no período": { es: "Sin eventos en el período" },
+  "Ajuste o filtro de datas ou a busca pra ver eventos.": {
+    es: "Ajusta el filtro de fechas o la búsqueda para ver eventos.",
+  },
+  "Nenhum funil ainda": { es: "Ningún embudo todavía" },
+  "Um funil é o caminho que o cliente percorre até fechar. Crie o primeiro para ter um quadro.": {
+    es: "Un embudo es el camino que el cliente recorre hasta cerrar. Crea el primero para tener un tablero.",
+  },
+  "Sem membros no time": { es: "Sin miembros en el equipo" },
+  "Convide colegas pra atender em conjunto.": { es: "Invita a colegas para atender en conjunto." },
+  "Nenhum token criado": { es: "Ningún token creado" },
+  "Tokens permitem integrações server-to-server.": {
+    es: "Los tokens permiten integraciones server-to-server.",
+  },
+  "Sem atividades registradas": { es: "Sin actividades registradas" },
+  "A timeline mostra mensagens, mudanças de stage e notas.": {
+    es: "La línea de tiempo muestra mensajes, cambios de etapa y notas.",
+  },
+  "Sem candidatos a merge": { es: "Sin candidatos a fusión" },
+  "Contatos duplicados aparecerão aqui pra revisão.": {
+    es: "Los contactos duplicados aparecerán aquí para revisión.",
+  },
+  "Tente ajustar os filtros ou a busca.": { es: "Intenta ajustar los filtros o la búsqueda." },
 };
 
 /**
