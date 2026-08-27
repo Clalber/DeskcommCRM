@@ -15,6 +15,7 @@ import { randomUUID } from "node:crypto";
 import { type NextRequest } from "next/server";
 import { z } from "zod";
 
+import { listaAgendamentos } from "@/lib/agenda/consulta";
 import { fail, ok } from "@/lib/api/wrappers";
 import { ApiError } from "@/lib/api/types";
 import { requireRole } from "@/lib/auth/require-role";
@@ -25,6 +26,20 @@ import {
   cancelarAgendamentoHandler,
   marcarAgendamentoHandler,
 } from "./_handler";
+
+const listarSchema = z.object({
+  contact_id: z.string().uuid().optional(),
+  lead_id: z.string().uuid().optional(),
+  owner_user_id: z.string().uuid().optional(),
+  dia: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .optional(),
+  de: z.string().datetime({ offset: true }).optional(),
+  ate: z.string().datetime({ offset: true }).optional(),
+  situacao: z.enum(["pending", "confirmed", "cancelled", "completed", "no_show"]).optional(),
+  limite: z.coerce.number().int().min(1).max(500).optional(),
+});
 
 const marcarSchema = z.object({
   event_type_id: z.string().uuid(),
@@ -60,6 +75,72 @@ const cancelarSchema = z.object({
    */
   reason: z.string().min(3).max(500),
 });
+
+/**
+ * GET — o que a grade desenha.
+ *
+ * ⚠️ RECORTE OBRIGATÓRIO, herdado de `listaAgendamentos` de propósito. Sem ele a
+ * consulta varreria a agenda inteira da organização, e a recusa vem com ENSINO
+ * em vez de lista vazia: vazio faria a tela dizer "nada marcado" quando a
+ * verdade é que a pergunta não tinha alvo. A régua é do MaestroConexoes, e vale
+ * igual para a tela e para a IA.
+ *
+ * O recorte que a grade usa é `de`+`ate`, em INSTANTES. A tela é semanal e
+ * mensal (seis semanas), então o filtro por `dia` não a serve — e ele tem um
+ * corte em UTC que, para fuso negativo, não é o dia de quem olha: medido para
+ * São Paulo, o "dia 12" pega três horas do dia 11 e perde as três últimas do 12.
+ * Mandando instante, quem chama calcula os limites no fuso de APRESENTAÇÃO e
+ * esta rota não precisa adivinhar em que fuso o dia foi pedido.
+ */
+export async function GET(req: NextRequest): Promise<Response> {
+  const requestId = randomUUID();
+
+  // `viewer`: olhar a agenda é o menor privilégio desta feature.
+  const authz = await requireRole("viewer", { requestId, resource: "agenda" });
+  if (!authz.ok) return authz.response;
+  const { org: activeOrg } = authz;
+
+  const url = new URL(req.url);
+  const parsed = listarSchema.safeParse({
+    contact_id: url.searchParams.get("contact_id") ?? undefined,
+    lead_id: url.searchParams.get("lead_id") ?? undefined,
+    owner_user_id: url.searchParams.get("owner_user_id") ?? undefined,
+    dia: url.searchParams.get("dia") ?? undefined,
+    de: url.searchParams.get("de") ?? undefined,
+    ate: url.searchParams.get("ate") ?? undefined,
+    situacao: url.searchParams.get("situacao") ?? undefined,
+    limite: url.searchParams.get("limite") ?? undefined,
+  });
+  if (!parsed.success) {
+    return fail("validation_failed", "Consulta inválida.", 422, {
+      details: parsed.error.flatten().fieldErrors as Record<string, unknown>,
+      requestId,
+    });
+  }
+
+  const supabase = await createClient();
+  const resultado = await listaAgendamentos(supabase, activeOrg.orgId, {
+    contactId: parsed.data.contact_id ?? null,
+    leadId: parsed.data.lead_id ?? null,
+    ownerUserId: parsed.data.owner_user_id ?? null,
+    dia: parsed.data.dia ?? null,
+    de: parsed.data.de ?? null,
+    ate: parsed.data.ate ?? null,
+    situacao: parsed.data.situacao ?? null,
+    limite: parsed.data.limite ?? 200,
+  });
+
+  if (!resultado.ok) {
+    return fail(
+      resultado.codigo === "sem_alvo" ? "agenda_listagem_sem_recorte" : "internal_error",
+      resultado.motivoParaOperador,
+      resultado.codigo === "sem_alvo" ? 422 : 500,
+      { requestId },
+    );
+  }
+
+  return ok(resultado.agendamentos, { requestId });
+}
 
 export async function POST(req: NextRequest): Promise<Response> {
   return despachar(req, marcarSchema, marcarAgendamentoHandler, 201);
