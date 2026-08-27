@@ -4700,6 +4700,172 @@ export const DICIONARIO: Traducoes = {
   "a última parte pode estar cortada. O texto completo está no arquivo CHANGELOG.md do projeto.": {
     es: "la última parte puede estar cortada. El texto completo está en el archivo CHANGELOG.md del proyecto.",
   },
+
+  // ─── App-root-other: páginas de erro, legais e convite (fora do IdiomaProvider) ───
+  "403 — Sem permissão": { es: "403 — Sin permiso" },
+  "Você não tem acesso a essa área.": { es: "No tienes acceso a esta área." },
+  "Voltar pra Inbox": { es: "Volver a la Bandeja" },
+  "404 — Página não encontrada": { es: "404 — Página no encontrada" },
+  "Verifique o link ou volte pra inbox.": { es: "Verifica el enlace o vuelve a la bandeja." },
+  "500 — Erro interno": { es: "500 — Error interno" },
+  "Algo quebrou do nosso lado. Já registramos o ocorrido; tente de novo em instantes.": {
+    es: "Algo se rompió de nuestro lado. Ya registramos lo ocurrido; intenta de nuevo en unos instantes.",
+  },
+  "503 — Em manutenção": { es: "503 — En mantenimiento" },
+  "Voltamos em alguns minutos.": { es: "Volvemos en unos minutos." },
+  "Conta suspensa": { es: "Cuenta suspendida" },
+  "Sua conta está suspensa. Entre em contato com": {
+    es: "Tu cuenta está suspendida. Contacta a",
+  },
+  "para mais informações.": { es: "para más información." },
+  "Sua conta está suspensa. Fale com quem administra este sistema para saber o motivo e como reativá-la.": {
+    es: "Tu cuenta está suspendida. Habla con quien administra este sistema para saber el motivo y cómo reactivarla.",
+  },
+
+  "Como esta instalação do": { es: "Cómo esta instalación de" },
+  "trata dados pessoais.": { es: "trata los datos personales." },
+  "1. Quem é o controlador": { es: "1. Quién es el responsable" },
+  "O controlador dos dados tratados aqui é": { es: "El responsable de los datos tratados aquí es" },
+  "quem instalou e opera este sistema. Os autores do software não têm acesso a este servidor nem aos dados guardados nele, e não são controladores nem operadores desses dados.": {
+    es: "quien instaló y opera este sistema. Los autores del software no tienen acceso a este servidor ni a los datos guardados en él, y no son responsables ni encargados de esos datos.",
+  },
+  "2. Que dados são tratados": { es: "2. Qué datos son tratados" },
+  "De quem é atendido:": { es: "De quien es atendido:" },
+  "nome, telefone, e-mail quando informado, conteúdo das conversas, arquivos enviados (imagens, áudios, documentos) e o histórico de negócios.": {
+    es: "nombre, teléfono, correo electrónico cuando se informa, contenido de las conversaciones, archivos enviados (imágenes, audios, documentos) y el historial de negocios.",
+  },
+  "De quem usa o sistema:": { es: "De quien usa el sistema:" },
+  "nome, e-mail, papel de acesso e registro das ações realizadas.": {
+    es: "nombre, correo electrónico, rol de acceso y registro de las acciones realizadas.",
+  },
+  "3. Para que são usados": { es: "3. Para qué se usan" },
+  "Para atender, responder, registrar o andamento do atendimento e organizar a relação comercial — inclusive por agentes de inteligência artificial que atuam sob as regras configuradas pelo operador. Registros de ação são mantidos para auditoria e segurança.": {
+    es: "Para atender, responder, registrar el avance de la atención y organizar la relación comercial — incluso por agentes de inteligencia artificial que actúan bajo las reglas configuradas por el operador. Los registros de acción se mantienen para auditoría y seguridad.",
+  },
+  "4. Com quem são compartilhados": { es: "4. Con quién se comparten" },
+  "Os dados ficam no servidor do operador. Para funcionar, o sistema se comunica com terceiros escolhidos e contratados pelo operador:": {
+    es: "Los datos permanecen en el servidor del operador. Para funcionar, el sistema se comunica con terceros elegidos y contratados por el operador:",
+  },
+  "a plataforma de mensagens usada para conversar com o cliente;": {
+    es: "la plataforma de mensajería usada para conversar con el cliente;",
+  },
+  "o provedor de inteligência artificial contratado pelo operador, que recebe o trecho da conversa necessário para gerar a resposta;": {
+    es: "el proveedor de inteligencia artificial contratado por el operador, que recibe el fragmento de la conversación necesario para generar la respuesta;",
+  },
+  "o provedor de infraestrutura onde o servidor está hospedado.": {
+    es: "el proveedor de infraestructura donde el servidor está alojado.",
+  },
+  "Os dados não são vendidos nem cedidos para publicidade de terceiros.": {
+    es: "Los datos no se venden ni se ceden para publicidad de terceros.",
+  },
+  "5. Por quanto tempo": { es: "5. Por cuánto tiempo" },
+  "Conversas e registros de negócio são mantidos enquanto houver relação com o cliente ou obrigação legal de guarda. Arquivos de mídia têm prazo próprio, configurado pelo operador. Registros de auditoria são mantidos por período mais longo, por serem prova de quem fez o quê.": {
+    es: "Las conversaciones y registros de negocio se mantienen mientras haya relación con el cliente u obligación legal de conservación. Los archivos multimedia tienen un plazo propio, configurado por el operador. Los registros de auditoría se mantienen por un período más largo, por ser prueba de quién hizo qué.",
+  },
+  "6. Seus direitos": { es: "6. Tus derechos" },
+  "A LGPD garante a você confirmar se há tratamento, acessar seus dados, corrigir dados incompletos ou desatualizados, pedir anonimização ou eliminação, saber com quem foram compartilhados e revogar consentimento.": {
+    es: "La LGPD te garantiza confirmar si hay tratamiento, acceder a tus datos, corregir datos incompletos o desactualizados, pedir anonimización o eliminación, saber con quién fueron compartidos y revocar el consentimiento.",
+  },
+  "O sistema atende esses pedidos por um fluxo próprio: a exportação reúne o que existe sobre a pessoa, e a anonimização remove a identificação preservando o histórico de atendimento — por isso ela": {
+    es: "El sistema atiende esos pedidos por un flujo propio: la exportación reúne lo que existe sobre la persona, y la anonimización elimina la identificación preservando el historial de atención — por eso ella",
+  },
+  "não pode ser desfeita": { es: "no se puede deshacer" },
+  "7. Segurança": { es: "7. Seguridad" },
+  "O acesso é controlado por conta, senha e papel, com verificação em duas etapas obrigatória para administradores. Cada organização hospedada só enxerga os próprios dados, e as chaves de integração são guardadas cifradas.": {
+    es: "El acceso es controlado por cuenta, contraseña y rol, con verificación en dos pasos obligatoria para administradores. Cada organización alojada solo ve sus propios datos, y las claves de integración se guardan cifradas.",
+  },
+  "8. Encarregado e contato": { es: "8. Encargado y contacto" },
+  "Para exercer seus direitos ou tirar dúvidas sobre privacidade, fale com o encarregado de dados:": {
+    es: "Para ejercer tus derechos o resolver dudas sobre privacidad, habla con el encargado de datos:",
+  },
+  "O operador ainda não publicou um endereço de contato do encarregado de dados nesta instalação. Os pedidos devem ser feitos pelos canais de atendimento da própria organização.": {
+    es: "El operador aún no ha publicado una dirección de contacto del encargado de datos en esta instalación. Los pedidos deben hacerse por los canales de atención de la propia organización.",
+  },
+
+  "As regras de uso desta instalação do": { es: "Las reglas de uso de esta instalación de" },
+  "1. Quem é quem": { es: "1. Quién es quién" },
+  "O": { es: "El" },
+  "é um software de código aberto instalado e operado por": {
+    es: "es un software de código abierto instalado y operado por",
+  },
+  "daqui em diante": { es: "de aquí en adelante" },
+  "o operador": { es: "el operador" },
+  "É o operador quem mantém este servidor, decide como o sistema é usado e responde pelos dados tratados aqui.": {
+    es: "Es el operador quien mantiene este servidor, decide cómo se usa el sistema y responde por los datos tratados aquí.",
+  },
+  "Os autores e mantenedores do software não operam esta instalação, não têm acesso a este servidor nem aos dados nele guardados, e não são parte da relação entre o operador e você. Qualquer pedido sobre uso, cobrança, suporte ou dados deve ser dirigido ao operador.": {
+    es: "Los autores y mantenedores del software no operan esta instalación, no tienen acceso a este servidor ni a los datos en él guardados, y no son parte de la relación entre el operador y tú. Cualquier pedido sobre uso, cobro, soporte o datos debe dirigirse al operador.",
+  },
+  "2. O que o sistema faz": { es: "2. Qué hace el sistema" },
+  "organiza atendimento e vendas: recebe e envia mensagens pelos canais que o operador conectar, registra contatos e negócios, e permite que agentes de inteligência artificial atendam junto com pessoas, sob as regras que o operador configurar.": {
+    es: "organiza atención y ventas: recibe y envía mensajes por los canales que el operador conecte, registra contactos y negocios, y permite que agentes de inteligencia artificial atiendan junto con personas, bajo las reglas que el operador configure.",
+  },
+  "3. Sua conta": { es: "3. Tu cuenta" },
+  "O acesso é pessoal. Você é responsável por manter sua senha em segredo e pelo que for feito com a sua conta. Contas de administrador exigem verificação em duas etapas. Avise o operador imediatamente se suspeitar de acesso indevido.": {
+    es: "El acceso es personal. Eres responsable de mantener tu contraseña en secreto y de lo que se haga con tu cuenta. Las cuentas de administrador exigen verificación en dos pasos. Avisa al operador de inmediato si sospechas de un acceso indebido.",
+  },
+  "4. Uso aceitável": { es: "4. Uso aceptable" },
+  "Ao usar este sistema, você concorda em não:": { es: "Al usar este sistema, aceptas no:" },
+  "enviar mensagens não solicitadas em massa, nem burlar pedidos de descadastro;": {
+    es: "enviar mensajes no solicitados en masa, ni burlar pedidos de baja;",
+  },
+  "usar os dados de clientes para finalidade diferente da que os originou;": {
+    es: "usar los datos de clientes para un fin diferente del que los originó;",
+  },
+  "tentar acessar dados de outra organização hospedada nesta instalação;": {
+    es: "intentar acceder a datos de otra organización alojada en esta instalación;",
+  },
+  "violar os termos dos serviços conectados, como as regras da plataforma de mensagens.": {
+    es: "violar los términos de los servicios conectados, como las reglas de la plataforma de mensajería.",
+  },
+  "O sistema respeita pedidos de parada enviados pelos clientes: quem pedir para não receber mais mensagens é bloqueado automaticamente para envios.": {
+    es: "El sistema respeta los pedidos de detención enviados por los clientes: quien pida no recibir más mensajes queda bloqueado automáticamente para envíos.",
+  },
+  "5. Conteúdo e dados": { es: "5. Contenido y datos" },
+  "Os dados inseridos aqui — contatos, conversas, negócios, arquivos — pertencem ao operador e às pessoas a que se referem. O tratamento desses dados é descrito na": {
+    es: "Los datos ingresados aquí — contactos, conversaciones, negocios, archivos — pertenecen al operador y a las personas a las que se refieren. El tratamiento de esos datos se describe en la",
+  },
+  "Respostas geradas por inteligência artificial podem conter erros. Elas não substituem conferência humana em decisões que envolvam preço, prazo, saúde, crédito ou obrigação legal.": {
+    es: "Las respuestas generadas por inteligencia artificial pueden contener errores. No sustituyen la verificación humana en decisiones que involucren precio, plazo, salud, crédito u obligación legal.",
+  },
+  "6. Disponibilidade e garantias": { es: "6. Disponibilidad y garantías" },
+  "Este sistema roda em servidor do operador e depende de serviços de terceiros para funcionar. O software é distribuído “como está”, sem garantia de funcionamento ininterrupto ou de adequação a uma finalidade específica. Interrupções, falhas de terceiros e perda de dados por causas fora do controle do operador não geram obrigação de indenizar, salvo quando a lei determinar.": {
+    es: "Este sistema corre en el servidor del operador y depende de servicios de terceros para funcionar. El software se distribuye “tal cual”, sin garantía de funcionamiento ininterrumpido o de adecuación a una finalidad específica. Interrupciones, fallas de terceros y pérdida de datos por causas fuera del control del operador no generan obligación de indemnizar, salvo cuando la ley lo determine.",
+  },
+  "7. Encerramento": { es: "7. Terminación" },
+  "O operador pode suspender ou encerrar o seu acesso em caso de descumprimento destes termos. Você pode pedir o encerramento da sua conta a qualquer momento. O encerramento do acesso não apaga automaticamente os registros de atendimento, que seguem as regras de retenção descritas na Política de Privacidade.": {
+    es: "El operador puede suspender o terminar tu acceso en caso de incumplimiento de estos términos. Puedes pedir la terminación de tu cuenta en cualquier momento. La terminación del acceso no borra automáticamente los registros de atención, que siguen las reglas de retención descritas en la Política de Privacidad.",
+  },
+  "8. Mudanças": { es: "8. Cambios" },
+  "O operador pode atualizar estes termos. Mudanças relevantes devem ser comunicadas antes de passarem a valer.": {
+    es: "El operador puede actualizar estos términos. Los cambios relevantes deben comunicarse antes de entrar en vigor.",
+  },
+  "9. Contato": { es: "9. Contacto" },
+  "Falar com o operador": { es: "Hablar con el operador" },
+  "pelos canais de atendimento da própria organização": {
+    es: "por los canales de atención de la propia organización",
+  },
+
+  "Muitas tentativas": { es: "Demasiados intentos" },
+  "Aguarde alguns minutos e abra o link do convite de novo.": {
+    es: "Espera unos minutos y abre el enlace de la invitación de nuevo.",
+  },
+  "Convite inválido ou expirado": { es: "Invitación inválida o vencida" },
+  "Este link não é válido ou já passou da janela de 24h. Peça um novo convite ao admin do tenant.": {
+    es: "Este enlace no es válido o ya pasó la ventana de 24h. Pide una nueva invitación al admin del tenant.",
+  },
+  "Você foi convidado": { es: "Fuiste invitado" },
+  "Para aceitar o convite como": { es: "Para aceptar la invitación como" },
+  "faça login com o email": { es: "inicia sesión con el correo" },
+  "Fazer login": { es: "Iniciar sesión" },
+  "Ainda não tenho conta": { es: "Todavía no tengo cuenta" },
+  "Email não corresponde": { es: "El correo no coincide" },
+  "Você está logado como": { es: "Estás conectado como" },
+  "mas o convite foi enviado para": { es: "pero la invitación fue enviada a" },
+  "Saia e faça login com o email correto.": { es: "Cierra sesión e inicia con el correo correcto." },
+  "Aceitar convite": { es: "Aceptar invitación" },
+  "Você foi convidado para entrar como": { es: "Fuiste invitado a entrar como" },
+  "Confirme abaixo para ativar seu acesso.": { es: "Confirma abajo para activar tu acceso." },
 };
 
 /**
