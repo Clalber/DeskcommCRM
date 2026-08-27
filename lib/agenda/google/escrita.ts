@@ -32,7 +32,7 @@
  * pura e testável, e o teste mede a INVERSA (dois ids diferentes nunca colidem).
  */
 import { classificarErroDoGoogle, type ClassificacaoDoErro } from "./erros";
-import { paraEventoDoGoogle, type AgendamentoParaGoogle } from "./evento";
+import { paraEventoDoGoogle, SUFIXO_ICAL_UID, type AgendamentoParaGoogle } from "./evento";
 
 const ENDERECO_DE_EVENTOS = "https://www.googleapis.com/calendar/v3/calendars";
 const PRAZO_MS = 15_000;
@@ -51,8 +51,23 @@ export type EscritaNoGoogle =
  */
 export function idDeEventoDoGoogle(idDoAgendamento: string): string {
   const limpo = idDoAgendamento.toLowerCase().replace(/[^a-v0-9]/g, "");
-  return `deskcomm${limpo}`;
+  return `${PREFIXO}${limpo}`;
 }
+
+/**
+ * O prefixo sai do MESMO lugar que a identidade iCal, e não de um literal aqui.
+ *
+ * ⚠️ Eu tinha escrito `deskcomm` cravado, e `tests/unit/branding.test.ts`
+ * reprovou — corretamente: numa instalação de marca própria, um literal de marca
+ * no código é vazamento. Mas a saída NÃO é resolver por `branding()`: o cabeçalho
+ * de `SUFIXO_ICAL_UID` já mediu por quê — se a identidade saísse da marca
+ * resolvida, todo evento criado ANTES de uma troca de marca deixaria de ser
+ * reconhecido, e o sintoma seria compromisso fantasma ocupando horário, sem erro
+ * nenhum.
+ *
+ * Então a identidade é fixa do PRODUTO, e existe uma fonte só para ela.
+ */
+const PREFIXO = SUFIXO_ICAL_UID.toLowerCase().replace(/[^a-v0-9]/g, "");
 
 async function chamar(
   metodo: "PUT" | "DELETE",
