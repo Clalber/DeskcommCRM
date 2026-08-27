@@ -71,6 +71,27 @@ export const ALVO_DE_FUNIL: Record<string, AlvoDeFunil> = {
   crm_schedule_followup: "funil_vem_do_lead",
   crm_cancel_followup: "funil_vem_do_lead",
 
+  // ---- agenda: DECLARADAS `sem_funil`, e a declaração é o ponto ----
+  //
+  // As três operam por `contact_id` (marcar) ou `appointment_id` (remarcar e
+  // cancelar). NENHUMA recebe `lead_id`. Classificá-las `funil_vem_do_lead` seria
+  // TEATRO: o gate procuraria um argumento que nunca vem, cairia no ramo de
+  // "sem lead" e liberaria 100% das vezes — com aparência de escopado. Quem lesse
+  // a tabela concluiria "está protegido" e estaria errado.
+  //
+  // `sem_funil` e `funil_vem_do_lead`-que-nunca-resolve têm comportamento IDÊNTICO
+  // e legibilidade oposta. Declarar o que não protege é o uso correto deste valor,
+  // que existe — nas palavras do próprio tipo — "porque 'não se aplica' e 'ninguém
+  // decidiu' precisam ser distinguíveis".
+  //
+  // Quem limita estas três é o RBAC (agent+ escreve compromisso) e o risco
+  // `critico` do cancelar, que não entra por pacote. O alvo `funil_vem_do_contato`
+  // (DECISÃO 27) fecharia `crm_book_appointment` de verdade, porque ali o
+  // `contact_id` é OBRIGATÓRIO — entra em seguida, com resolvedor próprio.
+  crm_book_appointment: "sem_funil",
+  crm_reschedule_appointment: "sem_funil",
+  crm_cancel_appointment: "sem_funil",
+
   // ---- não têm funil, e isso é declarado ----
   crm_send_whatsapp_message: "sem_funil",
   crm_add_case_note: "sem_funil",
