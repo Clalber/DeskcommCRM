@@ -104,6 +104,39 @@ export async function marcarAgendamentoHandler(
     );
   }
 
+  // O `contact_id` É INPUT EXTERNO E PRECISA SER RESOLVIDO, não repassado.
+  //
+  // ⚠️ Ele atravessava a borda cru: `lib/mcp/tools/agendamento.ts:259` aceita
+  // `z.string().uuid()` livre do modelo, e o INSERT abaixo o gravava sem
+  // perguntar de quem é. Este handler roda com service role e filtra
+  // `organization_id` em toda query — `contact_id` era o ÚNICO campo de entrada
+  // que não era resolvido. Pela rota HTTP bastava um `agent` da org A.
+  //
+  // Hoje não vaza PII (a tela lê contatos com a sessão do usuário, sob RLS, e
+  // volta nulo) e não permite enumerar (o par 201/404 só confirma um uuid que
+  // quem chamou já tem). O que preocupa é o DEPOIS: o cabeçalho da migration
+  // 0177 diz que `contact_id` é "quem recebe o LEMBRETE". No dia em que o worker
+  // de lembrete nascer, esta linha vira a organização A mandando WhatsApp para o
+  // cliente da B — e `on delete restrict` faz a linha ficar presa numa org que
+  // não a enxerga nem consegue soltá-la.
+  //
+  // O molde é o de `app/api/v1/messages/_handler.ts:333` — resolver contra a org
+  // e recusar com 404, sem dizer se o id existe noutro lugar.
+  if (input.contact_id) {
+    const { data: contato, error: erroContato } = await supabase
+      .from("contacts")
+      .select("id")
+      .eq("id", input.contact_id)
+      .eq("organization_id", ctx.organization_id)
+      .maybeSingle();
+    if (erroContato) {
+      throw new ApiError(500, "internal_error", undefined, ctx.requestId, erroContato.message);
+    }
+    if (!contato) {
+      throw new ApiError(404, "not_found", undefined, ctx.requestId, "Contato não encontrado.");
+    }
+  }
+
   const fim = new Date(inicio.getTime() + tipo.duration_minutes * 60_000);
   const consulta = await exigeHorarioLivre(supabase, ctx, {
     eventTypeId: tipo.id,
