@@ -2,6 +2,7 @@
 
 import { addDays, format, isSameDay, isSameMonth, startOfMonth, startOfWeek } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import Link from "next/link";
 import * as React from "react";
 
 import { Button } from "@/components/ui/button";
@@ -223,9 +224,27 @@ export function PainelDeMarcacao({
               Você ainda não publicou seus horários de atendimento
             </p>
             <p className="mt-1 text-xs leading-4 text-text-muted">
-              Sem eles ninguém consegue marcar — nem você, nem o agente. Configure a sua
-              disponibilidade e os horários aparecem aqui.
+              Sem eles ninguém consegue marcar — nem você, nem o agente.
             </p>
+            {/*
+              O AVISO VIRA PORTA.
+
+              Ele dizia "Configure a sua disponibilidade" e não levava a lugar
+              nenhum — e a tela EXISTE: é a aba "Atendimento" de Equipe, atrás de
+              um botão só de ícone que nada nomeia como "meus horários". O dono do
+              produto procurou e não achou; concluiu que a tela não existia, e o
+              comentário do registro de navegação dizia o mesmo, por estar vencido.
+
+              Instrução sem caminho é acusação: ela diz ao usuário que ele deixou
+              de fazer algo e não mostra onde fazer.
+            */}
+            <Link
+              href="/app/team?aba=atendimento"
+              data-testid="ir-configurar-horarios"
+              className="mt-2 inline-block text-xs font-medium text-accent underline underline-offset-2 hover:text-accent-strong"
+            >
+              Configurar meus horários de atendimento
+            </Link>
           </div>
         )}
 

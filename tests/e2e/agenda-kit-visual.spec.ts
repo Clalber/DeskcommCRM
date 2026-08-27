@@ -582,8 +582,17 @@ test.describe("kit visual da Agenda", () => {
     const aviso = painel.getByTestId("sem-jornada-publicada");
     await expect(aviso).toBeVisible({ timeout: ESPERA });
     await expect(aviso).toContainText("ainda não publicou");
-    // Diz o PRÓXIMO PASSO, não só a ausência.
-    await expect(aviso).toContainText(/configure|disponibilidade/i);
+    // Diz o PRÓXIMO PASSO, não só a ausência — e o próximo passo é CLICÁVEL.
+    //
+    // Esta asserção era `toContainText(/configure|disponibilidade/i)`, e o texto
+    // passava por ela dizendo "Configure a sua disponibilidade" sem levar a lugar
+    // nenhum. O dono do produto procurou onde configurar e não achou: a tela
+    // existe (aba "Atendimento" de Equipe), o caminho é que não existia.
+    // Instrução sem caminho é acusação, e uma asserção sobre PALAVRA não
+    // distingue as duas — só a asserção sobre o DESTINO distingue.
+    const porta = aviso.getByTestId("ir-configurar-horarios");
+    await expect(porta).toBeVisible();
+    await expect(porta).toHaveAttribute("href", "/app/team?aba=atendimento");
 
     // E o painel do caso normal NÃO mostra este aviso — senão ele apareceria
     // sempre, e aviso que aparece sempre não informa nada.
