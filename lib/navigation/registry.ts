@@ -223,7 +223,10 @@ export const NAV_DESTINATIONS: NavDestination[] = [
     // não da conta de quem está logado. O gate `navegacao-registry` cobra a
     // seção em todo grupo que tem hub, e sem ela o destino não aparece no hub.
     section: "Sua empresa",
-    sidebar: true,
+    // SEM `sidebar`, como as outras DEZ entradas de "organizacao": este grupo
+    // tem hub, e se chega às telas dele por "Configurações". Eu tinha posto
+    // `sidebar: true` e a cerca reprovou dizendo "a tela existe e não tem porta
+    // na navegação" — a porta existia, era outra.
   },
   {
     // Estava enterrado em Configurações e ninguém sabia que existia — o achado
