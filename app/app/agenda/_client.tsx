@@ -1,6 +1,6 @@
 "use client";
 
-import { addDays, format, startOfWeek } from "date-fns";
+import { addDays, endOfMonth, format, startOfDay, startOfMonth, startOfWeek } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import * as React from "react";
 
@@ -15,6 +15,7 @@ import { EmptyAgenda } from "@/components/empty";
 import { Button } from "@/components/ui/button";
 import { PainelDeMarcacao } from "@/components/agenda/PainelDeMarcacao";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { useAgendamentos } from "@/hooks/agenda/useAgendamentos";
 import { useHorariosLivres } from "@/hooks/agenda/useHorariosLivres";
 import { useMarcarAgendamento } from "@/hooks/agenda/useMarcarAgendamento";
 import { usePessoasDaAgenda } from "@/hooks/agenda/usePessoasDaAgenda";
@@ -63,13 +64,20 @@ export function AgendaClient({
   googleConfigurado: boolean;
   faltaNoGoogle: string[];
   /** Tipos ativos, resolvidos no servidor: não há rota que os liste ainda. */
-  tiposIniciais: Array<{ id: string; nome: string; duracaoMin: number }>;
+  tiposIniciais: Array<{ id: string; nome: string; duracaoMin: number; donoId: string | null }>;
   /** A semana corrente, resolvida no servidor: `GET /agendamentos` não existe. */
   agendamentosIniciais: Agendamento[];
 }) {
   const [marcando, setMarcando] = React.useState(false);
   const marcar = useMarcarAgendamento();
-  const tipo = tiposIniciais[0] ?? null;
+  // ⚠️ ERA `tiposIniciais[0] ?? null` — uma constante, sem seletor em lugar
+  // nenhum. `page.tsx` ordena os tipos por NOME, então a tela marcava sempre o
+  // primeiro em ordem alfabética e não havia como marcar outro: numa org com
+  // "Atendimento", "Consulta", "Reunião", só "Atendimento" era alcançável pela
+  // tela. As categorias existiam no banco, no seed e na API — e a tela oferecia
+  // uma. Achado escrevendo a spec de marcar, não lendo o código.
+  const [tipoId, setTipoId] = React.useState<string | null>(() => tiposIniciais[0]?.id ?? null);
+  const tipo = tiposIniciais.find((t) => t.id === tipoId) ?? tiposIniciais[0] ?? null;
   const [visao, setVisao] = React.useState<VisaoDaAgenda>("semana");
   const [isolada, setIsolada] = React.useState<string | null>(null);
   const [ancora, setAncora] = React.useState(() => new Date());
@@ -81,16 +89,31 @@ export function AgendaClient({
   // aqui.
   const { data: pessoas = [] } = usePessoasDaAgenda();
 
+  // A JANELA DE BUSCA PRECISA SER ESTÁVEL, e não era.
+  //
+  // ⚠️ Isto era `de: new Date().toISOString()` calculado no CORPO do render. A
+  // chave do React Query inclui o recorte, e `new Date()` devolve milissegundos
+  // diferentes a cada passagem — então cada resposta causava re-render, que
+  // gerava chave nova, que disparava outra busca. O painel nunca estabilizava:
+  // `horarios` ficava `undefined` entre as idas, `horariosPorDia` nascia vazio e
+  // TODO dia aparecia "sem horário" — com a rota respondendo 200 e slots reais.
+  //
+  // Medido pela spec de marcar, que capturou as respostas: cinco 200 seguidos
+  // com vagas, e a tela mostrando 42 dias apagados. Em produção isto é um laço
+  // de requisições por usuário com o painel aberto.
+  //
+  // `useMemo` sem dependência de tempo: a janela é fixada quando o painel abre.
+  const janelaDeBusca = React.useMemo(
+    () => ({ de: new Date().toISOString(), ate: addDays(new Date(), 30).toISOString() }),
+    // A janela só precisa mudar quando o painel REABRE ou o tipo muda — nunca a
+    // cada render. `marcando` na lista é o que a renova entre duas aberturas.
+    [marcando, tipo?.id],
+  );
+
   // Os horários vêm da rota real — a mesma que a IA usa, então tela e agente
   // oferecem exatamente os mesmos horários. Só consulta quando o painel abre.
   const { data: horarios } = useHorariosLivres(
-    marcando && tipo
-      ? {
-          event_type_id: tipo.id,
-          de: new Date().toISOString(),
-          ate: addDays(new Date(), 30).toISOString(),
-        }
-      : null,
+    marcando && tipo ? { event_type_id: tipo.id, de: janelaDeBusca.de, ate: janelaDeBusca.ate } : null,
   );
 
   const horariosPorDia = React.useMemo(() => {
@@ -103,11 +126,45 @@ export function AgendaClient({
     return mapa;
   }, [horarios]);
 
-  // OS AGENDAMENTOS SÃO REAIS, vindos do servidor. `GET /api/v1/agenda/agendamentos`
-  // ainda não existe (a rota tem POST, PATCH e DELETE), então a `page.tsx`
-  // consulta e passa por prop. O que falta até o GET subir é atualizar sem
-  // recarregar — não o dado.
-  const todos: Agendamento[] = agendamentosIniciais;
+  // OS AGENDAMENTOS SÃO REAIS, e agora TAMBÉM se atualizam sem recarregar.
+  //
+  // ⚠️ O comentário que estava aqui dizia que `GET /api/v1/agenda/agendamentos`
+  // "ainda não existe (a rota tem POST, PATCH e DELETE)". Era verdade quando foi
+  // escrito e VENCEU: `grep -n "^export async function" app/api/v1/agenda/agendamentos/route.ts`
+  // devolve GET:95. A prosa descrevia um estado, o estado mudou, e a frase ficou
+  // — junto com o `useAgendamentos`, que existia inteiro e não era montado por
+  // ninguém (1 ocorrência no repo: a própria definição).
+  //
+  // A prop do RSC segue sendo a PRIMEIRA pintura (sem piscar, sem spinner) e o
+  // hook assume dali: `useMarcarAgendamento` já invalida `["agenda"]`, então
+  // marcar pela tela repinta a grade sozinho.
+  // O recorte acompanha o que a grade DESENHA — mesma visão, mesma âncora.
+  // Instante ISO, nunca o filtro `dia`: o cabeçalho do hook mede por que
+  // (`dia=` corta em UTC e some com o compromisso das 22h no fuso de São Paulo).
+  const recorteDaGrade = React.useMemo(() => {
+    const inicio =
+      visao === "mes"
+        ? startOfMonth(ancora)
+        : visao === "semana"
+          ? startOfWeek(ancora, { weekStartsOn: 0 })
+          : startOfDay(ancora);
+    const fim =
+      visao === "mes" ? addDays(endOfMonth(ancora), 1) : addDays(inicio, visao === "semana" ? 7 : 1);
+    return { de: inicio.toISOString(), ate: fim.toISOString() };
+  }, [visao, ancora]);
+
+  // A janela que o SERVIDOR pintou. Sem esta comparação, navegar para outra
+  // semana mostraria os compromissos DESTA por um instante — o fallback estaria
+  // respondendo a uma pergunta que ninguém fez. Cair para lista vazia é pior de
+  // aparência e melhor de verdade: a grade fica vazia por um piscar, em vez de
+  // mostrar compromisso no dia errado.
+  const recorteDoServidor = React.useRef(recorteDaGrade).current;
+  const naJanelaDoServidor =
+    recorteDaGrade.de === recorteDoServidor.de && recorteDaGrade.ate === recorteDoServidor.ate;
+
+  const { data: agendamentosVivos } = useAgendamentos(recorteDaGrade);
+  const todos: Agendamento[] =
+    agendamentosVivos ?? (naJanelaDoServidor ? agendamentosIniciais : []);
 
   const agendamentos = React.useMemo(
     () => (isolada === null ? todos : todos.filter((a) => a.responsavelId === isolada)),
@@ -261,12 +318,43 @@ export function AgendaClient({
           <SheetHeader>
             <SheetTitle>Novo agendamento</SheetTitle>
           </SheetHeader>
+          {tiposIniciais.length > 1 && (
+            <div className="mt-4" data-testid="tipos-de-agendamento">
+              <p className="mb-2 text-xs font-medium text-text-muted">Tipo de agendamento</p>
+              <div className="flex flex-wrap gap-1.5">
+                {tiposIniciais.map((t) => (
+                  <button
+                    key={t.id}
+                    type="button"
+                    data-testid={`tipo-${t.id}`}
+                    aria-pressed={t.id === tipo?.id}
+                    onClick={() => setTipoId(t.id)}
+                    className={cn(
+                      "rounded-full border px-3 py-1 text-xs transition-colors duration-fast",
+                      t.id === tipo?.id
+                        ? "border-transparent bg-accent text-accent-foreground"
+                        : "border-border text-text-muted hover:border-border-strong hover:text-text",
+                    )}
+                  >
+                    {t.nome}
+                    <span className="ml-1 opacity-70 tabular-nums">{t.duracaoMin}min</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
           {tipo && (
             <div className="mt-4">
               <PainelDeMarcacao
                 ancora={new Date()}
                 agora={new Date()}
-                responsavel={pessoas[0] ?? { id: "", nome: "Você", trilha: 1 }}
+                responsavel={
+                  // O DONO DO TIPO, não o primeiro da lista. A tela dizia "com
+                  // <primeira pessoa>" enquanto oferecia a jornada de outra —
+                  // e marcava na agenda da primeira, que não tinha jornada.
+                  pessoas.find((p) => p.id === tipo.donoId) ??
+                  pessoas[0] ?? { id: "", nome: "Você", trilha: 1 }
+                }
                 tipo={tipo.nome}
                 duracaoMin={tipo.duracaoMin}
                 horariosPorDia={horariosPorDia}
@@ -276,11 +364,19 @@ export function AgendaClient({
                 // ESTE é o fio que faltava. Sem ele o "Marcado ✓" era estado
                 // local do React e nenhuma linha nascia no banco.
                 onConfirmar={(instante) => {
-                  marcar.mutate({
-                    event_type_id: tipo.id,
-                    starts_at: instante,
-                    owner_user_id: pessoas[0]?.id,
-                  });
+                  // ⚠️ SEM `owner_user_id`, e é isto que conserta o 422.
+                  //
+                  // Isto mandava `pessoas[0]?.id` — a PRIMEIRA pessoa da lista.
+                  // Os horários oferecidos vêm de `useHorariosLivres`, que NÃO
+                  // manda dono, então a rota resolve `tipo.default_owner_user_id`.
+                  // A tela oferecia a agenda de um e marcava na de outro: medido
+                  // nesta org, 5 pessoas e só o dono do tipo com jornada, e o POST
+                  // devolvia `agenda_disponibilidade_invalida` ("expected object,
+                  // received undefined") enquanto a tela dizia "Marcado ✓".
+                  //
+                  // Omitir é o que faz oferta e marcação resolverem o dono pela
+                  // MESMA regra (`_handler.ts:96`), por construção e não por sorte.
+                  return marcar.mutateAsync({ event_type_id: tipo.id, starts_at: instante });
                 }}
               />
             </div>
