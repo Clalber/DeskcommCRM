@@ -205,7 +205,11 @@ export function houveEfeito(resultado: ResultadoDaRetencao): boolean {
     // A terceira conta: sem ela, uma rodada que só podou o espelho apagaria
     // linhas e não deixaria registro — e o CLAUDE.md manda auditar QUANDO HÁ
     // EFEITO, não parar de auditar.
-    resultado.espelho_apagado > 0
+    resultado.espelho_apagado > 0 ||
+    // A quarta, pela MESMA razão, e ela quase entrou sem: acrescentei a poda de
+    // nonces ao laço e ao retorno e esqueci desta linha. O comentário acima
+    // descrevia exatamente o defeito que eu estava criando um parágrafo abaixo.
+    resultado.nonces_apagados > 0
   );
 }
 
