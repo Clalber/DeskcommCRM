@@ -5518,6 +5518,7 @@ export const DICIONARIO: Traducoes = {
   "Assistente retorna": { es: "El asistente vuelve" },
 
   // ─── Merge PR #365 (Web Push, relógio HTTP e follow-up reativo) — i18n ───
+  "Automação (Webhooks)": { es: "Automatización (Webhooks)" },
   "Adicionar campo": { es: "Agregar campo" },
   "Aparecem no dossiê do negócio. No follow-up, você escolhe em qual campo gravar a resposta.": {
     es: "Aparecen en el dossier del negocio. En el follow-up, eliges en qué campo guardar la respuesta.",
