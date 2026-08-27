@@ -642,7 +642,16 @@ test.describe("kit visual da Agenda", () => {
     // A página NUNCA rola na horizontal: `html, body` têm `overflow-x: hidden`,
     // então uma grade larga demais não ganharia barra — sumiria pela direita.
     const estouro = await page.evaluate(
-      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      // ⚠️ `body.scrollWidth`, NÃO `documentElement`. `app/globals.css` põe
+      // `overflow-x: hidden` em `html` E em `body` (linhas 422 e 440), e sob isso
+      // o `scrollWidth` do `documentElement` é GRAMPEADO no `clientWidth`: a
+      // conta dá zero mesmo com um filho de 3000px dentro. Medido com o chromium
+      // do repo, viewport 390x844, filho de 3000px — `visible` → 2610,
+      // `hidden` → 0, e `body.scrollWidth` = 3000 nos DOIS casos.
+      //
+      // A asserção existia e era incapaz de falhar. Trocar a medida é o conserto;
+      // o caso de sabotagem ao lado é o que prova que a nova consegue.
+      () => document.body.scrollWidth - document.documentElement.clientWidth,
     );
     expect(estouro, "a página estourou a largura no celular").toBeLessThanOrEqual(0);
   });

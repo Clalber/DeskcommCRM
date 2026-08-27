@@ -78,6 +78,17 @@ test.describe("a Agenda como o dono do produto a usa", () => {
       els.map((e) => (e as HTMLElement).dataset.trilha),
     );
     expect(trilhas.every((t) => t && Number(t) >= 1 && Number(t) <= 8)).toBe(true);
+
+    // ⚠️ O INTERVALO SOZINHO É PARCIALMENTE VÁCUO, e o comentário acima já
+    // AFIRMAVA o que ele não media: "trilhas diferentes entre si". Se
+    // `trilhaPadraoDoMembro` devolvesse 1 para todo mundo, o `every` acima
+    // passaria — e a agenda desenharia a equipe inteira na mesma cor, que é
+    // exatamente o que o sistema de cores existe para impedir.
+    expect(
+      new Set(trilhas).size,
+      "duas pessoas ganharam a MESMA trilha de cor — na grade elas viram uma só, " +
+        "e quem olha não distingue de quem é o compromisso",
+    ).toBe(trilhas.length);
   });
 
   test("o histórico está NA TELA DO PRODUTO, com as quatro abas", async () => {
@@ -117,6 +128,65 @@ test.describe("a Agenda como o dono do produto a usa", () => {
     }
   });
 
+  test("as três visões desenham, e a régua do agora existe — NO PRODUTO", async () => {
+    // ⚠️ Isto estava provado só em `agenda-kit-visual`, que roda contra
+    // `/vitrine-agenda` — página de demonstração com dado de mentira. A vitrine
+    // prova o DESENHO; ela não prova que a tela que o cliente abre desenha.
+    await expect(page.getByTestId("grade-da-agenda")).toBeVisible({ timeout: ESPERA });
+
+    const alternador = page.getByTestId("alternador-de-visao");
+    for (const visao of ["Dia", "Mês", "Semana"]) {
+      await alternador.getByRole("button", { name: visao, exact: true }).click();
+      await expect(
+        page.getByTestId("grade-da-agenda"),
+        `a grade sumiu ao trocar para "${visao}"`,
+      ).toBeVisible({ timeout: ESPERA });
+      await expect(
+        alternador.getByRole("button", { name: visao, exact: true }),
+        `"${visao}" foi clicado e não ficou marcado como a visão atual`,
+      ).toHaveAttribute("aria-pressed", "true");
+    }
+
+    // A régua do agora só existe quando o instante cabe na faixa desenhada
+    // (07h–21h). Fora dela a ausência é CORRETA, e exigir presença faria a spec
+    // ficar vermelha de madrugada — que é o defeito que este repo já pagou nos
+    // invariantes de turno.
+    const hora = new Date().getHours();
+    const regua = page.getByTestId("regua-do-agora");
+    if (hora >= 7 && hora <= 21) {
+      await expect(regua, "dentro da faixa 07h–21h e sem régua do agora").toBeVisible();
+    } else {
+      await expect(regua, "fora da faixa e a régua apareceu mesmo assim").toHaveCount(0);
+    }
+  });
+
+  test("o filtro por pessoa ISOLA de verdade — clicando, no produto", async () => {
+    // O isolamento era assertado só na vitrine. Aqui o teste é sobre o efeito:
+    // clicar numa pessoa muda o que a grade mostra, e "Todos" desfaz.
+    const filtro = page.getByTestId("filtro-de-pessoas");
+    await expect(filtro).toBeVisible({ timeout: ESPERA });
+
+    const cartoes = () => page.getByTestId("grade-da-agenda").getByRole("button", { name: /\d{2}:\d{2} às \d{2}:\d{2}/ });
+    const todos = await cartoes().count();
+
+    const primeira = filtro.getByRole("button").first();
+    await primeira.click();
+    const isolado = await cartoes().count();
+    expect(
+      isolado,
+      "isolar uma pessoa não pode mostrar MAIS do que a agenda inteira",
+    ).toBeLessThanOrEqual(todos);
+    await expect(primeira, "cliquei na pessoa e ela não ficou marcada").toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+
+    await page.getByTestId("botao-todos").click();
+    await expect
+      .poll(() => cartoes().count(), { message: "\"Todos\" não desfez o isolamento" })
+      .toBe(todos);
+  });
+
   test("evidência visual da tela do produto", async () => {
     // As três fotos que existiam eram todas da VITRINE. Esta é a primeira da
     // tela que o cliente abre.
@@ -130,7 +200,16 @@ test.describe("a Agenda como o dono do produto a usa", () => {
     await page.screenshot({ path: "evidence/calendario/tela-do-produto-celular.png", fullPage: true });
 
     const estouro = await page.evaluate(
-      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      // ⚠️ `body.scrollWidth`, NÃO `documentElement`. `app/globals.css` põe
+      // `overflow-x: hidden` em `html` E em `body` (linhas 422 e 440), e sob isso
+      // o `scrollWidth` do `documentElement` é GRAMPEADO no `clientWidth`: a
+      // conta dá zero mesmo com um filho de 3000px dentro. Medido com o chromium
+      // do repo, viewport 390x844, filho de 3000px — `visible` → 2610,
+      // `hidden` → 0, e `body.scrollWidth` = 3000 nos DOIS casos.
+      //
+      // A asserção existia e era incapaz de falhar. Trocar a medida é o conserto;
+      // o caso de sabotagem ao lado é o que prova que a nova consegue.
+      () => document.body.scrollWidth - document.documentElement.clientWidth,
     );
     expect(estouro, "a tela do produto estourou a largura no celular").toBeLessThanOrEqual(0);
   });

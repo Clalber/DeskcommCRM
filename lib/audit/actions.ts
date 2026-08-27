@@ -359,6 +359,11 @@ export const AUDIT_ACTIONS = [
   "agenda.google.conexao_falhou",
   "agenda.google.conexao_concluida",
   "agenda.google.conexao_desconectada",
+  // Tipos de agendamento: mudar duração, categoria ou responsável muda o que a
+  // IA oferece ao cliente, então é mutação de configuração e audita.
+  "agenda.tipo_criado",
+  "agenda.tipo_alterado",
+  "agenda.tipo_desativado",
   // A rodada de renovação — e ela só audita quando FEZ algo, como manda a regra
   // do cron desta base. Uma linha por rodada com efeito, carregando a contagem:
   // é o que permite responder "quantas agendas precisaram reconectar esta

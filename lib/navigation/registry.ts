@@ -155,8 +155,10 @@ export const NAV_DESTINATIONS: NavDestination[] = [
   {
     // Entra em "atendimento", e não em "organizacao", porque a Agenda é onde o
     // dia acontece e não onde ele se configura: quem atende abre isto de manhã
-    // junto com o Inbox. Os TIPOS de agendamento e a disponibilidade — que são
-    // configuração de verdade — vão para Configurações quando existirem.
+    // junto com o Inbox. Os TIPOS de agendamento — que são configuração de
+    // verdade — foram para Configurações, como este comentário previa: ver
+    // `/app/settings/tenant/agenda` no grupo "organizacao". A disponibilidade
+    // ainda não tem tela.
     href: "/app/agenda",
     label: "Agenda",
     description: "O que está marcado, com quem, e quem atende — seu e da equipe.",
@@ -201,6 +203,26 @@ export const NAV_DESTINATIONS: NavDestination[] = [
     description: "As pessoas do outro lado da conversa e seu histórico.",
     icon: Users,
     group: "crm",
+    sidebar: true,
+  },
+  {
+    // A promessa que o comentário da Agenda fazia desde que ela nasceu. Aqui se
+    // decide O QUE se pode marcar, quanto dura e quem atende — e é isto que a
+    // tela de marcar e o agente de IA oferecem ao cliente.
+    //
+    // Nasceu porque a `calendar_event_types` tinha dez categorias no CHECK,
+    // duração, buffers e antecedência mínima, e NÃO havia como criar ou editar
+    // um tipo por lugar nenhum: a organização recebia três semeados e ficava com
+    // eles para sempre.
+    href: "/app/settings/tenant/agenda",
+    label: "Tipos de agendamento",
+    description: "O que se pode marcar, quanto dura, onde acontece e quem atende.",
+    icon: CalendarBlank,
+    group: "organizacao",
+    // "Sua empresa", junto de Atendimento e Empresa: é configuração do NEGÓCIO,
+    // não da conta de quem está logado. O gate `navegacao-registry` cobra a
+    // seção em todo grupo que tem hub, e sem ela o destino não aparece no hub.
+    section: "Sua empresa",
     sidebar: true,
   },
   {
