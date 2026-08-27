@@ -15726,6 +15726,71 @@ update public.calendar_event_types t
    and exists (select 1 from public.user_organizations u
                 where u.organization_id = t.organization_id and u.revoked_at is null);
 
+-- ---- o que ainda não foi ao Google (migration 0200) ----
+-- O worker `agenda-google-push` pedia os pendentes com
+-- `.or("google_synced_at.is.null,updated_at.gt.google_synced_at")`, e o PostgREST
+-- trata o lado DIREITO de `gt.` como VALOR LITERAL: ele tentava converter a
+-- string "google_synced_at" em `timestamptz` e recusava a consulta INTEIRA. Em
+-- produção isso é um `warn` a cada 5 minutos desde o deploy da v1.7.0 e ZERO
+-- compromissos empurrados — a ida ao Google nunca aconteceu em instalação
+-- nenhuma. A coluna derivada é o que dá ao PostgREST um filtro que ele sabe
+-- fazer (`.eq("needs_google_push", true)`).
+--
+-- ⚠️ O TRIGGER NÃO É ENFEITE — sem ele o conserto troca "nunca empurra" por
+-- "empurra para sempre". `updated_at` vem do `now()` do POSTGRES (trigger) e
+-- `google_synced_at` vinha do `new Date()` do NODE, calculado antes de a
+-- requisição sair: o do Node é sempre ANTERIOR, então `updated_at >
+-- google_synced_at` continuava verdadeiro logo depois de uma sincronização
+-- bem-sucedida e a linha voltava à fila na rodada seguinte, para sempre. O
+-- trigger faz o carimbo sair do MESMO relógio dos dois lados. Ele não carimba
+-- quando o valor novo é NULL: zerar a coluna é como se força re-sincronização de
+-- propósito.
+--
+-- Aditiva e idempotente: `add column if not exists` sobre coluna GERADA é no-op
+-- quando ela já existe, `create or replace function` e `drop trigger if exists`
+-- fazem o resto. Não há dado a curar — o valor é derivado das duas colunas que
+-- já estão lá e nasce correto para o histórico inteiro.
+--
+-- ⚠️ CRIA FUNÇÃO, então entra ANTES da varredura de `anon` logo abaixo: função
+-- nova em `public` nasce exposta pelo ALTER DEFAULT PRIVILEGES, e depois da
+-- varredura ela ficaria sem a cura. Os `revoke` explícitos abaixo já a fecham
+-- nas duas origens; a varredura é a rede, não a trava.
+alter table public.calendar_appointments
+  add column if not exists needs_google_push boolean
+  generated always as (google_synced_at is null or updated_at > google_synced_at) stored;
+
+comment on column public.calendar_appointments.needs_google_push is
+  'Derivada: a linha ainda não foi ao Google, ou mudou depois da última ida. Existe porque o PostgREST não compara coluna com coluna — o filtro do worker de push é `.eq("needs_google_push", true)`.';
+
+create or replace function public.fn_carimbar_ida_ao_google()
+returns trigger
+language plpgsql
+set search_path = public, pg_temp
+as $fn$
+begin
+  -- `now()` e não `new.updated_at`: os dois são o instante de início da
+  -- transação, então o valor é o mesmo — e usar `now()` remove a dependência de
+  -- ORDEM entre este trigger e o de `updated_at`.
+  if new.google_synced_at is not null
+     and (tg_op = 'INSERT' or new.google_synced_at is distinct from old.google_synced_at) then
+    new.google_synced_at := now();
+  end if;
+  return new;
+end
+$fn$;
+
+revoke execute on function public.fn_carimbar_ida_ao_google() from public, anon, authenticated;
+grant  execute on function public.fn_carimbar_ida_ao_google() to service_role;
+
+drop trigger if exists trg_calendar_appointments_carimbo_do_google on public.calendar_appointments;
+create trigger trg_calendar_appointments_carimbo_do_google
+  before insert or update on public.calendar_appointments
+  for each row execute function public.fn_carimbar_ida_ao_google();
+
+create index if not exists calendar_appointments_pendente_no_google_idx
+  on public.calendar_appointments (starts_at)
+  where needs_google_push and owner_user_id is not null;
+
 -- ---- VARREDURA anon: função nova nasce exposta em quem ATUALIZA (migration 0116) ----
 --
 -- ⚠️ ESTE BLOCO É, DE PROPÓSITO, O ÚLTIMO DO ARQUIVO. Apêndice novo entra ANTES

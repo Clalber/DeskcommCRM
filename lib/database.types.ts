@@ -1727,6 +1727,7 @@ export type Database = {
           google_sequence: number
           google_sync_error: string | null
           google_synced_at: string | null
+          needs_google_push: boolean | null
           id: string
           location_details: string | null
           location_kind: string
@@ -1762,6 +1763,7 @@ export type Database = {
           google_sequence?: number
           google_sync_error?: string | null
           google_synced_at?: string | null
+          needs_google_push?: boolean | null
           id?: string
           location_details?: string | null
           location_kind?: string
@@ -1797,6 +1799,7 @@ export type Database = {
           google_sequence?: number
           google_sync_error?: string | null
           google_synced_at?: string | null
+          needs_google_push?: boolean | null
           id?: string
           location_details?: string | null
           location_kind?: string

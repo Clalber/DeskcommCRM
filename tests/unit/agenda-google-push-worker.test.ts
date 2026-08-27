@@ -15,6 +15,30 @@ import { decryptWebhookSecret } from "@/lib/webhooks/secrets";
  * ida "acontecer" sem ter acontecido — e a linha nunca mais seria candidata no
  * dia em que a pessoa conectasse. O compromisso ficaria invisível no Google para
  * sempre, sem erro em lugar nenhum.
+ *
+ * ═══ O QUE ESTE ARQUIVO NÃO COBRE, e a razão está escrita porque ele já mentiu
+ *
+ * Ele NÃO prova que a consulta de leitura é VÁLIDA. O `createAdminClient` daqui
+ * é um dublê cuja cadeia aceita qualquer string em `or`/`eq`/`not`, então um
+ * filtro que o Postgres RECUSA é, para ele, indistinguível de um que o Postgres
+ * aceita.
+ *
+ * Isso não é hipótese: o worker rodou meses em produção com
+ * `.or("google_synced_at.is.null,updated_at.gt.google_synced_at")`, que o
+ * PostgREST recusa inteiro (o lado direito de `gt.` é valor literal, nunca nome
+ * de coluna). Nenhuma linha voltava, nenhum compromisso ia ao Google — e estes
+ * casos aqui ficaram verdes o tempo todo, porque o dublê devolvia `pendentes`
+ * independentemente do filtro pedido.
+ *
+ * Quem guarda AQUELA propriedade são dois arquivos, de propósito fora daqui:
+ *   - `tests/unit/postgrest-nao-compara-coluna-com-coluna.test.ts` — a FORMA do
+ *     filtro, contra a lista de colunas real da tabela;
+ *   - `tests/invariants/agenda-ida-ao-google-termina.test.ts` — o EFEITO, contra
+ *     Postgres real, incluindo o laço dos dois relógios.
+ *
+ * O escopo está escrito para ninguém concluir, ao ver quatro casos verdes aqui,
+ * que a ida ao Google está provada. Estes quatro provam o que o worker FAZ com
+ * as linhas que recebe, não QUE linhas ele recebe.
  */
 
 vi.mock("@/lib/audit", () => ({ audit: vi.fn(async () => undefined), isServiceRoleConfigured: vi.fn(() => true) }));
