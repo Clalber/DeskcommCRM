@@ -95,10 +95,27 @@ describe("a conexão expirada — DECISÃO 3.2, na versão corrigida", () => {
     // de que contar "marcaria em cima de compromisso real". O argumento estava
     // invertido: PARAR de contar é que causa o marcar em cima — o compromisso
     // segue existindo no Google, só parou de ser sincronizado.
-    for (const situacao of ["token_expired", "scope_missing", "rate_limited", "error", "disconnected"]) {
+    // ⚠️ `disconnected` SAIU desta lista e ganhou caso próprio abaixo. Ele estava aqui
+    // por engano de categoria: os quatro que sobram são decididos pelo SISTEMA
+    // (`estadoDaConexaoApos` grava só estes), e `disconnected` é o único que uma PESSOA
+    // decide. A pergunta do mapa não é "esta conexão é confiável?" — é "alguém nos pediu
+    // para deixar de contar?".
+    for (const situacao of ["token_expired", "scope_missing", "rate_limited", "error"]) {
       const r = ocupadosDoDono([], [externo("opaque", "confirmed", situacao)]);
       expect({ situacao, ocupa: r.ocupados.length }).toEqual({ situacao, ocupa: 1 });
     }
+  });
+
+  it("DESCONECTADA não ocupa — é o único estado que uma PESSOA escolhe", () => {
+    // A regra numa linha: BLOQUEIA, A MENOS QUE UM HUMANO TENHA MANDADO PARAR.
+    //
+    // `estadoDaConexaoApos` (google/erros.ts) nunca grava `disconnected` — só
+    // `token_expired`, `scope_missing`, `error`, `healthy` e `rate_limited`. O único ponto
+    // do produto que grava `disconnected` é a rota de desconectar, ou seja, alguém pediu.
+    // Nos outros o compromisso segue existindo na agenda do Google e só parou de
+    // atualizar; aqui a pessoa disse para parar de contar.
+    const r = ocupadosDoDono([], [externo("opaque", "confirmed", "disconnected")]);
+    expect(r.ocupados).toEqual([]);
   });
 
   it("e a defasagem é DEVOLVIDA, não engolida", () => {

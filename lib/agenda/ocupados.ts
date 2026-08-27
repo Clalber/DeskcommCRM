@@ -16,6 +16,7 @@
  * vocabulário, para evento tentativo, e para a conexão do Google que caiu.
  */
 import {
+  CONEXAO_CONTA_COMO_OCUPACAO,
   SITUACOES_DO_AGENDAMENTO,
   type SituacaoDaConexao,
   type SituacaoExterna,
@@ -126,9 +127,20 @@ export function ocupadosDoDono(
     // O que temos é o último estado conhecido. Contá-lo pode bloquear um
     // horário que já vagou — e aí alguém liga e remarca. Não contá-lo oferece
     // um horário ocupado — e aí o paciente chega e o médico não está.
-    ocupados.push(intervalo);
-    if (linha.situacaoDaConexao !== "healthy") {
-      defasadas.add(linha.situacaoDaConexao as SituacaoDaConexao);
+    // OCUPAR e AVISAR são perguntas diferentes, e até aqui compartilhavam um `if`.
+    // `CONEXAO_CONTA_COMO_OCUPACAO` responde a primeira — bloqueia a menos que um
+    // humano tenha mandado parar —, e o aviso continua respondendo a segunda: tudo
+    // que não é `healthy` é fonte defasada, inclusive o que ocupa.
+    //
+    // Hoje isto não muda desfecho: a rota de desconectar APAGA os eventos externos,
+    // então não há linha com conexão `disconnected` para filtrar. É defesa em
+    // profundidade — cobre quem marcar `disconnected` por SQL de suporte ou por uma
+    // segunda rota amanhã. E o mapa era ÓRFÃO: prometia decidir ocupação e ninguém o
+    // importava, que é o defeito descrito vinte linhas abaixo sobre outra constante.
+    const situacao = linha.situacaoDaConexao as SituacaoDaConexao;
+    if (CONEXAO_CONTA_COMO_OCUPACAO[situacao] ?? true) ocupados.push(intervalo);
+    if (situacao !== "healthy") {
+      defasadas.add(situacao);
     }
   }
 

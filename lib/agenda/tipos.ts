@@ -198,13 +198,27 @@ export const ROTULO_DA_SITUACAO_DA_CONEXAO: Record<SituacaoDaConexao, string> = 
  * marcar em cima de compromisso real que ela não consegue mais enxergar.
  */
 export const CONEXAO_CONTA_COMO_OCUPACAO: Record<SituacaoDaConexao, boolean> = {
-  connecting: false,
+  // ⚠️ A PERGUNTA NÃO É "esta conexão é confiável?" — É "ALGUÉM NOS PEDIU PARA
+  // DEIXAR DE CONTAR?". A primeira versão deste mapa respondia a errada, e por isso
+  // três linhas estavam invertidas.
+  //
+  // O que decide é QUEM escolheu o estado. `estadoDaConexaoApos` (google/erros.ts) só
+  // grava `token_expired`, `scope_missing`, `error`, `healthy` e `rate_limited` — todos
+  // decididos pelo SISTEMA, e em todos o compromisso segue existindo na agenda do
+  // Google: o que parou foi a ATUALIZAÇÃO, não a existência. Não contar ali oferece um
+  // horário ocupado, e o paciente chega e o médico não está (DECISÃO 3.2).
+  //
+  // `disconnected` é o único estado que uma PESSOA decide — a rota de desconectar é o
+  // único ponto do produto que o grava. Aí sim para de contar: alguém pediu.
+  //
+  // A regra numa linha: BLOQUEIA, A MENOS QUE UM HUMANO TENHA MANDADO PARAR.
+  connecting: false, // ainda não houve leitura: não há intervalo a contar
   healthy: true,
   rate_limited: true,
-  token_expired: false,
-  scope_missing: false,
-  disconnected: false,
-  error: false,
+  token_expired: true,
+  scope_missing: true,
+  disconnected: false, // o único decidido por gente
+  error: true,
 };
 
 /**
