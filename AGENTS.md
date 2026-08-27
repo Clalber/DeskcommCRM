@@ -31,7 +31,10 @@ que a major já não cobrisse — issue #235. Para a versão exata, `package.jso
 
 Runtime: **Node ≥22** (`.nvmrc` = 22; os quatro workflows fixam `node-version: 22` —
 `ci` ×2, `perf`, `e2e`). Gerenciador: **pnpm 9.15.9** (`packageManager`).
-Versão do produto: **1.0.0** (`CHANGELOG.md`, SemVer — mudança que afeta quem roda VPS entra lá).
+Versão do produto: `git tag -l 'v*' --sort=-v:refname | head -1`. Esta linha já disse
+**1.0.0** por seis releases seguidas — número em prosa envelhece, comando não. Mudança que
+afeta quem roda VPS entra no `CHANGELOG.md`, e o NÍVEL dela sai de `pnpm release:nivel`,
+não do seu julgamento (ver Packaging, abaixo).
 
 ## Estrutura que importa
 
@@ -220,6 +223,12 @@ Lei completa em [`docs/doctrine/packaging.md`](docs/doctrine/packaging.md). O n�
   significa **topo da `main`**, não última release — quem quer a última release usa `stable`.
 - **Dependência upstream é referenciada com tag fixa, nunca republicada** (WAHA é licenciado).
 - **Bump de versão não pode exigir que o operador da VPS edite arquivo à mão.**
+- **O NÍVEL do bump se calcula, não se escolhe:** `pnpm release:nivel` (roda no `verify`).
+  MAJOR = a atualização não se aplica sozinha, e isso se DECLARA com
+  `<!-- exige-acao-do-operador: sim -->` no bloco `### ⚠️ Requer atenção`. MINOR = capacidade
+  nova (rota/tela/porta nova **ou** `### Adicionado`). PATCH = o resto. A régua foi calibrada
+  contra as 8 releases reais: concorda com 7 e reprova a v1.4.1, que saiu PATCH anunciando
+  capacidade nova.
 
 `pnpm test:shell` é o único gate que exercita o kit. Rode-o.
 

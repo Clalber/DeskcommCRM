@@ -139,6 +139,32 @@ Lista completa em `CLAUDE.md`. Os mais letais:
 - Bearer plaintext no DB
 - `console.log` em código merged
 
+### O número da versão você não escolhe — a ferramenta calcula
+
+Se o seu PR muda o `CHANGELOG.md`, rode:
+
+```bash
+pnpm release:nivel
+```
+
+Ele diz o nível (`major`/`minor`/`patch`), o número que a próxima release precisa
+ter, e **por quê**. Roda no `verify` de todo PR, então errar aqui reprova o CI.
+
+O eixo **não** é o tamanho do trabalho — é o que muda para quem opera a VPS:
+
+- **MAJOR** — a atualização **não se aplica sozinha**: editar arquivo, promover
+  usuário, reconectar canal, rodar o `update.sh` duas vezes. Isso não é
+  detectado, é **declarado**: escreva `<!-- exige-acao-do-operador: sim -->`
+  dentro do bloco `### ⚠️ Requer atenção`. Se o bloco existe e o marcador não, o
+  CI para e pede a resposta.
+- **MINOR** — capacidade nova que se aplica sozinha. Detectado por rota, tela ou
+  porta de navegação nova, **ou** pela seção `### Adicionado`.
+- **PATCH** — só conserta o que já devia funcionar.
+
+Se o CI avisar que **o código entrega capacidade e as notas não a anunciam**, o
+número provavelmente está certo e falta a linha no `### Adicionado`: quem
+atualiza recebe um recurso sem ficar sabendo que ele existe.
+
 ## Setup local
 
 Veja [`README.md`](README.md) §Como rodar local.

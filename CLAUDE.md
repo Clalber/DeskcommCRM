@@ -253,6 +253,23 @@ Bump de versão **não pode** exigir que o operador da VPS edite `.env`, compose
 ou qualquer arquivo à mão. Se exigir, não entra: vira issue com plano de
 migração e vai para uma major.
 
+5. **O NÍVEL do bump não se escolhe, se calcula.** `pnpm release:nivel` diz o
+   número que a próxima release precisa ter, e por quê; roda no `verify` de todo
+   PR e falha fechado (`rc=2`) se o clone não tiver as tags. **MAJOR** = a
+   atualização não se aplica sozinha (editar arquivo, promover usuário,
+   reconectar canal) — e isso se DECLARA, com `<!-- exige-acao-do-operador: sim -->`
+   dentro do bloco `### ⚠️ Requer atenção`. **MINOR** = capacidade nova, detectada
+   por rota/tela/porta nova **ou** por `### Adicionado`. **PATCH** = o resto.
+   Regra e calibração em `lib/release/nivel-da-versao.ts`; lei em
+   [`docs/doctrine/packaging.md`](docs/doctrine/packaging.md) (invariante 6-b).
+
+   **Não invente o número olhando o tamanho do trabalho.** Uma auditoria de
+   2026-08-26 mediu as 8 releases: inflação de minor = **zero casos**; o desvio
+   real corre no sentido oposto — a v1.4.1 saiu PATCH com `### Adicionado` no
+   próprio CHANGELOG, e a v1.2.1 saiu PATCH mandando "promova a pessoa a
+   administrador antes de atualizar". Para conferir uma release passada:
+   `pnpm release:nivel v1.4.0 v1.4.1`.
+
 ---
 
 ## Como rodar local
