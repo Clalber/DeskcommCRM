@@ -104,10 +104,51 @@ describe("a permissão do navegador é lida no primeiro render", () => {
     const markup = await markupSemEfeitos();
     // O outro sentido: um conserto que simplesmente desabilitasse sempre
     // passaria no caso acima e falharia aqui. Guarda de um lado só vira defeito
-    // do outro.
+    // do outro — e foi exatamente assim que o detector quebrado desta suíte
+    // apareceu: os dois primeiros casos estavam verdes medindo a folha de
+    // estilo, e só este reprovou.
     expect(
       pushDesabilitado(markup).some(Boolean),
       "a permissão está concedida e o interruptor nasce desabilitado",
+    ).toBe(false);
+  });
+
+  it("⭐ VAPID ausente NÃO desabilita o Push — o conserto exagerado, barrado", async () => {
+    /**
+     * Esta asserção morava em `tests/e2e/notificacoes-diz-o-que-falta.spec.ts`
+     * e não podia viver lá. MEDIDO no Chromium do Playwright:
+     *
+     *     baseline headless                             -> denied
+     *     grantPermissions(["notifications"]) sem origin -> denied
+     *     grant com origin explícito                     -> denied
+     *     headless:false + grant                         -> granted
+     *
+     * `Notification.permission` é **denied em headless, sempre**, e o CI roda
+     * headless — então lá o controle está travado por `denied`, um motivo que
+     * nada tem a ver com VAPID. A spec passava só enquanto ganhava a corrida
+     * contra a hidratação.
+     *
+     * Aqui a variável fica isolada: NENHUM `VAPID_*` está definido neste
+     * processo (é `vitest`, não o servidor Next), a permissão está `granted`, e
+     * o controle tem de nascer habilitado. Se alguém "consertar" o defeito de
+     * promessa desabilitando o Push por falta de chaves, este caso reprova.
+     *
+     * Por que isso importa: sem VAPID o aviso na bandeja AINDA funciona com a
+     * aba aberta — é `new Notification()` em `lib/notifications/emit.ts`, que
+     * não depende de inscrição. Desabilitar trocaria prometer demais por
+     * entregar de menos, e o segundo não deixa rastro.
+     */
+    expect(
+      process.env.VAPID_PUBLIC_KEY ?? "",
+      "controle: este caso só significa algo sem VAPID no ambiente",
+    ).toBe("");
+
+    comPermissaoDoNavegador("granted");
+    const markup = await markupSemEfeitos();
+    expect(
+      pushDesabilitado(markup).some(Boolean),
+      "sem VAPID o Push nasceu desabilitado — é o conserto exagerado, que tira " +
+        "o aviso com a aba aberta junto",
     ).toBe(false);
   });
 });

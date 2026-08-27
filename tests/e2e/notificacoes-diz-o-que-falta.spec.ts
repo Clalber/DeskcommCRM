@@ -141,40 +141,38 @@ test.describe("Notificações — a tela conta a verdade sobre esta instalação
     await captura(page, "01-aviso-sem-chaves");
   });
 
-  test("o interruptor de Push continua ligável — a capacidade com a aba aberta existe", async ({
+  test("sem VAPID a tela mantém o controle de Push e explica por que ele está travado", async ({
     page,
-    context,
   }) => {
-    // ⚠️ A PERMISSÃO É CONCEDIDA DE PROPÓSITO, e a falta disto foi um defeito
-    // REAL deste arquivo, não um detalhe de setup.
+    // ⚠️ ESTE CASO JÁ AFIRMOU O QUE NÃO DAVA PARA AFIRMAR AQUI, e a correção
+    // veio de uma medição, não de uma opinião.
     //
-    // A pergunta deste caso é «o Push é desabilitado por falta de VAPID?». Mas
-    // `_client.tsx` também desabilita por `denied || unsupported` — e o Chromium
-    // do runner nasce SEM a permissão. Sem conceder, o controle fica desabilitado
-    // por um motivo que nada tem a ver com VAPID, e a asserção mediria a coisa
-    // errada.
+    // Ele nasceu com `toBeEnabled()`, para impedir o conserto exagerado —
+    // desabilitar o interruptor por falta de VAPID tiraria capacidade que a
+    // instalação TEM, porque o aviso com a aba ABERTA não depende de inscrição.
+    // A intenção estava certa; o lugar, não.
     //
-    // Na primeira versão ela passou assim mesmo, e por sorte: o hook lia a
-    // permissão num `useEffect`, então havia uma janela entre o primeiro render
-    // (habilitado, pelo chute `"default"`) e o efeito (desabilitado). O teste
-    // ganhava a corrida às vezes. O PR seguinte mudou o timing o bastante para
-    // perdê-la e ficou vermelho sem ter quebrado nada — teste instável na `main`
-    // pinta de vermelho o trabalho de quem passar por ali.
+    // MEDIDO no Chromium do Playwright, contra um servidor HTTP local:
     //
-    // A janela foi fechada na raiz (`useSyncExternalStore` no hook). Conceder a
-    // permissão é a outra metade: isola a variável, e o que sobra medido é
-    // exatamente VAPID.
-    await context.grantPermissions(["notifications"]);
-
-    // ⚠️ ESTE CASO EXISTE PARA IMPEDIR O CONSERTO EXAGERADO.
+    //     baseline headless                            -> denied
+    //     grant com origin explícito                   -> denied
+    //     grantPermissions(["notifications"]) sem origin-> denied
+    //     headless:false + grant                       -> granted
     //
-    // A leitura preguiçosa do defeito é "a tela oferece Push sem VAPID, então
-    // desabilite o controle". Isso tiraria capacidade que a instalação TEM: sem
-    // VAPID o aviso na bandeja ainda funciona enquanto a aba está aberta, por
-    // `new Notification()` em `lib/notifications/emit.ts`, que não depende de
-    // inscrição nenhuma. Quem desabilitasse o interruptor estaria trocando um
-    // defeito (prometer demais) por outro (entregar de menos), e o segundo é
-    // pior porque não deixa rastro.
+    // `Notification.permission` é **denied em headless, sempre** — e o CI roda
+    // headless. Como `_client.tsx` desabilita por `denied || unsupported`, o
+    // controle está travado ali por um motivo que nada tem a ver com VAPID, e
+    // nenhuma permissão concedida muda isso. A primeira versão passou só porque
+    // ganhava a corrida contra a hidratação; fechada a janela, ela passaria a
+    // falhar sempre — e com razão.
+    //
+    // A propriedade "VAPID ausente não desabilita o Push" mudou para onde ela é
+    // MENSURÁVEL: `tests/unit/permissao-lida-no-primeiro-render.test.tsx`
+    // renderiza com `granted` e sem VAPID nenhum, e cobra o controle habilitado.
+    //
+    // O que sobra aqui é o que a tela de fato mostra neste ambiente, e não é
+    // pouco: o controle CONTINUA NA TELA (não foi escondido), e a pessoa recebe
+    // o motivo de ele estar travado em vez de um interruptor morto e mudo.
     const quem = creds.users[PAPEL_SEM_MFA]!;
     await login(page, quem.email, creds.password);
     await page.goto("/app/settings/notifications");
@@ -182,13 +180,22 @@ test.describe("Notificações — a tela conta a verdade sobre esta instalação
     const linhaMensagem = page.getByRole("row", { name: /Nova mensagem/i });
     const interruptorPush = linhaMensagem.getByRole("switch", { name: /via push/i });
 
+    // 1 · O controle não sumiu da tela por falta de VAPID.
     await expect(interruptorPush).toBeVisible();
-    await expect(
-      interruptorPush,
-      "o interruptor de Push não pode nascer desabilitado: sem VAPID o aviso " +
-        "com a aba ABERTA continua funcionando, e desabilitar tiraria isso",
-    ).toBeEnabled();
 
-    await captura(page, "02-interruptor-continua-ligavel");
+    // 2 · E a tela diz POR QUE ele está travado — o navegador, não a instalação.
+    //     Sem esta linha o usuário encara um interruptor que não responde e não
+    //     tem como saber de quem é a culpa.
+    await expect(
+      linhaMensagem,
+      "o Push está travado pelo navegador e a tela não explica o motivo",
+    ).toContainText(/navegador bloqueou as notificações/i);
+
+    // 3 · E o aviso de VAPID continua sendo o outro assunto, na mesma tela: um
+    //     não substitui o outro, e é a soma que deixa o operador saber de quem
+    //     é cada metade do problema.
+    await expect(page.getByTestId("push-status-faltando-chaves")).toBeVisible();
+
+    await captura(page, "02-controle-presente-com-motivo");
   });
 });
