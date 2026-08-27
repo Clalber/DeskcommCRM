@@ -5416,6 +5416,32 @@ export const DICIONARIO: Traducoes = {
   "Tipo de recurso": { es: "Tipo de recurso" },
   "Ator": { es: "Actor" },
   "Nenhum log no período.": { es: "Ningún log en el período." },
+
+  // ─── Templates: respostas rápidas do atendente (não confundir com HSM de Canais) ───
+  "Scripts salvos para responder mais rápido; pessoais ou compartilhados com a equipe.": {
+    es: "Scripts guardados para responder más rápido; personales o compartidos con el equipo.",
+  },
+  "Novo template": { es: "Nuevo template" },
+  "Nenhum template ainda.": { es: "Ningún template todavía." },
+  "Editar template": { es: "Editar template" },
+  "Excluir template": { es: "Eliminar template" },
+  "Excluir este template?": { es: "¿Eliminar este template?" },
+  "Essa ação não pode ser desfeita.": { es: "Esta acción no se puede deshacer." },
+  "Template excluído.": { es: "Template eliminado." },
+  "Template atualizado.": { es: "Template actualizado." },
+  "Template criado.": { es: "Template creado." },
+  "Scripts salvos para responder mais rápido no atendimento.": {
+    es: "Scripts guardados para responder más rápido en la atención.",
+  },
+  "Saudação inicial": { es: "Saludo inicial" },
+  "Oi {{primeiro_nome}}, tudo bem?": { es: "Hola {{primeiro_nome}}, ¿todo bien?" },
+  "Use": { es: "Usa" },
+  "para personalizar.": { es: "para personalizar." },
+  "Atalho (opcional)": { es: "Atajo (opcional)" },
+  "Compartilhar com a equipe": { es: "Compartir con el equipo" },
+  "Criar template": { es: "Crear template" },
+  "Pessoal": { es: "Personal" },
+  "Compartilhado": { es: "Compartido" },
 };
 
 /**

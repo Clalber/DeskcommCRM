@@ -16,6 +16,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { useT } from "@/hooks/i18n/useT";
 import { apiClient } from "@/lib/api/client";
 import { showApiError } from "@/components/feedback/ApiErrorToast";
 import type { MessageTemplate } from "@/hooks/inbox/useMessageTemplates";
@@ -44,6 +45,7 @@ interface UpdateInput {
 }
 
 export function TemplateFormDialog({ open, onOpenChange, canShare, template }: Props) {
+  const t = useT();
   const isEdit = !!template;
   const [title, setTitle] = React.useState("");
   const [body, setBody] = React.useState("");
@@ -83,7 +85,7 @@ export function TemplateFormDialog({ open, onOpenChange, canShare, template }: P
           body,
           shortcut: shortcut.trim() || null,
         });
-        toast.success("Template atualizado.");
+        toast.success(t("Template atualizado."));
       } else {
         await create.mutateAsync({
           title,
@@ -91,7 +93,7 @@ export function TemplateFormDialog({ open, onOpenChange, canShare, template }: P
           shortcut: shortcut.trim() || undefined,
           shared: canShare ? shared : false,
         });
-        toast.success("Template criado.");
+        toast.success(t("Template criado."));
       }
       onOpenChange(false);
     } catch {
@@ -103,42 +105,42 @@ export function TemplateFormDialog({ open, onOpenChange, canShare, template }: P
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>{isEdit ? "Editar template" : "Novo template"}</DialogTitle>
+          <DialogTitle>{isEdit ? t("Editar template") : t("Novo template")}</DialogTitle>
           <DialogDescription>
-            Scripts salvos para responder mais rápido no atendimento.
+            {t("Scripts salvos para responder mais rápido no atendimento.")}
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={onSubmit} className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="tpl-title">Título</Label>
+            <Label htmlFor="tpl-title">{t("Título")}</Label>
             <Input
               id="tpl-title"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder="Saudação inicial"
+              placeholder={t("Saudação inicial")}
               minLength={1}
               maxLength={80}
               required
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="tpl-body">Mensagem</Label>
+            <Label htmlFor="tpl-body">{t("Mensagem")}</Label>
             <Textarea
               id="tpl-body"
               value={body}
               onChange={(e) => setBody(e.target.value)}
-              placeholder="Oi {{primeiro_nome}}, tudo bem?"
+              placeholder={t("Oi {{primeiro_nome}}, tudo bem?")}
               minLength={1}
               maxLength={4096}
               required
               rows={5}
             />
             <p className="text-xs text-muted-foreground">
-              Use {"{{primeiro_nome}}"} e {"{{nome}}"} para personalizar.
+              {t("Use")} {"{{primeiro_nome}}"} {t("e")} {"{{nome}}"} {t("para personalizar.")}
             </p>
           </div>
           <div className="space-y-2">
-            <Label htmlFor="tpl-shortcut">Atalho (opcional)</Label>
+            <Label htmlFor="tpl-shortcut">{t("Atalho (opcional)")}</Label>
             <Input
               id="tpl-shortcut"
               value={shortcut}
@@ -155,15 +157,15 @@ export function TemplateFormDialog({ open, onOpenChange, canShare, template }: P
                 onCheckedChange={setShared}
                 disabled={isEdit}
               />
-              <Label htmlFor="tpl-shared">Compartilhar com a equipe</Label>
+              <Label htmlFor="tpl-shared">{t("Compartilhar com a equipe")}</Label>
             </div>
           )}
           <DialogFooter>
             <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
-              Cancelar
+              {t("Cancelar")}
             </Button>
             <Button type="submit" disabled={pending}>
-              {isEdit ? "Salvar" : "Criar template"}
+              {isEdit ? t("Salvar") : t("Criar template")}
             </Button>
           </DialogFooter>
         </form>
