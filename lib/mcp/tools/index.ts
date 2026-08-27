@@ -63,7 +63,13 @@ import {
   crmSetWebhookSourceActive,
   crmUpdateStage,
 } from "./operacao";
-import { crmFindFreeSlots, crmListAppointments } from "./agendamento";
+import {
+  crmBookAppointment,
+  crmCancelAppointment,
+  crmFindFreeSlots,
+  crmListAppointments,
+  crmRescheduleAppointment,
+} from "./agendamento";
 import {
   crmScheduleFollowup,
   crmCancelFollowup,
@@ -116,6 +122,9 @@ export const allTools: ReadonlyArray<McpToolDefinition> = [
   crmListHumanCases,
   crmGetHumanCase,
   // write
+  crmBookAppointment,
+  crmRescheduleAppointment,
+  crmCancelAppointment,
   crmCreateLead,
   crmUpdateLead,
   crmMoveLeadStage,

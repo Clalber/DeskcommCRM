@@ -429,3 +429,26 @@ export async function listaAgendamentos(
     })),
   };
 }
+
+
+/**
+ * O id do tipo a partir do SLUG — a ponte entre o que o modelo sabe e o que o
+ * handler pede.
+ *
+ * `MarcarInput.event_type_id` é uuid, e o modelo não tem uuid: o slug existe
+ * justamente para "dar à IA um handle que ela não alucina". A tradução acontece
+ * aqui, uma vez, em vez de cada tool inventar a sua.
+ */
+export async function idDoTipoPorSlug(
+  supabase: SupabaseClient,
+  organizationId: string,
+  slug: string,
+): Promise<{ id: string; nome: string } | null> {
+  const { data } = await supabase
+    .from("calendar_event_types")
+    .select("id, name")
+    .eq("organization_id", organizationId)
+    .eq("slug", slug)
+    .maybeSingle();
+  return data ? { id: String(data.id), nome: String(data.name) } : null;
+}

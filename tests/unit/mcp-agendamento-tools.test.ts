@@ -22,13 +22,27 @@ import type { McpContext } from "@/lib/mcp/types";
  * do modelo em janela de tempo, os limites, e **qual das duas faces da recusa sai**.
  * Mockar a coleta não é atalho: é o que mantém as duas suítes medindo coisas diferentes.
  */
+vi.mock("@/app/api/v1/agenda/agendamentos/_handler", () => ({
+  marcarAgendamentoHandler: vi.fn(),
+  alterarAgendamentoHandler: vi.fn(),
+  cancelarAgendamentoHandler: vi.fn(),
+}));
+
 vi.mock("@/lib/agenda/consulta", async (original) => {
   const real = await original<typeof import("@/lib/agenda/consulta")>();
-  return { ...real, horariosLivresDaOrg: vi.fn(), listaAgendamentos: vi.fn() };
+  return { ...real, horariosLivresDaOrg: vi.fn(), listaAgendamentos: vi.fn(), idDoTipoPorSlug: vi.fn() };
 });
 
-const { horariosLivresDaOrg, listaAgendamentos } = await import("@/lib/agenda/consulta");
-const { crmFindFreeSlots, crmListAppointments } = await import("@/lib/mcp/tools/agendamento");
+const { horariosLivresDaOrg, listaAgendamentos, idDoTipoPorSlug } = await import("@/lib/agenda/consulta");
+const {
+  crmFindFreeSlots,
+  crmListAppointments,
+  crmBookAppointment,
+  crmRescheduleAppointment,
+  crmCancelAppointment,
+} = await import("@/lib/mcp/tools/agendamento");
+const handlers = await import("@/app/api/v1/agenda/agendamentos/_handler");
+const { ApiError } = await import("@/lib/api/types");
 
 // O dublê do client existe só para satisfazer o contrato: `horariosLivresDaOrg` está
 // mockada, então nada aqui toca banco. `as never` NÃO servia — `never` não é atribuível
@@ -217,5 +231,93 @@ describe("crm_list_appointments", () => {
     const shape = crmListAppointments.inputSchema;
     expect(() => shape.situacao.parse("no_show")).not.toThrow();
     expect(() => shape.situacao.parse("done")).toThrow();
+  });
+});
+
+
+describe("as escritas de agenda", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("⚠️ ApiError do handler vira RESPOSTA — exceção mataria o turno", async () => {
+    // O caso que dá nome a este bloco. Numa rota HTTP lançar é certo: o wrapper
+    // traduz em status. Numa ferramenta MCP a exceção sobe pela ponte e o assistente
+    // EMUDECE na frente do cliente, no meio de uma conversa sobre marcar consulta.
+    vi.mocked(idDoTipoPorSlug).mockResolvedValue({ id: "t-1", nome: "Consulta" });
+    vi.mocked(handlers.marcarAgendamentoHandler).mockRejectedValue(
+      new ApiError(409, "agenda_horario_indisponivel", undefined, "req-1", "slot tomado"),
+    );
+
+    const r = (await crmBookAppointment.handler(
+      { event_type_slug: "consulta", starts_at: "2026-09-01T14:00:00Z", contact_id: "c-1" },
+      ctx,
+    )) as { marcado: boolean; motivo: string; mensagem: string };
+
+    expect(r.marcado).toBe(false);
+    expect(r.motivo).toBe("agenda_horario_indisponivel");
+    // E a recusa ENSINA o próximo passo — não só nega.
+    expect(r.mensagem).toMatch(/crm_find_free_slots/);
+  });
+
+  it("cada código traz o ensino DELE, não uma frase genérica", async () => {
+    // Recusa que só nega faz o modelo tentar de novo IGUAL — é o caso medido em
+    // `retencao.ts`, onde ele repetiu a mesma data de 2023 e queimou o turno.
+    vi.mocked(handlers.cancelarAgendamentoHandler).mockRejectedValue(
+      new ApiError(409, "agenda_ja_cancelado", undefined, "req-1"),
+    );
+    const r = (await crmCancelAppointment.handler(
+      { appointment_id: "11111111-1111-4111-8111-111111111111", reason: "cliente avisou" },
+      ctx,
+    )) as { cancelado: boolean; mensagem: string };
+    expect(r.cancelado).toBe(false);
+    expect(r.mensagem).toMatch(/não é erro|siga sem desmarcar/i);
+  });
+
+  it("CONTROLE: erro de INFRA sobe — a distinção é o ponto", async () => {
+    // Sem este caso, `semDerrubarOTurno` poderia engolir TUDO e o teste acima
+    // continuaria verde. Limite de negócio vira resposta; infra quebrada tem de
+    // subir, senão o worker acha que funcionou e a linha morre em silêncio.
+    vi.mocked(handlers.alterarAgendamentoHandler).mockRejectedValue(new Error("conexão caiu"));
+    await expect(
+      crmRescheduleAppointment.handler(
+        { appointment_id: "22222222-2222-4222-8222-222222222222", new_starts_at: "2026-09-02T10:00:00Z" },
+        ctx,
+      ),
+    ).rejects.toThrow("conexão caiu");
+  });
+
+  it("slug desconhecido é recusado ANTES de chamar o handler", async () => {
+    vi.mocked(idDoTipoPorSlug).mockResolvedValue(null);
+    const r = (await crmBookAppointment.handler(
+      { event_type_slug: "nao-existe", starts_at: "2026-09-01T14:00:00Z", contact_id: "c-1" },
+      ctx,
+    )) as { marcado: boolean; motivo: string; mensagem: string };
+    expect(r.motivo).toBe("tipo_desconhecido");
+    expect(r.mensagem).toMatch(/nao-existe|não existe atendimento/);
+    expect(handlers.marcarAgendamentoHandler).not.toHaveBeenCalled();
+  });
+
+  it("remarcar chama ALTERAR, nunca cancelar+marcar", async () => {
+    // O contrato do DevVivo e a DECISÃO 25: é o MESMO compromisso mudando de hora.
+    // Cancelar e recriar faria a timeline contar que o cliente desistiu e voltou.
+    vi.mocked(handlers.alterarAgendamentoHandler).mockResolvedValue({ id: "a-1" });
+    await crmRescheduleAppointment.handler(
+      { appointment_id: "33333333-3333-4333-8333-333333333333", new_starts_at: "2026-09-02T10:00:00Z" },
+      ctx,
+    );
+    expect(handlers.alterarAgendamentoHandler).toHaveBeenCalledTimes(1);
+    expect(handlers.cancelarAgendamentoHandler).not.toHaveBeenCalled();
+    expect(handlers.marcarAgendamentoHandler).not.toHaveBeenCalled();
+  });
+
+  it("a organização vem do CONTEXTO do agente, nunca do argumento", async () => {
+    // O handler recebe `organization_id` por parâmetro justamente para servir à tool,
+    // e pelo MCP o client é service-role: a RLS não filtra. Se isto vier do input, é
+    // vazamento entre organizações.
+    vi.mocked(handlers.cancelarAgendamentoHandler).mockResolvedValue({ id: "a-1" });
+    await crmCancelAppointment.handler(
+      { appointment_id: "44444444-4444-4444-8444-444444444444", reason: "cliente pediu" },
+      ctx,
+    );
+    expect(vi.mocked(handlers.cancelarAgendamentoHandler).mock.calls[0]![1].organization_id).toBe("org-1");
   });
 });
