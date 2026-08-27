@@ -234,7 +234,7 @@ export function RequestsTable() {
               <TableHead>{t("Recebido")}</TableHead>
               <TableHead>{t("Vence")}</TableHead>
               <TableHead>SLA</TableHead>
-              <TableHead>Status</TableHead>
+              <TableHead>{t("Status")}</TableHead>
               <TableHead className="w-[60px]" />
             </TableRow>
           </TableHeader>

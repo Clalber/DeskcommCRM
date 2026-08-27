@@ -164,7 +164,7 @@ export function LgpdRequestDetail({ id }: Props) {
           <CardContent className="space-y-2 text-sm">
             <Row label={t("ID completo")} value={request.id} mono />
             <Row label={t("Tipo")} value={typeLabel} />
-            <Row label="Status" value={statusLabel} />
+            <Row label={t("Status")} value={statusLabel} />
             <Row label={t("Origem")} value={request.source ?? "—"} />
             <Row label={t("Escopo")} value={request.scope} />
             <Row label={t("Tentativas")} value={String(request.attempts)} />
