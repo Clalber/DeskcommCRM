@@ -16,18 +16,30 @@
  * nenhum. Copiar o molde ao pé da letra reproduziria o defeito que outras quatro
  * rotas acabaram de deixar de ter.
  *
- * ─── A ordem importa, e cada passo tem um motivo ──────────────────────────
+ * ─── A ORDEM DOS PASSOS É CONTRATO, e cada um tem um motivo ──────────────
+ *
+ * Esta lista existe porque nenhum destes passos PARECE depender de ordem — e
+ * quem reordenar por estética desfaz uma propriedade sem receber erro nenhum.
  *
  * 1. `error` na query ANTES de tudo: quem clicou "Cancelar" na tela do Google
  *    volta por aqui, e isso não é falha — é uma pessoa desistindo. Tratar como
  *    erro encheria o log e assustaria quem só mudou de ideia.
  * 2. `state` ANTES do `code`: sem saber de quem é o retorno não há org para
  *    auditar, e auditar sem org é linha órfã.
- * 3. escopo DEPOIS da troca e ANTES de gravar: a tela do Google deixa desmarcar
+ * 3. SESSÃO logo depois do `state`, e antes de qualquer efeito: a assinatura
+ *    prova que o `state` é nosso, não prova que quem volta é quem o pediu. São
+ *    portas diferentes, e esta abre com um único uso.
+ * 4. QUEIMA DO NONCE antes de trocar o código, e este é o passo cuja ordem mais
+ *    parece indiferente. Queimar DEPOIS gastaria o `code` do Google — que é de
+ *    uso único — antes de descobrir que o `state` era repetido, e quem
+ *    apresentasse o legítimo receberia "código já usado": um erro que manda o
+ *    diagnóstico para o Google em vez de para nós. Não é só falhar fechado; é
+ *    falhar de forma que quem investiga chegue no lugar CERTO.
+ * 5. escopo DEPOIS da troca e ANTES de gravar: a tela do Google deixa desmarcar
  *    escopo por escopo, e uma conexão gravada como saudável sem
  *    `calendar.events` só falharia no primeiro agendamento — longe daqui, com
  *    uma mensagem que culpa o calendário.
- * 4. cifra ANTES do upsert: gravar o token em claro por um instante é gravá-lo
+ * 6. cifra ANTES do upsert: gravar o token em claro por um instante é gravá-lo
  *    em claro.
  */
 
