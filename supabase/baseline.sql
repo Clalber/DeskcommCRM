@@ -15612,6 +15612,45 @@ $pub$;
 -- `has_function_privilege` de `authenticated` e `service_role` ANTES do
 -- revoke e regrava os dois. Rodar mais tarde só faz alcançar mais funções.
 
+-- ---- FK e fuso da conexão do Google (migration 0193) ----
+-- ⚠️ ENTRA ANTES DO BLOCO DA VARREDURA anon, que é de propósito o último do arquivo.
+-- Este bloco não cria função, então a varredura não o cura nem precisa curar — mas pôr
+-- apêndice DEPOIS dela recria a erosão que a 0192 acabou de consertar.
+alter table public.calendar_appointments
+  add column if not exists google_connection_id uuid;
+
+-- Backfill ANTES da constraint: a coluna é nova e nada escreve nela hoje, mas um clone
+-- adiantado poderia ter linha com ponteiro morto — e constraint criada sobre dado que a
+-- viola quebra o `update.sh` do clone, que roda SEM ON_ERROR_STOP e falharia no meio.
+update public.calendar_appointments a
+   set google_connection_id = null
+ where a.google_connection_id is not null
+   and not exists (select 1 from public.calendar_connections c where c.id = a.google_connection_id);
+
+do $fk$
+begin
+  if not exists (
+    select 1 from pg_constraint
+     where conrelid = 'public.calendar_appointments'::regclass
+       and conname = 'calendar_appointments_google_connection_id_fkey'
+  ) then
+    alter table public.calendar_appointments
+      add constraint calendar_appointments_google_connection_id_fkey
+      foreign key (google_connection_id)
+      references public.calendar_connections(id) on delete set null;
+  end if;
+end
+$fk$;
+
+comment on column public.calendar_appointments.google_connection_id is
+  'Conexão do Google que espelha este compromisso. `set null`: conexão revogada não apaga compromisso — ele é do CRM, não da integração.';
+
+alter table public.calendar_connection_calendars
+  add column if not exists time_zone text;
+
+comment on column public.calendar_connection_calendars.time_zone is
+  'Fuso IANA do calendário, como o Google devolve (`timeZone`). NULL = ainda não sincronizado; quem lê deve tratar NULL como "não sei", nunca como UTC — foi o `?? UTC` que fez evento de dia inteiro vazar a noite anterior.';
+
 -- ---- VARREDURA anon: função nova nasce exposta em quem ATUALIZA (migration 0116) ----
 --
 -- ⚠️ ESTE BLOCO É, DE PROPÓSITO, O ÚLTIMO DO ARQUIVO. Apêndice novo entra ANTES
