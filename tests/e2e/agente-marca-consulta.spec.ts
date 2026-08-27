@@ -1,46 +1,248 @@
-import { test } from "@playwright/test";
+import { execFileSync } from "node:child_process";
+import * as fs from "node:fs";
+import * as path from "node:path";
+
+import { test, expect } from "@playwright/test";
 
 /**
- * O AGENTE MARCA CONSULTA, E O EFEITO APARECE NA AGENDA — prova em tela da frente 4.
+ * O AGENTE MARCA CONSULTA, E O EFEITO APARECE NA AGENDA — a prova em tela da frente 4.
  *
- * ## Por que esta spec existe antes do código que ela testa
+ * ## Por que esta spec existe, e por que os testes de unidade não bastam
  *
- * A DECISÃO 21 permite que uma frente sem pixel feche declarando quem a prova em tela.
- * A 21.1 corrigiu o endereço para MCP: nenhuma tela chama uma ferramenta de IA — quem
- * chama é o modelo. Então a régua não é "arrume uma spec de outro que te cubra", é
- * **cliente MCP real age, e o efeito aparece na tela**.
+ * As cinco ferramentas de agenda têm teste de comportamento — e **todos mockam a camada
+ * de baixo**: os dois de leitura mockam `horariosLivresDaOrg` e `listaAgendamentos`, os
+ * três de escrita mockam os handlers. Nenhum atravessa ponte, transporte, Bearer, escopo
+ * de funil e banco.
  *
- * Molde: `tests/e2e/agente-organiza-operacao.spec.ts`, que já prova capacidade MCP
- * assim ("pela tela E pelo caminho real de um cliente MCP").
+ * Então, sem esta spec, nada prova que a IA marca de verdade: prova que cada função faz o
+ * que diz **quando a de baixo coopera**. E "ferramentas para o agente realizar ações
+ * COMPLETAS" — a frase do pedido — inclui o caminho, não só a função.
  *
- * ## ⚠️ NASCE `skip`, E ISSO É MARCADOR DE FRENTE ABERTA — não dívida escondida
+ * ## As duas metades, e por que ficam separadas
  *
- * Quatro das cinco ferramentas do `CONTRATO-MCP-agenda.md` ainda não existem, e as três
- * de escrita dependem de rotas que o backend ainda não tem: medido em `c7cd171d`,
- * `app/api/v1/agenda/agendamentos/route.ts` exporta **só `POST`** — não há `PATCH` nem
- * `DELETE`, então remarcar e cancelar não têm caminho de produção para embrulhar.
+ * 1. **A linha nasce** (`crm_find_free_slots` → `crm_book_appointment`). Não depende de
+ *    tela nenhuma.
+ * 2. **O efeito aparece na Agenda**, com autoria da IA.
  *
- * A DECISÃO 21.3 permite a spec pulada como marcador enquanto a frente está ABERTA. O
- * que ela NÃO permite é fechar com ela: `tests/unit/entrega-sem-tela-declara-quem-prova.test.ts`
- * reprova `.skip` assim que existir o `evidence/calendario/ENTREGA-frente-4-mcp.md`, que
- * é o artefato de FECHAMENTO. O mecanismo já distingue os dois momentos — por isso a
- * dívida pode ficar pendurada nele antes de existir código, que é a ordem certa.
+ * Elas falham por motivos diferentes: a primeira quebra se o MCP, o escopo ou a regra
+ * quebrarem; a segunda, se a tela deixar de ler o dado real. Separadas, uma continua
+ * provando quando a outra cai — e a segunda esteve bloqueada por horas enquanto a
+ * primeira já podia rodar.
  *
- * ## O que esta spec vai provar quando sair do `skip`
+ * ## ⚠️ PELO HTTP, NÃO PELO HANDLER — e isso não é preciosismo
  *
- * 1. o agente marca consulta por MCP → o compromisso aparece na Agenda, com autoria `ai`;
- * 2. o agente desmarca → o horário volta a aparecer como livre para o próximo;
- * 3. **e o que impede esta wave de abrir buraco:** o agente NÃO consegue marcar em
- *    horário ocupado nem fora do expediente, provado pelo CAMINHO REAL. Mock não responde
- *    isso — a recusa nasce da leitura da jornada e do que já está marcado, e um mock do
- *    banco já teria passado por ela.
+ * `agenteChama` fala com `/api/mcp` como um cliente MCP externo. É o transporte que
+ * carrega o Bearer, e é o Bearer que carrega `actor:ai_agent`. Chamar o handler em
+ * processo pularia justamente a etapa que decide a AUTORIA que a tela mostra — e uma spec
+ * que provasse o efeito com a autoria errada provaria a coisa errada com aparência de
+ * sucesso.
  *
- * ⚠️ O PAPEL DO TOKEN NÃO SERÁ ATALHO DE TESTE. As escritas de agenda pedem
- * `ai_operator` por PARIDADE com as rotas que elas espelham. O molde gasta um parágrafo
- * explicando isso na spec dele, e esta vai gastar também — senão a próxima pessoa lê
- * como afrouxamento.
+ * ## ⚠️ O PAPEL DO TOKEN NÃO É ATALHO DE TESTE
+ *
+ * O seed emite `role:manager` (rank 4). As escritas de agenda pedem `ai_operator` (rank 3)
+ * por PARIDADE com as rotas que elas espelham — `POST /api/v1/agenda/agendamentos` exige
+ * `agent`, e um atendente humano não configura a régua da agenda. O token alcança porque
+ * é maior, não porque afrouxamos nada: `capacidade-alcancavel-pelo-agente.test.ts` cobra
+ * que essa restrição continue declarada.
+ *
+ * Self-contido: cancela o que marcou no final, para reruns ficarem verdes num banco
+ * compartilhado com outras sessões.
  */
-test.skip("o agente marca consulta e o efeito aparece na Agenda", () => {
-  // Implementar quando `crm_book_appointment`, `crm_cancel_appointment` e as rotas
-  // PATCH/DELETE de `agendamentos` existirem. Ver o cabeçalho para o que provar.
+const APP_URL = `http://localhost:${process.env.E2E_PORT ?? "3001"}`;
+const CREDS_PATH = path.join(process.cwd(), ".e2e-creds.json");
+const AGENTE_PATH = path.join(process.cwd(), ".e2e-agente-mcp.json");
+const EVIDENCIA = path.join(process.cwd(), "evidence", "calendario");
+
+interface Creds {
+  password: string;
+  users: Record<string, { email: string }>;
+  agenda?: {
+    tipo_slug: string;
+    tipo_nome: string;
+    contato_id: string;
+    contato_nome: string;
+    dono_user_id: string;
+  };
+}
+interface TokenDoAgente {
+  organization_id: string;
+  token_id: string;
+  bearer: string;
+}
+
+function credenciais(): Required<Creds> {
+  if (!fs.existsSync(CREDS_PATH)) {
+    execFileSync("npx", ["tsx", "scripts/seed-e2e-credentials.ts"], { stdio: "inherit" });
+  }
+  let c = JSON.parse(fs.readFileSync(CREDS_PATH, "utf8")) as Creds;
+  if (!c.agenda) {
+    // O seed de agenda é infra compartilhada (`scripts/seed-e2e-agenda.ts`): sem tipo,
+    // jornada e contato, `crm_find_free_slots` responde `sem_responsavel` ou
+    // `publicou_horarios:false` — os caminhos de RECUSA, não o caminho feliz.
+    execFileSync("npx", ["tsx", "scripts/seed-e2e-agenda.ts"], { stdio: "inherit" });
+    c = JSON.parse(fs.readFileSync(CREDS_PATH, "utf8")) as Creds;
+  }
+  if (!c.agenda) throw new Error("seed-e2e-agenda não gravou o bloco `agenda`");
+  return c as Required<Creds>;
+}
+
+function tokenDoAgente(): TokenDoAgente {
+  // Sempre reemite: o token tem validade curta e o seed é idempotente.
+  execFileSync("npx", ["tsx", "scripts/seed-e2e-agente-mcp.ts"], { stdio: "inherit" });
+  return JSON.parse(fs.readFileSync(AGENTE_PATH, "utf8")) as TokenDoAgente;
+}
+
+/** Chama uma capacidade pelo MCP como um cliente externo faria. Ver o cabeçalho. */
+async function agenteChama(
+  bearer: string,
+  tool: string,
+  args: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  const res = await fetch(`${APP_URL}/api/mcp`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      accept: "application/json, text/event-stream",
+      authorization: `Bearer ${bearer}`,
+    },
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      id: Math.floor(Math.random() * 1e6),
+      method: "tools/call",
+      params: { name: tool, arguments: args },
+    }),
+  });
+  const texto = await res.text();
+  if (!res.ok) throw new Error(`MCP ${tool} → HTTP ${res.status}: ${texto.slice(0, 400)}`);
+  // O transporte responde JSON puro OU SSE conforme o Accept negociado, e o SSE abre com
+  // `event: message`. Procurar a LINHA `data:` funciona nos dois formatos.
+  const linha = texto.split("\n").find((l) => l.startsWith("data:"));
+  const json = JSON.parse(linha ? linha.slice(5).trim() : texto);
+  if (json.error) throw new Error(`MCP ${tool} → ${JSON.stringify(json.error)}`);
+  const conteudo = json.result?.content?.[0]?.text;
+  return conteudo ? (JSON.parse(conteudo) as Record<string, unknown>) : {};
+}
+
+const creds = credenciais();
+
+test.describe("o agente marca consulta", () => {
+  const marcados: string[] = [];
+  let bearer = "";
+
+  test.beforeAll(() => {
+    bearer = tokenDoAgente().bearer;
+    fs.mkdirSync(EVIDENCIA, { recursive: true });
+  });
+
+  test.afterAll(async () => {
+    // Self-contido: o que esta spec marcou, ela desmarca. Num banco compartilhado, deixar
+    // compromisso para trás ocuparia o horário e faria o rerun cair no caminho de recusa.
+    for (const id of marcados) {
+      await agenteChama(bearer, "crm_cancel_appointment", {
+        appointment_id: id,
+        reason: "limpeza do teste automatizado",
+      }).catch(() => undefined);
+    }
+  });
+
+  test("METADE 1: o agente consulta, marca, e a linha nasce", async () => {
+    const livres = (await agenteChama(bearer, "crm_find_free_slots", {
+      event_type_slug: creds.agenda.tipo_slug,
+      dias_a_frente: 14,
+    })) as {
+      horarios: { inicio: string; fim: string }[];
+      publicou_horarios: boolean;
+      fuso_suposto: boolean;
+    };
+
+    // O seed publica jornada e fuso de propósito: se algum destes vier "errado", o
+    // problema é o cenário, não a ferramenta — e o teste diria isso em vez de falhar
+    // num expect obscuro lá embaixo.
+    expect(livres.publicou_horarios, "o atendente do seed não tem jornada publicada").toBe(true);
+    expect(livres.fuso_suposto, "o seed deveria ter semeado o fuso explícito").toBe(false);
+    expect(livres.horarios.length, "nenhum horário livre nos próximos 14 dias").toBeGreaterThan(0);
+
+    const escolhido = livres.horarios[0]!;
+    const marcado = (await agenteChama(bearer, "crm_book_appointment", {
+      event_type_slug: creds.agenda.tipo_slug,
+      starts_at: escolhido.inicio,
+      contact_id: creds.agenda.contato_id,
+    })) as { marcado: boolean; motivo?: string; mensagem?: string; compromisso?: { id: string } };
+
+    expect(
+      marcado.marcado,
+      `o agente não conseguiu marcar: ${marcado.motivo ?? "?"} — ${marcado.mensagem ?? ""}`,
+    ).toBe(true);
+    const id = marcado.compromisso!.id;
+    marcados.push(id);
+
+    // A linha NASCE — e quem confirma é a própria listagem, pelo mesmo caminho MCP.
+    const lista = (await agenteChama(bearer, "crm_list_appointments", {
+      contact_id: creds.agenda.contato_id,
+    })) as { compromissos: { id: string; situacao: string }[] };
+    const achado = lista.compromissos.find((c) => c.id === id);
+    expect(achado, "o compromisso marcado não aparece na listagem do próprio contato").toBeDefined();
+  });
+
+  test("METADE 1b: o agente NÃO marca em horário ocupado — pelo caminho real", async () => {
+    // ⚠️ É O CASO QUE IMPEDE ESTA WAVE DE ABRIR BURACO, e mock não responderia: a recusa
+    // nasce da leitura da jornada e do que JÁ está marcado. Um mock do banco já teria
+    // passado por ela.
+    const livres = (await agenteChama(bearer, "crm_find_free_slots", {
+      event_type_slug: creds.agenda.tipo_slug,
+      dias_a_frente: 14,
+    })) as { horarios: { inicio: string }[] };
+    const alvo = livres.horarios[0]!.inicio;
+
+    const primeiro = (await agenteChama(bearer, "crm_book_appointment", {
+      event_type_slug: creds.agenda.tipo_slug,
+      starts_at: alvo,
+      contact_id: creds.agenda.contato_id,
+    })) as { marcado: boolean; compromisso?: { id: string } };
+    expect(primeiro.marcado).toBe(true);
+    marcados.push(primeiro.compromisso!.id);
+
+    // E agora o MESMO horário, de novo.
+    const segundo = (await agenteChama(bearer, "crm_book_appointment", {
+      event_type_slug: creds.agenda.tipo_slug,
+      starts_at: alvo,
+      contact_id: creds.agenda.contato_id,
+    })) as { marcado: boolean; motivo?: string; mensagem?: string };
+
+    expect(segundo.marcado, "o produto aceitou DOIS compromissos no mesmo horário").toBe(false);
+    // E a recusa ENSINA, em vez de só negar: recusa que só nega faz o modelo tentar de
+    // novo igual e queimar os passos do turno.
+    expect(segundo.mensagem, "a recusa não diz o que fazer em seguida").toMatch(
+      /crm_find_free_slots|outro horário|ofereça/i,
+    );
+  });
+
+  test("METADE 2: o compromisso aparece na Agenda, na tela", async ({ page }) => {
+    const livres = (await agenteChama(bearer, "crm_find_free_slots", {
+      event_type_slug: creds.agenda.tipo_slug,
+      dias_a_frente: 14,
+    })) as { horarios: { inicio: string }[] };
+
+    const marcado = (await agenteChama(bearer, "crm_book_appointment", {
+      event_type_slug: creds.agenda.tipo_slug,
+      starts_at: livres.horarios[0]!.inicio,
+      contact_id: creds.agenda.contato_id,
+    })) as { marcado: boolean; compromisso?: { id: string } };
+    expect(marcado.marcado).toBe(true);
+    marcados.push(marcado.compromisso!.id);
+
+    const email = Object.values(creds.users)[0]!.email;
+    await page.goto(`${APP_URL}/login`);
+    await page.getByLabel(/e-?mail/i).fill(email);
+    await page.getByLabel(/senha/i).fill(creds.password);
+    await page.getByRole("button", { name: /entrar/i }).click();
+    await page.waitForURL(/\/app/);
+
+    await page.goto(`${APP_URL}/app/agenda`);
+    // O nome do CONTATO é o que prova que é o compromisso certo: o título do tipo
+    // apareceria mesmo num card de outro cliente.
+    await expect(page.getByText(creds.agenda.contato_nome).first()).toBeVisible({ timeout: 15_000 });
+
+    await page.screenshot({ path: path.join(EVIDENCIA, "agente-marca-consulta.png"), fullPage: true });
+  });
 });
