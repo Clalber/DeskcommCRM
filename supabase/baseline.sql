@@ -14832,8 +14832,9 @@ create unique index if not exists channel_sessions_zernio_account_id_ativo_uniqu
   on public.channel_sessions (zernio_account_id)
   where archived_at is null and zernio_account_id is not null;
 
--- 0167 — Superfície do pointer de follow-up (IA vs automação CRM).
--- Default 'followup' para linha já existente. CHECK de conjunto (PARES).
+-- ---- superfície do pointer de follow-up (migration 0196) ----
+-- IA vs automação CRM: um motor, duas listas. Default 'followup' deixa toda
+-- linha já existente na superfície de IA. CHECK de conjunto (PARES).
 alter table public.followup_flow_pointers
   add column if not exists surface text not null default 'followup';
 
@@ -14848,7 +14849,10 @@ comment on column public.followup_flow_pointers.surface is
   'Onde o fluxo aparece: followup = /app/ai/followups; crm_automation = CRM Automação. '
   'Vocabulário cobrado por tests/invariants/vocabulario-banco-x-typescript.test.ts.';
 
--- 0168 — inscrição Web Push (bandeja do SO com a aba fechada).
+-- ---- inscrição Web Push (migrations 0197 e 0199) ----
+-- Bandeja do sistema com a aba fechada. A policy abaixo já é a da 0199 (o
+-- forward-fix de RBAC): quem atualiza recebe as duas de uma vez, e quem
+-- instala do zero nunca chega a existir sem o `fn_role_at_least`.
 create table if not exists public.push_subscriptions (
   id uuid primary key default gen_random_uuid(),
   organization_id uuid not null references public.organizations(id) on delete cascade,
