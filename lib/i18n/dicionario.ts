@@ -3992,6 +3992,535 @@ export const DICIONARIO: Traducoes = {
   },
   "Responsável": { es: "Responsable" },
 
+  // ─── Onboarding: welcome ───
+  "Boas-vindas ao": { es: "Bienvenido a" },
+  "Vamos montar quem vai atender seus clientes — e onde ele vai trabalhar.": {
+    es: "Vamos a armar quién va a atender a tus clientes — y dónde va a trabajar.",
+  },
+  "Você já instalou o sistema. Isto aqui já está de pé:": {
+    es: "Ya instalaste el sistema. Esto ya está en pie:",
+  },
+  "Servidor no ar e banco de dados instalado": { es: "Servidor en línea y base de datos instalada" },
+  "Inteligência contratada:": { es: "Inteligencia contratada:" },
+  "Chave cadastrada — conferindo com a empresa de IA": {
+    es: "Clave registrada — verificando con la empresa de IA",
+  },
+  "Falta a chave da inteligência artificial": { es: "Falta la clave de la inteligencia artificial" },
+  "WhatsApp pronto para conectar seu número": { es: "WhatsApp listo para conectar tu número" },
+  "O WhatsApp desta instalação ainda não subiu": { es: "El WhatsApp de esta instalación todavía no arrancó" },
+  "Funil de vendas criado:": { es: "Embudo de ventas creado:" },
+  "Nenhum funil de vendas ainda": { es: "Ningún embudo de ventas todavía" },
+  "Agora é montar quem vai atender por você.": { es: "Ahora es armar quién va a atender por ti." },
+  "O que falta a gente resolve nos próximos passos.": {
+    es: "Lo que falta lo resolvemos en los próximos pasos.",
+  },
+  "Pular tudo (DEV)": { es: "Saltar todo (DEV)" },
+  "Como se chama o seu negócio?": { es: "¿Cómo se llama tu negocio?" },
+  "É o nome que aparece para o seu time e nos relatórios. Pode ser clínica, loja, escritório — o que for seu.": {
+    es: "Es el nombre que aparece para tu equipo y en los reportes. Puede ser clínica, tienda, oficina — lo que sea tuyo.",
+  },
+  "O que vocês fazem?": { es: "¿A qué se dedican?" },
+  "Ex.: clínica odontológica, ou venda de roupa fitness pelo WhatsApp": {
+    es: "Ej.: clínica dental, o venta de ropa deportiva por WhatsApp",
+  },
+  "Uma linha basta. É com isso que seu funcionário aprende com quem ele está falando — e que a gente monta o quadro de clientes do seu jeito.": {
+    es: "Con una línea basta. Con eso tu empleado aprende con quién está hablando — y armamos el tablero de clientes a tu manera.",
+  },
+  "Onde você atende": { es: "Dónde atiendes" },
+  "Decide o horário em que seu funcionário pode falar com clientes.": {
+    es: "Decide el horario en el que tu empleado puede hablar con los clientes.",
+  },
+  "Li e aceito os": { es: "Leí y acepto los" },
+  "Termos de Uso": { es: "Términos de Uso" },
+  "e a": { es: "y la" },
+  "Política de Privacidade": { es: "Política de Privacidad" },
+  "Continuar": { es: "Continuar" },
+  "Aceite os termos para continuar.": { es: "Acepta los términos para continuar." },
+
+  // ─── Onboarding: connect-whatsapp ───
+  "Dê um telefone a ele": { es: "Dale un teléfono" },
+  "É por este número que ele vai atender seus clientes. Se você conecta pelo celular, tenha ele por perto.": {
+    es: "Es por este número que va a atender a tus clientes. Si conectas por el celular, tenlo cerca.",
+  },
+  "Pronto para conectar": { es: "Listo para conectar" },
+  "O código expirou": { es: "El código expiró" },
+  "Não consegui falar com o WhatsApp": { es: "No pude comunicarme con WhatsApp" },
+  "Escaneie o código abaixo com o celular que vai atender.": {
+    es: "Escanea el código de abajo con el celular que va a atender.",
+  },
+  "Isso leva alguns segundos. O código aparece aqui sozinho.": {
+    es: "Esto toma unos segundos. El código aparece aquí solo.",
+  },
+  "O número está no ar. Seguindo para o próximo passo.": {
+    es: "El número está en línea. Avanzando al próximo paso.",
+  },
+  "É normal — ele vale poucos minutos. Dá para gerar outro.": {
+    es: "Es normal — vale solo unos minutos. Se puede generar otro.",
+  },
+  "O serviço roda no seu servidor e não respondeu agora.": {
+    es: "El servicio corre en tu servidor y no respondió ahora.",
+  },
+  "Escolher outra forma": { es: "Elegir otra forma" },
+  "Falha ao pular:": { es: "Fallo al saltar:" },
+  "Pular por enquanto": { es: "Saltar por ahora" },
+  "Falha ao marcar passo:": { es: "Fallo al marcar el paso:" },
+  "Conectei em outro lugar": { es: "Me conecté en otro lugar" },
+  "o servidor respondeu": { es: "el servidor respondió" },
+  "Não consegui gerar outro código. Tente de novo em alguns segundos.": {
+    es: "No pude generar otro código. Intenta de nuevo en unos segundos.",
+  },
+  "Não consegui falar com o servidor. Confira sua conexão e tente de novo.": {
+    es: "No pude comunicarme con el servidor. Revisa tu conexión e intenta de nuevo.",
+  },
+  "Como você já usa esse número?": { es: "¿Cómo ya usas ese número?" },
+  "Existe mais de um jeito de ter WhatsApp para empresa, e cada um conecta de um jeito. Se você nunca ouviu falar dos outros dois, é o primeiro.": {
+    es: "Existe más de una forma de tener WhatsApp para empresa, y cada una se conecta de un modo distinto. Si nunca oíste hablar de las otras dos, es la primera.",
+  },
+  "Leio um código com o celular": { es: "Leo un código con el celular" },
+  "É assim para quase todo mundo. Você abre o WhatsApp no celular que vai atender e aponta para um código que aparece aqui.": {
+    es: "Así es para casi todo el mundo. Abres el WhatsApp en el celular que va a atender y apuntas a un código que aparece aquí.",
+  },
+  "Tenho conta oficial na Meta": { es: "Tengo cuenta oficial en Meta" },
+  "Você cadastrou o número na Meta e tem as credenciais em mãos. Não usa o celular para conectar.": {
+    es: "Registraste el número en Meta y tienes las credenciales en mano. No usas el celular para conectar.",
+  },
+  "Contrato de um provedor parceiro": { es: "Contraté un proveedor socio" },
+  "Uma empresa parceira cuida do seu WhatsApp e te deu uma chave de acesso.": {
+    es: "Una empresa socia se encarga de tu WhatsApp y te dio una clave de acceso.",
+  },
+  "Este servidor ainda não está pronto para RECEBER por este caminho.": {
+    es: "Este servidor todavía no está listo para RECIBIR por este camino.",
+  },
+  "Dá para conectar e já enviar, mas as respostas do cliente não vão chegar até quem instalou o sistema completar uma configuração no servidor. Se você quer atender hoje, o caminho do código com o celular funciona agora — e dá para trocar depois, sem perder nada.": {
+    es: "Se puede conectar y ya enviar, pero las respuestas del cliente no van a llegar hasta que quien instaló el sistema complete una configuración en el servidor. Si quieres atender hoy, el camino del código con el celular funciona ahora — y se puede cambiar después, sin perder nada.",
+  },
+  "O WhatsApp desta instalação ainda não subiu.": { es: "El WhatsApp de esta instalación todavía no arrancó." },
+  "Ele roda no seu próprio servidor. Dá para seguir sem ele agora e conectar o número depois, em": {
+    es: "Corre en tu propio servidor. Se puede seguir sin él ahora y conectar el número después, en",
+  },
+  "Canais › Conexões": { es: "Canales › Conexiones" },
+  "seu funcionário fica pronto de qualquer jeito, só não terá por onde atender ainda.": {
+    es: "tu empleado queda listo de todas formas, solo que aún no tendrá por dónde atender.",
+  },
+  "Não consegui carregar o código agora. Ele deve reaparecer sozinho em instantes — se não aparecer, gere outro abaixo.": {
+    es: "No pude cargar el código ahora. Debería reaparecer solo en instantes — si no aparece, genera otro abajo.",
+  },
+  "Código QR para conectar o WhatsApp": { es: "Código QR para conectar el WhatsApp" },
+  "Conectado! Avançando…": { es: "¡Conectado! Avanzando…" },
+  "O código expirou antes de alguém escanear. É normal — ele vale só alguns minutos.": {
+    es: "El código expiró antes de que alguien lo escaneara. Es normal — vale solo unos minutos.",
+  },
+  "Deixe o WhatsApp já aberto em": { es: "Deja el WhatsApp ya abierto en" },
+  "Aparelhos conectados": { es: "Dispositivos vinculados" },
+  "antes de gerar o próximo, que aí dá tempo de sobra.": {
+    es: "antes de generar el próximo, así te sobra tiempo.",
+  },
+  "Gerar novo QR Code": { es: "Generar nuevo código QR" },
+  "O serviço de WhatsApp desta instalação não respondeu. Ele roda no seu servidor, junto com o resto do sistema — quem instalou consegue religá-lo.": {
+    es: "El servicio de WhatsApp de esta instalación no respondió. Corre en tu servidor, junto con el resto del sistema — quien lo instaló puede reactivarlo.",
+  },
+  "Detalhe técnico:": { es: "Detalle técnico:" },
+  "Tentando…": { es: "Intentando…" },
+
+  // ─── Onboarding: connect-nuvemshop ───
+  "Importe pedidos, clientes e produtos da sua loja Nuvemshop.": {
+    es: "Importa pedidos, clientes y productos de tu tienda Nuvemshop.",
+  },
+  "Ao clicar em": { es: "Al hacer clic en" },
+  "você será redirecionado para autorizar o": { es: "serás redirigido para autorizar a" },
+  "na sua conta Nuvemshop.": { es: "en tu cuenta Nuvemshop." },
+  "Nuvemshop ainda não configurado neste ambiente.": {
+    es: "Nuvemshop todavía no está configurado en este entorno.",
+  },
+  "Pule por enquanto e configure depois em Integrações.": {
+    es: "Sáltalo por ahora y configúralo después en Integraciones.",
+  },
+  "Já conectei": { es: "Ya conecté" },
+
+  // ─── Onboarding: setup-ai ───
+  "Treine seu funcionário": { es: "Entrena a tu empleado" },
+  "Quem ele é, como fala e o que pode prometer. Dá para mudar tudo depois.": {
+    es: "Quién es, cómo habla y qué puede prometer. Se puede cambiar todo después.",
+  },
+  "da inteligência escolhida na instalação": { es: "de la inteligencia elegida en la instalación" },
+  "da": { es: "de la" },
+  "Falha ao criar agente:": { es: "Fallo al crear el agente:" },
+  "Atendente criado, mas ainda não está no ar.": { es: "Agente creado, pero todavía no está en línea." },
+  "Agente criado, mas ainda não publicado.": { es: "Agente creado, pero todavía no publicado." },
+  "Como ele vai se chamar": { es: "Cómo se va a llamar" },
+  "É o nome que aparece para o seu time. O cliente vê só a conversa.": {
+    es: "Es el nombre que aparece para tu equipo. El cliente ve solo la conversación.",
+  },
+  "O jeito dele falar": { es: "Su forma de hablar" },
+  "As regras da casa (opcional)": { es: "Las reglas de la casa (opcional)" },
+  "Nunca prometa desconto sem confirmar com uma pessoa.": {
+    es: "Nunca prometas descuento sin confirmar con una persona.",
+  },
+  "Horário de atendimento: 9h às 18h, de segunda a sexta.": {
+    es: "Horario de atención: 9h a 18h, de lunes a viernes.",
+  },
+  "Sempre chame o cliente pelo primeiro nome.": { es: "Siempre llama al cliente por su primer nombre." },
+  "O que vale para qualquer atendimento aqui. Pode deixar em branco agora e escrever depois — ele aprende com você ao longo do tempo.": {
+    es: "Lo que vale para cualquier atención aquí. Puedes dejarlo en blanco ahora y escribirlo después — aprende contigo con el tiempo.",
+  },
+  "Ele já vem sabendo": { es: "Ya viene sabiendo" },
+  "E nunca vai fazer": { es: "Y nunca va a hacer" },
+  "Essas conferências acontecem antes de cada mensagem sair, e não têm interruptor.": {
+    es: "Estas verificaciones ocurren antes de que salga cada mensaje, y no tienen interruptor.",
+  },
+  "O atendente foi criado, mas as": { es: "El agente fue creado, pero las" },
+  "regras da casa": { es: "reglas de la casa" },
+  "não foram gravadas. Copie o que você escreveu antes de sair — e salve de novo em": {
+    es: "no se guardaron. Copia lo que escribiste antes de salir — y guárdalo de nuevo en",
+  },
+  "IA › Memória": { es: "IA › Memoria" },
+  "Erro do banco de dados:": { es: "Error de la base de datos:" },
+  "Seu atendente foi criado, mas ficou como": { es: "Tu agente fue creado, pero quedó como" },
+  "rascunho": { es: "borrador" },
+  "— ele ainda não tem com o que pensar.": { es: "— todavía no tiene con qué pensar." },
+  "Não achei chave de": { es: "No encontré clave de" },
+  "nem cadastrada aqui, nem vinda da instalação. Cole a chave no campo acima («o cérebro dele») e crie o atendente de novo — ou cadastre em": {
+    es: "ni registrada aquí, ni proveniente de la instalación. Pega la clave en el campo de arriba («su cerebro») y crea el agente de nuevo — o regístrala en",
+  },
+  "IA › Credenciais": { es: "IA › Credenciales" },
+  "Continuar sem publicar": { es: "Continuar sin publicar" },
+  "— e rascunho não responde mensagem.": { es: "— y un borrador no responde mensajes." },
+  "Os modelos": { es: "Los modelos" },
+  "que esta instalação conhece não sabem usar ferramentas — sem isso ele conversaria bem e nunca criaria um cliente nem moveria um negócio no funil. Escolha outra empresa de IA em": {
+    es: "que esta instalación conoce no saben usar herramientas — sin eso conversaría bien pero nunca crearía un cliente ni movería un negocio en el embudo. Elige otra empresa de IA en",
+  },
+  "IA › Provedores": { es: "IA › Proveedores" },
+  "Esta instalação ainda não tem a lista de modelos": {
+    es: "Esta instalación todavía no tiene la lista de modelos",
+  },
+  "Ela é baixada automaticamente uma vez por dia; depois disso, publique em": {
+    es: "Se descarga automáticamente una vez al día; después de eso, publica en",
+  },
+  "IA › Agentes": { es: "IA › Agentes" },
+  "Seu agente foi criado, mas ficou como": { es: "Tu agente fue creado, pero quedó como" },
+  "não consegui ler os números de WhatsApp desta instalação, então não dá pra dizer em qual número ele atenderia — e rascunho não responde mensagem.": {
+    es: "no pude leer los números de WhatsApp de esta instalación, así que no se puede decir en qué número atendería — y un borrador no responde mensajes.",
+  },
+  "Tente de novo no botão abaixo (clicar de novo não cria um segundo agente) ou siga agora e publique depois em": {
+    es: "Intenta de nuevo con el botón de abajo (hacer clic de nuevo no crea un segundo agente) o sigue ahora y publica después en",
+  },
+  "Pular": { es: "Saltar" },
+  "Criar e continuar": { es: "Crear y continuar" },
+
+  // ─── Onboarding: setup-ai (o cérebro / chave de IA) ───
+  "Ele ainda não tem cérebro": { es: "Todavía no tiene cerebro" },
+  "Seu funcionário pensa com a inteligência artificial que você contratar. A instalação não trouxe nenhuma chave — cole a sua aqui e ele já nasce funcionando.": {
+    es: "Tu empleado piensa con la inteligencia artificial que contrates. La instalación no trajo ninguna clave — pega la tuya aquí y nace funcionando.",
+  },
+  "Qual você contratou": { es: "Cuál contrataste" },
+  "A chave": { es: "La clave" },
+  "Cole aqui a chave que a empresa de IA te deu": { es: "Pega aquí la clave que te dio la empresa de IA" },
+  "Chave guardada. Agora ele pode pensar.": { es: "Clave guardada. Ahora puede pensar." },
+  "Guardando...": { es: "Guardando..." },
+  "Guardar a chave": { es: "Guardar la clave" },
+  "Ela é guardada cifrada — nem nós conseguimos lê-la depois.": {
+    es: "Se guarda cifrada — ni siquiera nosotros podemos leerla después.",
+  },
+  "O cérebro dele:": { es: "Su cerebro:" },
+  "final": { es: "final" },
+  "Conferindo se a chave tem crédito…": { es: "Verificando si la clave tiene crédito…" },
+  "Testei agora: a chave respondeu e tem crédito.": { es: "Probé ahora: la clave respondió y tiene crédito." },
+  "A chave foi aceita, mas o teste não passou:": { es: "La clave fue aceptada, pero la prueba no pasó:" },
+  "Se for falta de crédito, adicione saldo na conta da empresa de IA — sem isso ele não responde a nenhum cliente.": {
+    es: "Si es falta de crédito, agrega saldo en la cuenta de la empresa de IA — sin eso no le responde a ningún cliente.",
+  },
+  "Não consegui testar o crédito agora. Dá para seguir — mas confira o saldo na conta da empresa de IA antes de confiar nele.": {
+    es: "No pude probar el crédito ahora. Se puede seguir — pero revisa el saldo en la cuenta de la empresa de IA antes de confiar en él.",
+  },
+  "Pronta para uso.": { es: "Lista para usar." },
+
+  // ─── Onboarding: funil (quadro de clientes) ───
+  "Onde ele organiza seus clientes": { es: "Dónde organiza a tus clientes" },
+  "Cada cliente vira um cartão que anda por essas colunas. Ele mesmo move o cartão conforme a conversa avança — por isso cada coluna diz também quando ele deve usá-la.": {
+    es: "Cada cliente se vuelve una tarjeta que recorre estas columnas. Él mismo mueve la tarjeta conforme avanza la conversación — por eso cada columna también dice cuándo debe usarla.",
+  },
+  "Seu funcionário montou este quadro olhando o que você me contou sobre o negócio. Ajuste o que quiser.": {
+    es: "Tu empleado armó este tablero mirando lo que me contaste sobre el negocio. Ajusta lo que quieras.",
+  },
+  "Não consegui pedir uma sugestão para o seu funcionário agora": {
+    es: "No pude pedirle una sugerencia a tu empleado ahora",
+  },
+  "Comecei por um quadro pronto de": { es: "Empecé por un tablero listo de" },
+  "Isso não trava nada: escolha outro modelo abaixo ou ajuste as colunas na mão. Dá para mudar tudo depois, quando quiser.": {
+    es: "Esto no traba nada: elige otro modelo abajo o ajusta las columnas a mano. Se puede cambiar todo después, cuando quieras.",
+  },
+  "Nome do quadro": { es: "Nombre del tablero" },
+  "Nome da coluna": { es: "Nombre de la columna" },
+  "Ele move o cliente para cá quando": { es: "Mueve al cliente para acá cuando" },
+  "Coluna que só vocês movem — ele não mexe nesta.": {
+    es: "Columna que solo ustedes mueven — él no toca esta.",
+  },
+  "obrigatória": { es: "obligatoria" },
+  "Adicionar coluna": { es: "Agregar columna" },
+  "colunas é o máximo — mais que isso não cabe na tela do celular.": {
+    es: "columnas es el máximo — más que eso no cabe en la pantalla del celular.",
+  },
+  "O que veio na instalação": { es: "Lo que vino en la instalación" },
+  "Este é o quadro padrão, feito para loja online. Ao continuar, ele é substituído pelo de cima.": {
+    es: "Este es el tablero predeterminado, hecho para tienda en línea. Al continuar, se reemplaza por el de arriba.",
+  },
+  "Prefiro começar de um modelo pronto": { es: "Prefiero empezar desde un modelo listo" },
+  "Dê um nome à coluna em branco.": { es: "Dale un nombre a la columna en blanco." },
+  "Usar este quadro": { es: "Usar este tablero" },
+
+  // ─── Onboarding: testar ───
+  "Veja ele atender": { es: "Míralo atender" },
+  "Escreva como se fosse um cliente. Nada é enviado pelo WhatsApp — é só um ensaio, entre você e ele.": {
+    es: "Escribe como si fueras un cliente. Nada se envía por WhatsApp — es solo un ensayo, entre tú y él.",
+  },
+  "seu funcionário": { es: "tu empleado" },
+  "O ensaio falhou": { es: "El ensayo falló" },
+  "o ensaio terminou como": { es: "el ensayo terminó como" },
+  "Ele executou, mas não devolveu texto nenhum.": { es: "Se ejecutó, pero no devolvió ningún texto." },
+  "Você ainda não montou seu funcionário.": { es: "Todavía no armaste a tu empleado." },
+  "Sem ninguém treinado, não há o que testar. Dá para voltar ao passo anterior agora ou fazer isso depois, em IA › Agentes.": {
+    es: "Sin nadie entrenado, no hay qué probar. Se puede volver al paso anterior ahora o hacerlo después, en IA › Agentes.",
+  },
+  "está como": { es: "está como" },
+  "ainda não foi para o ar.": { es: "todavía no salió al aire." },
+  "Rascunho não responde mensagem, então não há o que ensaiar. O passo anterior explicou o que falta; você pode resolver depois em IA › Agentes.": {
+    es: "Un borrador no responde mensajes, así que no hay qué ensayar. El paso anterior explicó lo que falta; puedes resolverlo después en IA › Agentes.",
+  },
+  "Escreva como se fosse um cliente": { es: "Escribe como si fueras un cliente" },
+  "Ele está pensando...": { es: "Está pensando..." },
+  "Mandar mensagem": { es: "Enviar mensaje" },
+  "respondeu": { es: "respondió" },
+  "Esta conversa não foi enviada a ninguém e não aparece no seu inbox.": {
+    es: "Esta conversación no se envió a nadie y no aparece en tu bandeja de entrada.",
+  },
+  "Ele não conseguiu responder — e é melhor descobrir isso agora do que com um cliente de verdade.": {
+    es: "No pudo responder — y es mejor descubrir esto ahora que con un cliente de verdad.",
+  },
+  "Motivo:": { es: "Motivo:" },
+  "As causas mais comuns são a chave da empresa de IA sem saldo ou o modelo indisponível. Dá para conferir em": {
+    es: "Las causas más comunes son la clave de la empresa de IA sin saldo o el modelo no disponible. Se puede revisar en",
+  },
+  "e seguir daqui mesmo — o que você montou está salvo.": {
+    es: "y seguir desde aquí mismo — lo que armaste está guardado.",
+  },
+  "Não consegui salvar este passo.": { es: "No pude guardar este paso." },
+
+  // ─── Onboarding: invite-team ───
+  "Quem trabalha com ele": { es: "Quién trabaja con él" },
+  "Seu funcionário não trabalha sozinho: quando ele passar uma conversa adiante, é uma dessas pessoas que atende.": {
+    es: "Tu empleado no trabaja solo: cuando pase una conversación adelante, es una de estas personas la que atiende.",
+  },
+  "Esta instalação ainda não envia e-mail.": { es: "Esta instalación todavía no envía correo." },
+  "Você recebe um link para cada pessoa e manda por onde quiser — WhatsApp, e-mail, o que preferir. O link é o convite: quem abrir entra na sua empresa.": {
+    es: "Recibes un enlace para cada persona y lo mandas por donde quieras — WhatsApp, correo, lo que prefieras. El enlace es la invitación: quien lo abra entra a tu empresa.",
+  },
+  "Falha:": { es: "Fallo:" },
+  "Adicione ao menos um email ou clique em Pular.": { es: "Agrega al menos un correo o haz clic en Saltar." },
+  "Máximo 20 emails por convite.": { es: "Máximo 20 correos por invitación." },
+  "convite(s) não puderam ser enviados por email. Copie os links abaixo e envie você mesmo.": {
+    es: "invitación(es) no se pudieron enviar por correo. Copia los enlaces de abajo y envíalos tú mismo.",
+  },
+  "E-mail de quem vai trabalhar com ele": { es: "Correo de quien va a trabajar con él" },
+  "O que essas pessoas podem fazer": { es: "Qué pueden hacer estas personas" },
+  "Esta instalação não envia e-mail. Os convites estão prontos — copie o link de cada pessoa e mande por onde você já fala com ela:": {
+    es: "Esta instalación no envía correo. Las invitaciones están listas — copia el enlace de cada persona y mándalo por donde ya hablas con ella:",
+  },
+  "Link copiado.": { es: "Enlace copiado." },
+  "Não consegui copiar — selecione e copie o link manualmente.": {
+    es: "No pude copiar — selecciona y copia el enlace manualmente.",
+  },
+  "Copiar link": { es: "Copiar enlace" },
+  "Enviar convites": { es: "Enviar invitaciones" },
+
+  // ─── Onboarding: done (resumo final) ───
+  "Tudo pronto!": { es: "¡Todo listo!" },
+  "Seu funcionário está montado. Daqui em diante é só acompanhar.": {
+    es: "Tu empleado ya está armado. De aquí en adelante es solo acompañar.",
+  },
+  "Seu funcionário já está de pé. O que ficou para depois continua te esperando.": {
+    es: "Tu empleado ya está en pie. Lo que quedó para después sigue esperándote.",
+  },
+  "você pulou": { es: "lo saltaste" },
+  "ainda não": { es: "todavía no" },
+  "O que mais tem aqui": { es: "Qué más hay aquí" },
+  "Você não precisa mexer em nada disso agora. É só para saber que existe.": {
+    es: "No necesitas tocar nada de esto ahora. Es solo para saber que existe.",
+  },
+  "Como funciona": { es: "Cómo funciona" },
+  "Finalizando...": { es: "Finalizando..." },
+  "Começar a usar": { es: "Empezar a usar" },
+
+  // ─── Onboarding: "O que mais tem aqui" (lib/onboarding/o-que-mais-existe.ts) ───
+  "As conversas": { es: "Las conversaciones" },
+  "É aqui que as conversas chegam, com você e ele atendendo lado a lado.": {
+    es: "Aquí es donde llegan las conversaciones, contigo y él atendiendo lado a lado.",
+  },
+  "O cliente manda uma mensagem no WhatsApp": { es: "El cliente manda un mensaje por WhatsApp" },
+  "Ele responde sozinho, seguindo as regras da casa que você escreveu": {
+    es: "Él responde solo, siguiendo las reglas de la casa que escribiste",
+  },
+  "Se você entrar na conversa, ele sai da frente e deixa você atender": {
+    es: "Si entras a la conversación, él se hace a un lado y te deja atender",
+  },
+  "O quadro de clientes": { es: "El tablero de clientes" },
+  "Cada cliente vira um card, e ele mesmo move o card conforme a conversa anda.": {
+    es: "Cada cliente se vuelve una tarjeta, y él mismo mueve la tarjeta conforme avanza la conversación.",
+  },
+  "Cada cliente vira um cartão, na primeira coluna": {
+    es: "Cada cliente se vuelve una tarjeta, en la primera columna",
+  },
+  "Conforme a conversa avança, ele move o cartão de coluna sozinho": {
+    es: "Conforme avanza la conversación, él mueve la tarjeta de columna solo",
+  },
+  "Você arrasta o cartão na mão quando quiser — o quadro é seu": {
+    es: "Tú arrastras la tarjeta a mano cuando quieras — el tablero es tuyo",
+  },
+  "Voltar a falar com quem sumiu": { es: "Volver a hablar con quien desapareció" },
+  "Para nenhum cliente sumir no silêncio — ele volta a falar sozinho, na hora certa.": {
+    es: "Para que ningún cliente desaparezca en silencio — él vuelve a hablar solo, en el momento justo.",
+  },
+  "O cliente para de responder no meio da conversa": {
+    es: "El cliente deja de responder en medio de la conversación",
+  },
+  "Depois do tempo que você definir, ele manda uma mensagem puxando o assunto": {
+    es: "Después del tiempo que definas, él manda un mensaje retomando el tema",
+  },
+  "Se o cliente responder, o retorno para na hora — ninguém é perseguido": {
+    es: "Si el cliente responde, el retorno se detiene en el acto — a nadie se le persigue",
+  },
+  "Se o cliente pedir para parar, ele para e não volta a escrever": {
+    es: "Si el cliente pide que se detenga, él para y no vuelve a escribir",
+  },
+  "E você pode pausar, adiar, pular um passo ou cancelar quando quiser": {
+    es: "Y puedes pausar, posponer, saltar un paso o cancelar cuando quieras",
+  },
+  "O que está esfriando": { es: "Lo que se está enfriando" },
+  "Quem esfriou e ainda está aberto, para você agir antes de perder.": {
+    es: "Quien se enfrió y todavía está abierto, para que actúes antes de perderlo.",
+  },
+  "Ele observa há quanto tempo cada negócio em aberto não tem resposta": {
+    es: "Observa hace cuánto tiempo cada negocio abierto no tiene respuesta",
+  },
+  "Os que estão esfriando sobem para o topo desta lista": {
+    es: "Los que se están enfriando suben al principio de esta lista",
+  },
+  "Você decide quem merece um empurrão seu, em vez de descobrir tarde demais": {
+    es: "Tú decides quién merece un empujón tuyo, en vez de descubrirlo demasiado tarde",
+  },
+  "Quando ele pede ajuda": { es: "Cuando pide ayuda" },
+  "Quando ele trava em algo que só uma pessoa resolve, o pedido aparece aqui.": {
+    es: "Cuando se traba en algo que solo una persona resuelve, el pedido aparece aquí.",
+  },
+  "Ele encontra algo que não pode decidir sozinho — um desconto, uma exceção, um caso estranho": {
+    es: "Encuentra algo que no puede decidir solo — un descuento, una excepción, un caso raro",
+  },
+  "Em vez de inventar, ele para e abre um pedido aqui": {
+    es: "En vez de inventar, se detiene y abre un pedido aquí",
+  },
+  "Você decide, e ele volta a andar com a sua resposta": {
+    es: "Tú decides, y él vuelve a avanzar con tu respuesta",
+  },
+  "As ideias dele": { es: "Sus ideas" },
+  "Com o tempo ele sugere as próprias melhorias — e você decide se entram.": {
+    es: "Con el tiempo sugiere sus propias mejoras — y tú decides si entran.",
+  },
+  "Ele acompanha os próprios atendimentos e percebe o que poderia ir melhor": {
+    es: "Sigue sus propias atenciones y nota qué podría ir mejor",
+  },
+  "Escreve a sugestão aqui, em português, e espera": {
+    es: "Escribe la sugerencia aquí, en portugués, y espera",
+  },
+  "Nada muda sozinho: só entra em vigor quando VOCÊ aprovar": {
+    es: "Nada cambia solo: solo entra en vigor cuando TÚ apruebas",
+  },
+
+  // ─── Onboarding: setup-ai — JEITOS (jeito de falar) ───
+  "Próximo e caloroso": { es: "Cercano y cálido" },
+  "Conversa como gente, puxa assunto, tranquiliza. Bom para quem vende no dia a dia.": {
+    es: "Conversa como persona, saca tema, tranquiliza. Bueno para quien vende en el día a día.",
+  },
+  "Objetivo e cordial": { es: "Directo y cordial" },
+  "Vai direto ao ponto sem ser seco, e sempre indica o próximo passo.": {
+    es: "Va directo al punto sin ser seco, y siempre indica el próximo paso.",
+  },
+  "Curto e prático": { es: "Corto y práctico" },
+  "Frases curtas, pergunta só o essencial e chama uma pessoa cedo.": {
+    es: "Frases cortas, pregunta solo lo esencial y llama a una persona pronto.",
+  },
+
+  // ─── Onboarding: invite-team — ROTULO_DO_PAPEL (lib/auth/types.ts) ───
+  "Somente leitura": { es: "Solo lectura" },
+  "Gerente": { es: "Gerente" },
+  "Administrador": { es: "Administrador" },
+
+  // ─── Onboarding: funil — EXPLICACAO_DO_PASSO (lib/leads/agent-mapping.ts) ───
+  "acabou de chamar e ninguém respondeu ainda": { es: "acaba de llamar y todavía nadie respondió" },
+  "já foi respondido": { es: "ya fue respondido" },
+  "ele está entendendo o que a pessoa precisa": { es: "está entendiendo lo que la persona necesita" },
+  "já dá para saber o que oferecer": { es: "ya se puede saber qué ofrecer" },
+  "está fechando preço, horário ou condições": { es: "está cerrando precio, horario o condiciones" },
+  "fechou negócio": { es: "cerró el negocio" },
+  "não fechou": { es: "no cerró" },
+  "seu funcionário ainda não está no ar": { es: "tu empleado todavía no está en línea" },
+  "a resposta não veio no formato esperado": { es: "la respuesta no vino en el formato esperado" },
+
+  // ─── Onboarding: funil — pacotes prontos (lib/onboarding/pacotes-de-funil.ts) ───
+  "Clínica, consultório ou salão": { es: "Clínica, consultorio o salón" },
+  "Imobiliária ou corretor": { es: "Inmobiliaria o corredor" },
+  "Serviços, agência ou obra": { es: "Servicios, agencia u obra" },
+  "Curso, mentoria ou infoproduto": { es: "Curso, mentoría o infoproducto" },
+  "Loja — online ou de rua": { es: "Tienda — en línea o física" },
+  "Outro tipo de negócio": { es: "Otro tipo de negocio" },
+
+  // ─── Onboarding: tool catalog (capacidades) usadas em "Ele já vem sabendo" ───
+  "Listar oportunidades do funil": { es: "Listar oportunidades del embudo" },
+  "Ver uma oportunidade": { es: "Ver una oportunidad" },
+  "Listar funis": { es: "Listar embudos" },
+  "Criar oportunidade no funil": { es: "Crear oportunidad en el embudo" },
+  "Atualizar uma oportunidade": { es: "Actualizar una oportunidad" },
+  "Mover oportunidade de etapa": { es: "Mover oportunidad de etapa" },
+  "Ver as compras do cliente": { es: "Ver las compras del cliente" },
+  "Procurar produto na loja": { es: "Buscar producto en la tienda" },
+  "Anotar dado que o cliente informou": { es: "Anotar dato que informó el cliente" },
+  "Procurar cliente": { es: "Buscar cliente" },
+  "Ver ficha do cliente": { es: "Ver ficha del cliente" },
+  "Ver as etapas de um funil": { es: "Ver las etapas de un embudo" },
+
+  // ─── Onboarding: conferências de saída (guardrails), "E nunca vai fazer" ───
+  "Respeitar quem pediu para parar": { es: "Respetar a quien pidió parar" },
+  "Respeitar dados apagados e a base legal": { es: "Respetar datos borrados y la base legal" },
+  "Segurar o ritmo de envio": { es: "Mantener el ritmo de envío" },
+  "Respeitar a janela do WhatsApp": { es: "Respetar la ventana de WhatsApp" },
+  "Variar o texto das mensagens iguais": { es: "Variar el texto de los mensajes iguales" },
+  "Não prometer preço ou prazo por conta própria": { es: "No prometer precio o plazo por cuenta propia" },
+  "Conferir promessas em texto livre": { es: "Verificar promesas en texto libre" },
+  "Não prometer atendimento humano que não existe": { es: "No prometer atención humana que no existe" },
+  "Não falar a nossa língua com o seu cliente": { es: "No hablar nuestro idioma con tu cliente" },
+  "Dizer que é um assistente quando perguntam": { es: "Decir que es un asistente cuando preguntan" },
+  "Detectar tentativa de manipular o assistente": { es: "Detectar intento de manipular al asistente" },
+
+  // ─── Onboarding: welcome/_form.tsx — cidades do fuso horário ───
+  "São Paulo, Rio, Brasília, Sul e Sudeste": { es: "São Paulo, Río, Brasilia, Sur y Sudeste" },
+  "Recife, Salvador, Fortaleza e Nordeste": { es: "Recife, Salvador, Fortaleza y Nordeste" },
+  "Belém e Pará": { es: "Belém y Pará" },
+  "Manaus e Amazonas": { es: "Manaos y Amazonas" },
+  "Cuiabá e Mato Grosso": { es: "Cuiabá y Mato Grosso" },
+  "Rio Branco e Acre": { es: "Río Branco y Acre" },
+  "Buenos Aires": { es: "Buenos Aires" },
+  "Lisboa": { es: "Lisboa" },
+  "Madri": { es: "Madrid" },
+  "Nova York": { es: "Nueva York" },
+  "Los Angeles": { es: "Los Ángeles" },
+  "Outro (horário universal)": { es: "Otro (horario universal)" },
+
+  // ─── Onboarding: rótulos do Stepper (lib/onboarding/passos.ts) ───
+  "Seu negócio": { es: "Tu negocio" },
+  "O telefone dele": { es: "Su teléfono" },
+  "Sua loja": { es: "Tu tienda" },
+  "Treinar": { es: "Entrenar" },
+  "Onde ele organiza": { es: "Dónde organiza" },
+  "Ver ele atender": { es: "Verlo atender" },
+
   // ─── Estados vazios compartilhados (components/empty/variants.tsx) ───
   "Sem conversas por aqui": { es: "Sin conversaciones por aquí" },
   "Quando chegarem mensagens, elas aparecem aqui em tempo real.": {

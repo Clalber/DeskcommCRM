@@ -3,6 +3,8 @@ import { redirect } from "next/navigation";
 import { requireAuth, resolveActiveOrg } from "@/lib/auth/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { TestarClient } from "./_client";
+import { normalizarIdioma } from "@/lib/i18n/idiomas";
+import { traduzir } from "@/lib/i18n/dicionario";
 
 export const dynamic = "force-dynamic";
 
@@ -22,6 +24,7 @@ export default async function TestarPage() {
   const user = await requireAuth();
   const activeOrg = await resolveActiveOrg(user);
   if (!activeOrg) redirect("/login");
+  const idioma = normalizarIdioma(user.locale);
 
   const admin = createAdminClient();
   const { data: agente } = await admin
@@ -34,10 +37,12 @@ export default async function TestarPage() {
   return (
     <div className="space-y-6">
       <header>
-        <h2 className="text-2xl font-semibold tracking-tight">Veja ele atender</h2>
+        <h2 className="text-2xl font-semibold tracking-tight">{traduzir("Veja ele atender", idioma)}</h2>
         <p className="text-sm text-muted-foreground">
-          Escreva como se fosse um cliente. Nada é enviado pelo WhatsApp — é só um
-          ensaio, entre você e ele.
+          {traduzir(
+            "Escreva como se fosse um cliente. Nada é enviado pelo WhatsApp — é só um ensaio, entre você e ele.",
+            idioma,
+          )}
         </p>
       </header>
       <TestarClient
