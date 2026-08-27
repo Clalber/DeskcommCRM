@@ -15651,6 +15651,21 @@ alter table public.calendar_connection_calendars
 comment on column public.calendar_connection_calendars.time_zone is
   'Fuso IANA do calendário, como o Google devolve (`timeZone`). NULL = ainda não sincronizado; quem lê deve tratar NULL como "não sei", nunca como UTC — foi o `?? UTC` que fez evento de dia inteiro vazar a noite anterior.';
 
+-- ---- lembrete nasce desligado (migration 0194) ----
+-- ⚠️ ENTRA ANTES DO BLOCO DA VARREDURA anon, pelo mesmo motivo da 0193.
+alter table public.calendar_event_types
+  alter column reminder_enabled set default false;
+
+-- As linhas JÁ criadas também voltam: com zero leitores e zero disparador, nada depende do
+-- valor atual, então este é o único momento em que corrigir o histórico não regride
+-- comportamento de ninguém. Depois do disparador, isto seria apagar a escolha de um operador.
+update public.calendar_event_types
+   set reminder_enabled = false
+ where reminder_enabled is true;
+
+comment on column public.calendar_event_types.reminder_enabled is
+  'Lembrete automático deste tipo. Nasce DESLIGADO de propósito: enviar mensagem é irreversível, e um default ligado inscreveria o histórico inteiro sem ninguém ter escolhido. Ligar por padrão é decisão do dono do produto, a ser tomada quando o disparador existir.';
+
 -- ---- VARREDURA anon: função nova nasce exposta em quem ATUALIZA (migration 0116) ----
 --
 -- ⚠️ ESTE BLOCO É, DE PROPÓSITO, O ÚLTIMO DO ARQUIVO. Apêndice novo entra ANTES
