@@ -47,6 +47,8 @@ function pedido(query: Record<string, string>): NextRequest {
 
 /** O `upsert` fake, para inspecionar o que foi gravado. */
 let upsertRecebido: Record<string, unknown> | null = null;
+/** O que foi gravado em `calendar_connection_calendars` — o registro do calendário primário. */
+let calendarioRecebido: Record<string, unknown> | null = null;
 /** O que já está gravado para esta conta, quando o teste quer simular reconexão. */
 let linhaExistente: Record<string, unknown> | null = null;
 /** Erro que o INSERT do nonce devolve — `23505` simula state reapresentado. */
@@ -69,6 +71,7 @@ function googleRespondendoBem() {
 
 beforeEach(() => {
   upsertRecebido = null;
+  calendarioRecebido = null;
   opcoesDoUpsert = null;
   linhaExistente = null;
   erroDoNonce = null;
@@ -87,7 +90,7 @@ beforeEach(() => {
     organizations: [{ organization_id: ORG, organization_name: "Clínica", role: "agent" }],
   } as never);
   vi.mocked(createAdminClient).mockReturnValue({
-    from: () => ({
+    from: (tabela: string) => ({
       insert: async (linha: Record<string, unknown>) => {
         noncesGravados.push(String(linha.nonce));
         return { error: erroDoNonce };
@@ -100,9 +103,21 @@ beforeEach(() => {
         return cadeia;
       },
       upsert: (linha: Record<string, unknown>, opcoes?: Record<string, unknown>) => {
+        // A rota grava DUAS tabelas: a conexão e o calendário primário. Guardar as duas
+        // separadamente é o que permite assertar que o sync deixou de nascer mudo — a
+        // `calendar_connection_calendars` não tinha UM insert em produção.
+        if (tabela === "calendar_connection_calendars") {
+          calendarioRecebido = linha;
+          return Promise.resolve({ error: null });
+        }
         upsertRecebido = linha;
         opcoesDoUpsert = opcoes ?? null;
-        return Promise.resolve({ error: erroDoUpsert });
+        // O `.select("id").single()` da rota: o id da conexão é o que liga o calendário a ela.
+        const resultado = { data: erroDoUpsert ? null : { id: "conexao-1" }, error: erroDoUpsert };
+        return {
+          select: () => ({ single: () => Promise.resolve(resultado) }),
+          then: (r: (v: unknown) => void) => r(resultado),
+        };
       },
     }),
   } as unknown as ReturnType<typeof createAdminClient>);
@@ -133,6 +148,29 @@ describe("GET /api/v1/agenda/google/callback", () => {
       status: "healthy",
     });
     expect(audit).toHaveBeenCalledWith(expect.objectContaining({ action: "agenda.google.conexao_concluida" }));
+  });
+
+  it("REGISTRA O CALENDÁRIO PRIMÁRIO — sem ele a conexão existe e não sincroniza nada", async () => {
+    // O cron lê `calendar_connection_calendars` filtrando `counts_for_conflicts`. Enquanto
+    // ninguém populava essa tabela — medido: ZERO inserts em todo o código de produção —, o
+    // select devolvia vazio e o sync iterava zero calendários para sempre. A conexão ficava
+    // "healthy" e nada acontecia.
+    //
+    // Este caso assere o CONTEÚDO, não a chamada: `external_calendar_id` tem de ser o e-mail
+    // (é ele o id do calendário primário no Google) e o fuso tem de chegar à coluna em vez de
+    // morrer no metadado de auditoria.
+    googleRespondendoBem();
+    await chamar({ code: "o-codigo", state: estadoValido() });
+
+    expect(calendarioRecebido).toMatchObject({
+      organization_id: ORG,
+      connection_id: "conexao-1",
+      external_calendar_id: "ana@clinica.com.br",
+      is_primary: true,
+    });
+    // O fuso: qualquer valor menos `undefined` — a coluna existe desde a 0193 e o callback
+    // tinha o valor na mão, gastando-o só em log.
+    expect(calendarioRecebido).toHaveProperty("time_zone");
   });
 
   it("a org e a pessoa vêm do state ASSINADO, nunca da query", async () => {

@@ -240,7 +240,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
 
   // 7. Grava. `organization_id` e `user_id` vêm do `state` ASSINADO, nunca da
   //    query — service role bypassa RLS, então a fonte confiável é obrigatória.
-  const { error: erroAoGravar } = await admin.from("calendar_connections").upsert(
+  const { data: conexaoGravada, error: erroAoGravar } = await admin.from("calendar_connections").upsert(
     {
       organization_id: organizationId,
       user_id: userId,
@@ -259,7 +259,9 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       last_sync_error: null,
     },
     { onConflict: "organization_id,user_id,provider,account_email" },
-  );
+  )
+    .select("id")
+    .single();
 
   if (erroAoGravar) {
     await audit({
@@ -268,6 +270,47 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       metadata: { reason: "upsert_falhou", detalhe: erroAoGravar.message, user_id: userId },
     });
     return voltar("erro=nao_consegui_guardar");
+  }
+
+  // 8. REGISTRA O CALENDÁRIO PRIMÁRIO. Sem esta linha a conexão existe e não sincroniza
+  //    nada: o cron lê `calendar_connection_calendars` com `.eq("counts_for_conflicts",
+  //    true)` e, com a tabela vazia, itera ZERO calendários para sempre. Medido: até aqui
+  //    não havia UM insert nessa tabela em todo o código de produção — só em dois arquivos
+  //    de teste, que por isso passavam enquanto o produto não sincronizava nada.
+  //
+  //    Tudo o que ela pede já está na mão aqui: `external_calendar_id` é o próprio e-mail
+  //    (o comentário de `ContaDaAgenda` diz que o id do calendário primário É o e-mail), e
+  //    `counts_for_conflicts` nasce `true` — exatamente o filtro do cron.
+  //
+  //    ⚠️ SÓ O PRIMÁRIO, e é DECISÃO e não limitação: uma conta Google pode ter vários
+  //    calendários, e `contaDaAgendaPrimaria` lê um. Registrar só ele evita que a agenda de
+  //    aniversários e as assinadas de terceiros passem a ocupar horário da pessoa sem que
+  //    ela tenha escolhido. Escolher entre vários é tela, não callback — e enquanto essa
+  //    tela não existe, o palpite seguro é o calendário que é da pessoa.
+  if (conexaoGravada?.id) {
+    const { error: erroDoCalendario } = await admin.from("calendar_connection_calendars").upsert(
+      {
+        organization_id: organizationId,
+        connection_id: conexaoGravada.id,
+        external_calendar_id: conta.conta.email,
+        name: conta.conta.email,
+        is_primary: true,
+        // O fuso que até aqui só ia para o audit. `null` quando o Google não mandou: quem
+        // lê trata ausência como "não sei" e cai no fuso da organização — nunca em UTC,
+        // que é ausência disfarçada de escolha.
+        time_zone: conta.conta.fuso,
+      },
+      { onConflict: "organization_id,connection_id,external_calendar_id" },
+    );
+    if (erroDoCalendario) {
+      // Não derruba a conexão: ela está gravada e é o que o usuário pediu. Mas sem o
+      // calendário o sync fica mudo, então isto precisa ser VISÍVEL.
+      await audit({
+        action: "agenda.google.conexao_falhou",
+        organizationId,
+        metadata: { reason: "calendario_primario_nao_registrado", detalhe: erroDoCalendario.message, user_id: userId },
+      });
+    }
   }
 
   await audit({
