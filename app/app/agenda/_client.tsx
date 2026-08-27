@@ -128,7 +128,12 @@ export function AgendaClient({
 
   // Os horários vêm da rota real — a mesma que a IA usa, então tela e agente
   // oferecem exatamente os mesmos horários. Só consulta quando o painel abre.
-  const { data: horarios } = useHorariosLivres(
+  // `isError` junto, e não só `data`: sem ele a tela MENTE por default. O
+  // `publicouHorarios={horarios?.publicou_horarios ?? true}` abaixo transforma
+  // "a consulta falhou" em "publicou, só não tem vaga" — dias travados e aviso
+  // nenhum, que é exatamente o que uma instalação fresca produz (a rota devolve
+  // 422 porque ninguém está em `attendant_availability`).
+  const { data: horarios, isError: horariosFalharam } = useHorariosLivres(
     marcando && tipo ? { event_type_id: tipo.id, de: janelaDeBusca.de, ate: janelaDeBusca.ate } : null,
   );
 
@@ -402,6 +407,7 @@ export function AgendaClient({
                 duracaoMin={tipo.duracaoMin}
                 horariosPorDia={horariosPorDia}
                 publicouHorarios={horarios?.publicou_horarios ?? true}
+                erroAoCarregar={horariosFalharam}
                 fusoSuposto={horarios?.fuso_suposto ?? false}
                 fontesDefasadas={horarios?.fontes_defasadas}
                 // ESTE é o fio que faltava. Sem ele o "Marcado ✓" era estado
