@@ -55,6 +55,7 @@ export const DICIONARIO: Traducoes = {
   Funis: { es: "Embudos" },
   "Etapas do funil": { es: "Etapas del embudo" },
   "Tipos de agendamento": { es: "Tipos de cita" },
+  Automação: { es: "Automatización" },
   Agentes: { es: "Agentes" },
   "Follow-ups": { es: "Seguimientos" },
   Roteadores: { es: "Enrutadores" },

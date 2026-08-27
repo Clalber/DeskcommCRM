@@ -19,6 +19,7 @@ import { emitLeadActivity } from "@/lib/leads/activity-emitter";
 import { classificarLeadInicial, type ResultadoClassificacaoInicial } from "@/lib/leads/classificacao-inicial";
 import type { CreateLeadInput } from "@/lib/schemas";
 import { mapInboundPayload, verifyInboundSignature, type FieldMap } from "@/lib/webhooks/inbound";
+import { phoneLookupVariants } from "@/lib/channels/phone-variants";
 import {
   buildContactConsentGrant,
   buildContactConsentDenial,
@@ -31,6 +32,7 @@ import { origemDaPagina, registrarCaptacao } from "@/lib/webhooks/captacao";
 import { ipDoClienteParaInet } from "@/lib/http/ip-do-cliente";
 import { decryptWebhookSecret } from "@/lib/webhooks/secrets";
 import { ApiError } from "@/lib/api/types";
+import { kickLocalPipeline } from "@/lib/dev/kick-local-pipeline";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -321,13 +323,15 @@ export async function POST(req: NextRequest, ctx: RouteCtx): Promise<NextRespons
   // a reconciliação abaixo existe só para quem JÁ era contato.
   let contatoNasceuAqui = false;
   if (mapped.phone) {
+    const variantes = phoneLookupVariants(mapped.phone);
     const selectActiveByPhone = () =>
       admin
         .from("contacts")
         .select("id, name")
         .eq("organization_id", source.organization_id)
-        .eq("phone_number", mapped.phone)
+        .in("phone_number", variantes)
         .is("is_merged_into", null)
+        .limit(1)
         .maybeSingle();
 
     // uniq_contacts_org_email (baseline.sql) é um SEGUNDO índice único parcial,
@@ -619,6 +623,15 @@ export async function POST(req: NextRequest, ctx: RouteCtx): Promise<NextRespons
     contactId: contactId ?? null,
     outcome: "criado",
   });
+
+  // Captação: drena lead.created e inscreve no fluxo neste mesmo request.
+  // Sem isto, em prod (Vercel Hobby sem cron de 1 min) o gatilho fica pending.
+  await kickLocalPipeline(
+    admin,
+    contactId
+      ? { organizationId: source.organization_id, contactId }
+      : undefined,
+  );
 
   return respondWithLead(String(lead.id));
 }

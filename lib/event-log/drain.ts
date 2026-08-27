@@ -95,8 +95,10 @@ export async function drainEventLog(
 
   if (error) {
     logger.error("[event-log.drain] select failed", { error: error.message });
+  
     return summary;
   }
+
 
   for (const raw of rows ?? []) {
     const row = raw as unknown as EventRow;

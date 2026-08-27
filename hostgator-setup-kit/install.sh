@@ -1516,6 +1516,13 @@ esac
   printf '# OpenAI: transcrição dos áudios do WhatsApp (Whisper) + embeddings do RAG.\n'
   printf '# Opcional — sem ela a IA responde sem a base e pede o áudio em texto.\n'
   envq OPENAI_API_KEY "${OPENAI_API_KEY:-}"
+  printf '# Web Push: aviso na bandeja do sistema com a aba do CRM fechada.\n'
+  printf '# Opcional e VAZIO por padrão — sem o par, os avisos aparecem só com o\n'
+  printf '# site aberto, que é exatamente o que acontecia antes. Para ligar:\n'
+  printf '#   npx web-push generate-vapid-keys\n'
+  printf '# e cole as duas chaves aqui (depois: docker compose up -d app).\n'
+  envq VAPID_PUBLIC_KEY "${VAPID_PUBLIC_KEY:-}"
+  envq VAPID_PRIVATE_KEY "${VAPID_PRIVATE_KEY:-}"
   printf '# Telemetria de erros (você escolheu isto durante a instalação).\n'
   printf '#   "off"  = não envia nada.\n'
   printf '#   vazio  = só ERRO pro Sentry da comunidade, com CPF/telefone/e-mail\n'

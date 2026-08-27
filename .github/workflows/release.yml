@@ -162,6 +162,34 @@ jobs:
           git tag -a "v${VERSAO}" -m "v${VERSAO}"
           git push origin "v${VERSAO}"
 
+      # A tag basta para a VPS (o `agent.sh` faz `git fetch --tags`), mas não
+      # para quem chega pelo GitHub: sem a release publicada, a página do
+      # projeto continua anunciando a versão anterior como a mais recente.
+      # Medido em 2026-08-27: a v1.7.0 nasceu como tag e o `gh release list`
+      # seguiu mostrando a v1.6.0 como Latest até alguém publicar à mão.
+      #
+      # Publicar a release NÃO reconstrói imagem: `publish-image.yml` reage a
+      # `push: tags`, e o gatilho `release:` é proibido lá por teste — ele já
+      # esteve, e o efeito medido na v1.3.0 foi o mesmo commit construído duas
+      # vezes, movendo uma tag de versão já publicada.
+      - name: Publicar a release no GitHub
+        if: steps.pendente.outputs.cortar == 'sim'
+        env:
+          GH_TOKEN: ${{ steps.token.outputs.token }}
+          VERSAO: ${{ steps.pendente.outputs.versao }}
+        run: |
+          set -euo pipefail
+          pnpm exec tsx -e '
+            import fs from "node:fs";
+            import { extractChangelogSection } from "./lib/system/changelog";
+            const v = process.env.VERSAO ?? "";
+            const s = extractChangelogSection(fs.readFileSync("CHANGELOG.md", "utf8"), v);
+            if (!s) { console.error(`seção [${v}] não achada no CHANGELOG`); process.exit(1); }
+            const atencao = s.requiresAttention ? `### ⚠️ Requer atenção\n\n${s.requiresAttention}\n\n` : "";
+            fs.writeFileSync("/tmp/notas.md", atencao + s.body);
+          '
+          gh release create "v${VERSAO}" --title "v${VERSAO}" --notes-file /tmp/notas.md
+
       # A falha desta cadeia é silenciosa por natureza — a tag existe e ninguém
       # vê erro —, então o workflow prova a CONSEQUÊNCIA em vez de supô-la.
       - name: As três imagens existem nesta versão?
