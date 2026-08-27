@@ -53,6 +53,7 @@
  */
 
 import { NextResponse, type NextRequest } from "next/server";
+import { apenasDeMembrosAtivos } from "@/lib/agenda/google/membros";
 
 import { audit } from "@/lib/audit";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -83,6 +84,7 @@ interface CalendarioParaSincronizar {
   id: string;
   organization_id: string;
   connection_id: string;
+  user_id: string;
   external_calendar_id: string;
   sync_token: string | null;
   fuso: string | null;
@@ -309,14 +311,14 @@ async function executar(req: NextRequest): Promise<Response> {
   const { data } = await admin
     .from("calendar_connection_calendars")
     .select(
-      "id, organization_id, connection_id, external_calendar_id, sync_token, time_zone, calendar_connections!inner(status, oauth_access_token_encrypted)",
+      "id, organization_id, connection_id, external_calendar_id, sync_token, time_zone, calendar_connections!inner(status, oauth_access_token_encrypted, user_id)",
     )
     .eq("counts_for_conflicts", true)
     .limit(TETO_DE_CALENDARIOS);
 
   const calendarios: CalendarioParaSincronizar[] = (data ?? []).flatMap((linha) => {
     const l = linha as unknown as Record<string, unknown>;
-    const conexao = l.calendar_connections as { status?: string; oauth_access_token_encrypted?: string } | null;
+    const conexao = l.calendar_connections as { status?: string; oauth_access_token_encrypted?: string; user_id?: string } | null;
     // Só agenda saudável entra: token vencido não lista, e insistir gastaria
     // cota para receber 401.
     if (!conexao || conexao.status !== "healthy") return [];
@@ -325,6 +327,9 @@ async function executar(req: NextRequest): Promise<Response> {
         id: String(l.id),
         organization_id: String(l.organization_id),
         connection_id: String(l.connection_id),
+        // Dono da conexão: é por ele que `apenasDeMembrosAtivos` decide se a agenda
+        // ainda pode ser lida. Sem propagar aqui, o filtro não teria como perguntar.
+        user_id: String(conexao.user_id ?? ""),
         external_calendar_id: String(l.external_calendar_id),
         sync_token: (l.sync_token as string | null) ?? null,
         fuso: (l.time_zone as string | null) ?? null,
@@ -333,7 +338,11 @@ async function executar(req: NextRequest): Promise<Response> {
     ];
   });
 
-  const resumo = await sincronizarAgendasDoGoogle(admin, { agora: new Date(), calendarios });
+  // Calendário de quem saiu da organização não é lido. O filtro é no CONSUMO e não
+  // só na rota de revogar: quem sair por outro caminho — SQL de suporte, migração,
+  // uma segunda rota amanhã — também para de ser sincronizado.
+  const doTime = await apenasDeMembrosAtivos(admin, calendarios);
+  const resumo = await sincronizarAgendasDoGoogle(admin, { agora: new Date(), calendarios: doTime });
   return NextResponse.json({ data: resumo });
 }
 

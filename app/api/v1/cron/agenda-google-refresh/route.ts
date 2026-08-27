@@ -30,6 +30,7 @@
  */
 
 import { NextResponse, type NextRequest } from "next/server";
+import { apenasDeMembrosAtivos } from "@/lib/agenda/google/membros";
 
 import { audit } from "@/lib/audit";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -101,7 +102,9 @@ export async function renovarAgendasDoGoogle(
     .limit(TETO_POR_RODADA);
 
   if (error || !data) return resumo;
-  const linhas = data as unknown as LinhaDeConexao[];
+  // A agenda de quem SAIU da organização para de ser lida. O token do Google
+  // continua válido — ele não sabe nada de RH —, então o corte é aqui.
+  const linhas = await apenasDeMembrosAtivos(admin, data as unknown as LinhaDeConexao[]);
 
   for (const linha of linhas) {
     resumo.examinadas += 1;

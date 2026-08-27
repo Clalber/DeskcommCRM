@@ -44,10 +44,22 @@ const AGORA = new Date("2026-08-26T12:00:00.000Z");
 /** As atualizações que a rodada mandou ao banco, por id de conexão. */
 let atualizacoes: Array<{ id: string; campos: Record<string, unknown> }> = [];
 let linhas: Array<Record<string, unknown>> = [];
+/** Vínculos de `user_organizations`: por padrão a pessoa é membro ATIVO. */
+let vinculos: Record<string, unknown>[] = [{ organization_id: "org-1", user_id: "user-1", revoked_at: null }];
 
 function admin() {
   return {
-    from: () => {
+    from: (tabela: string) => {
+      // `user_organizations` responde quem ainda é membro ATIVO — é o filtro que
+      // impede a agenda de um ex-funcionário de continuar sendo lida.
+      if (tabela === "user_organizations") {
+        const c: Record<string, unknown> = {
+          select: () => c,
+          in: () => c,
+          then: (r: (v: unknown) => void) => r({ data: vinculos, error: null }),
+        };
+        return c;
+      }
       const consulta = {
         select: () => consulta,
         in: () => consulta,
@@ -89,6 +101,7 @@ function respostaHttp(corpo: unknown, status = 200): Response {
 beforeEach(() => {
   atualizacoes = [];
   linhas = [];
+  vinculos = [{ organization_id: "org-1", user_id: "user-1", revoked_at: null }];
   vi.stubGlobal("fetch", vi.fn());
   vi.mocked(audit).mockClear();
   vi.mocked(decryptWebhookSecret).mockResolvedValue("1//refresh-guardado");
@@ -97,6 +110,36 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("renovarAgendasDoGoogle", () => {
+  it("QUEM SAIU DA EMPRESA para de ter a agenda renovada", async () => {
+    // O token do Google continua válido depois da revogação — ele não sabe nada de RH.
+    // Sem este filtro, a agenda PESSOAL de um ex-funcionário segue sendo lida para dentro
+    // da empresa da qual ele saiu, indefinidamente. Medido antes de existir: `team/` não
+    // mencionava `calendar_connections` uma vez sequer, contra `revoked_at` em 35 arquivos.
+    //
+    // O corte é no CONSUMO e não só na rota de revogar: quem sair por outro caminho — SQL
+    // de suporte, migração, uma segunda rota amanhã — também para de ser sincronizado.
+    linhas = [conexao()];
+    vinculos = [{ organization_id: "org-1", user_id: "user-1", revoked_at: "2026-08-01T00:00:00.000Z" }];
+
+    const { renovarAgendasDoGoogle } = await carregarWorker();
+    const r = await renovarAgendasDoGoogle(admin(), { agora: AGORA });
+
+    expect(r.examinadas).toBe(0);
+    expect(atualizacoes).toEqual([]);
+  });
+
+  it("CONTROLE: sem o vínculo confirmado, NADA é renovado — falha fechada", async () => {
+    // A leitura de `user_organizations` falhando não pode virar "sincroniza todo mundo":
+    // uma queda de rede viraria vazamento de agenda pessoal.
+    linhas = [conexao()];
+    vinculos = [];
+
+    const { renovarAgendasDoGoogle } = await carregarWorker();
+    const r = await renovarAgendasDoGoogle(admin(), { agora: AGORA });
+
+    expect(r.examinadas).toBe(0);
+  });
+
   it("renova quem está para vencer e grava o novo vencimento", async () => {
     linhas = [conexao()];
     vi.mocked(fetch).mockResolvedValue(respostaHttp({ access_token: "ya29.novo", expires_in: 3599 }));
