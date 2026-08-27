@@ -231,12 +231,18 @@ test.describe("o agente marca consulta", () => {
     expect(marcado.marcado).toBe(true);
     marcados.push(marcado.compromisso!.id);
 
-    const email = Object.values(creds.users)[0]!.email;
+    // ⚠️ `manager`, NÃO o primeiro da lista. `seed-e2e-credentials` cria cinco usuários e
+    // o `admin` tem MFA com challenge — entrar com ele exigiria passar o segundo fator, e
+    // esta spec não é sobre login. O molde (`agente-organiza-operacao`) usa `manager` pela
+    // mesma razão, e `manager` já enxerga a Agenda.
+    const usuario = creds.users.manager;
+    if (!usuario) throw new Error(".e2e-creds.json sem o usuário `manager`");
     await page.goto(`${APP_URL}/login`);
-    await page.getByLabel(/e-?mail/i).fill(email);
+    await page.getByLabel(/e-?mail/i).fill(usuario.email);
     await page.getByLabel(/senha/i).fill(creds.password);
     await page.getByRole("button", { name: /entrar/i }).click();
-    await page.waitForURL(/\/app/);
+    // Timeout explícito: o padrão do Playwright é curto para um login que sobe sessão.
+    await page.waitForURL(/\/app(\/|$)/, { timeout: 20_000 });
 
     await page.goto(`${APP_URL}/app/agenda`);
     // O nome do CONTATO é o que prova que é o compromisso certo: o título do tipo
