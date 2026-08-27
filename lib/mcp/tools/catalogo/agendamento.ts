@@ -11,6 +11,114 @@
  * que lê esta tela diz CONSULTA, SESSÃO e HORÁRIO. As palavras de wire ficam
  * só no `name`, que é contrato e não texto.
  *
+ * ⚠️ O PLAYBOOK `agendamento` CITA ESTES QUATRO NOMES AO CONVERSADOR — e a doutrina
+ * do repo diz que a cura do vazamento é o Conversador NUNCA TER VISTO o vocabulário
+ * (`lib/agent-engine/agent/entrega-de-capacidade.ts:7`, `operator-turn.ts:5`: "a separação
+ * é por AUSÊNCIA"). Aqui a mitigação é por REDAÇÃO, que é filtro. A tensão é real e fica
+ * escrita, não resolvida — quem reabrir decide com ela à vista.
+ *
+ * O CENÁRIO CONCRETO, para não ficar em abstração: o playbook é injetado no
+ * `inbound_turn` (`lib/agent-engine/agent/inbound-turn.ts:1617`), por GATILHO, não sempre.
+ * O turno monta as tools MCP **habilitadas na tela** (idem:2415). Se um tenant habilitar a
+ * família de agenda apenas em `operator_tool_ids`, o Conversador lê quatro nomes que não
+ * pode chamar. Três desfechos, e cada um tem ONDE ser observado:
+ *
+ *   (a) repete o nome ao cliente ...... `internal_vocabulary` no before-send. Medido no
+ *       HEAD, não deduzido: as tools de agenda são pegas pela lista derivada do
+ *       `TOOL_CATALOG` E pela regra snake_case — que pega até nome INVENTADO. O veto
+ *       volta ao modelo como erro instrutivo. Remedir:
+ *
+ *         pnpm exec tsx -e 'import("@/lib/agent-engine/guardrails/vazamento-interno")
+ *           .then(({detectarVazamentoInterno:d})=>{
+ *             console.log(d("vou usar crm_book_appointment"), d("quinta as 14h, pode ser?"))})'
+ *
+ *       O segundo argumento é o CONTROLE: se ele também acusar, o detector está gritando
+ *       com tudo e o primeiro resultado não prova nada.
+ *
+ *   (b) tenta CHAMAR tool ausente ..... não é vazamento, é erro de tool call, e aparece no
+ *       log de invocação do run.
+ *
+ *   (c) promete a capacidade sem tê-la . NÃO é do before-send, e esta linha já afirmou o
+ *       contrário: dizia "os gates promise/semantic_promise da mesma cadeia", e os dois são
+ *       de outra categoria. Medido, com controle positivo para provar que as funções estão
+ *       vivas:
+ *
+ *         "vou verificar a agenda e já te confirmo"  -> detectHumanPromise=false, promise=[]
+ *         "vou verificar com a EQUIPE e te confirmo" -> detectHumanPromise=TRUE   (controle+)
+ *         "consigo fazer por R$ 200 à vista"         -> promise=["price"]         (controle+)
+ *         "quinta às 14h, pode ser?"                 -> ambos false               (controle-)
+ *
+ *       `human-promise` exige ALVO HUMANO (verificar COM alguém) e `promise/engine` só
+ *       conhece preço/desconto/parcelas. O semântico também não é a rede: a instrução dele
+ *       exclui em letra "próximos passos vagos SEM compromisso concreto".
+ *
+ *       A rede que existe é a do OPERADOR, e ela é DECLARATIVA — não detectiva. A instrução
+ *       da declaração do turno (`lib/agent-engine/agent/declaracao.ts:99`) manda declarar
+ *       "tudo que você prometeu a ela — INCLUSIVE 'vou verificar e te aviso'", que é a frase
+ *       exata deste caso, e `promessasEmAberto` faz o Operador apurar se alguém assumiu.
+ *
+ *       ⚠️ NÃO LEIA ISSO COMO COBERTURA — e esta linha já errou DUAS vezes na direção
+ *       otimista, o que é o próprio aviso. Primeiro disse "e ela é boa"; depois disse que os
+ *       três estados de declaração eram "indistinguíveis", lendo `promessasEmAberto` (uma
+ *       linha, que de fato não consulta `nada_a_declarar`) e concluindo sobre a CADEIA. Quem
+ *       consulta está noutro arquivo. Seguida até onde o efeito acontece:
+ *
+ *         nada_a_declarar: true  -> `decidirSeRoda` (operator-turn.ts:233) CURTO-CIRCUITA:
+ *                                   o Operador NÃO RODA. Pior dos três, e exige um ato
+ *                                   deliberado do modelo — a declaração falsa DESLIGA a rede.
+ *         declaração AUSENTE     -> o Operador RODA, por desenho escrito (idem:25: "ausente
+ *                                   significa que NINGUÉM avaliou"). Age com o contexto que
+ *                                   tem — sem saber que houve promessa.
+ *         promessas: []          -> roda, e não acha o que cobrar.
+ *         declaração INVÁLIDA    -> quarto caminho, e ele NÃO é alcançável por dado novo —
+ *                                   esta linha já disse que era "o mais silencioso", e isso
+ *                                   estava errado na direção pessimista. `parseCheckpointText`
+ *                                   (`inbound-turn.ts`) LANÇA quando o shape reprova ("run
+ *                                   re-tentado pela fila"), com o MESMO `declaracaoDoTurnoSchema`
+ *                                   que o Operador revalida. O que não passa nunca é
+ *                                   persistido; o `safeParse` de lá é defesa em profundidade,
+ *                                   não tratamento de caso que acontece.
+ *                                   O gatilho real é DADO LEGADO: checkpoint gravado antes de
+ *                                   o schema mudar passa a reprovar depois — e aí sim vira
+ *                                   `declaracao: null` em silêncio. Não é risco de runtime, é
+ *                                   detector de migração mal feita, o que é um argumento
+ *                                   melhor para o campo de estado do que o que tínhamos.
+ *
+ *       ⚠️ E O SINAL NÃO ESTÁ ONDE EU DISSE. Esta linha já ofereceu `declaracao_ausente` como
+ *       endereço de observação; ele existe UMA vez, dentro de um `log.info` — e o cabeçalho
+ *       de `registrarDesfecho`, vinte linhas abaixo, escreve contra isso: "log de worker em
+ *       VPS não é superfície de nada, e este produto é instalado por quem nunca vai abrir um
+ *       contêiner". O `event_log`, que é emitido SEMPRE, NÃO carrega esse campo. Ele separa
+ *       dois dos quatro estados (`porque: 'declaracao_vazia'` denuncia o `nada_a_declarar`, e
+ *       `houve_checkpoint: false` denuncia o turno que morreu antes de fechar) e colapsa os
+ *       outros dois. (Achado do Arquiteto; a régua é do próprio módulo.)
+ *
+ *       ⚠️ MAS "RODA" NÃO É "COBRE A PROMESSA", e é aqui que a cadeia termina:
+ *       `apurarComRetorno` (idem:510) abre com `if (promessasDeclaradas === 0) return null`.
+ *       Nos TRÊS estados a contagem é zero, então em nenhum deles a apuração de dono
+ *       acontece e nenhum aviso de promessa-sem-dono é aberto. O que difere entre os três é
+ *       se o Operador AGE, não se a promessa é COBRADA.
+ *
+ *       E o corpo enviado nunca é consultado por gate nenhum:
+ *       `grep nada_a_declarar lib/agent-engine/guardrails/` devolve ZERO.
+ *
+ *       E o limite está escrito no próprio `operator-turn.ts`: a apuração diz se alguém ficou
+ *       RESPONSÁVEL, não se a promessa foi cumprida — "agendar um retorno não é cumprir".
+ *
+ *       O conserto seria barato e SEM LLM (proposta do Arquiteto, não implementada): quando a
+ *       declaração vem sem promessa, varrer o corpo enviado por marcador de promessa de
+ *       MÁQUINA ("te confirmo", "te aviso", "já te falo", "volto com"). É o motor do
+ *       `detectHumanPromise` com o outro vocabulário — o dele exige alvo humano, e é por isso
+ *       que não pega este caso. Divergência entre o dito e o declarado é sinal, e os dois
+ *       lados já estão na mesma transação.
+ *
+ * ⚠️ O QUE NINGUÉM MEDIU AINDA: como o modelo se comporta, de fato, num tenant com a
+ * família só no Operador. Há lugar de observação — `before_send_traces` é durável e
+ * exportável por run, então olhar não precisa ser síncrono com o evento. Isso é trabalho
+ * ADIADO com endereço, não risco sem instrumento: quem quiser fechar, olha o traço do
+ * primeiro tenant nessa configuração. (Achado do Arquiteto; a ressalva mora aqui, e não no
+ * briefing da entrega, porque briefing morre com a entrega e este arquivo não.)
+ *
  * ⚠️ PACOTE: `vender`, e a razão é ARITMÉTICA antes de ser semântica.
  *
  * `atender` seria a primeira escolha — marcar consulta é o desfecho de um

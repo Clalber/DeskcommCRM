@@ -189,7 +189,16 @@ jobs:
       # (Este comentário mora FORA do bloco `>-` porque dentro dele `#` não é
       # comentário: é conteúdo, e cada palavra viraria argumento do playwright.
       # Medido: com o texto dentro, a variável ia de 23 para 205 tokens.)
+      #
+      # `agente-marca-consulta` entrou aqui em 2026-08-27, e a dívida que a segurava era
+      # explícita: ela estava em FORA_DO_CI com o motivo escrito de que eu não conseguira
+      # EXECUTÁ-LA. Foi executada em ambiente completo (banco do baseline, app buildado),
+      # 3 casos / 3 verdes, e o primeiro run achou um defeito real de servidor — a tela não
+      # dizia de quem era o compromisso. Entra na PARTE_2 e não na 1 porque é AQUI que mora
+      # o molde dela, `agente-organiza-operacao`; o comentário antigo dizia PARTE_1 e estava
+      # errado sobre o próprio vizinho.
       SPECS_PARTE_2: >-
+        agente-marca-consulta.spec.ts
         agente-novo-e-uso.spec.ts agente-organiza-operacao.spec.ts
         central-de-avisos-capacidades.spec.ts escalacao-ciclo.spec.ts
         navegacao.spec.ts olhar-telas-do-epico.spec.ts pipelines-gestao.spec.ts
@@ -315,21 +324,6 @@ jobs:
         vps-fresh-onboarding.spec.ts
         inbox-tempo-real.spec.ts
         agenda-marcar-pela-tela.spec.ts
-        # ═══ `agente-marca-consulta`: ESCRITA E COMPILANDO, NUNCA EXECUTADA ═══
-        #
-        # Ela prova o item 4 do pedido pelo caminho real: o agente chama por MCP, a linha
-        # nasce, e o efeito aparece na Agenda. O molde dela — `agente-organiza-operacao`,
-        # que roda no CI (PARTE_1) — mostra que uma spec de cliente MCP funciona aqui.
-        #
-        # Fica FORA por uma razão só, e é honesta: eu não consegui EXECUTÁ-LA. O ambiente
-        # local não estava de pé (Supabase 54321 e app 3001 sem resposta), e pôr no gate
-        # obrigatório uma spec que nunca rodou é apostar o CI de todo mundo numa suposição.
-        #
-        # ⚠️ ELA NÃO PRECISA DE NADA QUE O CI NÃO TENHA. Depende de `seed-e2e-credentials`,
-        # `seed-e2e-agente-mcp` e `seed-e2e-agenda` — e chama os três sozinha. Assim que
-        # alguém a rodar UMA vez em ambiente completo e ela passar, MOVA para SPECS_PARTE_1
-        # junto do molde dela. Este comentário é a dívida, não a decisão.
-        agente-marca-consulta.spec.ts
     steps:
       - uses: actions/checkout@v7
 

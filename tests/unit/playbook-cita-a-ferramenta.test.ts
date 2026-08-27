@@ -115,6 +115,13 @@ describe("playbook semeado cita a ferramenta que fala da mesma ação", () => {
     for (const [playbook, motivo] of Object.entries(DIVIDA_CONGELADA)) {
       expect(motivo.length, `${playbook} está congelado sem motivo escrito`).toBeGreaterThan(40);
       expect(corpos.has(playbook), `${playbook} está congelado e não existe no baseline`).toBe(true);
+      // E tem de estar DECLARADO: entrada que `PLAYBOOK_FALA_DE` não conhece é a única que
+      // o caso de expiração abaixo não sabe avaliar — e, sem esta linha, ela ficava na lista
+      // para sempre, porque o que a expulsaria é justamente o caso que a pula.
+      expect(
+        PLAYBOOK_FALA_DE[playbook] !== undefined,
+        `${playbook} está congelado e não está em PLAYBOOK_FALA_DE — nada aqui pode expirá-lo`,
+      ).toBe(true);
     }
   });
 
@@ -129,12 +136,28 @@ describe("playbook semeado cita a ferramenta que fala da mesma ação", () => {
     // lembrar". Isso era INTENÇÃO. Este caso é o mecanismo — e a diferença entre os dois é
     // a lição que o dia inteiro repetiu.
     const obsoletas: string[] = [];
+    const naoSeiAvaliar: string[] = [];
     for (const playbook of Object.keys(DIVIDA_CONGELADA)) {
       const corpo = corpos.get(playbook);
       const ferramentas = PLAYBOOK_FALA_DE[playbook];
-      if (corpo === undefined || ferramentas === undefined) continue;
+      if (corpo === undefined || ferramentas === undefined) {
+        // ⚠️ TERCEIRA SAÍDA, e ela existe por medição: este `continue` era mudo, e mudo
+        // significava que a entrada caía na classe "ainda não paga" — o valor certo não é
+        // paga nem não-paga, é NÃO SEI, e não-sei tem de ter onde morar. O caso acima já
+        // reprova as duas ausências; se a execução chegar aqui, foi ELE que parou de cobrir,
+        // e o silêncio esconderia exatamente essa regressão. (Achado do Arquiteto, medido
+        // no meu próprio instrumento: sonda de duas saídas despeja o incerto numa delas.)
+        naoSeiAvaliar.push(playbook);
+        continue;
+      }
       if (ferramentas.every((f) => corpo.includes(f))) obsoletas.push(playbook);
     }
+    expect(
+      naoSeiAvaliar,
+      "Entrada congelada que este caso não sabe avaliar (playbook ausente do baseline ou não " +
+        "declarado em PLAYBOOK_FALA_DE). Ela não expira por nenhum caminho: a guarda que a " +
+        "expulsaria é justamente esta. Corrija a lista — não ignore.",
+    ).toEqual([]);
     expect(
       obsoletas,
       "A dívida foi PAGA — o playbook já cita todas as ferramentas declaradas — e a entrada " +
