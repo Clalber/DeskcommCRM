@@ -57,6 +57,29 @@ interface Creds {
 
 let creds: Creds;
 
+/**
+ * ⚠️ `agent`, E NÃO `admin` — e isto não é preferência.
+ *
+ * `scripts/seed-e2e-credentials.ts` garante um factor TOTP **verified** no
+ * `admin` e no `dono`, sempre ("MFA do admin nunca é desabilitado"). Com eles o
+ * login não chega em `/app`: para em `/login/mfa?factor=…`, e um
+ * `waitForURL(/\/app/)` só descobre isso 60 segundos depois. Foi exatamente
+ * assim que a primeira versão deste spec falhou no CI — os dois casos, mesma
+ * causa, mesmo timeout.
+ *
+ * Passar o challenge com `tests/e2e/utils/totp` seria possível, e seria custo
+ * sem contrapartida: a página é `requireAuth()` puro, **sem nenhum ramo por
+ * papel**, então o que ela mostra é o mesmo para qualquer sessão. Pagar o TOTP
+ * aqui só acrescentaria um segredo rotativo entre este spec e o defeito que ele
+ * guarda.
+ *
+ * E há um detalhe de produto que este papel exercita de graça: um atendente
+ * comum NÃO administra a VPS, e é ele quem mais precisa entender por que não
+ * recebe aviso. O texto resolve isso dizendo *quem administra o servidor
+ * precisa* — em vez de mandar o atendente rodar um comando que não é dele.
+ */
+const PAPEL_SEM_MFA = "agent";
+
 async function login(page: Page, email: string, senha: string): Promise<void> {
   await page.goto("/login");
   await page.locator("#email").fill(email);
@@ -80,8 +103,8 @@ test.describe("Notificações — a tela conta a verdade sobre esta instalação
   test("sem o par VAPID, a tela diz o que falta e o que fazer — e não fica muda", async ({
     page,
   }) => {
-    const dono = creds.users.admin ?? Object.values(creds.users)[0]!;
-    await login(page, dono.email, creds.password);
+    const quem = creds.users[PAPEL_SEM_MFA]!;
+    await login(page, quem.email, creds.password);
 
     // ── CONTROLE POSITIVO ────────────────────────────────────────────────
     // Antes de afirmar qualquer coisa sobre a tela, confirme com o SERVIDOR em
@@ -130,8 +153,8 @@ test.describe("Notificações — a tela conta a verdade sobre esta instalação
     // inscrição nenhuma. Quem desabilitasse o interruptor estaria trocando um
     // defeito (prometer demais) por outro (entregar de menos), e o segundo é
     // pior porque não deixa rastro.
-    const dono = creds.users.admin ?? Object.values(creds.users)[0]!;
-    await login(page, dono.email, creds.password);
+    const quem = creds.users[PAPEL_SEM_MFA]!;
+    await login(page, quem.email, creds.password);
     await page.goto("/app/settings/notifications");
 
     const linhaMensagem = page.getByRole("row", { name: /Nova mensagem/i });
