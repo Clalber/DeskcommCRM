@@ -27,11 +27,14 @@ export function CartaoDaConexaoGoogle({
   configurado,
   falta,
   contaConectada,
+  enderecoDeRetorno,
 }: {
   configurado: boolean;
   /** O que falta, PELO NOME — para a tela dizer em vez de só esconder o botão. */
   falta: string[];
   contaConectada?: string | null;
+  /** O endereço EXATO que o Google exige registrado. Ver o bloco no JSX. */
+  enderecoDeRetorno?: string;
 }) {
   const router = useRouter();
   const [desconectando, setDesconectando] = React.useState(false);
@@ -56,7 +59,27 @@ export function CartaoDaConexaoGoogle({
           ) : (
             " as credenciais"
           )}
-          . Até lá a agenda funciona normalmente, só não troca compromissos com o Google.
+        </p>
+        {enderecoDeRetorno ? (
+          <p className="mt-2 text-xs leading-4 text-text-muted">
+            {/* ⚠️ ESTE BLOCO EXISTE PORQUE A AUSÊNCIA DELE JÁ CUSTOU UMA SESSÃO.
+                O Google compara o endereço de retorno BYTE A BYTE, e recusa com
+                `redirect_uri_mismatch` — um erro que aponta para o Google e não
+                para a divergência. Quem cria a credencial no console registra o
+                endereço do app (`http://.../`) e não o da ROTA, porque nada no
+                produto dizia qual é. Agora diz, e dá para copiar. */}
+            E, no console do Google, registrar este endereço de retorno —{" "}
+            <span className="font-medium">exatamente assim</span>:{" "}
+            <code
+              data-testid="endereco-de-retorno"
+              className="select-all break-all font-mono text-[11px] text-text"
+            >
+              {enderecoDeRetorno}
+            </code>
+          </p>
+        ) : null}
+        <p className="mt-2 text-xs leading-4 text-text-muted">
+          Até lá a agenda funciona normalmente, só não troca compromissos com o Google.
         </p>
       </div>
     );

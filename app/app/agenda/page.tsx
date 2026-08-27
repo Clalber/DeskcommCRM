@@ -1,7 +1,7 @@
 import { addDays, startOfWeek } from "date-fns";
 import { redirect } from "next/navigation";
 
-import { faltaParaConectarOGoogle, googleEstaConfigurado } from "@/lib/agenda/google/config";
+import { enderecoDeRetorno, faltaParaConectarOGoogle, googleEstaConfigurado } from "@/lib/agenda/google/config";
 import { requireAuth, resolveActiveOrg } from "@/lib/auth/server";
 import { createClient } from "@/lib/supabase/server";
 
@@ -113,6 +113,7 @@ export default async function AgendaPage() {
       fusoDeApresentacao={fusoDeApresentacao}
       googleConfigurado={googleConfigurado}
       contaConectada={conexao?.account_email ?? null}
+      enderecoDeRetorno={enderecoDeRetorno()}
       faltaNoGoogle={faltaNoGoogle}
       tiposIniciais={(tipos ?? []).map((t) => ({
         id: t.id,

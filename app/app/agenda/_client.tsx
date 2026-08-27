@@ -57,6 +57,7 @@ export function AgendaClient({
   fusoDeApresentacao,
   googleConfigurado,
   contaConectada,
+  enderecoDeRetorno,
   faltaNoGoogle,
   tiposIniciais,
   agendamentosIniciais,
@@ -64,6 +65,7 @@ export function AgendaClient({
   fusoDeApresentacao: string | null;
   googleConfigurado: boolean;
   contaConectada?: string | null;
+  enderecoDeRetorno?: string;
   faltaNoGoogle: string[];
   /** Tipos ativos, resolvidos no servidor: não há rota que os liste ainda. */
   tiposIniciais: Array<{ id: string; nome: string; duracaoMin: number; donoId: string | null }>;
@@ -201,6 +203,7 @@ export function AgendaClient({
         configurado={googleConfigurado}
         falta={faltaNoGoogle}
         contaConectada={contaConectada}
+        enderecoDeRetorno={enderecoDeRetorno}
       />
 
       <header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
