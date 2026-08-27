@@ -64,6 +64,13 @@ function arquivosDoRepo(): string[] {
  * `.from()` antes na mesma janela, o uso é REPORTADO como não-resolvido em vez
  * de silenciosamente ignorado — varredura que pula o que não entende devolve
  * "nenhum problema" com a mesma cara de "está tudo certo".
+ *
+ * O `as <tipo>` é opcional no padrão porque o repo escreve `.from("x" as never)`
+ * para tabela que ainda não está em `lib/database.types.ts` — sem ele, o
+ * `push_subscriptions` do Web Push era reportado como não-resolvido, e o alvo
+ * dele (`endpoint`, que É único) nunca chegava a ser conferido contra o banco.
+ * A string continua tendo de ser LITERAL: `.from(variavel)` segue não-resolvido,
+ * porque uma tabela que só se conhece em runtime não tem como ser conferida aqui.
  */
 function usosDe(arquivo: string): { usos: Uso[]; naoResolvidos: string[] } {
   const texto = readFileSync(join(RAIZ, arquivo), "utf8");
@@ -74,7 +81,7 @@ function usosDe(arquivo: string): { usos: Uso[]; naoResolvidos: string[] } {
   let m: RegExpExecArray | null;
   while ((m = re.exec(texto)) !== null) {
     const antes = texto.slice(0, m.index);
-    const from = [...antes.matchAll(/\.from\(\s*"([a-z0-9_]+)"\s*\)/g)].pop();
+    const from = [...antes.matchAll(/\.from\(\s*"([a-z0-9_]+)"(?:\s+as\s+\w+)?\s*\)/g)].pop();
     const colunas = (m[1] ?? "")
       .split(",")
       .map((c) => c.trim())
