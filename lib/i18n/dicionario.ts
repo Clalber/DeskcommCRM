@@ -5411,6 +5411,9 @@ export const DICIONARIO: Traducoes = {
   "Tente novamente em instantes. Se persistir, contate o suporte com o ID abaixo.": { es: "Inténtalo de nuevo en unos instantes. Si persiste, contacta al soporte con el ID de abajo." },
   "Nada encontrado para": { es: "Nada encontrado para" },
   "Seguir o idioma da empresa": { es: "Seguir el idioma de la empresa" },
+  "Não foi possível trocar o idioma. Tente de novo.": {
+    es: "No se pudo cambiar el idioma. Inténtalo de nuevo.",
+  },
   "[{ \"key\": \"size\", \"label\": \"Tamanho\", \"type\": \"text\" }]": { es: "[{ \"key\": \"size\", \"label\": \"Tamaño\", \"type\": \"text\" }]" },
 };
 

@@ -1,5 +1,5 @@
 "use client";
-import { createContext, useContext, useMemo } from "react";
+import { createContext, useContext, useEffect, useMemo, useState } from "react";
 
 import { traduzir } from "./dicionario";
 import { normalizarIdioma, IDIOMA_PADRAO, type Idioma } from "./idiomas";
@@ -24,8 +24,23 @@ import { normalizarIdioma, IDIOMA_PADRAO, type Idioma } from "./idiomas";
  * Sem provider, `t` devolve português. Um componente renderizado fora da árvore
  * — num teste, num e-mail, num fragmento isolado — continua mostrando texto
  * legível. A tradução não pode ser o motivo de nada quebrar.
+ *
+ * ─── Por que ele tem ESTADO, se o idioma vem do servidor ───────────────────
+ *
+ * Para a troca ser instantânea. O seletor do topo grava a escolha no servidor,
+ * e o servidor é a verdade — mas esperar o round-trip e o re-render do RSC
+ * deixaria a interface no idioma velho por um tempo visível, exatamente no
+ * clique em que a pessoa quer ver o efeito.
+ *
+ * O `useEffect` reconcilia: quando o servidor devolve um valor diferente do que
+ * está na tela (a gravação terminou, ou a pessoa navegou), o de fora vence. Sem
+ * essa reconciliação o estado local venceria para sempre e uma gravação que
+ * FALHOU continuaria parecendo aplicada.
  */
-const Ctx = createContext<Idioma>(IDIOMA_PADRAO);
+const Ctx = createContext<{ idioma: Idioma; aplicar: (i: Idioma) => void }>({
+  idioma: IDIOMA_PADRAO,
+  aplicar: () => {},
+});
 
 export function IdiomaProvider({
   locale,
@@ -34,14 +49,37 @@ export function IdiomaProvider({
   locale: string | null | undefined;
   children: React.ReactNode;
 }) {
-  const idioma = normalizarIdioma(locale);
-  return <Ctx.Provider value={idioma}>{children}</Ctx.Provider>;
+  const doServidor = normalizarIdioma(locale);
+  const [idioma, setIdioma] = useState<Idioma>(doServidor);
+
+  useEffect(() => {
+    setIdioma(doServidor);
+  }, [doServidor]);
+
+  const valor = useMemo(() => ({ idioma, aplicar: setIdioma }), [idioma]);
+  return <Ctx.Provider value={valor}>{children}</Ctx.Provider>;
 }
 
 /** `t("Assumir")` → "Asumir" para quem escolheu espanhol. */
 export function useT(): (texto: string) => string {
-  const idioma = useContext(Ctx);
+  const { idioma } = useContext(Ctx);
   // Identidade estável: sem isto, todo `useMemo`/`useEffect` que dependa de `t`
   // reexecutaria a cada render.
   return useMemo(() => (texto: string) => traduzir(texto, idioma), [idioma]);
+}
+
+/** O idioma em vigor, para quem precisa do código e não da tradução. */
+export function useIdioma(): Idioma {
+  return useContext(Ctx).idioma;
+}
+
+/**
+ * Pinta a interface no idioma novo AGORA, sem esperar o servidor.
+ *
+ * Quem chama é o seletor do topo, junto com a gravação. Se a gravação falhar,
+ * o `useEffect` acima devolve o valor do servidor no próximo render — a tela
+ * não fica mentindo que salvou.
+ */
+export function useAplicarIdioma(): (idioma: Idioma) => void {
+  return useContext(Ctx).aplicar;
 }
