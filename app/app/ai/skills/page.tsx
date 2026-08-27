@@ -5,7 +5,6 @@ import { ROLE_RANK } from "@/lib/auth/types";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { SkillsState } from "@/hooks/ai/useSkills";
 import { traduzir } from "@/lib/i18n/dicionario";
-import { normalizarIdioma } from "@/lib/i18n/idiomas";
 import { SkillsClient } from "./_client";
 
 export const dynamic = "force-dynamic";
@@ -53,7 +52,7 @@ export default async function SkillsPage() {
     .map((p) => ({ name: p.name, description: versionById.get(p.version_id)?.description ?? "" }));
 
   const initialState: SkillsState = { installed, catalog };
-  const idioma = normalizarIdioma(user.locale);
+  const idioma = user.idioma;
 
   return (
     <div className="flex h-full flex-col gap-6 p-6">

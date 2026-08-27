@@ -3,7 +3,6 @@ import { redirect } from "next/navigation";
 import { requireAuth, resolveActiveOrg } from "@/lib/auth/server";
 import { ROLE_RANK } from "@/lib/auth/types";
 import { ConexoesShell } from "@/components/connections/ConexoesShell";
-import { normalizarIdioma } from "@/lib/i18n/idiomas";
 import { traduzir } from "@/lib/i18n/dicionario";
 
 export const dynamic = "force-dynamic";
@@ -15,7 +14,7 @@ export default async function ConnectionsPage() {
   if (!user.is_platform_admin && ROLE_RANK[activeOrg.role] < ROLE_RANK.admin) {
     redirect("/403");
   }
-  const idioma = normalizarIdioma(user.locale);
+  const idioma = user.idioma;
 
   const key = process.env.WAHA_API_KEY;
   const wahaConfigured = Boolean(

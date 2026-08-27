@@ -1,7 +1,6 @@
 import { NavHub } from "@/components/shell/NavHub";
 import { requireAuth, resolveActiveOrg } from "@/lib/auth/server";
 import { traduzir } from "@/lib/i18n/dicionario";
-import { normalizarIdioma } from "@/lib/i18n/idiomas";
 
 export const dynamic = "force-dynamic";
 
@@ -25,7 +24,7 @@ export const dynamic = "force-dynamic";
 export default async function SettingsHubPage() {
   const user = await requireAuth();
   const activeOrg = await resolveActiveOrg(user);
-  const idioma = normalizarIdioma(user.locale);
+  const idioma = user.idioma;
 
   return (
     <NavHub

@@ -7,7 +7,6 @@ import { createClient } from "@/lib/supabase/server";
 import { Button } from "@/components/ui/button";
 import type { SourceRow } from "@/hooks/ai/useKnowledgeSources";
 import { traduzir } from "@/lib/i18n/dicionario";
-import { normalizarIdioma } from "@/lib/i18n/idiomas";
 import { KnowledgeSourcesClient } from "./_client";
 
 export const dynamic = "force-dynamic";
@@ -16,7 +15,7 @@ export default async function KnowledgeSourcesPage() {
   const user = await requireAuth();
   const activeOrg = await resolveActiveOrg(user);
   if (!activeOrg) redirect("/app");
-  const idioma = normalizarIdioma(user.locale);
+  const idioma = user.idioma;
 
   if (!user.is_platform_admin && ROLE_RANK[activeOrg.role] < ROLE_RANK.manager) {
     redirect("/403");

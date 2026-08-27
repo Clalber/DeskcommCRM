@@ -23,7 +23,6 @@ import { DEFAULT_VISIBILITY_MODE, ROLE_RANK, type VisibilityMode } from "@/lib/a
 import { routingConfigSchema } from "@/lib/schemas";
 import { createClient } from "@/lib/supabase/server";
 import { AtendimentoForm } from "./_form";
-import { normalizarIdioma } from "@/lib/i18n/idiomas";
 import { traduzir } from "@/lib/i18n/dicionario";
 
 export const dynamic = "force-dynamic";
@@ -50,7 +49,7 @@ export default async function AtendimentoSettingsPage() {
   // `.catch(...)`: config antiga ou corrompida no jsonb não pode derrubar a
   // tela que serve justamente para consertá-la.
   const routing = routingConfigSchema.catch(routingConfigSchema.parse({})).parse(settings.routing ?? {});
-  const idioma = normalizarIdioma(user.locale);
+  const idioma = user.idioma;
 
   return (
     <div className="flex h-full flex-col gap-6 overflow-y-auto p-6">

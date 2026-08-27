@@ -6,7 +6,6 @@ import { listSelectableChannels } from "@/lib/channels/selectable";
 import { createClient } from "@/lib/supabase/server";
 import type { RouterListItem } from "@/hooks/ai/useRouters";
 import { traduzir } from "@/lib/i18n/dicionario";
-import { normalizarIdioma } from "@/lib/i18n/idiomas";
 import { RoutersClient } from "./_client";
 
 export const dynamic = "force-dynamic";
@@ -15,7 +14,7 @@ export default async function RoutersPage() {
   const user = await requireAuth();
   const activeOrg = await resolveActiveOrg(user);
   if (!activeOrg) redirect("/app");
-  const idioma = normalizarIdioma(user.locale);
+  const idioma = user.idioma;
 
   if (!user.is_platform_admin && ROLE_RANK[activeOrg.role] < ROLE_RANK.manager) {
     redirect("/403");

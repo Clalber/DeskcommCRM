@@ -1,7 +1,6 @@
 import { redirect } from "next/navigation";
 import { loadAuthUser, resolveActiveOrg } from "@/lib/auth/server";
 import { InboxLayout } from "@/components/inbox/InboxLayout";
-import { normalizarIdioma } from "@/lib/i18n/idiomas";
 import { traduzir } from "@/lib/i18n/dicionario";
 
 export const dynamic = "force-dynamic";
@@ -15,7 +14,7 @@ export default async function InboxPage({
   if (!user) redirect("/login");
   const activeOrg = await resolveActiveOrg(user);
   if (!activeOrg) {
-    const idioma = normalizarIdioma(user.locale);
+    const idioma = user.idioma;
     return (
       <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
         {traduzir("Você não tem nenhuma organização ativa. Aceite um convite ou contate o admin.", idioma)}

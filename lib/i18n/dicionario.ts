@@ -5410,6 +5410,7 @@ export const DICIONARIO: Traducoes = {
   "Ver conexões": { es: "Ver conexiones" },
   "Tente novamente em instantes. Se persistir, contate o suporte com o ID abaixo.": { es: "Inténtalo de nuevo en unos instantes. Si persiste, contacta al soporte con el ID de abajo." },
   "Nada encontrado para": { es: "Nada encontrado para" },
+  "Seguir o idioma da empresa": { es: "Seguir el idioma de la empresa" },
   "[{ \"key\": \"size\", \"label\": \"Tamanho\", \"type\": \"text\" }]": { es: "[{ \"key\": \"size\", \"label\": \"Tamaño\", \"type\": \"text\" }]" },
 };
 

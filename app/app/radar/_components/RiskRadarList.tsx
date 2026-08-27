@@ -130,6 +130,7 @@ export function RiskRadarList() {
 }
 
 function RadarRow({ lead }: { lead: AtRiskLead }) {
+  const t = useT();
   const meta = RISK_META[lead.risk as Exclude<RiskBucket, "em_dia">] ?? RISK_META.em_risco;
   const href = lead.conversation_id
     ? `/app/inbox?id=${lead.conversation_id}`

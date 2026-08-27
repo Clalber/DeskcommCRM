@@ -15,7 +15,11 @@ import {
 } from "@/components/ui/select";
 import { updateProfile } from "@/app/actions/settings/updateProfile";
 import { useT } from "@/hooks/i18n/useT";
-import { profileSchema, type Locale } from "@/lib/schemas/settings";
+import {
+  profileSchema,
+  SEM_PREFERENCIA_DE_IDIOMA,
+  type Locale,
+} from "@/lib/schemas/settings";
 
 const TIMEZONES = [
   "America/Sao_Paulo",
@@ -30,7 +34,7 @@ interface Props {
   email: string;
   initialFullName: string | null;
   initialAvatarUrl: string | null;
-  initialLocale: Locale;
+  initialLocale: Locale | typeof SEM_PREFERENCIA_DE_IDIOMA;
   initialTimezone: string;
 }
 
@@ -43,7 +47,7 @@ export function ProfileForm({
 }: Props) {
   const t = useT();
   const [fullName, setFullName] = useState(initialFullName ?? "");
-  const [locale, setLocale] = useState<Locale>(initialLocale);
+  const [locale, setLocale] = useState<Locale | typeof SEM_PREFERENCIA_DE_IDIOMA>(initialLocale);
   const [timezone, setTimezone] = useState(initialTimezone);
   const [avatarUrl, setAvatarUrl] = useState(initialAvatarUrl ?? "");
   const [isPending, startTransition] = useTransition();
@@ -94,6 +98,9 @@ export function ProfileForm({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
+                <SelectItem value={SEM_PREFERENCIA_DE_IDIOMA}>
+                  {t("Seguir o idioma da empresa")}
+                </SelectItem>
                 <SelectItem value="pt-BR">Português (BR)</SelectItem>
                 {/* Espanhol entrou quando passou a MUDAR alguma coisa. Enquanto
                     o campo era guardado e ninguém o lia, oferecer um idioma a

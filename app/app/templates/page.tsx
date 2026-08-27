@@ -1,7 +1,6 @@
 import { redirect } from "next/navigation";
 import { requireAuth, resolveActiveOrg } from "@/lib/auth/server";
 import { traduzir } from "@/lib/i18n/dicionario";
-import { normalizarIdioma } from "@/lib/i18n/idiomas";
 import { ROLE_RANK } from "@/lib/auth/types";
 import { TemplatesClient } from "./_components/TemplatesClient";
 
@@ -12,7 +11,7 @@ export default async function TemplatesPage() {
   const activeOrg = await resolveActiveOrg(user);
   if (!activeOrg) redirect("/app/inbox");
   const canShare = ROLE_RANK[activeOrg.role] >= ROLE_RANK.manager;
-  const idioma = normalizarIdioma(user.locale);
+  const idioma = user.idioma;
 
   return (
     <div className="flex h-full flex-col gap-6 p-6">

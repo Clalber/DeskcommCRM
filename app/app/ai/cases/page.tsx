@@ -3,7 +3,6 @@ import { redirect } from "next/navigation";
 import { requireAuth, resolveActiveOrg } from "@/lib/auth/server";
 import { ROLE_RANK } from "@/lib/auth/types";
 import { traduzir } from "@/lib/i18n/dicionario";
-import { normalizarIdioma } from "@/lib/i18n/idiomas";
 import { CaseList } from "./_components/CaseList";
 
 export const dynamic = "force-dynamic";
@@ -14,7 +13,7 @@ export default async function CasesPage() {
   // GET/POST de /api/v1/ai/cases exigem role agent+ (requireRole("agent")) —
   // abaixo disso a rota nem devolve dado, então a tela inteira gate aqui.
   if (!activeOrg || ROLE_RANK[activeOrg.role] < ROLE_RANK.agent) redirect("/app");
-  const idioma = normalizarIdioma(user.locale);
+  const idioma = user.idioma;
 
   return (
     <div className="flex h-full flex-col gap-6 p-6">

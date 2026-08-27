@@ -4,7 +4,6 @@ import { Kanban } from "@/lib/ui/icons";
 import { requireAuth, resolveActiveOrg } from "@/lib/auth/server";
 import { ROLE_RANK } from "@/lib/auth/types";
 import { createClient } from "@/lib/supabase/server";
-import { normalizarIdioma } from "@/lib/i18n/idiomas";
 import { traduzir } from "@/lib/i18n/dicionario";
 import { FunisClient, type FunilDaLista } from "./_client";
 
@@ -44,7 +43,7 @@ export default async function KanbanPickerPage() {
 
   const funis = (data ?? []) as FunilDaLista[];
   const podeGerenciar = ROLE_RANK[activeOrg.role] >= ROLE_RANK.manager;
-  const idioma = normalizarIdioma(user.locale);
+  const idioma = user.idioma;
   const t = (texto: string) => traduzir(texto, idioma);
 
   return (

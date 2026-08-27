@@ -1,13 +1,12 @@
 import { requireAuth } from "@/lib/auth/server";
 import { ConnectNuvemshopClient } from "./_client";
-import { normalizarIdioma } from "@/lib/i18n/idiomas";
 import { traduzir } from "@/lib/i18n/dicionario";
 
 export const dynamic = "force-dynamic";
 
 export default async function ConnectNuvemshopPage() {
   const user = await requireAuth();
-  const idioma = normalizarIdioma(user.locale);
+  const idioma = user.idioma;
 
   return (
     <div className="space-y-6">

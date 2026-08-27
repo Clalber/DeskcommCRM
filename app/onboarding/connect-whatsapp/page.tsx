@@ -3,7 +3,6 @@ import { redirect } from "next/navigation";
 import { metaPodeReceber } from "@/lib/channels/meta/webhook";
 import { getWahaClient } from "@/lib/waha/client";
 import { ConnectWhatsappClient } from "./_client";
-import { normalizarIdioma } from "@/lib/i18n/idiomas";
 import { traduzir } from "@/lib/i18n/dicionario";
 
 export const dynamic = "force-dynamic";
@@ -12,7 +11,7 @@ export default async function ConnectWhatsappPage() {
   const user = await requireAuth();
   const activeOrg = await resolveActiveOrg(user);
   if (!activeOrg) redirect("/login");
-  const idioma = normalizarIdioma(user.locale);
+  const idioma = user.idioma;
 
   const wahaConfigured = getWahaClient() !== null;
 

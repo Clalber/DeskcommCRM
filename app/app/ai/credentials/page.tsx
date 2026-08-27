@@ -5,7 +5,6 @@ import { ROLE_RANK } from "@/lib/auth/types";
 import { createClient } from "@/lib/supabase/server";
 import type { CredentialRow } from "@/hooks/ai/useCredentials";
 import { traduzir } from "@/lib/i18n/dicionario";
-import { normalizarIdioma } from "@/lib/i18n/idiomas";
 import { CredentialsList } from "./_components/CredentialsList";
 
 export const dynamic = "force-dynamic";
@@ -17,7 +16,7 @@ export default async function CredentialsPage() {
   const user = await requireAuth();
   const activeOrg = await resolveActiveOrg(user);
   if (!activeOrg) redirect("/app");
-  const idioma = normalizarIdioma(user.locale);
+  const idioma = user.idioma;
   if (ROLE_RANK[activeOrg.role] < ROLE_RANK.manager) {
     redirect("/403");
   }

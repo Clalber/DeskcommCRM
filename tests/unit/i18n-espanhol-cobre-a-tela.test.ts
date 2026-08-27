@@ -353,7 +353,7 @@ function chavesUsadas(): Map<string, string[]> {
               : "";
           if (nome === "t" || nome === "traduzir") {
             const a = no.arguments[0];
-            if (ts.isStringLiteral(a) || ts.isNoSubstitutionTemplateLiteral(a)) {
+            if (a && (ts.isStringLiteral(a) || ts.isNoSubstitutionTemplateLiteral(a))) {
               const linha = fonte.getLineAndCharacterOfPosition(a.getStart()).line + 1;
               usadas.set(a.text, [...(usadas.get(a.text) ?? []), `${rel}:${linha}`]);
             }
@@ -429,7 +429,7 @@ describe("nenhuma prosa em português escapa de t()", () => {
   it("toda tela de produto passa o texto por t() antes de renderizar", () => {
     const vazando = textoCruDasTelas()
       .filter((a) => MARCA_DE_PORTUGUES.test(a.texto))
-      .filter((a) => !ehExcecaoDeclarada(a.local.split(":")[0], a.texto))
+      .filter((a) => !ehExcecaoDeclarada(a.local.split(":")[0] ?? "", a.texto))
       .map((a) => `${a.local} [${a.origem}] ${JSON.stringify(a.texto.slice(0, 90))}`);
     expect(
       vazando,
