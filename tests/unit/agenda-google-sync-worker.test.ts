@@ -154,7 +154,9 @@ describe("sincronizarAgendasDoGoogle", () => {
 
     const r = await sincronizarAgendasDoGoogle(admin(), {
       agora: AGORA,
-      calendarios: [{ ...calendario(), fuso: null }],
+      // `calendario()` devolve `as never`, e espalhar `never` é TS2698 — o helper
+      // já tem o parâmetro de sobrescrita, que é a afordância certa aqui.
+      calendarios: [calendario({ fuso: null })],
     });
 
     expect(r.gravados).toBe(1);
