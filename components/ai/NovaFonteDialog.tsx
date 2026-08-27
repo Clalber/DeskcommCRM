@@ -81,9 +81,7 @@ export function NovaFonteDialog({ agentId, tipo, rotulo, aberto, onFechar, onCri
       });
       const json = (await res.json()) as { error?: { message?: string } };
       if (!res.ok) {
-        // json.error?.message vem do servidor em pt-BR (rotas ainda não
-        // localizadas) — só o fallback client-side é traduzido aqui.
-        toast.error(json.error?.message ?? t("Não consegui criar a fonte."));
+        toast.error(json.error?.message ? t(json.error.message) : t("Não consegui criar a fonte."));
         return;
       }
       toast.success(t("Fonte criada. A indexação começa em instantes."));

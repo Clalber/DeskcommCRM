@@ -125,7 +125,7 @@ export function ContactsTable({ contacts, orderBy, orderDir, onSort }: Props) {
       await qc.invalidateQueries({ queryKey: ["contacts"] });
       router.push(`/app/inbox?id=${json.data.conversation_id}`);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : t("Não foi possível abrir a conversa."));
+      toast.error(err instanceof Error ? t(err.message) : t("Não foi possível abrir a conversa."));
     } finally {
       setAbrindo(null);
     }

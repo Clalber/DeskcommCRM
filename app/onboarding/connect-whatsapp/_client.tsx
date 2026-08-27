@@ -258,7 +258,7 @@ export function ConnectWhatsappClient({
         setInfo({
           status: "ERROR",
           session: sessionName,
-          error: json.error?.message ?? `${t("o servidor respondeu")} ${res.status}`,
+          error: json.error?.message ? t(json.error.message) : `${t("o servidor respondeu")} ${res.status}`,
         });
       } catch (err) {
         if (!cancelled) setInfo({ status: "ERROR", session: sessionName, error: String(err) });

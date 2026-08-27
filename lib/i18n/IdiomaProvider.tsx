@@ -1,5 +1,5 @@
 "use client";
-import { createContext, useContext, useMemo } from "react";
+import { createContext, useContext, useEffect, useMemo } from "react";
 
 import { traduzir } from "./dicionario";
 import { normalizarIdioma, IDIOMA_PADRAO, type Idioma } from "./idiomas";
@@ -27,6 +27,22 @@ import { normalizarIdioma, IDIOMA_PADRAO, type Idioma } from "./idiomas";
  */
 const Ctx = createContext<Idioma>(IDIOMA_PADRAO);
 
+/**
+ * Espelho do idioma atual fora da árvore React.
+ *
+ * Existe só para `showApiError` (components/feedback/ApiErrorToast.tsx), que é
+ * passado por REFERÊNCIA como `onError` em ~80 lugares e por isso não pode
+ * virar hook — chamar `useContext` fora de um componente quebra o app. O
+ * provider já é o único escritor de idioma da árvore inteira, então espelhar
+ * o valor aqui, num `useEffect`, é a única leitura possível de fora sem
+ * inventar um segundo mecanismo de estado.
+ */
+let idiomaFora: Idioma = IDIOMA_PADRAO;
+
+export function idiomaAtual(): Idioma {
+  return idiomaFora;
+}
+
 export function IdiomaProvider({
   locale,
   children,
@@ -35,6 +51,12 @@ export function IdiomaProvider({
   children: React.ReactNode;
 }) {
   const idioma = normalizarIdioma(locale);
+  useEffect(() => {
+    idiomaFora = idioma;
+    return () => {
+      idiomaFora = IDIOMA_PADRAO;
+    };
+  }, [idioma]);
   return <Ctx.Provider value={idioma}>{children}</Ctx.Provider>;
 }
 
