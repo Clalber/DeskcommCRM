@@ -65,6 +65,7 @@ export function AgendaClient({
   contaConectada,
   enderecoDeRetorno,
   faltaNoGoogle,
+  linkDeConfiguracaoDoGoogle,
   tiposIniciais,
   agendamentosIniciais,
 }: {
@@ -73,6 +74,8 @@ export function AgendaClient({
   contaConectada?: string | null;
   enderecoDeRetorno?: string;
   faltaNoGoogle: string[];
+  /** Preenchido só para quem administra a instalação — ver `page.tsx`. */
+  linkDeConfiguracaoDoGoogle?: string;
   /** Tipos ativos, resolvidos no servidor: não há rota que os liste ainda. */
   tiposIniciais: Array<{
     id: string;
@@ -241,6 +244,7 @@ export function AgendaClient({
       <CartaoDaConexaoGoogle
         configurado={googleConfigurado}
         falta={faltaNoGoogle}
+        linkDeConfiguracao={linkDeConfiguracaoDoGoogle}
         contaConectada={contaConectada}
         enderecoDeRetorno={enderecoDeRetorno}
       />

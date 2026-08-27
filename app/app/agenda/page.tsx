@@ -115,8 +115,12 @@ export default async function AgendaPage() {
     .neq("status", "disconnected")
     .maybeSingle();
 
-  const googleConfigurado = googleEstaConfigurado();
-  const faltaNoGoogle = googleConfigurado ? [] : faltaParaConectarOGoogle();
+  // `await`: a credencial pode vir do BANCO agora (migration 0201), não só do
+  // `.env`. `faltaParaConectarOGoogle` já só devolve nomes de variável quando as
+  // DUAS fontes estão vazias — mandar editar o `.env` de uma instalação que
+  // gravou a credencial pela tela seria pior que não dizer nada.
+  const googleConfigurado = await googleEstaConfigurado();
+  const faltaNoGoogle = googleConfigurado ? [] : await faltaParaConectarOGoogle();
 
   return (
     <AgendaClient
@@ -125,6 +129,10 @@ export default async function AgendaPage() {
       contaConectada={conexao?.account_email ?? null}
       enderecoDeRetorno={enderecoDeRetorno()}
       faltaNoGoogle={faltaNoGoogle}
+      // SÓ para quem administra a INSTALAÇÃO. A tela do app OAuth vive em
+      // `/admin` e faz `notFound()` para o resto — oferecer o link a quem não
+      // pode entrar seria trocar um beco por outro.
+      linkDeConfiguracaoDoGoogle={user.is_platform_admin ? "/admin/google" : undefined}
       tiposIniciais={(tipos ?? []).map((t) => ({
         id: t.id,
         nome: t.name,

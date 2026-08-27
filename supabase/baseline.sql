@@ -15791,6 +15791,51 @@ create index if not exists calendar_appointments_pendente_no_google_idx
   on public.calendar_appointments (starts_at)
   where needs_google_push and owner_user_id is not null;
 
+-- ---- credencial do Google pela tela (migration 0201) ----
+-- Conectar o Google exigia SSH na VPS e editar o `.env`. O produto é self-host
+-- para quem NÃO programa: nomear variáveis de ambiente para essa pessoa é o
+-- mesmo que dizer que a funcionalidade não existe.
+--
+-- Singleton de INSTALAÇÃO, clone do molde de `platform_branding` (0155): o
+-- `redirect_uri` sai de `NEXT_PUBLIC_APP_URL` e o app OAuth é registrado no
+-- console do Google pelo dono da instalação — a credencial pareia 1:1 com ela.
+--
+-- ⚠️ RLS LIGADA COM ZERO POLICIES é o desenho, não descuido. A anon key vai para
+-- o browser; tabela servida pelo PostgREST e "protegida por policy" depende de a
+-- policy estar certa, esta simplesmente não é servida. O `client_secret` permite
+-- trocar códigos e refresh tokens em nome da instalação — ou seja, ler a agenda
+-- de todos os atendentes que conectaram.
+--
+-- Não cria função: usa `fn_encrypt_oauth`/`fn_decrypt_oauth` da 0041, a mesma
+-- cifra que o callback do Google já usa para os tokens. Entra antes da varredura
+-- de `anon` pela regra do arquivo, não por necessidade.
+--
+-- Aditiva e idempotente: `create table if not exists`, `revoke`/`grant` que
+-- reafirmam, `drop trigger if exists` antes de recriar. Sem dado a curar.
+create table if not exists public.platform_google_oauth (
+  id smallint primary key default 1,
+  client_id text,
+  client_secret_encrypted bytea,
+  updated_at timestamptz not null default now(),
+  updated_by uuid,
+  constraint platform_google_oauth_singleton check (id = 1)
+);
+
+comment on table public.platform_google_oauth is
+  'O app OAuth do Google DESTA INSTALAÇÃO (singleton). Server-side only: RLS ligada sem policies e grants revogados de anon/authenticated — o PostgREST não a serve. O segredo nunca volta ao browser; a tela devolve apenas se existe.';
+comment on column public.platform_google_oauth.client_secret_encrypted is
+  'Cifrado por fn_encrypt_oauth (pgp_sym_encrypt/aes256), a mesma cifra dos tokens em calendar_connections. Nunca gravar em claro: sem a chave mestra o save recusa.';
+
+alter table public.platform_google_oauth enable row level security;
+
+revoke all on public.platform_google_oauth from anon, authenticated;
+grant select, insert, update on public.platform_google_oauth to service_role;
+
+drop trigger if exists trg_platform_google_oauth_updated_at on public.platform_google_oauth;
+create trigger trg_platform_google_oauth_updated_at
+  before update on public.platform_google_oauth
+  for each row execute function public.fn_set_updated_at();
+
 -- ---- VARREDURA anon: função nova nasce exposta em quem ATUALIZA (migration 0116) ----
 --
 -- ⚠️ ESTE BLOCO É, DE PROPÓSITO, O ÚLTIMO DO ARQUIVO. Apêndice novo entra ANTES

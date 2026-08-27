@@ -5633,6 +5633,30 @@ export type Database = {
         }
         Relationships: []
       }
+      platform_google_oauth: {
+        Row: {
+          client_id: string | null
+          client_secret_encrypted: string | null
+          id: number
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          client_id?: string | null
+          client_secret_encrypted?: string | null
+          id?: number
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          client_id?: string | null
+          client_secret_encrypted?: string | null
+          id?: number
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
       platform_branding: {
         Row: {
           accent_hex: string | null
