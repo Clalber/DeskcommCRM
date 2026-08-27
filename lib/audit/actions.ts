@@ -221,6 +221,7 @@ export const AUDIT_ACTIONS = [
   "followup_flow.updated",
   "followup_flow.published",
   "followup_flow.disabled",
+  "followup_flow.deleted",
   "followup_flow.rolled_back",
   "followup.worker_run",
   "followup.silence_sweep_run",
@@ -326,6 +327,7 @@ export const AUDIT_ACTIONS = [
   "ai.budget_limit_changed",
   "ai.budget_enforcement_armed",
   "ai.budget_enforcement_disarmed",
+  "contact.deleted",
 
   // A poda do histórico (issue #261). UMA linha por rodada que de fato
   // apagou algo — rodada que não apagou nada não é mutação e não ocupa
@@ -386,6 +388,9 @@ export const AUDIT_ACTIONS = [
   "agenda.appointment_created",
   "agenda.appointment_rescheduled",
   "agenda.appointment_cancelled",
+  // Relógio HTTP (Hobby / sem contêiner scheduler): uma batida que alguém
+  // de fora chama. Só audita quando alguma tarefa mexeu em dado.
+  "relogio.tick_run",
 ] as const;
 
 /** Um código de auditoria. Derivado de `AUDIT_ACTIONS` — não redigite a lista. */
