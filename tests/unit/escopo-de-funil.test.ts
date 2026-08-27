@@ -259,6 +259,7 @@ describe("a chamada de ferramenta", () => {
     expect(v.permitido).toBe(false);
     if (v.permitido) return;
     expect(v.motivo).toBe("indisponivel");
+    if (v.motivo !== "indisponivel") return;
     expect(v.detalhe).toMatch(/2 negócios abertos/);
   });
 
@@ -273,6 +274,8 @@ describe("a chamada de ferramenta", () => {
     });
     expect(v.permitido).toBe(false);
     if (v.permitido) return;
+    expect(v.motivo).toBe("indisponivel");
+    if (v.motivo !== "indisponivel") return;
     expect(v.detalhe).toMatch(/resolvedor de contato ausente/);
   });
 
