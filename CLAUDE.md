@@ -252,7 +252,6 @@ O não-negociável, em quatro linhas:
 Bump de versão **não pode** exigir que o operador da VPS edite `.env`, compose
 ou qualquer arquivo à mão. Se exigir, não entra: vira issue com plano de
 migração e vai para uma major.
-
 ---
 
 ## Como rodar local

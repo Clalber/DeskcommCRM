@@ -14,13 +14,18 @@ import { GradeDaAgenda } from "@/components/agenda/GradeDaAgenda";
 import { HistoricoDaAgenda } from "@/components/agenda/HistoricoDaAgenda";
 import type { Agendamento, VisaoDaAgenda } from "@/components/agenda/tipos";
 import { EmptyAgenda } from "@/components/empty";
+import { rotuloDoLocal } from "@/lib/agenda/locais";
 import { Button } from "@/components/ui/button";
 import { PainelDeMarcacao } from "@/components/agenda/PainelDeMarcacao";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { useAgendamentos } from "@/hooks/agenda/useAgendamentos";
 import { useHorariosLivres } from "@/hooks/agenda/useHorariosLivres";
 import { useMarcarAgendamento } from "@/hooks/agenda/useMarcarAgendamento";
-import { useCancelarAgendamento, useRemarcarAgendamento } from "@/hooks/agenda/useRemarcarAgendamento";
+import {
+  useCancelarAgendamento,
+  useRegistrarDesfecho,
+  useRemarcarAgendamento,
+} from "@/hooks/agenda/useRemarcarAgendamento";
 import { usePessoasDaAgenda } from "@/hooks/agenda/usePessoasDaAgenda";
 import { CalendarPlus, CaretLeft, CaretRight } from "@/lib/ui/icons";
 import { cn } from "@/lib/utils";
@@ -62,6 +67,7 @@ export function AgendaClient({
   contaConectada,
   enderecoDeRetorno,
   faltaNoGoogle,
+  linkDeConfiguracaoDoGoogle,
   tiposIniciais,
   agendamentosIniciais,
 }: {
@@ -70,8 +76,17 @@ export function AgendaClient({
   contaConectada?: string | null;
   enderecoDeRetorno?: string;
   faltaNoGoogle: string[];
+  /** Preenchido só para quem administra a instalação — ver `page.tsx`. */
+  linkDeConfiguracaoDoGoogle?: string;
   /** Tipos ativos, resolvidos no servidor: não há rota que os liste ainda. */
-  tiposIniciais: Array<{ id: string; nome: string; duracaoMin: number; donoId: string | null }>;
+  tiposIniciais: Array<{
+    id: string;
+    nome: string;
+    duracaoMin: number;
+    donoId: string | null;
+    localKind: string | null;
+    localDetalhes: string | null;
+  }>;
   /** A semana corrente, resolvida no servidor: `GET /agendamentos` não existe. */
   agendamentosIniciais: Agendamento[];
 }) {
@@ -89,6 +104,7 @@ export function AgendaClient({
   const marcar = useMarcarAgendamento();
   const remarcar = useRemarcarAgendamento();
   const cancelar = useCancelarAgendamento();
+  const desfecho = useRegistrarDesfecho();
   // ⚠️ ERA `tiposIniciais[0] ?? null` — uma constante, sem seletor em lugar
   // nenhum. `page.tsx` ordena os tipos por NOME, então a tela marcava sempre o
   // primeiro em ordem alfabética e não havia como marcar outro: numa org com
@@ -131,7 +147,12 @@ export function AgendaClient({
 
   // Os horários vêm da rota real — a mesma que a IA usa, então tela e agente
   // oferecem exatamente os mesmos horários. Só consulta quando o painel abre.
-  const { data: horarios } = useHorariosLivres(
+  // `isError` junto, e não só `data`: sem ele a tela MENTE por default. O
+  // `publicouHorarios={horarios?.publicou_horarios ?? true}` abaixo transforma
+  // "a consulta falhou" em "publicou, só não tem vaga" — dias travados e aviso
+  // nenhum, que é exatamente o que uma instalação fresca produz (a rota devolve
+  // 422 porque ninguém está em `attendant_availability`).
+  const { data: horarios, isError: horariosFalharam } = useHorariosLivres(
     marcando && tipo ? { event_type_id: tipo.id, de: janelaDeBusca.de, ate: janelaDeBusca.ate } : null,
   );
 
@@ -226,6 +247,7 @@ export function AgendaClient({
       <CartaoDaConexaoGoogle
         configurado={googleConfigurado}
         falta={faltaNoGoogle}
+        linkDeConfiguracao={linkDeConfiguracaoDoGoogle}
         contaConectada={contaConectada}
         enderecoDeRetorno={enderecoDeRetorno}
       />
@@ -403,8 +425,23 @@ export function AgendaClient({
                 }
                 tipo={tipo.nome}
                 duracaoMin={tipo.duracaoMin}
+                // O LOCAL e o FUSO de verdade, que a tela tinha e não passava.
+                //
+                // `PainelDeMarcacao` trazia `local = "Presencial · Sala 2"` e
+                // `fuso = "America/Sao_Paulo"` como defaults de parâmetro, e
+                // estas duas props nunca eram passadas: os defaults venciam em
+                // 100% das marcações do produto. É o que o cabeçalho deste
+                // arquivo proíbe — dado falso plausível numa tela multi-tenant é
+                // indistinguível de vazamento.
+                //
+                // `fuso_da_regra` já vinha da rota e já era tipado pelo hook;
+                // ninguém em tela o lia. Chutar São Paulo para quem atende em
+                // Manaus é uma hora de diferença no horário oferecido ao cliente.
+                local={rotuloDoLocal(tipo.localKind, tipo.localDetalhes)}
+                fuso={horarios?.fuso_da_regra}
                 horariosPorDia={horariosPorDia}
                 publicouHorarios={horarios?.publicou_horarios ?? true}
+                erroAoCarregar={horariosFalharam}
                 fusoSuposto={horarios?.fuso_suposto ?? false}
                 fontesDefasadas={horarios?.fontes_defasadas}
                 // ESTE é o fio que faltava. Sem ele o "Marcado ✓" era estado
@@ -520,6 +557,16 @@ export function AgendaClient({
           setMotivo("");
           setCancelandoId(id);
         }}
+        // E ESTAS DUAS TAMBÉM FALTAVAM — o conserto acima alcançou 2 dos 4
+        // botões do MESMO componente, e "Realizado"/"Faltou" ficaram cinzas,
+        // com a mesma frase falsa, por mais tempo ainda. Conserto por instância
+        // custa a segunda passada; a varredura custaria um `grep`.
+        //
+        // Sem cerimônia de confirmação, ao contrário de cancelar: registrar
+        // desfecho não avisa ninguém e se desfaz voltando o status. Cancelar
+        // exige motivo porque é o que a equipe lê ao ver o horário vago.
+        onRealizado={(id) => desfecho.mutate({ id, status: "completed" })}
+        onFaltou={(id) => desfecho.mutate({ id, status: "no_show" })}
       />
 
       {/* ⚠️ O VAZIO NÃO ESCONDE MAIS A GRADE, e o achado veio do CI.

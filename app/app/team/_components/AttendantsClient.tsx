@@ -1,7 +1,6 @@
 "use client";
 import { useMemo, useState } from "react";
 import { FUSOS_OFERECIDOS } from "@/lib/tempo/fusos";
-import { useT } from "@/hooks/i18n/useT";
 
 import {
   useAttendants,
@@ -68,9 +67,25 @@ interface Attendant {
   availability: AttendantAvailability;
 }
 
-function summarizeSchedule(windows: ScheduleWindow[], t: (texto: string) => string): string {
-  if (windows.length === 0) return "24/7";
-  return windows.map((w) => `${t(DOW_LABELS[w.dow] ?? "")} ${w.start}–${w.end}`).join(", ");
+/**
+ * ⚠️ JANELA VAZIA NÃO É "24/7" — a mesma coluna significa COISAS OPOSTAS nos dois
+ * sistemas que a leem, e isto está medido em `lib/agenda/horarios-livres.ts:214`:
+ *
+ *   roteamento (`isWithinSchedule`)  ·  vazio = aceita conversa a qualquer hora
+ *   agenda (horários livres)         ·  vazio = nada publicado ⇒ ZERO horário
+ *
+ * Esta tela dizia só o primeiro. Quem lia "24/7" concluía, com razão, que estava
+ * tudo configurado — e a Agenda, na tela ao lado, dizia "você ainda não publicou
+ * seus horários" sobre a MESMA linha do banco. O dono do produto passou por
+ * aqui, leu 24/7 e foi procurar o problema em outro lugar.
+ *
+ * "Não publicado" é o rótulo certo porque nomeia o que FALTA. O outro efeito —
+ * o roteamento aceitando a qualquer hora — é dito por extenso no diálogo, onde
+ * há espaço para as duas metades.
+ */
+function summarizeSchedule(windows: ScheduleWindow[]): string {
+  if (windows.length === 0) return "Não publicado";
+  return windows.map((w) => `${DOW_LABELS[w.dow]} ${w.start}–${w.end}`).join(", ");
 }
 
 function StatusBadge({ attendant, now }: { attendant: Attendant; now: Date }) {
@@ -99,7 +114,6 @@ function ScheduleDialog({
   onSave: (windows: ScheduleWindow[], timezone: string) => void;
   isPending: boolean;
 }) {
-  const t = useT();
   const initial = attendant.availability?.schedule;
   const [timezone, setTimezone] = useState(initial?.timezone || "America/Sao_Paulo");
   const [windows, setWindows] = useState<ScheduleWindow[]>(initial?.windows ?? []);
@@ -108,19 +122,17 @@ function ScheduleDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>
-            {t("Horário de")} {attendant.name}
-          </DialogTitle>
+          <DialogTitle>Horário de {attendant.name}</DialogTitle>
           <DialogDescription>
-            {t(
-              "Sem janelas = disponível 24/7. Adicione janelas para restringir o roteamento a horários específicos.",
-            )}
+            Sem janelas, o roteamento aceita conversa a qualquer hora — mas a Agenda não
+            oferece NENHUM horário para marcar. Adicione janelas para publicar seus
+            horários de atendimento.
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
           <div className="space-y-1.5">
-            <Label htmlFor="tz">{t("Fuso horário")}</Label>
+            <Label htmlFor="tz">Fuso horário</Label>
             {/* Mesma razão do painel anti-banimento, e aqui o custo é maior:
                 este fuso é lido por `localMoment`, que LANÇA num fuso inexistente
                 — e o atendente com agenda quebrada nunca fica elegível, sem que
@@ -142,7 +154,7 @@ function ScheduleDialog({
           <div className="space-y-2">
             {windows.length === 0 ? (
               <p className="text-sm text-muted-foreground">
-                {t("Nenhuma janela — disponível 24/7.")}
+                Nenhuma janela publicada — ninguém consegue marcar com esta pessoa.
               </p>
             ) : null}
             {windows.map((w, i) => (
@@ -155,13 +167,13 @@ function ScheduleDialog({
                     )
                   }
                 >
-                  <SelectTrigger className="w-[90px]" aria-label={t("Dia da semana")}>
+                  <SelectTrigger className="w-[90px]" aria-label="Dia da semana">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
                     {DOW_LABELS.map((d, idx) => (
                       <SelectItem key={idx} value={String(idx)}>
-                        {t(d)}
+                        {d}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -169,7 +181,7 @@ function ScheduleDialog({
                 <Input
                   type="time"
                   value={w.start}
-                  aria-label={t("Início")}
+                  aria-label="Início"
                   onChange={(e) =>
                     setWindows((ws) =>
                       ws.map((x, j) => (j === i ? { ...x, start: e.target.value } : x)),
@@ -180,7 +192,7 @@ function ScheduleDialog({
                 <Input
                   type="time"
                   value={w.end}
-                  aria-label={t("Fim")}
+                  aria-label="Fim"
                   onChange={(e) =>
                     setWindows((ws) =>
                       ws.map((x, j) => (j === i ? { ...x, end: e.target.value } : x)),
@@ -190,7 +202,7 @@ function ScheduleDialog({
                 <Button
                   variant="ghost"
                   size="icon"
-                  aria-label={t("Remover janela")}
+                  aria-label="Remover janela"
                   onClick={() => setWindows((ws) => ws.filter((_, j) => j !== i))}
                 >
                   <Trash size={18} />
@@ -204,17 +216,17 @@ function ScheduleDialog({
                 setWindows((ws) => [...ws, { dow: 1, start: "08:00", end: "18:00" }])
               }
             >
-              <Plus size={16} className="mr-1" /> {t("Adicionar janela")}
+              <Plus size={16} className="mr-1" /> Adicionar janela
             </Button>
           </div>
         </div>
 
         <DialogFooter>
           <Button variant="ghost" onClick={() => onOpenChange(false)}>
-            {t("Cancelar")}
+            Cancelar
           </Button>
           <Button disabled={isPending} onClick={() => onSave(windows, timezone)}>
-            {t("Salvar")}
+            Salvar
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -223,7 +235,6 @@ function ScheduleDialog({
 }
 
 function RoutingCard({ canManage }: { canManage: boolean }) {
-  const t = useT();
   const { data, isLoading, isError } = useRoutingConfig();
   const update = useUpdateRouting();
   const config = data?.data;
@@ -247,9 +258,7 @@ function RoutingCard({ canManage }: { canManage: boolean }) {
     return (
       <Card>
         <CardContent className="pt-6">
-          <p className="text-sm text-destructive">
-            {t("Erro ao carregar a configuração de roteamento.")}
-          </p>
+          <p className="text-sm text-destructive">Erro ao carregar a configuração de roteamento.</p>
         </CardContent>
       </Card>
     );
@@ -266,38 +275,38 @@ function RoutingCard({ canManage }: { canManage: boolean }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>{t("Modo de roteamento")}</CardTitle>
+        <CardTitle>Modo de roteamento</CardTitle>
         <CardDescription>
-          {t("Como as conversas novas são distribuídas entre os atendentes da organização.")}
+          Como as conversas novas são distribuídas entre os atendentes da organização.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="grid gap-4 sm:grid-cols-3">
           <div className="space-y-1.5">
-            <Label>{t("Modo")}</Label>
+            <Label>Modo</Label>
             <Select
               value={current.mode}
               disabled={!canManage}
               onValueChange={(v) => set({ mode: v as RoutingConfig["mode"] })}
             >
-              <SelectTrigger aria-label={t("Modo de roteamento")}>
+              <SelectTrigger aria-label="Modo de roteamento">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
                 {ROUTING_MODES.map((m) => (
                   <SelectItem key={m} value={m}>
-                    {t(MODE_LABELS[m])}
+                    {MODE_LABELS[m]}
                   </SelectItem>
                 ))}
                 {/* 'load' (balanceamento por carga) é pós-MVP: a API rejeita — desabilitado. */}
                 <SelectItem value="load" disabled>
-                  {t("Balanceamento por carga (em breve)")}
+                  Balanceamento por carga (em breve)
                 </SelectItem>
               </SelectContent>
             </Select>
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="max_retries">{t("Tentativas máx.")}</Label>
+            <Label htmlFor="max_retries">Tentativas máx.</Label>
             <Input
               id="max_retries"
               type="number"
@@ -309,7 +318,7 @@ function RoutingCard({ canManage }: { canManage: boolean }) {
             />
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="backoff">{t("Backoff (s)")}</Label>
+            <Label htmlFor="backoff">Backoff (s)</Label>
             <Input
               id="backoff"
               type="number"
@@ -328,7 +337,7 @@ function RoutingCard({ canManage }: { canManage: boolean }) {
               onClick={() => update.mutate(current, { onSuccess: () => setDraft(null) })}
               className="w-full sm:w-auto"
             >
-              {t("Salvar")}
+              Salvar
             </Button>
           </div>
         ) : null}
@@ -342,7 +351,6 @@ interface Props {
 }
 
 export function AttendantsClient({ canManage }: Props) {
-  const t = useT();
   const avail = useAttendants();
   const patch = useUpdateAvailability();
   const [scheduleFor, setScheduleFor] = useState<Attendant | null>(null);
@@ -367,10 +375,19 @@ export function AttendantsClient({ canManage }: Props) {
       <RoutingCard canManage={canManage} />
 
       <div className="rounded-md border">
-        <div className="border-b px-4 py-3">
-          <h2 className="text-sm font-semibold">{t("Atendentes")}</h2>
+        <div className="border-b px-4 py-3" data-testid="atendentes-e-horarios">
+          <h2 className="text-sm font-semibold">Atendentes e horários de atendimento</h2>
           <p className="text-xs text-muted-foreground">
-            {t("Status, carga atual e capacidade de cada atendente da organização.")}
+            {/*
+              A frase NOMEIA o que a coluna "Horário" faz, e isso é o conserto —
+              não enfeite. Esta é a única tela do produto onde se publica a
+              jornada, e ela se anunciava como "status, carga e capacidade": quem
+              procurava "meus horários" passava por cima. A Agenda manda para cá
+              (`/app/team?aba=atendimento`) quando ninguém publicou nada, e o
+              destino tinha de dizer que é o lugar certo.
+            */}
+            Status, carga e capacidade de cada atendente — e a jornada semanal que
+            decide os horários oferecidos na Agenda. Sem ela ninguém consegue marcar.
           </p>
         </div>
 
@@ -381,21 +398,21 @@ export function AttendantsClient({ canManage }: Props) {
             ))}
           </div>
         ) : isError ? (
-          <p className="p-4 text-sm text-destructive">{t("Erro ao carregar atendentes.")}</p>
+          <p className="p-4 text-sm text-destructive">Erro ao carregar atendentes.</p>
         ) : attendants.length === 0 ? (
           <p className="p-4 text-sm text-muted-foreground">
-            {t("Nenhum atendente na organização. Convide membros com papel de atendente ou superior.")}
+            Nenhum atendente na organização. Convide membros com papel de atendente ou superior.
           </p>
         ) : (
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>{t("Atendente")}</TableHead>
-                <TableHead>{t("Status")}</TableHead>
-                <TableHead>{t("Carga")}</TableHead>
-                <TableHead>{t("Capacidade")}</TableHead>
-                <TableHead>{t("Horário")}</TableHead>
-                {canManage ? <TableHead className="w-[120px]">{t("Disponível")}</TableHead> : null}
+                <TableHead>Atendente</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Carga</TableHead>
+                <TableHead>Capacidade</TableHead>
+                <TableHead>Horário</TableHead>
+                {canManage ? <TableHead className="w-[120px]">Disponível</TableHead> : null}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -427,7 +444,7 @@ export function AttendantsClient({ canManage }: Props) {
                           max={1000}
                           defaultValue={capacity}
                           className="h-8 w-20"
-                          aria-label={`${t("Capacidade de")} ${a.name}`}
+                          aria-label={`Capacidade de ${a.name}`}
                           onBlur={(e) => {
                             const next = Number(e.target.value);
                             if (Number.isInteger(next) && next >= 1 && next !== capacity) {
@@ -441,13 +458,13 @@ export function AttendantsClient({ canManage }: Props) {
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">
                       <div className="flex items-center gap-2">
-                        <span>{summarizeSchedule(windows, t)}</span>
+                        <span>{summarizeSchedule(windows)}</span>
                         {canManage ? (
                           <Button
                             variant="ghost"
                             size="icon"
                             className="h-7 w-7"
-                            aria-label={`${t("Editar horário de")} ${a.name}`}
+                            aria-label={`Editar horário de ${a.name}`}
                             onClick={() => setScheduleFor(a)}
                           >
                             <Clock size={16} />
@@ -459,7 +476,7 @@ export function AttendantsClient({ canManage }: Props) {
                       <TableCell>
                         <Switch
                           checked={!!a.availability?.is_available}
-                          aria-label={`${t("Disponibilidade de")} ${a.name}`}
+                          aria-label={`Disponibilidade de ${a.name}`}
                           onCheckedChange={(v) =>
                             patch.mutate({ userId: a.userId, patch: { is_available: v } })
                           }

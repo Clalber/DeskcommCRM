@@ -1,9 +1,9 @@
 import { redirect } from "next/navigation";
 
 import { requireAuth, resolveActiveOrg } from "@/lib/auth/server";
-import { traduzir } from "@/lib/i18n/dicionario";
 import { ROLE_RANK } from "@/lib/auth/types";
 import { createClient } from "@/lib/supabase/server";
+import { nomesDosAtendentes } from "@/lib/users/nome-do-atendente";
 
 import { TiposDeAgendamentoClient, type TipoRow } from "./_client";
 
@@ -53,24 +53,39 @@ export default async function TiposDeAgendamentoPage() {
       .is("revoked_at", null),
   ]);
 
-  const idioma = user.idioma;
+  // O NOME DE GENTE, e não o fragmento de UUID.
+  //
+  // O seletor de "quem atende" oferecia `0c4f9a1e · admin` — a página lia só
+  // `user_id, role` e nunca resolvia nome. Escolher responsável entre pedaços de
+  // identificador não é escolha: é adivinhação, e o dono do produto tinha de
+  // acertar qual dos fragmentos era ele.
+  //
+  // `nomesDosAtendentes` expõe SÓ `full_name`, de propósito. Não trocar por
+  // `/api/v1/team`, que devolve e-mail e último acesso — PII a mais numa tela de
+  // configuração que não precisa dela.
+  //
+  // Numa VPS sem `SUPABASE_SERVICE_ROLE_KEY` ele devolve Map vazio por decisão
+  // declarada, e o fallback abaixo volta ao rótulo de hoje. Degrada, não some.
+  const nomes = await nomesDosAtendentes((pessoas ?? []).map((p) => String(p.user_id)));
 
   return (
     <div className="flex h-full flex-col gap-6 p-6">
       <header>
-        <h1 className="text-2xl font-semibold tracking-tight">
-          {traduzir("Tipos de agendamento", idioma)}
-        </h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Tipos de agendamento</h1>
         <p className="mt-1 text-sm text-text-muted">
-          {traduzir(
-            "O que se pode marcar, quanto dura e quem atende. É isto que a tela de marcar e o agente de IA oferecem ao cliente.",
-            idioma,
-          )}
+          O que se pode marcar, quanto dura e quem atende. É isto que a tela de marcar e o
+          agente de IA oferecem ao cliente.
         </p>
       </header>
       <TiposDeAgendamentoClient
         tiposIniciais={(tipos ?? []) as TipoRow[]}
-        pessoas={(pessoas ?? []).map((p) => ({ id: String(p.user_id), papel: String(p.role) }))}
+        pessoas={(pessoas ?? []).map((p) => ({
+          id: String(p.user_id),
+          papel: String(p.role),
+          nome:
+            nomes.get(String(p.user_id)) ?? `${String(p.user_id).slice(0, 8)} · ${String(p.role)}`,
+        }))}
+        usuarioAtualId={user.id}
         podeEditar={podeEditar}
       />
     </div>

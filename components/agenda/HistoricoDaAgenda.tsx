@@ -238,12 +238,23 @@ export function HistoricoDaAgenda({
                       // oferecer "Realizado" num que já está realizado seria
                       // pedir de novo o que a pessoa já respondeu.
                       <>
+                        {/*
+                          SEM `title` DE DESCULPA. Os dois diziam "Disponível
+                          quando a agenda estiver conectada" — falso, e pior que
+                          o silêncio: o PATCH de status não toca o Google. Quem
+                          lia acreditava que faltava conectar a agenda, quando
+                          faltava a fiação. A mesma frase já tinha sido removida
+                          de remarcar/cancelar, no mesmo componente; ficou nestes
+                          dois porque o conserto foi por instância.
+
+                          Se um dia o botão puder ficar cinza de novo, o motivo
+                          tem de ser verdadeiro.
+                        */}
                         <Button
                           variant="ghost"
                           size="sm"
                           data-testid={`realizado-${a.id}`}
                           disabled={!onRealizado}
-                          title={onRealizado ? undefined : "Disponível quando a agenda estiver conectada"}
                           onClick={() => onRealizado?.(a.id)}
                         >
                           Realizado
@@ -253,7 +264,6 @@ export function HistoricoDaAgenda({
                           size="sm"
                           data-testid={`faltou-${a.id}`}
                           disabled={!onFaltou}
-                          title={onFaltou ? undefined : "Disponível quando a agenda estiver conectada"}
                           onClick={() => onFaltou?.(a.id)}
                         >
                           Faltou

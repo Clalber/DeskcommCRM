@@ -13,6 +13,7 @@ import { useT } from "@/hooks/i18n/useT";
 import { UserCircle } from "@/lib/ui/icons";
 
 import { resolveSharedContact } from "@/lib/messaging/contact-card";
+import { phoneForDisplay } from "@/lib/channels/phone-variants";
 
 import type { Message } from "@/lib/types/messaging";
 
@@ -156,7 +157,7 @@ export function ContactCard({ message }: Props) {
 
         {contact.phone_number ? (
 
-          <span className="block truncate text-xs opacity-80">{contact.phone_number}</span>
+          <span className="block truncate text-xs opacity-80">{phoneForDisplay(contact.phone_number)}</span>
 
         ) : null}
 

@@ -2,20 +2,11 @@
 import Link from "next/link";
 import type { AdminConversationDetailResponse } from "@/hooks/useAdminConversation";
 import { Buildings, Phone, ArrowRight } from "@/lib/ui/icons";
-import { useT } from "@/hooks/i18n/useT";
+import { phoneForDisplay } from "@/lib/channels/phone-variants";
 
 interface Props {
   data: AdminConversationDetailResponse;
 }
-
-// Mesmos rótulos de components/admin/tenants/TenantsTable.tsx — o painel
-// lateral mostra o status cru do tenant, e as duas telas devem concordar.
-const STATUS_LABELS: Record<string, string> = {
-  active: "Ativo",
-  onboarding: "Onboarding",
-  suspended: "Suspenso",
-  redacted: "Redigido",
-};
 
 function maskEmail(email: string | null | undefined): string {
   if (!email) return "—";
@@ -26,7 +17,6 @@ function maskEmail(email: string | null | undefined): string {
 }
 
 export function AdminSidePanel({ data }: Props) {
-  const t = useT();
   const { contact, organization } = data;
 
   return (
@@ -34,21 +24,21 @@ export function AdminSidePanel({ data }: Props) {
       {/* ── Contact info ── */}
       <section>
         <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-          {t("Contato")}
+          Contato
         </h3>
         {contact ? (
           <div className="flex flex-col gap-1.5 text-sm">
             <div className="font-medium">
               {contact.is_anonymized ? (
-                <span className="italic text-muted-foreground">{t("Contato anonimizado")}</span>
+                <span className="italic text-muted-foreground">Contato anonimizado</span>
               ) : (
-                contact.name ?? t("Sem nome")
+                contact.name ?? "Sem nome"
               )}
             </div>
             {contact.phone_number && (
               <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                 <Phone size={12} weight="duotone" aria-hidden />
-                {contact.phone_number}
+                {phoneForDisplay(contact.phone_number)}
               </div>
             )}
             {contact.email && (
@@ -56,12 +46,12 @@ export function AdminSidePanel({ data }: Props) {
             )}
             {contact.is_blocked && (
               <span className="inline-block rounded bg-destructive/10 px-1.5 py-0.5 text-[10px] font-medium text-destructive">
-                {t("Bloqueado")}
+                Bloqueado
               </span>
             )}
           </div>
         ) : (
-          <p className="text-xs text-muted-foreground">{t("Sem contato vinculado.")}</p>
+          <p className="text-xs text-muted-foreground">Sem contato vinculado.</p>
         )}
       </section>
 
@@ -80,17 +70,17 @@ export function AdminSidePanel({ data }: Props) {
               Slug: <span className="font-mono">{organization.slug}</span>
             </div>
             <div className="text-xs capitalize text-muted-foreground">
-              {t("Status:")} {t(STATUS_LABELS[organization.status] ?? organization.status)}
+              Status: {organization.status}
             </div>
             <Link
               href={`/admin/tenants/${organization.id}`}
               className="inline-flex items-center gap-1 text-xs font-medium text-primary underline-offset-2 hover:underline"
             >
-              {t("Abrir tenant")} <ArrowRight size={12} aria-hidden />
+              Abrir tenant <ArrowRight size={12} aria-hidden />
             </Link>
           </div>
         ) : (
-          <p className="text-xs text-muted-foreground">{t("Sem organização vinculada.")}</p>
+          <p className="text-xs text-muted-foreground">Sem organização vinculada.</p>
         )}
       </section>
     </aside>

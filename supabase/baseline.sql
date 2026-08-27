@@ -10115,6 +10115,12 @@ alter table public.agent_inbox_items
     -- janela e reprova um teste que não tem nada a ver com o kind novo (medido:
     -- offset 1532 -> 2275). Kind novo entra no fim da lista.
     'budget_warning',
+    -- (migration 0181) O material que a pessoa enviou não entrou na base: falta
+    -- chave de embedding, a extração do arquivo falhou, ou nenhum trecho foi
+    -- gravado. Antes disto o worker devolvia `skipped` para o próprio log, o drain
+    -- tratava `skipped` como sucesso, e a linha da fonte seguia dizendo `ready`.
+    -- Irmão direto de `midia_nao_lida`: mesma chave, mesmo silêncio.
+    'conhecimento_nao_indexado',
     'other'
   ));
 
@@ -13484,6 +13490,551 @@ grant execute on function public.fn_redigir_captacoes_do_contato_anonimizado() t
 
 notify pgrst, 'reload schema';
 
+-- ---- nono dígito canônico (migration 0198) ----
+-- 0198 — celular BR canônico COM o nono dígito
+--
+-- +553284793302 e +5532984793302 são a MESMA pessoa. O CRM passa a GRAVAR e
+-- MOSTRAR a forma com o 9; o WhatsApp/WAHA continuam podendo endereçar sem ele
+-- (check-exists tenta as duas grafias).
+--
+-- A busca por variantes já existia em TypeScript. Sem a RPC e sem o backfill,
+-- o webhook que chega sem o 9 ainda nascia um segundo contato.
+--
+-- Idempotente: create or replace + updates que na segunda passada casam zero
+-- linhas. Sem constraint nova.
+
+-- 1 · a RPC reencontra pelas duas grafias e GRAVA a canônica.
+create or replace function public.fn_upsert_wa_contact(
+  p_org uuid, p_kind text, p_phone text, p_lid text, p_chat_id text, p_notify text
+) returns uuid language plpgsql security definer set search_path = public as $$
+declare
+  v_id uuid;
+  v_conflito text;
+  v_lid text := nullif(regexp_replace(coalesce(p_lid, ''), '@.*$', ''), '');
+  v_phone text := nullif(p_phone, '');
+  v_digits text;
+  v_alt text;
+begin
+  -- Celular BR de 12 dígitos (local 6–9) ganha o nono. A grafia sem o 9 fica
+  -- em v_alt só para a BUSCA — não se escreve mais.
+  if v_phone is not null then
+    v_digits := regexp_replace(v_phone, '\D', '', 'g');
+    if v_digits ~ '^55[1-9][0-9][6-9][0-9]{7}$' then
+      v_alt := '+' || v_digits;
+      v_phone := '+55' || substring(v_digits from 3 for 2) || '9' || substring(v_digits from 5);
+    elsif v_digits ~ '^55[1-9][0-9]9[6-9][0-9]{7}$' then
+      v_phone := '+' || v_digits;
+      v_alt := '+55' || substring(v_digits from 3 for 2) || substring(v_digits from 6);
+    end if;
+  end if;
+
+  if v_lid is not null then
+    select id into v_id from public.contacts
+     where organization_id = p_org and wa_lid = v_lid and is_merged_into is null
+     limit 1;
+  end if;
+
+  if v_id is null and v_phone is not null then
+    select id into v_id from public.contacts
+     where organization_id = p_org and is_merged_into is null
+       and phone_number in (v_phone, v_alt)
+     order by case when phone_number = v_phone then 0 else 1 end
+     limit 1;
+  end if;
+
+  if v_id is not null and v_phone is not null and exists (
+    select 1 from public.contacts
+     where organization_id = p_org and phone_number = v_phone
+       and is_merged_into is null and id <> v_id
+  ) then
+    v_conflito := v_phone;
+    v_phone := null;
+  end if;
+
+  if v_id is not null then
+    update public.contacts set
+      -- Promove 12→13 quando é a MESMA pessoa e o canônico está livre.
+      -- Outro número (pessoa diferente) continua intocável.
+      phone_number = case
+        when v_phone is not null and (phone_number is null or phone_number = v_alt) then v_phone
+        else phone_number
+      end,
+      display_name = coalesce(display_name, nullif(p_notify, '')),
+      source_metadata = source_metadata
+        || case when v_lid is not null then jsonb_build_object('waha_lid', v_lid) else '{}'::jsonb end
+        || case when p_chat_id is not null then jsonb_build_object('waha_chat_id', p_chat_id) else '{}'::jsonb end
+        || case when nullif(p_notify, '') is not null then jsonb_build_object('notify_name', p_notify) else '{}'::jsonb end
+        || case when v_conflito is not null then jsonb_build_object('telefone_em_conflito', v_conflito) else '{}'::jsonb end,
+      updated_at = now()
+    where id = v_id;
+    return v_id;
+  end if;
+
+  begin
+    insert into public.contacts (organization_id, phone_number, source, consent, tags, source_metadata, display_name)
+    values (p_org, v_phone, 'whatsapp', '{}'::jsonb, '{}'::text[],
+      case when v_lid is not null
+        then jsonb_build_object('waha_lid', v_lid, 'waha_chat_id', p_chat_id, 'notify_name', nullif(p_notify, ''))
+        else jsonb_build_object('waha_chat_id', p_chat_id, 'notify_name', nullif(p_notify, '')) end,
+      nullif(p_notify, ''))
+    returning id into v_id;
+    return v_id;
+  exception when unique_violation then
+    select id into v_id from public.contacts
+     where organization_id = p_org and is_merged_into is null
+       and (
+         (v_phone is not null and phone_number = v_phone)
+         or (v_alt is not null and phone_number = v_alt)
+         or (v_lid is not null and wa_lid = v_lid)
+       )
+     order by case when phone_number = v_phone then 0 else 1 end
+     limit 1;
+    return v_id;
+  end;
+end; $$;
+
+-- 2 · pares 12+13: funde o de 12 no de 13 (canônico). Conversas 1:1 no mesmo
+-- canal são fundidas ANTES de remarcarmos o contact_id, senão
+-- uniq_conversations_1to1_per_contact_session estoura.
+
+with pares as (
+  select sem.id as loser_id, com.id as winner_id
+    from public.contacts sem
+    join public.contacts com
+      on com.organization_id = sem.organization_id
+     and com.is_merged_into is null
+     and sem.is_merged_into is null
+     and sem.id <> com.id
+     and sem.is_anonymized = false
+     and com.is_anonymized = false
+     and regexp_replace(coalesce(sem.phone_number, ''), '\D', '', 'g') ~ '^55[1-9][0-9][6-9][0-9]{7}$'
+     and com.phone_number = '+55'
+       || substring(regexp_replace(sem.phone_number, '\D', '', 'g') from 3 for 2)
+       || '9'
+       || substring(regexp_replace(sem.phone_number, '\D', '', 'g') from 5)
+)
+, conv_pares as (
+  select loser.id as loser_conv, winner.id as winner_conv, p.winner_id
+    from pares p
+    join public.conversations loser
+      on loser.contact_id = p.loser_id and loser.is_group = false
+    join public.conversations winner
+      on winner.contact_id = p.winner_id
+     and winner.channel_session_id = loser.channel_session_id
+     and winner.organization_id = loser.organization_id
+     and winner.is_group = false
+     and winner.id <> loser.id
+)
+update public.messages m
+   set conversation_id = cp.winner_conv, contact_id = cp.winner_id
+  from conv_pares cp
+ where m.conversation_id = cp.loser_conv;
+
+with pares as (
+  select sem.id as loser_id, com.id as winner_id
+    from public.contacts sem
+    join public.contacts com
+      on com.organization_id = sem.organization_id
+     and com.is_merged_into is null
+     and sem.is_merged_into is null
+     and sem.id <> com.id
+     and sem.is_anonymized = false
+     and com.is_anonymized = false
+     and regexp_replace(coalesce(sem.phone_number, ''), '\D', '', 'g') ~ '^55[1-9][0-9][6-9][0-9]{7}$'
+     and com.phone_number = '+55'
+       || substring(regexp_replace(sem.phone_number, '\D', '', 'g') from 3 for 2)
+       || '9'
+       || substring(regexp_replace(sem.phone_number, '\D', '', 'g') from 5)
+)
+, conv_pares as (
+  select loser.id as loser_conv, winner.id as winner_conv
+    from pares p
+    join public.conversations loser
+      on loser.contact_id = p.loser_id and loser.is_group = false
+    join public.conversations winner
+      on winner.contact_id = p.winner_id
+     and winner.channel_session_id = loser.channel_session_id
+     and winner.organization_id = loser.organization_id
+     and winner.is_group = false
+     and winner.id <> loser.id
+)
+update public.ai_agent_runs t set conversation_id = cp.winner_conv
+  from conv_pares cp where t.conversation_id = cp.loser_conv;
+
+with pares as (
+  select sem.id as loser_id, com.id as winner_id
+    from public.contacts sem
+    join public.contacts com
+      on com.organization_id = sem.organization_id
+     and com.is_merged_into is null
+     and sem.is_merged_into is null
+     and sem.id <> com.id
+     and sem.is_anonymized = false
+     and com.is_anonymized = false
+     and regexp_replace(coalesce(sem.phone_number, ''), '\D', '', 'g') ~ '^55[1-9][0-9][6-9][0-9]{7}$'
+     and com.phone_number = '+55'
+       || substring(regexp_replace(sem.phone_number, '\D', '', 'g') from 3 for 2)
+       || '9'
+       || substring(regexp_replace(sem.phone_number, '\D', '', 'g') from 5)
+)
+, conv_pares as (
+  select loser.id as loser_conv, winner.id as winner_conv
+    from pares p
+    join public.conversations loser
+      on loser.contact_id = p.loser_id and loser.is_group = false
+    join public.conversations winner
+      on winner.contact_id = p.winner_id
+     and winner.channel_session_id = loser.channel_session_id
+     and winner.organization_id = loser.organization_id
+     and winner.is_group = false
+     and winner.id <> loser.id
+)
+update public.ai_invocations t set conversation_id = cp.winner_conv
+  from conv_pares cp where t.conversation_id = cp.loser_conv;
+
+with pares as (
+  select sem.id as loser_id, com.id as winner_id
+    from public.contacts sem
+    join public.contacts com
+      on com.organization_id = sem.organization_id
+     and com.is_merged_into is null
+     and sem.is_merged_into is null
+     and sem.id <> com.id
+     and sem.is_anonymized = false
+     and com.is_anonymized = false
+     and regexp_replace(coalesce(sem.phone_number, ''), '\D', '', 'g') ~ '^55[1-9][0-9][6-9][0-9]{7}$'
+     and com.phone_number = '+55'
+       || substring(regexp_replace(sem.phone_number, '\D', '', 'g') from 3 for 2)
+       || '9'
+       || substring(regexp_replace(sem.phone_number, '\D', '', 'g') from 5)
+)
+, conv_pares as (
+  select loser.id as loser_conv, winner.id as winner_conv
+    from pares p
+    join public.conversations loser
+      on loser.contact_id = p.loser_id and loser.is_group = false
+    join public.conversations winner
+      on winner.contact_id = p.winner_id
+     and winner.channel_session_id = loser.channel_session_id
+     and winner.organization_id = loser.organization_id
+     and winner.is_group = false
+     and winner.id <> loser.id
+)
+update public.conversation_notes t set conversation_id = cp.winner_conv
+  from conv_pares cp where t.conversation_id = cp.loser_conv;
+
+with pares as (
+  select sem.id as loser_id, com.id as winner_id
+    from public.contacts sem
+    join public.contacts com
+      on com.organization_id = sem.organization_id
+     and com.is_merged_into is null
+     and sem.is_merged_into is null
+     and sem.id <> com.id
+     and sem.is_anonymized = false
+     and com.is_anonymized = false
+     and regexp_replace(coalesce(sem.phone_number, ''), '\D', '', 'g') ~ '^55[1-9][0-9][6-9][0-9]{7}$'
+     and com.phone_number = '+55'
+       || substring(regexp_replace(sem.phone_number, '\D', '', 'g') from 3 for 2)
+       || '9'
+       || substring(regexp_replace(sem.phone_number, '\D', '', 'g') from 5)
+)
+, conv_pares as (
+  select loser.id as loser_conv, winner.id as winner_conv
+    from pares p
+    join public.conversations loser
+      on loser.contact_id = p.loser_id and loser.is_group = false
+    join public.conversations winner
+      on winner.contact_id = p.winner_id
+     and winner.channel_session_id = loser.channel_session_id
+     and winner.organization_id = loser.organization_id
+     and winner.is_group = false
+     and winner.id <> loser.id
+)
+update public.conversation_assignment_events t set conversation_id = cp.winner_conv
+  from conv_pares cp where t.conversation_id = cp.loser_conv;
+
+with pares as (
+  select sem.id as loser_id, com.id as winner_id
+    from public.contacts sem
+    join public.contacts com
+      on com.organization_id = sem.organization_id
+     and com.is_merged_into is null
+     and sem.is_merged_into is null
+     and sem.id <> com.id
+     and sem.is_anonymized = false
+     and com.is_anonymized = false
+     and regexp_replace(coalesce(sem.phone_number, ''), '\D', '', 'g') ~ '^55[1-9][0-9][6-9][0-9]{7}$'
+     and com.phone_number = '+55'
+       || substring(regexp_replace(sem.phone_number, '\D', '', 'g') from 3 for 2)
+       || '9'
+       || substring(regexp_replace(sem.phone_number, '\D', '', 'g') from 5)
+)
+, conv_pares as (
+  select loser.id as loser_conv, winner.id as winner_conv
+    from pares p
+    join public.conversations loser
+      on loser.contact_id = p.loser_id and loser.is_group = false
+    join public.conversations winner
+      on winner.contact_id = p.winner_id
+     and winner.channel_session_id = loser.channel_session_id
+     and winner.organization_id = loser.organization_id
+     and winner.is_group = false
+     and winner.id <> loser.id
+)
+update public.agent_cases t set conversation_id = cp.winner_conv
+  from conv_pares cp where t.conversation_id = cp.loser_conv;
+
+with pares as (
+  select sem.id as loser_id, com.id as winner_id
+    from public.contacts sem
+    join public.contacts com
+      on com.organization_id = sem.organization_id
+     and com.is_merged_into is null
+     and sem.is_merged_into is null
+     and sem.id <> com.id
+     and sem.is_anonymized = false
+     and com.is_anonymized = false
+     and regexp_replace(coalesce(sem.phone_number, ''), '\D', '', 'g') ~ '^55[1-9][0-9][6-9][0-9]{7}$'
+     and com.phone_number = '+55'
+       || substring(regexp_replace(sem.phone_number, '\D', '', 'g') from 3 for 2)
+       || '9'
+       || substring(regexp_replace(sem.phone_number, '\D', '', 'g') from 5)
+)
+, conv_pares as (
+  select loser.id as loser_conv, winner.id as winner_conv
+    from pares p
+    join public.conversations loser
+      on loser.contact_id = p.loser_id and loser.is_group = false
+    join public.conversations winner
+      on winner.contact_id = p.winner_id
+     and winner.channel_session_id = loser.channel_session_id
+     and winner.organization_id = loser.organization_id
+     and winner.is_group = false
+     and winner.id <> loser.id
+)
+update public.followup_enrollments t set conversation_id = cp.winner_conv
+  from conv_pares cp where t.conversation_id = cp.loser_conv;
+
+with pares as (
+  select sem.id as loser_id, com.id as winner_id
+    from public.contacts sem
+    join public.contacts com
+      on com.organization_id = sem.organization_id
+     and com.is_merged_into is null
+     and sem.is_merged_into is null
+     and sem.id <> com.id
+     and sem.is_anonymized = false
+     and com.is_anonymized = false
+     and regexp_replace(coalesce(sem.phone_number, ''), '\D', '', 'g') ~ '^55[1-9][0-9][6-9][0-9]{7}$'
+     and com.phone_number = '+55'
+       || substring(regexp_replace(sem.phone_number, '\D', '', 'g') from 3 for 2)
+       || '9'
+       || substring(regexp_replace(sem.phone_number, '\D', '', 'g') from 5)
+)
+, conv_pares as (
+  select loser.id as loser_conv, winner.id as winner_conv
+    from pares p
+    join public.conversations loser
+      on loser.contact_id = p.loser_id and loser.is_group = false
+    join public.conversations winner
+      on winner.contact_id = p.winner_id
+     and winner.channel_session_id = loser.channel_session_id
+     and winner.organization_id = loser.organization_id
+     and winner.is_group = false
+     and winner.id <> loser.id
+)
+update public.contact_field_proposals t set conversation_id = cp.winner_conv
+  from conv_pares cp where t.conversation_id = cp.loser_conv;
+
+with pares as (
+  select sem.id as loser_id, com.id as winner_id
+    from public.contacts sem
+    join public.contacts com
+      on com.organization_id = sem.organization_id
+     and com.is_merged_into is null
+     and sem.is_merged_into is null
+     and sem.id <> com.id
+     and sem.is_anonymized = false
+     and com.is_anonymized = false
+     and regexp_replace(coalesce(sem.phone_number, ''), '\D', '', 'g') ~ '^55[1-9][0-9][6-9][0-9]{7}$'
+     and com.phone_number = '+55'
+       || substring(regexp_replace(sem.phone_number, '\D', '', 'g') from 3 for 2)
+       || '9'
+       || substring(regexp_replace(sem.phone_number, '\D', '', 'g') from 5)
+)
+, conv_pares as (
+  select loser.id as loser_conv, winner.id as winner_conv
+    from pares p
+    join public.conversations loser
+      on loser.contact_id = p.loser_id and loser.is_group = false
+    join public.conversations winner
+      on winner.contact_id = p.winner_id
+     and winner.channel_session_id = loser.channel_session_id
+     and winner.organization_id = loser.organization_id
+     and winner.is_group = false
+     and winner.id <> loser.id
+)
+delete from public.demanda_conversas d
+ using conv_pares cp
+ where d.conversation_id = cp.loser_conv
+   and exists (
+     select 1 from public.demanda_conversas w
+      where w.demanda_id = d.demanda_id and w.conversation_id = cp.winner_conv
+   );
+
+with pares as (
+  select sem.id as loser_id, com.id as winner_id
+    from public.contacts sem
+    join public.contacts com
+      on com.organization_id = sem.organization_id
+     and com.is_merged_into is null
+     and sem.is_merged_into is null
+     and sem.id <> com.id
+     and sem.is_anonymized = false
+     and com.is_anonymized = false
+     and regexp_replace(coalesce(sem.phone_number, ''), '\D', '', 'g') ~ '^55[1-9][0-9][6-9][0-9]{7}$'
+     and com.phone_number = '+55'
+       || substring(regexp_replace(sem.phone_number, '\D', '', 'g') from 3 for 2)
+       || '9'
+       || substring(regexp_replace(sem.phone_number, '\D', '', 'g') from 5)
+)
+, conv_pares as (
+  select loser.id as loser_conv, winner.id as winner_conv
+    from pares p
+    join public.conversations loser
+      on loser.contact_id = p.loser_id and loser.is_group = false
+    join public.conversations winner
+      on winner.contact_id = p.winner_id
+     and winner.channel_session_id = loser.channel_session_id
+     and winner.organization_id = loser.organization_id
+     and winner.is_group = false
+     and winner.id <> loser.id
+)
+update public.demanda_conversas t set conversation_id = cp.winner_conv
+  from conv_pares cp where t.conversation_id = cp.loser_conv;
+
+with pares as (
+  select sem.id as loser_id, com.id as winner_id
+    from public.contacts sem
+    join public.contacts com
+      on com.organization_id = sem.organization_id
+     and com.is_merged_into is null
+     and sem.is_merged_into is null
+     and sem.id <> com.id
+     and sem.is_anonymized = false
+     and com.is_anonymized = false
+     and regexp_replace(coalesce(sem.phone_number, ''), '\D', '', 'g') ~ '^55[1-9][0-9][6-9][0-9]{7}$'
+     and com.phone_number = '+55'
+       || substring(regexp_replace(sem.phone_number, '\D', '', 'g') from 3 for 2)
+       || '9'
+       || substring(regexp_replace(sem.phone_number, '\D', '', 'g') from 5)
+)
+, conv_pares as (
+  select loser.id as loser_conv, winner.id as winner_conv
+    from pares p
+    join public.conversations loser
+      on loser.contact_id = p.loser_id and loser.is_group = false
+    join public.conversations winner
+      on winner.contact_id = p.winner_id
+     and winner.channel_session_id = loser.channel_session_id
+     and winner.organization_id = loser.organization_id
+     and winner.is_group = false
+     and winner.id <> loser.id
+)
+delete from public.conversations d
+ using conv_pares cp
+ where d.id = cp.loser_conv;
+
+-- Marca os de 12 dígitos como fundidos no irmão de 13.
+with pares as (
+  select sem.id as loser_id, com.id as winner_id
+    from public.contacts sem
+    join public.contacts com
+      on com.organization_id = sem.organization_id
+     and com.is_merged_into is null
+     and sem.is_merged_into is null
+     and sem.id <> com.id
+     and sem.is_anonymized = false
+     and com.is_anonymized = false
+     and regexp_replace(coalesce(sem.phone_number, ''), '\D', '', 'g') ~ '^55[1-9][0-9][6-9][0-9]{7}$'
+     and com.phone_number = '+55'
+       || substring(regexp_replace(sem.phone_number, '\D', '', 'g') from 3 for 2)
+       || '9'
+       || substring(regexp_replace(sem.phone_number, '\D', '', 'g') from 5)
+)
+update public.contacts c
+   set is_merged_into = p.winner_id, merged_at = now()
+  from pares p
+ where c.id = p.loser_id;
+
+-- lead_state é unique (org, contact): apaga o perdedor se o vencedor já tem linha.
+delete from public.lead_state l
+ using public.contacts c
+ where l.contact_id = c.id and c.is_merged_into is not null
+   and exists (
+     select 1 from public.lead_state w
+      where w.contact_id = c.is_merged_into and w.organization_id = l.organization_id
+   );
+
+update public.followup_enrollments e
+   set status = 'cancelled', cancel_reason = 'nono_digito_merge', next_eval_at = null, updated_at = now()
+  from public.contacts c
+ where e.contact_id = c.id and c.is_merged_into is not null
+   and e.status in ('active', 'waiting_reply', 'paused_handoff')
+   and exists (
+     select 1 from public.followup_enrollments w
+      where w.organization_id = e.organization_id
+        and w.contact_id = c.is_merged_into
+        and w.status in ('active', 'waiting_reply', 'paused_handoff')
+   );
+
+update public.conversations       t set contact_id = c.is_merged_into from public.contacts c where t.contact_id = c.id and c.is_merged_into is not null;
+update public.messages            t set contact_id = c.is_merged_into from public.contacts c where t.contact_id = c.id and c.is_merged_into is not null;
+update public.ai_agent_runs       t set contact_id = c.is_merged_into from public.contacts c where t.contact_id = c.id and c.is_merged_into is not null;
+update public.crm_lead_activities t set contact_id = c.is_merged_into from public.contacts c where t.contact_id = c.id and c.is_merged_into is not null;
+update public.crm_leads           t set contact_id = c.is_merged_into from public.contacts c where t.contact_id = c.id and c.is_merged_into is not null;
+update public.lgpd_requests       t set contact_id = c.is_merged_into from public.contacts c where t.contact_id = c.id and c.is_merged_into is not null;
+update public.orders              t set contact_id = c.is_merged_into from public.contacts c where t.contact_id = c.id and c.is_merged_into is not null;
+update public.job_queue           t set contact_id = c.is_merged_into from public.contacts c where t.contact_id = c.id and c.is_merged_into is not null
+  and not (t.status = 'running' and exists (
+    select 1 from public.job_queue w where w.contact_id = c.is_merged_into and w.status = 'running'
+  ));
+update public.send_ledger         t set contact_id = c.is_merged_into from public.contacts c where t.contact_id = c.id and c.is_merged_into is not null;
+update public.llm_calls           t set contact_id = c.is_merged_into from public.contacts c where t.contact_id = c.id and c.is_merged_into is not null;
+update public.lead_checkpoints    t set contact_id = c.is_merged_into from public.contacts c where t.contact_id = c.id and c.is_merged_into is not null;
+update public.lead_state          t set contact_id = c.is_merged_into from public.contacts c where t.contact_id = c.id and c.is_merged_into is not null;
+update public.lead_state_transitions t set contact_id = c.is_merged_into from public.contacts c where t.contact_id = c.id and c.is_merged_into is not null;
+update public.cron_jobs           t set contact_id = c.is_merged_into from public.contacts c where t.contact_id = c.id and c.is_merged_into is not null;
+update public.lead_notes          t set contact_id = c.is_merged_into from public.contacts c where t.contact_id = c.id and c.is_merged_into is not null;
+update public.before_send_traces  t set contact_id = c.is_merged_into from public.contacts c where t.contact_id = c.id and c.is_merged_into is not null;
+update public.followup_enrollments t set contact_id = c.is_merged_into from public.contacts c where t.contact_id = c.id and c.is_merged_into is not null;
+update public.demandas            t set contact_id = c.is_merged_into from public.contacts c where t.contact_id = c.id and c.is_merged_into is not null;
+update public.contact_field_proposals t set contact_id = c.is_merged_into from public.contacts c where t.contact_id = c.id and c.is_merged_into is not null;
+
+-- 3 · quem só tinha a grafia de 12 dígitos ganha o nono. Pula se o canônico
+-- já pertence a outro contato vivo (o passo 2 deveria ter fundido; isto é o
+-- piso de segurança para o unique).
+update public.contacts
+   set phone_number = '+55'
+     || substring(regexp_replace(phone_number, '\D', '', 'g') from 3 for 2)
+     || '9'
+     || substring(regexp_replace(phone_number, '\D', '', 'g') from 5),
+       updated_at = now()
+ where is_merged_into is null
+   and is_anonymized = false
+   and regexp_replace(coalesce(phone_number, ''), '\D', '', 'g') ~ '^55[1-9][0-9][6-9][0-9]{7}$'
+   and not exists (
+     select 1 from public.contacts o
+      where o.organization_id = contacts.organization_id
+        and o.is_merged_into is null
+        and o.id <> contacts.id
+        and o.phone_number = '+55'
+          || substring(regexp_replace(contacts.phone_number, '\D', '', 'g') from 3 for 2)
+          || '9'
+          || substring(regexp_replace(contacts.phone_number, '\D', '', 'g') from 5)
+   );
+
 -- ---- agenda: o cascade que o vínculo polimórfico não tem — função (migration 0177) ----
 --
 -- A PRIMEIRA metade da 0177. Está aqui, e não no fim do arquivo, porque cria
@@ -14287,6 +14838,63 @@ create unique index if not exists channel_sessions_zernio_account_id_ativo_uniqu
   on public.channel_sessions (zernio_account_id)
   where archived_at is null and zernio_account_id is not null;
 
+-- ---- superfície do pointer de follow-up (migration 0196) ----
+-- IA vs automação CRM: um motor, duas listas. Default 'followup' deixa toda
+-- linha já existente na superfície de IA. CHECK de conjunto (PARES).
+alter table public.followup_flow_pointers
+  add column if not exists surface text not null default 'followup';
+
+alter table public.followup_flow_pointers
+  drop constraint if exists followup_flow_pointers_surface_check;
+
+alter table public.followup_flow_pointers
+  add constraint followup_flow_pointers_surface_check
+  check (surface in ('followup', 'crm_automation'));
+
+comment on column public.followup_flow_pointers.surface is
+  'Onde o fluxo aparece: followup = /app/ai/followups; crm_automation = CRM Automação. '
+  'Vocabulário cobrado por tests/invariants/vocabulario-banco-x-typescript.test.ts.';
+
+-- ---- inscrição Web Push (migrations 0197 e 0199) ----
+-- Bandeja do sistema com a aba fechada. A policy abaixo já é a da 0199 (o
+-- forward-fix de RBAC): quem atualiza recebe as duas de uma vez, e quem
+-- instala do zero nunca chega a existir sem o `fn_role_at_least`.
+create table if not exists public.push_subscriptions (
+  id uuid primary key default gen_random_uuid(),
+  organization_id uuid not null references public.organizations(id) on delete cascade,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  endpoint text not null unique,
+  p256dh text not null,
+  auth text not null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists push_subscriptions_org_idx
+  on public.push_subscriptions (organization_id);
+
+alter table public.push_subscriptions enable row level security;
+
+drop policy if exists push_subscriptions_own on public.push_subscriptions;
+create policy push_subscriptions_own on public.push_subscriptions
+  for all
+  using (
+    organization_id in (select public.fn_user_org_ids())
+    and user_id = auth.uid()
+    and public.fn_role_at_least(organization_id, 'viewer')
+  )
+  with check (
+    organization_id in (select public.fn_user_org_ids())
+    and user_id = auth.uid()
+    and public.fn_role_at_least(organization_id, 'viewer')
+  );
+
+revoke all on public.push_subscriptions from anon, public;
+grant select, insert, update, delete on public.push_subscriptions to authenticated;
+
+comment on table public.push_subscriptions is
+  'Inscrição Web Push por navegador. Envio é service role; a sessão só vê a própria linha.';
+
 -- ---- a mensagem que responde outra (migration 0168) ----
 -- O canal intermediado aceita citação (`replyTo` no envio, com o `wamid` da
 -- citada) e o WhatsApp mostra a resposta pendurada na original. Sem guardar
@@ -14309,7 +14917,6 @@ create index if not exists messages_reply_to_idx
   where reply_to_message_id is not null;
 
 notify pgrst, 'reload schema';
-
 
 -- ---- histórico DURÁVEL de leads captados: tabela (migration 0174) ----
 --
@@ -15725,6 +16332,599 @@ update public.calendar_event_types t
  where t.default_owner_user_id is null
    and exists (select 1 from public.user_organizations u
                 where u.organization_id = t.organization_id and u.revoked_at is null);
+
+-- ---- o acervo é da organização; o agente escolhe o que lê (migration 0181) ----
+--
+-- A base de conhecimento PERTENCIA a um agente (`ai_knowledge_sources.agent_id`
+-- NOT NULL, FK CASCADE) e o acervo do agente era UMA versão monolítica. Daí
+-- saíam, em cadeia: material impossível de compartilhar; UM documento por
+-- categoria por agente (índice único `(agent_id, source_type) WHERE is_active`,
+-- e todo arquivo enviado virava `policy`, então o SEGUNDO PDF colidia);
+-- pipelines competindo pelo mesmo ponteiro (a ingestão de conversas ativava a
+-- versão dela e DESATIVAVA a de FAQ do mesmo agente, e vice-versa); e apagar o
+-- agente apagava a base junto.
+--
+-- Agora a fonte é da ORGANIZAÇÃO. `agent_id` fica como histórico (nullable, ON
+-- DELETE SET NULL). Quem lê o quê é `ai_agent_versions.knowledge_source_ids`,
+-- molde exato de `pipeline_ids` (0125) e pela mesma razão: escopo fora do ciclo
+-- rascunho→publicar muda o alcance do agente sem ninguém publicar nada. Coluna
+-- `uuid[]` na versão e não junção, porque o runtime lê a config em UMA query
+-- sem cache — junção custaria uma query a mais por turno atendido.
+--
+-- O ponteiro de índice vira POR FONTE (`ai_knowledge_sources.active_kb_version_id`).
+-- As versões legadas continuam válidas sem serem quebradas: a busca casa
+-- `(kb_version_id, knowledge_source_id)`, então uma versão compartilhada devolve
+-- para cada fonte exatamente os chunks daquela fonte.
+--
+-- Racional completo no cabeçalho da migration. Idempotente e auto-curativo.
+
+drop index if exists public.ai_knowledge_sources_unique_per_agent;
+
+alter table public.ai_knowledge_sources
+  alter column agent_id drop not null;
+
+alter table public.ai_knowledge_sources
+  drop constraint if exists ai_knowledge_sources_agent_id_fkey;
+alter table public.ai_knowledge_sources
+  add constraint ai_knowledge_sources_agent_id_fkey
+  foreign key (agent_id) references public.ai_agents(id) on delete set null;
+
+comment on column public.ai_knowledge_sources.agent_id is
+  'HISTÓRICO: o agente a partir do qual a fonte foi criada. NÃO é dono — desde a 0181 quem lê o quê é `ai_agent_versions.knowledge_source_ids`. Nullable e ON DELETE SET NULL de propósito.';
+
+-- A VERSÃO DE ÍNDICE TAMBÉM DEIXA DE PERTENCER A UM AGENTE.
+--
+-- `agent_id` era NOT NULL aqui, e um material da organização (sem agente
+-- nenhum) não tinha como ser indexado: `createKnowledgeVersion` batia em
+-- "null value in column agent_id violates not-null constraint" — medido na
+-- prova de tela, com o material parado em `indexando` para sempre.
+--
+-- E o CASCADE sai junto, por uma razão pior: os chunks apontam para a VERSÃO
+-- (`ai_chunks.kb_version_id ... on delete cascade`), então apagar o agente
+-- levava a versão, e a versão levava os trechos — o material da EMPRESA sumia
+-- porque alguém apagou um assistente. `SET NULL`: a versão pertence à fonte.
+alter table public.ai_knowledge_versions
+  alter column agent_id drop not null;
+
+alter table public.ai_knowledge_versions
+  drop constraint if exists ai_knowledge_versions_agent_id_fkey;
+alter table public.ai_knowledge_versions
+  add constraint ai_knowledge_versions_agent_id_fkey
+  foreign key (agent_id) references public.ai_agents(id) on delete set null;
+
+comment on column public.ai_knowledge_versions.agent_id is
+  'HISTÓRICO: o agente a partir do qual esta indexação foi disparada. Nullable desde a 0181 — a versão pertence à FONTE, e o acervo é da organização.';
+
+-- Vocabulário ABERTO (precedente da 0127): o CHECK tinha 6 valores com dois
+-- pares de sinônimos e nenhum valor para "documento avulso".
+alter table public.ai_knowledge_sources
+  drop constraint if exists ai_knowledge_sources_source_type_check;
+
+update public.ai_knowledge_sources
+   set source_type = case source_type
+         when 'policy'            then 'documento'
+         when 'conversation'      then 'conversas'
+         when 'nuvemshop_catalog' then 'catalogo'
+         when 'catalog'           then 'catalogo'
+         else source_type
+       end
+ where source_type in ('policy', 'conversation', 'nuvemshop_catalog', 'catalog');
+
+comment on column public.ai_knowledge_sources.source_type is
+  'Vocabulário ABERTO (sem CHECK, precedente da 0127). A lista que a tela oferece vive em lib/ai/rag/tipos-de-fonte.ts: faq | documento | conversas | catalogo.';
+
+-- Nome vira identidade: batizar o que está sem nome e desempatar homônimos
+-- ANTES do índice único, senão o `update.sh` do clone morre aqui.
+update public.ai_knowledge_sources
+   set name = case source_type
+         when 'faq'       then 'Perguntas frequentes'
+         when 'documento' then 'Documento'
+         when 'conversas' then 'Conversas anteriores'
+         when 'catalogo'  then 'Catálogo de produtos'
+         else 'Material'
+       end || ' ' || left(id::text, 8)
+ where coalesce(btrim(name), '') = '';
+
+with duplicados as (
+  select id,
+         row_number() over (
+           partition by organization_id, lower(btrim(name))
+           order by created_at, id
+         ) as n
+    from public.ai_knowledge_sources
+   where is_active
+)
+update public.ai_knowledge_sources s
+   set name = s.name || ' (' || left(s.id::text, 4) || ')'
+  from duplicados d
+ where d.id = s.id
+   and d.n > 1;
+
+create unique index if not exists ai_knowledge_sources_nome_unico_por_org
+  on public.ai_knowledge_sources (organization_id, lower(btrim(name)))
+  where is_active;
+
+-- Arquivar desliga de verdade: nenhuma linha do repo jamais escreveu
+-- `is_active = false`, e com o índice único antigo isso deixava o "slot"
+-- ocupado por uma fonte arquivada para sempre.
+update public.ai_knowledge_sources
+   set is_active = false
+ where status = 'archived' and is_active;
+
+alter table public.ai_knowledge_sources
+  drop constraint if exists ai_knowledge_sources_arquivada_nao_e_ativa;
+alter table public.ai_knowledge_sources
+  add constraint ai_knowledge_sources_arquivada_nao_e_ativa
+  check (not is_active or status <> 'archived');
+
+-- Os dois estados que o produto JÁ produz e a tela não sabia mostrar.
+-- Reconstruído em UM bloco só (lição do #159). Aditivo.
+alter table public.ai_knowledge_sources
+  drop constraint if exists ai_knowledge_sources_last_index_status_check;
+alter table public.ai_knowledge_sources
+  add constraint ai_knowledge_sources_last_index_status_check
+  check (last_index_status is null or last_index_status = any (array[
+    'success', 'partial', 'failed', 'indexando', 'sem_credencial'
+  ]));
+
+alter table public.ai_knowledge_sources
+  add column if not exists active_kb_version_id uuid;
+
+alter table public.ai_knowledge_versions
+  add column if not exists knowledge_source_id uuid;
+alter table public.ai_knowledge_versions
+  add column if not exists embedding_model text;
+alter table public.ai_knowledge_versions
+  add column if not exists embedding_dims integer;
+
+comment on column public.ai_knowledge_versions.knowledge_source_id is
+  'A fonte que esta versão indexa. NULL nas versões anteriores à 0181, que continham chunks de várias fontes — e continuam válidas: a busca casa (kb_version_id, knowledge_source_id) por fonte.';
+comment on column public.ai_knowledge_versions.embedding_model is
+  'Modelo com que os vetores desta versão foram calculados. NULL = anterior à 0181. A busca recusa a fonte cuja versão foi indexada com outro modelo — recall quebrado em silêncio é pior que fonte de fora.';
+
+-- Ponteiros pendurados saem ANTES das FKs. Um `active_kb_version_id` apontando
+-- para versão apagada é hoje indistinguível de "base vazia": zero chunk, zero erro.
+update public.ai_agents a
+   set active_kb_version_id = null
+ where a.active_kb_version_id is not null
+   and not exists (select 1 from public.ai_knowledge_versions v where v.id = a.active_kb_version_id);
+
+delete from public.ai_chunks c
+ where not exists (select 1 from public.ai_knowledge_versions v where v.id = c.kb_version_id);
+
+alter table public.ai_agents
+  drop constraint if exists ai_agents_active_kb_version_id_fkey;
+alter table public.ai_agents
+  add constraint ai_agents_active_kb_version_id_fkey
+  foreign key (active_kb_version_id) references public.ai_knowledge_versions(id) on delete set null;
+
+alter table public.ai_chunks
+  drop constraint if exists ai_chunks_kb_version_id_fkey;
+alter table public.ai_chunks
+  add constraint ai_chunks_kb_version_id_fkey
+  foreign key (kb_version_id) references public.ai_knowledge_versions(id) on delete cascade;
+
+alter table public.ai_knowledge_sources
+  drop constraint if exists ai_knowledge_sources_active_kb_version_id_fkey;
+alter table public.ai_knowledge_sources
+  add constraint ai_knowledge_sources_active_kb_version_id_fkey
+  foreign key (active_kb_version_id) references public.ai_knowledge_versions(id) on delete set null;
+
+alter table public.ai_knowledge_versions
+  drop constraint if exists ai_knowledge_versions_knowledge_source_id_fkey;
+alter table public.ai_knowledge_versions
+  add constraint ai_knowledge_versions_knowledge_source_id_fkey
+  foreign key (knowledge_source_id) references public.ai_knowledge_sources(id) on delete cascade;
+
+-- Cada fonte herda a versão ATIVA do agente dela, mas SÓ se aquela versão
+-- realmente contiver chunks daquela fonte.
+update public.ai_knowledge_sources s
+   set active_kb_version_id = v.id
+  from public.ai_knowledge_versions v
+ where v.agent_id = s.agent_id
+   and v.organization_id = s.organization_id
+   and v.is_active
+   and s.active_kb_version_id is null
+   and exists (
+     select 1 from public.ai_chunks c
+      where c.kb_version_id = v.id and c.knowledge_source_id = s.id
+   );
+
+drop index if exists public.ai_kbv_one_active_per_agent;
+create unique index if not exists ai_kbv_uma_ativa_por_fonte
+  on public.ai_knowledge_versions (knowledge_source_id)
+  where is_active and knowledge_source_id is not null;
+
+create index if not exists ai_knowledge_sources_org_idx
+  on public.ai_knowledge_sources (organization_id, is_active);
+create index if not exists ai_knowledge_versions_org_idx
+  on public.ai_knowledge_versions (organization_id, knowledge_source_id);
+
+alter table public.ai_agent_versions
+  add column if not exists knowledge_source_ids uuid[] not null default '{}'::uuid[];
+
+comment on column public.ai_agent_versions.knowledge_source_ids is
+  'Materiais que ESTE agente consulta. Vazio = NENHUM (falha fechada): ele conversa normalmente e a ferramenta de busca some do turno. Molde e racional de `pipeline_ids` (0125): escopo mora na versão publicada.';
+
+update public.ai_agent_versions v
+   set knowledge_source_ids = sub.fontes
+  from (
+    select agent_id, array_agg(id order by created_at) as fontes
+      from public.ai_knowledge_sources
+     where is_active and agent_id is not null
+     group by agent_id
+  ) sub
+ where v.agent_id = sub.agent_id
+   and v.knowledge_source_ids = '{}'::uuid[];
+
+-- CONSERTO OBRIGATÓRIO no mesmo bloco: escopo de leitura editável numa versão
+-- PUBLICADA sem virar versão nova é a própria ausência de escopo, com aparência
+-- de controle.
+create or replace function fn_ai_agent_version_content_immutable() returns trigger
+language plpgsql as $fn$
+begin
+  if old.status <> 'draft' and (
+       new.system_prompt          is distinct from old.system_prompt
+    or new.provider               is distinct from old.provider
+    or new.model                  is distinct from old.model
+    or new.credential_id          is distinct from old.credential_id
+    or new.tool_ids               is distinct from old.tool_ids
+    or new.trigger_config         is distinct from old.trigger_config
+    or new.channel_session_id     is distinct from old.channel_session_id
+    or new.max_steps              is distinct from old.max_steps
+    or new.token_budget           is distinct from old.token_budget
+    or new.cost_budget_cents      is distinct from old.cost_budget_cents
+    or new.history_message_window is distinct from old.history_message_window
+    or new.history_token_window   is distinct from old.history_token_window
+    or new.handoff_keywords       is distinct from old.handoff_keywords
+    or new.handoff_tool_enabled   is distinct from old.handoff_tool_enabled
+    or new.followup               is distinct from old.followup
+    or new.multimodal_input       is distinct from old.multimodal_input
+    or new.video_frames_enabled   is distinct from old.video_frames_enabled
+    or new.split_messages         is distinct from old.split_messages
+    or new.split_max_chars        is distinct from old.split_max_chars
+    or new.cases_enabled          is distinct from old.cases_enabled
+    or new.operator_enabled       is distinct from old.operator_enabled
+    or new.operator_model         is distinct from old.operator_model
+    or new.operator_tool_ids      is distinct from old.operator_tool_ids
+    or new.pipeline_ids           is distinct from old.pipeline_ids
+    or new.knowledge_source_ids   is distinct from old.knowledge_source_ids
+    or new.version_number         is distinct from old.version_number
+    or new.agent_id               is distinct from old.agent_id
+    or new.organization_id        is distinct from old.organization_id
+  ) then
+    raise exception 'ai_agent_versions % é imutável (status=%): mudança de conteúdo = versão draft nova; rollback = revert (clona + publica)',
+      old.id, old.status;
+  end if;
+  return new;
+end;
+$fn$;
+
+drop trigger if exists trg_ai_agent_versions_content_immutable on public.ai_agent_versions;
+create trigger trg_ai_agent_versions_content_immutable
+  before update on public.ai_agent_versions
+  for each row execute function fn_ai_agent_version_content_immutable();
+
+-- A busca que aceita VÁRIAS fontes. A antiga (`retrieve_top_k_chunks`) continua
+-- existindo: o worker legado e a capacidade MCP a chamam.
+--
+-- Preserva as duas decisões de que o chamador depende: quem corta pelo limiar é
+-- o TypeScript (o caller passa o piso −1, para enxergar o melhor candidato
+-- REPROVADO), e o gate de membership só morde quando há `auth.uid()` — o engine
+-- roda com role `bypassrls` e para ele o isolamento é o `organization_id = $1`.
+create or replace function public.fn_buscar_trechos_das_fontes(
+  p_organization_id uuid,
+  p_source_ids uuid[],
+  p_embedding public.vector,
+  p_k integer default 5,
+  p_threshold real default 0.40,
+  p_embedding_model text default null
+) returns table(
+  chunk_id uuid,
+  knowledge_source_id uuid,
+  source_name text,
+  content text,
+  similarity real,
+  metadata jsonb
+)
+  language plpgsql stable security definer
+  set search_path to 'public'
+as $$
+begin
+  if auth.uid() is not null
+     and not public.fn_role_at_least(p_organization_id, 'viewer') then
+    raise exception 'caller_not_authorized_for_org'
+      using hint = 'fn_buscar_trechos_das_fontes: caller must be an active member of the organization';
+  end if;
+
+  return query
+  select
+    c.id as chunk_id,
+    c.knowledge_source_id,
+    s.name as source_name,
+    c.content,
+    (1 - (c.embedding <=> p_embedding))::real as similarity,
+    c.metadata
+  from public.ai_chunks c
+  join public.ai_knowledge_sources s
+    on s.id = c.knowledge_source_id
+   and s.organization_id = c.organization_id
+  join public.ai_knowledge_versions v
+    on v.id = c.kb_version_id
+  where c.organization_id = p_organization_id
+    and s.id = any(p_source_ids)
+    and s.is_active
+    and s.status = 'ready'
+    and c.kb_version_id = s.active_kb_version_id
+    and (
+      p_embedding_model is null
+      or v.embedding_model is null
+      or v.embedding_model = p_embedding_model
+    )
+    and (1 - (c.embedding <=> p_embedding)) >= p_threshold
+  order by c.embedding <=> p_embedding asc
+  limit greatest(p_k, 0);
+end $$;
+
+comment on function public.fn_buscar_trechos_das_fontes(uuid, uuid[], public.vector, integer, real, text) is
+  'Top-K por similaridade de cosseno sobre os materiais que o agente pode ler (0181). SECURITY DEFINER + filtro programático de organização — quem chama valida o tenant.';
+
+revoke execute on function public.fn_buscar_trechos_das_fontes(uuid, uuid[], public.vector, integer, real, text) from public, anon;
+grant  execute on function public.fn_buscar_trechos_das_fontes(uuid, uuid[], public.vector, integer, real, text) to authenticated, service_role;
+
+-- `ai_models` não tinha NENHUM modelo de embedding, e é por isso que o painel de
+-- provedores não conseguia oferecer chave para `embedding_indexar` e
+-- `embedding_consultar`: não havia o que listar.
+alter table public.ai_models
+  add column if not exists supports_embedding boolean not null default false;
+alter table public.ai_models
+  add column if not exists embedding_dims integer;
+
+insert into public.ai_models
+  (provider, model_id, display_name, description,
+   input_price_per_million_cents, output_price_per_million_cents,
+   supports_tools, supports_embedding, embedding_dims)
+values
+  ('openai', 'text-embedding-3-small', 'Text Embedding 3 Small',
+   'O modelo que indexa e consulta o seu material. Trocar exige reindexar tudo de uma vez.',
+   2, 0, false, true, 1536)
+on conflict (provider, model_id) do update set
+  supports_embedding = excluded.supports_embedding,
+  embedding_dims     = excluded.embedding_dims,
+  supports_tools     = excluded.supports_tools;
+
+-- RBAC nas quatro tabelas de RAG (formato da 0150). Elas ficaram de fora do
+-- aperto e ainda estão como o relatório de segurança da comunidade descreveu:
+-- policy `ALL` só-tenancy mais `GRANT ALL ... TO anon`. Um membro papel `viewer`
+-- DELETA a base de conhecimento da própria organização falando direto com o
+-- PostgREST, com o JWT dele.
+drop policy if exists tenant_isolation_ai_knowledge_sources_all on public.ai_knowledge_sources;
+
+drop policy if exists tenant_isolation_ai_knowledge_sources_select on public.ai_knowledge_sources;
+create policy tenant_isolation_ai_knowledge_sources_select on public.ai_knowledge_sources
+  for select using (
+    organization_id in (select public.fn_user_org_ids()) or public.fn_is_platform_admin()
+  );
+
+drop policy if exists tenant_isolation_ai_knowledge_sources_write on public.ai_knowledge_sources;
+create policy tenant_isolation_ai_knowledge_sources_write on public.ai_knowledge_sources
+  for all using (
+    (organization_id in (select public.fn_user_org_ids())
+      and public.fn_role_at_least(organization_id, 'manager'))
+    or public.fn_is_platform_admin()
+  ) with check (
+    (organization_id in (select public.fn_user_org_ids())
+      and public.fn_role_at_least(organization_id, 'manager'))
+    or public.fn_is_platform_admin()
+  );
+
+drop policy if exists tenant_isolation_ai_faq_items_all on public.ai_faq_items;
+
+drop policy if exists tenant_isolation_ai_faq_items_select on public.ai_faq_items;
+create policy tenant_isolation_ai_faq_items_select on public.ai_faq_items
+  for select using (organization_id in (select public.fn_user_org_ids()));
+
+drop policy if exists tenant_isolation_ai_faq_items_write on public.ai_faq_items;
+create policy tenant_isolation_ai_faq_items_write on public.ai_faq_items
+  for all using (
+    organization_id in (select public.fn_user_org_ids())
+      and public.fn_role_at_least(organization_id, 'manager')
+  ) with check (
+    organization_id in (select public.fn_user_org_ids())
+      and public.fn_role_at_least(organization_id, 'manager')
+  );
+
+drop policy if exists tenant_isolation_ai_kbv_all on public.ai_knowledge_versions;
+
+drop policy if exists tenant_isolation_ai_kbv_select on public.ai_knowledge_versions;
+create policy tenant_isolation_ai_kbv_select on public.ai_knowledge_versions
+  for select using (
+    organization_id in (select public.fn_user_org_ids()) or public.fn_is_platform_admin()
+  );
+
+drop policy if exists tenant_isolation_ai_kbv_write on public.ai_knowledge_versions;
+create policy tenant_isolation_ai_kbv_write on public.ai_knowledge_versions
+  for all using (
+    (organization_id in (select public.fn_user_org_ids())
+      and public.fn_role_at_least(organization_id, 'admin'))
+    or public.fn_is_platform_admin()
+  ) with check (
+    (organization_id in (select public.fn_user_org_ids())
+      and public.fn_role_at_least(organization_id, 'admin'))
+    or public.fn_is_platform_admin()
+  );
+
+drop policy if exists tenant_isolation_ai_chunks_all on public.ai_chunks;
+
+drop policy if exists tenant_isolation_ai_chunks_select on public.ai_chunks;
+create policy tenant_isolation_ai_chunks_select on public.ai_chunks
+  for select using (
+    organization_id in (select public.fn_user_org_ids()) or public.fn_is_platform_admin()
+  );
+
+drop policy if exists tenant_isolation_ai_chunks_write on public.ai_chunks;
+create policy tenant_isolation_ai_chunks_write on public.ai_chunks
+  for all using (
+    (organization_id in (select public.fn_user_org_ids())
+      and public.fn_role_at_least(organization_id, 'admin'))
+    or public.fn_is_platform_admin()
+  ) with check (
+    (organization_id in (select public.fn_user_org_ids())
+      and public.fn_role_at_least(organization_id, 'admin'))
+    or public.fn_is_platform_admin()
+  );
+
+revoke all on table public.ai_knowledge_sources  from anon;
+revoke all on table public.ai_knowledge_versions from anon;
+revoke all on table public.ai_chunks             from anon;
+revoke all on table public.ai_faq_items          from anon;
+
+drop trigger if exists trg_ai_knowledge_sources_audit on public.ai_knowledge_sources;
+create trigger trg_ai_knowledge_sources_audit
+  after insert or update or delete on public.ai_knowledge_sources
+  for each row execute function public.fn_audit_log_row();
+
+notify pgrst, 'reload schema';
+
+-- ---------------------------------------------------------------------------
+-- 12. A telemetria de busca aprende QUEM perguntou e SOBRE O QUÊ
+-- ---------------------------------------------------------------------------
+--
+-- `knowledge_searches` registrava organização, job, versão de índice, número de
+-- acertos, melhor nota e limiar. Faltava o que a torna acionável: QUAL
+-- assistente perguntou e em QUAIS materiais. Sem isso, "o recall está ruim" não
+-- tem como virar "o recall está ruim NAQUELE material", que é o conserto.
+--
+-- `kb_version_id` passa a aceitar NULL porque a busca deixou de ser sobre UMA
+-- versão: ela é sobre um conjunto de materiais, cada um com o índice dele.
+--
+-- A decisão declarada no cabeçalho da 0086 continua valendo: esta tabela NÃO
+-- guarda o texto da pergunta. Acrescentar ids é compatível com ela; acrescentar
+-- a pergunta seria PII contra a decisão.
+
+alter table public.knowledge_searches
+  alter column kb_version_id drop not null;
+
+alter table public.knowledge_searches
+  add column if not exists agent_id uuid references public.ai_agents(id) on delete set null;
+
+alter table public.knowledge_searches
+  add column if not exists knowledge_source_ids uuid[] not null default '{}'::uuid[];
+
+comment on column public.knowledge_searches.knowledge_source_ids is
+  'Materiais consultados nesta busca. Vazio nas linhas anteriores à 0181, quando a busca era sobre uma única versão de índice.';
+
+notify pgrst, 'reload schema';
+
+-- ---- o que ainda não foi ao Google (migration 0200) ----
+-- O worker `agenda-google-push` pedia os pendentes com
+-- `.or("google_synced_at.is.null,updated_at.gt.google_synced_at")`, e o PostgREST
+-- trata o lado DIREITO de `gt.` como VALOR LITERAL: ele tentava converter a
+-- string "google_synced_at" em `timestamptz` e recusava a consulta INTEIRA. Em
+-- produção isso é um `warn` a cada 5 minutos desde o deploy da v1.7.0 e ZERO
+-- compromissos empurrados — a ida ao Google nunca aconteceu em instalação
+-- nenhuma. A coluna derivada é o que dá ao PostgREST um filtro que ele sabe
+-- fazer (`.eq("needs_google_push", true)`).
+--
+-- ⚠️ O TRIGGER NÃO É ENFEITE — sem ele o conserto troca "nunca empurra" por
+-- "empurra para sempre". `updated_at` vem do `now()` do POSTGRES (trigger) e
+-- `google_synced_at` vinha do `new Date()` do NODE, calculado antes de a
+-- requisição sair: o do Node é sempre ANTERIOR, então `updated_at >
+-- google_synced_at` continuava verdadeiro logo depois de uma sincronização
+-- bem-sucedida e a linha voltava à fila na rodada seguinte, para sempre. O
+-- trigger faz o carimbo sair do MESMO relógio dos dois lados. Ele não carimba
+-- quando o valor novo é NULL: zerar a coluna é como se força re-sincronização de
+-- propósito.
+--
+-- Aditiva e idempotente: `add column if not exists` sobre coluna GERADA é no-op
+-- quando ela já existe, `create or replace function` e `drop trigger if exists`
+-- fazem o resto. Não há dado a curar — o valor é derivado das duas colunas que
+-- já estão lá e nasce correto para o histórico inteiro.
+--
+-- ⚠️ CRIA FUNÇÃO, então entra ANTES da varredura de `anon` logo abaixo: função
+-- nova em `public` nasce exposta pelo ALTER DEFAULT PRIVILEGES, e depois da
+-- varredura ela ficaria sem a cura. Os `revoke` explícitos abaixo já a fecham
+-- nas duas origens; a varredura é a rede, não a trava.
+alter table public.calendar_appointments
+  add column if not exists needs_google_push boolean
+  generated always as (google_synced_at is null or updated_at > google_synced_at) stored;
+
+comment on column public.calendar_appointments.needs_google_push is
+  'Derivada: a linha ainda não foi ao Google, ou mudou depois da última ida. Existe porque o PostgREST não compara coluna com coluna — o filtro do worker de push é `.eq("needs_google_push", true)`.';
+
+create or replace function public.fn_carimbar_ida_ao_google()
+returns trigger
+language plpgsql
+set search_path = public, pg_temp
+as $fn$
+begin
+  -- `now()` e não `new.updated_at`: os dois são o instante de início da
+  -- transação, então o valor é o mesmo — e usar `now()` remove a dependência de
+  -- ORDEM entre este trigger e o de `updated_at`.
+  if new.google_synced_at is not null
+     and (tg_op = 'INSERT' or new.google_synced_at is distinct from old.google_synced_at) then
+    new.google_synced_at := now();
+  end if;
+  return new;
+end
+$fn$;
+
+revoke execute on function public.fn_carimbar_ida_ao_google() from public, anon, authenticated;
+grant  execute on function public.fn_carimbar_ida_ao_google() to service_role;
+
+drop trigger if exists trg_calendar_appointments_carimbo_do_google on public.calendar_appointments;
+create trigger trg_calendar_appointments_carimbo_do_google
+  before insert or update on public.calendar_appointments
+  for each row execute function public.fn_carimbar_ida_ao_google();
+
+create index if not exists calendar_appointments_pendente_no_google_idx
+  on public.calendar_appointments (starts_at)
+  where needs_google_push and owner_user_id is not null;
+
+-- ---- credencial do Google pela tela (migration 0201) ----
+-- Conectar o Google exigia SSH na VPS e editar o `.env`. O produto é self-host
+-- para quem NÃO programa: nomear variáveis de ambiente para essa pessoa é o
+-- mesmo que dizer que a funcionalidade não existe.
+--
+-- Singleton de INSTALAÇÃO, clone do molde de `platform_branding` (0155): o
+-- `redirect_uri` sai de `NEXT_PUBLIC_APP_URL` e o app OAuth é registrado no
+-- console do Google pelo dono da instalação — a credencial pareia 1:1 com ela.
+--
+-- ⚠️ RLS LIGADA COM ZERO POLICIES é o desenho, não descuido. A anon key vai para
+-- o browser; tabela servida pelo PostgREST e "protegida por policy" depende de a
+-- policy estar certa, esta simplesmente não é servida. O `client_secret` permite
+-- trocar códigos e refresh tokens em nome da instalação — ou seja, ler a agenda
+-- de todos os atendentes que conectaram.
+--
+-- Não cria função: usa `fn_encrypt_oauth`/`fn_decrypt_oauth` da 0041, a mesma
+-- cifra que o callback do Google já usa para os tokens. Entra antes da varredura
+-- de `anon` pela regra do arquivo, não por necessidade.
+--
+-- Aditiva e idempotente: `create table if not exists`, `revoke`/`grant` que
+-- reafirmam, `drop trigger if exists` antes de recriar. Sem dado a curar.
+create table if not exists public.platform_google_oauth (
+  id smallint primary key default 1,
+  client_id text,
+  client_secret_encrypted bytea,
+  updated_at timestamptz not null default now(),
+  updated_by uuid,
+  constraint platform_google_oauth_singleton check (id = 1)
+);
+
+comment on table public.platform_google_oauth is
+  'O app OAuth do Google DESTA INSTALAÇÃO (singleton). Server-side only: RLS ligada sem policies e grants revogados de anon/authenticated — o PostgREST não a serve. O segredo nunca volta ao browser; a tela devolve apenas se existe.';
+comment on column public.platform_google_oauth.client_secret_encrypted is
+  'Cifrado por fn_encrypt_oauth (pgp_sym_encrypt/aes256), a mesma cifra dos tokens em calendar_connections. Nunca gravar em claro: sem a chave mestra o save recusa.';
+
+alter table public.platform_google_oauth enable row level security;
+
+revoke all on public.platform_google_oauth from anon, authenticated;
+grant select, insert, update on public.platform_google_oauth to service_role;
+
+drop trigger if exists trg_platform_google_oauth_updated_at on public.platform_google_oauth;
+create trigger trg_platform_google_oauth_updated_at
+  before update on public.platform_google_oauth
+  for each row execute function public.fn_set_updated_at();
 
 -- ---- VARREDURA anon: função nova nasce exposta em quem ATUALIZA (migration 0116) ----
 --

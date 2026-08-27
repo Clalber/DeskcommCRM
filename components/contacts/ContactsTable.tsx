@@ -1,9 +1,12 @@
 "use client";
+import { useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 import { format, formatRelative, isToday, isYesterday } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { useT } from "@/hooks/i18n/useT";
-import { CaretDown, CaretUp, ChatCircle } from "@/lib/ui/icons";
+import { toast } from "sonner";
+import { CaretDown, CaretUp, ChatCircle, Trash } from "@/lib/ui/icons";
 import {
   Table,
   TableBody,
@@ -14,9 +17,20 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { useDeleteContact } from "@/hooks/contacts/useDeleteContact";
 import type { ContactOrderBy } from "@/lib/schemas/contacts";
 import type { Contact } from "@/lib/types/contacts";
 import { rotuloDoContato } from "@/lib/contacts/rotulo-do-contato";
+import { phoneForDisplay } from "@/lib/channels/phone-variants";
 
 interface Props {
   contacts: Contact[];
@@ -25,8 +39,8 @@ interface Props {
   onSort: (column: ContactOrderBy) => void;
 }
 
-function displayName(c: Contact, t: (texto: string) => string = (texto) => texto): string {
-  return rotuloDoContato(c, t);
+function displayName(c: Contact): string {
+  return rotuloDoContato(c);
 }
 
 /** Hoje/ontem: relativo ("há 2 horas", "ontem"). Mais antigo: data, não dia da semana. */
@@ -84,13 +98,55 @@ function SortableHead({
 }
 
 export function ContactsTable({ contacts, orderBy, orderDir, onSort }: Props) {
-  const t = useT();
+  const del = useDeleteContact();
+  const [alvo, setAlvo] = useState<Contact | null>(null);
+  const [abrindo, setAbrindo] = useState<string | null>(null);
+  const router = useRouter();
+  const qc = useQueryClient();
+
+  async function iniciarConversa(c: Contact) {
+    if (!c.phone_number || abrindo) return;
+    setAbrindo(c.id);
+    try {
+      const res = await fetch("/api/v1/conversations/open-with-contact", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contact_id: c.id, phone_number: c.phone_number }),
+      });
+      const json = (await res.json()) as {
+        data?: { conversation_id: string };
+        error?: { message?: string };
+      };
+      if (!res.ok || !json.data?.conversation_id) {
+        throw new Error(json.error?.message ?? "Não foi possível abrir a conversa.");
+      }
+      await qc.invalidateQueries({ queryKey: ["contacts"] });
+      router.push(`/app/inbox?id=${json.data.conversation_id}`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Não foi possível abrir a conversa.");
+    } finally {
+      setAbrindo(null);
+    }
+  }
+
+  async function confirmarExclusao() {
+    if (!alvo) return;
+    try {
+      await del.mutateAsync(alvo.id);
+      toast.success("Contato excluído.");
+      setAlvo(null);
+    } catch {
+      // hook handles toast
+    }
+  }
+
   return (
+    <>
     <Table>
       <TableHeader>
         <TableRow>
           <SortableHead
-            label={t("Nome")}
+            label="Nome"
             column="display_name"
             orderBy={orderBy}
             orderDir={orderDir}
@@ -104,7 +160,7 @@ export function ContactsTable({ contacts, orderBy, orderDir, onSort }: Props) {
             onSort={onSort}
           />
           <SortableHead
-            label={t("Telefone")}
+            label="Telefone"
             column="phone_number"
             orderBy={orderBy}
             orderDir={orderDir}
@@ -112,15 +168,15 @@ export function ContactsTable({ contacts, orderBy, orderDir, onSort }: Props) {
           />
           <TableHead>Tags</TableHead>
           <SortableHead
-            label={t("Última atividade")}
+            label="Última atividade"
             column="last_activity_at"
             orderBy={orderBy}
             orderDir={orderDir}
             onSort={onSort}
           />
           <TableHead>Status</TableHead>
-          <TableHead className="w-[52px]">
-            <span className="sr-only">{t("Conversa")}</span>
+          <TableHead className="w-[88px]">
+            <span className="sr-only">Ações</span>
           </TableHead>
         </TableRow>
       </TableHeader>
@@ -129,21 +185,21 @@ export function ContactsTable({ contacts, orderBy, orderDir, onSort }: Props) {
           <TableRow key={c.id} className="cursor-pointer">
             <TableCell className="font-medium">
               <Link href={`/app/contacts/${c.id}`} className="hover:underline">
-                {displayName(c, t)}
+                {displayName(c)}
               </Link>
             </TableCell>
             <TableCell className="text-muted-foreground">
               {c.email ?? "—"}
             </TableCell>
             <TableCell className="text-muted-foreground">
-              {c.phone_number ?? "—"}
+              {c.phone_number ? phoneForDisplay(c.phone_number) : "—"}
             </TableCell>
             <TableCell>
               <div className="flex flex-wrap gap-1">
                 {c.tags.length === 0
                   ? <span className="text-muted-foreground text-xs">—</span>
-                  : c.tags.map((tag) => (
-                      <Badge key={tag} variant="neutral">{tag}</Badge>
+                  : c.tags.map((t) => (
+                      <Badge key={t} variant="neutral">{t}</Badge>
                     ))}
               </div>
             </TableCell>
@@ -154,36 +210,80 @@ export function ContactsTable({ contacts, orderBy, orderDir, onSort }: Props) {
             </TableCell>
             <TableCell>
               <div className="flex flex-wrap gap-1">
-                {c.is_anonymized && <Badge variant="destructive">{t("Anonimizado")}</Badge>}
-                {c.is_blocked && <Badge variant="warning">{t("Bloqueado")}</Badge>}
+                {c.is_anonymized && <Badge variant="destructive">Anonimizado</Badge>}
+                {c.is_blocked && <Badge variant="warning">Bloqueado</Badge>}
                 {!c.is_anonymized && !c.is_blocked && (
-                  <Badge variant="success">{t("Ativo")}</Badge>
+                  <Badge variant="success">Ativo</Badge>
                 )}
               </div>
             </TableCell>
             <TableCell>
-              {c.conversa ? (
-                <Button variant="ghost" size="icon" className="h-8 w-8" asChild>
-                  <Link
-                    href={`/app/inbox?id=${c.conversa.id}`}
-                    title={t("Abrir conversa no Inbox")}
-                    aria-label={`${t("Abrir conversa com")} ${displayName(c, t)} ${t("no Inbox")}`}
+              <div className="flex items-center justify-end gap-0.5">
+                {c.conversa ? (
+                  <Button variant="ghost" size="icon" className="h-8 w-8" asChild>
+                    <Link
+                      href={`/app/inbox?id=${c.conversa.id}`}
+                      title="Abrir conversa no Inbox"
+                      aria-label={`Abrir conversa com ${displayName(c)} no Inbox`}
+                    >
+                      <ChatCircle size={16} weight="regular" aria-hidden />
+                      {c.conversa.unread > 0 && (
+                        <span className="sr-only">{c.conversa.unread} sem ler</span>
+                      )}
+                    </Link>
+                  </Button>
+                ) : c.phone_number ? (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8"
+                    title="Iniciar conversa no Inbox"
+                    aria-label={`Iniciar conversa com ${displayName(c)} no Inbox`}
+                    disabled={abrindo === c.id}
+                    onClick={() => void iniciarConversa(c)}
                   >
                     <ChatCircle size={16} weight="regular" aria-hidden />
-                    {c.conversa.unread > 0 && (
-                      <span className="sr-only">{c.conversa.unread} {t("sem ler")}</span>
-                    )}
-                  </Link>
+                  </Button>
+                ) : null}
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 text-muted-foreground hover:text-error-fg"
+                  title="Excluir contato"
+                  aria-label={`Excluir contato ${displayName(c)}`}
+                  onClick={() => setAlvo(c)}
+                >
+                  <Trash size={16} weight="regular" aria-hidden />
                 </Button>
-              ) : (
-                <span className="text-muted-foreground text-xs" aria-hidden>
-                  —
-                </span>
-              )}
+              </div>
             </TableCell>
           </TableRow>
         ))}
       </TableBody>
     </Table>
+
+    <AlertDialog open={alvo !== null} onOpenChange={(open) => { if (!open) setAlvo(null); }}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Excluir contato?</AlertDialogTitle>
+          <AlertDialogDescription>
+            {alvo
+              ? `Isso remove ${displayName(alvo)} e a conversa associada, se houver. Esta ação não pode ser desfeita.`
+              : null}
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={del.isPending}>Cancelar</AlertDialogCancel>
+          <Button
+            variant="destructive"
+            onClick={() => void confirmarExclusao()}
+            disabled={del.isPending}
+          >
+            {del.isPending ? "Excluindo…" : "Excluir"}
+          </Button>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+    </>
   );
 }

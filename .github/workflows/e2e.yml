@@ -149,6 +149,7 @@ jobs:
         followup-linguagem.spec.ts followup-ramos.spec.ts
         wizard-do-funcionario.spec.ts mfa-opcional.spec.ts inbox-responder-citando.spec.ts
         agenda-tela-do-produto.spec.ts
+        notificacoes-diz-o-que-falta.spec.ts
       # ⚠️ A ORDEM DESTA LISTA NÃO DECIDE A ORDEM DE EXECUÇÃO. O Playwright
       # ordena os arquivos por CAMINHO, não pela ordem em que são passados na
       # linha de comando. Medido no run 31838253496: `marca-logo.spec.ts` estava
@@ -216,9 +217,12 @@ jobs:
         historico-de-captacao.spec.ts
         automacao-diz-a-verdade.spec.ts
         inbox-quem-manda.spec.ts
+        acervo-de-conhecimento.spec.ts
         agenda-kit-visual.spec.ts
         agenda-conectar-google.spec.ts
         i18n-espanhol-na-tela.spec.ts
+        agenda-escopo-da-organizacao.spec.ts
+        agenda-caminho-ate-os-horarios.spec.ts
       # Cada item aqui tem o motivo MEDIDO, não presumido — e o gate cobra que a
       # lista exista e some com as outras duas.
       #

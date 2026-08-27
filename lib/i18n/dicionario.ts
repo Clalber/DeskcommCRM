@@ -64,6 +64,7 @@ export const DICIONARIO: Traducoes = {
   Funis: { es: "Embudos" },
   "Etapas do funil": { es: "Etapas del embudo" },
   "Tipos de agendamento": { es: "Tipos de cita" },
+  Automação: { es: "Automatización" },
   Agentes: { es: "Agentes" },
   "Follow-ups": { es: "Seguimientos" },
   Roteadores: { es: "Enrutadores" },
@@ -4589,7 +4590,6 @@ export const DICIONARIO: Traducoes = {
   "Pausou o automático": { es: "Pausó el automático" },
   "Atividade registrada": { es: "Actividad registrada" },
   "Você/time": { es: "Tú/equipo" },
-  "Automação": { es: "Automatización" },
   "Sistema": { es: "Sistema" },
   "Autor não registrado": { es: "Autor no registrado" },
 

@@ -51,7 +51,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   if (!autorizado.ok) return autorizado.response;
   const { user, org } = autorizado;
 
-  const app = configuracaoDoGoogle();
+  const app = await configuracaoDoGoogle();
   if (!app) {
     // Não audita: não houve tentativa de conectar nada, e encher o audit log de
     // "a instalação não tem chave" é ruído numa tabela que se paga por linha.

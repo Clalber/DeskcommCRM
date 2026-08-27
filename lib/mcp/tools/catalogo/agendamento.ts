@@ -122,8 +122,8 @@
  * ⚠️ PACOTE: `vender`, e a razão é ARITMÉTICA antes de ser semântica.
  *
  * `atender` seria a primeira escolha — marcar consulta é o desfecho de um
- * atendimento. Mas ele está com 18 capacidades num teto de 20 POR AGENTE
- * (`lib/mcp/tools/pacotes.ts:10`), e a família de agenda são CINCO: consultar,
+ * atendimento. Mas ele já está com 18 capacidades, quase todo o teto POR AGENTE
+ * (`TETO_TOOLS_POR_AGENTE`), e a família de agenda são CINCO: consultar,
  * listar, marcar, remarcar e desmarcar. Em `atender` cabe UMA — e uma família
  * partida entre dois pacotes é pior que ela inteira no pacote vizinho, porque o
  * dono liga "Atender" e ganha metade da agenda sem saber qual metade.

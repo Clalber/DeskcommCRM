@@ -2,7 +2,6 @@
 import { useEffect, useMemo } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
-import { useT } from "@/hooks/i18n/useT";
 import {
   Dialog,
   DialogContent,
@@ -44,6 +43,8 @@ interface Props {
   stages: Stage[];
   /** Vincula o lead criado a este contato de origem (ex.: painel do Inbox). */
   contactId?: string | null;
+  /** Depois do INSERT — o inbox relê o resumo para o lead novo aparecer no formulário. */
+  onCreated?: () => void;
 }
 
 function defaultStageId(stages: Stage[]): string {
@@ -51,8 +52,14 @@ function defaultStageId(stages: Stage[]): string {
   return open?.id ?? stages[0]?.id ?? "";
 }
 
-export function NewLeadDialog({ open, onOpenChange, pipelineId, stages, contactId }: Props) {
-  const t = useT();
+export function NewLeadDialog({
+  open,
+  onOpenChange,
+  pipelineId,
+  stages,
+  contactId,
+  onCreated,
+}: Props) {
   const create = useCreateLead(pipelineId);
   const initialStage = useMemo(() => defaultStageId(stages), [stages]);
 
@@ -85,7 +92,7 @@ export function NewLeadDialog({ open, onOpenChange, pipelineId, stages, contactI
     if (reais.length > 0) {
       valueCents = parseReaisToCents(reais);
       if (valueCents === null) {
-        form.setError("valueReais", { message: t("Valor inválido") });
+        form.setError("valueReais", { message: "Valor inválido" });
         return;
       }
     }
@@ -106,13 +113,14 @@ export function NewLeadDialog({ open, onOpenChange, pipelineId, stages, contactI
     const parsed = createLeadSchema.safeParse(payload);
     if (!parsed.success) {
       const first = parsed.error.issues[0];
-      toast.error(first?.message ?? t("Dados inválidos"));
+      toast.error(first?.message ?? "Dados inválidos");
       return;
     }
 
     try {
       await create.mutateAsync(parsed.data as CreateLeadInput);
-      toast.success(t("Lead criado"));
+      toast.success("Lead criado");
+      onCreated?.();
       form.reset({
         title: "",
         description: "",
@@ -133,39 +141,39 @@ export function NewLeadDialog({ open, onOpenChange, pipelineId, stages, contactI
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>{t("Novo Lead")}</DialogTitle>
+          <DialogTitle>Novo Lead</DialogTitle>
           <DialogDescription>
-            {t("Crie um lead manualmente neste pipeline.")}
+            Crie um lead manualmente neste pipeline.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="title">{t("Título")}</Label>
+            <Label htmlFor="title">Título</Label>
             <Input
               id="title"
-              placeholder={t("Ex: Pedido Maria — combo presente")}
+              placeholder="Ex: Pedido Maria — combo presente"
               {...form.register("title", { required: true, minLength: 2 })}
             />
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="description">{t("Descrição")}</Label>
+            <Label htmlFor="description">Descrição</Label>
             <Textarea
               id="description"
               rows={3}
-              placeholder={t("Contexto, observações, links…")}
+              placeholder="Contexto, observações, links…"
               {...form.register("description")}
             />
           </div>
 
           <div className="space-y-2">
-            <Label>{t("Etapa")}</Label>
+            <Label>Etapa</Label>
             <Select
               value={stageId}
               onValueChange={(v) => form.setValue("stage_id", v)}
             >
               <SelectTrigger>
-                <SelectValue placeholder={t("Selecione a etapa")} />
+                <SelectValue placeholder="Selecione a etapa" />
               </SelectTrigger>
               <SelectContent>
                 {stages
@@ -181,7 +189,7 @@ export function NewLeadDialog({ open, onOpenChange, pipelineId, stages, contactI
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-2">
-              <Label htmlFor="valueReais">{t("Valor (R$)")}</Label>
+              <Label htmlFor="valueReais">Valor (R$)</Label>
               <Input
                 id="valueReais"
                 inputMode="decimal"
@@ -196,7 +204,7 @@ export function NewLeadDialog({ open, onOpenChange, pipelineId, stages, contactI
               )}
             </div>
             <div className="space-y-2">
-              <Label htmlFor="expected_close_date">{t("Fechamento previsto")}</Label>
+              <Label htmlFor="expected_close_date">Fechamento previsto</Label>
               <Input
                 id="expected_close_date"
                 type="date"
@@ -206,7 +214,7 @@ export function NewLeadDialog({ open, onOpenChange, pipelineId, stages, contactI
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="tagsRaw">{t("Tags (separadas por vírgula)")}</Label>
+            <Label htmlFor="tagsRaw">Tags (separadas por vírgula)</Label>
             <Input
               id="tagsRaw"
               placeholder="vip, recompra"
@@ -221,10 +229,10 @@ export function NewLeadDialog({ open, onOpenChange, pipelineId, stages, contactI
               onClick={() => onOpenChange(false)}
               disabled={create.isPending}
             >
-              {t("Cancelar")}
+              Cancelar
             </Button>
             <Button type="submit" disabled={create.isPending || !stageId}>
-              {create.isPending ? t("Criando…") : t("Criar lead")}
+              {create.isPending ? "Criando…" : "Criar lead"}
             </Button>
           </DialogFooter>
         </form>
