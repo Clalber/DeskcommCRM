@@ -572,11 +572,11 @@ export function CRMSidePanel({ conversation }: Props) {
                     )}
                     aria-hidden
                   />
-                  {activityLabel(a.type)}
+                  {t(activityLabel(a.type))}
                 </div>
                 {a.reason && <div className="mt-0.5 truncate text-muted-foreground">{a.reason}</div>}
                 <div className="text-muted-foreground">
-                  {a.performed_by_name ?? actorLabel(a.actor_kind)} · {shortDate(a.performed_at)}
+                  {a.performed_by_name ?? t(actorLabel(a.actor_kind))} · {shortDate(a.performed_at)}
                 </div>
               </li>
             ))}

@@ -64,8 +64,11 @@ export function ehIdentificadorTecnico(valor: string): boolean {
  * o atendente copia para ligar ou buscar. Embelezá-lo aqui mudaria um rótulo
  * visível sem que ninguém tenha pedido.
  */
-export function rotuloDoContato(c: ContatoNomeavel | null | undefined): string {
-  if (!c) return SEM_NOME;
+export function rotuloDoContato(
+  c: ContatoNomeavel | null | undefined,
+  t: (texto: string) => string = (texto) => texto,
+): string {
+  if (!c) return t(SEM_NOME);
 
   const candidatos = [c.display_name, c.name];
   for (const bruto of candidatos) {
@@ -79,5 +82,5 @@ export function rotuloDoContato(c: ContatoNomeavel | null | undefined): string {
   // muito melhor que "Sem nome".
   if (tel !== "") return tel;
 
-  return SEM_NOME;
+  return t(SEM_NOME);
 }

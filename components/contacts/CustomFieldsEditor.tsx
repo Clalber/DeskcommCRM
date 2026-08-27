@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
+import { useT } from "@/hooks/i18n/useT";
 
 export type CustomFieldType =
   | "text"
@@ -48,6 +49,7 @@ interface Props {
 }
 
 export function CustomFieldsEditor({ fields, value, onChange, disabled }: Props) {
+  const t = useT();
   function set(key: string, v: unknown) {
     onChange({ ...value, [key]: v });
   }
@@ -116,7 +118,7 @@ export function CustomFieldsEditor({ fields, value, onChange, disabled }: Props)
                   disabled={disabled}
                 >
                   <SelectTrigger id={id}>
-                    <SelectValue placeholder="Selecione…" />
+                    <SelectValue placeholder={t("Selecione…")} />
                   </SelectTrigger>
                   <SelectContent>
                     {f.options?.map((o) => (
@@ -194,7 +196,7 @@ export function CustomFieldsEditor({ fields, value, onChange, disabled }: Props)
                   onChange={(e) => set(f.key, e.target.value)}
                   disabled={disabled}
                 />
-                <p className="text-xs text-muted-foreground">Formato E.164</p>
+                <p className="text-xs text-muted-foreground">{t("Formato E.164")}</p>
               </div>
             );
           case "url":

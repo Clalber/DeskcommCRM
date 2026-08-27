@@ -2,6 +2,7 @@
 import Link from "next/link";
 import { format, formatRelative, isToday, isYesterday } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { useT } from "@/hooks/i18n/useT";
 import { CaretDown, CaretUp, ChatCircle } from "@/lib/ui/icons";
 import {
   Table,
@@ -24,8 +25,8 @@ interface Props {
   onSort: (column: ContactOrderBy) => void;
 }
 
-function displayName(c: Contact): string {
-  return rotuloDoContato(c);
+function displayName(c: Contact, t: (texto: string) => string = (texto) => texto): string {
+  return rotuloDoContato(c, t);
 }
 
 /** Hoje/ontem: relativo ("há 2 horas", "ontem"). Mais antigo: data, não dia da semana. */
@@ -83,12 +84,13 @@ function SortableHead({
 }
 
 export function ContactsTable({ contacts, orderBy, orderDir, onSort }: Props) {
+  const t = useT();
   return (
     <Table>
       <TableHeader>
         <TableRow>
           <SortableHead
-            label="Nome"
+            label={t("Nome")}
             column="display_name"
             orderBy={orderBy}
             orderDir={orderDir}
@@ -102,7 +104,7 @@ export function ContactsTable({ contacts, orderBy, orderDir, onSort }: Props) {
             onSort={onSort}
           />
           <SortableHead
-            label="Telefone"
+            label={t("Telefone")}
             column="phone_number"
             orderBy={orderBy}
             orderDir={orderDir}
@@ -110,7 +112,7 @@ export function ContactsTable({ contacts, orderBy, orderDir, onSort }: Props) {
           />
           <TableHead>Tags</TableHead>
           <SortableHead
-            label="Última atividade"
+            label={t("Última atividade")}
             column="last_activity_at"
             orderBy={orderBy}
             orderDir={orderDir}
@@ -118,7 +120,7 @@ export function ContactsTable({ contacts, orderBy, orderDir, onSort }: Props) {
           />
           <TableHead>Status</TableHead>
           <TableHead className="w-[52px]">
-            <span className="sr-only">Conversa</span>
+            <span className="sr-only">{t("Conversa")}</span>
           </TableHead>
         </TableRow>
       </TableHeader>
@@ -127,7 +129,7 @@ export function ContactsTable({ contacts, orderBy, orderDir, onSort }: Props) {
           <TableRow key={c.id} className="cursor-pointer">
             <TableCell className="font-medium">
               <Link href={`/app/contacts/${c.id}`} className="hover:underline">
-                {displayName(c)}
+                {displayName(c, t)}
               </Link>
             </TableCell>
             <TableCell className="text-muted-foreground">
@@ -140,8 +142,8 @@ export function ContactsTable({ contacts, orderBy, orderDir, onSort }: Props) {
               <div className="flex flex-wrap gap-1">
                 {c.tags.length === 0
                   ? <span className="text-muted-foreground text-xs">—</span>
-                  : c.tags.map((t) => (
-                      <Badge key={t} variant="neutral">{t}</Badge>
+                  : c.tags.map((tag) => (
+                      <Badge key={tag} variant="neutral">{tag}</Badge>
                     ))}
               </div>
             </TableCell>
@@ -152,10 +154,10 @@ export function ContactsTable({ contacts, orderBy, orderDir, onSort }: Props) {
             </TableCell>
             <TableCell>
               <div className="flex flex-wrap gap-1">
-                {c.is_anonymized && <Badge variant="destructive">Anonimizado</Badge>}
-                {c.is_blocked && <Badge variant="warning">Bloqueado</Badge>}
+                {c.is_anonymized && <Badge variant="destructive">{t("Anonimizado")}</Badge>}
+                {c.is_blocked && <Badge variant="warning">{t("Bloqueado")}</Badge>}
                 {!c.is_anonymized && !c.is_blocked && (
-                  <Badge variant="success">Ativo</Badge>
+                  <Badge variant="success">{t("Ativo")}</Badge>
                 )}
               </div>
             </TableCell>
@@ -164,12 +166,12 @@ export function ContactsTable({ contacts, orderBy, orderDir, onSort }: Props) {
                 <Button variant="ghost" size="icon" className="h-8 w-8" asChild>
                   <Link
                     href={`/app/inbox?id=${c.conversa.id}`}
-                    title="Abrir conversa no Inbox"
-                    aria-label={`Abrir conversa com ${displayName(c)} no Inbox`}
+                    title={t("Abrir conversa no Inbox")}
+                    aria-label={`${t("Abrir conversa com")} ${displayName(c, t)} ${t("no Inbox")}`}
                   >
                     <ChatCircle size={16} weight="regular" aria-hidden />
                     {c.conversa.unread > 0 && (
-                      <span className="sr-only">{c.conversa.unread} sem ler</span>
+                      <span className="sr-only">{c.conversa.unread} {t("sem ler")}</span>
                     )}
                   </Link>
                 </Button>
