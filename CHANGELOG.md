@@ -12,16 +12,6 @@ Se você roda o DeskcommCRM numa VPS, **leia a seção da versão para a qual es
 
 ### Adicionado
 
-- **Alertas do sistema com a aba fechada (Web Push).** Com o botão Alertas ligado, o
-  navegador pede permissão e mostra a bandeja nativa (outra aba ou janela minimizada).
-  Se o operador configurar o par VAPID (`VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` no
-  `.env`, `npx web-push generate-vapid-keys`), a notificação chega mesmo depois de
-  fechar a aba. Sem o par, o comportamento antigo permanece: só com o site aberto.
-
-- **O agente de atualização passa a fixar sozinho a versão que ficou solta**, em até 5
-  minutos, sem você fazer nada — ele grava a versão que já está rodando. O que ele **nunca**
-  faz é mexer numa configuração que você escreveu à mão: se você escolheu acompanhar um canal
-  de propósito, ele respeita e só avisa.
 - **Formulários do Respondi entram como lead, com as respostas na ficha.** Antes, quem ligava
   um formulário do Respondi ao CRM recebia um erro e **nenhum lead era criado** — o webhook
   chegava com as respostas dentro de uma estrutura que o CRM não sabia ler, e a captação era

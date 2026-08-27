@@ -77,6 +77,15 @@ const ESCRITORES: Record<string, { agenda: "agora" | "futuro" | "nenhum"; nota: 
       "menção é `next_eval_at: null` no cancelamento por caso fechado — desagendar não é agendar, " +
       "e `null` não tem relógio para escolher errado.",
   },
+  "aplicar-inbound.ts": {
+    agenda: "nenhum",
+    nota:
+      "NÃO escreve: a única menção é `.lte('next_eval_at', agora)`, um FILTRO para pegar os " +
+      "enrollments já vencidos. O `agora` é o relógio do processo, e aqui isso é aceitável de " +
+      "propósito — num filtro, relógio adiantado pega um enrollment alguns segundos cedo e " +
+      "atrasado o deixa para o tique seguinte; nenhum dos dois grava data errada, que é o que " +
+      "a 0147 existe para impedir.",
+  },
   "reactivity.ts": {
     agenda: "agora",
     nota: "'acorde agora' quando o lead responde. É UPDATE, então default não alcança: usa fn_agora().",

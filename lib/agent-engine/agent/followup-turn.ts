@@ -24,6 +24,8 @@ import { getLeadContext, type LeadContext } from '../edge/crm/get-lead-context';
 import { WahaChannelAdapter } from '../edge/channel/waha-adapter';
 import { applySendOutcome } from '../edge/crm/send-message';
 import { runBeforeSend } from '../guardrails/before-send';
+import { camadaLigada, lerCamadasDaOrg } from '../guardrails/camadas-da-org';
+import { classifyPromise } from '../guardrails/promise/semantic';
 import { scheduleCronJob } from '../cron/scheduler';
 import {
   JobSettledError,
@@ -425,7 +427,8 @@ async function runFlowDrivenTurn(
   if (input.purpose === 'send_message') {
     const body = await resolveFlowSendBody(pool, target.tenantId, input);
     if (body !== null) {
-      const sent = await sendFixedOutbound(deps, job, pool, ctx, clock, target, body);
+      // Texto do operador: sem camada semântica (ver o cabeçalho de sendFixedOutbound).
+      const sent = await sendFixedOutbound(deps, job, pool, ctx, clock, target, body, false);
       if (sent) {
         await complete(pool, { organizationId: target.tenantId, enrollmentId, nodeId, result: { kind: 'sent' } });
       }
@@ -522,7 +525,17 @@ async function runDeterministicReentry(
   if (template === null) {
     throw new Error('re-entrada determinística sem template apontado para o tenant — publique um template e mova o ponteiro');
   }
-  await sendFixedOutbound(deps, job, pool, ctx, clock, target, pickReentryVariant(target.leadId, template.variants));
+  // Re-entrada por template: honra a camada da organização, como na main.
+  await sendFixedOutbound(
+    deps,
+    job,
+    pool,
+    ctx,
+    clock,
+    target,
+    pickReentryVariant(target.leadId, template.variants),
+    true,
+  );
 }
 
 function interpolarVoltaDoPayload(texto: string, index: number | undefined, total: number | undefined): string {
@@ -555,10 +568,33 @@ async function resolveFlowSendBody(
   return interpolarVoltaDoPayload(body, input.voltaIndex, input.voltaTotal);
 }
 
-/** Envia `body` pela cadeia de guardrails, sem LLM. `true` = o sink aceitou.
- *  Texto do fluxo (`action.mode=text`) é do operador — não passa pela
- *  classificação semântica de promessa (que exige LLM e barrava o 1º outbound
- *  de captação sem BYOK). STOP / anti-ban / spinning continuam na cadeia. */
+/**
+ * Envia `body` pela cadeia de guardrails, sem LLM. `true` = o sink aceitou.
+ *
+ * ─── Por que a camada semântica é PARÂMETRO, e não uma decisão só ───────────
+ *
+ * Esta função tem dois chamadores, e eles NÃO querem a mesma coisa:
+ *
+ *  - **texto do fluxo** (`action.mode=text`, `runFlowDrivenTurn`) — é do
+ *    operador, e a classificação semântica de promessa exige LLM: ligá-la ali
+ *    barrava o 1º outbound de captação de quem não tem BYOK. Passa `false`, e
+ *    essa é a decisão original deste PR, mantida com a razão que ela já tinha.
+ *
+ *  - **re-entrada determinística por TEMPLATE** (`runDeterministicReentry`) —
+ *    na `main` ela SEMPRE passou pela camada quando a organização a liga
+ *    (`camadaLigada(camadasDaOrg.promessa_semantica, …)`), pelo motivo escrito
+ *    lá: "a re-entrada determinística passa pela MESMA cadeia, então tem de
+ *    honrar a MESMA preferência. Ler só no inbound deixaria a camada ligada num
+ *    caminho e desligada no outro, para a mesma organização."
+ *
+ * Ao unificar os dois chamadores numa função só, a razão do primeiro passou a
+ * valer para o segundo em silêncio — e a escolha que a organização faz na tela
+ * virava dado gravado e ignorado pelo motor. `tests/unit/camada-lida-no-motor.test.ts`
+ * existe exatamente para isso, e o cabeçalho dele conta que uma sabotagem desta
+ * linha deixou 13 testes verdes.
+ *
+ * STOP / anti-ban / spinning / LGPD continuam na cadeia nos DOIS casos.
+ */
 async function sendFixedOutbound(
   deps: InboundTurnDeps,
   job: JobRow,
@@ -567,6 +603,8 @@ async function sendFixedOutbound(
   clock: () => Date,
   target: ReentrySendTarget,
   body: string,
+  /** `true` só na re-entrada por template — ver o cabeçalho. */
+  comCamadaSemantica: boolean,
 ): Promise<boolean> {
   const { tenantId, leadId, channelSessionId, conversationId } = target;
   const runLog = withFields(deps.log, { job_id: job.id, tenant_id: tenantId, lead_id: leadId });
@@ -587,6 +625,15 @@ async function sendFixedOutbound(
 
   const channel = (deps.channel ?? ((p: pg.Pool) => new WahaChannelAdapter(p, deps.crmCfg)))(pool);
 
+  // A escolha da ORGANIZAÇÃO, e não só o knob do `.env` do worker. Lida aqui, e
+  // não no chamador, para que o único caminho até `runBeforeSend` seja também o
+  // único lugar onde a preferência é consultada. Consulta só quando vale —
+  // texto de fluxo não usa, e não deve pagar um round-trip por isso.
+  const camadasDaOrg = comCamadaSemantica ? await lerCamadasDaOrg(pool, tenantId) : null;
+  const camadaSemanticaLigada =
+    camadasDaOrg !== null &&
+    camadaLigada(camadasDaOrg.promessa_semantica, deps.knobs.promiseSemantic?.enabled === true);
+
   const chain = await runBeforeSend({
     pool,
     log: runLog,
@@ -601,6 +648,18 @@ async function sendFixedOutbound(
     sleep: deps.sleep,
     lgpd: context.lgpd,
     ...(deps.knobs.disclosureMode !== undefined ? { disclosureMode: deps.knobs.disclosureMode } : {}),
+    ...(camadaSemanticaLigada
+      ? {
+          classifyPromiseSemantic: (candidate: string) =>
+            classifyPromise(
+              pool,
+              deps.llmCfg,
+              { tenantId, leadId, jobId: job.id },
+              { candidate, ...(deps.knobs.promiseSemantic?.model !== undefined ? { model: deps.knobs.promiseSemantic.model } : {}) },
+              { ...(deps.registry !== undefined ? { registry: deps.registry } : {}), log: runLog },
+            ),
+        }
+      : {}),
     send: (finalBody) => channel.send({ tenantId, leadId, jobId: job.id, seq: 1, conversationId, body: finalBody }),
   });
 

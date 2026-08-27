@@ -5,6 +5,7 @@ import { montarPayloadDeInbound, truncar } from "./push_payload";
 import { enviarPushAoUsuario, enviarPushDaOrg } from "./web_push";
 import { vapidPronto } from "./vapid";
 import type { PushPayload } from "./push_payload";
+import { rotuloDoContato, SEM_NOME } from "@/lib/contacts/rotulo-do-contato";
 
 export const WEB_PUSH_INBOUND_KEY = "web-push-inbound.v1";
 
@@ -24,17 +25,30 @@ async function handleInbound(row: EventRow): Promise<HandlerResult> {
     const admin = createAdminClient();
     const { data } = await admin
       .from("contacts")
-      .select("display_name, name, avatar_storage_path, is_anonymized")
+      .select("display_name, name, phone_number, avatar_storage_path, is_anonymized")
       .eq("id", contactId)
       .eq("organization_id", row.organization_id)
       .maybeSingle();
     const c = data as {
       display_name?: string | null;
       name?: string | null;
+      phone_number?: string | null;
       avatar_storage_path?: string | null;
       is_anonymized?: boolean | null;
     } | null;
-    contactName = (c?.display_name || c?.name || null)?.trim() || null;
+    // A cadeia CANÔNICA, e não a de dois campos remontada aqui: aquela deixava
+    // passar o identificador técnico do WhatsApp — a notificação chegaria à tela
+    // de bloqueio do celular escrita "Contato 543134@lid". `rotuloDoContato`
+    // recusa identificador, cai para o telefone formatado, e só então desiste.
+    //
+    // (A varredura de `rotulo-do-contato.test.ts` lê o arquivo INTEIRO, comentário
+    // incluído — por isso a cadeia proibida não é escrita nem aqui em prosa.)
+    //
+    // `SEM_NOME` volta a `null` de propósito: o payload já tem um desfecho
+    // melhor para "não sei o nome" (`"Nova mensagem"`, em push_payload.ts), e
+    // trocá-lo por "Sem nome" pioraria o título sem ninguém pedir.
+    const rotulo = rotuloDoContato(c);
+    contactName = rotulo === SEM_NOME ? null : rotulo;
     if (c?.avatar_storage_path && !c.is_anonymized) {
       const { data: signed } = await admin.storage
         .from("whatsapp-media")
