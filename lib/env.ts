@@ -281,6 +281,18 @@ const schema = z.object({
   LGPD_EXPORT_EXPIRES_HOURS: z.string().optional().default("72"),
   LGPD_DPO_EMAIL: z.string().optional().default(""),
 
+  // Google Agenda — opcional, e é a DECISÃO 3.1 em forma de schema. Sem as
+  // duas, o módulo de agenda funciona INTEIRO: some o botão "Conectar Google" e
+  // a tela explica em uma linha o que falta e onde obter. É o estado real de um
+  // primeiro deploy, e é onde moram os piores bugs de primeira impressão.
+  //
+  // NÃO há flag de "enabled" de propósito. Estar configurado É ter as duas
+  // chaves; uma flag seria um terceiro estado para o operador errar — e
+  // `z.enum` sobre valor que ele digita transforma a alavanca em derrubador do
+  // app inteiro no dia em que alguém escrever `TRUE`.
+  GOOGLE_CALENDAR_CLIENT_ID: z.string().optional().default(""),
+  GOOGLE_CALENDAR_CLIENT_SECRET: z.string().optional().default(""),
+
   // Nuvemshop — opcional (template genérico open-source). Só exigidas quando
   // NUVEMSHOP_ENABLED=true; o runtime já degrada via getConfig()==null.
   NUVEMSHOP_APP_ID: z.string().optional().default(""),
