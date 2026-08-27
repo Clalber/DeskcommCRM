@@ -94,6 +94,17 @@ export default async function AgendaPage() {
       .order("starts_at"),
   ]);
 
+  // QUAL conta está conectada — o prop existia no cartão e NUNCA era passado,
+  // então o ramo "Agenda conectada" era código morto e o botão "Conectar Google"
+  // não sumia depois de conectar. Segunda conexão era um clique no mesmo botão.
+  const { data: conexao } = await supabase
+    .from("calendar_connections")
+    .select("account_email, status")
+    .eq("user_id", user.id)
+    .eq("provider", "google")
+    .neq("status", "disconnected")
+    .maybeSingle();
+
   const googleConfigurado = googleEstaConfigurado();
   const faltaNoGoogle = googleConfigurado ? [] : faltaParaConectarOGoogle();
 
@@ -101,6 +112,7 @@ export default async function AgendaPage() {
     <AgendaClient
       fusoDeApresentacao={fusoDeApresentacao}
       googleConfigurado={googleConfigurado}
+      contaConectada={conexao?.account_email ?? null}
       faltaNoGoogle={faltaNoGoogle}
       tiposIniciais={(tipos ?? []).map((t) => ({
         id: t.id,

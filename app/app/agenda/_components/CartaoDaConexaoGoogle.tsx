@@ -1,6 +1,9 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
+import * as React from "react";
+import { useRouter } from "next/navigation";
+
 import { GoogleLogo } from "@/lib/ui/icons";
 
 /**
@@ -30,6 +33,9 @@ export function CartaoDaConexaoGoogle({
   falta: string[];
   contaConectada?: string | null;
 }) {
+  const router = useRouter();
+  const [desconectando, setDesconectando] = React.useState(false);
+
   if (!configurado) {
     return (
       <div
@@ -67,6 +73,26 @@ export function CartaoDaConexaoGoogle({
           <span className="text-text-muted">Agenda conectada: </span>
           <span className="font-medium">{contaConectada}</span>
         </p>
+        <Button
+          variant="outline"
+          size="sm"
+          data-testid="desconectar-google"
+          disabled={desconectando}
+          onClick={() => {
+            setDesconectando(true);
+            void fetch("/api/v1/agenda/google/desconectar", { method: "DELETE" })
+              .then(async (r) => {
+                if (!r.ok) throw new Error(await r.text());
+                // `refresh` e não estado local: quem sabe se a conexão saiu é o
+                // servidor. Trocar o cartão no cliente repetiria o "Marcado ✓"
+                // que esta mesma entrega acabou de pagar.
+                router.refresh();
+              })
+              .catch(() => setDesconectando(false));
+          }}
+        >
+          {desconectando ? "Desconectando…" : "Desconectar"}
+        </Button>
       </div>
     );
   }

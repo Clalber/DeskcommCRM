@@ -56,12 +56,14 @@ const VISOES: Array<{ id: VisaoDaAgenda; rotulo: string }> = [
 export function AgendaClient({
   fusoDeApresentacao,
   googleConfigurado,
+  contaConectada,
   faltaNoGoogle,
   tiposIniciais,
   agendamentosIniciais,
 }: {
   fusoDeApresentacao: string | null;
   googleConfigurado: boolean;
+  contaConectada?: string | null;
   faltaNoGoogle: string[];
   /** Tipos ativos, resolvidos no servidor: não há rota que os liste ainda. */
   tiposIniciais: Array<{ id: string; nome: string; duracaoMin: number; donoId: string | null }>;
@@ -195,7 +197,11 @@ export function AgendaClient({
         <AvisoDaConexaoGoogle />
       </React.Suspense>
 
-      <CartaoDaConexaoGoogle configurado={googleConfigurado} falta={faltaNoGoogle} />
+      <CartaoDaConexaoGoogle
+        configurado={googleConfigurado}
+        falta={faltaNoGoogle}
+        contaConectada={contaConectada}
+      />
 
       <header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
         <div className="min-w-0">
