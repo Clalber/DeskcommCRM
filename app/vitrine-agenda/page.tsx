@@ -17,7 +17,10 @@ import { VitrineDaAgenda } from "./_client";
  * do cliente seria exatamente o tipo de tela que não deveria estar lá.
  */
 export const metadata: Metadata = {
-  title: "Kit visual da Agenda — DeskcommCRM",
+  // Sem o nome do produto: a catraca de marca só encolhe (`tests/unit/branding.test.ts`),
+  // e ela está certa — um revendedor que instala com a marca dele teria o NOSSO
+  // nome numa página do produto DELE. Fui eu quem escreveu; a página é minha.
+  title: "Kit visual da Agenda",
   robots: { index: false, follow: false },
 };
 

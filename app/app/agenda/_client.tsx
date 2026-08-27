@@ -9,9 +9,15 @@ import { CartaoDaConexaoGoogle } from "./_components/CartaoDaConexaoGoogle";
 
 import { FiltroDePessoas } from "@/components/agenda/FiltroDePessoas";
 import { GradeDaAgenda } from "@/components/agenda/GradeDaAgenda";
-import type { Agendamento, Pessoa, VisaoDaAgenda } from "@/components/agenda/tipos";
+import { HistoricoDaAgenda } from "@/components/agenda/HistoricoDaAgenda";
+import type { Agendamento, VisaoDaAgenda } from "@/components/agenda/tipos";
 import { EmptyAgenda } from "@/components/empty";
 import { Button } from "@/components/ui/button";
+import { PainelDeMarcacao } from "@/components/agenda/PainelDeMarcacao";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { useHorariosLivres } from "@/hooks/agenda/useHorariosLivres";
+import { useMarcarAgendamento } from "@/hooks/agenda/useMarcarAgendamento";
+import { usePessoasDaAgenda } from "@/hooks/agenda/usePessoasDaAgenda";
 import { CalendarPlus, CaretLeft, CaretRight } from "@/lib/ui/icons";
 import { cn } from "@/lib/utils";
 
@@ -50,20 +56,58 @@ export function AgendaClient({
   fusoDeApresentacao,
   googleConfigurado,
   faltaNoGoogle,
+  tiposIniciais,
+  agendamentosIniciais,
 }: {
   fusoDeApresentacao: string | null;
   googleConfigurado: boolean;
   faltaNoGoogle: string[];
+  /** Tipos ativos, resolvidos no servidor: não há rota que os liste ainda. */
+  tiposIniciais: Array<{ id: string; nome: string; duracaoMin: number }>;
+  /** A semana corrente, resolvida no servidor: `GET /agendamentos` não existe. */
+  agendamentosIniciais: Agendamento[];
 }) {
+  const [marcando, setMarcando] = React.useState(false);
+  const marcar = useMarcarAgendamento();
+  const tipo = tiposIniciais[0] ?? null;
   const [visao, setVisao] = React.useState<VisaoDaAgenda>("semana");
   const [isolada, setIsolada] = React.useState<string | null>(null);
   const [ancora, setAncora] = React.useState(() => new Date());
 
-  // A frente 1 troca estas duas linhas por um hook em `/api/v1/agenda`. O resto
-  // da tela não muda — é para isso que ela foi desenhada contra os tipos, e não
-  // contra uma fixture.
-  const todos: Agendamento[] = React.useMemo(() => [], []);
-  const pessoas: Pessoa[] = React.useMemo(() => [], []);
+  // AS PESSOAS SÃO REAIS: vêm de `/api/v1/team`, com a trilha de cor derivada do
+  // `user_id`. Até esta linha o filtro por pessoa era invisível na tela do
+  // produto — `FiltroDePessoas` devolve `null` com menos de duas pessoas, e a
+  // lista estava vazia. Ele existia, estava provado na vitrine, e ninguém o via
+  // aqui.
+  const { data: pessoas = [] } = usePessoasDaAgenda();
+
+  // Os horários vêm da rota real — a mesma que a IA usa, então tela e agente
+  // oferecem exatamente os mesmos horários. Só consulta quando o painel abre.
+  const { data: horarios } = useHorariosLivres(
+    marcando && tipo
+      ? {
+          event_type_id: tipo.id,
+          de: new Date().toISOString(),
+          ate: addDays(new Date(), 30).toISOString(),
+        }
+      : null,
+  );
+
+  const horariosPorDia = React.useMemo(() => {
+    const mapa: Record<string, Array<{ instante: string; rotulo: string }>> = {};
+    for (const s of horarios?.slots ?? []) {
+      const d = new Date(s.inicio);
+      const chave = format(d, "yyyy-MM-dd");
+      (mapa[chave] ??= []).push({ instante: s.inicio, rotulo: format(d, "HH:mm") });
+    }
+    return mapa;
+  }, [horarios]);
+
+  // OS AGENDAMENTOS SÃO REAIS, vindos do servidor. `GET /api/v1/agenda/agendamentos`
+  // ainda não existe (a rota tem POST, PATCH e DELETE), então a `page.tsx`
+  // consulta e passa por prop. O que falta até o GET subir é atualizar sem
+  // recarregar — não o dado.
+  const todos: Agendamento[] = agendamentosIniciais;
 
   const agendamentos = React.useMemo(
     () => (isolada === null ? todos : todos.filter((a) => a.responsavelId === isolada)),
@@ -81,7 +125,7 @@ export function AgendaClient({
   return (
     <div
       data-testid="tela-agenda"
-      data-fonte="vazio-ate-a-api"
+      data-fonte={agendamentosIniciais.length > 0 ? "api" : "api-sem-dado"}
       data-fuso={fusoDeApresentacao ?? "organizacao"}
       className="flex h-full flex-col gap-4 p-6"
     >
@@ -119,13 +163,23 @@ export function AgendaClient({
             hover não existe para quem usa toque, que é o dono de clínica no
             celular.
           */}
-          <span
-            data-testid="motivo-novo-agendamento"
-            className="hidden text-xs text-text-subtle sm:inline"
+          {!tipo && (
+            // Sem NENHUM tipo de agendamento cadastrado não há o que marcar — e
+            // isto é diferente de "a API não existe": a ação faz sentido, falta
+            // configuração. Por isso o motivo à vista, e não um botão mudo.
+            <span
+              data-testid="motivo-novo-agendamento"
+              className="hidden text-xs text-text-subtle sm:inline"
+            >
+              Cadastre um tipo de agendamento para começar
+            </span>
+          )}
+          <Button
+            size="sm"
+            disabled={!tipo}
+            title={tipo ? undefined : "Cadastre um tipo de agendamento para começar"}
+            onClick={() => setMarcando(true)}
           >
-            Disponível quando a agenda estiver conectada
-          </span>
-          <Button size="sm" disabled title="Disponível quando a agenda estiver conectada">
             <CalendarPlus size={16} weight="bold" aria-hidden />
             <span>Novo agendamento</span>
           </Button>
@@ -196,6 +250,50 @@ export function AgendaClient({
           </div>
         </div>
       </div>
+
+      {/*
+        O HISTÓRICO na tela do produto, e não só na vitrine. Ele aparece mesmo
+        sem dado: as quatro abas com contador zero respondem "não há nada" sem
+        gastar um clique, e some-lo faria a tela parecer menor do que é.
+      */}
+      <Sheet open={marcando} onOpenChange={setMarcando}>
+        <SheetContent side="right" className="w-full sm:max-w-3xl">
+          <SheetHeader>
+            <SheetTitle>Novo agendamento</SheetTitle>
+          </SheetHeader>
+          {tipo && (
+            <div className="mt-4">
+              <PainelDeMarcacao
+                ancora={new Date()}
+                agora={new Date()}
+                responsavel={pessoas[0] ?? { id: "", nome: "Você", trilha: 1 }}
+                tipo={tipo.nome}
+                duracaoMin={tipo.duracaoMin}
+                horariosPorDia={horariosPorDia}
+                publicouHorarios={horarios?.publicou_horarios ?? true}
+                fusoSuposto={horarios?.fuso_suposto ?? false}
+                fontesDefasadas={horarios?.fontes_defasadas}
+                // ESTE é o fio que faltava. Sem ele o "Marcado ✓" era estado
+                // local do React e nenhuma linha nascia no banco.
+                onConfirmar={(instante) => {
+                  marcar.mutate({
+                    event_type_id: tipo.id,
+                    starts_at: instante,
+                    owner_user_id: pessoas[0]?.id,
+                  });
+                }}
+              />
+            </div>
+          )}
+        </SheetContent>
+      </Sheet>
+
+      <HistoricoDaAgenda
+        agendamentos={agendamentos}
+        pessoas={pessoas}
+        agora={new Date()}
+        className="max-h-[320px]"
+      />
 
       {agendamentos.length === 0 ? (
         <div className="flex min-h-0 flex-1 items-center justify-center rounded-lg border border-border bg-surface">

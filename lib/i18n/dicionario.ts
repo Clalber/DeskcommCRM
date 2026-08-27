@@ -43,6 +43,7 @@ export const DICIONARIO: Traducoes = {
 
   // ─── Navegação (a barra lateral, presente em toda tela) ───
   Inbox: { es: "Inbox" },
+  Agenda: { es: "Agenda" },
   Radar: { es: "Radar" },
   "Respostas rápidas": { es: "Respuestas rápidas" },
   Contatos: { es: "Contactos" },

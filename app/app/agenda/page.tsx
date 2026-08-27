@@ -1,7 +1,9 @@
+import { addDays, startOfWeek } from "date-fns";
 import { redirect } from "next/navigation";
 
 import { faltaParaConectarOGoogle, googleEstaConfigurado } from "@/lib/agenda/google/config";
 import { requireAuth, resolveActiveOrg } from "@/lib/auth/server";
+import { createClient } from "@/lib/supabase/server";
 
 import { AgendaClient } from "./_client";
 
@@ -35,6 +37,45 @@ export default async function AgendaPage() {
   // Resolvido no SERVIDOR: `GOOGLE_CALENDAR_*` é env de servidor e não pode
   // atravessar para o cliente. A tela recebe o booleano e a lista do que falta,
   // nunca o segredo.
+  /**
+   * A SEMENTE vem do servidor, e não de um hook — porque a rota de leitura ainda
+   * não existe.
+   *
+   * `GET /api/v1/agenda/agendamentos` não foi escrito: a rota tem POST, PATCH e
+   * DELETE (medido). Sem ela, um hook no cliente não tem onde bater, e o cookie
+   * `httpOnly` impede o supabase-js do browser de consultar direto.
+   *
+   * O servidor PODE: ele tem a sessão, e a RLS filtra por organização como em
+   * qualquer outra tela. Então a Agenda nasce com dado REAL em vez de vazia — o
+   * que ela perde, até o GET existir, é atualizar sem recarregar.
+   *
+   * Isto NÃO é contorno permanente: quando o GET subir, troca-se esta consulta
+   * por `useQuery` e a tela ganha o realtime. O que muda é a origem; o desenho
+   * fica. E é melhor que esperar: uma tela vazia por falta de rota é
+   * indistinguível, para quem olha, de uma agenda sem compromissos.
+   */
+  const supabase = await createClient();
+
+  // A semana da âncora, que é o que a grade abre por padrão.
+  const inicio = startOfWeek(new Date(), { weekStartsOn: 0 });
+  const fim = addDays(inicio, 7);
+
+  const [{ data: tipos }, { data: linhas }] = await Promise.all([
+    supabase
+      .from("calendar_event_types")
+      .select("id, name, duration_minutes, location_kind, location_details, is_active")
+      .eq("is_active", true)
+      .order("name"),
+    supabase
+      .from("calendar_appointments")
+      .select(
+        "id, title, starts_at, ends_at, status, owner_user_id, contact_id, event_type_id, location_kind",
+      )
+      .gte("starts_at", inicio.toISOString())
+      .lt("starts_at", fim.toISOString())
+      .order("starts_at"),
+  ]);
+
   const googleConfigurado = googleEstaConfigurado();
   const faltaNoGoogle = googleConfigurado ? [] : faltaParaConectarOGoogle();
 
@@ -43,6 +84,20 @@ export default async function AgendaPage() {
       fusoDeApresentacao={fusoDeApresentacao}
       googleConfigurado={googleConfigurado}
       faltaNoGoogle={faltaNoGoogle}
+      tiposIniciais={(tipos ?? []).map((t) => ({
+        id: t.id,
+        nome: t.name,
+        duracaoMin: t.duration_minutes,
+      }))}
+      agendamentosIniciais={(linhas ?? []).map((a) => ({
+        id: a.id,
+        titulo: a.title ?? "Agendamento",
+        responsavelId: a.owner_user_id ?? "",
+        comeca: a.starts_at,
+        termina: a.ends_at,
+        origem: "ui" as const,
+        situacao: a.status as "confirmed",
+      }))}
     />
   );
 }
