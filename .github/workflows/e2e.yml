@@ -198,7 +198,7 @@ jobs:
       # o molde dela, `agente-organiza-operacao`; o comentário antigo dizia PARTE_1 e estava
       # errado sobre o próprio vizinho.
       SPECS_PARTE_2: >-
-        agente-marca-consulta.spec.ts agenda-marcar-pela-tela.spec.ts
+        agente-marca-consulta.spec.ts agenda-marcar-pela-tela.spec.ts agenda-remarcar-e-cancelar.spec.ts
         agente-novo-e-uso.spec.ts agente-organiza-operacao.spec.ts
         central-de-avisos-capacidades.spec.ts escalacao-ciclo.spec.ts
         navegacao.spec.ts olhar-telas-do-epico.spec.ts pipelines-gestao.spec.ts

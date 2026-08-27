@@ -18,6 +18,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { useAgendamentos } from "@/hooks/agenda/useAgendamentos";
 import { useHorariosLivres } from "@/hooks/agenda/useHorariosLivres";
 import { useMarcarAgendamento } from "@/hooks/agenda/useMarcarAgendamento";
+import { useCancelarAgendamento, useRemarcarAgendamento } from "@/hooks/agenda/useRemarcarAgendamento";
 import { usePessoasDaAgenda } from "@/hooks/agenda/usePessoasDaAgenda";
 import { CalendarPlus, CaretLeft, CaretRight } from "@/lib/ui/icons";
 import { cn } from "@/lib/utils";
@@ -73,7 +74,18 @@ export function AgendaClient({
   agendamentosIniciais: Agendamento[];
 }) {
   const [marcando, setMarcando] = React.useState(false);
+  // REMARCAR reusa o painel de marcação: escolher horário novo é o MESMO gesto
+  // de escolher o primeiro, e uma segunda tela para a mesma pergunta seria duas
+  // coisas para manter em sincronia. Quando `remarcandoId` está preenchido, a
+  // confirmação vira PATCH em vez de POST.
+  const [remarcandoId, setRemarcandoId] = React.useState<string | null>(null);
+  // CANCELAR pede motivo, e o motivo é obrigatório na rota. Não é burocracia: é
+  // o que a equipe lê ao ver o horário vago.
+  const [cancelandoId, setCancelandoId] = React.useState<string | null>(null);
+  const [motivo, setMotivo] = React.useState("");
   const marcar = useMarcarAgendamento();
+  const remarcar = useRemarcarAgendamento();
+  const cancelar = useCancelarAgendamento();
   // ⚠️ ERA `tiposIniciais[0] ?? null` — uma constante, sem seletor em lugar
   // nenhum. `page.tsx` ordena os tipos por NOME, então a tela marcava sempre o
   // primeiro em ordem alfabética e não havia como marcar outro: numa org com
@@ -322,10 +334,18 @@ export function AgendaClient({
         sem dado: as quatro abas com contador zero respondem "não há nada" sem
         gastar um clique, e some-lo faria a tela parecer menor do que é.
       */}
-      <Sheet open={marcando} onOpenChange={setMarcando}>
+      <Sheet
+        open={marcando}
+        onOpenChange={(aberto) => {
+          setMarcando(aberto);
+          // Fechar sem confirmar volta ao modo normal — senão o próximo "Novo
+          // agendamento" remarcaria o compromisso anterior em silêncio.
+          if (!aberto) setRemarcandoId(null);
+        }}
+      >
         <SheetContent side="right" className="w-full sm:max-w-3xl">
           <SheetHeader>
-            <SheetTitle>Novo agendamento</SheetTitle>
+            <SheetTitle>{remarcandoId ? "Remarcar agendamento" : "Novo agendamento"}</SheetTitle>
           </SheetHeader>
           {tiposIniciais.length > 1 && (
             <div className="mt-4" data-testid="tipos-de-agendamento">
@@ -385,6 +405,17 @@ export function AgendaClient({
                   //
                   // Omitir é o que faz oferta e marcação resolverem o dono pela
                   // MESMA regra (`_handler.ts:96`), por construção e não por sorte.
+                  // Remarcar é PATCH com o id; marcar é POST. A escolha do
+                  // horário é o mesmo gesto, e por isso o mesmo painel.
+                  if (remarcandoId) {
+                    return remarcar
+                      .mutateAsync({ id: remarcandoId, starts_at: instante })
+                      .then((r) => {
+                        setRemarcandoId(null);
+                        setMarcando(false);
+                        return r;
+                      });
+                  }
                   return marcar.mutateAsync({ event_type_id: tipo.id, starts_at: instante });
                 }}
               />
@@ -393,11 +424,85 @@ export function AgendaClient({
         </SheetContent>
       </Sheet>
 
+      {/* CANCELAR pede motivo, e o motivo é OBRIGATÓRIO na rota (mínimo 3).
+          Não é burocracia: é o que a equipe lê ao ver o horário vago. "Cancelado"
+          sem motivo faz alguém ligar para o cliente perguntando o que houve — ou,
+          pior, não ligar. */}
+      <Sheet
+        open={cancelandoId !== null}
+        onOpenChange={(aberto) => {
+          if (!aberto) setCancelandoId(null);
+        }}
+      >
+        <SheetContent side="right" className="w-full sm:max-w-md">
+          <SheetHeader>
+            <SheetTitle>Cancelar agendamento</SheetTitle>
+          </SheetHeader>
+          <div className="mt-4 space-y-3" data-testid="painel-de-cancelamento">
+            <p className="text-sm text-text-muted">
+              {(() => {
+                const alvo = todos.find((a) => a.id === cancelandoId);
+                if (!alvo) return "Este agendamento não está mais na lista.";
+                const quem = alvo.quemSeraAtendido ? ` de ${alvo.quemSeraAtendido}` : "";
+                return `${alvo.titulo}${quem}, ${format(new Date(alvo.comeca), "d 'de' MMMM 'às' HH:mm", { locale: ptBR })}.`;
+              })()}
+            </p>
+            <label className="block text-xs font-medium text-text-muted" htmlFor="motivo-do-cancelamento">
+              Por que está cancelando?
+            </label>
+            <textarea
+              id="motivo-do-cancelamento"
+              data-testid="motivo-do-cancelamento"
+              value={motivo}
+              onChange={(e) => setMotivo(e.target.value)}
+              rows={3}
+              className="w-full rounded-md border border-border bg-surface p-2 text-sm outline-none focus:border-border-strong"
+              placeholder="O paciente pediu para remarcar por telefone"
+            />
+            <div className="flex justify-end gap-2">
+              <Button variant="ghost" size="sm" onClick={() => setCancelandoId(null)}>
+                Voltar
+              </Button>
+              <Button
+                size="sm"
+                data-testid="confirmar-cancelamento"
+                // O mínimo de 3 é o da rota. Desabilitar aqui evita um 422 que a
+                // pessoa não tem como prever — o botão diz o que falta pelo estado.
+                disabled={motivo.trim().length < 3 || cancelar.isPending}
+                onClick={() => {
+                  const id = cancelandoId;
+                  if (!id) return;
+                  void cancelar.mutateAsync({ id, reason: motivo.trim() }).then(
+                    () => setCancelandoId(null),
+                    () => undefined,
+                  );
+                }}
+              >
+                {cancelar.isPending ? "Cancelando…" : "Cancelar agendamento"}
+              </Button>
+            </div>
+          </div>
+        </SheetContent>
+      </Sheet>
+
       <HistoricoDaAgenda
         agendamentos={agendamentos}
         pessoas={pessoas}
         agora={new Date()}
         className="max-h-[320px]"
+        // ⚠️ ESTAS DUAS PROPS FALTAVAM, e a ausência tinha cara de permissão.
+        // `HistoricoDaAgenda` usa `disabled={!onRemarcar}`; sem elas os botões
+        // nasciam cinzas em toda linha, de toda organização — e o `title` dizia
+        // "Disponível quando a agenda estiver conectada", que é falso: PATCH e
+        // DELETE não tocam o Google. Só a IA conseguia remarcar ou cancelar.
+        onRemarcar={(id) => {
+          setRemarcandoId(id);
+          setMarcando(true);
+        }}
+        onCancelar={(id) => {
+          setMotivo("");
+          setCancelandoId(id);
+        }}
       />
 
       {agendamentos.length === 0 ? (
