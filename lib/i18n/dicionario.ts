@@ -5407,6 +5407,15 @@ export const DICIONARIO: Traducoes = {
   "Quanto o sistema precisou ser contido de si mesmo antes de falar.": {
     es: "Cuánto el sistema tuvo que ser contenido de sí mismo antes de hablar.",
   },
+
+  // ─── Audit: log de auditoria (tenant-side) ───
+  "Histórico append-only de mutações na organização. Manager+.": {
+    es: "Historial append-only de mutaciones en la organización. Manager+.",
+  },
+  "Ação contém": { es: "Acción contiene" },
+  "Tipo de recurso": { es: "Tipo de recurso" },
+  "Ator": { es: "Actor" },
+  "Nenhum log no período.": { es: "Ningún log en el período." },
 };
 
 /**

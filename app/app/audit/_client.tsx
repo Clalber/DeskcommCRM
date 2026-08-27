@@ -1,6 +1,7 @@
 "use client";
 import { useMemo, useState } from "react";
 
+import { useT } from "@/hooks/i18n/useT";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
@@ -31,6 +32,7 @@ function truncJson(v: unknown, max = 80): string {
 }
 
 export function AuditClient() {
+  const t = useT();
   const [actionInput, setActionInput] = useState("");
   const [resourceType, setResourceType] = useState("");
   const [from, setFrom] = useState("");
@@ -63,7 +65,7 @@ export function AuditClient() {
       <Card className="p-4">
         <div className="grid grid-cols-1 gap-3 md:grid-cols-5">
           <div className="space-y-1">
-            <label className="text-xs text-muted-foreground">Ação contém</label>
+            <label className="text-xs text-muted-foreground">{t("Ação contém")}</label>
             <Input
               value={actionInput}
               onChange={(e) => setActionInput(e.target.value)}
@@ -71,7 +73,7 @@ export function AuditClient() {
             />
           </div>
           <div className="space-y-1">
-            <label className="text-xs text-muted-foreground">Tipo de recurso</label>
+            <label className="text-xs text-muted-foreground">{t("Tipo de recurso")}</label>
             <Input
               value={resourceType}
               onChange={(e) => setResourceType(e.target.value)}
@@ -79,16 +81,16 @@ export function AuditClient() {
             />
           </div>
           <div className="space-y-1">
-            <label className="text-xs text-muted-foreground">De</label>
+            <label className="text-xs text-muted-foreground">{t("De")}</label>
             <Input type="datetime-local" value={from} onChange={(e) => setFrom(e.target.value)} />
           </div>
           <div className="space-y-1">
-            <label className="text-xs text-muted-foreground">Até</label>
+            <label className="text-xs text-muted-foreground">{t("Até")}</label>
             <Input type="datetime-local" value={to} onChange={(e) => setTo(e.target.value)} />
           </div>
           <div className="flex items-end">
             <Button variant="outline" className="w-full" onClick={handleExport}>
-              Exportar CSV
+              {t("Exportar CSV")}
             </Button>
           </div>
         </div>
@@ -98,10 +100,10 @@ export function AuditClient() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Quando</TableHead>
-              <TableHead>Ator</TableHead>
-              <TableHead>Ação</TableHead>
-              <TableHead>Recurso</TableHead>
+              <TableHead>{t("Quando")}</TableHead>
+              <TableHead>{t("Ator")}</TableHead>
+              <TableHead>{t("Ação")}</TableHead>
+              <TableHead>{t("Recurso")}</TableHead>
               <TableHead>Request ID</TableHead>
               <TableHead>Metadata</TableHead>
             </TableRow>
@@ -120,7 +122,7 @@ export function AuditClient() {
             ) : rows.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={6} className="text-center text-sm text-muted-foreground">
-                  Nenhum log no período.
+                  {t("Nenhum log no período.")}
                 </TableCell>
               </TableRow>
             ) : (
@@ -163,7 +165,7 @@ export function AuditClient() {
             onClick={() => q.fetchNextPage()}
             disabled={q.isFetchingNextPage}
           >
-            {q.isFetchingNextPage ? "Carregando…" : "Carregar mais"}
+            {q.isFetchingNextPage ? t("Carregando…") : t("Carregar mais")}
           </Button>
         </div>
       )}
