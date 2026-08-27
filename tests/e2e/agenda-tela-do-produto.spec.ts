@@ -45,7 +45,13 @@ test.describe("a Agenda como o dono do produto a usa", () => {
 
     await expect(page).toHaveURL(/\/app\/agenda/, { timeout: ESPERA });
     await expect(page.getByTestId("tela-agenda")).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Agenda" })).toBeVisible();
+    // `exact` NÃO é adorno aqui, e a linha do link acima já sabia disso. Sem ele
+    // o nome casa por substring e o estado VAZIO da agenda ("Sua agenda está
+    // livre esta semana") vira um segundo heading — dois elementos, strict mode,
+    // vermelho. E o estado vazio é justamente o da INSTALAÇÃO FRESCA: esta spec
+    // passava só porque outra spec deixava agendamentos no banco antes dela.
+    // Medido nas duas direções: com 3 linhas passa, com 0 linhas falha.
+    await expect(page.getByRole("heading", { name: "Agenda", exact: true })).toBeVisible();
   });
 
   test("as pessoas da equipe são REAIS — o filtro deixou de ser invisível", async () => {
@@ -84,15 +90,31 @@ test.describe("a Agenda como o dono do produto a usa", () => {
     }
   });
 
-  test("a tela declara honestamente que ainda não lê agendamentos", async () => {
-    // Enquanto `GET /api/v1/agenda/agendamentos` não existir, a grade fica
-    // vazia. O que NÃO pode acontecer é ela fingir: nem dado de mentira
-    // (decisão 18), nem mensagem que sugira que não há nada marcado quando o
-    // que há é uma leitura que ninguém implementou.
-    await expect(page.getByTestId("tela-agenda")).toHaveAttribute(
-      "data-fonte",
-      "vazio-ate-a-api",
-    );
+  test("a tela declara de onde veio o que ela mostra — e nunca de mentira", async () => {
+    // ESTE TESTE JÁ FOI UM DESLIGADOR. Ele cobrava `data-fonte="vazio-ate-a-api"`,
+    // o marcador de quando a leitura não existia. A leitura passou a existir
+    // (`_client.tsx` emite "api" / "api-sem-dado"), a dívida foi paga — e a
+    // asserção ficou, cobrando um estado que o produto já tinha superado. Só não
+    // reprovou antes porque a falha do teste anterior abortava o bloco.
+    //
+    // O que importa NÃO é o valor de ontem: é que a tela declare uma fonte REAL
+    // e jamais dado de mentira (decisão 18 — o relato de quem vê não é "tem dado
+    // de teste na tela", é "estou vendo paciente de outra clínica na minha
+    // agenda", e o time queima horas caçando um furo de RLS que não existe).
+    const fonte = await page.getByTestId("tela-agenda").getAttribute("data-fonte");
+    expect(fonte, "a tela precisa declarar sua fonte no DOM").not.toBeNull();
+    expect(
+      fonte,
+      `data-fonte="${fonte}" não é fonte real — a tela do cliente lê o banco, ` +
+        "e qualquer outro valor aqui significa que ela voltou a inventar",
+    ).toMatch(/^api(-sem-dado)?$/);
+
+    // O par que o valor sozinho não prova: sem dado, a grade não pode exibir
+    // NOME nenhum. É o formato do defeito da decisão 18, medido em vez de suposto.
+    if (fonte === "api-sem-dado") {
+      await expect(page.getByText("Marina Alves")).toHaveCount(0);
+      await expect(page.getByText("Pedro Lima")).toHaveCount(0);
+    }
   });
 
   test("evidência visual da tela do produto", async () => {

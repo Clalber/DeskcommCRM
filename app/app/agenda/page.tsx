@@ -24,6 +24,18 @@ export const dynamic = "force-dynamic";
  * fontes — e este campo do perfil, oferecido pela tela há meses, ganha aqui o
  * primeiro leitor de verdade.
  */
+/**
+ * O embed do PostgREST devolve objeto quando a FK é para-um e array quando o
+ * gerador de tipos não consegue provar isso. Aceitar as duas formas evita que a
+ * tela dependa de qual das duas o `database.types.ts` do dia declarou.
+ */
+function nomeDoContato(
+  c: { name: string | null; display_name: string | null } | { name: string | null; display_name: string | null }[] | null,
+): string | undefined {
+  const alvo = Array.isArray(c) ? c[0] : c;
+  return alvo?.name ?? alvo?.display_name ?? undefined;
+}
+
 export default async function AgendaPage() {
   const user = await requireAuth();
   const activeOrg = await resolveActiveOrg(user);
@@ -69,7 +81,7 @@ export default async function AgendaPage() {
     supabase
       .from("calendar_appointments")
       .select(
-        "id, title, starts_at, ends_at, status, owner_user_id, contact_id, event_type_id, location_kind",
+        "id, title, starts_at, ends_at, status, owner_user_id, contact_id, event_type_id, location_kind, contacts(name, display_name)",
       )
       .gte("starts_at", inicio.toISOString())
       .lt("starts_at", fim.toISOString())
@@ -97,6 +109,15 @@ export default async function AgendaPage() {
         termina: a.ends_at,
         origem: "ui" as const,
         situacao: a.status as "confirmed",
+        // "com quem" é a promessa do subtítulo desta tela, e era a única parte
+        // dela que o servidor não entregava: `contact_id` vinha no select e
+        // morria aqui. `dados-de-mentira.ts` preenche este campo nos 11 cards,
+        // então a tela pareceu pronta o tempo todo — e o `?? a.titulo` do
+        // histórico transformou a ausência em silêncio, não em erro.
+        // `name` antes de `display_name` segue o precedente do produto
+        // (`app/app/lgpd/requests/[id]/PreviewPanel.tsx`); as duas colunas são
+        // reescritas pelo cascade de LGPD, então nenhuma vaza titular anonimizado.
+        quemSeraAtendido: nomeDoContato(a.contacts),
       }))}
     />
   );

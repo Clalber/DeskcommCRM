@@ -49,7 +49,7 @@ const CREDS_PATH = path.join(process.cwd(), ".e2e-creds.json");
 const TIPO_SLUG = "consulta-e2e";
 const TIPO_NOME = "Consulta E2E";
 const CONTATO_NOME = "Paciente Agenda E2E";
-const CONTATO_FONE = "5511988887777";
+const CONTATO_FONE = "+5511988887777";
 const FUSO = "America/Sao_Paulo";
 
 interface Creds {
