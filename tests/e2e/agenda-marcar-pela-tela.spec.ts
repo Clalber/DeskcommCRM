@@ -47,7 +47,23 @@ import { test, expect } from "@playwright/test";
  *          Falta a rota devolver o motivo por um caminho que a tela leia.
  */
 
-const APP_URL = process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:3000";
+/**
+ * ⚠️ SEM `APP_URL`: as navegações são RELATIVAS, e o `baseURL` do
+ * `playwright.config.ts` resolve.
+ *
+ * Isto era `process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:3000"`, e o
+ * fallback é o defeito: **o CI não define `PLAYWRIGHT_BASE_URL`**. Local eu
+ * exportava a variável, então passava; no runner a spec batia em `:3000`, onde
+ * não há nada, e as seis caíam em bloco com `ERR_CONNECTION_REFUSED` — que se
+ * parece com "o servidor morreu" e é "eu bati na porta errada".
+ *
+ * O log mostra o formato exato: `··········FFFFFF` — dez testes passam, os seis
+ * meus caem juntos, e os seguintes voltam a passar. Servidor vivo o tempo todo.
+ *
+ * As irmãs já faziam certo de dois jeitos: `agenda-tela-do-produto` usa caminho
+ * relativo, e `agente-marca-consulta` usa `E2E_PORT ?? 3001`. Nenhuma inventa
+ * 3000.
+ */
 const RAIZ = path.resolve(__dirname, "../..");
 
 interface Creds {
@@ -106,13 +122,13 @@ test("marcar um horário pela tela e vê-lo aparecer na grade — sem recarregar
       .catch(() => respostas.push(`${r.status()} <corpo ilegível>`));
   });
 
-  await page.goto(`${APP_URL}/login`);
+  await page.goto("/login");
   await page.getByLabel(/e-?mail/i).fill(usuario.email);
   await page.getByLabel(/senha/i).fill(creds.password);
   await page.getByRole("button", { name: /entrar/i }).click();
   await page.waitForURL(/\/app(\/|$)/, { timeout: 20_000 });
 
-  await page.goto(`${APP_URL}/app/agenda`);
+  await page.goto("/app/agenda");
   await expect(page.getByTestId("tela-agenda")).toBeVisible({ timeout: 20_000 });
 
   const antes = await cartoesDaGrade(page).count();
@@ -244,7 +260,7 @@ test("marcar um horário pela tela e vê-lo aparecer na grade — sem recarregar
   //
   // `page.request` reusa os cookies da sessão logada, então o DELETE passa pelo
   // mesmo caminho de autorização que um humano — não por service role.
-  const apagou = await page.request.delete(`${APP_URL}/api/v1/agenda/agendamentos`, {
+  const apagou = await page.request.delete("/api/v1/agenda/agendamentos", {
     data: { id: idCriado, reason: "limpeza da spec de marcar pela tela" },
   });
   expect(

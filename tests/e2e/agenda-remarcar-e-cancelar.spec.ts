@@ -16,7 +16,7 @@ import { test, expect } from "@playwright/test";
  *
  * E o `title` do botão cinza dizia *"Disponível quando a agenda estiver
  * conectada"* — falso, e pior que o silêncio: `PATCH`/`DELETE
- * /api/v1/agenda/agendamentos` não tocam o Google. Quem lia acreditava que
+ * /api/v1/agenda/agendamentos" não tocam o Google. Quem lia acreditava que
  * faltava conectar a agenda, quando faltava a fiação.
  *
  * Medido antes de consertar: `grep -rn "cancelarAgendamentoHandler|
@@ -32,7 +32,23 @@ import { test, expect } from "@playwright/test";
  * já pagou uma vez (PR #295, cinco deles).
  */
 
-const APP_URL = process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:3000";
+/**
+ * ⚠️ SEM `APP_URL`: as navegações são RELATIVAS, e o `baseURL` do
+ * `playwright.config.ts` resolve.
+ *
+ * Isto era `process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:3000"`, e o
+ * fallback é o defeito: **o CI não define `PLAYWRIGHT_BASE_URL`**. Local eu
+ * exportava a variável, então passava; no runner a spec batia em `:3000`, onde
+ * não há nada, e as seis caíam em bloco com `ERR_CONNECTION_REFUSED` — que se
+ * parece com "o servidor morreu" e é "eu bati na porta errada".
+ *
+ * O log mostra o formato exato: `··········FFFFFF` — dez testes passam, os seis
+ * meus caem juntos, e os seguintes voltam a passar. Servidor vivo o tempo todo.
+ *
+ * As irmãs já faziam certo de dois jeitos: `agenda-tela-do-produto` usa caminho
+ * relativo, e `agente-marca-consulta` usa `E2E_PORT ?? 3001`. Nenhuma inventa
+ * 3000.
+ */
 const RAIZ = path.resolve(__dirname, "../..");
 
 interface Creds {
@@ -56,12 +72,12 @@ function lerCreds(): Creds {
 async function entrar(page: import("@playwright/test").Page, creds: Creds) {
   const usuario = creds.users.manager;
   if (!usuario) throw new Error(".e2e-creds.json sem o usuário `manager`");
-  await page.goto(`${APP_URL}/login`);
+  await page.goto("/login");
   await page.getByLabel(/e-?mail/i).fill(usuario.email);
   await page.getByLabel(/senha/i).fill(creds.password);
   await page.getByRole("button", { name: /entrar/i }).click();
   await page.waitForURL(/\/app(\/|$)/, { timeout: 20_000 });
-  await page.goto(`${APP_URL}/app/agenda`);
+  await page.goto("/app/agenda");
   await expect(page.getByTestId("tela-agenda")).toBeVisible({ timeout: 20_000 });
 }
 

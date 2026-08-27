@@ -22,7 +22,23 @@ import { test, expect } from "@playwright/test";
  * laço: um tipo criado COM responsável aparece na tela de marcar.
  */
 
-const APP_URL = process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:3000";
+/**
+ * ⚠️ SEM `APP_URL`: as navegações são RELATIVAS, e o `baseURL` do
+ * `playwright.config.ts` resolve.
+ *
+ * Isto era `process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:3000"`, e o
+ * fallback é o defeito: **o CI não define `PLAYWRIGHT_BASE_URL`**. Local eu
+ * exportava a variável, então passava; no runner a spec batia em `:3000`, onde
+ * não há nada, e as seis caíam em bloco com `ERR_CONNECTION_REFUSED` — que se
+ * parece com "o servidor morreu" e é "eu bati na porta errada".
+ *
+ * O log mostra o formato exato: `··········FFFFFF` — dez testes passam, os seis
+ * meus caem juntos, e os seguintes voltam a passar. Servidor vivo o tempo todo.
+ *
+ * As irmãs já faziam certo de dois jeitos: `agenda-tela-do-produto` usa caminho
+ * relativo, e `agente-marca-consulta` usa `E2E_PORT ?? 3001`. Nenhuma inventa
+ * 3000.
+ */
 const RAIZ = path.resolve(__dirname, "../..");
 
 // Duas jornadas completas por caso (login + navegação + formulário).
@@ -50,7 +66,7 @@ async function entrar(page: import("@playwright/test").Page, creds: Creds) {
   // do seed tem MFA, que não é o assunto desta spec.
   const usuario = creds.users.manager;
   if (!usuario) throw new Error(".e2e-creds.json sem o usuário `manager`");
-  await page.goto(`${APP_URL}/login`);
+  await page.goto("/login");
   await page.getByLabel(/e-?mail/i).fill(usuario.email);
   await page.getByLabel(/senha/i).fill(creds.password);
   await page.getByRole("button", { name: /entrar/i }).click();
@@ -69,7 +85,7 @@ test("chego nos tipos CLICANDO no menu, e a lista mostra o que existe", async ({
   // dele se alcançam por ali — nenhuma aparece direto na lateral. Minha primeira
   // versão procurou na lateral e reprovou dizendo "não tem porta na navegação":
   // tinha, era outra. O caminho do teste é o caminho de quem usa.
-  await page.goto(`${APP_URL}/app/settings`);
+  await page.goto("/app/settings");
   const item = page.getByRole("link", { name: /Tipos de agendamento/ }).first();
   await expect(item, "a tela não aparece no hub de Configurações").toBeVisible({ timeout: 20_000 });
   await item.click();
@@ -85,7 +101,7 @@ test("chego nos tipos CLICANDO no menu, e a lista mostra o que existe", async ({
 test("crio um tipo COM responsável, e ele passa a ser marcável na Agenda", async ({ page }) => {
   const creds = lerCreds();
   await entrar(page, creds);
-  await page.goto(`${APP_URL}/app/settings/tenant/agenda`);
+  await page.goto("/app/settings/tenant/agenda");
   await expect(page.getByTestId("tipos-de-agendamento-config")).toBeVisible({ timeout: 20_000 });
 
   // Nome único por execução: a rota recusa slug repetido com 409, e uma spec que
@@ -116,7 +132,7 @@ test("crio um tipo COM responsável, e ele passa a ser marcável na Agenda", asy
   ).toHaveCount(0);
 
   // ── O laço: o tipo novo chega na tela de marcar ───────────────────────
-  await page.goto(`${APP_URL}/app/agenda`);
+  await page.goto("/app/agenda");
   await expect(page.getByTestId("tela-agenda")).toBeVisible({ timeout: 20_000 });
   await page.getByRole("button", { name: /novo agendamento/i }).click();
   await expect(page.getByTestId("tipos-de-agendamento")).toBeVisible({ timeout: 15_000 });
@@ -130,7 +146,7 @@ test("crio um tipo COM responsável, e ele passa a ser marcável na Agenda", asy
 test("desativar tira o tipo da tela de marcar, sem apagar a história", async ({ page }) => {
   const creds = lerCreds();
   await entrar(page, creds);
-  await page.goto(`${APP_URL}/app/settings/tenant/agenda`);
+  await page.goto("/app/settings/tenant/agenda");
   await expect(page.getByTestId("tipos-de-agendamento-config")).toBeVisible({ timeout: 20_000 });
 
   const nome = `Temporario E2E ${Date.now().toString().slice(-6)}`;
@@ -156,7 +172,7 @@ test("desativar tira o tipo da tela de marcar, sem apagar a história", async ({
   ).toBeVisible();
 
   // E some de onde importa: da tela de marcar.
-  await page.goto(`${APP_URL}/app/agenda`);
+  await page.goto("/app/agenda");
   await page.getByRole("button", { name: /novo agendamento/i }).click();
   await expect(page.getByTestId("tipos-de-agendamento")).toBeVisible({ timeout: 15_000 });
   await expect(
