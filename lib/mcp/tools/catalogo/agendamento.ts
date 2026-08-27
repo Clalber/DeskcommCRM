@@ -70,12 +70,19 @@
  *                                   significa que NINGUÉM avaliou"). Age com o contexto que
  *                                   tem — sem saber que houve promessa.
  *         promessas: []          -> roda, e não acha o que cobrar.
- *         declaração INVÁLIDA    -> quarto caminho, e o mais silencioso: `safeParse` que
- *                                   falha vira `declaracao: null` (idem, `lerDeclaracaoDoTurno`).
- *                                   Modelo que declarou a promessa em JSON quebrado cai no
- *                                   mesmo balde de quem não declarou nada. A escolha está
- *                                   certa (leva o Operador a rodar em vez de pular), mas o
- *                                   efeito sobre a promessa é idêntico.
+ *         declaração INVÁLIDA    -> quarto caminho, e ele NÃO é alcançável por dado novo —
+ *                                   esta linha já disse que era "o mais silencioso", e isso
+ *                                   estava errado na direção pessimista. `parseCheckpointText`
+ *                                   (`inbound-turn.ts`) LANÇA quando o shape reprova ("run
+ *                                   re-tentado pela fila"), com o MESMO `declaracaoDoTurnoSchema`
+ *                                   que o Operador revalida. O que não passa nunca é
+ *                                   persistido; o `safeParse` de lá é defesa em profundidade,
+ *                                   não tratamento de caso que acontece.
+ *                                   O gatilho real é DADO LEGADO: checkpoint gravado antes de
+ *                                   o schema mudar passa a reprovar depois — e aí sim vira
+ *                                   `declaracao: null` em silêncio. Não é risco de runtime, é
+ *                                   detector de migração mal feita, o que é um argumento
+ *                                   melhor para o campo de estado do que o que tínhamos.
  *
  *       ⚠️ E O SINAL NÃO ESTÁ ONDE EU DISSE. Esta linha já ofereceu `declaracao_ausente` como
  *       endereço de observação; ele existe UMA vez, dentro de um `log.info` — e o cabeçalho
