@@ -42,6 +42,15 @@ export type AlvoDeFunil =
   /** `target_kind`/`target_id`: só conta quando o alvo é um lead. */
   | "alvo_polimorfico"
   /**
+   * O modelo informa `contact_id`; o funil sai do NEGÓCIO ABERTO daquele contato.
+   *
+   * Existe porque a agenda opera por CONTATO — quem é atendido — e não por lead:
+   * `crm_book_appointment` tem `contact_id` obrigatório e nenhum `lead_id`. Sem
+   * este alvo, ela só poderia ser `sem_funil`, e o escopo não valeria para ela em
+   * caso nenhum.
+   */
+  | "funil_vem_do_contato"
+  /**
    * Não toca funil nenhum. Declarado — e não ausente — porque "não se aplica" e
    * "ninguém decidiu" precisam ser distinguíveis: a segunda é bloqueada.
    */
@@ -88,7 +97,10 @@ export const ALVO_DE_FUNIL: Record<string, AlvoDeFunil> = {
   // `critico` do cancelar, que não entra por pacote. O alvo `funil_vem_do_contato`
   // (DECISÃO 27) fecharia `crm_book_appointment` de verdade, porque ali o
   // `contact_id` é OBRIGATÓRIO — entra em seguida, com resolvedor próprio.
-  crm_book_appointment: "sem_funil",
+  // DECISÃO 27: `contact_id` é OBRIGATÓRIO aqui, então o alvo resolve de verdade —
+  // diferente de remarcar e cancelar, que operam por `appointment_id` e continuam
+  // `sem_funil` declarado enquanto não houver resolvedor por agendamento.
+  crm_book_appointment: "funil_vem_do_contato",
   crm_reschedule_appointment: "sem_funil",
   crm_cancel_appointment: "sem_funil",
 
@@ -110,6 +122,21 @@ export const ALVO_DE_FUNIL: Record<string, AlvoDeFunil> = {
   crm_set_webhook_source_active: "sem_funil",
   crm_set_automation_rule_active: "sem_funil",
 };
+
+/**
+ * Os TRÊS desfechos de resolver o negócio de um contato — e o terceiro é o que
+ * quase passou batido.
+ *
+ * `resolveActiveLeadForContact` (lib/leads/active-lead.ts) já distingue os três, e
+ * o cabeçalho dele diz por que não adivinha no ambíguo: *"mover o card errado do
+ * cliente errado é o único bug desta entrega visível para o cliente final"*.
+ */
+export type ResolucaoDeContato =
+  | { tipo: "lead"; leadId: string }
+  /** Contato sem negócio aberto — o paciente novo, que é o caso mais comum. */
+  | { tipo: "sem_lead" }
+  /** Mais de um negócio aberto: não dá para dizer em qual funil isto conta. */
+  | { tipo: "ambiguo"; quantos: number };
 
 export type VereditoDoEscopo =
   | { permitido: true }
@@ -166,6 +193,12 @@ export async function podeChamarFerramenta(entrada: {
   escopo: readonly string[] | null | undefined;
   ehEscrita: boolean;
   resolvePipelineDoLead: (leadId: string) => Promise<string | null>;
+  /**
+   * Só é chamado por `funil_vem_do_contato`. Opcional para não obrigar os
+   * chamadores que não têm ferramenta desse alvo a inventar uma implementação —
+   * e a ausência é tratada como `indisponivel`, nunca como liberação.
+   */
+  resolveLeadDoContato?: (contactId: string) => Promise<ResolucaoDeContato>;
 }): Promise<VereditoDoEscopo> {
   // Leitura não é escopada por funil — decisão declarada na spec 17 §5, com a
   // consequência escrita: a superfície de DESCOBERTA continua aberta (o modelo
@@ -227,6 +260,57 @@ export async function podeChamarFerramenta(entrada: {
         return { permitido: true };
       }
       return resolverPeloLead(entrada, leadId);
+    }
+
+    case "funil_vem_do_contato": {
+      const contactId = entrada.argumentos.contact_id;
+      if (typeof contactId !== "string") {
+        return { permitido: false, motivo: "indisponivel", detalhe: "contact_id ausente" };
+      }
+      if (!entrada.resolveLeadDoContato) {
+        // Falha FECHADA: chamador sem o resolvedor não vira liberação. Um alvo que
+        // depende de uma dependência opcional precisa recusar quando ela falta,
+        // senão basta esquecer de passá-la para o escopo sumir.
+        return { permitido: false, motivo: "indisponivel", detalhe: "resolvedor de contato ausente" };
+      }
+
+      let r: ResolucaoDeContato;
+      try {
+        r = await entrada.resolveLeadDoContato(contactId);
+      } catch (e) {
+        return {
+          permitido: false,
+          motivo: "indisponivel",
+          detalhe: e instanceof Error ? e.message.slice(0, 120) : "falha ao resolver o contato",
+        };
+      }
+
+      // ── SEM LEAD: LIBERA, e é decisão, não fall-through ──────────────────────
+      // O escopo de funil responde "este agente pode operar NESTE funil?". Contato
+      // sem negócio aberto não está em funil nenhum, e marcar consulta não move
+      // card: não há escopo a ferir porque não há funil envolvido. Recusar aqui
+      // mudaria a PERGUNTA do gate — de escopo para triagem.
+      //
+      // E o custo de errar cai no caso mais comum de uma clínica: contato sem lead
+      // É O PACIENTE NOVO. Recusar faria a IA não marcar justamente para quem está
+      // chegando, e o dono não teria como ligar isso à configuração de funil.
+      if (r.tipo === "sem_lead") return { permitido: true };
+
+      // ── AMBÍGUO: RECUSA, e o motivo ensina ───────────────────────────────────
+      // Mais de um negócio aberto: não dá para dizer em qual funil o compromisso
+      // conta, e um deles pode estar fora do escopo. O precedente do repo é não
+      // adivinhar — `resolveActiveLeadForContact` devolve `ambiguous_open_leads`
+      // em vez de escolher o primeiro, pela razão escrita no cabeçalho dele.
+      // Aqui fechar na dúvida é barato: o modelo pergunta qual negócio é.
+      if (r.tipo === "ambiguo") {
+        return {
+          permitido: false,
+          motivo: "indisponivel",
+          detalhe: `contato com ${r.quantos} negócios abertos: confirme qual antes de marcar`,
+        };
+      }
+
+      return resolverPeloLead(entrada, r.leadId);
     }
 
     default: {
