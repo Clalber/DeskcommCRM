@@ -54,7 +54,15 @@ const FUSO = "America/Sao_Paulo";
 
 interface Creds {
   org_id: string;
-  user_id?: string;
+  /**
+   * ⚠️ A CONVENÇÃO É `users.<chave>.id`, NÃO `user_id`.
+   *
+   * A primeira versão deste seed lia `creds.user_id` — uma chave que NADA escreve. Só
+   * apareceu quando alguém RODOU: `seed-e2e-credentials` grava `users` como
+   * `Record<chave, {id, email, role}>` com admin, manager, agent, viewer e dono. O erro
+   * estava numa linha visível para qualquer leitura, e duas leituras não o pegaram.
+   */
+  users?: Record<string, { id: string; email: string; role: string }>;
   agenda?: unknown;
 }
 
@@ -128,13 +136,22 @@ async function main(): Promise<void> {
   const creds = JSON.parse(fs.readFileSync(CREDS_PATH, "utf8")) as Creds;
   if (!creds.org_id) throw new Error(".e2e-creds.json sem org_id");
 
-  // O dono da agenda é o usuário do e2e. Sem ele não há jornada, e sem jornada a
-  // consulta recusa com `sem_responsavel` — que é caminho de erro, não de teste.
-  const donoId = creds.user_id ?? null;
+  // ⚠️ O DONO É O `agent`, E A ESCOLHA TEM RAZÃO — não é "qualquer usuário serve".
+  //
+  // `agent` é o piso de papel que a 0177 exige para escrever compromisso (RBAC da
+  // DECISÃO 16: `agent+` escreve `calendar_appointments`). Semear a jornada num papel
+  // ACIMA disso — manager ou admin — faria o cenário provar o caminho do privilegiado e
+  // esconder se o piso realmente basta. O e2e deve semear no papel mínimo que o produto
+  // promete, não no mais confortável.
+  const donoId = creds.users?.agent?.id ?? null;
   if (!donoId) {
+    // Sem dono não há jornada, e sem jornada a consulta recusa com `sem_responsavel` —
+    // caminho de ERRO disfarçado de cenário pronto, e a spec passaria a provar a RECUSA
+    // achando que prova o sucesso.
     throw new Error(
-      ".e2e-creds.json sem user_id — a jornada precisa de um atendente dono, e semear " +
-        "sem ele deixaria a agenda em `sem_responsavel`, que é o caminho de recusa.",
+      ".e2e-creds.json sem `users.agent.id` — a jornada precisa de um atendente dono, e " +
+        "semear sem ele deixaria a agenda em `sem_responsavel`, que é o caminho de recusa. " +
+        "Rode scripts/seed-e2e-credentials.ts antes.",
     );
   }
 
