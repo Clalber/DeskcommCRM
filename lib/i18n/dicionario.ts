@@ -43,6 +43,7 @@ export const DICIONARIO: Traducoes = {
 
   // ─── Navegação (a barra lateral, presente em toda tela) ───
   Inbox: { es: "Inbox" },
+  Agenda: { es: "Agenda" },
   Radar: { es: "Radar" },
   "Respostas rápidas": { es: "Respuestas rápidas" },
   Contatos: { es: "Contactos" },
@@ -53,6 +54,7 @@ export const DICIONARIO: Traducoes = {
   // da tela de configuração, que antes disputava "Funis" com ela.
   Funis: { es: "Embudos" },
   "Etapas do funil": { es: "Etapas del embudo" },
+  "Tipos de agendamento": { es: "Tipos de cita" },
   Automação: { es: "Automatización" },
   Agentes: { es: "Agentes" },
   "Follow-ups": { es: "Seguimientos" },

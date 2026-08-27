@@ -1474,6 +1474,19 @@ esac
   printf '# Endereço de suporte que o CLIENTE FINAL vê (conta suspensa, cobrança).\n'
   printf '# Vazio = a tela não mostra endereço nenhum.\n'
   envq SUPPORT_EMAIL "${SUPPORT_EMAIL:-}"
+  # AGENDA · GOOGLE CALENDAR — gravadas VAZIAS, e de propósito NÃO perguntadas.
+  #
+  # Sem as duas a Agenda funciona inteira: some o botão "Conectar Google" e a
+  # tela explica o que falta — inclusive o endereço de retorno a registrar no
+  # console, pronto para copiar. Quem quiser ligar preenche no `.env` depois.
+  #
+  # ⚠️ Não viram pergunta na entrevista porque o instalador é a PRIMEIRA
+  # impressão do produto: duas perguntas a mais, sobre um recurso opcional que a
+  # maioria não usa, custam a todo mundo para servir a poucos. Elas existem aqui
+  # para que quem PREENCHER à mão não perca o valor no próximo `install.sh` —
+  # que é exatamente o que o gate `test-validators.sh` cobra.
+  envq GOOGLE_CALENDAR_CLIENT_ID "${GOOGLE_CALENDAR_CLIENT_ID:-}"
+  envq GOOGLE_CALENDAR_CLIENT_SECRET "${GOOGLE_CALENDAR_CLIENT_SECRET:-}"
   # As três acima e as duas abaixo entram aqui pelo MESMO motivo, e não por
   # simetria: o .env é escrito com truncamento (`} > .env`, no fecho deste
   # bloco), então chave que este script não grava é APAGADA na execução
