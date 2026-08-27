@@ -149,6 +149,7 @@ fonte só (`lib/onboarding/passos.ts`) — eram três listas que discordavam. Ga
 | J4.26 | **Salvar o e-mail de um contato pela tela** | fica salvo, aparece na ficha e sobrevive ao reload. Era **500** até 2026-08-06: o handler escrevia em `email_normalized`, coluna GERADA, e o Postgres abortava o UPDATE inteiro (`contato-salva-email.spec.ts`) |
 | J4.27 | Anonimizar um contato (LGPD) | mesma causa da J4.26 na rota `/api/v1/lgpd/anonymize` — **a anonimização não acontecia**. Corrigido; guardado pelo invariante de colunas geradas, ainda **sem prova de tela** |
 | J4.25 | ⚠️ O funil de entrada de uma org nova é de **e-commerce** | `fn_seed_default_pipeline_for_org` semeia "Pedidos" com *Carrinho abandonado · Pago · Em separação…*. Numa clínica ou imobiliária, o lead nasce em **"Carrinho abandonado"**. Achado em 2026-08-06 ao provar J4.22; conserto é decisão de produto (spec 17 passo 4) |
+| J4.36 | **Editar campos do funil pela barra da conversa** | só os customizados (`settings.fields`) aparecem como inputs; título/valor ficam no dossiê. Salvar grava `custom_fields` no mesmo PATCH do quadro e a seção relê · `tests/unit/inbox-campos-lead.test.tsx` |
 
 ## J5 — Time: convites e atuação de atendentes `[P0]` (convite) / `[P1]` (rotina)
 
@@ -419,7 +420,60 @@ divide o servidor. Só aparece exercitando o produto pela tela.
 > não roda quando um caso falha). Corrigidos antes da primeira execução; o
 > resultado real entra aqui quando o CI disser.
 
-## J12 — A Agenda como o dono do produto a usou na VPS `[P0]`
+## J12 — A tela diz o que ESTA instalação consegue fazer `[P0]`
+
+**Por que P0:** é primeira impressão pura. **Nenhuma instalação nasce com o par
+VAPID** — o `.env.hostgator.example` grava as duas linhas vazias e gerar o par é
+um passo opcional que ninguém é obrigado a dar. Ou seja, o estado testado aqui é
+o estado em que 100% das instalações começam, e a tela de Notificações tem porta
+na navegação (`lib/navigation/registry.ts:470`), então qualquer pessoa chega nela
+no primeiro dia.
+
+**O defeito era de tela, e o backend estava certo o tempo todo.**
+`GET /api/v1/notifications/push` já devolvia `enabled:false` sem as chaves, e o
+`PUT` já recusava com 503 «Web Push não configurado nesta instalação». Quem nunca
+perguntou foi `app/app/settings/notifications/page.tsx`, que afirmava «In-app
+(toast) e Push (Chrome) já funcionam para as cinco categorias» de forma
+incondicional. A sequência que a pessoa vivia:
+
+1. a tela promete Push;
+2. ela liga o interruptor e o navegador pede permissão — incômodo real, cobrado dela;
+3. ela concede, e `syncPushSubscription()` faz `return` em silêncio
+   (`if (!cfg?.data?.enabled || !publicKey) return`);
+4. o interruptor fica ligado prometendo o que a instalação não entrega, e **nada
+   no produto** conta que faltam duas variáveis no `.env`, nem como consegui-las.
+
+Informação que existe no servidor e não chega a quem decide é o mesmo que
+informação ausente.
+
+**O conserto exagerado, recusado de propósito:** desabilitar o interruptor sem
+VAPID. Sem as chaves o aviso na bandeja **ainda funciona com a aba aberta** —
+é `new Notification()` em `lib/notifications/emit.ts`, que não depende de
+inscrição nenhuma. Desabilitar trocaria prometer demais por entregar de menos, e
+o segundo não deixa rastro. J12.3 existe para impedir esse conserto.
+
+Spec: `tests/e2e/notificacoes-diz-o-que-falta.spec.ts` (estado SEM as chaves —
+o do `.env.e2e` e o do primeiro deploy).
+Evidência: `.superpowers/evidence/notificacoes-sem-chaves/`.
+Os DOIS estados: `tests/unit/notificacoes-tela-diz-o-que-falta.test.tsx` — o
+servidor lê `vapidPronto()` uma vez por processo, então provar o estado COM as
+chaves pela tela exigiria um segundo `next start` só para trocar duas variáveis,
+num job que já leva meia hora.
+
+| # | Caso | Expectativa | Resultado |
+|---|------|-------------|-----------|
+| J12.1 | Sem VAPID, a tela não fica muda | aviso `push-status-faltando-chaves` visível, e o de «pronto» ausente | PASS |
+| J12.2 | Ela diz o que FAZER, não só o que falta | o comando `npx web-push generate-vapid-keys` e as duas chaves, nominalmente | PASS |
+| J12.3 | O interruptor de Push continua ligável | não nasce desabilitado — a capacidade com a aba aberta existe | PASS |
+| J12.4 | Com VAPID, anuncia a aba fechada | e para de mandar gerar o par que já existe | PASS (unit) |
+
+**NÃO COBERTO, declarado:** a notificação chegando na bandeja do sistema com a
+aba fechada. Depende do serviço de push do navegador (FCM), de rede externa e de
+um par VAPID real — não é reproduzível num runner, e fingir com mock seria pior
+que a ausência declarada. O que está provado é o contrato entre a TELA e o
+SERVIDOR. Continua aberto na issue #366.
+
+## J13 — A Agenda como o dono do produto a usou na VPS `[P0]`
 
 **Por que P0:** é a primeira impressão de um módulo que acabou de sair (v1.7.0).
 O dono instalou na VPS dele, usou como um cliente usaria, e achou **seis defeitos
@@ -436,16 +490,16 @@ uma, para a asserção poder ser sobre o CONJUNTO DE NOMES e não sobre a contag
 
 | # | Caso | Resultado |
 |---|---|---|
-| J12.1 | Membro de duas organizações abre a Agenda e vê só os tipos da org ativa; trocar de organização troca a lista | **PASS** — `agenda-escopo-da-organizacao.spec.ts`, contra o app real. Evidência: `evidence/calendario/d4-agenda-escopo-org-b.png` |
-| J12.2 | O aviso "você ainda não publicou seus horários" LEVA até onde se publica, e a aba de Atendimento se anuncia como o lugar dos horários | **PASS** — `agenda-caminho-ate-os-horarios.spec.ts`. Evidência: `evidence/calendario/d1-aba-atendimento.png` |
-| J12.3 | Endereço de aba desconhecido cai na aba padrão, não numa tela sem conteúdo | **PASS** — mesma spec |
-| J12.4 | O tipo de agendamento NASCE com responsável; quem escolhe "Definir depois" é avisado e o aviso ABRE o seletor | **PASS** — `agenda-tipos-de-agendamento.spec.ts`. Evidência: `evidence/calendario/d6-tipo-com-responsavel.png` |
-| J12.5 | O dia apagado diz POR QUÊ, e o rótulo genérico antigo não volta | **PASS** — `agenda-kit-visual.spec.ts` |
-| J12.6 | O teto de capacidades recusa a passagem explicando quantas vagas faltam | **PASS** — `capacidades-do-agente.spec.ts`, com o teto em 25 |
-| J12.7 | A ida ao Google seleciona os pendentes (o filtro antigo devolvia HTTP 400) | **PASS** — medido contra o PostgREST real do ambiente e2e: filtro antigo `400 / 22007`, filtro novo `200` com as linhas pendentes |
-| J12.8 | Sincronizar tira a linha da fila, e editar recoloca (o laço dos dois relógios) | **PASS** — medido no Postgres real: `true` → `false` com delta `00:00:00` → `true` |
-| J12.9 | A credencial do Google não é servida pelo PostgREST | **PASS** — `anon` recebe `42501 permission denied`; `service_role` recebe 200 (controle positivo) |
-| J12.10 | Cadastrar a credencial do Google pela tela do admin | **NÃO EXERCITADO** — a tela e a server action existem e o `next build` passa, mas o ambiente e2e não tem a chave mestra de cifra semeada (`fn_encrypt_oauth` levanta `NUVEMSHOP_OAUTH_ENCRYPTION_KEY ausente`), que é justamente o caminho em que a action RECUSA gravar. Falta o caso pela tela com a chave presente |
+| J13.1 | Membro de duas organizações abre a Agenda e vê só os tipos da org ativa; trocar de organização troca a lista | **PASS** — `agenda-escopo-da-organizacao.spec.ts`, contra o app real. Evidência: `evidence/calendario/d4-agenda-escopo-org-b.png` |
+| J13.2 | O aviso "você ainda não publicou seus horários" LEVA até onde se publica, e a aba de Atendimento se anuncia como o lugar dos horários | **PASS** — `agenda-caminho-ate-os-horarios.spec.ts`. Evidência: `evidence/calendario/d1-aba-atendimento.png` |
+| J13.3 | Endereço de aba desconhecido cai na aba padrão, não numa tela sem conteúdo | **PASS** — mesma spec |
+| J13.4 | O tipo de agendamento NASCE com responsável; quem escolhe "Definir depois" é avisado e o aviso ABRE o seletor | **PASS** — `agenda-tipos-de-agendamento.spec.ts`. Evidência: `evidence/calendario/d6-tipo-com-responsavel.png` |
+| J13.5 | O dia apagado diz POR QUÊ, e o rótulo genérico antigo não volta | **PASS** — `agenda-kit-visual.spec.ts` |
+| J13.6 | O teto de capacidades recusa a passagem explicando quantas vagas faltam | **PASS** — `capacidades-do-agente.spec.ts`, com o teto em 25 |
+| J13.7 | A ida ao Google seleciona os pendentes (o filtro antigo devolvia HTTP 400) | **PASS** — medido contra o PostgREST real do ambiente e2e: filtro antigo `400 / 22007`, filtro novo `200` com as linhas pendentes |
+| J13.8 | Sincronizar tira a linha da fila, e editar recoloca (o laço dos dois relógios) | **PASS** — medido no Postgres real: `true` → `false` com delta `00:00:00` → `true` |
+| J13.9 | A credencial do Google não é servida pelo PostgREST | **PASS** — `anon` recebe `42501 permission denied`; `service_role` recebe 200 (controle positivo) |
+| J13.10 | Cadastrar a credencial do Google pela tela do admin | **NÃO EXERCITADO** — a tela e a server action existem e o `next build` passa, mas o ambiente e2e não tem a chave mestra de cifra semeada (`fn_encrypt_oauth` levanta `NUVEMSHOP_OAUTH_ENCRYPTION_KEY ausente`), que é justamente o caminho em que a action RECUSA gravar. Falta o caso pela tela com a chave presente |
 
 **Registro honesto do que NÃO foi exercitado:** `pnpm test:db` não rodou nesta
 máquina — o daemon do Docker travou depois de o disco encher, e o harness de

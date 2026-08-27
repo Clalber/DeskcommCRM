@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useMemo } from "react";
+import type { InfiniteData, UseInfiniteQueryResult } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useChannelSessions } from "@/hooks/channels/useChannelSessions";
@@ -8,15 +9,20 @@ import { useAutomaticoAtivo } from "@/hooks/ai/useAutomaticoAtivo";
 
 import { ConversationListItem } from "./ConversationListItem";
 import { EmptyInbox } from "@/components/empty";
-import {
-  useConversationsRealtime,
-  type ConversationsFilters,
-  type ConversationWithContact,
+import type {
+  ConversationsFilters,
+  ConversationWithContact,
 } from "@/hooks/inbox/useConversationsRealtime";
 
+interface ListResponse {
+  data: ConversationWithContact[];
+  meta?: { cursor?: string | null; has_more?: boolean };
+}
+
 interface Props {
+  /** Query já montada no pai — evita duplicar subscription Realtime + refetch. */
+  listQuery: UseInfiniteQueryResult<InfiniteData<ListResponse>, Error>;
   filters: ConversationsFilters;
-  orgId: string | null;
   selectedId: string | null;
   onSelect: (id: string) => void;
   /** Optional client-side filter (e.g. only-unread). */
@@ -26,8 +32,8 @@ interface Props {
 }
 
 export function ConversationList({
+  listQuery: q,
   filters,
-  orgId,
   selectedId,
   onSelect,
   clientFilter,
@@ -41,8 +47,6 @@ export function ConversationList({
   // NÃO mostrar. Mostrar e sumir depois é pior que aparecer um instante tarde.
   const canais = useChannelSessions().data ?? [];
   const maisDeUmCanal = canais.length > 1;
-
-  const q = useConversationsRealtime(filters, orgId);
 
   // Fila (G5-03): a lista já vem ordenada por tempo de espera (server), então a
   // posição é o índice na lista visível. Só mostramos posição/espera nessa visão.

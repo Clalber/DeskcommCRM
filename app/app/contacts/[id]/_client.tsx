@@ -17,6 +17,7 @@ import { AnonymizeDialog } from "@/components/contacts/AnonymizeDialog";
 import { PropostasDeDado } from "@/components/contacts/PropostasDeDado";
 import { ConversaNoDossie } from "@/components/kanban/ConversaNoDossie";
 import { rotuloDoContato } from "@/lib/contacts/rotulo-do-contato";
+import { phoneForDisplay } from "@/lib/channels/phone-variants";
 
 interface Props {
   contactId: string;
@@ -83,7 +84,7 @@ export function ContactDetailClient({ contactId }: Props) {
           <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
             {contact.email && <span>{contact.email}</span>}
             {contact.email && contact.phone_number && <span>•</span>}
-            {contact.phone_number && <span>{contact.phone_number}</span>}
+            {contact.phone_number && <span>{phoneForDisplay(contact.phone_number)}</span>}
           </div>
           <div className="mt-2 flex flex-wrap gap-1">
             {contact.tags.map((t) => (
@@ -139,7 +140,7 @@ export function ContactDetailClient({ contactId }: Props) {
               </div>
               <div>
                 <dt className="text-xs uppercase text-muted-foreground">Telefone</dt>
-                <dd className="mt-1">{contact.phone_number ?? "—"}</dd>
+                <dd className="mt-1">{contact.phone_number ? phoneForDisplay(contact.phone_number) : "—"}</dd>
               </div>
               <div>
                 <dt className="text-xs uppercase text-muted-foreground">Origem</dt>
