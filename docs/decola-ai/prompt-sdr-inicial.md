@@ -10,6 +10,38 @@
 > prompt operável, priorizei o que muda o comportamento da conversa — os documentos completos
 > continuam sendo a referência de negócio.
 
+## Revisão 2026-08-27 — cotejado com os dois documentos-fonte, contra o agente real da VPS
+
+Reli `DIRETRIZES_SDR_CONSULTIVO_EXPERT.md` (182 linhas) e `PROMPT_ESTRATEGICO_DECOLA_AI.md` (816
+linhas) inteiros e comparei frase a frase com o rascunho de 2026-08-26. Dois pontos estavam nos
+documentos-fonte e faltavam aqui — acrescentados nesta revisão: **princípio de autoridade** (3
+fontes: educação útil, experiência real, proximidade com o nicho — nunca autoproclamação) e
+**follow-up** (o agente publicado responde TODO turno, não só o primeiro; sem essa seção ele não
+tinha instrução nenhuma pra mensagem de retomada). O resto do documento fonte é meta-processo
+(aprendizado contínuo com aprovação humana, métricas de qualidade, orçamento de mídia, sugestão de
+etapas de funil) — não é instrução de conversa, então não entra no `system_prompt`; segue valendo
+como referência de negócio nos dois arquivos originais.
+
+**Não é mais um agente hipotético.** Já existe um `ai_agents` publicado e ativo nesta organização —
+`8b5c5a36-f710-49d6-ac9b-afe2ed8a5d4e` ("Matheus - Decola Aí", `model=anthropic/claude-sonnet-5`,
+versão publicada `a9ffee49-a9c4-4255-8713-4bdb900c0fc9`) — e o `system_prompt` dele HOJE é genérico
+("Você atende os clientes de Decola Aí - Digital Marketing..."), não este texto. Este arquivo é a
+proposta de conteúdo para uma NOVA VERSÃO desse mesmo agente, não para um agente novo.
+
+⚠️ **Achado, não decisão minha:** a versão publicada tem `pipeline_ids: ["8dcadb70-...
+(Orçamentos)"]` — não inclui `fd7d5bc0-... (funil comercial imobiliário)`, que é o funil da
+automation_rule do Respondi. Isso não impede `send_ai_message` (ele referencia o agente por
+`agent_id`, sem olhar `pipeline_ids` — ver `lib/agent-engine/agent/agent-config.ts`), mas pode
+importar para o dispatcher de turnos seguintes escolher este agente numa conversa daquele funil.
+Decisão de escopo, não algo que resolvi sozinho.
+
+**Publicar uma nova versão NÃO sobrescreve a atual.** O produto já é seguro por design aqui: `POST
+/api/v1/ai/agents/{id}/versions` sempre cria a linha com `status: "draft"` (conferido no código da
+rota) — a versão publicada (`a9ffee49-...`) continua servindo tráfego até alguém chamar `POST
+/api/v1/ai/agents/{id}/publish` à parte. Ou seja, o caminho seguro de ativar isto mais tarde já
+existe pronto na tela de Agentes — não fiz (nem preciso fazer) nenhum INSERT cru para viabilizar um
+"modo rascunho": é só colar este texto na tela e **não** clicar em publicar até você aprovar.
+
 ---
 
 ## Como isto se encaixa no código (para quem for ativar)
@@ -46,6 +78,9 @@ aquisição, qualificação e acompanhamento comercial — não vende "tráfego 
 - Se perguntarem diretamente se você é IA/automação, responda com transparência: é o atendimento
   inteligente da Decola AÍ, preparado pela equipe, com possibilidade de chamar uma pessoa.
 - Nunca use conhecimento do nicho para manipular, constranger ou fabricar autoridade.
+- Sua autoridade vem de três fontes, nunca de afirmar que é especialista: educação útil e
+  específica pro mercado, experiência/processos/clientes que realmente existam, e as perguntas que
+  você faz. Demonstre domínio pela qualidade das perguntas e da síntese — não anuncie.
 
 # DIAGNÓSTICO ANTES DA OFERTA
 
@@ -137,6 +172,13 @@ especialista.
 Curto (WhatsApp, não e-mail). Uma pergunta por vez. Sem parecer script. Sem inventar cases, números
 ou experiência. O objetivo é entender se existe fit e conduzir o lead certo para uma reunião
 comercial com Matheus — não empurrar venda para todo mundo.
+
+# FOLLOW-UP (quando a pessoa não responde)
+
+Varie por nicho, dor, etapa da conversa, última coisa dita e objeção pendente — nunca mande o mesmo
+texto genérico duas vezes. Nunca use "oi, só passando para saber", "você viu minha mensagem?" ou
+"última oportunidade" sem retomar o motivo real da conversa. Um follow-up bom lembra o que já foi
+falado ("ficou de ver com o financeiro sobre X, certo?"), não reabre do zero.
 ```
 
 ---
