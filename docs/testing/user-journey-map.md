@@ -420,6 +420,61 @@ divide o servidor. Só aparece exercitando o produto pela tela.
 > não roda quando um caso falha). Corrigidos antes da primeira execução; o
 > resultado real entra aqui quando o CI disser.
 
+## J12 — A tela diz o que ESTA instalação consegue fazer `[P0]`
+
+**Por que P0:** é primeira impressão pura. **Nenhuma instalação nasce com o par
+VAPID** — o `.env.hostgator.example` grava as duas linhas vazias e gerar o par é
+um passo opcional que ninguém é obrigado a dar. Ou seja, o estado testado aqui é
+o estado em que 100% das instalações começam, e a tela de Notificações tem porta
+na navegação (`lib/navigation/registry.ts:470`), então qualquer pessoa chega nela
+no primeiro dia.
+
+**O defeito era de tela, e o backend estava certo o tempo todo.**
+`GET /api/v1/notifications/push` já devolvia `enabled:false` sem as chaves, e o
+`PUT` já recusava com 503 «Web Push não configurado nesta instalação». Quem nunca
+perguntou foi `app/app/settings/notifications/page.tsx`, que afirmava «In-app
+(toast) e Push (Chrome) já funcionam para as cinco categorias» de forma
+incondicional. A sequência que a pessoa vivia:
+
+1. a tela promete Push;
+2. ela liga o interruptor e o navegador pede permissão — incômodo real, cobrado dela;
+3. ela concede, e `syncPushSubscription()` faz `return` em silêncio
+   (`if (!cfg?.data?.enabled || !publicKey) return`);
+4. o interruptor fica ligado prometendo o que a instalação não entrega, e **nada
+   no produto** conta que faltam duas variáveis no `.env`, nem como consegui-las.
+
+Informação que existe no servidor e não chega a quem decide é o mesmo que
+informação ausente.
+
+**O conserto exagerado, recusado de propósito:** desabilitar o interruptor sem
+VAPID. Sem as chaves o aviso na bandeja **ainda funciona com a aba aberta** —
+é `new Notification()` em `lib/notifications/emit.ts`, que não depende de
+inscrição nenhuma. Desabilitar trocaria prometer demais por entregar de menos, e
+o segundo não deixa rastro. J12.3 existe para impedir esse conserto.
+
+Spec: `tests/e2e/notificacoes-diz-o-que-falta.spec.ts` (estado SEM as chaves —
+o do `.env.e2e` e o do primeiro deploy).
+Evidência: `.superpowers/evidence/notificacoes-sem-chaves/`.
+Os DOIS estados: `tests/unit/notificacoes-tela-diz-o-que-falta.test.tsx` — o
+servidor lê `vapidPronto()` uma vez por processo, então provar o estado COM as
+chaves pela tela exigiria um segundo `next start` só para trocar duas variáveis,
+num job que já leva meia hora.
+
+| # | Caso | Expectativa | Resultado |
+|---|------|-------------|-----------|
+| J12.1 | Sem VAPID, a tela não fica muda | aviso `push-status-faltando-chaves` visível, e o de «pronto» ausente | PASS |
+| J12.2 | Ela diz o que FAZER, não só o que falta | o comando `npx web-push generate-vapid-keys` e as duas chaves, nominalmente | PASS |
+| J12.3 | O interruptor de Push continua ligável | não nasce desabilitado — a capacidade com a aba aberta existe | PASS |
+| J12.4 | Com VAPID, anuncia a aba fechada | e para de mandar gerar o par que já existe | PASS (unit) |
+
+**NÃO COBERTO, declarado:** a notificação chegando na bandeja do sistema com a
+aba fechada. Depende do serviço de push do navegador (FCM), de rede externa e de
+um par VAPID real — não é reproduzível num runner, e fingir com mock seria pior
+que a ausência declarada. O que está provado é o contrato entre a TELA e o
+SERVIDOR. Continua aberto na issue #366.
+
+---
+
 ## J7 — Exploração completa `[P2]`
 
 Andar por TODAS as rotas navegáveis logado como admin e como agent: settings, contacts,
