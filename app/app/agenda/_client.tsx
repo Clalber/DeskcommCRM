@@ -174,7 +174,16 @@ export function AgendaClient({
   // respondendo a uma pergunta que ninguém fez. Cair para lista vazia é pior de
   // aparência e melhor de verdade: a grade fica vazia por um piscar, em vez de
   // mostrar compromisso no dia errado.
-  const recorteDoServidor = React.useRef(recorteDaGrade).current;
+  // ⚠️ `useState` com inicializador, e NÃO `useRef(...).current`.
+  //
+  // A intenção é a mesma — congelar a janela da primeira pintura —, mas ler
+  // `.current` durante o render é violação de regra do React, e o `pnpm lint`
+  // reprova com "Cannot access refs during render". Foi o CI que me disse: eu
+  // tinha rodado typecheck e vitest e NÃO tinha rodado lint. O `verify` cai nos
+  // três, e eu só olhei dois.
+  //
+  // `useState(() => x)[0]` faz o mesmo congelamento sem tocar em ref no render.
+  const [recorteDoServidor] = React.useState(() => recorteDaGrade);
   const naJanelaDoServidor =
     recorteDaGrade.de === recorteDoServidor.de && recorteDaGrade.ate === recorteDoServidor.ate;
 
@@ -510,12 +519,27 @@ export function AgendaClient({
         }}
       />
 
+      {/* ⚠️ O VAZIO NÃO ESCONDE MAIS A GRADE, e o achado veio do CI.
+          Isto era um ternário: com zero agendamentos, `EmptyAgenda` entrava NO
+          LUGAR de `GradeDaAgenda`. Numa instalação nova — que é o estado de
+          primeira impressão — a pessoa abria a Agenda e não via calendário
+          NENHUM: sem semana, sem horários, e com o alternador de visão ligado a
+          nada, que é controle decorativo.
+
+          A mensagem continua, porque ela é boa: diz de ONDE vem o próximo
+          agendamento em vez de constatar a ausência. Ela virou aviso ACIMA da
+          grade, e a grade fica.
+
+          Achado porque a cerca nova das três visões passou aqui (banco com
+          dados de execuções anteriores) e reprovou no CI, onde o banco nasce
+          limpo. O mesmo formato do defeito que `agenda-tela-do-produto` já
+          tinha pago: verde por banco sujo. */}
       {agendamentos.length === 0 ? (
-        <div className="flex min-h-0 flex-1 items-center justify-center rounded-lg border border-border bg-surface">
+        <div className="rounded-lg border border-border bg-surface p-4">
           <EmptyAgenda />
         </div>
-      ) : (
-        <GradeDaAgenda
+      ) : null}
+      <GradeDaAgenda
           visao={visao}
           ancora={ancora}
           agora={new Date()}
@@ -523,7 +547,7 @@ export function AgendaClient({
           agendamentos={agendamentos}
           className="min-h-0 flex-1"
         />
-      )}
+
     </div>
   );
 }
