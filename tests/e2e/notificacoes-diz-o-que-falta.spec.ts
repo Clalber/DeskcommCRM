@@ -143,7 +143,29 @@ test.describe("Notificações — a tela conta a verdade sobre esta instalação
 
   test("o interruptor de Push continua ligável — a capacidade com a aba aberta existe", async ({
     page,
+    context,
   }) => {
+    // ⚠️ A PERMISSÃO É CONCEDIDA DE PROPÓSITO, e a falta disto foi um defeito
+    // REAL deste arquivo, não um detalhe de setup.
+    //
+    // A pergunta deste caso é «o Push é desabilitado por falta de VAPID?». Mas
+    // `_client.tsx` também desabilita por `denied || unsupported` — e o Chromium
+    // do runner nasce SEM a permissão. Sem conceder, o controle fica desabilitado
+    // por um motivo que nada tem a ver com VAPID, e a asserção mediria a coisa
+    // errada.
+    //
+    // Na primeira versão ela passou assim mesmo, e por sorte: o hook lia a
+    // permissão num `useEffect`, então havia uma janela entre o primeiro render
+    // (habilitado, pelo chute `"default"`) e o efeito (desabilitado). O teste
+    // ganhava a corrida às vezes. O PR seguinte mudou o timing o bastante para
+    // perdê-la e ficou vermelho sem ter quebrado nada — teste instável na `main`
+    // pinta de vermelho o trabalho de quem passar por ali.
+    //
+    // A janela foi fechada na raiz (`useSyncExternalStore` no hook). Conceder a
+    // permissão é a outra metade: isola a variável, e o que sobra medido é
+    // exatamente VAPID.
+    await context.grantPermissions(["notifications"]);
+
     // ⚠️ ESTE CASO EXISTE PARA IMPEDIR O CONSERTO EXAGERADO.
     //
     // A leitura preguiçosa do defeito é "a tela oferece Push sem VAPID, então
