@@ -94,6 +94,11 @@ const COPY: Record<string, { variant: Variant; msg?: string }> = {
   // Esta é da CONFIGURAÇÃO e não de quem está marcando — erro mesmo, e a rota
   // já diz qual campo está errado.
   agenda_disponibilidade_invalida: { variant: "error" },
+  // Sem período/alvo a rota recusa em vez de devolver lista vazia — e está
+  // certa: vazio faria a grade dizer "nada marcado" quando a verdade é que a
+  // pergunta não tinha alvo. Para quem usa, isto é "escolha uma semana", não
+  // "algo quebrou" — daí `info` e não `error`.
+  agenda_listagem_sem_recorte: { variant: "info" },
 };
 
 export function showApiError(err: unknown): void {
