@@ -336,6 +336,56 @@ export const AUDIT_ACTIONS = [
   // demais para a chamada seguinte do expurgo alcançar — a trilha registra
   // a própria erosão em vez de encolher sem deixar marca.
   "retention.sweep_run",
+
+  // ── A agenda conectada do Google (frente 3 do Calendário Vivo) ───────────
+  // TRÊS e não uma, e a razão é a mesma das três do teto de gasto: cada uma
+  // responde a uma pergunta diferente que alguém vai fazer ao painel meses
+  // depois.
+  //
+  // `conexao_iniciada` é o único registro de que a pessoa CHEGOU a ir ao
+  // Google — sem ela, uma conexão que morre no meio do caminho não deixa
+  // rastro nenhum e o relato que chega é "cliquei e não aconteceu nada".
+  //
+  // `conexao_falhou` carrega o motivo em `metadata.reason`, e ele é o que
+  // separa causas com desfechos opostos: `state_invalido` é retorno que não
+  // dá para verificar, `scope_missing` é a pessoa tendo desmarcado permissão
+  // na tela do Google, `cifra_indisponivel` é a instalação sem chave. As três
+  // aparecem iguais para quem clicou; só a trilha distingue.
+  //
+  // ⚠️ Desistir NÃO é falha e não entra aqui: quem clica "Cancelar" na tela do
+  // Google volta pelo callback, e auditar isso encheria a trilha de gente que
+  // apenas mudou de ideia — o mesmo critério do cron que não fez nada.
+  "agenda.google.conexao_iniciada",
+  "agenda.google.conexao_falhou",
+  "agenda.google.conexao_concluida",
+  "agenda.google.conexao_desconectada",
+  // Tipos de agendamento: mudar duração, categoria ou responsável muda o que a
+  // IA oferece ao cliente, então é mutação de configuração e audita.
+  "agenda.tipo_criado",
+  "agenda.tipo_alterado",
+  "agenda.tipo_desativado",
+  // A rodada de renovação — e ela só audita quando FEZ algo, como manda a regra
+  // do cron desta base. Uma linha por rodada com efeito, carregando a contagem:
+  // é o que permite responder "quantas agendas precisaram reconectar esta
+  // semana" sem varrer log de worker.
+  "agenda.google.renovacao_executada",
+  // A rodada da VOLTA. Também só audita quando fez algo, e a contagem carrega
+  // `nossos_ignorados` de propósito: é o número que prova o anti-eco
+  // funcionando — sem ele, esses eventos teriam virado compromisso fantasma.
+  "agenda.google.sync_executado",
+
+  // ── O compromisso em si (frentes 1 e 5 do Calendário Vivo) ──────────────
+  // Marcar, remarcar e cancelar são mutações de um compromisso com hora e
+  // pessoa. Cancelar em especial: é a única das três que alguém pode querer
+  // negar ter feito.
+  //
+  // Não há `agenda.appointment_completed` nem `_no_show` aqui de propósito.
+  // Esses dois não são mutação de intenção — são o registro de um fato que já
+  // aconteceu no mundo, e vivem na timeline do lead (`ATIVIDADES_DA_AGENDA`,
+  // em `lib/agenda/tipos.ts`), não na trilha de quem-fez-o-quê.
+  "agenda.appointment_created",
+  "agenda.appointment_rescheduled",
+  "agenda.appointment_cancelled",
 ] as const;
 
 /** Um código de auditoria. Derivado de `AUDIT_ACTIONS` — não redigite a lista. */

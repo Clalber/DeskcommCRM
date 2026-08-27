@@ -43,6 +43,7 @@ export const DICIONARIO: Traducoes = {
 
   // ─── Navegação (a barra lateral, presente em toda tela) ───
   Inbox: { es: "Inbox" },
+  Agenda: { es: "Agenda" },
   Radar: { es: "Radar" },
   "Respostas rápidas": { es: "Respuestas rápidas" },
   Contatos: { es: "Contactos" },
@@ -53,6 +54,7 @@ export const DICIONARIO: Traducoes = {
   // da tela de configuração, que antes disputava "Funis" com ela.
   Funis: { es: "Embudos" },
   "Etapas do funil": { es: "Etapas del embudo" },
+  "Tipos de agendamento": { es: "Tipos de cita" },
   Agentes: { es: "Agentes" },
   "Follow-ups": { es: "Seguimientos" },
   Roteadores: { es: "Enrutadores" },
@@ -5121,6 +5123,12 @@ export const DICIONARIO: Traducoes = {
   "Outro motivo": { es: "Otro motivo" },
   "Ganhos": { es: "Ganados" },
   "Perdidos": { es: "Perdidos" },
+
+  // ─── Empty state: Agenda (merge upstream, novo módulo de Calendário) ───
+  "Sua agenda está livre esta semana": { es: "Tu agenda está libre esta semana" },
+  "Agendamentos aparecem aqui quando alguém marca pela tela, quando o agente marca por você, ou quando chegam da agenda do Google conectada.": {
+    es: "Los agendamientos aparecen aquí cuando alguien agenda desde la pantalla, cuando el agente agenda por ti, o cuando llegan desde la agenda de Google conectada.",
+  },
 };
 
 /**

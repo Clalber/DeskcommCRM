@@ -148,6 +148,7 @@ jobs:
         agente-papeis-operador.spec.ts prova-painel-provedores.spec.ts
         followup-linguagem.spec.ts followup-ramos.spec.ts
         wizard-do-funcionario.spec.ts mfa-opcional.spec.ts inbox-responder-citando.spec.ts
+        agenda-tela-do-produto.spec.ts
       # ⚠️ A ORDEM DESTA LISTA NÃO DECIDE A ORDEM DE EXECUÇÃO. O Playwright
       # ordena os arquivos por CAMINHO, não pela ordem em que são passados na
       # linha de comando. Medido no run 31838253496: `marca-logo.spec.ts` estava
@@ -188,7 +189,17 @@ jobs:
       # (Este comentário mora FORA do bloco `>-` porque dentro dele `#` não é
       # comentário: é conteúdo, e cada palavra viraria argumento do playwright.
       # Medido: com o texto dentro, a variável ia de 23 para 205 tokens.)
+      #
+      # `agente-marca-consulta` entrou aqui em 2026-08-27, e a dívida que a segurava era
+      # explícita: ela estava em FORA_DO_CI com o motivo escrito de que eu não conseguira
+      # EXECUTÁ-LA. Foi executada em ambiente completo (banco do baseline, app buildado),
+      # 3 casos / 3 verdes, e o primeiro run achou um defeito real de servidor — a tela não
+      # dizia de quem era o compromisso. Entra na PARTE_2 e não na 1 porque é AQUI que mora
+      # o molde dela, `agente-organiza-operacao`; o comentário antigo dizia PARTE_1 e estava
+      # errado sobre o próprio vizinho.
       SPECS_PARTE_2: >-
+        agente-marca-consulta.spec.ts agenda-marcar-pela-tela.spec.ts agenda-remarcar-e-cancelar.spec.ts
+        agenda-tipos-de-agendamento.spec.ts
         agente-novo-e-uso.spec.ts agente-organiza-operacao.spec.ts
         central-de-avisos-capacidades.spec.ts escalacao-ciclo.spec.ts
         navegacao.spec.ts olhar-telas-do-epico.spec.ts pipelines-gestao.spec.ts
@@ -205,6 +216,8 @@ jobs:
         historico-de-captacao.spec.ts
         automacao-diz-a-verdade.spec.ts
         inbox-quem-manda.spec.ts
+        agenda-kit-visual.spec.ts
+        agenda-conectar-google.spec.ts
       # Cada item aqui tem o motivo MEDIDO, não presumido — e o gate cobra que a
       # lista exista e some com as outras duas.
       #
@@ -279,6 +292,47 @@ jobs:
       #      execução quando a issue #347 entregar entrega determinística (o
       #      caminho provável é desligar o `refetchOnWindowFocus` durante a
       #      asserção, para sobrar um caminho só).
+      # ✅ `agenda-marcar-pela-tela` SAIU DAQUI — e o registro é o motivo.
+      #
+      # Ela nasceu `skip` pela DECISÃO 21.3: a frente 1 é API e não tem pixel
+      # próprio, então em vez de CITAR num relatório qual spec vai prová-la em
+      # tela, a spec é CRIADA com a condição de saída no cabeçalho.
+      #
+      # ⚠️ E ESSA CONDIÇÃO VENCEU SEM NINGUÉM VOLTAR PARA CONFERIR. Declarar a
+      # condição foi a coisa certa; o que faltou é que ninguém relê condição de
+      # saída. Medido quando alguém foi olhar:
+      #
+      #     grep -n "^export async function" app/api/v1/agenda/agendamentos/route.ts
+      #     # GET:95  POST:145  PATCH:149  DELETE:153
+      #
+      # Escrita e executada, ela achou CINCO defeitos que nenhuma leitura de
+      # código tinha achado — entre eles a tela dizendo "Marcado ✓" sem criar
+      # linha nenhuma, e um laço de requisições no painel de marcação.
+      #
+      # Entra na PARTE_2 ao lado de `agente-marca-consulta` porque as duas usam
+      # `seed-e2e-agenda.ts` — e cada uma o chama por si, para nenhuma depender
+      # da ordem em que a outra rodou.
+      # para dirigir, e a condição que a exclui deixa de existir. Enquanto isso,
+      # rodá-la no CI custaria um job para exercitar um `skip`.
+      #
+      # `agenda-conectar-google` entra pela MESMA 21.3 e pela frente 3 (Google
+      # Calendar BYO), que também não tem pixel: o botão "Conectar Google" e a
+      # faixa de estado moram na tela da Agenda, da frente 2.
+      #
+      # São DUAS condições de saída, e a primeira depende só de tela:
+      #
+      #  (a) o caso SEM CHAVE sai daqui assim que a tela consumir
+      #      `googleEstaConfigurado()` — ele não precisa de Google nenhum, porque
+      #      o que prova é a instalação SEM `GOOGLE_CALENDAR_CLIENT_ID`, que é o
+      #      estado de 100% dos deploys novos (DECISÃO 3.1, envs opcionais). É o
+      #      caso que vem PRIMEIRO no arquivo de propósito: spec que só cobre o
+      #      caminho feliz deixa sem prova justamente a primeira tela que todo
+      #      self-hoster encontra;
+      #
+      #  (b) o caso COM CHAVE precisa, além da tela, de uma conta Google de teste
+      #      com consentimento pré-aprovado. Sem ela o job pararia num
+      #      `accounts.google.com` esperando login humano — e é por isto que ela
+      #      fica FORA do CI em vez de ficar sem existir.
       FORA_DO_CI: >-
         vps-fresh-onboarding.spec.ts
         inbox-tempo-real.spec.ts
