@@ -90,6 +90,8 @@ export interface ResultadoDaRetencao {
   /** O último lote veio cheio e o teto foi atingido: sobrou trabalho para amanhã. */
   fila_tem_resto: boolean;
   auditoria_tem_resto: boolean;
+  /** Os nonces de OAuth do Google já queimados (migration 0190). */
+  nonces_apagados: number;
   /** O espelho da agenda conectada — cache com prazo (migration 0187). */
   espelho_apagado: number;
   lotes_espelho: number;
@@ -104,14 +106,14 @@ export interface ResultadoDaRetencao {
 /** Só a superfície que este cron usa — o teste injeta uma implementação. */
 export interface PodaDb {
   rpc(
-    nome: "fn_podar_fila_de_jobs" | "fn_expurgar_auditoria_vencida" | "fn_expurgar_espelho_da_agenda",
+    nome: "fn_podar_fila_de_jobs" | "fn_expurgar_auditoria_vencida" | "fn_expurgar_espelho_da_agenda" | "fn_expurgar_nonces_de_oauth",
     args: { p_retencao_dias: number; p_limite: number },
   ): Promise<{ data: number | null; error: { message: string } | null }>;
 }
 
 async function drenar(
   db: PodaDb,
-  nome: "fn_podar_fila_de_jobs" | "fn_expurgar_auditoria_vencida" | "fn_expurgar_espelho_da_agenda",
+  nome: "fn_podar_fila_de_jobs" | "fn_expurgar_auditoria_vencida" | "fn_expurgar_espelho_da_agenda" | "fn_expurgar_nonces_de_oauth",
   dias: number,
 ): Promise<{ apagadas: number; lotes: number; temResto: boolean }> {
   let apagadas = 0;
@@ -165,11 +167,17 @@ export async function podarHistorico(
   const jobs = await drenar(db, "fn_podar_fila_de_jobs", fila.dias);
   const linhas = await drenar(db, "fn_expurgar_auditoria_vencida", auditoria.dias);
   const eventos = await drenar(db, "fn_expurgar_espelho_da_agenda", espelho.dias);
+  // Quarta poda: os nonces de OAuth já queimados. O `state` vale dez minutos,
+  // então um dia é folga de duas ordens de grandeza — e sem esta linha a tabela
+  // cresceria para sempre, uma linha por conexão tentada, num produto que se
+  // instala e ninguém monitora.
+  const nonces = await drenar(db, "fn_expurgar_nonces_de_oauth", 1);
 
   return {
     jobs_apagados: jobs.apagadas,
     auditoria_apagada: linhas.apagadas,
     espelho_apagado: eventos.apagadas,
+    nonces_apagados: nonces.apagadas,
     lotes_fila: jobs.lotes,
     lotes_auditoria: linhas.lotes,
     lotes_espelho: eventos.lotes,
@@ -197,7 +205,11 @@ export function houveEfeito(resultado: ResultadoDaRetencao): boolean {
     // A terceira conta: sem ela, uma rodada que só podou o espelho apagaria
     // linhas e não deixaria registro — e o CLAUDE.md manda auditar QUANDO HÁ
     // EFEITO, não parar de auditar.
-    resultado.espelho_apagado > 0
+    resultado.espelho_apagado > 0 ||
+    // A quarta, pela MESMA razão, e ela quase entrou sem: acrescentei a poda de
+    // nonces ao laço e ao retorno e esqueci desta linha. O comentário acima
+    // descrevia exatamente o defeito que eu estava criando um parágrafo abaixo.
+    resultado.nonces_apagados > 0
   );
 }
 

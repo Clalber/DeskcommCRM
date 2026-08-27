@@ -182,6 +182,8 @@ describe("houveEfeito — as duas direções", () => {
     fila_tem_resto: false,
     auditoria_tem_resto: false,
     espelho_apagado: 0,
+    // Quarta poda (migration 0190): os nonces de OAuth do Google já queimados.
+    nonces_apagados: 0,
     lotes_espelho: 0,
     espelho_tem_resto: false,
     retencao_fila_dias: RETENCAO_FILA_DIAS_PADRAO,
@@ -192,6 +194,14 @@ describe("houveEfeito — as duas direções", () => {
 
   it("rodada que não apagou nada NÃO ocupa linha de auditoria", () => {
     expect(houveEfeito(base)).toBe(false);
+  });
+
+  it("apagou nonce → audita, pela mesma razão das outras três", () => {
+    // Sem esta linha em `houveEfeito`, uma rodada que só podou nonces apagaria
+    // linhas e não deixaria registro. O caso entrou porque quem acrescentou a
+    // quarta poda (eu) a ligou ao laço e ao retorno e esqueceu do predicado —
+    // um parágrafo abaixo do comentário que descreve exatamente esse defeito.
+    expect(houveEfeito({ ...base, nonces_apagados: 1 })).toBe(true);
   });
 
   it("apagou job → audita; apagou auditoria → audita", () => {

@@ -210,20 +210,50 @@ describe("renovarAgendasDoGoogle", () => {
     expect(audit).not.toHaveBeenCalled();
   });
 
-  // ⚠️ A METADE DO LAÇO DE RETORNO QUE AINDA NÃO EXISTE — e ela está declarada
-  // aqui, e não num relatório, pelo mesmo motivo que a spec da frente 3 virou
-  // arquivo: promessa em texto depende de alguém reler.
+  // ⚠️ A METADE DO LAÇO DE RETORNO QUE AINDA NÃO EXISTE — e a guarda dela se
+  // ARMA SOZINHA, em vez de ser um `skip` esperando alguém lembrar.
   //
-  // Hoje a rodada marca `token_expired` e escreve o motivo em `last_sync_error`.
-  // Isso muda o BANCO, e a tela da Agenda pode ler — mas ninguém é AVISADO. O
-  // invariante 7 do Sistema Vivo pede que a falha apareça onde o humano olha, e
-  // o lugar disso nesta base é `agent_inbox_items`.
+  // Hoje a rodada marca `token_expired` e escreve o motivo: o banco muda e a
+  // tela pode ler, mas ninguém é AVISADO. O invariante 7 pede que a falha
+  // apareça onde o humano olha, e o lugar disso aqui é `agent_inbox_items` —
+  // que ainda não tem `kind` de agenda. Acrescentá-lo é schema, e está com o
+  // Maestro (frente 5), que o inclui na migration dele.
   //
-  // Falta um `kind` no CHECK de `agent_inbox_items` (algo como
-  // `agenda_google_desconectada`). Acrescentá-lo é mudança de schema — migration
-  // + apêndice no `baseline.sql` + MANIFEST —, e schema é de outra frente. Está
-  // com o maestro. Este caso nasce vermelho no dia em que o kind existir.
-  it.skip("agenda que perdeu a autorização abre aviso na Central", async () => {
-    // Ver o comentário acima. Bloqueado por `kind` novo em `agent_inbox_items`.
+  // A versão anterior disto era um `it.skip` de corpo VAZIO. Ele não
+  // vermelheceria nunca: um `skip` sem asserção é marcador, não mecanismo — e o
+  // Maestro planejava usá-lo como verificação de que o encaixe funcionou, o que
+  // não teria funcionado. É a mesma classe que esta entrega vem caçando o dia
+  // todo: a coisa que PARECE gate e não é.
+  //
+  // O caso abaixo lê o `baseline.sql` e decide sozinho: enquanto o kind não
+  // existir, ele registra a dívida; no instante em que a migration do Maestro
+  // entrar, ele passa a EXIGIR que o worker escreva o aviso — e fica vermelho
+  // até alguém ligar a escrita. Ninguém precisa lembrar de flipar nada.
+  it("quando o `kind` existir no banco, o worker TEM de abrir o aviso na Central", async () => {
+    const { readFileSync } = await import("node:fs");
+    const path = await import("node:path");
+    const baseline = readFileSync(path.join(process.cwd(), "supabase/baseline.sql"), "utf8");
+    const rota = readFileSync(
+      path.join(process.cwd(), "app/api/v1/cron/agenda-google-refresh/route.ts"),
+      "utf8",
+    );
+
+    const kindNoBanco = baseline.includes("'agenda_google_desconectada'");
+    const workerEscreve = rota.includes("agent_inbox_items");
+
+    // Controle: o leitor está vivo? `midia_nao_lida` é um kind que existe há
+    // muito, e sem esta linha um `readFileSync` apontando para o lugar errado
+    // devolveria "kind não existe" para sempre e a dívida nunca cobraria.
+    expect(baseline.includes("'midia_nao_lida'")).toBe(true);
+
+    if (!kindNoBanco) {
+      // Dívida ainda aberta, e declarada: nada a exigir do worker enquanto não
+      // há valor válido para gravar.
+      expect(workerEscreve).toBe(false);
+      return;
+    }
+
+    // O kind chegou. A partir daqui a ausência do aviso é defeito, não pendência.
+    expect(workerEscreve).toBe(true);
   });
 });

@@ -55,25 +55,22 @@ describe("emitirEstado / verificarEstado", () => {
     expect(verificarEstado(state, { segredo: SEGREDO, agora: AGORA })?.nonce).toBe("nonce-de-teste");
   });
 
-  // ⚠️ ESTE `skip` SUBSTITUI UM TESTE QUE PRENDIA O BURACO.
+  // A DÍVIDA DECLARADA AQUI FOI PAGA — em outro arquivo, e é isso que importa.
   //
-  // Antes havia aqui um caso chamado "aqui ele não é queimado", que AFIRMAVA que
-  // o mesmo state vale duas vezes dentro do prazo. A intenção era declarar
-  // dívida; o efeito era outro — quem consertasse a queima faria aquele caso
-  // ficar VERMELHO, e o caminho de menor resistência seria "consertar de volta".
-  // Teste que afirma o defeito o transforma em contrato.
+  // Este bloco teve duas versões erradas antes desta. A primeira era um teste
+  // que AFIRMAVA o defeito ("aqui ele não é queimado"), o que transforma dívida
+  // em contrato: quem consertasse faria o caso vermelhecer e o caminho barato
+  // seria consertar de volta. A segunda era um `skip` descrevendo o
+  // comportamento desejado — melhor, mas ainda no lugar errado.
   //
-  // A forma certa de declarar a dívida é esta: o caso que descreve o
-  // comportamento DESEJADO, pulado, com o motivo escrito. Ele nasce vermelho no
-  // dia em que alguém ligar a queima — e é assim que se percebe que acabou.
+  // O lugar errado importa: a queima não é desta camada. `verificarEstado` é
+  // pura e não tem banco; quem queima é o callback, que grava o nonce em
+  // `calendar_oauth_nonces` (migration 0190) ANTES de trocar o código. A guarda
+  // real vive em `tests/unit/agenda-google-callback-route.test.ts`, com o caso
+  // do `23505` e o da ordem.
   //
-  // Falta, para ele deixar de ser `skip`: onde guardar o nonce usado (tabela com
-  // migration ou Upstash, que já é dependência obrigatória). É decisão de infra,
-  // e está com o maestro.
-  it.skip("o mesmo state não vale duas vezes — o nonce é queimado no primeiro uso", () => {
-    // Ver o comentário acima. Quem implementar a queima liga este caso.
-  });
-
+  // O que sobra aqui é o que esta camada de fato garante: devolver o nonce, que
+  // é o que torna a queima possível.
   it("dois states do mesmo par de ids são diferentes", () => {
     const a = emitirEstado(DADOS, { segredo: SEGREDO, agora: AGORA });
     const b = emitirEstado(DADOS, { segredo: SEGREDO, agora: AGORA });

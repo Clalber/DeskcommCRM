@@ -16,18 +16,30 @@
  * nenhum. Copiar o molde ao pé da letra reproduziria o defeito que outras quatro
  * rotas acabaram de deixar de ter.
  *
- * ─── A ordem importa, e cada passo tem um motivo ──────────────────────────
+ * ─── A ORDEM DOS PASSOS É CONTRATO, e cada um tem um motivo ──────────────
+ *
+ * Esta lista existe porque nenhum destes passos PARECE depender de ordem — e
+ * quem reordenar por estética desfaz uma propriedade sem receber erro nenhum.
  *
  * 1. `error` na query ANTES de tudo: quem clicou "Cancelar" na tela do Google
  *    volta por aqui, e isso não é falha — é uma pessoa desistindo. Tratar como
  *    erro encheria o log e assustaria quem só mudou de ideia.
  * 2. `state` ANTES do `code`: sem saber de quem é o retorno não há org para
  *    auditar, e auditar sem org é linha órfã.
- * 3. escopo DEPOIS da troca e ANTES de gravar: a tela do Google deixa desmarcar
+ * 3. SESSÃO logo depois do `state`, e antes de qualquer efeito: a assinatura
+ *    prova que o `state` é nosso, não prova que quem volta é quem o pediu. São
+ *    portas diferentes, e esta abre com um único uso.
+ * 4. QUEIMA DO NONCE antes de trocar o código, e este é o passo cuja ordem mais
+ *    parece indiferente. Queimar DEPOIS gastaria o `code` do Google — que é de
+ *    uso único — antes de descobrir que o `state` era repetido, e quem
+ *    apresentasse o legítimo receberia "código já usado": um erro que manda o
+ *    diagnóstico para o Google em vez de para nós. Não é só falhar fechado; é
+ *    falhar de forma que quem investiga chegue no lugar CERTO.
+ * 5. escopo DEPOIS da troca e ANTES de gravar: a tela do Google deixa desmarcar
  *    escopo por escopo, e uma conexão gravada como saudável sem
  *    `calendar.events` só falharia no primeiro agendamento — longe daqui, com
  *    uma mensagem que culpa o calendário.
- * 4. cifra ANTES do upsert: gravar o token em claro por um instante é gravá-lo
+ * 6. cifra ANTES do upsert: gravar o token em claro por um instante é gravá-lo
  *    em claro.
  */
 
@@ -114,6 +126,39 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   const app = configuracaoDoGoogle();
   if (!app) return voltar("erro=google_nao_configurado");
 
+  // ⚠️ QUEIMA DO NONCE — e ela vem ANTES de trocar o código, não depois.
+  //
+  // O `state` é assinado e tem prazo de dez minutos; dentro dele valia quantas
+  // vezes fosse apresentado. A chave primária da tabela é o próprio nonce
+  // (migration 0190): a segunda tentativa viola a unicidade, e é assim que o
+  // replay é recusado.
+  //
+  // A ORDEM É A PARTE FÁCIL DE PERDER. Queimar DEPOIS da troca gastaria o
+  // `code` do Google — que é de uso único — antes de descobrir que o `state`
+  // era repetido, e quem apresentasse o legítimo receberia "código já usado",
+  // um erro que aponta para o Google e não para o replay.
+  const admin = createAdminClient();
+  const { error: erroDoNonce } = await admin.from("calendar_oauth_nonces").insert({
+    nonce: estado.nonce,
+    organization_id: organizationId,
+    user_id: userId,
+    expira_em: new Date(estado.expiraEmMs).toISOString(),
+  });
+  if (erroDoNonce) {
+    // `23505` é unicidade: o nonce já foi usado. Qualquer outro erro também
+    // recusa — não dá para garantir uso único sem conseguir gravar, e seguir
+    // seria abrir a porta justamente quando o guarda está indisponível.
+    await audit({
+      action: "agenda.google.conexao_falhou",
+      organizationId,
+      metadata: {
+        reason: erroDoNonce.code === "23505" ? "state_reutilizado" : "nonce_indisponivel",
+        user_id: userId,
+      },
+    });
+    return voltar("erro=retorno_nao_verificavel");
+  }
+
   // 3. Troca o código pelos tokens.
   const leitura = await trocarCodigoPorToken(app, code, { agora: new Date() });
   if (!leitura.ok) {
@@ -151,8 +196,6 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   // 6. Cifra ANTES de gravar. `encryptWebhookSecret` devolve `null` quando a
   //    chave de cifra da instalação não está ativa — e aqui isso vira uma
   //    recusa em português, não a exceção do Postgres que nomeia um parceiro.
-  const admin = createAdminClient();
-
   // ⚠️ SEM `refresh_token` A CONEXÃO NASCE MORTA, e o pior é que ela nasce
   // parecendo viva. Todo o argumento do `prompt=consent` na rota de ida existe
   // para garantir que ele venha; se ainda assim não vier, gravar `healthy` faz a
