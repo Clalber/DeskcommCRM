@@ -339,3 +339,52 @@ export function trilhaPadraoDoMembro(userId: string): TrilhaDaAgenda {
   // disso com `noUncheckedIndexedAccess`.
   return trilha ?? TRILHAS_DA_AGENDA[0];
 }
+
+/**
+ * As trilhas de uma EQUIPE, sem duas pessoas na mesma cor.
+ *
+ * ⚠️ `trilhaPadraoDoMembro` sozinha não resolve isto, e não é defeito dela: ela é
+ * um hash módulo 8, e hash dá ESTABILIDADE (a mesma pessoa sempre na mesma cor),
+ * nunca DISTINÇÃO. Com 5 pessoas e 8 trilhas, a chance de pelo menos uma colisão
+ * passa de 60% — e medido nesta organização, duas pessoas caíram na trilha 7.
+ *
+ * O sintoma é o que o sistema de cores existe para impedir: na grade, duas
+ * pessoas viram uma só, e quem olha não distingue de quem é o compromisso.
+ *
+ * ─── Por que não ordenar e distribuir 1..8 ───────────────────────────────
+ *
+ * Porque aí a cor de cada um passa a depender de QUEM MAIS está na lista: entra
+ * alguém novo e a equipe inteira troca de cor. A cor deixaria de ser aprendível,
+ * que é a razão de ela existir.
+ *
+ * ─── O que esta função faz ───────────────────────────────────────────────
+ *
+ * Parte do hash — todo mundo fica na cor de sempre — e resolve APENAS as
+ * colisões, avançando para a próxima trilha livre. Quem chegou primeiro na
+ * ordem estável (o id) mantém a sua; só quem colidiu se move. Trocar a ordem de
+ * entrada não muda o resultado, porque a ordenação é pelo id e não pela chegada.
+ *
+ * Com mais pessoas do que trilhas, a repetição volta — e aí é inevitável: são
+ * oito cores. Quando isso acontecer, a resposta é mais trilhas na paleta, não
+ * mais lógica aqui.
+ */
+export function trilhasDaEquipe(userIds: readonly string[]): Map<string, TrilhaDaAgenda> {
+  const resultado = new Map<string, TrilhaDaAgenda>();
+  const ocupadas = new Set<TrilhaDaAgenda>();
+  // Ordem estável e independente de como a lista chegou.
+  for (const id of [...userIds].sort()) {
+    if (resultado.has(id)) continue;
+    const inicio = TRILHAS_DA_AGENDA.indexOf(trilhaPadraoDoMembro(id));
+    let escolhida = trilhaPadraoDoMembro(id);
+    for (let passo = 0; passo < TRILHAS_DA_AGENDA.length; passo += 1) {
+      const candidata = TRILHAS_DA_AGENDA[(inicio + passo) % TRILHAS_DA_AGENDA.length];
+      if (candidata !== undefined && !ocupadas.has(candidata)) {
+        escolhida = candidata;
+        break;
+      }
+    }
+    ocupadas.add(escolhida);
+    resultado.set(id, escolhida);
+  }
+  return resultado;
+}

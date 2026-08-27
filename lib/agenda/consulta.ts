@@ -446,6 +446,24 @@ export async function listaAgendamentos(
   // — que não é o que nenhum dos dois pediu.
   if (params.de && params.ate) {
     q = q.gte("starts_at", params.de).lt("starts_at", params.ate);
+  } else if (!params.dia) {
+    // ⚠️ SEM RECORTE DE TEMPO, O PISO É AGORA — e sem este `else if` a listagem
+    // respondia a pergunta errada.
+    //
+    // A query ordena `ascending` e corta em `limite`. Sem piso, um contato com
+    // mais compromissos que o limite recebia os MAIS ANTIGOS, e o de amanhã
+    // ficava de fora. Medido no caminho real: 60 linhas no banco, limite 20, e a
+    // consulta recém-marcada não aparecia na listagem do próprio contato.
+    //
+    // E é a pergunta que a ferramenta MCP declara responder: "USE ANTES DE
+    // MARCAR: cliente que já tem consulta marcada não deve receber oferta de
+    // horário como se não tivesse". Consulta do ano passado não responde isso.
+    // A combinação limite + ordem derrotava a instrução que a própria ferramenta
+    // dá ao modelo.
+    //
+    // Quem quiser o passado pede explicitamente por `de`/`ate` ou por `dia` —
+    // os dois caminhos continuam intactos.
+    q = q.gte("starts_at", new Date().toISOString());
   }
 
   const { data, error } = await q;

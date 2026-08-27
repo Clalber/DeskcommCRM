@@ -84,11 +84,37 @@ test.describe("a Agenda como o dono do produto a usa", () => {
     // `trilhaPadraoDoMembro` devolvesse 1 para todo mundo, o `every` acima
     // passaria — e a agenda desenharia a equipe inteira na mesma cor, que é
     // exatamente o que o sistema de cores existe para impedir.
+    // ⚠️ POR PESSOA, e não por ELEMENTO — minha primeira versão comparou
+    // `new Set(trilhas).size` com `trilhas.length` e reprovou dizendo "19 contra
+    // 4". Medido: a organização tem CINCO pessoas e o locator casa 19 avatares,
+    // porque a mesma pessoa aparece no filtro E em cada card da grade. Repetir a
+    // trilha ali é o comportamento CERTO — é a mesma pessoa.
+    //
+    // A propriedade que importa é: duas pessoas DIFERENTES não compartilham
+    // trilha. O `data-testid` carrega o id, então dá para parear.
+    const porPessoa = await avatares.evaluateAll((els) =>
+      els.map((e) => ({
+        pessoa: (e as HTMLElement).dataset.testid?.replace("avatar-pessoa-", "") ?? "",
+        trilha: (e as HTMLElement).dataset.trilha ?? "",
+      })),
+    );
+    const trilhaDe = new Map<string, string>();
+    const colisoes: string[] = [];
+    for (const { pessoa, trilha } of porPessoa) {
+      for (const [outra, t] of trilhaDe) {
+        if (outra !== pessoa && t === trilha) colisoes.push(`${outra} e ${pessoa} → trilha ${t}`);
+      }
+      trilhaDe.set(pessoa, trilha);
+    }
     expect(
-      new Set(trilhas).size,
-      "duas pessoas ganharam a MESMA trilha de cor — na grade elas viram uma só, " +
-        "e quem olha não distingue de quem é o compromisso",
-    ).toBe(trilhas.length);
+      trilhaDe.size,
+      "o filtro tem menos de duas pessoas distintas — o teste de colisão mede o vazio",
+    ).toBeGreaterThan(1);
+    expect(
+      [...new Set(colisoes)],
+      "duas pessoas DIFERENTES ganharam a mesma trilha de cor — na grade elas viram " +
+        "uma só, e quem olha não distingue de quem é o compromisso",
+    ).toEqual([]);
   });
 
   test("o histórico está NA TELA DO PRODUTO, com as quatro abas", async () => {
@@ -211,6 +237,26 @@ test.describe("a Agenda como o dono do produto a usa", () => {
       // o caso de sabotagem ao lado é o que prova que a nova consegue.
       () => document.body.scrollWidth - document.documentElement.clientWidth,
     );
-    expect(estouro, "a tela do produto estourou a largura no celular").toBeLessThanOrEqual(0);
+    // Quem estoura, nomeado. Uma asserção que só diz "67" manda a próxima pessoa
+    // caçar o elemento na mão — e essa caçada já custou uma sessão.
+    const culpados = await page.evaluate(() => {
+      const limite = document.documentElement.clientWidth;
+      const fora: string[] = [];
+      document.querySelectorAll("*").forEach((el) => {
+        const b = el.getBoundingClientRect();
+        if (b.right > limite + 1 && b.width > 0) {
+          const e = el as HTMLElement;
+          const id = e.getAttribute("data-testid");
+          fora.push(
+            `${e.tagName.toLowerCase()}${id ? `[${id}]` : ""} right=${Math.round(b.right)} w=${Math.round(b.width)} cls=${String(e.className).slice(0, 60)}`,
+          );
+        }
+      });
+      return fora.slice(0, 5);
+    });
+    expect(
+      estouro,
+      `a tela do produto estourou a largura no celular. Quem passa da borda:\n${culpados.join("\n") || "  (nenhum elemento individual — veja margem/transform)"}`,
+    ).toBeLessThanOrEqual(0);
   });
 });

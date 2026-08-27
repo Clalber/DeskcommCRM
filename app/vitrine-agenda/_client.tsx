@@ -127,7 +127,12 @@ export function VitrineDaAgenda() {
             </span>
           </div>
 
-          <div className="flex items-center gap-3">
+          {/* `flex-wrap` porque no celular o filtro de pessoas e o alternador de
+              visão somam 433px numa tela de 390 — medido. Sem a quebra, o
+              alternador saía pela direita, e o `overflow-x: hidden` do
+              `globals.css` cortava em silêncio: sem barra de rolagem, sem aviso,
+              sem como trocar de visão. */}
+          <div className="flex flex-wrap items-center gap-3">
             <FiltroDePessoas pessoas={PESSOAS} isolada={isolada} onIsolar={setIsolada} />
             <div
               data-testid="alternador-de-visao"

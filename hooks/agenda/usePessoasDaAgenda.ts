@@ -3,7 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 
 import { showApiError } from "@/components/feedback/ApiErrorToast";
-import { trilhaPadraoDoMembro } from "@/lib/agenda/tipos";
+import { trilhasDaEquipe } from "@/lib/agenda/tipos";
 import { apiClient } from "@/lib/api/client";
 
 import type { Pessoa } from "@/components/agenda/tipos";
@@ -33,8 +33,13 @@ export function usePessoasDaAgenda() {
       try {
         const r = await apiClient.get<{ data: MembroDto[] }>("/api/v1/team");
         const lista = (r as unknown as { data?: MembroDto[] }).data ?? (r as unknown as MembroDto[]);
-        return (lista ?? [])
-          .filter((m) => !m.revoked_at)
+        const ativos = (lista ?? []).filter((m) => !m.revoked_at);
+        // As trilhas saem da EQUIPE inteira de uma vez, não pessoa a pessoa: é a
+        // única forma de garantir que duas pessoas não caiam na mesma cor. O
+        // hash sozinho dá estabilidade e não dá distinção — medido, duas caíram
+        // na trilha 7 nesta organização.
+        const trilhas = trilhasDaEquipe(ativos.map((m) => m.user_id));
+        return ativos
           .map((m) => ({
             id: m.user_id,
             // `full_name` pode vir null quando o service role não está
@@ -42,7 +47,7 @@ export function usePessoasDaAgenda() {
             // @ é melhor que "Sem nome": identifica a pessoa para quem trabalha
             // com ela todo dia.
             nome: m.full_name ?? m.email?.split("@")[0] ?? "Sem nome",
-            trilha: trilhaPadraoDoMembro(m.user_id),
+            trilha: trilhas.get(m.user_id) ?? 1,
           }));
       } catch (err) {
         showApiError(err);

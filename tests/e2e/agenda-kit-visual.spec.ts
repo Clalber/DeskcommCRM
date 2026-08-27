@@ -653,6 +653,26 @@ test.describe("kit visual da Agenda", () => {
       // o caso de sabotagem ao lado é o que prova que a nova consegue.
       () => document.body.scrollWidth - document.documentElement.clientWidth,
     );
-    expect(estouro, "a página estourou a largura no celular").toBeLessThanOrEqual(0);
+    // Quem estoura, nomeado. Uma asserção que só diz "67" manda a próxima pessoa
+    // caçar o elemento na mão — e essa caçada já custou uma sessão.
+    const culpados = await page.evaluate(() => {
+      const limite = document.documentElement.clientWidth;
+      const fora: string[] = [];
+      document.querySelectorAll("*").forEach((el) => {
+        const b = el.getBoundingClientRect();
+        if (b.right > limite + 1 && b.width > 0) {
+          const e = el as HTMLElement;
+          const id = e.getAttribute("data-testid");
+          fora.push(
+            `${e.tagName.toLowerCase()}${id ? `[${id}]` : ""} right=${Math.round(b.right)} w=${Math.round(b.width)} cls=${String(e.className).slice(0, 60)}`,
+          );
+        }
+      });
+      return fora.slice(0, 5);
+    });
+    expect(
+      estouro,
+      `a página estourou a largura no celular. Quem passa da borda:\n${culpados.join("\n") || "  (nenhum elemento individual — veja margem/transform)"}`,
+    ).toBeLessThanOrEqual(0);
   });
 });

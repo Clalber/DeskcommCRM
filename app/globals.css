@@ -611,6 +611,27 @@
   transform: translateX(0);
 }
 
+/* ⚠️ NO CELULAR A COLUNA OCUPA TUDO — e isto era só um comentário até agora.
+   `PainelDeMarcacao.tsx:184` já dizia "no celular a coluna ocupa tudo" como
+   justificativa para o `min-width` do corpo. O CSS não implementava: a coluna
+   abria com 240px fixos e `shrink-0` em QUALQUER largura, e numa tela de 390px
+   o painel passava 67px da borda.
+
+   O sintoma não era barra de rolagem: `overflow-x: hidden` no `html` e no
+   `body` cortava o excedente, então a coluna de horários simplesmente sumia
+   pela direita — sem rolagem, sem aviso, sem como alcançá-la. E a asserção que
+   deveria pegar isso media `documentElement.scrollWidth`, que o mesmo
+   `overflow-x: hidden` grampeia: o gate dava zero enquanto o usuário perdia a
+   metade da tela em que se escolhe o horário.
+
+   Trocada a medida para `body.scrollWidth`, o estouro apareceu na primeira
+   execução. */
+@media (max-width: 767px) {
+  .agenda-coluna-horarios[data-aberta="true"] {
+    width: 100%;
+  }
+}
+
 /* A borda só existe quando a coluna existe. Deixá-la no estado fechado
    desenharia um risco vertical de 1px no meio de um painel sem coluna
    nenhuma — e daria à coluna "de largura zero" um retângulo de 1px de

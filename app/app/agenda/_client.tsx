@@ -301,7 +301,12 @@ export function AgendaClient({
           </span>
         </div>
 
-        <div className="flex items-center gap-3">
+        {/* `flex-wrap` pelo mesmo motivo da vitrine, e aqui é conserto de CLASSE e
+            não de instância: esta linha passou no gate por sorte de largura (a
+            organização de teste tem cinco pessoas), não por estar certa. Com mais
+            gente no filtro, ela estoura igual — e o `overflow-x: hidden` corta o
+            alternador de visão em silêncio. */}
+        <div className="flex flex-wrap items-center gap-3">
           <FiltroDePessoas pessoas={pessoas} isolada={isolada} onIsolar={setIsolada} />
           <div
             data-testid="alternador-de-visao"

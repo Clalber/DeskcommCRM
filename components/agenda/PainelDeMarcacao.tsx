@@ -355,7 +355,11 @@ export function PainelDeMarcacao({
       <div
         data-testid="coluna-de-horarios"
         data-aberta={tempo !== "escolhendo-dia"}
-        className="agenda-coluna-horarios shrink-0"
+        // `shrink-0` só a partir de `md`: no celular a coluna ocupa a largura
+        // toda e precisa PODER encolher, senão ela empurra o painel para fora
+        // da tela — e o `overflow-x: hidden` do `globals.css` corta o excedente
+        // em silêncio, sem barra de rolagem.
+        className="agenda-coluna-horarios md:shrink-0"
       >
         <div className="flex h-full w-[240px] flex-col p-3 lg:w-[280px]">
           <p className="mb-2 shrink-0 text-xs font-semibold text-text-muted first-letter:uppercase">
