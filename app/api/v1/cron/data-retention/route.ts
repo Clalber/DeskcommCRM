@@ -90,6 +90,8 @@ export interface ResultadoDaRetencao {
   /** O último lote veio cheio e o teto foi atingido: sobrou trabalho para amanhã. */
   fila_tem_resto: boolean;
   auditoria_tem_resto: boolean;
+  /** Os nonces de OAuth do Google já queimados (migration 0190). */
+  nonces_apagados: number;
   /** O espelho da agenda conectada — cache com prazo (migration 0187). */
   espelho_apagado: number;
   lotes_espelho: number;
