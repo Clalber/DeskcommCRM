@@ -133,6 +133,12 @@ export default async function AgendaPage() {
         // lista de pessoas como responsável e marcava na agenda dele — enquanto
         // os horários oferecidos vinham da jornada de outra pessoa.
         donoId: t.default_owner_user_id ?? null,
+        // O LOCAL DE VERDADE. O `select` acima já trazia `location_kind` e
+        // `location_details`, e o mapeamento os descartava — então o painel caía
+        // no default de parâmetro e toda clínica de toda instalação lia
+        // "Presencial · Sala 2" numa tela real.
+        localKind: t.location_kind ?? null,
+        localDetalhes: t.location_details ?? null,
       }))}
       agendamentosIniciais={(linhas ?? []).map((a) => ({
         id: a.id,

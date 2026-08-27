@@ -33,8 +33,8 @@ export function PainelDeMarcacao({
   responsavel,
   tipo = "Consulta",
   duracaoMin = 30,
-  local = "Presencial · Sala 2",
-  fuso = "America/Sao_Paulo",
+  local,
+  fuso,
   horariosPorDia,
   publicouHorarios = true,
   erroAoCarregar = false,
@@ -49,7 +49,32 @@ export function PainelDeMarcacao({
   responsavel: Pessoa;
   tipo?: string;
   duracaoMin?: number;
+  /**
+   * ⚠️ SEM DEFAULT, e isto é o conserto.
+   *
+   * Era `local = "Presencial · Sala 2"` e `fuso = "America/Sao_Paulo"`, defaults
+   * de PARÂMETRO — e `app/app/agenda/_client.tsx` não passava nenhum dos dois.
+   * Os defaults venciam em 100% das marcações do produto: toda clínica, de toda
+   * instalação, via "Sala 2" numa tela real.
+   *
+   * O cabeçalho de `_client.tsx` proíbe exatamente isso, com a razão escrita:
+   * dado falso PLAUSÍVEL numa tela de produto multi-tenant é indistinguível de
+   * VAZAMENTO, e o relato que chega não é "tem dado de teste na tela", é "estou
+   * vendo paciente de outra clínica". Sobreviveu porque veio por default de
+   * parâmetro em vez de import de `dados-de-mentira.ts`, que é o que a varredura
+   * `tests/unit/telas-sem-dado-de-mentira.test.ts` vigia.
+   *
+   * Sem valor, a linha não é renderizada. O próximo caller que esquecer mostra
+   * uma linha a menos — não uma sala inventada.
+   */
   local?: string;
+  /**
+   * ⚠️ SEM DEFAULT, pela mesma razão do `local` acima — e aqui o custo é maior:
+   * "America/Sao_Paulo" chutado para quem atende em Manaus não é só feio, é uma
+   * hora de diferença no horário oferecido ao cliente. A rota JÁ devolve
+   * `fuso_da_regra` e o hook JÁ o tipa; ninguém em tela o lia. A IA sabia o fuso
+   * certo (`lib/mcp/tools/agendamento.ts`) e o operador não.
+   */
   fuso?: string;
   /** `yyyy-MM-dd` → horários livres. Dia ausente = sem horário, nasce apagado. */
   horariosPorDia: Record<string, HorarioLivre[]>;
@@ -241,14 +266,18 @@ export function PainelDeMarcacao({
             <Clock size={14} aria-hidden />
             <dd className="tabular-nums">{duracaoMin} minutos</dd>
           </div>
-          <div className="flex items-center gap-1.5">
-            <MapPin size={14} aria-hidden />
-            <dd className="truncate">{local}</dd>
-          </div>
+          {local ? (
+            <div className="flex items-center gap-1.5">
+              <MapPin size={14} aria-hidden />
+              <dd className="truncate">{local}</dd>
+            </div>
+          ) : null}
         </dl>
-        <p className="mt-4 border-t border-border pt-3 text-[11px] leading-4 text-text-subtle">
-          Horários no fuso <span className="font-mono">{fuso.replace("_", " ")}</span>.
-        </p>
+        {fuso ? (
+          <p className="mt-4 border-t border-border pt-3 text-[11px] leading-4 text-text-subtle">
+            Horários no fuso <span className="font-mono">{fuso.replace("_", " ")}</span>.
+          </p>
+        ) : null}
       </aside>
 
       {/* CORPO — o mês. 420–480px é a faixa medida no cal.com; aqui ela é
@@ -374,7 +403,7 @@ export function PainelDeMarcacao({
 
         {fusoSuposto && (
           <p data-testid="fuso-suposto" className="mb-2 text-[11px] leading-4 text-text-subtle">
-            Estamos supondo o fuso <span className="font-mono">{fuso.replace("_", " ")}</span> —
+            Estamos supondo o fuso <span className="font-mono">{(fuso ?? "").replace("_", " ")}</span> —
             ninguém escolheu ainda. O agente oferece horário usando ele.
           </p>
         )}

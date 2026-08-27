@@ -6,6 +6,7 @@ import { toast } from "sonner";
 
 import { showApiError } from "@/components/feedback/ApiErrorToast";
 import { Button } from "@/components/ui/button";
+import { LOCAIS_DE_ATENDIMENTO } from "@/lib/agenda/locais";
 import { apiClient } from "@/lib/api/client";
 
 export interface TipoRow {
@@ -43,15 +44,12 @@ const CATEGORIAS: Array<{ valor: string; rotulo: string }> = [
   { valor: "outro", rotulo: "Outro" },
 ];
 
-const LOCAIS: Array<{ valor: string; rotulo: string }> = [
-  { valor: "in_person", rotulo: "Presencial" },
-  { valor: "phone", rotulo: "Telefone" },
-  { valor: "whatsapp", rotulo: "WhatsApp" },
-  { valor: "video_link", rotulo: "Link de vídeo" },
-  { valor: "google_meet", rotulo: "Google Meet" },
-];
+// Fonte única: a tela que MARCA precisa do mesmo vocabulário, e copiá-lo para lá
+// faria uma das duas mostrar o código cru no dia em que um valor entrasse no
+// CHECK do banco. Ver o cabeçalho de `lib/agenda/locais.ts`.
+const LOCAIS = LOCAIS_DE_ATENDIMENTO;
 
-const rotuloDe = (lista: typeof CATEGORIAS, valor: string) =>
+const rotuloDe = (lista: ReadonlyArray<{ valor: string; rotulo: string }>, valor: string) =>
   lista.find((c) => c.valor === valor)?.rotulo ?? valor;
 
 interface Rascunho {
