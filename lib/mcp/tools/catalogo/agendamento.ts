@@ -67,9 +67,24 @@
  *                                   o Operador NÃO RODA. Pior dos três, e exige um ato
  *                                   deliberado do modelo — a declaração falsa DESLIGA a rede.
  *         declaração AUSENTE     -> o Operador RODA, por desenho escrito (idem:25: "ausente
- *                                   significa que NINGUÉM avaliou"). Ele age com o contexto
- *                                   que tem, e loga `declaracao_ausente: true`.
+ *                                   significa que NINGUÉM avaliou"). Age com o contexto que
+ *                                   tem — sem saber que houve promessa.
  *         promessas: []          -> roda, e não acha o que cobrar.
+ *         declaração INVÁLIDA    -> quarto caminho, e o mais silencioso: `safeParse` que
+ *                                   falha vira `declaracao: null` (idem, `lerDeclaracaoDoTurno`).
+ *                                   Modelo que declarou a promessa em JSON quebrado cai no
+ *                                   mesmo balde de quem não declarou nada. A escolha está
+ *                                   certa (leva o Operador a rodar em vez de pular), mas o
+ *                                   efeito sobre a promessa é idêntico.
+ *
+ *       ⚠️ E O SINAL NÃO ESTÁ ONDE EU DISSE. Esta linha já ofereceu `declaracao_ausente` como
+ *       endereço de observação; ele existe UMA vez, dentro de um `log.info` — e o cabeçalho
+ *       de `registrarDesfecho`, vinte linhas abaixo, escreve contra isso: "log de worker em
+ *       VPS não é superfície de nada, e este produto é instalado por quem nunca vai abrir um
+ *       contêiner". O `event_log`, que é emitido SEMPRE, NÃO carrega esse campo. Ele separa
+ *       dois dos quatro estados (`porque: 'declaracao_vazia'` denuncia o `nada_a_declarar`, e
+ *       `houve_checkpoint: false` denuncia o turno que morreu antes de fechar) e colapsa os
+ *       outros dois. (Achado do Arquiteto; a régua é do próprio módulo.)
  *
  *       ⚠️ MAS "RODA" NÃO É "COBRE A PROMESSA", e é aqui que a cadeia termina:
  *       `apurarComRetorno` (idem:510) abre com `if (promessasDeclaradas === 0) return null`.
