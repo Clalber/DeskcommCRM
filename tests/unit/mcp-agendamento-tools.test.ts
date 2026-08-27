@@ -24,11 +24,11 @@ import type { McpContext } from "@/lib/mcp/types";
  */
 vi.mock("@/lib/agenda/consulta", async (original) => {
   const real = await original<typeof import("@/lib/agenda/consulta")>();
-  return { ...real, horariosLivresDaOrg: vi.fn() };
+  return { ...real, horariosLivresDaOrg: vi.fn(), listaAgendamentos: vi.fn() };
 });
 
-const { horariosLivresDaOrg } = await import("@/lib/agenda/consulta");
-const { crmFindFreeSlots } = await import("@/lib/mcp/tools/agendamento");
+const { horariosLivresDaOrg, listaAgendamentos } = await import("@/lib/agenda/consulta");
+const { crmFindFreeSlots, crmListAppointments } = await import("@/lib/mcp/tools/agendamento");
 
 // O dublê do client existe só para satisfazer o contrato: `horariosLivresDaOrg` está
 // mockada, então nada aqui toca banco. `as never` NÃO servia — `never` não é atribuível
@@ -158,5 +158,64 @@ describe("crm_find_free_slots", () => {
     };
     expect(r.horarios).toHaveLength(1);
     expect(r.horarios[0]!.inicio).toBe("2026-09-01T14:00:00.000Z");
+  });
+});
+
+
+describe("crm_list_appointments", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("⚠️ 'não sei de quem' NÃO vira lista vazia — vira pergunta", async () => {
+    // O caso mais importante deste bloco. Lista vazia faria o modelo concluir e dizer
+    // ao cliente que ele não tem nada marcado, quando a verdade é que a chamada não
+    // tinha recorte. É o mesmo defeito da DECISÃO 1.1 num lugar novo: "não sei" e
+    // "não tem" chegando como a mesma resposta.
+    vi.mocked(listaAgendamentos).mockResolvedValue({
+      ok: false,
+      codigo: "sem_alvo",
+      motivoParaOperador: "listagem sem recorte: informe contato, lead, dia ou responsável.",
+      motivoParaCliente:
+        "Preciso saber de quem ou de que dia. Pergunte de qual cliente ou de qual data você quer ver os compromissos.",
+    });
+    const r = (await crmListAppointments.handler({}, ctx)) as {
+      compromissos: unknown[];
+      motivo: string;
+      mensagem: string;
+    };
+    expect(r.motivo).toBe("sem_alvo");
+    expect(r.mensagem).toMatch(/Pergunte de qual cliente/);
+    // E a face do operador não vaza: nada de nome de campo na mensagem do cliente.
+    expect(r.mensagem).not.toMatch(/contato, lead, dia ou responsável|recorte/);
+  });
+
+  it("lead SEM compromisso devolve lista vazia — e aqui vazio é a resposta certa", async () => {
+    // Contraste com o caso acima, e é o que dá sentido a ele: quando o recorte EXISTE
+    // e não há nada, vazio é verdade. Sem este par, o teste de cima passaria mesmo se
+    // a tool recusasse tudo.
+    vi.mocked(listaAgendamentos).mockResolvedValue({ ok: true, agendamentos: [] });
+    const r = (await crmListAppointments.handler(
+      { lead_id: "11111111-1111-4111-8111-111111111111" },
+      ctx,
+    )) as { compromissos: unknown[]; motivo?: string };
+    expect(r.compromissos).toEqual([]);
+    expect(r.motivo).toBeUndefined();
+  });
+
+  it("o recorte chega inteiro à regra, e o limite tem padrão", async () => {
+    vi.mocked(listaAgendamentos).mockResolvedValue({ ok: true, agendamentos: [] });
+    await crmListAppointments.handler({ contact_id: "22222222-2222-4222-8222-222222222222", dia: "2026-09-01" }, ctx);
+    const params = vi.mocked(listaAgendamentos).mock.calls[0]![2];
+    expect(params.contactId).toBe("22222222-2222-4222-8222-222222222222");
+    expect(params.dia).toBe("2026-09-01");
+    expect(params.limite).toBe(20);
+  });
+
+  it("a situação vem do vocabulário do banco, não de literais inventados", async () => {
+    // Escrevi `scheduled|done|cancelled` no contrato antes de ler a fonte, e os três
+    // estavam errados. O shape usa `SITUACOES_DO_AGENDAMENTO`, então um valor fora dela
+    // é recusado pelo Zod antes de chegar ao handler.
+    const shape = crmListAppointments.inputSchema;
+    expect(() => shape.situacao.parse("no_show")).not.toThrow();
+    expect(() => shape.situacao.parse("done")).toThrow();
   });
 });

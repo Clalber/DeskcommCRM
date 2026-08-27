@@ -43,7 +43,7 @@ import {
   type LinhaDeAgendamento,
   type LinhaDeEventoExterno,
 } from "./ocupados";
-import type { SituacaoDaConexao } from "./tipos";
+import type { SituacaoDaConexao, SituacaoDoAgendamento } from "./tipos";
 
 /** Teto de dias por consulta: uma varredura de ano inteiro é erro de chamada, não pedido. */
 export const MAXIMO_DE_DIAS = 62;
@@ -304,5 +304,128 @@ export async function horariosLivresDaOrg(
     fusoSuposto: leitura.fusoSuposto,
     fontesDefasadas,
     agendaExternaNuncaLida: agendaExternaNuncaLida(conexoesRaw ?? []),
+  };
+}
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// A LISTAGEM — "o que este cliente tem marcado?" e "como está o dia da equipe?"
+//
+// Mesma razão de existir da coleta acima: a IA lista compromissos pela conversa e
+// a tela lista pelo painel. Duas leituras dariam respostas diferentes sobre o mesmo
+// dia — e aqui o erro é pior que na consulta de horário livre, porque listar é o
+// que o agente faz ANTES de dizer ao cliente "você já tem consulta marcada".
+//
+// ⚠️ O VÍNCULO COM O LEAD É POLIMÓRFICO (DECISÃO 6): não há `lead_id` em
+// `calendar_appointments` — o ponteiro é `crm_lead_links` com
+// `target_kind='appointment'`. Filtrar por lead custa uma consulta a mais, e é o
+// preço de não ter duplicado a FK.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface AgendamentoListado {
+  id: string;
+  titulo: string;
+  iniciaEm: string;
+  terminaEm: string;
+  fuso: string;
+  situacao: string;
+  donoId: string | null;
+  contatoId: string | null;
+}
+
+export interface ParametrosDaLista {
+  contactId?: string | null;
+  /** Resolvido por `crm_lead_links` — ver o aviso acima. */
+  leadId?: string | null;
+  /** `YYYY-MM-DD` no fuso do dado; filtra o dia inteiro. */
+  dia?: string | null;
+  ownerUserId?: string | null;
+  situacao?: SituacaoDoAgendamento | null;
+  limite: number;
+}
+
+export type ResultadoDaLista =
+  | { ok: true; agendamentos: AgendamentoListado[] }
+  | { ok: false; codigo: "erro_interno" | "sem_alvo"; motivoParaOperador: string; motivoParaCliente: string };
+
+export async function listaAgendamentos(
+  supabase: SupabaseClient,
+  organizationId: string,
+  params: ParametrosDaLista,
+): Promise<ResultadoDaLista> {
+  const temAlvo = Boolean(params.contactId || params.leadId || params.dia || params.ownerUserId);
+  if (!temAlvo) {
+    // Sem recorte, isto varreria a agenda inteira da organização. Recusa com ensino,
+    // não lista vazia: vazio faria o modelo concluir que não há nada marcado.
+    return {
+      ok: false,
+      codigo: "sem_alvo",
+      motivoParaOperador: "listagem sem recorte: informe contato, lead, dia ou responsável.",
+      motivoParaCliente:
+        "Preciso saber de quem ou de que dia. Pergunte de qual cliente ou de qual data você quer ver os compromissos.",
+    };
+  }
+
+  let idsPorLead: string[] | null = null;
+  if (params.leadId) {
+    // DECISÃO 6: o vínculo é polimórfico. `target_kind='appointment'` já está no CHECK
+    // de `crm_lead_links` desde antes desta entrega.
+    const { data, error } = await supabase
+      .from("crm_lead_links")
+      .select("target_id")
+      .eq("organization_id", organizationId)
+      .eq("lead_id", params.leadId)
+      .eq("target_kind", "appointment");
+    if (error) {
+      return {
+        ok: false,
+        codigo: "erro_interno",
+        motivoParaOperador: error.message,
+        motivoParaCliente: "Não consegui consultar os compromissos agora. Avise que alguém da equipe confirma.",
+      };
+    }
+    idsPorLead = (data ?? []).map((l) => String(l.target_id));
+    // Lead sem nenhum vínculo: lista vazia é a resposta CERTA aqui — a pergunta era
+    // "o que este negócio tem marcado?" e a resposta é "nada". Diferente de não saber.
+    if (idsPorLead.length === 0) return { ok: true, agendamentos: [] };
+  }
+
+  let q = supabase
+    .from("calendar_appointments")
+    .select("id, title, starts_at, ends_at, time_zone, status, owner_user_id, contact_id")
+    .eq("organization_id", organizationId)
+    .order("starts_at", { ascending: true })
+    .limit(params.limite);
+
+  if (idsPorLead) q = q.in("id", idsPorLead);
+  if (params.contactId) q = q.eq("contact_id", params.contactId);
+  if (params.ownerUserId) q = q.eq("owner_user_id", params.ownerUserId);
+  if (params.situacao) q = q.eq("status", params.situacao);
+  if (params.dia) {
+    q = q.gte("starts_at", `${params.dia}T00:00:00Z`).lt("starts_at", `${params.dia}T23:59:59.999Z`);
+  }
+
+  const { data, error } = await q;
+  if (error) {
+    return {
+      ok: false,
+      codigo: "erro_interno",
+      motivoParaOperador: error.message,
+      motivoParaCliente: "Não consegui consultar os compromissos agora. Avise que alguém da equipe confirma.",
+    };
+  }
+
+  return {
+    ok: true,
+    agendamentos: (data ?? []).map((l) => ({
+      id: String(l.id),
+      titulo: String(l.title),
+      iniciaEm: String(l.starts_at),
+      terminaEm: String(l.ends_at),
+      fuso: String(l.time_zone),
+      situacao: String(l.status),
+      donoId: l.owner_user_id ? String(l.owner_user_id) : null,
+      contatoId: l.contact_id ? String(l.contact_id) : null,
+    })),
   };
 }
