@@ -2,6 +2,7 @@
 
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { useT } from "@/hooks/i18n/useT";
 import { ClockCountdown } from "@/lib/ui/icons";
 import type { AuditTrailEntry } from "@/hooks/useLgpdRequest";
 
@@ -10,10 +11,11 @@ interface AuditTrailProps {
 }
 
 export function AuditTrail({ entries }: AuditTrailProps) {
+  const t = useT();
   if (entries.length === 0) {
     return (
       <p className="text-sm text-muted-foreground">
-        Nenhuma entrada de auditoria registrada para esta solicitação.
+        {t("Nenhuma entrada de auditoria registrada para esta solicitação.")}
       </p>
     );
   }
@@ -33,7 +35,9 @@ export function AuditTrail({ entries }: AuditTrailProps) {
               <p className="text-xs text-muted-foreground">
                 {format(new Date(entry.created_at), "dd/MM/yyyy HH:mm:ss", { locale: ptBR })}
                 {entry.actor_user_id && (
-                  <span className="ml-2 opacity-60">por {entry.actor_user_id.slice(0, 8)}…</span>
+                  <span className="ml-2 opacity-60">
+                    {t("por")} {entry.actor_user_id.slice(0, 8)}…
+                  </span>
                 )}
               </p>
             </div>
@@ -45,10 +49,11 @@ export function AuditTrail({ entries }: AuditTrailProps) {
 }
 
 export function AuditTrailSkeleton() {
+  const t = useT();
   return (
     <div className="flex items-center gap-2 text-sm text-muted-foreground">
       <ClockCountdown size={16} aria-hidden />
-      Carregando auditoria…
+      {t("Carregando auditoria…")}
     </div>
   );
 }

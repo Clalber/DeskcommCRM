@@ -277,7 +277,7 @@ export function LgpdRequestAdminDetail({ id }: Props) {
 
         <p className="text-sm text-muted-foreground">
           {t("Recebido em")}{" "}
-          {format(new Date(request.received_at), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
+          {format(new Date(request.received_at), `dd/MM/yyyy '${t("às")}' HH:mm`, { locale: ptBR })}
           {request.due_at && (
             <>
               {" · "}
