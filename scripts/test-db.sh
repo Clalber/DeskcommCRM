@@ -61,7 +61,15 @@ TEMPLATE="inv_baseline"
 #
 # `find -newer` em vez de `stat`: `stat -f %m` (BSD/macOS) e `stat -c %Y` (GNU/CI)
 # têm sintaxes incompatíveis, e um detector que falhe no CI é pior que nenhum.
-CARIMBO="$(mktemp -t deskcomm-test-db-carimbo)"
+# ⚠️ SEM `-t`, e com os X explícitos. O `mktemp -t <prefixo>` do BSD (macOS)
+# aceita template sem `XXXXXX`; o GNU (Linux, que é o runner do CI) recusa com
+# "too few X's in template" e derruba o job em 22 segundos, antes de subir banco
+# nenhum. Verde no meu laptop, vermelho no CI — e a branch nunca tinha passado
+# por CI para a divergência aparecer.
+#
+# Esta forma é idêntica nos dois: caminho completo, seis X, sem depender de como
+# cada `mktemp` interpreta `-t`.
+CARIMBO="$(mktemp "${TMPDIR:-/tmp}/deskcomm-test-db-carimbo.XXXXXX")"
 MEDIDOS=("$BASELINE" "$ROOT/tests/invariants" "$ROOT/scripts/test-db.sh" "$ROOT/vitest.db.config.ts")
 
 arvore_mexeu() {
