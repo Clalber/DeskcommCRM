@@ -4690,6 +4690,16 @@ export const DICIONARIO: Traducoes = {
   "Nenhuma atividade registrada ainda.": { es: "Ninguna actividad registrada todavía." },
   "Todas as origens": { es: "Todos los orígenes" },
   "Importado (CSV)": { es: "Importado (CSV)" },
+
+  // ─── Settings: painel de atualização — histórico multi-versão (merge upstream) ───
+  "Da versão": { es: "De la versión" },
+  "Este histórico começa na versão": { es: "Este historial comienza en la versión" },
+  "e pode não alcançar a que você tem instalada": {
+    es: "y puede no alcanzar la que tienes instalada",
+  },
+  "a última parte pode estar cortada. O texto completo está no arquivo CHANGELOG.md do projeto.": {
+    es: "la última parte puede estar cortada. El texto completo está en el archivo CHANGELOG.md del proyecto.",
+  },
 };
 
 /**
