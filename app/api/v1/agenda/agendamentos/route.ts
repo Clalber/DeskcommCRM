@@ -39,7 +39,12 @@ import { type NextRequest } from "next/server";
 import { z } from "zod";
 
 import { horariosLivresDaOrg } from "@/lib/agenda/consulta";
-import { atividadeDaTransicao, precisaEmpurrarAoGoogle } from "@/lib/agenda/laco";
+import {
+  atividadeDaTransicao,
+  precisaEmpurrarAoGoogle,
+  type SituacaoAnterior,
+  type Transicao,
+} from "@/lib/agenda/laco";
 import { ALVO_DE_VINCULO_DO_AGENDAMENTO, VINCULO_DE_AGENDAMENTO } from "@/lib/agenda/tipos";
 import { fail, ok } from "@/lib/api/wrappers";
 import { audit } from "@/lib/audit";
@@ -57,6 +62,32 @@ const CODIGO_DA_RECUSA = {
   jornada_mal_configurada: "agenda_disponibilidade_invalida",
   erro_interno: "internal_error",
 } as const;
+
+const patchSchema = z
+  .object({
+    id: z.string().uuid(),
+    /** Remarcar: o novo início. A duração vem do tipo, como na criação. */
+    starts_at: z.string().datetime({ offset: true }).optional(),
+    /**
+     * A transição de situação. `rescheduled` NÃO entra aqui — remarcar se pede
+     * mandando `starts_at`, e é movimento próprio (ver o cabeçalho do PATCH).
+     */
+    status: z.enum(["confirmed", "completed", "no_show"]).optional(),
+    notes: z.string().max(2000).optional(),
+  })
+  .refine((c) => c.starts_at !== undefined || c.status !== undefined || c.notes !== undefined, {
+    message: "Informe pelo menos um campo para alterar.",
+  });
+
+const deleteSchema = z.object({
+  id: z.string().uuid(),
+  /**
+   * ⚠️ OBRIGATÓRIO, e não é burocracia: é o que a equipe lê ao ver o horário
+   * vago. "Cancelado" sem motivo faz alguém ligar para o cliente perguntando o
+   * que houve — ou pior, não ligar.
+   */
+  reason: z.string().min(3).max(500),
+});
 
 const corpoSchema = z.object({
   event_type_id: z.string().uuid(),
@@ -369,4 +400,242 @@ async function leadAtivoDoContato(
     defaultPipelineId: (padrao as { id: string } | null)?.id ?? null,
   });
   return rota.routed ? rota.leadId : null;
+}
+
+/**
+ * PATCH /api/v1/agenda/agendamentos — remarcar, confirmar, registrar o desfecho.
+ *
+ * ⚠️ REMARCAR NÃO É CANCELAR MAIS CRIAR, e a diferença tem três consequências.
+ *
+ * É a MESMA linha que muda de horário, não uma nova encadeada:
+ *
+ * 1. A TIMELINE conta a história certa. Cancelar+criar emitiria
+ *    `appointment_cancelled` seguido de `appointment_scheduled` — duas linhas
+ *    dizendo que o cliente desistiu e voltou. Ele só mudou de horário.
+ * 2. O ESPELHO NO GOOGLE é atualizado, não destruído e refeito. Recriar exigiria
+ *    casar o evento antigo lá fora para apagá-lo, e casar evento externo por
+ *    janela de horário erra nos dois sentidos — está barrado até existir
+ *    identificador próprio no espelho.
+ * 3. O `id` que o cliente já recebeu continua valendo.
+ *
+ * `rescheduled_from_id` NÃO é usado por este verbo. Ele existe para o fluxo em
+ * que a remarcação gera compromisso NOVO — auto-agendamento pelo cliente, que
+ * não existe ainda. Deixá-lo vazio aqui é a leitura fiel do schema; usá-lo seria
+ * inventar encadeamento onde há uma linha só.
+ *
+ * O horário novo passa pela MESMA validação da criação: a coleta de
+ * `consulta.ts`, nunca uma segunda.
+ */
+export async function PATCH(req: NextRequest): Promise<Response> {
+  const requestId = randomUUID();
+
+  const authz = await requireRole("agent", { requestId, resource: "agenda" });
+  if (!authz.ok) return authz.response;
+  const { org: activeOrg, user } = authz;
+
+  const parsed = patchSchema.safeParse(await req.json().catch(() => null));
+  if (!parsed.success) {
+    return fail("validation_failed", "Alteração inválida.", 422, {
+      details: parsed.error.flatten().fieldErrors as Record<string, unknown>,
+      requestId,
+    });
+  }
+
+  const supabase = await createClient();
+
+  const { data: atual, error: erroBusca } = await supabase
+    .from("calendar_appointments")
+    .select("id, event_type_id, owner_user_id, contact_id, starts_at, status, time_zone")
+    .eq("organization_id", activeOrg.orgId)
+    .eq("id", parsed.data.id)
+    .maybeSingle();
+  if (erroBusca) return fail("internal_error", erroBusca.message, 500, { requestId });
+  if (!atual) return fail("not_found", "Agendamento não encontrado.", 404, { requestId });
+  if (atual.status === "cancelled") {
+    return fail(
+      "agenda_ja_cancelado",
+      "Este agendamento foi cancelado. Marque um novo em vez de reabrir este.",
+      422,
+      { requestId },
+    );
+  }
+
+  const mudanca: Record<string, unknown> = {};
+  if (parsed.data.notes !== undefined) mudanca.notes = parsed.data.notes;
+
+  let transicao: Transicao | null = null;
+
+  if (parsed.data.starts_at) {
+    const novoInicio = new Date(parsed.data.starts_at);
+    const { data: tipo } = await supabase
+      .from("calendar_event_types")
+      .select("id, duration_minutes")
+      .eq("organization_id", activeOrg.orgId)
+      .eq("id", atual.event_type_id ?? "")
+      .maybeSingle();
+    if (!tipo) {
+      return fail("not_found", "O tipo deste agendamento não existe mais.", 404, { requestId });
+    }
+    const novoFim = new Date(novoInicio.getTime() + tipo.duration_minutes * 60_000);
+
+    const consulta = await horariosLivresDaOrg(supabase, activeOrg.orgId, {
+      eventTypeId: tipo.id,
+      ownerUserId: atual.owner_user_id,
+      de: novoInicio,
+      ate: novoFim,
+      agora: new Date(),
+    });
+    if (!consulta.ok) {
+      return fail(CODIGO_DA_RECUSA[consulta.codigo], consulta.motivoParaOperador, 422, { requestId });
+    }
+    // ⚠️ O PRÓPRIO COMPROMISSO OCUPA O HORÁRIO DELE. Remarcar para o MESMO
+    // instante não é erro — é no-op — e sem esta linha ele se veria como
+    // conflito e recusaria a si mesmo.
+    const mesmoHorario = new Date(atual.starts_at).getTime() === novoInicio.getTime();
+    if (!mesmoHorario && !consulta.slots.some((s) => s.inicio.getTime() === novoInicio.getTime())) {
+      return fail(
+        "agenda_horario_indisponivel",
+        "Este horário não está disponível. Consulte os horários livres e escolha outro.",
+        422,
+        { requestId },
+      );
+    }
+    if (!mesmoHorario) {
+      mudanca.starts_at = novoInicio.toISOString();
+      mudanca.ends_at = novoFim.toISOString();
+      mudanca.time_zone = consulta.fusoDaRegra;
+      transicao = "rescheduled";
+    }
+  }
+
+  if (parsed.data.status && parsed.data.status !== atual.status) {
+    mudanca.status = parsed.data.status;
+    // Remarcar vence: se vieram os dois, a notícia da timeline é a remarcação.
+    transicao = transicao ?? parsed.data.status;
+  }
+
+  if (Object.keys(mudanca).length === 0) {
+    return ok({ id: atual.id, inalterado: true }, { requestId });
+  }
+
+  const { data: salvo, error: erroUpdate } = await supabase
+    .from("calendar_appointments")
+    .update(mudanca)
+    .eq("organization_id", activeOrg.orgId)
+    .eq("id", atual.id)
+    .select("id, starts_at, ends_at, status, time_zone")
+    .single();
+  if (erroUpdate) return fail("internal_error", erroUpdate.message, 500, { requestId });
+
+  if (transicao) {
+    await fecharOLaco({
+      supabase,
+      orgId: activeOrg.orgId,
+      appointmentId: atual.id,
+      contactId: atual.contact_id,
+      atividade: atividadeDaTransicao(atual.status as SituacaoAnterior, transicao),
+      empurrarAoGoogle: precisaEmpurrarAoGoogle(atual.status as SituacaoAnterior, transicao),
+      fusoDoCompromisso: salvo.time_zone,
+      userId: user.id,
+      nomeDoTipo: "Agendamento",
+    });
+
+    // ⚠️ `completed` e `no_show` NÃO são auditados, e é decisão do maestro: não
+    // são mutação de intenção, são registro de fato já consumado no mundo, e
+    // vivem na timeline do lead. Procurar o tipo de audit deles aqui e não achar
+    // é o comportamento esperado.
+    if (transicao === "rescheduled") {
+      void audit({
+        action: "agenda.appointment_rescheduled",
+        actorUserId: user.id,
+        organizationId: activeOrg.orgId,
+        resourceType: "calendar_appointment",
+        resourceId: atual.id,
+        requestId,
+        metadata: { de: atual.starts_at, para: salvo.starts_at },
+      });
+    }
+  }
+
+  return ok(salvo, { requestId });
+}
+
+/**
+ * DELETE /api/v1/agenda/agendamentos — cancelar.
+ *
+ * Cancela de verdade (status), não apaga a linha: o histórico do que foi marcado
+ * e desmarcado é o que permite ao Radar distinguir lead que desistiu de lead que
+ * nunca marcou, e ao agente não reoferecer o horário que a pessoa recusou.
+ *
+ * ⚠️ O MOTIVO É OBRIGATÓRIO e o Zod cobra. É o que a equipe lê ao ver o horário
+ * vago — sem ele, alguém liga para o cliente perguntando o que houve, ou não
+ * liga e o lead esfria sem ninguém saber por quê.
+ */
+export async function DELETE(req: NextRequest): Promise<Response> {
+  const requestId = randomUUID();
+
+  const authz = await requireRole("agent", { requestId, resource: "agenda" });
+  if (!authz.ok) return authz.response;
+  const { org: activeOrg, user } = authz;
+
+  const parsed = deleteSchema.safeParse(await req.json().catch(() => null));
+  if (!parsed.success) {
+    return fail("validation_failed", "Cancelamento inválido: informe o motivo.", 422, {
+      details: parsed.error.flatten().fieldErrors as Record<string, unknown>,
+      requestId,
+    });
+  }
+
+  const supabase = await createClient();
+
+  const { data: atual, error: erroBusca } = await supabase
+    .from("calendar_appointments")
+    .select("id, contact_id, status, time_zone")
+    .eq("organization_id", activeOrg.orgId)
+    .eq("id", parsed.data.id)
+    .maybeSingle();
+  if (erroBusca) return fail("internal_error", erroBusca.message, 500, { requestId });
+  if (!atual) return fail("not_found", "Agendamento não encontrado.", 404, { requestId });
+  if (atual.status === "cancelled") {
+    // Idempotente: cancelar o que já está cancelado devolve o estado, não erro.
+    // Quem chamou queria o compromisso desmarcado, e ele está.
+    return ok({ id: atual.id, status: "cancelled", ja_estava: true }, { requestId });
+  }
+
+  const { data: salvo, error: erroUpdate } = await supabase
+    .from("calendar_appointments")
+    .update({
+      status: "cancelled",
+      cancelled_at: new Date().toISOString(),
+      cancellation_reason: parsed.data.reason,
+    })
+    .eq("organization_id", activeOrg.orgId)
+    .eq("id", atual.id)
+    .select("id, status, cancelled_at, cancellation_reason")
+    .single();
+  if (erroUpdate) return fail("internal_error", erroUpdate.message, 500, { requestId });
+
+  await fecharOLaco({
+    supabase,
+    orgId: activeOrg.orgId,
+    appointmentId: atual.id,
+    contactId: atual.contact_id,
+    atividade: atividadeDaTransicao(atual.status as SituacaoAnterior, "cancelled"),
+    empurrarAoGoogle: precisaEmpurrarAoGoogle(atual.status as SituacaoAnterior, "cancelled"),
+    fusoDoCompromisso: atual.time_zone,
+    userId: user.id,
+    nomeDoTipo: "Agendamento",
+  });
+
+  void audit({
+    action: "agenda.appointment_cancelled",
+    actorUserId: user.id,
+    organizationId: activeOrg.orgId,
+    resourceType: "calendar_appointment",
+    resourceId: atual.id,
+    requestId,
+    metadata: { reason: parsed.data.reason },
+  });
+
+  return ok(salvo, { requestId });
 }
