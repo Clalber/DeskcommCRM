@@ -34,13 +34,18 @@ describe("nenhuma tag publica sem estar contida na main", () => {
     },
   );
 
-  it("a trava exige `identical` ou `behind` no compare com a main", () => {
+  it("a trava aceita EXATAMENTE `identical` e `behind`, e nada mais", () => {
     const t = job(publish, "a-tag-veio-da-main");
     expect(t).toContain("compare/main...");
-    // `ahead` e `diverged` são commit que a main não tem. Aceitar qualquer um
-    // dos dois devolveria a porta que este job fecha.
-    expect(t).toMatch(/identical\|behind/);
-    expect(t).not.toMatch(/\bahead\|/);
+
+    // Prende o CONJUNTO aceito, não a ausência de uma string. A primeira versão
+    // deste caso proibia `/\bahead\|/` — e passou verde quando a sabotagem
+    // trocou o ramo por `identical|behind|ahead)`, porque ali `ahead` vem
+    // seguido de `)` e não de `|`. Proibir uma grafia deixa as outras entrarem;
+    // exigir o conjunto não deixa nenhuma.
+    const ramo = /^\s*([a-z|]+)\)\s*echo "ok:/m.exec(t);
+    expect(ramo, "não achei o ramo de aceitação do `case` — a trava mudou de forma").not.toBeNull();
+    expect(ramo?.[1]?.split("|").sort()).toEqual(["behind", "identical"]);
   });
 
   it("a trava NÃO tem `if:` de job — pulada, ela vira `skipped` e o imagens-ok lê isso como reprovação", () => {
