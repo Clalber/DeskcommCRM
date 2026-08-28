@@ -200,6 +200,110 @@ for (const viewport of [
   });
 }
 
+test("a lista de horários ROLA, e o último horário é alcançável — 1280×700", async ({ page }) => {
+  /**
+   * O EIXO Y, que esta spec não media.
+   *
+   * As três réguas acima são todas de largura (`x`, `width`). O dono do produto
+   * encontrou o defeito no outro eixo: escolhe o dia, e os últimos horários
+   * ficam abaixo da dobra sem nenhum jeito de alcançá-los.
+   *
+   * A causa é sutil e por isso escapou: o `overflow-y-auto` EXISTE, está no
+   * elemento certo, e é INERTE. Um `overflow-y-auto` cujo pai tem altura `auto`
+   * não rola — o filho cresce e `scrollHeight === clientHeight`. E a página
+   * também não rola, porque o Sheet é `position: fixed` e transbordo de elemento
+   * fixo não estende a área rolável do documento.
+   *
+   * Viewport 700px de altura de propósito: é onde a lista estoura com a
+   * quantidade de horários que o seed produz.
+   */
+  await page.setViewportSize({ width: 1280, height: 700 });
+  const creds = lerCreds();
+  await entrar(page, creds);
+  await abrirPainelComDiaEscolhido(page, creds.agenda!.tipo_nome);
+
+  const lista = page.getByTestId("lista-de-horarios");
+  await expect(lista).toBeVisible({ timeout: 15_000 });
+  const horarios = page.locator('[data-testid^="horario-"]');
+  const n = await horarios.count();
+
+  // ── PRÉ-CONDIÇÃO DE SUFICIÊNCIA ──────────────────────────────────────────
+  // Sem isto o caso fica VERDE POR VACUIDADE no dia em que o seed produzir
+  // poucos slots: uma lista que cabe na tela não precisa rolar, e "não rolou"
+  // passaria a ser lido como "está consertado".
+  //
+  // ⚠️ A RÉGUA É O ESPAÇO QUE SOBRA PARA A LISTA, e não a altura da janela — e
+  // eu escrevi errado da primeira vez. Comparar `n * 50` com os 700px da
+  // viewport reprovou um cenário SUFICIENTE (13 horários = 650px numa caixa de
+  // ~450px transbordam com folga), porque acima da lista ainda há o cabeçalho do
+  // Sheet, o título e o padding. O que decide é onde a lista COMEÇA.
+  //
+  // 50px por item = 44 do `h-11` + 6 do `gap-1.5`.
+  const topoDaLista = (await lista.boundingBox())?.y ?? 0;
+  const alturaDaJanela = page.viewportSize()?.height ?? 0;
+  const espacoQueSobra = alturaDaJanela - topoDaLista;
+  expect(
+    n * 50,
+    `${n} horários ocupam ${n * 50}px e sobram ${Math.round(espacoQueSobra)}px de tela ` +
+      "abaixo do topo da lista — ela cabe inteira, e este caso não exercita rolagem " +
+      "nenhuma. Sem mais slots no seed, o verde aqui não seria evidência.",
+  ).toBeGreaterThan(espacoQueSobra);
+
+  // ── RÉGUA 4: o mecanismo ─────────────────────────────────────────────────
+  const medida = await lista.evaluate((el) => ({
+    scroll: el.scrollHeight,
+    cliente: el.clientHeight,
+  }));
+  expect(
+    medida.scroll,
+    `a lista tem ${medida.scroll}px de conteúdo em ${medida.cliente}px de caixa iguais — ` +
+      "ela não rola. O `overflow-y-auto` está lá e é inerte porque nenhum ancestral " +
+      "define altura: o filho cresce e leva a caixa junto.",
+  ).toBeGreaterThan(medida.cliente);
+
+  // ── RÉGUA 5: o desfecho, na língua de quem usa ───────────────────────────
+  const ultimo = horarios.last();
+  await ultimo.scrollIntoViewIfNeeded();
+  await expect(
+    ultimo,
+    "o último horário não entra na tela nem depois de rolar — é o que o dono viu",
+  ).toBeInViewport();
+  await ultimo.click();
+  await expect(
+    page.getByTestId("confirmacao"),
+    "cliquei no último horário e o painel não avançou",
+  ).toBeVisible({ timeout: 15_000 });
+
+  // ── RÉGUA 6: anti-regressão, e ela NÃO é a que o briefing propôs ─────────
+  //
+  // A proposta era `document.body.scrollHeight - window.innerHeight <= 1`, com a
+  // nota "já passa hoje". **MEDIDO: não passa, e não é culpa do conserto.**
+  // Com o painel aberto nesta viewport, o body vai a 1566px contra 700 de
+  // janela — e o número é IDÊNTICO com e sem a cadeia de alturas:
+  //
+  //     COM o conserto:  body 1566 | lista 644 de conteúdo em 396 de caixa
+  //     SEM o conserto:  body 1566 | lista 644 de conteúdo em 644 de caixa
+  //
+  // O crescimento da página é PRÉ-EXISTENTE e independente disto. Asserir sobre
+  // ele reprovaria um conserto correto por uma dívida que já estava lá — e foi o
+  // que aconteceu na primeira execução, com o conserto no lugar.
+  //
+  // A propriedade que a régua QUERIA proteger é outra e se mede direto: que o
+  // conserto não veio tirando o `position: fixed` do Sheet, que é o que o
+  // tornaria um painel comum e faria a página crescer de verdade.
+  const posicaoDoSheet = await page
+    .locator('[role="dialog"]')
+    .first()
+    .evaluate((el) => getComputedStyle(el).position);
+  expect(
+    posicaoDoSheet,
+    "o Sheet deixou de ser `fixed` — a rolagem pode até parecer resolvida, mas o " +
+      "painel virou conteúdo de página em vez de sobreposição",
+  ).toBe("fixed");
+
+  await page.screenshot({ path: "evidence/calendario/d4-lista-rola-1280x700.png", fullPage: false });
+});
+
 test("dá para CLICAR num horário — o teste final é a ação, não a medida", async ({ page }) => {
   // A geometria acima é o diagnóstico; isto é o desfecho. Um horário pode estar
   // dentro do painel e ainda assim ser inalcançável (coberto por outra camada,
