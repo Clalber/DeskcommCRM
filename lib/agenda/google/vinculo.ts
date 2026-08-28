@@ -50,11 +50,20 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 
 /**
- * O nome não cita o provedor: o mesmo vínculo serve qualquer consentimento que
- * volte de fora, e `lint:channels` proíbe nome de provider fora de
- * `lib/channels/` — em comentário como em código.
+ * O nome não cita o provedor NEM o produto, e as duas restrições são de gates
+ * diferentes:
+ *
+ * - `lint:channels` proíbe nome de provider fora de `lib/channels/`;
+ * - `tests/unit/branding.test.ts` proíbe a marca fixada em código, porque o
+ *   produto é revendido com outra marca — e este gate me pegou: a primeira
+ *   versão chamava o cookie de `deskcomm_oauth_bind`.
+ *
+ * O cookie de SESSÃO tem o nome da marca e está na allowlist daquele gate, com
+ * uma justificativa que aqui não vale: renomeá-lo deslogaria todo usuário no
+ * `update.sh` do clone. Este cookie é novo — nenhuma instalação o tem —, então
+ * a saída certa era renomear, não pedir exceção.
  */
-export const NOME_DO_VINCULO = "deskcomm_oauth_bind";
+export const NOME_DO_VINCULO = "crm_oauth_bind";
 
 /** O mesmo teto do `state` (`VALIDADE_DO_ESTADO_MS`). Um não pode durar mais que o outro. */
 export const VALIDADE_DO_VINCULO_S = 10 * 60;

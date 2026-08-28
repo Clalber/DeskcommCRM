@@ -93,7 +93,7 @@ test.describe("a volta do consentimento do Google chega ao sistema", () => {
     const state = new URL(destino).searchParams.get("state");
     expect(state, "a ida não levou `state` — o resto da spec não mede nada sem ele").toBeTruthy();
 
-    const vinculo = (await context.cookies()).find((c) => c.name === "deskcomm_oauth_bind");
+    const vinculo = (await context.cookies()).find((c) => c.name === "crm_oauth_bind");
     expect(
       vinculo,
       "a ida não emitiu o cookie de vínculo; sem ele a volta não tem como ser reconhecida",
