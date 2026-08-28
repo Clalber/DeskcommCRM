@@ -67,6 +67,35 @@ async function main(): Promise<void> {
 
   let segundaOrgId = (existente as { id: string } | null)?.id ?? null;
 
+  /**
+   * ⚠️ O SEED GARANTE O FIXTURE QUE ELE DECLARA — inclusive na org que reencontra.
+   *
+   * Esta organização existe **sem `onboarded_at`** de propósito (ver o `insert`
+   * abaixo): depois da separação dos slugs ela é o único lugar do harness com
+   * uma organização legitimamente não configurada, e é dela que
+   * `troca-de-organizacao-tem-volta.spec.ts` precisa para provar a saída do
+   * wizard.
+   *
+   * Só que "criar sem a coluna" não é o mesmo que "garantir sem a coluna". Num
+   * banco onde outro seed carimbou a linha primeiro — foi o que aconteceu no
+   * ambiente do autor da spec de escopo, com `onboarded_at` de 27/08 21:40 —
+   * este seed rodava, não olhava o estado, e a spec da saída quebrava com um
+   * `page.waitForURL` estourando por 60s: mensagem opaca, causa invisível.
+   *
+   * É a MESMA classe que `tests/unit/seeds-nao-disputam-organizacao.test.ts`
+   * fecha do lado de quem cria, reaparecendo do lado de quem reusa. A regra que
+   * vale para os dois: o seed é dono do estado que ele promete, não só da
+   * primeira escrita dele.
+   */
+  if (segundaOrgId) {
+    const { error: fixErr } = await admin
+      .from("organizations")
+      .update({ onboarded_at: null })
+      .eq("id", segundaOrgId)
+      .not("onboarded_at", "is", null);
+    if (fixErr) throw new Error(`garantir a org NÃO configurada: ${fixErr.message}`);
+  }
+
   if (!segundaOrgId) {
     const { data, error } = await admin
       .from("organizations")

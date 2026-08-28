@@ -94,7 +94,23 @@ test("trocar para uma organização não configurada leva ao wizard — e dá pa
 
   // O wizard é o destino CORRETO — a organização não está configurada mesmo. O
   // defeito nunca foi vir para cá; foi não ter como sair.
-  await page.waitForURL(/\/onboarding/, { timeout: 60_000 });
+  //
+  // ⚠️ A FALHA AQUI TEM DE DIZER A CAUSA. Sem o `catch`, um fixture com
+  // `onboarded_at` carimbado por outro seed reprovava com `page.waitForURL:
+  // Timeout 60000ms exceeded` — verdadeiro e inútil, porque a causa (a
+  // organização do fixture deixou de estar não-configurada) não aparece em
+  // lugar nenhum da mensagem. Medido: aconteceu no ambiente de outro terminal
+  // antes de `seed-e2e-funis` passar a garantir o próprio fixture.
+  try {
+    await page.waitForURL(/\/onboarding/, { timeout: 60_000 });
+  } catch (erro) {
+    throw new Error(
+      `troquei para a organização ${semOnboarding} e o produto NÃO mandou para o wizard ` +
+        `(fiquei em ${page.url()}). O caso precisa de uma organização SEM \`onboarded_at\`, e ` +
+        "quem garante isso é `scripts/seed-e2e-funis.ts` — se aquele seed parou de zerar o " +
+        `campo na org que reencontra, é aqui que aparece.\n\n${(erro as Error).message}`,
+    );
+  }
   await expect(
     page.getByTestId("tenant-switcher"),
     "o seletor de organização sobreviveu ao redirect — se ele está aqui, este caso perdeu o objeto",
