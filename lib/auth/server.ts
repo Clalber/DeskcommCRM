@@ -19,6 +19,8 @@ const ACTIVE_ORG_COOKIE = "active_org";
 interface RawMembershipRow {
   organization_id: string;
   role: string;
+  /** Só para ORDENAR — a lista decide qual organização fica ativa sem cookie. */
+  accepted_at?: string | null;
   organizations: { display_name: string } | { display_name: string }[] | null;
 }
 
@@ -116,11 +118,27 @@ export async function loadAuthUser(): Promise<AuthUser | null> {
     .maybeSingle();
 
   // Org memberships (only active = not revoked, accepted)
+  // ⚠️ `ORDER BY` NÃO É ENFEITE AQUI: esta lista decide QUAL ORGANIZAÇÃO FICA
+  // ATIVA para quem não tem o cookie `active_org` — `resolveActiveOrg` pega
+  // `organizations[0]`. Sem ordenação, "a primeira" é o que o Postgres devolver,
+  // e isso não é estável por especificação: muda com plano de execução, com a
+  // ordem física das linhas e com qualquer reescrita delas.
+  //
+  // O efeito para quem administra DUAS empresas na mesma instalação: entrar sem
+  // cookie (primeiro acesso, sessão nova, cookie expirado) podia cair numa ou na
+  // outra sem critério nenhum — e o produto não dava sinal de que escolheu.
+  //
+  // `accepted_at` primeiro porque a organização mais ANTIGA é a que a pessoa
+  // reconhece como "a minha"; `organization_id` como desempate, para o resultado
+  // ser determinístico mesmo quando as duas entraram no mesmo instante (é o caso
+  // de quem foi convidado para várias no mesmo lote).
   const { data: rawMemberships, error: membErro } = await supabase
     .from("user_organizations")
-    .select("organization_id, role, organizations(display_name)")
+    .select("organization_id, role, accepted_at, organizations(display_name)")
     .eq("user_id", user.id)
-    .is("revoked_at", null);
+    .is("revoked_at", null)
+    .order("accepted_at", { ascending: true, nullsFirst: true })
+    .order("organization_id", { ascending: true });
 
   /**
    * FALHA ALTO, não baixo.
