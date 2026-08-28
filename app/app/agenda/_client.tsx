@@ -469,6 +469,25 @@ export function AgendaClient({
                   }
                   return marcar.mutateAsync({ event_type_id: tipo.id, starts_at: instante });
                 }}
+                // "VER NA AGENDA" — o botão que não fazia nada.
+                //
+                // Ele não tinha `onClick`: parecia ativo e o clique era mudo. E
+                // fechar o painel sozinho não bastaria — o compromisso recém
+                // marcado costuma ser de OUTRA semana (o do relato era 8 de
+                // setembro), e a grade abre na semana corrente. Voltar para uma
+                // grade que não mostra o que acabou de nascer é o mesmo "nada
+                // acontece" com um passo a mais.
+                //
+                // Por isso a âncora vai junto: fecha o painel E leva a grade até
+                // o dia do compromisso. `startOfDay` porque a âncora é o DIA de
+                // referência da visão — mandar o instante exato funcionaria por
+                // acidente na visão de semana e escolheria a hora errada na de
+                // dia.
+                onVerNaAgenda={(instante) => {
+                  setAncora(startOfDay(new Date(instante)));
+                  setMarcando(false);
+                  setRemarcandoId(null);
+                }}
               />
             </div>
           )}

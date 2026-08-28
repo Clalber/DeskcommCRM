@@ -42,6 +42,7 @@ export function PainelDeMarcacao({
   fontesDefasadas,
   quemSeraAtendido,
   onConfirmar,
+  onVerNaAgenda,
   className,
 }: {
   ancora: Date;
@@ -108,6 +109,15 @@ export function PainelDeMarcacao({
    * decisão; o produto não avisar que não ia mandar é um bug.
    */
   quemSeraAtendido?: { nome: string; aceitaMensagem: boolean };
+  /**
+   * Levar a grade até o compromisso recém-marcado.
+   *
+   * Recebe o INSTANTE, e não só um pedido de fechar: quem marca para 8 de
+   * setembro e volta para a grade na semana corrente não vê nada — e "não
+   * acontece nada" passa a ser literalmente verdade na tela. Quem sabe mover a
+   * âncora é o `_client`, que é dono dela; este painel só sabe QUANDO é.
+   */
+  onVerNaAgenda?: (instante: string) => void;
   onConfirmar?: (instante: string) => void | Promise<unknown>;
   className?: string;
 }) {
@@ -225,7 +235,31 @@ export function PainelDeMarcacao({
             <Button variant="outline" size="sm" onClick={() => { setMarcado(null); setHorario(null); setDia(null); }}>
               Marcar outro
             </Button>
-            <Button size="sm" data-testid="ver-na-agenda">Ver na agenda</Button>
+            {/*
+              ⚠️ ESTE BOTÃO NÃO TINHA `onClick` NENHUM.
+
+              Não ficava cinza — parecia perfeitamente ativo, com cursor de
+              mãozinha —, e o clique não fazia nada. O dono do produto marcou um
+              compromisso na v1.8.0, clicou aqui, e o relato foi exatamente
+              "nada acontece": ele não tinha o que reportar além disso.
+
+              É a SEGUNDA forma de controle decorativo, e a varredura que esta
+              base tem para essa classe (`tests/unit/controle-decorativo.test.ts`)
+              era cega para ela: procurava `disabled={!callback}`, e botão mudo
+              não tem `disabled`. A varredura passou a cobrir as duas.
+
+              Sem `onVerNaAgenda` ele some, em vez de ficar decorativo: um
+              caminho que não existe não deve ser oferecido.
+            */}
+            {onVerNaAgenda && (
+              <Button
+                size="sm"
+                data-testid="ver-na-agenda"
+                onClick={() => onVerNaAgenda(marcado.instante)}
+              >
+                Ver na agenda
+              </Button>
+            )}
           </div>
         </div>
       </div>
