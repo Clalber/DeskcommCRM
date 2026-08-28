@@ -109,6 +109,53 @@ describe("clicar num bloco vazio", () => {
   });
 });
 
+describe("compromisso cancelado não tranca o horário que ele liberou", () => {
+  const cancelado: Agendamento = {
+    id: "c1",
+    titulo: "Consulta",
+    responsavelId: "p1",
+    comeca: `${DIA}T14:00:00`,
+    termina: `${DIA}T14:30:00`,
+    origem: "ui",
+    situacao: "cancelled",
+  };
+
+  it("o card cancelado não recebe o ponteiro — o bloco embaixo dele recebe", () => {
+    // ⚠️ ACHADO PELA SPEC EM TELA, com `locator.click` esperando 150 segundos: o
+    // card é `absolute` e cobre a camada de blocos vazios, então o clique no
+    // horário livre morria nele. E o horário ESTÁ livre — cancelar devolve a
+    // vaga (`cancelled` está em `SITUACOES_QUE_LIBERAM`) e a rota volta a
+    // oferecê-la. Numa clínica com uma semana de cancelamentos, todo horário
+    // reaberto ficaria inalcançável pela grade.
+    montar({
+      interacao: interacao({ horariosPorDia: { [DIA]: [publicado("14:00")] } }),
+      agendamentos: [cancelado],
+    });
+    expect(screen.getByTestId("agendamento-c1").className).toContain("pointer-events-none");
+  });
+
+  it("mas ele continua VISÍVEL — é a memória de que houve algo ali", () => {
+    montar({
+      interacao: interacao({ horariosPorDia: { [DIA]: [publicado("14:00")] } }),
+      agendamentos: [cancelado],
+    });
+    expect(screen.getByTestId("agendamento-c1")).toBeInTheDocument();
+  });
+
+  // ⚠️ ESCOPO DECLARADO: este caso NÃO prova a sobreposição — jsdom não faz hit
+  // testing, e `fireEvent.click` no bloco chegaria nele mesmo com o card por
+  // cima. Quem prova a sobreposição é a spec em tela (`agenda-grade-interativa`),
+  // com ponteiro de verdade. O que este caso guarda é que o bloco continua
+  // OFERECENDO a vaga de um horário cancelado, que é a outra metade do defeito.
+  it("e o bloco daquele horário segue oferecendo a vaga", () => {
+    const inter = interacao({ horariosPorDia: { [DIA]: [publicado("14:00")] } });
+    montar({ interacao: inter, agendamentos: [cancelado] });
+
+    fireEvent.click(screen.getByTestId(`bloco-${DIA}-14:00`));
+    expect(inter.onMarcarEm).toHaveBeenCalledWith(`${DIA}T14:00:00.000`);
+  });
+});
+
 describe("o bloco recusado DIZ por quê — a razão sai da mesma conta que o apaga", () => {
   it("sem jornada publicada, a frase manda configurar em vez de constatar", () => {
     montar({ interacao: interacao({ horariosPorDia: {}, motivo: "sem-jornada" }) });

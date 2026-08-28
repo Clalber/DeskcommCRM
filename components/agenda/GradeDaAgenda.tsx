@@ -366,7 +366,22 @@ function BlocoDeAgendamento({
         // o card se move, e prometê-la num card que não se move (ocupação do
         // Google, compromisso cancelado) é o controle decorativo de novo.
         arraste && !doGoogle && !cancelado && "cursor-grab active:cursor-grabbing touch-none",
-        cancelado && "opacity-55",
+        // ⚠️ CANCELADO NÃO INTERCEPTA O PONTEIRO — e isto é conserto de produto,
+        // achado pela spec em tela.
+        //
+        // O card é `absolute` e fica por cima da camada de blocos vazios.
+        // Cancelar DEVOLVE o horário (`cancelled` está em `SITUACOES_QUE_LIBERAM`,
+        // e a rota volta a oferecê-lo), então o bloco embaixo nasce clicável — e
+        // o clique morria no card cancelado. Medido: `locator.click` esperando
+        // 150s porque `<button data-situacao="cancelled">` recebia o evento
+        // "from" o bloco livre. Numa clínica com uma semana de cancelamentos, o
+        // horário reaberto vira inalcançável pela grade.
+        //
+        // O card continua VISÍVEL — ele é a memória do que houve ali, e some-lo
+        // faria o horário parecer que nunca teve nada. O que ele perde é o
+        // clique, que já existe na aba "Cancelados" do histórico logo acima. A
+        // ação viva naquele espaço é marcar; o cancelado é registro.
+        cancelado && "pointer-events-none opacity-55",
         // Enquanto a proposta está aberta o card original esmaece e o fantasma
         // mostra onde ele cairia. Sumir com o original faria perder a
         // referência de onde ele estava — que é o que se desfaz ao cancelar.
