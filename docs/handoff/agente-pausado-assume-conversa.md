@@ -440,3 +440,56 @@ arquivos que não eram meus (`.gitattributes`, `hostgator-setup-kit/install.sh`)
 `git worktree list` antes de confiar em qualquer diff, e nunca use `git add -A`
 neste worktree — `.gitattributes` e `hostgator-setup-kit/install.sh` seguem
 modificados por outra sessão e não devem entrar em commit deste trabalho.
+
+---
+
+## ENTREGA — PR, release e VPS
+
+### PR
+
+**#408** — `fix/pausar-agente-cala-em-todos-os-caminhos` → `main`.
+
+A branch de trabalho original (`fix/agente-pausado-nao-atende`) **não** foi usada
+para o PR: ela carregava o commit `8238b8e7` de outra sessão, cujos arquivos
+(`.gitattributes`, `hostgator-setup-kit/install.sh`,
+`.changes/o-fork-checa-...`) já têm PR próprio — o **#405**. Abrir o PR daquela
+branch misturaria dois assuntos e duplicaria o #405. O PR saiu de um worktree
+novo criado a partir de `origin/main`, com os 17 arquivos deste trabalho e nada
+mais.
+
+### O caminho até a VPS (não é o merge)
+
+A VPS **não** segue a `main`. Ela roda `hostgator-setup-kit/update.sh`, que puxa
+imagem **por número de versão**:
+
+```
+git tag -l 'v*' --sort=-v:refname | head -1      # o alvo do update.sh
+APP_IMAGE=ghcr.io/melgarafael/deskcommcrm:1.9.1  # o que está lá hoje
+```
+
+Então merge do #408 **não basta**. A sequência é:
+
+1. merge do #408 na `main`;
+2. disparar o workflow `release` (`workflow_dispatch`) → ele lê `.changes/`,
+   calcula **v1.9.2** e abre um PR de release;
+3. merge do PR de release → o CI cria a tag `v1.9.2` → `publish-image.yml`
+   publica as três imagens;
+4. na VPS: `bash hostgator-setup-kit/update.sh`.
+
+A tag nasce no CI de propósito (`docs/doctrine/versionamento.md`): tag criada na
+máquina de alguém é o ponto onde o número deixa de ser revisável, e **a tag é o
+seletor do que cada VPS baixa**.
+
+### Estado da VPS antes do deploy (medido)
+
+| item | valor |
+|---|---|
+| árvore dona do projeto Docker | `/root/DeskcommCRM` (via label `working_dir`) |
+| versão | tag exata `v1.9.1`, commit `9507920c` |
+| domínio | responde **307** (redireciona ao login — o esperado) |
+| contêineres | `app`, `worker`, `scheduler` todos `healthy` |
+| proxy | **Caddy**, não Traefik — o `-f docker-compose.traefik.yml` NÃO se aplica aqui |
+| `.update.lock` | resíduo de 27/08 do `agent.sh`; é `flock`, e o `update.sh` não o usa |
+
+O `update.sh` faz backup automático antes e re-aplica `supabase/baseline.sql`
+(idempotente). Este PR **não muda schema**, então a re-aplicação é no-op.
