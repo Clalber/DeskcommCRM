@@ -45,3 +45,17 @@ export function useT(): (texto: string) => string {
   // reexecutaria a cada render.
   return useMemo(() => (texto: string) => traduzir(texto, idioma), [idioma]);
 }
+
+/**
+ * O CÓDIGO do idioma, para quem precisa dele e não de uma frase.
+ *
+ * Existe por causa das datas. `t()` resolve texto que eu escrevo; ele não tem o
+ * que fazer com "quarta-feira", que quem escreve é o `date-fns` a partir de um
+ * locale. Numa tela de calendário isso não é detalhe: a Agenda formata dia da
+ * semana e mês em cinco arquivos, e sem trocar o locale o espanhol ganharia uma
+ * grade com os sete dias em português — mais visivelmente errado do que
+ * qualquer frase não traduzida, porque é o próprio conteúdo da tela.
+ */
+export function useIdioma(): Idioma {
+  return useContext(Ctx);
+}

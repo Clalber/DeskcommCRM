@@ -9,9 +9,10 @@ import {
   startOfMonth,
   startOfWeek,
 } from "date-fns";
-import { ptBR } from "date-fns/locale";
 
 import { cn } from "@/lib/utils";
+import { useT } from "@/hooks/i18n/useT";
+import { useLocaleDeData } from "@/lib/i18n/locale-de-data";
 
 import { corDaTrilha, fundoDaTrilha } from "./paleta";
 import type { Agendamento, Pessoa, VisaoDaAgenda } from "./tipos";
@@ -124,6 +125,7 @@ function BlocoDeAgendamento({
   coluna: number;
   colunas: number;
 }) {
+  const t = useT();
   const comeca = new Date(agendamento.comeca);
   const termina = new Date(agendamento.termina);
   const duracao = Math.max(differenceInMinutes(termina, comeca), 15);
@@ -150,10 +152,10 @@ function BlocoDeAgendamento({
       // rótulo dizia `, com ${pessoa.nome}`, que é o ATENDENTE: quem usa leitor
       // de tela ouvia os dois papéis trocados, e o card visual não desmente
       // porque em compromisso de 30min ele nem mostra o contato.
-      aria-label={`${agendamento.titulo}, ${format(comeca, "HH:mm")} às ${format(termina, "HH:mm")}${
-        agendamento.quemSeraAtendido ? `, com ${agendamento.quemSeraAtendido}` : ""
-      }${pessoa ? `, atendido por ${pessoa.nome}` : ""}${
-        doGoogle ? ", ocupado na agenda do Google" : ""
+      aria-label={`${t(agendamento.titulo)}, ${format(comeca, "HH:mm")} ${t("às")} ${format(termina, "HH:mm")}${
+        agendamento.quemSeraAtendido ? `, ${t("com")} ${agendamento.quemSeraAtendido}` : ""
+      }${pessoa ? `, ${t("atendido por")} ${pessoa.nome}` : ""}${
+        doGoogle ? `, ${t("ocupado na agenda do Google")}` : ""
       }`}
       className={cn(
         "absolute flex flex-col items-start overflow-hidden rounded-sm px-1.5 py-0.5 text-left",
@@ -251,6 +253,7 @@ function ColunaDeDia({
   onAbrir?: (id: string) => void;
   destacado: boolean;
 }) {
+  const localeDeData = useLocaleDeData();
   const doDia = agendamentos.filter((c) => isSameDay(new Date(c.comeca), dia));
   const ehHoje = isSameDay(dia, agora);
 
@@ -268,7 +271,7 @@ function ColunaDeDia({
         )}
       >
         <span className="truncate text-[11px] font-semibold uppercase tracking-wide text-text-muted">
-          {format(dia, "EEE", { locale: ptBR }).replace(".", "")}
+          {format(dia, "EEE", { locale: localeDeData }).replace(".", "")}
         </span>
         <span
           className={cn(
@@ -315,6 +318,8 @@ function VisaoDeMes({
   agendamentos: Agendamento[];
   pessoas: Pessoa[];
 }) {
+  const t = useT();
+  const localeDeData = useLocaleDeData();
   const primeiro = startOfWeek(startOfMonth(ancora), { weekStartsOn: 0 });
   // SEIS semanas sempre, mesmo quando o mês cabe em cinco.
   //
@@ -334,7 +339,7 @@ function VisaoDeMes({
             key={`cab-${d.toISOString()}`}
             className="px-2 py-1.5 text-center text-[11px] font-semibold uppercase tracking-wide text-text-muted"
           >
-            {format(d, "EEEEEE", { locale: ptBR }).replace(".", "")}
+            {format(d, "EEEEEE", { locale: localeDeData }).replace(".", "")}
           </div>
         ))}
       </div>
@@ -386,7 +391,7 @@ function VisaoDeMes({
                         style={{ backgroundColor: corDaTrilha(trilha) }}
                       />
                       <span className="truncate text-[10px] leading-4 text-text">
-                        {format(new Date(c.comeca), "HH:mm")} {c.titulo}
+                        {format(new Date(c.comeca), "HH:mm")} {t(c.titulo)}
                       </span>
                     </div>
                   );
