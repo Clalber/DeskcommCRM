@@ -1,4 +1,6 @@
 "use client";
+
+import { useTagDeIdioma } from "@/hooks/i18n/useLocaleDeData";
 /**
  * O painel que responde "o que eu liguei está funcionando?".
  *
@@ -71,9 +73,9 @@ const NOME_DA_VERSAO: Record<string, string> = {
   superseded: "antiga",
 };
 
-function formatarData(iso: string | null): string {
+function formatarData(iso: string | null, idioma: string): string {
   if (!iso) return "nunca";
-  return new Date(iso).toLocaleString("pt-BR", {
+  return new Date(iso).toLocaleString(idioma, {
     day: "2-digit",
     month: "2-digit",
     hour: "2-digit",
@@ -82,6 +84,7 @@ function formatarData(iso: string | null): string {
 }
 
 export function UsoDasCapacidades({ agentId, active }: Props) {
+  const tagDoIdioma = useTagDeIdioma();
   const t = useT();
   const query = useQuery({
     queryKey: ["ai", "agents", agentId, "tool-usage"],
@@ -196,7 +199,7 @@ export function UsoDasCapacidades({ agentId, active }: Props) {
                 <span>
                   {t("em teste")} <strong className="text-foreground">{c.em_teste}</strong>
                 </span>
-                <span>{t("última vez")} {t(formatarData(c.ultima_vez))}</span>
+                <span>{t("última vez")} {t(formatarData(c.ultima_vez, tagDoIdioma))}</span>
               </div>
             </li>
           ))}

@@ -1,6 +1,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join, relative, sep } from "node:path";
 
+import ts from "typescript";
 import { describe, expect, it } from "vitest";
 
 import { localeDeData, tagDeIdioma } from "@/lib/i18n/datas";
@@ -64,6 +65,29 @@ const A_CAMADA_DE_DATA = new Set([
 const FORA_DE_INTERFACE: Record<string, string> = {
   "app/api/v1/admin/dashboard/kpis/route.ts":
     "monta o texto do aviso no momento em que ele nasce — é conteúdo gravado, não interface",
+
+  // ─── E-mail: sai do produto e não tem provider de idioma ───
+  //
+  // A doutrina do repo já separa esta fronteira ("Saída sem DOM usa
+  // `marcaDaSaida()`"): e-mail é renderizado num worker, longe de qualquer
+  // contexto de React, e o idioma do destinatário não está resolvido ali — quem
+  // recebe um convite ainda NÃO TEM conta, então não tem preferência.
+  //
+  // Traduzir e-mail é um passe próprio: precisa decidir de onde vem o idioma
+  // (da organização que convida, presumivelmente), e mexe no teste de template
+  // que compara o HTML inteiro.
+  "lib/email/templates/invite.ts": "e-mail: renderizado fora do React; quem recebe convite ainda não tem conta",
+  "lib/lgpd/email-delivery.ts": "e-mail de LGPD: mesma fronteira do convite",
+  "lib/lgpd/sla-alarm.ts": "alarme por e-mail: mesma fronteira",
+
+  // ─── O PDF de LGPD é documento LEGAL, e fica em português por decisão ───
+  //
+  // Ele responde a um direito previsto na LGPD, lei brasileira, e nomeia o
+  // CONTROLADOR (`organizations.legal_name`) — o CLAUDE.md já trata este
+  // arquivo como caso especial pelo mesmo motivo. Emitir a data dele no idioma
+  // da interface faria um documento de conformidade mudar de forma conforme
+  // quem apertou o botão.
+  "lib/lgpd/pdf-renderer.tsx": "documento legal brasileiro: a data acompanha a lei, não a interface",
 };
 
 function arquivos(dir: string, acc: string[] = []): string[] {
@@ -88,6 +112,53 @@ function varrer(padrao: RegExp): string[] {
         if (/^\s*(\/\/|\*|\/\*)/.test(linha)) return;
         if (padrao.test(linha)) achados.push(`${rel}:${i + 1} → ${linha.trim().slice(0, 90)}`);
       });
+    }
+  }
+  return achados;
+}
+
+/** O receptor da chamada é uma DATA? Decide pelo que está à esquerda do ponto. */
+function receptorEhData(alvo: ts.Expression, fonte: ts.SourceFile): boolean {
+  if (ts.isNewExpression(alvo) && alvo.expression.getText(fonte) === "Date") return true;
+  const texto = alvo.getText(fonte);
+  return /\bnew Date\b/.test(texto) || /(^|\.)(data|date|dia|quando|[\w]*_at|[\w]*At)$/i.test(texto);
+}
+
+/**
+ * Data formatada com o idioma FIXO, achada no AST.
+ *
+ * `Intl.DateTimeFormat` é sempre data. `toLocale*String` só conta quando o
+ * receptor é data — senão o guarda cobraria número, que está fora de escopo
+ * por medida (ver cabeçalho).
+ */
+function varrerDatasNoAst(): string[] {
+  const achados: string[] = [];
+  for (const area of AREAS) {
+    for (const arq of arquivos(join(RAIZ, area))) {
+      const rel = relative(RAIZ, arq).split(sep).join("/");
+      if (A_CAMADA_DE_DATA.has(rel) || rel in FORA_DE_INTERFACE) continue;
+      const src = readFileSync(arq, "utf8");
+      if (!src.includes('"pt-BR"') && !src.includes("'pt-BR'")) continue;
+      const fonte = ts.createSourceFile(arq, src, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+      const visita = (no: ts.Node): void => {
+        if (ts.isStringLiteral(no) && no.text === "pt-BR") {
+          const pai = no.parent;
+          let ehData = false;
+          if (ts.isNewExpression(pai) && /DateTimeFormat$/.test(pai.expression.getText(fonte))) {
+            ehData = true;
+          } else if (ts.isCallExpression(pai) && ts.isPropertyAccessExpression(pai.expression)) {
+            const metodo = pai.expression.name.text;
+            if (metodo === "toLocaleDateString" || metodo === "toLocaleTimeString") ehData = true;
+            else if (metodo === "toLocaleString") ehData = receptorEhData(pai.expression.expression, fonte);
+          }
+          if (ehData) {
+            const linha = fonte.getLineAndCharacterOfPosition(no.getStart()).line + 1;
+            achados.push(`${rel}:${linha} → ${src.split("\n")[linha - 1]?.trim().slice(0, 90)}`);
+          }
+        }
+        ts.forEachChild(no, visita);
+      };
+      visita(fonte);
     }
   }
   return achados;
@@ -133,9 +204,19 @@ describe("ninguém fixa o idioma da data fora da camada", () => {
   });
 
   it('nenhuma DATA é formatada com "pt-BR" fixo', () => {
-    // Só data. `toLocaleString` sobre número fica de fora de propósito — o
-    // porquê, com a medição, está no cabeçalho deste arquivo.
-    const vazando = varrer(/toLocale(?:Date|Time)String\(\s*["']pt-BR["']|DateTimeFormat\(\s*["']pt-BR["']/);
+    // ⚠️ PELO AST, e não por regex sobre o nome do método — o regex tinha um
+    // ponto cego que a sabotagem encontrou.
+    //
+    // A primeira versão procurava `toLocaleDateString` e `toLocaleTimeString`,
+    // deixando `toLocaleString` de fora porque ele também formata NÚMERO (que
+    // fica fora de escopo, ver o cabeçalho). Só que `new Date(x)
+    // .toLocaleString("pt-BR")` é DATA, e passava. Sabotei um sítio real
+    // exatamente assim e o guarda ficou VERDE.
+    //
+    // Quem decide não é o nome do método: é o RECEPTOR. `new Date(...)` e
+    // qualquer coisa chamada `data`/`date`/`*_at` é data; `n.toLocaleString()`
+    // sobre número não é.
+    const vazando = varrerDatasNoAst();
     expect(
       vazando,
       `${vazando.length} data(s) com o idioma fixo em "pt-BR". Use \`useTagDeIdioma()\`.`,

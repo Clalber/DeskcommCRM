@@ -42,11 +42,11 @@ function dia(s: string, idioma: string): string {
 }
 
 export function EvolutionTimeline({ items }: { items: TimelineItem[] }) {
+  const tagDoIdioma = useTagDeIdioma();
   const t = useT();
   return (
     <ol className="max-h-80 divide-y divide-border overflow-y-auto">
       {items.map((it, i) => {
-  const tagDoIdioma = useTagDeIdioma();
         const tipo = TIPOS[it.kind];
         return (
           <li key={`${it.day}-${it.kind}-${i}`} className="flex items-start gap-3 py-3">

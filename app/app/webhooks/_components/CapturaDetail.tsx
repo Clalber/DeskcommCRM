@@ -1,4 +1,6 @@
 "use client";
+
+import { useTagDeIdioma } from "@/hooks/i18n/useLocaleDeData";
 import * as React from "react";
 import Link from "next/link";
 
@@ -22,8 +24,8 @@ interface Props {
   onOpenChange: (open: boolean) => void;
 }
 
-function dataHoraCompleta(iso: string): string {
-  return new Date(iso).toLocaleString("pt-BR", {
+function dataHoraCompleta(iso: string, idioma: string): string {
+  return new Date(iso).toLocaleString(idioma, {
     dateStyle: "full",
     timeStyle: "medium",
   });
@@ -52,6 +54,7 @@ function valorLegivel(valor: unknown): string {
 }
 
 export function CapturaDetail({ captura, onOpenChange }: Props) {
+  const tagDoIdioma = useTagDeIdioma();
   const t = useT();
   if (!captura) return null;
   const campos = Object.entries(captura.fields ?? {});
@@ -120,7 +123,7 @@ export function CapturaDetail({ captura, onOpenChange }: Props) {
             <h3 className="mb-2 flex items-center gap-2 text-sm font-medium text-text">
               <Clock className="h-4 w-4 text-accent" /> {t("Quando")}
             </h3>
-            <p className="text-sm text-text">{dataHoraCompleta(captura.received_at)}</p>
+            <p className="text-sm text-text">{dataHoraCompleta(captura.received_at, tagDoIdioma)}</p>
           </section>
 
           <section>

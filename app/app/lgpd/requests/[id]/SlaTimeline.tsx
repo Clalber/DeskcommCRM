@@ -49,6 +49,7 @@ function milestoneStatus(
 }
 
 export function SlaTimeline({ received_at, due_at, request_type }: SlaTimelineProps) {
+  const localeDaData = useLocaleDeData();
   const t = useT();
   const receivedAt = new Date(received_at);
   const dueAt = new Date(due_at);
@@ -114,7 +115,6 @@ export function SlaTimeline({ received_at, due_at, request_type }: SlaTimelinePr
       {/* Milestones */}
       <ol className="relative space-y-0">
         {milestones.map((m, idx) => {
-  const localeDaData = useLocaleDeData();
           const dotColor =
             m.status === "completed"
               ? "bg-emerald-500 border-emerald-500"

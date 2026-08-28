@@ -5,6 +5,7 @@ import { marcaDaInstalacao } from "@/lib/branding/instalacao";
 import { REGUA_DO_PRODUTO } from "@/lib/branding/regua-do-produto";
 import { camadaDaInstalacao, camadaDoAmbiente, resolverMarca } from "@/lib/branding/resolve";
 import { env } from "@/lib/env";
+import { tagDeIdioma } from "@/lib/i18n/datas";
 import { normalizarIdioma } from "@/lib/i18n/idiomas";
 import { traduzir } from "@/lib/i18n/dicionario";
 
@@ -21,9 +22,9 @@ export const dynamic = "force-dynamic";
  * a mesma linha renderiza diferente dos dois lados. Fuso fixo porque a coluna é
  * da INSTALAÇÃO — não há organização resolvida nesta tela de onde tirar um.
  */
-function instanteLegivel(iso: string | null): string | null {
+function instanteLegivel(iso: string | null, idioma: string): string | null {
   if (!iso) return null;
-  return new Date(iso).toLocaleString("pt-BR", {
+  return new Date(iso).toLocaleString(idioma, {
     timeZone: "America/Sao_Paulo",
     dateStyle: "short",
     timeStyle: "short",
@@ -106,7 +107,7 @@ export default async function Page() {
         // `seeded_from_env` ligado significa que a linha é cópia do arquivo de
         // instalação, não escolha de alguém nesta tela. Sem linha, também não é.
         definidoNestaTela={linha !== null && !linha.seeded_from_env}
-        fallbackEm={instanteLegivel(linha?.fallback_at ?? null)}
+        fallbackEm={instanteLegivel(linha?.fallback_at ?? null, tagDeIdioma(idioma))}
         fallbackMotivo={linha?.fallback_reason ?? null}
       />
     </div>

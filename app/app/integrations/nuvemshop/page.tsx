@@ -19,6 +19,7 @@ import { isConfigured } from "@/lib/nuvemshop/config";
 import { ConnectButton, DisconnectButton } from "./_components/ConnectButton";
 import { StatusToast } from "./_components/StatusToast";
 import { Suspense } from "react";
+import { tagDeIdioma } from "@/lib/i18n/datas";
 import { normalizarIdioma } from "@/lib/i18n/idiomas";
 import { traduzir } from "@/lib/i18n/dicionario";
 
@@ -128,7 +129,7 @@ export default async function NuvemshopIntegrationPage() {
                 {traduzir("Loja", idioma)} #{integration.store_metadata?.store_id ?? "—"} ·{" "}
                 {traduzir("última sync:", idioma)}{" "}
                 {integration.last_sync_at
-                  ? new Date(integration.last_sync_at).toLocaleString("pt-BR")
+                  ? new Date(integration.last_sync_at).toLocaleString(tagDeIdioma(idioma))
                   : "—"}
               </CardDescription>
             </div>

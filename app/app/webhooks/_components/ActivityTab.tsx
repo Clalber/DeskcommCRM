@@ -1,5 +1,7 @@
 "use client";
 
+import { useTagDeIdioma } from "@/hooks/i18n/useLocaleDeData";
+
 import { useLocaleDeData } from "@/hooks/i18n/useLocaleDeData";
 
 import type { Locale } from "date-fns";
@@ -94,15 +96,16 @@ function explicacaoDe(
   return reason;
 }
 
-function horarioDeRetorno(action: AutomationRuleRunActionResult): string | null {
+function horarioDeRetorno(action: AutomationRuleRunActionResult, idioma: string): string | null {
   const retryAt = action.detail?.retry_at;
   if (typeof retryAt !== "string") return null;
   const quando = new Date(retryAt);
   if (Number.isNaN(quando.getTime())) return null;
-  return quando.toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
+  return quando.toLocaleString(idioma, { dateStyle: "short", timeStyle: "short" });
 }
 
 function ActionLine({ action, run }: { action: AutomationRuleRunActionResult; run: AutomationRuleRunRow }) {
+  const tagDoIdioma = useTagDeIdioma();
   const t = useT();
   const resend = useResendAutomationRun();
 
@@ -123,7 +126,7 @@ function ActionLine({ action, run }: { action: AutomationRuleRunActionResult; ru
   // o mapa de frases logo acima nunca era consultado. Escrever as frases e não
   // ligá-las é o mesmo que não tê-las.
   const explicacao = explicacaoDe(action, t);
-  const retorno = horarioDeRetorno(action);
+  const retorno = horarioDeRetorno(action, tagDoIdioma);
 
   return (
     <div className="space-y-1">

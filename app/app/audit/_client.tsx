@@ -1,5 +1,7 @@
 "use client";
 
+import { useTagDeIdioma } from "@/hooks/i18n/useLocaleDeData";
+
 import { useT } from "@/hooks/i18n/useT";
 import { useMemo, useState } from "react";
 
@@ -17,9 +19,9 @@ import {
 } from "@/components/ui/table";
 import { useAuditQuery, type AuditFilters } from "@/hooks/audit/useAuditQuery";
 
-function fmtDate(iso: string): string {
+function fmtDate(iso: string, idioma: string): string {
   try {
-    return new Date(iso).toLocaleString("pt-BR", { hour12: false });
+    return new Date(iso).toLocaleString(idioma, { hour12: false });
   } catch {
     return iso;
   }
@@ -33,6 +35,7 @@ function truncJson(v: unknown, max = 80): string {
 }
 
 export function AuditClient() {
+  const tagDoIdioma = useTagDeIdioma();
   const t = useT();
   const [actionInput, setActionInput] = useState("");
   const [resourceType, setResourceType] = useState("");
@@ -130,7 +133,7 @@ export function AuditClient() {
               rows.map((r) => (
                 <TableRow key={r.id}>
                   <TableCell className="whitespace-nowrap text-xs">
-                    {fmtDate(r.created_at)}
+                    {fmtDate(r.created_at, tagDoIdioma)}
                   </TableCell>
                   <TableCell className="text-xs font-mono">
                     {r.acting_as_platform_admin

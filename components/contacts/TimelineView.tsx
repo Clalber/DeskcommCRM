@@ -52,6 +52,7 @@ function summarizePayload(p: Record<string, unknown>): string {
 }
 
 export function TimelineView({ contactId, types }: Props) {
+  const localeDaData = useLocaleDeData();
   const t = useT();
   const q = useTimeline(contactId, types);
 
@@ -100,7 +101,6 @@ export function TimelineView({ contactId, types }: Props) {
   return (
     <div className="space-y-6">
       {grouped.map(([key, items]) => {
-  const localeDaData = useLocaleDeData();
         const date = new Date(key);
         return (
           <section key={key} className="space-y-2">

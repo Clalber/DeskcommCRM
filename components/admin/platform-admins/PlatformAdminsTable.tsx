@@ -128,6 +128,7 @@ interface PlatformAdminsTableProps {
 }
 
 export function PlatformAdminsTable({ data }: PlatformAdminsTableProps) {
+  const localeDaData = useLocaleDeData();
   const t = useT();
   if (data.length === 0) return <EmptyState />;
 
@@ -147,7 +148,6 @@ export function PlatformAdminsTable({ data }: PlatformAdminsTableProps) {
         </TableHeader>
         <TableBody>
           {data.map((row) => {
-  const localeDaData = useLocaleDeData();
             const isRevoked = !!row.revoked_at;
             return (
               <TableRow key={row.id} className={isRevoked ? "opacity-60" : undefined}>

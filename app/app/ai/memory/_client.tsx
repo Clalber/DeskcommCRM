@@ -1,4 +1,6 @@
 "use client";
+
+import { useTagDeIdioma } from "@/hooks/i18n/useLocaleDeData";
 import * as React from "react";
 import { toast } from "sonner";
 
@@ -34,8 +36,8 @@ interface Props {
   initialState: OrgMemoryState;
 }
 
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleString("pt-BR", {
+function formatDate(iso: string, idioma: string): string {
+  return new Date(iso).toLocaleString(idioma, {
     day: "2-digit",
     month: "2-digit",
     year: "numeric",
@@ -45,6 +47,7 @@ function formatDate(iso: string): string {
 }
 
 export function OrgMemoryClient({ initialState }: Props) {
+  const tagDoIdioma = useTagDeIdioma();
   const t = useT();
   const { data } = useOrgMemory(initialState);
   const document = data?.document ?? null;
@@ -188,7 +191,7 @@ export function OrgMemoryClient({ initialState }: Props) {
                       className="flex w-full items-center gap-3 rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent-soft"
                     >
                       <span className="font-mono text-xs">v{v.version_number}</span>
-                      <span className="text-xs text-muted-foreground">{formatDate(v.created_at)}</span>
+                      <span className="text-xs text-muted-foreground">{formatDate(v.created_at, tagDoIdioma)}</span>
                       {document?.version_id === v.id && (
                         <Badge variant="success" className="text-[10px]">
                           {t("ativa")}
@@ -288,7 +291,7 @@ export function OrgMemoryClient({ initialState }: Props) {
                     <Badge variant={entry.source === "flywheel" ? "info" : "neutral"} className="text-[10px]">
                       {entry.source === "flywheel" ? t("aprendido automaticamente") : t("manual")}
                     </Badge>
-                    <span className="ml-auto text-xs text-muted-foreground">{formatDate(entry.created_at)}</span>
+                    <span className="ml-auto text-xs text-muted-foreground">{formatDate(entry.created_at, tagDoIdioma)}</span>
                   </div>
                   <p className="whitespace-pre-wrap text-text-muted">{entry.body}</p>
                   <div className="flex sm:justify-end">
@@ -326,7 +329,7 @@ export function OrgMemoryClient({ initialState }: Props) {
               {t("Versão")} v{historyTarget?.version_number}
             </DialogTitle>
             <DialogDescription>
-              {historyTarget ? `${t("Publicada em")} ${formatDate(historyTarget.created_at)}` : null}
+              {historyTarget ? `${t("Publicada em")} ${formatDate(historyTarget.created_at, tagDoIdioma)}` : null}
             </DialogDescription>
           </DialogHeader>
           {versionDetail.isLoading ? (

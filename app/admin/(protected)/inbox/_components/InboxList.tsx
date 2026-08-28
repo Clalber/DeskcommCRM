@@ -69,6 +69,7 @@ const STATUS_OPTIONS = [
 // ---------------------------------------------------------------------------
 
 export function InboxList() {
+  const localeDaData = useLocaleDeData();
   const t = useT();
   const router = useRouter();
   const params = useParams();
@@ -164,7 +165,6 @@ export function InboxList() {
         )}
 
         {rows.map((row) => {
-  const localeDaData = useLocaleDeData();
           const isSelected = selectedId === row.id;
           const name = contactName(row, t);
           const org = row.organizations;

@@ -1,4 +1,6 @@
 "use client";
+
+import { useTagDeIdioma } from "@/hooks/i18n/useLocaleDeData";
 import * as React from "react";
 import { toast } from "sonner";
 
@@ -21,8 +23,8 @@ interface Props {
   initialState: SkillsState;
 }
 
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleString("pt-BR", {
+function formatDate(iso: string, idioma: string): string {
+  return new Date(iso).toLocaleString(idioma, {
     day: "2-digit",
     month: "2-digit",
     year: "numeric",
@@ -32,6 +34,7 @@ function formatDate(iso: string): string {
 }
 
 export function SkillsClient({ initialState }: Props) {
+  const tagDoIdioma = useTagDeIdioma();
   const t = useT();
   const { data } = useSkills(initialState);
   const installed = data?.installed ?? [];
@@ -137,7 +140,7 @@ export function SkillsClient({ initialState }: Props) {
                       {skill.source === "catalog" ? t("do catálogo") : t("manual")}
                     </Badge>
                     <span className="ml-auto text-xs text-muted-foreground">
-                      {t("atualizada em")} {formatDate(skill.updated_at)}
+                      {t("atualizada em")} {formatDate(skill.updated_at, tagDoIdioma)}
                     </span>
                   </div>
                   {skill.description && <p className="text-text-muted">{skill.description}</p>}

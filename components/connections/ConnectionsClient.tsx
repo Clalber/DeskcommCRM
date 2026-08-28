@@ -100,6 +100,7 @@ function enumerar(partes: (string | null)[], t: (texto: string) => string): stri
 }
 
 export function ConnectionsClient({ wahaConfigured }: { wahaConfigured: boolean }) {
+  const tagDoIdioma = useTagDeIdioma();
   const t = useT();
   const qc = useQueryClient();
   const {
@@ -303,7 +304,6 @@ export function ConnectionsClient({ wahaConfigured }: { wahaConfigured: boolean 
       ) : (
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
           {list.map((c) => {
-  const tagDoIdioma = useTagDeIdioma();
             const info = statusInfo(c.status, t);
             // Sem o serviço no ar a rota de exclusão falha fechado (503) para
             // quem depende dele: oferecer o botão seria prometer uma ação que

@@ -107,6 +107,7 @@ export function HistoricoDaAgenda({
   onFaltou?: (id: string) => void;
   className?: string;
 }) {
+  const localeDaData = useLocaleDeData();
   const t = useT();
   const [aba, setAba] = React.useState<AbaDoHistorico>("proximos");
   const grupos = React.useMemo(() => separar(agendamentos, agora), [agendamentos, agora]);
@@ -166,7 +167,6 @@ export function HistoricoDaAgenda({
         ) : (
           <ul>
             {daAba.map((a) => {
-  const localeDaData = useLocaleDeData();
               const pessoa = pessoas.find((p) => p.id === a.responsavelId);
               const variante = VARIANTE_DA_SITUACAO[a.situacao];
               const comeca = new Date(a.comeca);

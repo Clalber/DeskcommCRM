@@ -60,6 +60,7 @@ const COR_DO_ESTADO: Record<string, string> = {
 };
 
 export function TemplatesParceiroClient() {
+  const tagDoIdioma = useTagDeIdioma();
   const t = useT();
   const qc = useQueryClient();
   const [criando, setCriando] = useState(false);
@@ -444,7 +445,6 @@ export function TemplatesParceiroClient() {
       ) : (
         <ul className="divide-y divide-border rounded-md border border-border">
           {templates.map((tpl) => {
-  const tagDoIdioma = useTagDeIdioma();
             const chave = `${tpl.name}|${tpl.language}`;
             const c = lerConteudo(tpl.components);
             const expandido = aberto === chave;

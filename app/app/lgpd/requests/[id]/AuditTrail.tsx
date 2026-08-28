@@ -12,6 +12,7 @@ interface AuditTrailProps {
 }
 
 export function AuditTrail({ entries }: AuditTrailProps) {
+  const localeDaData = useLocaleDeData();
   const t = useT();
   if (entries.length === 0) {
     return (
@@ -24,7 +25,6 @@ export function AuditTrail({ entries }: AuditTrailProps) {
   return (
     <ol className="relative space-y-0">
       {entries.map((entry, idx) => {
-  const localeDaData = useLocaleDeData();
         const isLast = idx === entries.length - 1;
         return (
           <li key={entry.id} className="flex gap-3">

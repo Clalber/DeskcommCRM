@@ -33,6 +33,7 @@ export function ProposalsPanel({
   active: boolean;
   readOnly?: boolean;
 }) {
+  const localeDaData = useLocaleDeData();
   const t = useT();
   const { data, isLoading } = useAgentProposals(agentId, active);
   const apply = useApplyProposal(agentId);
@@ -77,7 +78,6 @@ export function ProposalsPanel({
   return (
     <ul className="divide-y divide-border rounded-lg border border-border">
       {items.map((p) => {
-  const localeDaData = useLocaleDeData();
         const when = formatDistanceToNowStrict(new Date(p.proposed_at), {
           addSuffix: true,
           locale: localeDaData,

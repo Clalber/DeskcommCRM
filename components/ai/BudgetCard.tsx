@@ -1,4 +1,6 @@
 "use client";
+
+import { useTagDeIdioma } from "@/hooks/i18n/useLocaleDeData";
 /**
  * O card de orçamento de IA — a peça que, até a 0159, mentia POR DEFAULT.
  *
@@ -67,8 +69,8 @@ function fmtCents(cents: number): string {
   return usd.format((cents ?? 0) / 100);
 }
 
-function fmtData(iso: string): string {
-  return new Date(iso).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
+function fmtData(iso: string, idioma: string): string {
+  return new Date(iso).toLocaleString(idioma, { dateStyle: "short", timeStyle: "short" });
 }
 
 /**
@@ -83,10 +85,10 @@ function fmtData(iso: string): string {
  * ele rotula. Derivar da mesma janela da régua é o conserto; ressuscitar um
  * escritor da coluna seria manter dado morto vivo.
  */
-function mesCorrente(): string {
+function mesCorrente(idioma: string): string {
   const agora = new Date();
   const nome = new Date(Date.UTC(agora.getUTCFullYear(), agora.getUTCMonth(), 1)).toLocaleDateString(
-    "pt-BR",
+    idioma,
     { month: "long", year: "numeric", timeZone: "UTC" },
   );
   return nome;
@@ -97,7 +99,13 @@ function clamp(n: number, min: number, max: number): number {
 }
 
 /** A frase de estado. Uma por modo, e todas verdadeiras — essa é a regra. */
-function frameDoEstado(status: BudgetStatus, t: (texto: string) => string = (texto) => texto): string {
+function frameDoEstado(
+  status: BudgetStatus,
+  t: (texto: string) => string = (texto) => texto,
+  // Mesmo tratamento do `t`: esta função é auxiliar e não pode chamar hook.
+  // Default no padrão do produto, para nenhum chamador quebrar.
+  tagDoIdioma = "pt-BR",
+): string {
   const efetivoEm = status.enforcement_effective_at;
   if (status.enforcement_mode === "off") {
     return t("Isto é só acompanhamento. A IA não vai parar sozinha por gasto.");
@@ -106,7 +114,7 @@ function frameDoEstado(status: BudgetStatus, t: (texto: string) => string = (tex
     return `${t("Avisamos ao passar de")} ${status.alarm_threshold_pct}% ${t("do limite. A IA não para.")}`;
   }
   if (efetivoEm && new Date(efetivoEm).getTime() > Date.now()) {
-    return `${t("A parada começa a valer em")} ${fmtData(efetivoEm)}. ${t("Até lá, só avisamos.")}`;
+    return `${t("A parada começa a valer em")} ${fmtData(efetivoEm, tagDoIdioma)}. ${t("Até lá, só avisamos.")}`;
   }
   return (
     `${t("A IA para de responder ao chegar em")} ${fmtCents(status.monthly_limit_cents)}. ` +
@@ -151,6 +159,7 @@ const AVISO_DE_MEDICAO =
   "painel do seu provedor de IA.";
 
 export function BudgetCard({ initialData, isAdmin }: Props) {
+  const tagDoIdioma = useTagDeIdioma();
   const t = useT();
   const q = useAiBudget({ initialData });
   const status = q.data;
@@ -175,7 +184,7 @@ export function BudgetCard({ initialData, isAdmin }: Props) {
         <div>
           <h2 className="text-base font-semibold tracking-tight">{t("Orçamento mensal de IA")}</h2>
           <p className="mt-0.5 text-xs text-muted-foreground">
-            {t("Gasto de")} {mesCorrente()} ·{" "}
+            {t("Gasto de")} {mesCorrente(tagDoIdioma)} ·{" "}
             {t("valores em dólar (é a moeda em que o provedor de IA cobra)")}
           </p>
         </div>
@@ -237,7 +246,7 @@ export function BudgetCard({ initialData, isAdmin }: Props) {
           <span className="text-muted-foreground">
             {limit > 0 ? (
               <>
-                {status.pct.toFixed(0)}% {t("do limite")} · {frameDoEstado(status, t)}
+                {status.pct.toFixed(0)}% {t("do limite")} · {frameDoEstado(status, t, tagDoIdioma)}
               </>
             ) : (
               t("Sem limite definido — a IA não vai parar sozinha por gasto.")

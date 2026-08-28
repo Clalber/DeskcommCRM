@@ -56,8 +56,7 @@ interface Props {
   isReindexing?: boolean;
 }
 
-function formatRelative(iso: string | null): string {
-  const tagDoIdioma = useTagDeIdioma();
+function formatRelative(iso: string | null, tagDoIdioma: string): string {
   if (!iso) return "nunca";
   const then = new Date(iso).getTime();
   const diffSec = Math.floor((Date.now() - then) / 1000);
@@ -80,6 +79,7 @@ export function KnowledgeSourceCard({
   isReindexing,
 }: Props) {
   const t = useT();
+  const tagDoIdioma = useTagDeIdioma();
   const [vendoTrechos, setVendoTrechos] = useState(false);
   const [editando, setEditando] = useState(false);
 
@@ -109,7 +109,7 @@ export function KnowledgeSourceCard({
       <CardContent className="flex-1 space-y-2 text-sm">
         <div className="flex items-baseline justify-between">
           <span className="text-text-muted">Preparado</span>
-          <span>{formatRelative(source.last_indexed_at)}</span>
+          <span>{formatRelative(source.last_indexed_at, tagDoIdioma)}</span>
         </div>
         <div className="flex items-baseline justify-between">
           <span className="text-text-muted">Trechos que o agente encontra</span>

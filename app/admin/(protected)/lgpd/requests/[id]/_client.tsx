@@ -24,6 +24,7 @@ interface SlaTimelineProps {
 }
 
 function SlaTimelineInline({ received_at, due_at, request_type }: SlaTimelineProps) {
+  const localeDaData = useLocaleDeData();
   const t = useT();
   const receivedAt = new Date(received_at);
   const dueAt = new Date(due_at);
@@ -81,7 +82,6 @@ function SlaTimelineInline({ received_at, due_at, request_type }: SlaTimelinePro
 
       <ol className="relative space-y-0">
         {milestones.map((m, idx) => {
-  const localeDaData = useLocaleDeData();
           const milestoneDate = new Date(
             receivedAt.getTime() + m.day * 24 * 60 * 60 * 1000,
           );
@@ -128,6 +128,7 @@ interface AuditEntry {
 }
 
 function AuditTrailInline({ entries }: { entries: AuditEntry[] }) {
+  const localeDaData = useLocaleDeData();
   const t = useT();
   if (entries.length === 0) {
     return (
@@ -140,7 +141,6 @@ function AuditTrailInline({ entries }: { entries: AuditEntry[] }) {
   return (
     <ol className="relative space-y-0">
       {entries.map((entry, idx) => {
-  const localeDaData = useLocaleDeData();
         const isLast = idx === entries.length - 1;
         return (
           <li key={entry.id} className="flex gap-3">

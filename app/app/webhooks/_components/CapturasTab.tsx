@@ -76,6 +76,7 @@ function paraIso(valor: string): string | undefined {
 }
 
 export function CapturasTab() {
+  const tagDoIdioma = useTagDeIdioma();
   const t = useT();
   const [busca, setBusca] = React.useState("");
   const [buscaAplicada, setBuscaAplicada] = React.useState("");
@@ -246,7 +247,6 @@ export function CapturasTab() {
               </TableHeader>
               <TableBody>
                 {linhas.map((row) => {
-  const tagDoIdioma = useTagDeIdioma();
                   const w = quando(row.received_at, tagDoIdioma);
                   return (
                     // A linha continua sendo `row` para quem usa leitor de tela:
