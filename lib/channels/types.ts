@@ -9,11 +9,50 @@ import type { OutboundMedia } from "@/lib/waha/media-send";
 
 export type { OutboundMedia };
 
-export type ChannelProvider = "waha" | "meta_cloud" | "zernio";
+export type ChannelProvider = "waha" | "meta_cloud" | "zernio" | "meta_instagram";
+
+/**
+ * O que existe, fora da janela, para voltar a falar com quem parou de responder.
+ *
+ * Existe porque os três primeiros canais eram todos WhatsApp, e no WhatsApp a
+ * resposta é sempre a MESMA: template aprovado. O gate de janela chegou a
+ * hardcodar essa saída na `reason` do veto — instruindo o modelo a chamar
+ * `send_template`. Num canal sem template isso é uma instrução impossível.
+ *
+ * Não é `requiresTemplates` invertido, e é por isso que é um campo próprio:
+ * `requiresTemplates` diz o que a PLATAFORMA hospeda; este diz o que RESTA
+ * fazer quando a janela fecha — e as duas respostas divergem justamente no
+ * canal que motivou o campo.
+ *
+ * - `template`       — existe forma aprovada de reabrir. Mudar a mensagem resolve.
+ * - `agente_humano`  — não há forma de mensagem que resolva; só uma PESSOA pode
+ *                      responder, sob permissão própria da plataforma. O agente
+ *                      de IA não tem saída: o caminho é escalar.
+ * - `nenhum`         — fechou, acabou. Nem template, nem humano.
+ * - `sem_janela`     — o canal não tem janela; a pergunta não se aplica.
+ *
+ * Invariante 2 da doutrina (`docs/doctrine/restricao-de-canal.md`): capability
+ * não é booleano solto — ela diz de que família é, porque isso decide o que
+ * fazer quando ela barra.
+ */
+export type MecanismoDeReengajamento =
+  | "template"
+  | "agente_humano"
+  | "nenhum"
+  | "sem_janela";
 
 export interface ChannelCapabilities {
   /** Pode enviar texto livre a qualquer momento? false = exige template fora da janela. */
   freeformOutsideWindow: boolean;
+  /**
+   * O que resta fazer quando a janela fecha. Ver `MecanismoDeReengajamento`.
+   *
+   * Quem lê isto NÃO deve derivá-lo de `freeformOutsideWindow` nem de
+   * `requiresTemplates`: a combinação `freeformOutsideWindow: false` +
+   * `requiresTemplates: false` é real (Instagram) e nenhuma das duas sozinha
+   * distingue "use template" de "chame uma pessoa".
+   */
+  reengajamento: MecanismoDeReengajamento;
   /** A plataforma hospeda definições de mensagem que precisam de aprovação prévia. */
   requiresTemplates: boolean;
   /**
@@ -61,6 +100,24 @@ export interface RecipientInput {
    * `waIdentity.startsWith("lid:")` — justo o caso que a regra protege.
    */
   waLid?: string | null | undefined;
+  /**
+   * O id que o PROVIDER dá a esta pessoa NESTA sessão de canal
+   * (`channel_contact_identities.provider_user_id`, migration 0202).
+   *
+   * Existe para os canais que endereçam por id opaco em vez de telefone. Ele é
+   * ESCOPADO À SESSÃO, e não ao contato, por uma razão que custou uma tabela
+   * inteira para ser respeitada: a mesma pessoa falando com duas contas da
+   * mesma organização tem DOIS ids, e ids de contas diferentes não são
+   * comparáveis. Resolver por contato mandaria a resposta pela conta errada —
+   * e mensagem que sai errada não volta.
+   *
+   * Não confundir com `OutboundEnvelope.providerConversationId`, que é a
+   * THREAD. Aqui é a PESSOA.
+   *
+   * `undefined` = o chamador não resolveu identidade para esta sessão; o
+   * adapter que precisa dela devolve `null` em `resolveRecipient`.
+   */
+  providerUserId?: string | null | undefined;
 }
 
 /** Contato compartilhado (vcard) — só `kind: "contact"`. */
@@ -97,6 +154,23 @@ export interface ChannelTenantScope {
 export interface OutboundEnvelope extends ChannelTenantScope {
   /** Identificador da sessão/número no provider (WAHA: nome da sessão). */
   sessionRef: string;
+  /**
+   * Quem está falando: a IA ou uma pessoa. Mesmo vocabulário da coluna
+   * `messages.sent_via`, que o handler já deriva de `ctx.actor.type`
+   * (`app/api/v1/messages/_handler.ts`) — uma grafia só entre as camadas.
+   *
+   * ⚠️ NÃO é enfeite de log, e nenhum adapter deve tratá-lo como tal. Há canal
+   * cuja plataforma oferece uma permissão de reengajamento EXCLUSIVA de
+   * atendimento humano; aplicá-la a um turno de IA seria afirmar à plataforma
+   * algo que não é verdade, no app de um cliente, sob revisão dela. O adapter
+   * decide com este campo — não com um toggle global, que é como se erra isso.
+   *
+   * OBRIGATÓRIO de propósito, pela mesma razão de `ChannelTenantScope` logo
+   * acima: opcional deixaria o chamador esquecê-lo em silêncio, e o silêncio
+   * aqui vira uma declaração falsa para a plataforma. Assim o typecheck cobra
+   * em todo call site.
+   */
+  sentVia: "ai" | "user";
   /** Endereço já resolvido por `resolveRecipient`. */
   to: string;
   kind: OutboundKind;

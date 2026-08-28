@@ -42,6 +42,11 @@ const FONTE: Record<ChannelProvider, FonteDeTemplates | null> = {
   waha: null,
   meta_cloud: "oficial",
   zernio: "parceiro",
+  // Não é "ainda não implementado": a plataforma NÃO hospeda definição de
+  // mensagem nenhuma. Fora da janela quem resolve é uma pessoa, não um texto
+  // aprovado — ver `reengajamento: 'agente_humano'` em `capabilities.ts`.
+  // Oferecer seletor de template aqui prometeria uma saída que não existe.
+  meta_instagram: null,
 };
 
 /** `null` quando este canal não trabalha com definições aprovadas. */

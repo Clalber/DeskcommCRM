@@ -338,10 +338,26 @@ describe("o cron enxerga os três canais", () => {
     // lugar nenhum. Este caso existe para que o próximo canal não entre mudo.
     // A lista sai de `CHANNEL_CAPABILITIES`, que é a matriz declarada do seam:
     // canal novo entra ali por obrigação, então este caso o alcança sozinho.
-    const { getAdapter, CHANNEL_CAPABILITIES } = await import("@/lib/channels");
-    const mudos = Object.keys(CHANNEL_CAPABILITIES).filter(
-      (p) => typeof getAdapter(p as never).checkHealth !== "function",
+    const { getAdapter, temAdapter, CHANNEL_CAPABILITIES } = await import("@/lib/channels");
+
+    // Canal cujo vocabulário já entrou mas cujo TRANSPORTE ainda não existe é
+    // estado declarado, não mudez: o registro guarda `null` e `getAdapter`
+    // lança. A migration 0131 firmou esse caminho para o canal intermediado —
+    // tipo, matriz e coluna de ref nascem antes do adapter. Chamar `getAdapter`
+    // neles aqui reprovaria a PRÓPRIA ordem que o projeto escolheu.
+    const comTransporte = (Object.keys(CHANNEL_CAPABILITIES) as Array<
+      keyof typeof CHANNEL_CAPABILITIES
+    >).filter((p) => temAdapter(p));
+
+    const mudos = comTransporte.filter(
+      (p) => typeof getAdapter(p).checkHealth !== "function",
     );
     expect(mudos, `canais sem checkHealth: ${mudos.join(", ")}`).toEqual([]);
+
+    // E a outra metade do invariante, que sem esta linha sumiria: o dia em que
+    // o transporte chegar, o canal cai na verificação acima sozinho. Se algum
+    // dia NENHUM canal tiver adapter, o teste acima passaria vazio — verde
+    // afirmando o que não verificou.
+    expect(comTransporte.length).toBeGreaterThan(0);
   });
 });

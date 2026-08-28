@@ -27,6 +27,9 @@ describe("capabilities do canal intermediado", () => {
   it("descreve o PERMITIDO, que é o do canal oficial — quem intermedeia muda o transporte", () => {
     expect(capabilitiesOf(ZERNIO)).toEqual({
       freeformOutsideWindow: false,
+      // Mesma saída do canal oficial fora da janela: a WABA é da Meta e os
+      // templates são dela. Quem intermedeia muda o transporte, não o permitido.
+      reengajamento: "template",
       requiresTemplates: true,
       canManageTemplates: true,
       banRisk: false,
@@ -100,6 +103,7 @@ describe("o envelope carrega a thread do provider", () => {
       organizationId: "00000000-0000-4000-8000-000000000236",
       sessionRef: "s",
       to: "t",
+      sentVia: "ai",
       kind: "text",
       body: "x",
     };
