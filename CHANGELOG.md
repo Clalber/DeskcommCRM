@@ -8,6 +8,187 @@ Se você roda o DeskcommCRM numa VPS, **leia a seção da versão para a qual es
 
 ## [Não lançado]
 
+## [1.10.0] — 2026-08-28
+
+### Adicionado
+
+- **O sistema inteiro em espanhol, com o idioma trocável em três lugares** Quem instala na América Latina agora escolhe o idioma **na própria instalação**,
+  e o sistema abre em espanhol para todo mundo da empresa — inclusive para quem
+  for convidado depois e nunca abriu o próprio perfil.
+
+  Antes, o espanhol existia pela metade: só as telas do dia a dia estavam
+  traduzidas, e o resto aparecia em português para quem tinha escolhido espanhol.
+  Agora a tradução cobre Agenda, Desempenho, Radar, Respostas rápidas, IA e o
+  painel de administração, com um teste automático que reprova qualquer texto novo
+  que apareça sem tradução.
+
+  O idioma se troca em três lugares, na ordem em que se costuma precisar deles:
+
+  - **No topo de qualquer tela** — o botão `PT`/`ES` ao lado do controle de tema.
+    Um clique, sem procurar nada. É onde recorre quem abriu o sistema num idioma
+    que não lê.
+  - **Na instalação** — o `install.sh` pergunta, e a resposta define o idioma da
+    empresa inteira.
+  - **Em Configurações** — no seu perfil (só para você) ou em Organização (para
+    todo mundo que entrar sem preferência própria).
+
+  Também está consertado um controle que não fazia nada: o seletor de Idioma em
+  Configurações › Organização era gravado no banco e nunca era lido. Quem o
+  mudasse não via diferença nenhuma. Agora ele vale para toda pessoa da empresa
+  que não tenha escolhido um idioma seu.
+
+  **As datas também acompanham o idioma.** "quinta-feira, 3 de março" vira
+  "jueves, 3 de marzo" — não sobrou aquele meio-termo em que a tela fala espanhol
+  e a data insiste no português.
+
+  Duas exceções, de propósito: os **e-mails** que o sistema envia seguem em
+  português (quem recebe um convite ainda não tem conta, então não há preferência
+  de idioma para consultar), e o **relatório de LGPD** também — ele responde a uma
+  lei brasileira, e mudar a forma dele conforme quem apertou o botão seria errado.
+
+  ---
+
+  A tradução para espanhol é, em boa parte, contribuição de **@JowaniOrantes**, que
+  abriu três frentes de trabalho por conta própria: as áreas de IA e administração
+  (#352), o módulo de Agenda (#379) e as correções que vieram do QA visual dele.
+  São 57 commits e mais de 460 entradas de dicionário que este release não teria
+  sem esse trabalho.
+
+### Corrigido
+
+- **Pausar um agente de IA agora o cala de verdade** Pausar o único agente publicado da organização fazia um agente que a tela
+  chamava de "Rascunho" voltar a responder no WhatsApp pelo caminho antigo de
+  resposta — com o texto do cadastro, sem as ferramentas nem os limites da versão
+  publicada.
+
+  Junto disso, a tela passou a dizer a mesma coisa que o motor faz: o seletor de
+  dono de negócio deixou de esconder agentes publicados (e de oferecer os
+  pausados), e o selo da Inbox só diz "Automático" quando existe mesmo alguém para
+  atender.
+
+- **Instalação nova não obriga mais a verificação em duas etapas logo de cara** Quem instalava pelo instalador automático caía, logo depois do primeiro acesso,
+  numa tela obrigatória pedindo para cadastrar a verificação em duas etapas — um
+  passo que o assistente de instalação nunca anunciou. A verificação é opcional
+  desde a versão 1.0 e se liga em Configurações › Segurança, mas o instalador não
+  acompanhou essa decisão e deixava o valor obrigatório.
+
+  Quem já instalou e já configurou a verificação não é afetado: nada é desligado
+  de quem já tem. A mudança vale só para instalações novas, que passam a nascer
+  como sempre foi a intenção — com a escolha nas mãos de quem administra.
+
+- **O mesmo celular escrito das duas formas passa a cair sempre no mesmo cadastro** Quando um celular ainda existia gravado nas duas formas — com e sem o nono
+  dígito —, o sistema podia escolher qualquer uma das duas ao reencontrar a
+  pessoa. Na prática isso aparecia no pior momento: a resposta do cliente entrava
+  no cadastro errado, o follow-up não a reconhecia como resposta, e a mesma
+  pergunta era enviada de novo.
+
+  Agora a escolha é sempre a mesma e é sempre a forma com o nono dígito, que é a
+  que o CRM guarda e mostra. Você não precisa fazer nada.
+
+- **Quando a IA falha ao responder, o erro deixa de sumir** A peça que faz a IA responder às conversas registrava as próprias falhas apenas
+  num log que ninguém lê. Se ela parava de responder por um erro, não havia sinal
+  em lugar nenhum — só o silêncio no WhatsApp do cliente. Agora esse erro é
+  enviado ao serviço de monitoramento, o mesmo que o resto do sistema já usava.
+
+  Quem opera não precisa fazer nada, e nenhum dado de conversa é enviado: o
+  sistema já limpa o conteúdo antes de mandar.
+
+- **O instalador para de confundir comentário com valor de configuração** No arquivo de exemplo que serve de base para a configuração da VPS, as
+  explicações ficavam na mesma linha dos valores. O instalador lê esse arquivo
+  linha a linha e tratava a explicação como parte do valor — então uma senha, um
+  endereço ou uma chave podiam chegar ao servidor com um texto extra colado no
+  fim, e o erro só aparecia depois, num lugar sem relação com a causa.
+
+  As explicações passaram para a linha de cima. Quem já tem o servidor rodando não
+  precisa refazer nada; a mudança protege quem instala do zero a partir de agora.
+
+- **Quem baixa o projeto no Windows consegue rodar os testes** Isto é do nosso processo de desenvolvimento, não do sistema que você usa. Quem
+  baixava o projeto no Windows não conseguia rodar a bateria de testes do banco:
+  o sistema operacional alterava os arquivos de banco de dados na cópia, e uma
+  conferência de integridade recusava tudo antes de o primeiro teste rodar.
+
+  Para quem opera uma VPS nada muda — o servidor sempre rodou em Linux, onde a
+  alteração não acontece.
+
+- **O relógio externo do follow-up passou a ser testado de ponta a ponta** Quem roda o sistema numa hospedagem sem agendador próprio — o plano gratuito da
+  Vercel é o caso comum — depende de um serviço de cron externo bater de tempos em
+  tempos para os follow-ups andarem. Esse caminho tinha runbook e nunca tinha sido
+  exercitado: se ele parasse de funcionar, ninguém receberia erro, e os follow-ups
+  simplesmente ficariam parados.
+
+  Agora um teste automático dispara a batida de fora, como o cron real faz, e
+  confere que o follow-up de fato anda — e que uma batida sem a chave certa é
+  recusada sem mexer em nada. Você não precisa fazer nada: nada mudou no
+  comportamento, só passou a existir uma rede que avisa se ele quebrar.
+
+- **Uma rede a mais contra vazamento entre empresas** O sistema separa os dados de cada empresa por uma regra no banco, e essa regra
+  precisa ser ligada tabela por tabela. Faltava uma verificação automática que
+  recusasse uma tabela nova sem essa proteção — a conferência dependia de alguém
+  lembrar. Agora ela é feita a cada mudança, e o que já existe está registrado
+  como dívida conhecida, para a lista só diminuir.
+
+  Nada muda para quem opera: é uma proteção contra um erro futuro, não a correção
+  de um vazamento existente.
+
+## [1.9.1] — 2026-08-28
+
+### Corrigido
+
+- **O Google Agenda conectado passa a aparecer como conectado** Quem conectava o Google Agenda continuava vendo o botão "Conectar Google" na
+  tela, como se nada tivesse acontecido — e ao clicar em desconectar recebia um
+  erro dizendo que não havia agenda conectada. Os compromissos marcados no CRM
+  também nunca chegavam ao Google Agenda, em silêncio.
+
+  A conexão sempre foi gravada corretamente; o que estava errado era o nome pelo
+  qual três partes do sistema a procuravam, e por isso nenhuma delas a encontrava.
+  Agora a tela mostra a conta conectada, desconectar funciona, e os compromissos
+  sobem para o Google na primeira rodada seguinte. Quem já conectou não precisa
+  reconectar: a conexão está lá e passa a ser vista.
+
+- **A lista de horários volta a rolar ao marcar um compromisso** Ao escolher o dia, os últimos horários ficavam abaixo da borda da tela sem
+  nenhuma forma de alcançá-los — nem rolando a página, nem a própria lista. Quem
+  precisava de um horário do fim da tarde não conseguia marcar. Agora a lista rola
+  sozinha, com o calendário e os dados do atendimento parados ao lado, e em telas
+  menores o painel inteiro rola.
+
+- **As verificações automáticas do projeto voltaram a caber no tempo** Isto é do nosso processo de desenvolvimento, não do sistema que você usa: a
+  bateria de testes que roda antes de cada mudança tinha crescido a ponto de
+  estourar o tempo limite e ser cancelada no meio. Ela passou a rodar em duas
+  frentes ao mesmo tempo, o que a devolveu para dentro do limite com folga. Para
+  quem opera uma VPS nada muda — só a chance de uma correção demorar mais a sair
+  porque a verificação foi cancelada por tempo.
+
+- **Áreas de administração passam a exigir a verificação em duas etapas** Quatorze telas e ações de administração conferiam apenas o papel de quem
+  acessava, sem cobrar a verificação em duas etapas de quem a tem ativada. Entre
+  elas estavam as que conectam o número oficial do WhatsApp, as que trocam a
+  credencial do provedor de inteligência artificial e as que alteram os limites de
+  segurança do agente — justamente as que mais importam.
+
+  Quem já usa o sistema não precisa fazer nada, e quem não ativou a verificação
+  continua entrando como antes. A mudança é que, para quem a tem ativada, ela
+  passa a valer também nesses lugares.
+
+- **Trocar para uma organização ainda não configurada deixava você preso** Quem participa de mais de uma organização podia trocar pelo seletor no topo e
+  cair no assistente de configuração da organização nova — o que está certo, ela
+  não foi configurada ainda. **O que estava errado é que não havia como sair de lá.**
+  O seletor de organização some junto com o resto do sistema nessa tela, e sobravam
+  só os links de Termos e Privacidade e um botão "Continuar" desabilitado. A saída
+  era fechar o navegador e limpar os dados do site.
+
+  Agora o assistente mostra, no topo, o caminho de volta para as outras
+  organizações de que você participa — um clique e você está de volta onde estava
+  trabalhando.
+
+  Nada muda para quem administra uma organização só: o botão não aparece, porque
+  não há para onde voltar.
+
+- **Voltar da autorização do Google não pede login de novo** Ao conectar o Google Agenda, o navegador voltava e caía na tela de login — o que
+  se lia como "o sistema me deslogou". A sessão nunca foi encerrada: o navegador é
+  que, por segurança, não apresenta a credencial numa página aberta a partir de
+  outro site, e a volta do Google era exatamente isso. Agora o retorno passa por
+  uma página intermediária do próprio sistema, e a pessoa cai direto na Agenda,
+  ainda conectada. Quem já usava não precisa fazer nada.
+
 ## [1.9.0] — 2026-08-28
 
 ### Adicionado
@@ -1262,7 +1443,9 @@ Primeira versão marcada do DeskcommCRM. O projeto vinha sendo desenvolvido publ
 
 - **Node 22 é obrigatório para desenvolvimento.** A suíte de invariantes instancia o cliente do Supabase, que exige o `WebSocket` global — nativo apenas a partir do Node 22. Isso não afeta quem apenas hospeda: a VPS roda a imagem pronta.
 
-[Não lançado]: https://github.com/melgarafael/DeskcommCRM/compare/v1.9.0...HEAD
+[Não lançado]: https://github.com/melgarafael/DeskcommCRM/compare/v1.10.0...HEAD
+[1.10.0]: https://github.com/melgarafael/DeskcommCRM/compare/v1.9.1...v1.10.0
+[1.9.1]: https://github.com/melgarafael/DeskcommCRM/compare/v1.9.0...v1.9.1
 [1.9.0]: https://github.com/melgarafael/DeskcommCRM/compare/v1.8.0...v1.9.0
 [1.8.0]: https://github.com/melgarafael/DeskcommCRM/compare/v1.7.0...v1.8.0
 [1.7.0]: https://github.com/melgarafael/DeskcommCRM/compare/v1.6.0...v1.7.0

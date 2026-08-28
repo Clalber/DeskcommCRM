@@ -1,4 +1,4 @@
--- 0202 — fundação do canal Instagram Direct
+-- 0203 — fundação do canal Instagram Direct
 --
 -- Abre o schema para um canal que NÃO é WhatsApp. É a camada que não depende de
 -- nada da Meta: sem ela, nenhuma linha do adapter, do webhook ou da tela roda.

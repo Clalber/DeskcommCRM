@@ -102,7 +102,7 @@ export interface RecipientInput {
   waLid?: string | null | undefined;
   /**
    * O id que o PROVIDER dá a esta pessoa NESTA sessão de canal
-   * (`channel_contact_identities.provider_user_id`, migration 0202).
+   * (`channel_contact_identities.provider_user_id`, migration 0203).
    *
    * Existe para os canais que endereçam por id opaco em vez de telefone. Ele é
    * ESCOPADO À SESSÃO, e não ao contato, por uma razão que custou uma tabela
