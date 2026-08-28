@@ -91,20 +91,24 @@ const CHAVES_QUE_MUDAM = new Set(
 );
 
 /**
- * Mascara o que muda sozinho com o RELÓGIO, não com o idioma.
+ * Só o texto de INTERFACE — o que o dicionário conhece.
  *
- * A comparação "voltou ao português idêntico" é byte a byte de propósito — é
- * ela que pega a chave escrita com um caractere diferente do original. Mas a
- * tela tem contadores que andam sem ninguém tocar em nada: entre o retrato
- * inicial e a volta passam dezenas de segundos, e o inbox que dizia
- * "Aguardando há 12 segundos" passa a dizer "Aguardando há 59 segundos".
+ * ─── Por que não a tela inteira ────────────────────────────────────────────
  *
- * Medido: foi exatamente essa linha que reprovou a spec no CI, com o produto
- * correto. Mascarar os DÍGITOS mantém a asserção inteira para o que ela existe
- * para vigiar — a palavra — e tira da conta o que o relógio decide.
+ * A primeira versão comparava todo o texto visível, byte a byte, e reprovou
+ * duas vezes no CI com o produto CORRETO. Primeiro por dígito ("Aguardando há
+ * 12 segundos" → "há 59 segundos") nos ~40 s que a spec leva entre as duas
+ * medições; mascarei os dígitos, e a rodada seguinte reprovou por UNIDADE
+ * ("há # segundos" → "há # minuto"). Não há máscara que ganhe dessa corrida: a
+ * tela tem contadores, e eles andam.
+ *
+ * Filtrar pelo dicionário resolve na raiz e afia a asserção em vez de afrouxá-la:
+ * o que ela quer vigiar é RÓTULO, e rótulo é exatamente o que o dicionário
+ * conhece. Contador, nome de contato e data saem da conta por não serem
+ * interface — e nenhum deles poderia acusar o defeito que ela procura.
  */
-function semRelogio(textos: string[]): string {
-  return textos.join("\n").replace(/\d+/g, "#");
+function rotulosDeInterface(textos: string[]): string {
+  return textos.filter((t) => t in DICIONARIO).sort().join("\n");
 }
 
 /** Todo texto que a pessoa consegue LER nesta tela, normalizado. */
@@ -234,9 +238,9 @@ test.describe("o idioma escolhido chega à tela", () => {
     const inboxEmEspanhol = await textosVisiveis(page);
     const inboxEmPortugues = antes.get(TELAS[0]!)!;
     expect(
-      semRelogio(inboxEmEspanhol),
+      rotulosDeInterface(inboxEmEspanhol),
       "o seletor do topo não mudou nada na tela — o idioma escolhido não chegou",
-    ).not.toBe(semRelogio(inboxEmPortugues));
+    ).not.toBe(rotulosDeInterface(inboxEmPortugues));
 
     // ── 4. Vazamento: texto que o dicionário sabe traduzir, mostrado em pt ──
     const vazando: string[] = [];
@@ -256,13 +260,25 @@ test.describe("o idioma escolhido chega à tela", () => {
         "no ponto em que a tela o renderiza.",
     ).toEqual([]);
 
-    // ── 5. E a volta: o português tem de ser IDÊNTICO ao do começo ──────────
+    // ── 5. E a volta: o português tem de voltar ao que era ──────────────────
     //
-    // Esta é a metade que ninguém lembra de testar, e é a que protege quem
-    // NUNCA pediu espanhol. Envolver um texto em `t()` com a chave levemente
-    // diferente da original (três pontos ASCII virando reticência unicode, por
-    // exemplo) muda a tela de quem está em português — aconteceu três vezes no
-    // PR #352 e nada ficou vermelho.
+    // ⚠️ O QUE ESTA ASSERÇÃO PROVA, e o que ela NÃO prova.
+    //
+    // Ela prova IDEMPOTÊNCIA: passar pelo espanhol e voltar devolve a mesma
+    // tela. Pega estado que fica pela metade — um provider que não reconcilia,
+    // um cache que serve o idioma velho, um rótulo que só volta com F5. Foi
+    // assim que o Router Cache do cliente apareceu.
+    //
+    // Ela NÃO prova que o português está igual ao de ANTES DESTE PR — e a
+    // primeira versão deste comentário dizia que sim, o que estava errado: os
+    // dois retratos saem da MESMA execução, do MESMO código. Se uma chave
+    // tivesse sido escrita com um caractere diferente do original, os dois
+    // lados já viriam com o texto novo e a comparação daria igual.
+    //
+    // Quem pega aquilo é a revisão do diff, mais a varredura que comparou cada
+    // literal com a versão anterior do mesmo arquivo (foi ela que achou os três
+    // casos do PR #352). Está escrito aqui para ninguém contar esta asserção
+    // como a garantia que ela não é.
     await page.goto(TELAS[0]!);
     await page.waitForLoadState("networkidle", { timeout: PRAZO });
     await porIdiomaEm(page, "pt-BR");
@@ -270,9 +286,9 @@ test.describe("o idioma escolhido chega à tela", () => {
       await page.goto(tela);
       await page.waitForLoadState("networkidle", { timeout: PRAZO });
       expect(
-        semRelogio(await textosVisiveis(page)),
+        rotulosDeInterface(await textosVisiveis(page)),
         `a tela ${tela} não voltou ao português idêntico depois de passar pelo espanhol`,
-      ).toBe(semRelogio(antes.get(tela)!));
+      ).toBe(rotulosDeInterface(antes.get(tela)!));
     }
     await page.screenshot({ path: path.join(EVIDENCIA, "02-inbox-de-volta-em-portugues.png"), fullPage: true });
   });
