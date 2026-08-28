@@ -29,19 +29,9 @@ export function getAdapter(provider: ChannelProvider): ChannelAdapter {
 }
 
 /**
- * Este canal já tem TRANSPORTE?
- *
- * Existe porque o projeto declara o vocabulário de um canal ANTES do adapter —
- * é o que a migration 0131 fez com o canal intermediado, e o motivo está escrita
- * lá: tipo, matriz e coluna de ref nascem juntos, e o adapter chega depois
- * encontrando o schema pronto; o caminho inverso obriga migration de correção
- * sobre dados existentes, que é onde clone quebra.
- *
- * Nessa janela, `getAdapter` LANÇA — e deve mesmo lançar, porque quem tenta
- * enviar precisa falhar alto em vez de sair pelo canal errado. Mas quem só quer
- * SABER não deveria precisar de `try/catch`: perguntar com exceção transforma
- * um estado declarado em acidente, e é o tipo de coisa que alguém "resolve"
- * engolindo o erro.
+ * Este canal já tem TRANSPORTE? `getAdapter` LANÇA nesse caso, e deve mesmo —
+ * quem envia precisa falhar alto. Quem só quer SABER não deveria precisar de
+ * `try/catch`.
  */
 export function temAdapter(provider: ChannelProvider): boolean {
   return ADAPTERS[provider] != null;

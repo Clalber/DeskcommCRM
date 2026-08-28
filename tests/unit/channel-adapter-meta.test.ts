@@ -108,7 +108,7 @@ describe("adapter meta_cloud — configuração", () => {
     // Mesmo contrato do outro canal: a UI mostra banner, o handler grava `queued`.
     vi.stubEnv("META_PHONE_NUMBER_ID", "");
     vi.stubEnv("META_SYSTEM_USER_TOKEN", "");
-    const r = await a().send({ organizationId: ORG, sessionRef: "x", to: "5531999", sentVia: "ai", kind: "text", body: "oi" });
+    const r = await a().send({ organizationId: ORG, sessionRef: "x", to: "5531999", kind: "text", body: "oi" });
     expect(r).toEqual({ externalId: null });
   });
 
@@ -122,7 +122,7 @@ describe("adapter meta_cloud — envio", () => {
   it("texto vai como type:text e o phone_number_id entra na URL, não no corpo", async () => {
     configurar();
     const spy = stubFetch({ messages: [{ id: "wamid.T" }] });
-    const r = await a().send({ organizationId: ORG, sessionRef: "ignorado", to: "5531998966398", sentVia: "ai", kind: "text", body: "oi" });
+    const r = await a().send({ organizationId: ORG, sessionRef: "ignorado", to: "5531998966398", kind: "text", body: "oi" });
 
     expect(r).toEqual({ externalId: "wamid.T" });
     const [url, init] = spy.mock.calls[0]!;
@@ -136,7 +136,7 @@ describe("adapter meta_cloud — envio", () => {
     configurar();
     const spy = stubFetch({ messages: [{ id: "wamid.A" }] });
     await a().send({
-      organizationId: ORG, sessionRef: "x", to: "5531998966398", sentVia: "ai", kind: "audio",
+      organizationId: ORG, sessionRef: "x", to: "5531998966398", kind: "audio",
       media: { url: "https://x/a.ogg", mime: "audio/ogg" },
     });
     const corpo = JSON.parse(spy.mock.calls[0]![1].body as string) as {
@@ -150,7 +150,7 @@ describe("adapter meta_cloud — envio", () => {
     configurar();
     const spy = stubFetch({ messages: [{ id: "wamid.I" }] });
     await a().send({
-      organizationId: ORG, sessionRef: "x", to: "5531", sentVia: "ai", kind: "image",
+      organizationId: ORG, sessionRef: "x", to: "5531", kind: "image",
       media: { url: "https://x/a.jpg", mime: "image/jpeg", caption: "olha" },
     });
     expect(JSON.parse(spy.mock.calls[0]![1].body as string).image).toEqual({
@@ -159,7 +159,7 @@ describe("adapter meta_cloud — envio", () => {
 
     const spy2 = stubFetch({ messages: [{ id: "wamid.D" }] });
     await a().send({
-      organizationId: ORG, sessionRef: "x", to: "5531", sentVia: "ai", kind: "document",
+      organizationId: ORG, sessionRef: "x", to: "5531", kind: "document",
       media: { url: "https://x/a.pdf", mime: "application/pdf", filename: "contrato.pdf" },
     });
     expect(JSON.parse(spy2.mock.calls[0]![1].body as string).document).toMatchObject({
@@ -180,7 +180,7 @@ describe("adapter meta_cloud — envio", () => {
       false,
     );
     await expect(
-      a().send({ organizationId: ORG, sessionRef: "x", to: "+5531", sentVia: "ai", kind: "text", body: "oi" }),
+      a().send({ organizationId: ORG, sessionRef: "x", to: "+5531", kind: "text", body: "oi" }),
     ).rejects.toThrow(/131009.*formato inválido/);
   });
 
@@ -191,7 +191,6 @@ describe("adapter meta_cloud — envio", () => {
       organizationId: "org-1",
       sessionRef: "ignorado",
       to: "5531998966398",
-      sentVia: "ai",
       kind: "contact",
       contact: {
         fullName: "Maria Silva",
@@ -214,7 +213,7 @@ describe("adapter meta_cloud — envio", () => {
   it("resposta sem id devolve externalId null, sem estourar", async () => {
     configurar();
     stubFetch({ messages: [] });
-    const r = await a().send({ organizationId: ORG, sessionRef: "x", to: "5531", sentVia: "ai", kind: "text", body: "oi" });
+    const r = await a().send({ organizationId: ORG, sessionRef: "x", to: "5531", kind: "text", body: "oi" });
     expect(r).toEqual({ externalId: null });
   });
 });
@@ -227,7 +226,7 @@ describe("credencial por sessão — o que destrava multi-tenant", () => {
     sessaoNoBanco.token = "token-da-sessao";
     const spy = stubFetch({ messages: [{ id: "wamid.S" }] });
 
-    await a().send({ organizationId: ORG, sessionRef: "sessao-pn", to: "5531", sentVia: "ai", kind: "text", body: "oi" });
+    await a().send({ organizationId: ORG, sessionRef: "sessao-pn", to: "5531", kind: "text", body: "oi" });
 
     const [, init] = spy.mock.calls[0]!;
     expect((init.headers as Record<string, string>).Authorization).toBe("Bearer token-da-sessao");
@@ -238,7 +237,7 @@ describe("credencial por sessão — o que destrava multi-tenant", () => {
     sessaoNoBanco.token = null;
     const spy = stubFetch({ messages: [{ id: "wamid.E" }] });
 
-    await a().send({ organizationId: ORG, sessionRef: "qualquer", to: "5531", sentVia: "ai", kind: "text", body: "oi" });
+    await a().send({ organizationId: ORG, sessionRef: "qualquer", to: "5531", kind: "text", body: "oi" });
 
     const [, init] = spy.mock.calls[0]!;
     expect((init.headers as Record<string, string>).Authorization).toBe("Bearer tok");

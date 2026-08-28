@@ -529,15 +529,24 @@ function instrucaoDeReengajamento(mecanismo: MecanismoDeReengajamento): string {
       return fechou + 'Use um template aprovado (ferramenta send_template) ou encerre o turno sem enviar.';
     case 'agente_humano':
       // Não há forma de mensagem que resolva: a plataforma reserva o
-      // reengajamento a uma PESSOA, sob permissão própria. Mandar o modelo
-      // "tentar outra coisa" seria pedir o impossível, e insistir queima turno.
+      // reengajamento a uma PESSOA, sob permissão própria.
+      //
+      // ⚠️ A instrução NÃO nomeia ferramenta, e isso é deliberado. A primeira
+      // versão mandava "escale para atendimento humano" — trocando uma porta
+      // impossível (`send_template`, que este canal não tem) por outra que
+      // TAMBÉM pode não existir: `request_human_handoff` é removida do modelo
+      // quando `handoffToolEnabled` é falso (`inbound-turn.ts:2313-2315`). Num
+      // canal sem template, com o handoff desligado, o modelo receberia duas
+      // instruções e nenhuma alcançável.
+      //
+      // O que ele SEMPRE pode fazer é encerrar. A parte condicional vem depois,
+      // como opção, não como ordem.
       return (
         fechou +
         'Neste canal NÃO existe template que reabra a conversa — só uma pessoa pode responder ' +
-        'fora da janela. Encerre o turno e escale para atendimento humano.'
+        'fora da janela. Encerre o turno sem enviar; se a ferramenta de transbordo estiver ' +
+        'disponível, use-a antes de encerrar.'
       );
-    case 'nenhum':
-      return fechou + 'Não há forma de reabrir a conversa neste canal. Encerre o turno sem enviar.';
     case 'sem_janela':
       // Inalcançável: canal sem janela sai em `skipped` no topo do gate. Existe
       // para o `switch` ser exaustivo — se um mecanismo novo aparecer, o

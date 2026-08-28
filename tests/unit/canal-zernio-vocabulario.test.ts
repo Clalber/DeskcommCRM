@@ -103,7 +103,6 @@ describe("o envelope carrega a thread do provider", () => {
       organizationId: "00000000-0000-4000-8000-000000000236",
       sessionRef: "s",
       to: "t",
-      sentVia: "ai",
       kind: "text",
       body: "x",
     };

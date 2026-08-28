@@ -678,50 +678,6 @@ async function sendFixedOutbound(
       });
       return false;
     }
-    // ─── Janela de atendimento fechada: NÃO é o mesmo que os outros vetos ───
-    //
-    // O ramo acima cobre `outside_window`, que é ANTI-BAN: a restrição é nossa,
-    // o relógio reabre sozinho, e re-agendar resolve. `messaging_window_closed`
-    // é a janela da PLATAFORMA, e a física é invertida — esperar não reabre
-    // nada; só o cliente escrevendo reabre. A doutrina de canal escreve isso:
-    // "hetero-restrição barrou → mudar a forma da mensagem ou escalar ao
-    // humano. Adiar não resolve: amanhã a janela estará ainda mais fechada."
-    //
-    // Antes ele caía no `runLog.info` abaixo e ACABAVA ALI. Num canal sem
-    // template — onde não há forma de mensagem que reabra — isso significa
-    // follow-up perdido em silêncio: o lead não recebe, o operador não sabe, e
-    // nada na tela diz que houve uma tentativa. É o oposto do invariante 4 do
-    // sistema vivo, "nenhuma demanda sem próximo passo".
-    //
-    // O próximo passo aqui é HUMANO, então a saída é a Central de avisos.
-    if (chain.code === 'messaging_window_closed') {
-      try {
-        await pool.query(
-          `insert into agent_inbox_items (organization_id, kind, severity, title, body, ref_kind, ref_id)
-           values ($1, 'followup_dead', 'warn', $2, $3, 'followup_enrollment', $4)`,
-          [
-            tenantId,
-            'Follow-up não saiu: a janela de 24 horas fechou',
-            'A plataforma do canal recusa mensagem livre depois de 24 horas sem resposta do ' +
-              'cliente, e esperar não reabre — só ele escrevendo reabre. Se este contato ' +
-              'ainda importa, alguém precisa retomá-lo por outro caminho.',
-            String(job.id),
-          ],
-        );
-      } catch (err) {
-        // BLINDADO: o aviso é o próximo passo, não o efeito principal. Deixar a
-        // exceção subir mataria o job com um erro que não é o problema real — e
-        // o problema real (o envio vetado) já está decidido e logado abaixo.
-        runLog.warn('não consegui abrir o aviso de follow-up sem janela', {
-          erro: err instanceof Error ? err.message : String(err),
-        });
-      }
-      runLog.info('envio fixo vetado: janela da plataforma fechada — aviso aberto na Central', {
-        code: chain.code,
-      });
-      return false;
-    }
-
     runLog.info('envio fixo vetado pela cadeia — não re-agendado', { code: chain.code });
     return false;
   }

@@ -165,7 +165,9 @@ describe("gate messaging_window — a instrução do veto vem da CAPABILITY", ()
     expect(v.code).toBe("messaging_window_closed");
     // A asserção que importa: a instrução IMPOSSÍVEL não pode aparecer.
     expect(v.reason).not.toContain("send_template");
-    expect(v.reason).toContain("humano");
+    // E não ORDENA usar a ferramenta de transbordo, que a config pode ter
+    // removido (inbound-turn.ts:2313). A única ação sempre alcançável é encerrar.
+    expect(v.reason).toContain("Encerre o turno");
   });
 
   it("o código do veto é o MESMO nos dois — muda a saída, não o diagnóstico", () => {

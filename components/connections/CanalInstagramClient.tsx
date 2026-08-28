@@ -9,58 +9,12 @@ import { Label } from "@/components/ui/label";
 /**
  * Conectar o Instagram Direct — a FORMA da tela, antes do transporte.
  *
- * ─── Por que os campos estão desabilitados, e não funcionando ───────────────
- *
- * O schema e o vocabulário deste canal já existem (migration 0202), mas o
- * TRANSPORTE não: não há adapter, não há OAuth, não há webhook. `getAdapter`
- * lança de propósito para quem tentar enviar.
- *
- * A escolha aqui foi entre três telas, e duas são piores:
- *
- *   1. Não mostrar nada — some a informação de que o canal está a caminho, e
- *      quem opera não tem como saber o que falta.
- *   2. Formulário que ACEITA credencial e não a guarda — pior que não existir.
- *      App Secret e token são segredo de verdade: um campo que os recebe e os
- *      joga fora convida alguém a colar o segredo do cliente num lugar que não
- *      existe, e ninguém descobre até vazar.
- *   3. Formulário DESABILITADO, com o estado dito em voz alta — é esta. Mostra
- *      exatamente o que vai ser pedido, sem convidar ninguém a preencher.
- *
- * Isto é aplicação direta da doutrina "toda configuração tem superfície"
- * (`docs/doctrine/restricao-de-canal.md`): o que acontece quando falta
- * configuração precisa ser VISÍVEL, nunca um silêncio.
- *
- * ─── Por que a tela pode escrever "Instagram" ───────────────────────────────
- *
- * O `lint:channels` proíbe nomear PROVIDER fora de `lib/channels/`, e o regex
- * dele não distingue prosa de código — então o nome do transporte não cabe
- * nem neste comentário. "Instagram" passa porque é o nome do CANAL, que é
- * outra coisa: é o que o usuário reconhece, e o mesmo motivo pelo qual
- * `conversations.channel` grava `whatsapp` em vez do transporte por trás.
+ * Campos desabilitados de propósito: o transporte não existe (`getAdapter`
+ * lança). As alternativas descartadas — não mostrar nada, ou aceitar a chave
+ * secreta sem ter onde guardá-la — estão na mensagem do commit e no fragmento
+ * em `.changes/`.
  */
 
-/**
- * O que a conexão vai pedir. Sai daqui, e não de JSX solto, porque a mesma
- * lista precisa aparecer no passo a passo entregue ao cliente que vai criar o
- * app na Meta — duas listas divergem na primeira que alguém editar.
- */
-const CAMPOS_DA_CREDENCIAL = [
-  {
-    id: "ig-app-id",
-    rotulo: "ID do aplicativo",
-    ajuda: "O identificador do app que o dono da conta criou na Meta.",
-  },
-  {
-    id: "ig-app-secret",
-    rotulo: "Chave secreta do aplicativo",
-    ajuda: "Secreta. Fica cifrada no banco, nunca no arquivo de configuração.",
-  },
-  {
-    id: "ig-verify-token",
-    rotulo: "Token de verificação",
-    ajuda: "Inventado por você; a Meta o devolve ao registrar o webhook, e é assim que confirmamos que é ela.",
-  },
-] as const;
 
 /**
  * As três permissões pedidas na MESMA submissão à Meta. A de mensagens não
@@ -109,11 +63,15 @@ export function CanalInstagramClient() {
         </div>
 
         <div className="grid gap-4 sm:grid-cols-3">
-          {CAMPOS_DA_CREDENCIAL.map((campo) => (
-            <div key={campo.id} className="flex flex-col gap-1.5">
-              <Label htmlFor={campo.id}>{campo.rotulo}</Label>
-              <Input id={campo.id} disabled placeholder="—" />
-              <p className="text-muted-foreground text-xs">{campo.ajuda}</p>
+          {[
+            ["ig-app-id", "ID do aplicativo", "O identificador do app que o dono da conta criou na Meta."],
+            ["ig-app-secret", "Chave secreta do aplicativo", "Secreta. Fica cifrada no banco, nunca no arquivo de configuração."],
+            ["ig-verify-token", "Token de verificação", "Inventado por você; é assim que confirmamos que quem chama é a Meta."],
+          ].map(([id, rotulo, ajuda]) => (
+            <div key={id} className="flex flex-col gap-1.5">
+              <Label htmlFor={id}>{rotulo}</Label>
+              <Input id={id} disabled placeholder="—" />
+              <p className="text-muted-foreground text-xs">{ajuda}</p>
             </div>
           ))}
         </div>
