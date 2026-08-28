@@ -5568,6 +5568,14 @@ export const DICIONARIO: Traducoes = {
   "Mostrando os primeiros trechos de": { es: "Mostrando los primeros fragmentos de" },
   ". Uma tela não folheia mil pedaços — o restante está no acervo e o agente alcança todos.": { es: ". Una pantalla no hojea mil pedazos — el resto está en el acervo y el agente los alcanza todos." },
   "Este funil não tem campos extras.": { es: "Este embudo no tiene campos extra." },
+
+  // ─── Tabela de Contatos ───
+  //
+  // Achados pelo e2e no CI, e não localmente: aqui o banco estava sem
+  // contato nenhum, então a tabela não renderizava cabeçalho nem linha. O
+  // guarda estático também não os vê — "Nome", "Status", "Ativo" não têm
+  // acento, e a régua dele é ortográfica.
+  "Tags": { es: "Etiquetas" },
 };
 
 /**

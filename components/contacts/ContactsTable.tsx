@@ -149,27 +149,27 @@ export function ContactsTable({ contacts, orderBy, orderDir, onSort }: Props) {
       <TableHeader>
         <TableRow>
           <SortableHead
-            label="Nome"
+            label={t("Nome")}
             column="display_name"
             orderBy={orderBy}
             orderDir={orderDir}
             onSort={onSort}
           />
           <SortableHead
-            label="Email"
+            label={t("Email")}
             column="email"
             orderBy={orderBy}
             orderDir={orderDir}
             onSort={onSort}
           />
           <SortableHead
-            label="Telefone"
+            label={t("Telefone")}
             column="phone_number"
             orderBy={orderBy}
             orderDir={orderDir}
             onSort={onSort}
           />
-          <TableHead>Tags</TableHead>
+          <TableHead>{t("Tags")}</TableHead>
           <SortableHead
             label={t("Última atividade")}
             column="last_activity_at"
@@ -177,7 +177,7 @@ export function ContactsTable({ contacts, orderBy, orderDir, onSort }: Props) {
             orderDir={orderDir}
             onSort={onSort}
           />
-          <TableHead>Status</TableHead>
+          <TableHead>{t("Status")}</TableHead>
           <TableHead className="w-[88px]">
             <span className="sr-only">{t("Ações")}</span>
           </TableHead>
@@ -201,8 +201,8 @@ export function ContactsTable({ contacts, orderBy, orderDir, onSort }: Props) {
               <div className="flex flex-wrap gap-1">
                 {c.tags.length === 0
                   ? <span className="text-muted-foreground text-xs">—</span>
-                  : c.tags.map((t) => (
-                      <Badge key={t} variant="neutral">{t}</Badge>
+                  : c.tags.map((tag) => (
+                      <Badge key={tag} variant="neutral">{tag}</Badge>
                     ))}
               </div>
             </TableCell>
@@ -213,10 +213,10 @@ export function ContactsTable({ contacts, orderBy, orderDir, onSort }: Props) {
             </TableCell>
             <TableCell>
               <div className="flex flex-wrap gap-1">
-                {c.is_anonymized && <Badge variant="destructive">Anonimizado</Badge>}
-                {c.is_blocked && <Badge variant="warning">Bloqueado</Badge>}
+                {c.is_anonymized && <Badge variant="destructive">{t("Anonimizado")}</Badge>}
+                {c.is_blocked && <Badge variant="warning">{t("Bloqueado")}</Badge>}
                 {!c.is_anonymized && !c.is_blocked && (
-                  <Badge variant="success">Ativo</Badge>
+                  <Badge variant="success">{t("Ativo")}</Badge>
                 )}
               </div>
             </TableCell>

@@ -38,8 +38,10 @@
 import { mkdirSync } from "node:fs";
 import * as path from "node:path";
 
+import { createClient } from "@supabase/supabase-js";
 import { test, expect, type Page } from "@playwright/test";
 
+import { credenciaisSupabaseDeTeste } from "../../scripts/lib/env-de-teste";
 import { DICIONARIO } from "../../lib/i18n/dicionario";
 import { lerCreds, loginComoAdmin } from "./helpers/login-admin";
 
@@ -145,6 +147,39 @@ async function porIdiomaEm(page: Page, codigo: "pt-BR" | "es"): Promise<void> {
   await page.waitForLoadState("networkidle", { timeout: PRAZO });
   await expect(botao, `o seletor não passou a mostrar ${curto} depois da troca`).toHaveText(curto);
 }
+
+/**
+ * ⚠️ ESTA SPEC MEXE NUMA CONTA QUE A SUÍTE INTEIRA COMPARTILHA.
+ *
+ * O `e2e-admin` é o mesmo em todas as specs, e a preferência de idioma dele
+ * vive no banco. Se esta spec falha no meio, ela deixa a conta em ESPANHOL — e
+ * toda spec que procura rótulo em português depois dela quebra junto.
+ *
+ * Não é hipótese: aconteceu. Numa rodada do CI, 14 casos falharam na parte 2 e
+ * apenas UM era desta spec; os outros treze eram `navegacao`, `marca-logo`,
+ * `webhooks` e `automacao-diz-a-verdade` — todas depois desta na ordem
+ * alfabética, todas procurando texto em português numa interface que esta spec
+ * tinha deixado em espanhol.
+ *
+ * Por isso a restauração é `afterAll` e vai DIRETO AO BANCO, não pela tela: se
+ * a falha foi na tela, restaurar pela tela falharia junto. `null` (e não
+ * "pt-BR") porque `null` é a ausência de preferência, que é como a conta nasce
+ * do seed — devolver um valor onde não havia nenhum é deixar outro rastro.
+ */
+test.afterAll(async () => {
+  const c = credenciaisSupabaseDeTeste();
+  const svc = createClient(c.url, c.serviceRole, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+  const email = creds.users.admin!.email;
+  const { data } = await svc.auth.admin.listUsers({ page: 1, perPage: 200 });
+  const admin = data?.users.find((u) => u.email === email);
+  if (!admin) throw new Error(`restauração: não achei ${email} para devolver o idioma`);
+  const { error } = await svc.auth.admin.updateUserById(admin.id, {
+    user_metadata: { ...admin.user_metadata, locale: null },
+  });
+  if (error) throw new Error(`restauração do idioma falhou: ${error.message}`);
+});
 
 test.describe("o idioma escolhido chega à tela", () => {
   test.setTimeout(180_000);
