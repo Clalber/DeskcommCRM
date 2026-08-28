@@ -3,6 +3,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
+import { CanalInstagramClient } from "./CanalInstagramClient";
 import { CanalOficialClient } from "./CanalOficialClient";
 import { CanalParceiroClient } from "./CanalParceiroClient";
 import { ConnectionsClient } from "./ConnectionsClient";
@@ -36,7 +37,14 @@ export function ConexoesShell({ wahaConfigured }: { wahaConfigured: boolean }) {
   const router = useRouter();
   const params = useSearchParams();
   const abaParam = params.get("aba");
-  const aba = abaParam === "oficial" ? "oficial" : abaParam === "parceiro" ? "parceiro" : "numeros";
+  const aba =
+    abaParam === "oficial"
+      ? "oficial"
+      : abaParam === "parceiro"
+        ? "parceiro"
+        : abaParam === "instagram"
+          ? "instagram"
+          : "numeros";
   const sub = params.get("sub") === "templates" ? "templates" : "conexao";
 
   const irPara = (proximaAba: string, proximaSub?: string): void => {
@@ -69,10 +77,27 @@ export function ConexoesShell({ wahaConfigured }: { wahaConfigured: boolean }) {
             porque no dia em que houver um segundo parceiro esta aba não muda.
             Aqui fica o CONCEITO; lá dentro o cartão diz de quem se trata. */}
         <TabsTrigger value="parceiro">Provedor parceiro</TabsTrigger>
+        {/* O primeiro canal que NÃO é WhatsApp — e por isso o rótulo é o nome do
+            canal, não o do motor. As três abas acima respondem "qual WhatsApp";
+            esta responde outra pergunta, e é essa a mudança que ela anuncia.
+
+            Escrever "Instagram" aqui é permitido porque este é o nome do CANAL,
+            não o do transporte — que o `lint:channels` proíbe citar fora de
+            `lib/channels/`, inclusive em comentário (o regex não distingue
+            prosa de código, e esta linha já foi reprovada uma vez por isso).
+            Mesma razão pela qual `conversations.channel` grava `whatsapp`. */}
+        <TabsTrigger value="instagram">Instagram</TabsTrigger>
       </TabsList>
 
       <TabsContent value="numeros" className="mt-0">
         <ConnectionsClient wahaConfigured={wahaConfigured} />
+      </TabsContent>
+
+      {/* Sem sub-abas de modelos, e a ausência é informação: este canal não tem
+          template a aprovar. Repetir a estrutura das outras abas prometeria uma
+          tela que nunca vai existir. */}
+      <TabsContent value="instagram" className="mt-0">
+        <CanalInstagramClient />
       </TabsContent>
 
       <TabsContent value="parceiro" className="mt-0">
