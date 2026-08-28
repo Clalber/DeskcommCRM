@@ -8,6 +8,65 @@ Se você roda o DeskcommCRM numa VPS, **leia a seção da versão para a qual es
 
 ## [Não lançado]
 
+## [1.9.1] — 2026-08-28
+
+### Corrigido
+
+- **O Google Agenda conectado passa a aparecer como conectado** Quem conectava o Google Agenda continuava vendo o botão "Conectar Google" na
+  tela, como se nada tivesse acontecido — e ao clicar em desconectar recebia um
+  erro dizendo que não havia agenda conectada. Os compromissos marcados no CRM
+  também nunca chegavam ao Google Agenda, em silêncio.
+
+  A conexão sempre foi gravada corretamente; o que estava errado era o nome pelo
+  qual três partes do sistema a procuravam, e por isso nenhuma delas a encontrava.
+  Agora a tela mostra a conta conectada, desconectar funciona, e os compromissos
+  sobem para o Google na primeira rodada seguinte. Quem já conectou não precisa
+  reconectar: a conexão está lá e passa a ser vista.
+
+- **A lista de horários volta a rolar ao marcar um compromisso** Ao escolher o dia, os últimos horários ficavam abaixo da borda da tela sem
+  nenhuma forma de alcançá-los — nem rolando a página, nem a própria lista. Quem
+  precisava de um horário do fim da tarde não conseguia marcar. Agora a lista rola
+  sozinha, com o calendário e os dados do atendimento parados ao lado, e em telas
+  menores o painel inteiro rola.
+
+- **As verificações automáticas do projeto voltaram a caber no tempo** Isto é do nosso processo de desenvolvimento, não do sistema que você usa: a
+  bateria de testes que roda antes de cada mudança tinha crescido a ponto de
+  estourar o tempo limite e ser cancelada no meio. Ela passou a rodar em duas
+  frentes ao mesmo tempo, o que a devolveu para dentro do limite com folga. Para
+  quem opera uma VPS nada muda — só a chance de uma correção demorar mais a sair
+  porque a verificação foi cancelada por tempo.
+
+- **Áreas de administração passam a exigir a verificação em duas etapas** Quatorze telas e ações de administração conferiam apenas o papel de quem
+  acessava, sem cobrar a verificação em duas etapas de quem a tem ativada. Entre
+  elas estavam as que conectam o número oficial do WhatsApp, as que trocam a
+  credencial do provedor de inteligência artificial e as que alteram os limites de
+  segurança do agente — justamente as que mais importam.
+
+  Quem já usa o sistema não precisa fazer nada, e quem não ativou a verificação
+  continua entrando como antes. A mudança é que, para quem a tem ativada, ela
+  passa a valer também nesses lugares.
+
+- **Trocar para uma organização ainda não configurada deixava você preso** Quem participa de mais de uma organização podia trocar pelo seletor no topo e
+  cair no assistente de configuração da organização nova — o que está certo, ela
+  não foi configurada ainda. **O que estava errado é que não havia como sair de lá.**
+  O seletor de organização some junto com o resto do sistema nessa tela, e sobravam
+  só os links de Termos e Privacidade e um botão "Continuar" desabilitado. A saída
+  era fechar o navegador e limpar os dados do site.
+
+  Agora o assistente mostra, no topo, o caminho de volta para as outras
+  organizações de que você participa — um clique e você está de volta onde estava
+  trabalhando.
+
+  Nada muda para quem administra uma organização só: o botão não aparece, porque
+  não há para onde voltar.
+
+- **Voltar da autorização do Google não pede login de novo** Ao conectar o Google Agenda, o navegador voltava e caía na tela de login — o que
+  se lia como "o sistema me deslogou". A sessão nunca foi encerrada: o navegador é
+  que, por segurança, não apresenta a credencial numa página aberta a partir de
+  outro site, e a volta do Google era exatamente isso. Agora o retorno passa por
+  uma página intermediária do próprio sistema, e a pessoa cai direto na Agenda,
+  ainda conectada. Quem já usava não precisa fazer nada.
+
 ## [1.9.0] — 2026-08-28
 
 ### Adicionado
@@ -1262,7 +1321,8 @@ Primeira versão marcada do DeskcommCRM. O projeto vinha sendo desenvolvido publ
 
 - **Node 22 é obrigatório para desenvolvimento.** A suíte de invariantes instancia o cliente do Supabase, que exige o `WebSocket` global — nativo apenas a partir do Node 22. Isso não afeta quem apenas hospeda: a VPS roda a imagem pronta.
 
-[Não lançado]: https://github.com/melgarafael/DeskcommCRM/compare/v1.9.0...HEAD
+[Não lançado]: https://github.com/melgarafael/DeskcommCRM/compare/v1.9.1...HEAD
+[1.9.1]: https://github.com/melgarafael/DeskcommCRM/compare/v1.9.0...v1.9.1
 [1.9.0]: https://github.com/melgarafael/DeskcommCRM/compare/v1.8.0...v1.9.0
 [1.8.0]: https://github.com/melgarafael/DeskcommCRM/compare/v1.7.0...v1.8.0
 [1.7.0]: https://github.com/melgarafael/DeskcommCRM/compare/v1.6.0...v1.7.0
