@@ -250,6 +250,7 @@ jobs:
         agenda-painel-cabe-na-tela.spec.ts
         agenda-ver-na-agenda.spec.ts
         agenda-escopo-da-organizacao.spec.ts
+        troca-de-organizacao-tem-volta.spec.ts
         agenda-caminho-ate-os-horarios.spec.ts
         agenda-google-volta-do-consentimento.spec.ts
       # Cada item aqui tem o motivo MEDIDO, não presumido — e o gate cobra que a
