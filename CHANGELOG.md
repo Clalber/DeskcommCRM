@@ -8,6 +8,103 @@ Se você roda o DeskcommCRM numa VPS, **leia a seção da versão para a qual es
 
 ## [Não lançado]
 
+## [1.10.1] — 2026-08-28
+
+### Corrigido
+
+- **A Central de atendimento abre mais rápido quando a equipe é grande** Cada vez que a Central era aberta, o sistema perguntava o nome de cada pessoa
+  da equipe que aparecia na página — uma pergunta separada para cada uma, toda
+  vez, mesmo quando o nome nem ia ser mostrado na tela.
+
+  Numa equipe pequena isso passava despercebido. Numa equipe grande, não: o
+  tempo medido era de cerca de 350 milissegundos com dez pessoas atendendo, e de
+  mais de um segundo com cinquenta — só para descobrir nomes que o sistema já
+  poderia ter guardado.
+
+  Agora o nome de quem atende fica guardado junto com a conversa, e é atualizado
+  sozinho sempre que o atendimento troca de mãos. A Central abre no mesmo tempo
+  com uma pessoa ou com cinquenta.
+
+  Nada a fazer: a atualização do banco acontece sozinha quando você roda a
+  atualização normal, e os nomes de quem já estava atendendo são preenchidos na
+  hora.
+
+- **Quem administra duas empresas entra sempre na mesma** Quem participa de mais de uma empresa na mesma instalação podia entrar numa ou na
+  outra sem critério, ao acessar o sistema sem uma escolha anterior guardada — no
+  primeiro acesso, numa sessão nova ou depois de a preferência expirar. O sistema
+  não tinha regra para decidir qual delas abrir. Agora abre sempre a mais antiga, e
+  a escolha feita no seletor de empresa continua valendo por cima disso. Quem tem
+  uma empresa só não vê diferença.
+
+- **Agenda sem responsável configurado: o aviso agora diz onde resolver** Numa instalação nova, ou quando um novo tipo de agendamento aponta para alguém
+  que ainda não cadastrou horário de atendimento, tentar ver ou marcar um horário
+  mostrava "Invalid input: expected object, received undefined" — frase correta
+  para quem lê o código e inútil para quem opera a clínica.
+
+  Agora a mensagem diz o que realmente falta e onde resolver: "A disponibilidade
+  deste responsável ainda não foi configurada. Configure em Equipe →
+  Atendimento." Continua sendo a mesma recusa de antes (nenhum horário é
+  oferecido enquanto isso não for configurado) — só a explicação ficou legível.
+
+  Quem já tinha disponibilidade cadastrada não percebe nenhuma diferença.
+
+- **Quem publica o sistema com a própria marca passa a checar a atualização no lugar certo** Se você mantém uma cópia própria do projeto e publica as imagens do sistema com
+  o seu próprio endereço, o comando de atualização olhava para o endereço do
+  projeto original — e não para o seu — quando a configuração do servidor não
+  dizia explicitamente qual imagem usar. Ele então comparava a versão instalada
+  com a de outra pessoa, e podia anunciar que havia atualização quando não havia,
+  ou o contrário.
+
+  O endereço agora é lido de um ponto único do próprio kit, o mesmo que o resto
+  da instalação usa. Quem opera com o projeto original não percebe diferença: o
+  endereço lido é exatamente o que já estava escrito antes.
+
+- **Quatro consertos que a versão anterior anunciou e não trouxe chegam agora** A lista de mudanças da versão 1.10.0 anunciou quatro consertos que não estavam
+  dentro dela. Foi um erro nosso de ordem: os textos que descrevem os consertos
+  entraram no projeto antes do código deles, e a versão foi fechada no meio.
+
+  Se você atualizou para a 1.10.0 esperando alguma destas quatro coisas, elas
+  chegam agora:
+
+  - **A instalação nova não obriga mais a verificação em duas etapas.**
+    Quem instalava pelo instalador automático era parado por uma tela de
+    verificação em duas etapas logo depois do primeiro acesso, sem nunca ter
+    sido avisado disso.
+  - **Quando a inteligência artificial falha ao responder, o erro deixa de sumir.**
+    A falha ficava só no registro técnico do servidor e não chegava a ninguém.
+  - **O instalador para de confundir comentário com valor de configuração.**
+    No arquivo de exemplo da VPS, um comentário escrito na mesma linha do valor
+    era lido como parte do valor.
+  - **Uma rede a mais contra vazamento entre empresas.**
+    Esta é sobre as próximas versões, não sobre a sua instalação de hoje: uma
+    tabela nova que seja criada sem a proteção que separa os dados de cada
+    empresa passa a ser recusada na nossa conferência, antes de virar uma
+    atualização que chega até você.
+
+  Nada a fazer além de atualizar normalmente. Quem instalar do zero a partir
+  desta versão nunca viu o problema.
+
+- **O que você marca no Google passa a aparecer na agenda do CRM** Compromissos criados direto no Google Agenda já bloqueavam o horário — ninguém
+  conseguia marcar por cima —, mas não apareciam na tela: a agenda parecia vazia e
+  o horário indisponível ao mesmo tempo. Agora eles aparecem como faixa de
+  ocupação, com visual próprio e sem clique, porque não são compromissos do CRM:
+  não têm cliente, tipo nem responsável, e remarcá-los teria de ser feito no
+  Google.
+
+  A faixa mostra apenas o horário ocupado, **não o nome do evento**. A agenda
+  conectada é pessoal de quem atende, e esta tela é vista por outras pessoas da
+  empresa — o título de um compromisso particular não deve aparecer aí.
+
+- **Os compromissos do CRM voltam a aparecer no Google Agenda** Quem conectou o Google Agenda não via os compromissos marcados no CRM chegarem
+  lá — nenhum, nunca. O sistema tentava a cada cinco minutos e o Google recusava
+  todas as vezes, porque o pedido usava a operação de "alterar um evento
+  existente" para criar um evento que ainda não existia. Agora ele cria com a
+  operação certa e só altera o que já está lá. Os compromissos pendentes sobem na
+  primeira rodada após a atualização, sem duplicar os que porventura já existam.
+
+  A falha também deixou de ser silenciosa: quando o Google recusar, o motivo passa
+  a aparecer no registro do sistema, e não só numa coluna interna que ninguém abre.
+
 ## [1.10.0] — 2026-08-28
 
 ### Adicionado
@@ -1443,7 +1540,8 @@ Primeira versão marcada do DeskcommCRM. O projeto vinha sendo desenvolvido publ
 
 - **Node 22 é obrigatório para desenvolvimento.** A suíte de invariantes instancia o cliente do Supabase, que exige o `WebSocket` global — nativo apenas a partir do Node 22. Isso não afeta quem apenas hospeda: a VPS roda a imagem pronta.
 
-[Não lançado]: https://github.com/melgarafael/DeskcommCRM/compare/v1.10.0...HEAD
+[Não lançado]: https://github.com/melgarafael/DeskcommCRM/compare/v1.10.1...HEAD
+[1.10.1]: https://github.com/melgarafael/DeskcommCRM/compare/v1.10.0...v1.10.1
 [1.10.0]: https://github.com/melgarafael/DeskcommCRM/compare/v1.9.1...v1.10.0
 [1.9.1]: https://github.com/melgarafael/DeskcommCRM/compare/v1.9.0...v1.9.1
 [1.9.0]: https://github.com/melgarafael/DeskcommCRM/compare/v1.8.0...v1.9.0
