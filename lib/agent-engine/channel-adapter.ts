@@ -105,4 +105,20 @@ export interface ChannelAdapter {
   capabilities(): ChannelCapabilities;
   /** custo por mensagem do canal. */
   costPerMessage(): ChannelCost;
+  /**
+   * Mostra (ou tira) o "digitando…" para o lead. `true` = o canal aceitou.
+   *
+   * OPCIONAL: canal que não sabe sinalizar não implementa, e o runtime testa a
+   * presença do método — nunca pergunta QUAL canal é. Um adapter futuro (Cloud
+   * API) entra ou não entra sem que o turno mude uma linha.
+   *
+   * NUNCA rejeita: presença é enfeite, e este método é chamado de dentro do
+   * caminho que responde o cliente. Uma rejeição aqui poderia derrubar um turno
+   * inteiro por causa do balãozinho — o desfecho errado por uma ordem de
+   * grandeza. Falhou, devolve `false`.
+   *
+   * É disparo ÚNICO e o efeito é EFÊMERO (o canal apaga sozinho em segundos).
+   * Quem quer que ele dure renova — ver `agent/digitando.ts`.
+   */
+  setTyping?(input: { tenantId: string; conversationId: string; typing: boolean }): Promise<boolean>;
 }

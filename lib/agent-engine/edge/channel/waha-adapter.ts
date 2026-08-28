@@ -21,6 +21,8 @@ import type {
   ChannelSessionHealth,
 } from '../../channel-adapter';
 
+import { sinalizarDigitando } from '@/lib/messaging/digitando';
+
 import { CrmTransportError, type CrmEdgeConfig } from '../crm/mcp-client';
 import { sendTurnMessage, SendToolError } from '../crm/send-message';
 import { SESSION_HEALTHY_STATUS } from '../crm/session-watchdog';
@@ -85,6 +87,29 @@ export class WahaChannelAdapter implements ChannelAdapter {
       status: row.status,
       since: row.changed_at ? new Date(row.changed_at).getTime() : null,
     };
+  }
+
+  /**
+   * O "digitando…" — mesma regra dura nº 4 do `sessionHealth` logo acima: o
+   * message-plane não fala com a borda concreta. Quem resolve conversa →
+   * sessão → destinatário é o CRM (`lib/messaging/digitando.ts`), pela mesma
+   * porta que o envio usa.
+   *
+   * O `SinalDeDigitacao` que ele devolve é rico (seis desfechos, para
+   * diagnóstico); aqui ele colapsa em booleano de propósito. O runtime não pode
+   * ramificar por motivo de falha de enfeite — se pudesse, alguém acabaria
+   * fazendo — e o detalhe continua alcançável por quem chamar a função direta.
+   */
+  async setTyping(input: { tenantId: string; conversationId: string; typing: boolean }): Promise<boolean> {
+    // `tenantId` no input, como em `send`: a fábrica do adapter recebe só o pool,
+    // e a org de um turno vem da ROW do job (fonte confiável). Guardá-la no
+    // construtor criaria uma segunda fonte para a mesma pergunta.
+    const sinal = await sinalizarDigitando(this.crmCfg.supabase, {
+      organizationId: input.tenantId,
+      conversationId: input.conversationId,
+      ligado: input.typing,
+    });
+    return sinal === 'sinalizado';
   }
 
   capabilities(): ChannelCapabilities {

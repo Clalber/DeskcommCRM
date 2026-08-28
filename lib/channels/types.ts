@@ -373,6 +373,37 @@ export interface ChannelAdapter {
     /** Valores dos `{{n}}`, na ordem em que a definição os declara. */
     values: Record<string, string>;
   }): Promise<{ externalId: string | null }>;
+
+  /**
+   * Mostra (ou tira) o "digitando…" na conversa de quem está do outro lado.
+   *
+   * `typing: true` liga; `false` desliga. O retorno diz se o canal ACEITOU o
+   * sinal — não se o cliente viu.
+   *
+   * ─── Efêmero por natureza, e o contrato assume isso ────────────────────────
+   *
+   * Nenhum canal mantém o indicador aceso indefinidamente: ele expira sozinho em
+   * segundos. Quem quer que ele dure renova, e quem renova é o chamador — o
+   * adapter é disparo único, como todo o resto desta interface.
+   *
+   * ─── Nunca REJEITA ────────────────────────────────────────────────────────
+   *
+   * `Promise<boolean>` e não `Promise<void>` que lança, ao contrário de `send`.
+   * A diferença é de consequência: uma falha de envio precisa virar status na
+   * tela e retentativa; uma falha de presença não precisa virar nada. Se este
+   * método pudesse rejeitar, um `await` sem `try` no meio de uma cadeia de envio
+   * derrubaria a mensagem por causa do enfeite.
+   *
+   * OPCIONAL como os demais: canal que não sabe sinalizar simplesmente não
+   * implementa, e quem chama testa a presença do método em vez de perguntar QUAL
+   * provider é — que é o que o invariante 1 da doutrina proíbe.
+   */
+  setTyping?(input: ChannelTenantScope & {
+    sessionRef: string;
+    /** Endereço já resolvido por `resolveRecipient`. */
+    recipient: string;
+    typing: boolean;
+  }): Promise<boolean>;
 }
 
 /** O que o transporte respondeu quando perguntamos se está de pé. */

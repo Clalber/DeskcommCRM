@@ -298,7 +298,11 @@ describe("a escolta do orçamento", () => {
  */
 describe("o call site — medido no texto, porque a unidade não o alcança", () => {
   const fonteInbound = readFileSync(INBOUND, "utf8");
-  const ESCOLTADO = "() => executarTurnoDoAgente(deps, job, pool, ctx, input),";
+  // A assinatura ganhou `digitacao` (o indicador "digitando…" do turno, criado
+  // por `runAgentTurn` e parado no `finally` dela). A PROPRIEDADE medida aqui não
+  // mudou — o núcleo continua rodando dentro da escolta —, mas a régua é textual
+  // e precisa acompanhar a chamada real.
+  const ESCOLTADO = "() => executarTurnoDoAgente(deps, job, pool, ctx, input, digitacao),";
 
   it("o turno inteiro roda dentro da escolta — não só as chamadas diretas de modelo", () => {
     expect(fonteInbound.length, "guarda de vacuidade: inbound-turn.ts vazio?").toBeGreaterThan(1000);
@@ -343,7 +347,7 @@ describe("o call site — medido no texto, porque a unidade não o alcança", ()
   it("controle negativo: o detector acusa o núcleo tirado da escolta", () => {
     const sabotado = fonteInbound.replace(
       ESCOLTADO,
-      "() => Promise.resolve(),\n  );\n  await executarTurnoDoAgente(deps, job, pool, ctx, input);\n  void (",
+      "() => Promise.resolve(),\n  );\n  await executarTurnoDoAgente(deps, job, pool, ctx, input, digitacao);\n  void (",
     );
     expect(sabotado, "a sabotagem não mudou nada — o detector mede outra coisa").not.toBe(
       fonteInbound,

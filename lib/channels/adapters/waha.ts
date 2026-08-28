@@ -171,6 +171,33 @@ export const wahaAdapter: ChannelAdapter = {
     return fetchWahaMedia(input.url, input.hintMime ?? null);
   },
 
+  /**
+   * O "digitando…" do WhatsApp, ligado e desligado pela presença da sessão.
+   *
+   * Sem `resolveCanonicalCusChatId` de propósito — e a assimetria com `send`
+   * logo abaixo é deliberada, não esquecimento. Aquela resolução existe porque
+   * mandar TEXTO para um chatId que o WhatsApp não reconhece é mensagem
+   * perdida; aqui o pior caso é o balãozinho não aparecer. A chamada extra por
+   * renovação (uma a cada poucos segundos, por conversa em atendimento) custaria
+   * mais do que o defeito que evitaria.
+   *
+   * `paused` é o estado que o WhatsApp entende como "parou de escrever" — não
+   * existe um `typing: false` na API; o desligamento é um estado próprio.
+   */
+  async setTyping(input: {
+    sessionRef: string;
+    recipient: string;
+    typing: boolean;
+  }): Promise<boolean> {
+    const client = getWahaClient();
+    if (!client) return false;
+    return client.setPresence(
+      input.sessionRef,
+      input.recipient,
+      input.typing ? "typing" : "paused",
+    );
+  },
+
   async send(envelope: OutboundEnvelope): Promise<{ externalId: string | null }> {
     const client = getWahaClient();
     // Sem env de WAHA o comportamento atual é NOOP, não erro: a UI mostra o
