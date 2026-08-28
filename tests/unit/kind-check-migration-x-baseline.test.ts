@@ -46,14 +46,32 @@ function vocabularioDe(sqlBruto: string, constraint: string): string[] | null {
   // parêntese errado e a lista voltaria truncada, o que aqui apareceria como
   // uma divergência inventada.
   const sql = sqlBruto.replace(/--[^\n]*/g, "");
+  // DUAS formas, porque o repo escreve as duas e o Postgres não distingue:
+  // `check (kind in ('a','b'))` e `check (kind = any (array['a'::text,...]))`.
+  //
+  // A régua só conhecia a primeira, e o ponto cego não era teórico: a migration
+  // 0202 reconstruiu `agent_inbox_items_kind_check` na forma `= any (array[...])`
+  // e ficou INVISÍVEL para esta guarda. O efeito é o que o cabeçalho deste
+  // arquivo teme — a `ultima` passava a ser uma migration ANTERIOR, e a
+  // comparação media o par errado. Guarda cega para metade das formas não é
+  // guarda: ela reprova quem está certo e absolve quem está errado.
+  // AINDA CEGA para duas formas, e vale saber quais antes de copiar SQL de
+  // fora: a forma que o `pg_dump` emite com cast — `((kind)::text = any (...))`
+  // — porque o `)` de `(kind)` corta o `[^)]*?` antes do `=`; e o array-literal
+  // `= any ('{a,b}'::text[])`. Migration escrita colando saída de pg_dump some
+  // desta guarda com o MESMO silêncio que a 0202 teve. Há caso de controle
+  // abaixo que trava o dia em que alguém as cobrir sem atualizar esta nota.
   const abre = new RegExp(
-    `add\\s+constraint\\s+${constraint}\\s+check\\s*\\([^)]*?\\bin\\s*\\(`,
+    `add\\s+constraint\\s+${constraint}\\s+check\\s*\\(`
+      + `(?:[^)]*?\\bin\\s*\\(|[^)]*?=\\s*any\\s*\\(\\s*array\\s*\\[)`,
     "is",
   );
   const m = abre.exec(sql);
   if (!m) return null;
   const inicio = m.index + m[0].length;
-  const fim = sql.indexOf(")", inicio);
+  // O fechamento acompanha a forma: `in (` fecha em `)`, `array[` fecha em `]`.
+  const fechamento = m[0].trimEnd().endsWith("[") ? "]" : ")";
+  const fim = sql.indexOf(fechamento, inicio);
   if (fim === -1) return null;
   return [...sql.slice(inicio, fim).matchAll(/'([^']+)'/g)].map((x) => x[1] as string);
 }
@@ -117,5 +135,36 @@ describe("migrations × baseline — vocabulário de constraint não encolhe", (
     // Constraint que não está no SQL devolve null — nunca `[]`, que se
     // compararia como "vocabulário vazio" e passaria despercebido.
     expect(vocabularioDe("select 1;", "c_check")).toBeNull();
+  });
+
+  it("lê as DUAS formas que o repo escreve — `in (...)` e `= any (array[...])`", () => {
+    // A segunda forma não é hipótese: a migration 0202 a usou, ficou INVISÍVEL
+    // para esta guarda, e o efeito foi ela comparar o baseline com uma migration
+    // ANTERIOR e dar verde enquanto o vocabulário encolhia de verdade (perdeu
+    // `conhecimento_nao_indexado`, curado pela 0204).
+    expect(
+      vocabularioDe(
+        "alter table t add constraint c_check check (k = any (array['a'::text, 'b'::text]));",
+        "c_check",
+      ),
+    ).toEqual(["a", "b"]);
+  });
+
+  it("as formas que a régua NÃO lê estão declaradas — e mudá-las quebra este caso", () => {
+    // Controle de HONESTIDADE do comentário em `vocabularioDe`, não de
+    // comportamento desejável. Estas duas formas são pontos cegos conhecidos:
+    //
+    //   ((kind)::text = any (...))   — o que o pg_dump emite, com cast
+    //   = any ('{a,b}'::text[])      — array-literal
+    //
+    // Quem as cobrir vai ver este caso ficar vermelho, e é o ponto: obriga a
+    // atualizar a nota em vez de deixar prosa afirmando cegueira que já não
+    // existe. Documentação que nenhum gate lê é documentação que diverge.
+    expect(
+      vocabularioDe("alter table t add constraint c_check check ((k)::text = any (array['a'::text]));", "c_check"),
+    ).toBeNull();
+    expect(
+      vocabularioDe("alter table t add constraint c_check check (k = any ('{a,b}'::text[]));", "c_check"),
+    ).toBeNull();
   });
 });

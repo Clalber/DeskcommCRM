@@ -67,6 +67,14 @@ async function garantirSessao(orgId: string): Promise<void> {
     organization_id: orgId,
     waha_session_name: SESSION_NAME,
     display_name: "Número Nascimento E2E",
+    // `WORKING` explícito: o default da coluna é `STARTING`, e o índice
+    // `channel_sessions_um_pareamento_pendente_por_org` (migration 0203) só
+    // admite UMA sessão nesse estado por organização. Como os seeds de e2e
+    // compartilham a mesma org do `.e2e-creds.json` e cada um procura apenas
+    // pelo PRÓPRIO `waha_session_name`, dois deles na mesma rodada colidiam
+    // com 23505 e derrubavam a spec. O que estes seeds simulam é um canal
+    // CONECTADO — `WORKING` é o estado certo, não um contorno.
+    status: "WORKING",
     // Placeholder, como todas as rotas que criam sessão gravam. Sem header de
     // assinatura o webhook aceita e devolve `signatureVerified: false` — que é
     // exatamente o que acontece com WAHA Core em produção (webhook-auth.ts).

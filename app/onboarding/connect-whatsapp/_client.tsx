@@ -40,6 +40,11 @@ type Status =
   | "FAILED"
   | "STOPPED"
   | "NOT_STARTED"
+  // Conflito com uma conexão já em andamento, criada na Central. NÃO é `ERROR`:
+  // o serviço está de pé, e o texto de `ERROR` afirma que ele caiu — diagnóstico
+  // falso numa instalação sadia. Estado próprio também para o polling saber
+  // parar: em `ERROR` ele segue rodando e sobrescreve a mensagem em 3 segundos.
+  | "EM_ANDAMENTO"
   | "ERROR";
 
 interface SessionInfo {
@@ -79,6 +84,8 @@ function rotuloDoEstado(s: Status): string {
       return "Conectado!";
     case "FAILED":
       return "O código expirou";
+    case "EM_ANDAMENTO":
+      return "Já existe uma conexão em andamento";
     default:
       return "Não consegui falar com o WhatsApp";
   }
@@ -95,6 +102,8 @@ function explicacaoDoEstado(s: Status): string {
       return "O número está no ar. Seguindo para o próximo passo.";
     case "FAILED":
       return "É normal — ele vale poucos minutos. Dá para gerar outro.";
+    case "EM_ANDAMENTO":
+      return "Alguém começou a conectar um número e não terminou.";
     default:
       return "O serviço roda no seu servidor e não respondeu agora.";
   }
@@ -246,6 +255,18 @@ export function ConnectWhatsappClient({
           setInfo(json.data);
           return;
         }
+        // 409 = a organização já tem um pareamento em andamento (índice da
+        // migration 0203). Ramo PRÓPRIO porque o caminho de baixo diz que o
+        // serviço da instalação caiu — e aqui ele está de pé; o que falta é uma
+        // decisão de quem opera, não um religamento.
+        if (res.status === 409) {
+          setInfo({
+            status: "EM_ANDAMENTO",
+            session: sessionName,
+            error: json.error?.message,
+          });
+          return;
+        }
         // MEDIDO percorrendo o wizard com o serviço de WhatsApp fora do ar: a
         // resposta vinha 502, `json.data` era undefined, nada era gravado — e a
         // tela ficava dizendo "Preparando o código… Isso leva alguns segundos"
@@ -275,7 +296,11 @@ export function ConnectWhatsappClient({
   useEffect(() => {
     if (forma !== "qr") return;
     if (!wahaConfigured) return;
-    if (status === "WORKING" || status === "FAILED") return;
+    // `EM_ANDAMENTO` entra aqui e a razão não é estética: sem parar, o GET
+    // devolve 200 com `NOT_STARTED` (a sessão do onboarding nunca subiu, e isso
+    // está certo) e `setInfo` APAGA a mensagem que diz o que fazer. Ela viveria
+    // no máximo um ciclo de 3 segundos.
+    if (status === "WORKING" || status === "FAILED" || status === "EM_ANDAMENTO") return;
     const id = setInterval(async () => {
       try {
         const res = await fetch("/api/v1/onboarding/whatsapp/session");
@@ -485,6 +510,23 @@ export function ConnectWhatsappClient({
               </p>
               <Button type="button" size="sm" disabled={busy} onClick={restartSession}>
                 {busy ? "Gerando…" : "Gerar novo QR Code"}
+              </Button>
+            </div>
+          )}
+
+          {status === "EM_ANDAMENTO" && (
+            <div className="mt-3 space-y-2">
+              <p className="text-sm">
+                {info.error ??
+                  "Há uma conexão de WhatsApp sendo preparada nesta organização."}
+              </p>
+              <p className="text-muted-foreground text-xs">
+                O sistema mantém uma conexão em preparo por vez, para não deixar
+                número pela metade. Conclua ou cancele a que está aberta e volte
+                aqui — ou siga pelas saídas abaixo.
+              </p>
+              <Button asChild type="button" size="sm" variant="outline">
+                <a href="/app/connections">Abrir Conexões</a>
               </Button>
             </div>
           )}

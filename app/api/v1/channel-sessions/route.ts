@@ -14,6 +14,7 @@ import { ok, fail } from "@/lib/api/wrappers";
 import { loadAuthUser, resolveActiveOrg } from "@/lib/auth/server";
 import { requireRole } from "@/lib/auth/require-role";
 import { ARCHIVED_AT, queryTolerantToMissingArchived } from "@/lib/channels/archived";
+import { PROVIDER_DO_QR, STATUS_DE_PAREAMENTO_PENDENTE } from "@/lib/channels/pareamento-pendente";
 import { createChannelSchema } from "@/lib/schemas/channels";
 import { createClient } from "@/lib/supabase/server";
 import { getWahaClient, wahaFriendlyError } from "@/lib/waha/client";
@@ -98,6 +99,10 @@ export async function POST(req: NextRequest): Promise<Response> {
     .from("channel_sessions")
     .insert({
       organization_id: activeOrg.orgId,
+      // EXPLÍCITO, mesmo com default 'waha' na coluna: o índice da 0203 tem
+      // `provider='waha'` no predicado, e depender do default faria a trava e a
+      // linha concordarem por coincidência, não por construção.
+      provider: PROVIDER_DO_QR,
       waha_session_name: sessionName,
       display_name: parsed.data.display_name ?? null,
       engine: "NOWEB",
@@ -111,6 +116,57 @@ export async function POST(req: NextRequest): Promise<Response> {
     })
     .select(CHANNEL_COLUMNS)
     .single();
+
+  // ── 23505 = já existe um pareamento pendente nesta organização ─────────────
+  //
+  // A trava é o índice parcial da migration 0203, e ela existe porque UM clique
+  // criava DUAS sessões: `lib/api/client.ts` RETENTA mutação (`:126`, `:151`,
+  // `:188`) e esta rota chama o WAHA DEPOIS do insert — WAHA lento faz o cliente
+  // abortar e retentar com a linha já gravada. Medido em produção: dois
+  // `channel.connected` com `request_id` distintos, 489 ms apart.
+  //
+  // Insert-e-trata-conflito, e não consulta-antes-de-inserir: a segunda forma é
+  // read-then-write, e duas requisições concorrentes leem "não existe" e as duas
+  // inserem. O índice decide no Postgres, atomicamente.
+  //
+  // A resposta é 200 com a sessão que venceu — é o que a segunda chamada queria.
+  // 200 e não 201: nada foi criado nesta requisição. E sem `audit`: a rodada não
+  // teve efeito, e auditá-la encheria o log com a retentativa que a trava existe
+  // para absorver.
+  if (insErr?.code === "23505") {
+    const { data: vencedora, error: buscaErr } = await supabase
+      .from("channel_sessions")
+      .select(CHANNEL_COLUMNS)
+      .eq("organization_id", activeOrg.orgId)
+      .eq("provider", PROVIDER_DO_QR)
+      .is(ARCHIVED_AT, null)
+      .is("phone_number", null)
+      .in("status", [...STATUS_DE_PAREAMENTO_PENDENTE])
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    // Erro de BANCO não é ausência. Sem esta separação, permissão negada ou
+    // coluna faltando viravam 409 "tente de novo" — e quem tentasse de novo
+    // receberia 409 para sempre, sem nunca saber o motivo real.
+    if (buscaErr) {
+      return fail("internal_error", buscaErr.message, 500, { requestId });
+    }
+
+    // A vencedora sumiu entre o conflito e esta leitura — só acontece se a outra
+    // requisição falhou no WAHA e marcou FAILED no intervalo. Devolver 409 em vez
+    // de inventar uma resposta: quem chamou tenta de novo e agora consegue criar.
+    if (!vencedora) {
+      return fail(
+        "conflict",
+        "Outra conexão estava em andamento e não completou. Tente novamente.",
+        409,
+        { requestId },
+      );
+    }
+    return ok(vencedora, { requestId, status: 200 });
+  }
+
   if (insErr || !created) {
     return fail("internal_error", insErr?.message ?? "channel_session_insert_failed", 500, { requestId });
   }
@@ -118,12 +174,40 @@ export async function POST(req: NextRequest): Promise<Response> {
   try {
     await waha.startSession(sessionName);
   } catch (err) {
-    // Rollback: sem WAHA no ar, não deixamos um canal fantasma preso em STARTING.
-    await supabase
+    // Sem WAHA no ar, o canal não pode ficar preso em STARTING.
+    //
+    // MARCA `FAILED`, não apaga — e a diferença é o defeito que o `delete`
+    // criava junto com a trava acima. Uma retentativa que recebeu 200 com ESTA
+    // linha fica consultando o id dela; se o `delete` a removesse, a tela do QR
+    // consultaria um id inexistente e travaria em "Preparando…" para sempre.
+    //
+    // `FAILED` resolve os dois lados: a linha existe para quem a recebeu (a tela
+    // mostra o erro em vez de girar), e sai do índice parcial da 0203 — que só
+    // cobre STARTING/SCAN_QR_CODE —, então a próxima tentativa cria normalmente.
+    const { error: compErr } = await supabase
       .from("channel_sessions")
-      .delete()
+      .update({
+        status: "FAILED",
+        status_reason: wahaFriendlyError(err),
+        last_status_change_at: new Date().toISOString(),
+      })
       .eq("organization_id", activeOrg.orgId)
       .eq("id", created.id);
+
+    // A compensação FALHOU: a linha continua `STARTING`, segura o índice da
+    // 0203, e toda tentativa seguinte recebe 200 apontando para ela enquanto o
+    // WAHA estiver fora. Descartar este erro seria repetir o defeito que esta
+    // própria mudança corrige — e ele some do log, que é o pior desfecho.
+    //
+    // Não dá para "consertar" aqui (o banco acabou de recusar um update), mas
+    // dá para NÃO esconder: o erro sai no log com o id da linha travada, que é
+    // o que alguém precisa para destravar.
+    if (compErr) {
+      console.error(
+        "[channel-sessions] compensação falhou — linha presa em STARTING",
+        { session_id: created.id, erro: compErr.message },
+      );
+    }
     return fail("waha_error", wahaFriendlyError(err), 502, { requestId });
   }
 

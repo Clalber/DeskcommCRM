@@ -130,7 +130,7 @@ export async function POST(
     if (force) await waha.logoutSession(nomeSessao);
     const remote = (await waha.startSession(nomeSessao)) as { status?: string };
     const nextStatus = remote.status ?? "STARTING";
-    await supabase
+    const { error: updErr } = await supabase
       .from("channel_sessions")
       .update({
         status: "STARTING",
@@ -139,6 +139,24 @@ export async function POST(
       })
       .eq("organization_id", activeOrg.orgId)
       .eq("id", id);
+
+    // Este update entra no predicado do índice da 0203 quando a linha não tem
+    // número (órfã de um pareamento que falhou). Se outra pendente existir, o
+    // Postgres devolve 23505 — e o erro era DESCARTADO: o WAHA já tinha sido
+    // iniciado, a rota auditava `channel.reconnected` e respondia 200 com um
+    // status que o banco nunca gravou. A tela mostraria progresso que não
+    // existe.
+    if (updErr) {
+      const conflito = updErr.code === "23505";
+      return fail(
+        conflito ? "conflict" : "internal_error",
+        conflito
+          ? "Já existe uma conexão em andamento nesta organização. Conclua ou cancele antes de reconectar."
+          : updErr.message,
+        conflito ? 409 : 500,
+        { requestId },
+      );
+    }
 
     void audit({
       action: "channel.reconnected",

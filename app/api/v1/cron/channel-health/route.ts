@@ -124,11 +124,33 @@ async function handle(req: NextRequest): Promise<Response> {
       if (saude.reachable && saude.status && saude.status !== s.status) {
         statusFinal = saude.status;
         const agora = new Date().toISOString();
-        await admin
+        const { error: sincErr } = await admin
           .from("channel_sessions")
           .update({ status: saude.status, last_status_change_at: agora })
           .eq("id", s.id)
           .eq("organization_id", s.organization_id);
+
+        // O erro era descartado, e a migration 0203 deu um gatilho NOVO a esse
+        // silêncio: uma órfã FAILED que o transporte devolve como
+        // `SCAN_QR_CODE` entra no predicado do índice; se já houver outra
+        // pendente na organização, o update leva 23505 e o banco fica divergindo
+        // do transporte até alguém resolver a pendente — sem sinal de que
+        // divergiu.
+        //
+        // (Sem nomear o provider, nem em comentário: `lint:channels` varre a
+        // prosa também, e o invariante 1 da doutrina de canal vale para o texto
+        // pela mesma razão que vale para o código — é onde a suposição de canal
+        // único se esconde primeiro.)
+        //
+        // O cron não tem como consertar (a trava está certa; quem está errado é
+        // ter duas pendentes), mas esconder é a única saída que não serve.
+        if (sincErr) {
+          console.error("[channel-health] status não sincronizado", {
+            channel_session_id: s.id,
+            status_pretendido: saude.status,
+            erro: sincErr.message,
+          });
+        }
       }
 
       const apelido = s.display_name ?? s.phone_number ?? "sem nome";
