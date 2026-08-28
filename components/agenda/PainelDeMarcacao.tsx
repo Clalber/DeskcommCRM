@@ -280,7 +280,20 @@ export function PainelDeMarcacao({
         //
         // No celular continua ocupando tudo: lá não há para onde crescer, e os
         // três tempos empilham.
-        "flex min-h-[450px] flex-col overflow-hidden rounded-lg border border-border bg-surface md:w-fit md:flex-row",
+        // ⚠️ `lg:` E NÃO `md:` — a conta, que nunca tinha sido feita.
+        //
+        // As três colunas somam 980px (280 + 420 + 280). Em `md` o container é
+        // um Sheet de 768px, então elas transbordavam 239px e o
+        // `overflow-hidden` logo abaixo cortava EM SILÊNCIO: sem barra de
+        // rolagem, sem aviso. Medido em 1280, 1440 e 1920 — o mesmo transbordo
+        // nas três, porque o Sheet é fixo e ancorado à direita. O defeito não
+        // "sumia em tela grande"; ele nunca dependeu da tela.
+        //
+        // De `lg` para cima o Sheet abre para 1040px (`_client.tsx`) e as três
+        // colunas cabem com folga. Abaixo disso o painel EMPILHA — os horários
+        // viram uma seção sob o calendário, que é o que o cal.com faz e o que
+        // esta base já fazia no celular.
+        "flex min-h-[450px] flex-col overflow-hidden rounded-lg border border-border bg-surface lg:w-fit lg:flex-row",
         className,
       )}
     >
@@ -288,7 +301,7 @@ export function PainelDeMarcacao({
           formulário cego: a pessoa escolhe um horário sem lembrar de quê. */}
       <aside
         data-testid="contexto-da-marcacao"
-        className="shrink-0 border-b border-border bg-surface-elevated/50 p-4 md:w-[240px] md:border-b-0 md:border-r lg:w-[280px]"
+        className="shrink-0 border-b border-border bg-surface-elevated/50 p-4 lg:w-[280px] lg:border-b-0 lg:border-r"
       >
         <div className="flex items-center gap-2">
           <AvatarDaPessoa pessoa={responsavel} tamanho="sm" />
@@ -318,7 +331,7 @@ export function PainelDeMarcacao({
           `min-width` e não largura fixa, porque no celular a coluna ocupa tudo. */}
       <div
         data-testid="corpo-da-marcacao"
-        className="flex min-w-0 flex-1 flex-col p-4 md:min-w-[420px]"
+        className="flex min-w-0 flex-1 flex-col p-4 lg:min-w-[420px]"
       >
         <div className="mb-3 flex items-center justify-between">
           <span className="text-sm font-semibold first-letter:uppercase">
@@ -568,13 +581,19 @@ export function PainelDeMarcacao({
       <div
         data-testid="coluna-de-horarios"
         data-aberta={tempo !== "escolhendo-dia"}
-        // `shrink-0` só a partir de `md`: no celular a coluna ocupa a largura
-        // toda e precisa PODER encolher, senão ela empurra o painel para fora
-        // da tela — e o `overflow-x: hidden` do `globals.css` corta o excedente
-        // em silêncio, sem barra de rolagem.
-        className="agenda-coluna-horarios md:shrink-0"
+        // `shrink-0` só a partir de `lg`, que é onde ela É uma coluna. Abaixo
+        // disso ela ocupa a largura toda EMPILHADA e precisa poder encolher,
+        // senão empurra o painel para fora — e o `overflow-hidden` corta o
+        // excedente em silêncio, sem barra de rolagem.
+        //
+        // Era `md:`, e é o que punha 980px de colunas dentro de um Sheet de
+        // 768px em toda tela de notebook.
+        className="agenda-coluna-horarios lg:shrink-0"
       >
-        <div className="flex h-full w-[240px] flex-col p-3 lg:w-[280px]">
+        {/* `w-full` empilhado, largura fixa só quando é coluna de verdade. A
+            largura fixa em qualquer breakpoint era o que impedia o painel de
+            caber: o conteúdo segurava 240px mesmo quando o pai não os tinha. */}
+        <div className="flex h-full w-full flex-col p-3 lg:w-[280px]">
           <p className="mb-2 shrink-0 text-xs font-semibold text-text-muted first-letter:uppercase">
             {dia ? format(dia, "EEEE, d 'de' MMM", { locale: ptBR }) : ""}
           </p>

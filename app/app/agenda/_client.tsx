@@ -379,7 +379,16 @@ export function AgendaClient({
           if (!aberto) setRemarcandoId(null);
         }}
       >
-        <SheetContent side="right" className="w-full sm:max-w-3xl">
+        {/*
+          `lg:max-w-[1040px]` — o painel de marcar precisa de 980px para as três
+          colunas (contexto 280 + calendário 420 + horários 280), e cabia num
+          Sheet de 768px cortando 239px em silêncio.
+          
+          O `sm:max-w-3xl` fica para as telas menores DE PROPÓSITO: lá o painel
+          empilha os horários sob o calendário, então 768px bastam e um Sheet
+          maior só roubaria contexto da tela atrás.
+        */}
+        <SheetContent side="right" className="w-full sm:max-w-3xl lg:max-w-[1040px]">
           <SheetHeader>
             <SheetTitle>{remarcandoId ? "Remarcar agendamento" : "Novo agendamento"}</SheetTitle>
           </SheetHeader>
