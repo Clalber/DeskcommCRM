@@ -90,6 +90,23 @@ const CHAVES_QUE_MUDAM = new Set(
     .map(([chave]) => chave),
 );
 
+/**
+ * Mascara o que muda sozinho com o RELÓGIO, não com o idioma.
+ *
+ * A comparação "voltou ao português idêntico" é byte a byte de propósito — é
+ * ela que pega a chave escrita com um caractere diferente do original. Mas a
+ * tela tem contadores que andam sem ninguém tocar em nada: entre o retrato
+ * inicial e a volta passam dezenas de segundos, e o inbox que dizia
+ * "Aguardando há 12 segundos" passa a dizer "Aguardando há 59 segundos".
+ *
+ * Medido: foi exatamente essa linha que reprovou a spec no CI, com o produto
+ * correto. Mascarar os DÍGITOS mantém a asserção inteira para o que ela existe
+ * para vigiar — a palavra — e tira da conta o que o relógio decide.
+ */
+function semRelogio(textos: string[]): string {
+  return textos.join("\n").replace(/\d+/g, "#");
+}
+
 /** Todo texto que a pessoa consegue LER nesta tela, normalizado. */
 async function textosVisiveis(page: Page): Promise<string[]> {
   return page.evaluate(() => {
@@ -217,9 +234,9 @@ test.describe("o idioma escolhido chega à tela", () => {
     const inboxEmEspanhol = await textosVisiveis(page);
     const inboxEmPortugues = antes.get(TELAS[0]!)!;
     expect(
-      inboxEmEspanhol.join("\n"),
+      semRelogio(inboxEmEspanhol),
       "o seletor do topo não mudou nada na tela — o idioma escolhido não chegou",
-    ).not.toBe(inboxEmPortugues.join("\n"));
+    ).not.toBe(semRelogio(inboxEmPortugues));
 
     // ── 4. Vazamento: texto que o dicionário sabe traduzir, mostrado em pt ──
     const vazando: string[] = [];
@@ -253,9 +270,9 @@ test.describe("o idioma escolhido chega à tela", () => {
       await page.goto(tela);
       await page.waitForLoadState("networkidle", { timeout: PRAZO });
       expect(
-        (await textosVisiveis(page)).join("\n"),
+        semRelogio(await textosVisiveis(page)),
         `a tela ${tela} não voltou ao português idêntico depois de passar pelo espanhol`,
-      ).toBe(antes.get(tela)!.join("\n"));
+      ).toBe(semRelogio(antes.get(tela)!));
     }
     await page.screenshot({ path: path.join(EVIDENCIA, "02-inbox-de-volta-em-portugues.png"), fullPage: true });
   });
