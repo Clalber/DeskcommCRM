@@ -5576,6 +5576,18 @@ export const DICIONARIO: Traducoes = {
   // guarda estático também não os vê — "Nome", "Status", "Ativo" não têm
   // acento, e a régua dele é ortográfica.
   "Tags": { es: "Etiquetas" },
+
+  // ─── Agenda interativa (PR #382, entrou pela main durante este PR) ───
+  "Horários livres de": { es: "Horarios libres de" },
+  "Você ainda não publicou seus horários de atendimento.": { es: "Todavía no publicaste tus horarios de atención." },
+  "Sem eles ninguém consegue marcar clicando na grade — nem você, nem o agente.": { es: "Sin ellos nadie puede agendar haciendo clic en la grilla — ni tú, ni el agente." },
+  "Não consegui carregar os horários.": { es: "No pude cargar los horarios." },
+  "Os blocos ficam bloqueados até eu conseguir — é mais seguro que oferecer um horário que talvez não exista.": { es: "Los bloques quedan bloqueados hasta que lo logre — es más seguro que ofrecer un horario que quizá no exista." },
+  "Nenhum horário livre neste período.": { es: "Ningún horario libre en este período." },
+  "Os blocos vazios continuam aqui, e o que estiver publicado fica clicável.": { es: "Los bloques vacíos siguen aquí, y lo que esté publicado queda clicable." },
+  "Remarcar": { es: "Reprogramar" },
+  "para": { es: "para" },
+  "? Quem foi atendido recebe o aviso da mudança.": { es: "? Quien fue atendido recibe el aviso del cambio." },
 };
 
 /**

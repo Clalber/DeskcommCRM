@@ -17,10 +17,11 @@ import { audit } from "@/lib/audit";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { encryptWebhookSecret } from "@/lib/webhooks/secrets";
 import { emitirEstado } from "@/lib/agenda/google/estado";
-import { loadAuthUser } from "@/lib/auth/server";
+import { assinarVinculo, NOME_DO_VINCULO } from "@/lib/agenda/google/vinculo";
 
 vi.mock("@/lib/audit", () => ({ audit: vi.fn(async () => undefined), isServiceRoleConfigured: vi.fn(() => true) }));
-vi.mock("@/lib/auth/server", () => ({ loadAuthUser: vi.fn() }));
+// `@/lib/auth/server` não é mais mockado: o callback deixou de ler a sessão.
+// Ela nunca chegava — `sameSite: "strict"` não viaja na volta do Google.
 vi.mock("@/lib/supabase/admin", () => ({ createAdminClient: vi.fn() }));
 vi.mock("@/lib/webhooks/secrets", () => ({ encryptWebhookSecret: vi.fn(async () => "\\xdeadbeef") }));
 
@@ -35,14 +36,40 @@ process.env.GOOGLE_CALENDAR_CLIENT_SECRET = "GOCSPX-segredo";
 
 const ESCOPOS = "https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/calendar.readonly";
 
+/**
+ * O nonce do último `state` emitido. O callback deixou de ler a SESSÃO (que
+ * nunca chegava: o cookie é `sameSite: "strict"` e não viaja na volta do
+ * Google) e passou a exigir o cookie de vínculo emitido na ida. Guardar o nonce
+ * aqui é o que permite ao teste montar essa volta como o navegador a faria.
+ */
+let ultimoNonce = "";
+
 function estadoValido(): string {
-  return emitirEstado({ organizationId: ORG, userId: ANA }, { segredo: SEGREDO, agora: new Date() });
+  ultimoNonce = `nonce-de-teste-${noncesGravados.length}-${Math.random().toString(36).slice(2)}`;
+  return emitirEstado(
+    { organizationId: ORG, userId: ANA },
+    { segredo: SEGREDO, agora: new Date(), nonce: ultimoNonce },
+  );
 }
 
-function pedido(query: Record<string, string>): NextRequest {
+/**
+ * @param vinculo `"casa"` (o padrão) manda o cookie que a ida emitiu; `"ausente"`
+ * omite; `"de-outro"` manda um assinado sobre OUTRO nonce — que é a volta de um
+ * navegador que não iniciou este fluxo.
+ */
+function pedido(
+  query: Record<string, string>,
+  vinculo: "casa" | "ausente" | "de-outro" = "casa",
+): NextRequest {
   const u = new URL("https://crm.exemplo/api/v1/agenda/google/callback");
   for (const [k, v] of Object.entries(query)) u.searchParams.set(k, v);
-  return new NextRequest(u);
+  const req = new NextRequest(u);
+  if (vinculo === "casa" && ultimoNonce) {
+    req.cookies.set(NOME_DO_VINCULO, assinarVinculo(ultimoNonce, SEGREDO));
+  } else if (vinculo === "de-outro") {
+    req.cookies.set(NOME_DO_VINCULO, assinarVinculo("nonce-de-outra-pessoa", SEGREDO));
+  }
+  return req;
 }
 
 /** O `upsert` fake, para inspecionar o que foi gravado. */
@@ -80,15 +107,8 @@ beforeEach(() => {
   vi.stubGlobal("fetch", vi.fn());
   vi.mocked(encryptWebhookSecret).mockResolvedValue("\\xdeadbeef");
   vi.mocked(audit).mockClear();
-  // A sessão de quem volta é, por padrão, a MESMA que pediu o consentimento.
-  vi.mocked(loadAuthUser).mockResolvedValue({
-    id: ANA,
-    email: "ana@clinica.com.br",
-    full_name: "Ana",
-    avatar_url: null,
-    is_platform_admin: false,
-    organizations: [{ organization_id: ORG, organization_name: "Clínica", role: "agent" }],
-  } as never);
+  // Quem volta é, por padrão, o MESMO navegador que pediu o consentimento — o
+  // que `pedido()` monta pondo o cookie de vínculo do último `state` emitido.
   vi.mocked(createAdminClient).mockReturnValue({
     from: (tabela: string) => ({
       insert: async (linha: Record<string, unknown>) => {
@@ -127,9 +147,12 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-async function chamar(query: Record<string, string>) {
+async function chamar(
+  query: Record<string, string>,
+  vinculo: "casa" | "ausente" | "de-outro" = "casa",
+) {
   const { GET } = await import("@/app/api/v1/agenda/google/callback/route");
-  return GET(pedido(query));
+  return GET(pedido(query, vinculo));
 }
 
 const destino = (res: Response) => res.headers.get("location") ?? "";
@@ -317,35 +340,31 @@ describe("GET /api/v1/agenda/google/callback", () => {
     // outra pessoa dentro dos dez minutos grava a agenda DELA apontando para a
     // conta Google DELE — e os compromissos daquela pessoa passam a ser lidos e
     // escritos numa agenda que não é a dela.
+    // O PORTADOR MUDOU, A PROPRIEDADE NÃO. Este caso lia a SESSÃO de outra
+    // pessoa; hoje lê o vínculo de outro navegador — que é o que resta quando o
+    // cookie de sessão não viaja (`sameSite: "strict"` na volta cross-site, o
+    // defeito que a v1.8.0 levou a produção). O que se prova continua sendo:
+    // `state` interceptado por terceiro NÃO grava conexão.
     googleRespondendoBem();
-    vi.mocked(loadAuthUser).mockResolvedValue({
-      id: "88888888-8888-4888-8888-888888888888",
-      email: "outro@exemplo.com",
-      full_name: "Outro",
-      avatar_url: null,
-      is_platform_admin: false,
-      organizations: [],
-    } as never);
 
-    const res = await chamar({ code: "c", state: estadoValido() });
+    const res = await chamar({ code: "c", state: estadoValido() }, "de-outro");
     expect(destino(res)).toBe("https://crm.exemplo/app/agenda?erro=retorno_nao_verificavel");
     expect(upsertRecebido).toBeNull();
     expect(audit).toHaveBeenCalledWith(
       expect.objectContaining({
         action: "agenda.google.conexao_falhou",
-        metadata: expect.objectContaining({ reason: "sessao_de_outra_pessoa" }),
+        metadata: expect.objectContaining({ reason: "vinculo_ausente_ou_nao_confere" }),
       }),
     );
   });
 
-  it("sem sessão nenhuma também não grava, e o destino é o MESMO", async () => {
-    // Um destino só para os dois: distinguir "não tem sessão" de "é outra
-    // pessoa" na URL contaria a quem ataca se o `state` que ele tem pertence a
-    // alguém logado naquele navegador.
+  it("sem vínculo nenhum também não grava, e o destino é o MESMO", async () => {
+    // Um destino só para os dois: distinguir "não trouxe vínculo" de "trouxe o
+    // de outro navegador" na URL contaria a quem ataca se o `state` que ele tem
+    // pertence a alguém que passou por aqui.
     googleRespondendoBem();
-    vi.mocked(loadAuthUser).mockResolvedValue(null as never);
 
-    const res = await chamar({ code: "c", state: estadoValido() });
+    const res = await chamar({ code: "c", state: estadoValido() }, "ausente");
     expect(destino(res)).toBe("https://crm.exemplo/app/agenda?erro=retorno_nao_verificavel");
     expect(upsertRecebido).toBeNull();
   });
