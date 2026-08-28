@@ -46,11 +46,12 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 import { audit } from "@/lib/audit";
-import { loadAuthUser } from "@/lib/auth/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { encryptWebhookSecret } from "@/lib/webhooks/secrets";
-import { configuracaoDoGoogle } from "@/lib/agenda/google/config";
+import { CAMINHO_DO_CALLBACK, configuracaoDoGoogle } from "@/lib/agenda/google/config";
 import { verificarEstado } from "@/lib/agenda/google/estado";
+import { NOME_DO_VINCULO, vinculoConfere } from "@/lib/agenda/google/vinculo";
+import { cookieSecure } from "@/lib/supabase/cookie-secure";
 import { escoposFaltando } from "@/lib/agenda/google/oauth";
 import { trocarCodigoPorToken } from "@/lib/agenda/google/token";
 import { contaDaAgendaPrimaria } from "@/lib/agenda/google/calendarios";
@@ -60,7 +61,18 @@ export const dynamic = "force-dynamic";
 
 function voltar(parametro: string): NextResponse {
   const base = env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
-  return NextResponse.redirect(new URL(`/app/agenda?${parametro}`, base));
+  const resposta = NextResponse.redirect(new URL(`/app/agenda?${parametro}`, base));
+  // A LIMPEZA MORA AQUI, e não em cada saída, porque esta rota tem doze delas e
+  // uma que esquecesse deixaria um vínculo vivo até o TTL. Toda volta passa por
+  // esta função — sucesso e erro —, então o cookie morre com o fluxo.
+  resposta.cookies.set(NOME_DO_VINCULO, "", {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: cookieSecure(),
+    path: CAMINHO_DO_CALLBACK,
+    maxAge: 0,
+  });
+  return resposta;
 }
 
 export async function GET(req: NextRequest): Promise<NextResponse> {
@@ -73,7 +85,17 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   if (recusa) return voltar("erro=conexao_cancelada");
 
   // 2. Quem está voltando? Sem isto não há org para auditar.
-  const estado = verificarEstado(stateBruto, { segredo: env.INTERNAL_SECRET, agora: new Date() });
+  // ⚠️ SOB `try`, e a razão mudou com esta rota: ela agora é alcançável sem
+  // sessão (está em `PUBLIC_PATHS`). `verificarEstado` LANÇA quando o
+  // `INTERNAL_SECRET` é curto demais, e um throw aqui viraria 500 com stack no
+  // log, arrancável por qualquer anônimo em laço. Falha fechada com mensagem,
+  // nunca 500 anônimo — é a mesma proteção que a rota de IDA já tinha.
+  let estado: ReturnType<typeof verificarEstado> = null;
+  try {
+    estado = verificarEstado(stateBruto, { segredo: env.INTERNAL_SECRET, agora: new Date() });
+  } catch {
+    return voltar("erro=retorno_nao_verificavel");
+  }
   if (!estado) {
     // Um motivo só para assinatura inválida, prazo vencido e formato estranho:
     // distinguir na URL entregaria a um atacante a diferença que ele precisa
@@ -86,31 +108,35 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   }
   const { organizationId, userId } = estado;
 
-  // ⚠️ O `state` ASSINADO NÃO BASTA, e esta é a segunda porta.
+  // ⚠️ QUEM VOLTOU É QUEM SAIU — e esta verificação vem ANTES da queima do nonce.
   //
-  // Assinatura prova que o `state` foi emitido por nós; NÃO prova que quem está
-  // voltando é a mesma pessoa que o pediu. Sem ler a sessão, qualquer navegador
-  // que apresente um `state` válido grava a conexão — quem interceptar o de
-  // outra pessoa dentro dos dez minutos de prazo grava a agenda DELA apontando
-  // para a conta Google DELE, e a partir daí os compromissos daquela pessoa
-  // passam a ser lidos e escritos numa agenda que não é a dela.
+  // A ORDEM É LOAD-BEARING. Enquanto o `proxy` barrava todo mundo, tanto fazia:
+  // ninguém anônimo chegava aqui. Agora que a rota é pública, queimar o nonce
+  // antes de conferir o vínculo daria a quem tem um `state` vazado um botão de
+  // NEGAÇÃO DE SERVIÇO: ele queima, e o dono legítimo, ao voltar do Google
+  // trinta segundos depois, recebe `state_reutilizado`. Quem reordenar isto
+  // reabre a porta — e os dois ramos falham com a MESMA mensagem, então o
+  // erro não apareceria em teste que só olhe o desfecho.
   //
-  // Queimar o nonce (dívida declarada em `estado.ts`) fecha REPLAY, não fecha
-  // isto: são portas diferentes, e esta é a mais grave porque um único uso já
-  // basta.
-  const usuario = await loadAuthUser();
-  if (!usuario || usuario.id !== userId) {
+  // A verificação que estava aqui era `loadAuthUser()` comparado ao `userId` do
+  // `state`, e ela REPROVAVA SEMPRE: `loadAuthUser` lê o cookie de sessão, que é
+  // `sameSite: "strict"` e não viaja na volta de `accounts.google.com`. Medido
+  // em produção na v1.8.0: a conexão com o Google nunca completou em instalação
+  // nenhuma. O que ela prometia — e o que o vínculo entrega no lugar — está
+  // escrito no cabeçalho de `vinculo.ts`, inclusive o caso que fica de fora.
+  const vinculo = req.cookies.get(NOME_DO_VINCULO)?.value;
+  if (!vinculoConfere(vinculo, estado.nonce, env.INTERNAL_SECRET)) {
+    // AUDITAR SÓ AQUI, depois de o vínculo falhar por um `state` que ao menos
+    // tinha assinatura válida. Auditar antes daria a qualquer anônimo uma
+    // escrita ilimitada em `api_audit_log` — tabela append-only, retenção de
+    // cinco anos, numa VPS com cota de disco.
     await audit({
       action: "agenda.google.conexao_falhou",
       organizationId,
-      metadata: {
-        reason: usuario ? "sessao_de_outra_pessoa" : "sem_sessao",
-        user_id: userId,
-      },
+      metadata: { reason: "vinculo_ausente_ou_nao_confere", user_id: userId },
     });
-    // Um destino só para os dois casos: distinguir "não tem sessão" de "é outra
-    // pessoa" na URL contaria a quem ataca se o `state` que ele tem pertence a
-    // alguém logado naquele navegador.
+    // Um destino só: distinguir "sem vínculo" de "vínculo de outra pessoa"
+    // contaria a quem ataca se o `state` que ele tem pertence a alguém.
     return voltar("erro=retorno_nao_verificavel");
   }
 

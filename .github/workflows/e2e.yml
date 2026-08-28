@@ -200,7 +200,7 @@ jobs:
       # errado sobre o próprio vizinho.
       SPECS_PARTE_2: >-
         agente-marca-consulta.spec.ts agenda-marcar-pela-tela.spec.ts agenda-remarcar-e-cancelar.spec.ts
-        agenda-tipos-de-agendamento.spec.ts
+        agenda-tipos-de-agendamento.spec.ts agenda-grade-interativa.spec.ts
         agente-novo-e-uso.spec.ts agente-organiza-operacao.spec.ts
         central-de-avisos-capacidades.spec.ts escalacao-ciclo.spec.ts
         navegacao.spec.ts olhar-telas-do-epico.spec.ts pipelines-gestao.spec.ts
@@ -220,8 +220,11 @@ jobs:
         acervo-de-conhecimento.spec.ts
         agenda-kit-visual.spec.ts
         agenda-conectar-google.spec.ts
+        agenda-painel-cabe-na-tela.spec.ts
+        agenda-ver-na-agenda.spec.ts
         agenda-escopo-da-organizacao.spec.ts
         agenda-caminho-ate-os-horarios.spec.ts
+        agenda-google-volta-do-consentimento.spec.ts
       # Cada item aqui tem o motivo MEDIDO, não presumido — e o gate cobra que a
       # lista exista e some com as outras duas.
       #
