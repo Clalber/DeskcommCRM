@@ -158,7 +158,7 @@ export function ActionForm({
             }}
           />
           <p className="text-xs text-text-muted">
-            Sai exatamente assim, sem IA. No laço, {`{{volta}}`} e {`{{voltas}}`} viram o número da volta.
+            {t("Sai exatamente assim, sem IA. No laço,")} {t("{{volta}}")} e {t("{{voltas}}")} {t("viram o número da volta.")}
           </p>
         </div>
       ) : mode === "ai_message" ? (

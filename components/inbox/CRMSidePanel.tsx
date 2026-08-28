@@ -313,11 +313,12 @@ function CamposDoFunil({
   valores: Record<string, unknown>;
   onSalvo: () => void;
 }) {
+  const t = useT();
   const edit = useEditLead(pipelineId);
   const [customFields, setCustomFields] = useState(valores);
 
   if (fieldDefs.length === 0) {
-    return <p className="text-xs text-muted-foreground">Este funil não tem campos extras.</p>;
+    return <p className="text-xs text-muted-foreground">{t("Este funil não tem campos extras.")}</p>;
   }
 
   async function salvar() {

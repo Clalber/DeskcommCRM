@@ -1,4 +1,6 @@
 "use client";
+
+import { useT } from "@/hooks/i18n/useT";
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -98,6 +100,7 @@ function SortableHead({
 }
 
 export function ContactsTable({ contacts, orderBy, orderDir, onSort }: Props) {
+  const t = useT();
   const del = useDeleteContact();
   const [alvo, setAlvo] = useState<Contact | null>(null);
   const [abrindo, setAbrindo] = useState<string | null>(null);
@@ -168,7 +171,7 @@ export function ContactsTable({ contacts, orderBy, orderDir, onSort }: Props) {
           />
           <TableHead>Tags</TableHead>
           <SortableHead
-            label="Última atividade"
+            label={t("Última atividade")}
             column="last_activity_at"
             orderBy={orderBy}
             orderDir={orderDir}
@@ -176,7 +179,7 @@ export function ContactsTable({ contacts, orderBy, orderDir, onSort }: Props) {
           />
           <TableHead>Status</TableHead>
           <TableHead className="w-[88px]">
-            <span className="sr-only">Ações</span>
+            <span className="sr-only">{t("Ações")}</span>
           </TableHead>
         </TableRow>
       </TableHeader>
@@ -228,7 +231,7 @@ export function ContactsTable({ contacts, orderBy, orderDir, onSort }: Props) {
                     >
                       <ChatCircle size={16} weight="regular" aria-hidden />
                       {c.conversa.unread > 0 && (
-                        <span className="sr-only">{c.conversa.unread} sem ler</span>
+                        <span className="sr-only">{c.conversa.unread} {t("sem ler")}</span>
                       )}
                     </Link>
                   </Button>

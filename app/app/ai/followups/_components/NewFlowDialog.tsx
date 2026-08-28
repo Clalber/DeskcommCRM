@@ -1,4 +1,6 @@
 "use client";
+
+import { useT } from "@/hooks/i18n/useT";
 import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -20,6 +22,7 @@ interface Props {
 }
 
 export function NewFlowDialog({ open, onOpenChange }: Props) {
+  const t = useT();
   const [name, setName] = useState("");
   const create = useCreateFollowupFlow();
 
@@ -61,7 +64,7 @@ export function NewFlowDialog({ open, onOpenChange }: Props) {
             Novo fluxo de follow-up
           </DialogTitle>
           <DialogDescription>
-            Nasce como rascunho. Você monta as etapas no editor visual em seguida.
+            {t("Nasce como rascunho. Você monta as etapas no editor visual em seguida.")}
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={onSubmit} className="space-y-4">
@@ -71,7 +74,7 @@ export function NewFlowDialog({ open, onOpenChange }: Props) {
               id="flow-name"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="Ex: Recuperação de carrinho abandonado"
+              placeholder={t("Ex: Recuperação de carrinho abandonado")}
               maxLength={80}
               required
               autoFocus

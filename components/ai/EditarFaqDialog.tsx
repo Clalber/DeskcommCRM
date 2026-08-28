@@ -1,4 +1,6 @@
 "use client";
+
+import { useT } from "@/hooks/i18n/useT";
 /**
  * EDITAR O CONTEÚDO DE UM MATERIAL.
  *
@@ -48,6 +50,7 @@ function paraMarkdown(itens: ItemDaFaq[]): string {
 }
 
 export function EditarFaqDialog({ sourceId, nome, aberto, onFechar, onSalvo }: Props) {
+  const t = useT();
   const [texto, setTexto] = useState("");
   const [carregando, setCarregando] = useState(false);
   const [salvando, setSalvando] = useState(false);
@@ -100,12 +103,12 @@ export function EditarFaqDialog({ sourceId, nome, aberto, onFechar, onSalvo }: P
         <DialogHeader>
           <DialogTitle>Editar “{nome}”</DialogTitle>
           <DialogDescription>
-            O que você salvar aqui substitui o conteúdo atual, e o agente é preparado de novo.
+            {t("O que você salvar aqui substitui o conteúdo atual, e o agente é preparado de novo.")}
           </DialogDescription>
         </DialogHeader>
 
         <div className="flex-1 space-y-2 overflow-y-auto pr-1">
-          <Label htmlFor="faq-texto">Conteúdo</Label>
+          <Label htmlFor="faq-texto">{t("Conteúdo")}</Label>
           <Textarea
             id="faq-texto"
             data-testid="faq-editar-texto"
@@ -115,8 +118,7 @@ export function EditarFaqDialog({ sourceId, nome, aberto, onFechar, onSalvo }: P
             disabled={carregando || salvando}
           />
           <p className="text-xs text-text-muted">
-            Uma linha <code>## Pergunta:</code> e uma <code>## Resposta:</code> por item,
-            separados por uma linha em branco.
+            {t("Uma linha")} <code>{t("## Pergunta:")}</code> {t("e uma")} <code>{t("## Resposta:")}</code> {t("por item, separados por uma linha em branco.")}
           </p>
         </div>
 
@@ -129,7 +131,7 @@ export function EditarFaqDialog({ sourceId, nome, aberto, onFechar, onSalvo }: P
             disabled={carregando || salvando}
             data-testid="faq-editar-salvar"
           >
-            {salvando ? "Salvando…" : "Salvar conteúdo"}
+            {salvando ? t("Salvando…") : t("Salvar conteúdo")}
           </Button>
         </DialogFooter>
       </DialogContent>

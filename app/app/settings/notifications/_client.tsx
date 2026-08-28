@@ -1,5 +1,7 @@
 "use client";
 
+import { useT } from "@/hooks/i18n/useT";
+
 import { useState } from "react";
 
 import { Card } from "@/components/ui/card";
@@ -24,6 +26,7 @@ const LABELS: Record<NotifyCategory, string> = {
 };
 
 export function NotificationPrefsClient() {
+  const t = useT();
   const { permission, request } = useNotificationPermission();
   const [prefs, setPrefs] = useState<NotifyPrefs>(() => lerPrefs());
   const denied = permission === "denied";
@@ -57,8 +60,7 @@ export function NotificationPrefsClient() {
                 {LABELS[cat]}
                 {cat === "message" && denied ? (
                   <p className="mt-1 text-xs text-muted-foreground">
-                    O navegador bloqueou as notificações. Libere-as nas configurações
-                    do site e recarregue.
+                    {t("O navegador bloqueou as notificações. Libere-as nas configurações do site e recarregue.")}
                   </p>
                 ) : null}
               </td>
