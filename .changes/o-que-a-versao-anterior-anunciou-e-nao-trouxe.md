@@ -21,8 +21,10 @@ chegam agora:
   No arquivo de exemplo da VPS, um comentário escrito na mesma linha do valor
   era lido como parte do valor.
 - **Uma rede a mais contra vazamento entre empresas.**
-  Uma tabela nova criada sem a proteção que separa os dados de cada empresa
-  passa a ser recusada antes de chegar até você.
+  Esta é sobre as próximas versões, não sobre a sua instalação de hoje: uma
+  tabela nova que seja criada sem a proteção que separa os dados de cada
+  empresa passa a ser recusada na nossa conferência, antes de virar uma
+  atualização que chega até você.
 
 Nada a fazer além de atualizar normalmente. Quem instalar do zero a partir
 desta versão nunca viu o problema.
