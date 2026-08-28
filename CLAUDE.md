@@ -308,9 +308,20 @@ Duas armadilhas irmãs, as duas pagas no mesmo dia:
   não aparece em posição nenhuma — e o vazio dessa sonda lê exatamente como
   "nenhuma falha".
 
-  Por isso **compare as duas saídas antes de concluir**: se o rodapé diz
-  `N failed` e o `uniq -c` não soma N, o `grep` não está enxergando — troque por
-  `--reporter=verbose` e rode de novo, em vez de acreditar no silêncio.
+  Por isso **compare as duas saídas antes de concluir** — e compare a linha
+  certa: `Test Files N failed` conta ARQUIVOS, `Tests N failed` conta CASOS, e o
+  `uniq -c` do `grep` soma CASOS. O controle é contra a segunda linha:
+
+  ```bash
+  r=$(grep -aE "^ *Tests " /tmp/vt.log | tail -1 | grep -oE "[0-9]+ failed" | head -1)
+  g=$(grep -acE "^ *FAIL " /tmp/vt.log)
+  echo "rodapé: ${r:-0 failed} | grep contou: $g"   # têm de bater
+  ```
+
+  Se não baterem, a sonda está cega — troque por `--reporter=verbose` e rode de
+  novo, em vez de acreditar no silêncio. (Comparar contra `Test Files` dá
+  divergência falsa: `2 failed` de arquivos contra `7` de casos parece defeito
+  da sonda e é só régua trocada.)
 
 **Vermelho local que NÃO é seu:** `lib/ai/dispatcher/rate-limit.test.ts` falha em 5 casos, com
 15s de timeout cada, quando o `.env.local` tem `UPSTASH_REDIS_REST_URL`/`TOKEN` e o Redis para o
