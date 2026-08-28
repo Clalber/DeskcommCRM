@@ -119,17 +119,39 @@ export default async function AgendaPage() {
    * ⚠️ E O `title` NÃO É LIDO, de propósito. A tabela tem a coluna e nós a
    * gravamos; esta consulta a deixa de fora.
    *
-   * A razão é medida, não estética. A agenda conectada é PESSOAL de quem atende,
-   * e esta tela é multi-tenant, vista por gestor: "consulta médica", "terapia",
-   * "entrevista" apareceriam para o chefe. O cal.com — a referência madura do
-   * mercado — decidiu o mesmo, e a prova de que é DECISÃO e não limitação é que
-   * eles gravam `summary`/`description`/`location` no cache e o `select` da
-   * leitura devolve só `start`/`end`/`timeZone`
-   * (`packages/features/calendar-subscription/lib/cache/CalendarCacheEventRepository.ts`).
-   * As telas deles escrevem "Busy" na mão.
+   * A razão é medida, não estética, e está escrita inteira aqui de propósito:
+   * sem o argumento completo, a próxima pessoa lê a ausência do título como
+   * esquecimento e o acrescenta achando que está melhorando a tela.
    *
-   * Mostrar o título é uma linha; retirá-lo depois de vazado não é. Se o dono
-   * quiser o nome do evento, é decisão dele — e nesta ordem.
+   * ─── O que o cal.com faz, medido no código deles (QUATRO provas) ───────────
+   *  1. o tipo de retorno da disponibilidade (`EventBusyDate`) não tem campo de
+   *     título — só `start`, `end`, `source`, `timeZone`;
+   *  2. o caminho antigo usa `freebusy.query`, que por definição não devolve
+   *     título nenhum;
+   *  3. o cache `CalendarCacheEvent` GRAVA `summary`/`description`/`location`, e
+   *     o `select` da leitura devolve só `start`/`end`/`timeZone`
+   *     (`packages/features/calendar-subscription/lib/cache/CalendarCacheEventRepository.ts`);
+   *  4. as duas telas deles escrevem "Busy" na mão, e a distinção visual é
+   *     contorno-sem-preenchimento, ou cor por origem.
+   *
+   * A terceira é a que decide: guardar e não ler não é limitação, é DECISÃO —
+   * alguém escreveu aquele `select` de propósito.
+   *
+   * ─── E o nosso caso é PIOR que o deles ─────────────────────────────────────
+   * No cal.com a tela é do próprio dono da agenda. Aqui a agenda conectada é
+   * PESSOAL de quem atende e a tela é multi-tenant, vista por gestor:
+   * "consulta médica", "terapia", "entrevista de emprego" apareceriam para o
+   * chefe. Não copiamos a decisão deles — medimos que a nossa exposição é maior.
+   *
+   * ─── A assimetria que decide sozinha ───────────────────────────────────────
+   * Mostrar o título é reversível no código; o vazamento não é. Quando há
+   * dúvida, o default certo é o mais restrito.
+   *
+   * Se o dono quiser o nome do evento, a decisão é dele — e o caminho é POR
+   * ORGANIZAÇÃO e com aviso de quem vê, nunca por default.
+   *
+   * ⚠️ Isto tem GUARDA, não só comentário:
+   * `tests/unit/ocupacao-do-google-nao-expoe-titulo.test.ts`.
    *
    * O dono vem por `connection_id → calendar_connections.user_id`, porque esta
    * tabela não tem `user_id` — é a mesma junção que `ocupados.ts` já faz.
