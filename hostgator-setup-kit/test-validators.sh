@@ -15,6 +15,7 @@ cd "$(dirname "${BASH_SOURCE[0]}")"
 # compartilham essas três, e a suíte exercita as três de um lugar só.
 . ./_common.sh
 
+
 # Lê UMA chave do .env pelo `load_env` do kit, e não por grep de formato.
 #
 # Os três laços de packaging abaixo casavam a LINHA (`^CHAVE='?valor'?$`), o que
@@ -1494,7 +1495,7 @@ STUB
   tag_app="${img_app##*:}"
   for par in "WORKER_IMAGE:deskcomm-worker" "SCHEDULER_IMAGE:deskcomm-scheduler"; do
     chave="${par%%:*}"; repo="${par##*:}"
-    if [ "$(valor_no_env "$VPS_PROJ/.env" "$chave")" != "ghcr.io/melgarafael/${repo}:${tag_app}" ]; then
+    if [ "$(valor_no_env "$VPS_PROJ/.env" "$chave")" != "${IMG_NS}/${repo}:${tag_app}" ]; then
       printf '  ✗ %s não acompanha a versão do app (%s): %s\n' "$chave" "$tag_app" \
         "$(grep -E "^${chave}=" "$VPS_PROJ/.env" || echo '(ausente)')"
       printf '     app numa versão e worker em outra é a matriz que ninguém testou.\n'; exit 1
@@ -1653,7 +1654,7 @@ STUB
 
   for par in "APP_IMAGE:deskcommcrm" "WORKER_IMAGE:deskcomm-worker" "SCHEDULER_IMAGE:deskcomm-scheduler"; do
     chave="${par%%:*}"; repo="${par##*:}"
-    if [ "$(valor_no_env "$VPS_PROJ/.env" "$chave")" != "ghcr.io/melgarafael/${repo}:1.10.0" ]; then
+    if [ "$(valor_no_env "$VPS_PROJ/.env" "$chave")" != "${IMG_NS}/${repo}:1.10.0" ]; then
       printf '  ✗ %s não foi pinado na versão resolvida (1.10.0): %s\n' "$chave" \
         "$(grep -E "^${chave}=" "$VPS_PROJ/.env" || echo '(ausente)')"
       printf '     instalação de cliente NUNCA nasce em tag móvel — docs/doctrine/packaging.md, invariante 3.\n'
