@@ -278,6 +278,36 @@ pnpm test:db     # Postgres efêmero + baseline install/update + 364 invariantes
 pnpm test:e2e    # Playwright (requer dev server)
 ```
 
+**⚠️ `test:unit` NÃO é `tests/unit/`.** O script é `vitest run` **sem caminho**, e ele alcança
+o repositório inteiro — os testes co-localizados em `lib/`, `app/`, `components/` e `hooks/`
+inclusive. Medido em 2026-08-28: `vitest run` alcança **566 arquivos**; `tests/unit/` tem **388**.
+Os 178 de fora são 133 em `lib/`, 37 em `app/`, 3 em `components/`, 1 em `hooks/` e 4 em `tests/`.
+
+Quem lê o nome do script e roda `vitest run tests/unit` obtém um **verde menor e mais fácil** sem
+perceber que obteve — e foi o que aconteceu num PR: a suíte foi reportada como verde, e o que
+estava verde era o recorte. O comando que vale é `pnpm test:unit`, sem caminho.
+
+Duas armadilhas irmãs, as duas pagas no mesmo dia:
+
+- **Gate escolhido não é suíte.** `typecheck`, `lint`, `lint:channels` e os arquivos de cerca
+  podem estar todos verdes enquanto a suíte tem 17 falhas — nenhum deles toca o arquivo que
+  quebrou. Antes de abrir PR, rode a suíte, não os gates que você lembra.
+- **Não corte a saída.** `| tail -8` guarda o rodapé e joga fora os NOMES dos arquivos que
+  falharam, que é o único dado que permite reconciliar depois. Redirecione e filtre:
+
+  ```bash
+  pnpm test:unit > /tmp/vt.log 2>&1; echo "exit=$?"
+  grep -aE "^ *FAIL " /tmp/vt.log | sed 's/ > .*//' | sort | uniq -c   # arquivos + contagem
+  grep -aE "Test Files|Tests " /tmp/vt.log | tail -2                   # rodapé
+  ```
+
+**Vermelho local que NÃO é seu:** `lib/ai/dispatcher/rate-limit.test.ts` falha em 5 casos, com
+15s de timeout cada, quando o `.env.local` tem `UPSTASH_REDIS_REST_URL`/`TOKEN` e o Redis para o
+qual eles apontam **não está de pé** (neste repo é o `serverless-redis-http` local, não a nuvem).
+O `tests/setup/vitest.setup.ts` carrega o `.env.local` para dentro do `process.env`, e o módulo
+só usa o contador em memória quando essas variáveis estão **ausentes**. Provado nos dois sentidos.
+No CI não há `UPSTASH` nenhum, então lá o caminho é o contador em memória e o arquivo passa.
+
 **Os invariantes não estão no `test:unit`.** `vitest.config.ts` exclui `tests/invariants/**` de propósito: essa suíte precisa de um Postgres real e roda via `vitest.db.config.ts`, orquestrada por `scripts/test-db.sh`. Rodar só `pnpm test:unit` e concluir "está tudo verde" é um falso verde — o isolamento RLS não foi exercitado.
 
 Checks **obrigatórios** na branch protection da `main` (verificado na configuração, não só no papel):
