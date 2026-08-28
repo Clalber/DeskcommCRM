@@ -2126,7 +2126,13 @@ export const DICIONARIO: Traducoes = {
   "organizações ativas": { es: "organizaciones activas" },
   "Pendentes >10min": { es: "Pendientes >10min" },
   "conversas sem resposta": { es: "conversaciones sin respuesta" },
-  "Alertas WAHA": { es: "Alertas WAHA" },
+  // O rótulo do cartão de alertas do painel de admin NÃO entra aqui: nomeia o
+  // provedor, e `pnpm lint:channels` reprova o arquivo inteiro por isso
+  // (invariante 1 da doutrina `restricao-de-canal`). A entrada existiu e era
+  // NULA — chave e tradução idênticas, porque o nome próprio não se traduz —,
+  // então removê-la não muda um pixel: `traduzir()` devolve a chave. Custava um
+  // gate vermelho para não dizer nada. Ver o aviso equivalente na seção das
+  // mensagens de `fail()`, no fim deste arquivo.
   "sessões com problema": { es: "sesiones con problema" },
   "LGPD em Risco": { es: "LGPD en Riesgo" },
   "requisições próximas do prazo": { es: "solicitudes próximas al plazo" },
@@ -5812,9 +5818,21 @@ export const DICIONARIO: Traducoes = {
   "Só o autor ou manager+ pode apagar esta nota.": { es: "Solo el autor o manager+ puede eliminar esta nota." },
   "Só o dono do servidor pode atualizar o sistema.": { es: "Solo el dueño del servidor puede actualizar el sistema." },
   "Stage não encontrado.": { es: "Stage no encontrado." },
-  "Suba o Docker (docker compose up -d waha) e tente novamente.": {
-    es: "Levante Docker (docker compose up -d waha) e intente de nuevo.",
-  },
+  // ⚠️ FICA SEM TRADUÇÃO DE PROPÓSITO: a recusa 503 de
+  // `app/api/v1/onboarding/whatsapp/session/route.ts` (contêiner do provedor de
+  // WhatsApp fora do ar). A chave teria de repetir o texto da rota LETRA POR
+  // LETRA, e esse texto NOMEIA o provedor — o que faz `pnpm lint:channels`
+  // reprovar este arquivo pelo invariante 1 da doutrina `restricao-de-canal`.
+  //
+  // Medido duas vezes: a entrada derrubou o gate, e o comentário que eu escrevi
+  // para explicar a ausência derrubou de novo, por citar o nome ao explicá-lo —
+  // exatamente a armadilha que a própria catraca documenta. Daí esta redação
+  // perifrástica, que não é estilo: é a única que passa.
+  //
+  // A rota está na lista de exceções da catraca; `lib/i18n/` não está, e ganhar
+  // UMA frase traduzida não paga furar um invariante de arquitetura. Sem
+  // entrada, a frase aparece em português — a degradação que este arquivo
+  // inteiro já assume.
   "Sugestão não encontrada.": { es: "Sugerencia no encontrada." },
   "Telefone inválido.": { es: "Teléfono inválido." },
   "Template não encontrado.": { es: "Plantilla no encontrada." },
@@ -5829,6 +5847,65 @@ export const DICIONARIO: Traducoes = {
   "Você não está atribuído a essa conversa.": { es: "No está asignado a esta conversación." },
   "Web Push ainda não está no banco desta instalação.": { es: "Web Push aún no está en la base de datos de esta instalación." },
   "Web Push não configurado nesta instalação.": { es: "Web Push no configurado en esta instalación." },
+
+  // ─── Merge da main 1.8.0 — textos que a reescrita trouxe ───
+  //
+  // Não são telas novas: são as MESMAS telas que este ramo já traduzia, cujo
+  // texto a main reescreveu (acervo de conhecimento da 0181, o rótulo de
+  // jornada que deixou de mentir "24/7", e a página de Notificações que passou
+  // a dizer o que falta no `.env`). Traduzir de novo aqui é o preço de um ramo
+  // longo — e o defeito conhecido é o oposto: deixar passar, e a tela volta ao
+  // português sem que nada fique vermelho.
+  //
+  // Ausentes de propósito, porque a palavra é a MESMA nos dois idiomas e
+  // `traduzir()` devolve a chave: "nunca", "Preparado", "Consultado por",
+  // "Preparando…". Entrada que repete a chave é ruído que envelhece.
+  "Vou preparar este material de novo — leva alguns instantes.": {
+    es: "Voy a preparar este material de nuevo — toma unos instantes.",
+  },
+  "Material arquivado. O agente para de consultá-lo.": {
+    es: "Material archivado. El agente deja de consultarlo.",
+  },
+  "Só gerentes e administradores editam os horários de atendimento da equipe. Para publicar os seus, peça a um gerente que abra esta aba e use o botão “Editar horário” ao lado do seu nome.":
+    {
+      es: "Solo gerentes y administradores editan los horarios de atención del equipo. Para publicar los suyos, pida a un gerente que abra esta pestaña y use el botón “Editar horario” junto a su nombre.",
+    },
+  "Email ainda não está disponível. In-app (toast) e Push (Chrome) já funcionam para as cinco categorias, inclusive com a aba fechada.":
+    {
+      es: "El email todavía no está disponible. In-app (toast) y Push (Chrome) ya funcionan para las cinco categorías, incluso con la pestaña cerrada.",
+    },
+  "Nesta instalação, os avisos só aparecem com o site aberto.": {
+    es: "En esta instalación, los avisos solo aparecen con el sitio abierto.",
+  },
+  "Ligar o Push abaixo já faz o aviso aparecer na bandeja do sistema enquanto você está com o site aberto numa aba. Para receber também com a aba fechada, quem administra o servidor precisa gerar um par de chaves uma única vez e reiniciar:":
+    {
+      es: "Activar el Push abajo ya hace que el aviso aparezca en la bandeja del sistema mientras tiene el sitio abierto en una pestaña. Para recibirlo también con la pestaña cerrada, quien administra el servidor debe generar un par de claves una sola vez y reiniciar:",
+    },
+  "O resultado vai no arquivo": { es: "El resultado va en el archivo" },
+  "Email ainda não está disponível.": { es: "El email todavía no está disponible." },
+  "Trechos que o agente encontra": { es: "Fragmentos que el agente encuentra" },
+  "nenhum assistente ainda": { es: "ningún asistente todavía" },
+  "Por que não entrou": { es: "Por qué no entró" },
+  "Preparar de novo": { es: "Preparar de nuevo" },
+  "Ver o que ele aprendeu": { es: "Ver lo que aprendió" },
+  "O que o agente sabe": { es: "Lo que el agente sabe" },
+  "O material do seu negócio que os assistentes consultam antes de responder. Cada assistente escolhe, na tela dele, o que pode ler daqui.":
+    {
+      es: "El material de su negocio que los asistentes consultan antes de responder. Cada asistente elige, en su propia pantalla, qué puede leer de aquí.",
+    },
+  "Não publicado": { es: "No publicado" },
+  "Sem janelas, o roteamento aceita conversa a qualquer hora — mas a Agenda não oferece NENHUM horário para marcar. Adicione janelas para publicar seus horários de atendimento.":
+    {
+      es: "Sin ventanas, el enrutamiento acepta conversaciones a cualquier hora — pero la Agenda no ofrece NINGÚN horario para agendar. Agregue ventanas para publicar sus horarios de atención.",
+    },
+  "Nenhuma janela publicada — ninguém consegue marcar com esta pessoa.": {
+    es: "Ninguna ventana publicada — nadie puede agendar con esta persona.",
+  },
+  "Atendentes e horários de atendimento": { es: "Atendientes y horarios de atención" },
+  "Status, carga e capacidade de cada atendente — e a jornada semanal que decide os horários oferecidos na Agenda. Sem ela ninguém consegue marcar.":
+    {
+      es: "Estado, carga y capacidad de cada atendiente — y la jornada semanal que decide los horarios ofrecidos en la Agenda. Sin ella nadie puede agendar.",
+    },
 };
 
 /**

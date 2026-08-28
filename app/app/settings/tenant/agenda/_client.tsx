@@ -6,6 +6,7 @@ import { toast } from "sonner";
 
 import { showApiError } from "@/components/feedback/ApiErrorToast";
 import { Button } from "@/components/ui/button";
+import { LOCAIS_DE_ATENDIMENTO } from "@/lib/agenda/locais";
 import { apiClient } from "@/lib/api/client";
 
 export interface TipoRow {
@@ -43,15 +44,12 @@ const CATEGORIAS: Array<{ valor: string; rotulo: string }> = [
   { valor: "outro", rotulo: "Outro" },
 ];
 
-const LOCAIS: Array<{ valor: string; rotulo: string }> = [
-  { valor: "in_person", rotulo: "Presencial" },
-  { valor: "phone", rotulo: "Telefone" },
-  { valor: "whatsapp", rotulo: "WhatsApp" },
-  { valor: "video_link", rotulo: "Link de vídeo" },
-  { valor: "google_meet", rotulo: "Google Meet" },
-];
+// Fonte única: a tela que MARCA precisa do mesmo vocabulário, e copiá-lo para lá
+// faria uma das duas mostrar o código cru no dia em que um valor entrasse no
+// CHECK do banco. Ver o cabeçalho de `lib/agenda/locais.ts`.
+const LOCAIS = LOCAIS_DE_ATENDIMENTO;
 
-const rotuloDe = (lista: typeof CATEGORIAS, valor: string) =>
+const rotuloDe = (lista: ReadonlyArray<{ valor: string; rotulo: string }>, valor: string) =>
   lista.find((c) => c.valor === valor)?.rotulo ?? valor;
 
 interface Rascunho {
@@ -74,14 +72,37 @@ export function TiposDeAgendamentoClient({
   tiposIniciais,
   pessoas,
   podeEditar,
+  usuarioAtualId,
 }: {
   tiposIniciais: TipoRow[];
-  pessoas: Array<{ id: string; papel: string }>;
+  pessoas: Array<{ id: string; papel: string; nome: string }>;
   podeEditar: boolean;
+  usuarioAtualId: string;
 }) {
   const router = useRouter();
   const [criando, setCriando] = React.useState(false);
-  const [rascunho, setRascunho] = React.useState<Rascunho>(VAZIO);
+  /**
+   * O RASCUNHO NASCE COM QUEM ESTÁ CRIANDO.
+   *
+   * O tipo nascia sem dono por padrão DA PRÓPRIA TELA: `VAZIO` trazia
+   * `default_owner_user_id: ""`, o POST omitia o campo, a coluna não tem default
+   * no banco — e a lista passava a acusar "sem responsável — não aparece para
+   * marcar", um estado que a tela mesma fabricou. Foi assim que "Call
+   * Estratégica" nasceu inútil na instalação do dono do produto.
+   *
+   * A migration 0195 não alcança este caso por construção: o trigger dela é
+   * `after insert on user_organizations`, guardado ao PRIMEIRO membro ativo. Ele
+   * dispara quando entra MEMBRO, nunca quando entra TIPO — e a org do dono já
+   * tinha membro havia tempo.
+   *
+   * O default vive AQUI e não no POST de propósito: forçar o criador na rota
+   * transformaria "Definir depois" num controle decorativo, e deixar um tipo sem
+   * dono continua sendo escolha legítima de quem opera.
+   */
+  const [rascunho, setRascunho] = React.useState<Rascunho>(() => ({
+    ...VAZIO,
+    default_owner_user_id: usuarioAtualId,
+  }));
   const [salvando, setSalvando] = React.useState(false);
   const [editandoId, setEditandoId] = React.useState<string | null>(null);
 
@@ -203,7 +224,7 @@ export function TiposDeAgendamentoClient({
                   <option value="">Definir depois</option>
                   {pessoas.map((p) => (
                     <option key={p.id} value={p.id}>
-                      {p.id.slice(0, 8)} · {p.papel}
+                      {p.nome}
                     </option>
                   ))}
                 </select>
@@ -247,9 +268,30 @@ export function TiposDeAgendamentoClient({
               {!t.default_owner_user_id ? (
                 // O aviso existe porque o sintoma é MUDO: sem dono, a tela de
                 // marcar simplesmente não mostra horário, sem dizer por quê.
-                <span data-testid={`sem-dono-${t.id}`} className="text-xs text-warning">
-                  sem responsável — não aparece para marcar
-                </span>
+                //
+                // E ele É A PORTA quando há como resolver. Antes era um `<span>`
+                // inerte: acusava o estado e a única saída era descobrir sozinho
+                // que o botão "Editar" abre um seletor de responsável. Acusar sem
+                // oferecer caminho é o mesmo defeito do aviso da Agenda que não
+                // levava aos horários — dito duas vezes no mesmo produto.
+                //
+                // Mesmo `data-testid` nos dois ramos: ele é contrato de quem lê a
+                // tela, e trocá-lo faria a cerca existente parar de encontrar o
+                // aviso sem nada acusar.
+                podeEditar ? (
+                  <button
+                    type="button"
+                    data-testid={`sem-dono-${t.id}`}
+                    onClick={() => setEditandoId(t.id)}
+                    className="text-xs text-warning underline underline-offset-2 hover:text-warning/80"
+                  >
+                    sem responsável — definir quem atende
+                  </button>
+                ) : (
+                  <span data-testid={`sem-dono-${t.id}`} className="text-xs text-warning">
+                    sem responsável — não aparece para marcar
+                  </span>
+                )
               ) : null}
               {!t.is_active ? <span className="text-xs text-text-subtle">desativado</span> : null}
               {podeEditar ? (
@@ -311,9 +353,21 @@ export function TiposDeAgendamentoClient({
                         name: String(dados.get("name") ?? "").trim(),
                         category: String(dados.get("category") ?? t.category),
                         duration_minutes: Number(dados.get("duration_minutes") ?? t.duration_minutes),
-                        ...(dados.get("default_owner_user_id")
-                          ? { default_owner_user_id: String(dados.get("default_owner_user_id")) }
-                          : {}),
+                        // `|| null`, e NÃO omitir quando vazio.
+                        //
+                        // A tela oferece `<option value="">Sem responsável</option>`
+                        // logo abaixo, e omitir o campo fazia essa escolha não
+                        // chegar ao servidor: depois de definido, o responsável não
+                        // podia mais ser removido. Controle que a tela oferece e o
+                        // código ignora é o pior dos dois — pior que não existir,
+                        // porque quem clica conclui que salvou.
+                        //
+                        // `alterarSchema` aceita `nullish()`, então o nulo é
+                        // contrato, não contorno. O efeito de limpar é a agenda
+                        // daquele tipo parar de oferecer horário e o aviso amarelo
+                        // voltar — que é o laço de retorno correto.
+                        default_owner_user_id:
+                          String(dados.get("default_owner_user_id") ?? "") || null,
                       }),
                     "Tipo alterado.",
                   );
@@ -352,7 +406,7 @@ export function TiposDeAgendamentoClient({
                     <option value="">Sem responsável</option>
                     {pessoas.map((p) => (
                       <option key={p.id} value={p.id}>
-                        {p.id.slice(0, 8)} · {p.papel}
+                        {p.nome}
                       </option>
                     ))}
                   </select>

@@ -143,6 +143,101 @@ test("crio um tipo COM responsável, e ele passa a ser marcável na Agenda", asy
   ).toBeVisible({ timeout: 15_000 });
 });
 
+test("o tipo NASCE com responsável — e quem escolhe 'Definir depois' recebe a saída", async ({
+  page,
+}) => {
+  /**
+   * AS DUAS METADES DO D6, num caso só, porque uma sem a outra não resolve.
+   *
+   * O que o usuário via: criou "Call Estratégica" e a lista respondeu
+   * "sem responsável — não aparece para marcar". Ele não tinha deixado de
+   * preencher nada — o rascunho da TELA nascia com `default_owner_user_id: ""`,
+   * o POST omitia o campo, e a tela passava a acusar o estado que ela mesma
+   * produziu. Sem responsável, `lib/agenda/consulta.ts` responde
+   * `sem_responsavel` e a tela de marcar não oferece horário nenhum.
+   *
+   * A migration 0195 não alcança este caso por construção: o trigger dela roda
+   * `after insert on user_organizations`, no PRIMEIRO membro ativo. Dispara
+   * quando entra MEMBRO, nunca quando entra TIPO.
+   *
+   * O aviso continua existindo — deixar um tipo sem dono é escolha legítima de
+   * quem opera — mas agora ele é a PORTA para resolver, em vez de um texto
+   * inerte. Acusar sem oferecer caminho é o mesmo defeito do aviso da Agenda que
+   * não levava aos horários, repetido em outra tela do mesmo produto.
+   */
+  const creds = lerCreds();
+  await entrar(page, creds);
+  await page.goto("/app/settings/tenant/agenda");
+  await expect(page.getByTestId("tipos-de-agendamento-config")).toBeVisible({ timeout: 20_000 });
+
+  // ── METADE A: sem tocar no seletor, o tipo nasce COM dono ──────────────────
+  const comDono = `Nasce Com Dono E2E ${Date.now().toString().slice(-6)}`;
+  await page.getByTestId("abrir-novo-tipo").click();
+  await page.getByTestId("novo-tipo-nome").fill(comDono);
+  await page.getByTestId("salvar-novo-tipo").click();
+
+  const linhaComDono = page
+    .getByTestId("lista-de-tipos")
+    .getByRole("listitem")
+    .filter({ hasText: comDono });
+  await expect(linhaComDono).toBeVisible({ timeout: 20_000 });
+  await expect(
+    linhaComDono.getByText("sem responsável"),
+    "criei um tipo sem mexer no seletor e ele nasceu órfão — é exatamente o defeito D6",
+  ).toHaveCount(0);
+
+  // ── O seletor NOMEIA GENTE ────────────────────────────────────────────────
+  // Ele oferecia `0c4f9a1e · admin`: escolher responsável entre fragmentos de
+  // UUID não é escolha, é adivinhação.
+  await linhaComDono.getByRole("button", { name: "Editar" }).click();
+  const seletor = page.getByTestId(/^editar-dono-/).first();
+  await expect(seletor).toBeVisible({ timeout: 15_000 });
+  const rotulos = await seletor.locator("option").allInnerTexts();
+  const dePessoa = rotulos.filter((r) => r !== "Sem responsável");
+  expect(dePessoa.length, "o seletor não oferece pessoa nenhuma").toBeGreaterThan(0);
+  expect(
+    dePessoa.every((r) => /^[0-9a-f]{8} · \w+$/.test(r.trim())),
+    `o seletor ainda rotula por fragmento de UUID: ${JSON.stringify(dePessoa)}`,
+  ).toBe(false);
+
+  // ── METADE B: quem escolhe "Definir depois" é acusado E recebe a saída ────
+  const semDono = `Definir Depois E2E ${Date.now().toString().slice(-6)}`;
+  await page.goto("/app/settings/tenant/agenda");
+  await page.getByTestId("abrir-novo-tipo").click();
+  await page.getByTestId("novo-tipo-nome").fill(semDono);
+  // Índice 0 é "Definir depois", e a ordem importa: o outro caso desta spec faz
+  // `selectOption({ index: 1 })` contando que a ausência seja a primeira opção.
+  await page.getByTestId("novo-tipo-dono").selectOption({ index: 0 });
+  await page.getByTestId("salvar-novo-tipo").click();
+
+  const linhaSemDono = page
+    .getByTestId("lista-de-tipos")
+    .getByRole("listitem")
+    .filter({ hasText: semDono });
+  await expect(linhaSemDono).toBeVisible({ timeout: 20_000 });
+
+  const aviso = linhaSemDono.getByText("sem responsável");
+  await expect(aviso, "escolhi 'Definir depois' e a tela não avisou").toBeVisible();
+
+  // O AVISO ABRE O QUE RESOLVE. Antes era um `<span>`: acusava e a única saída
+  // era descobrir sozinho que o botão "Editar" tem um seletor de responsável.
+  await aviso.click();
+  const seletorDoOrfao = linhaSemDono.getByTestId(/^editar-dono-/).first();
+  await expect(
+    seletorDoOrfao,
+    "cliquei no aviso e ele não abriu nada — continua acusando sem oferecer caminho",
+  ).toBeVisible({ timeout: 15_000 });
+
+  await seletorDoOrfao.selectOption({ index: 1 });
+  await linhaSemDono.getByTestId(/^salvar-/).first().click();
+  await expect(
+    linhaSemDono.getByText("sem responsável"),
+    "defini o responsável pelo caminho que a tela ofereceu e o aviso continuou lá",
+  ).toHaveCount(0, { timeout: 20_000 });
+
+  await page.screenshot({ path: "evidence/calendario/d6-tipo-com-responsavel.png", fullPage: true });
+});
+
 test("desativar tira o tipo da tela de marcar, sem apagar a história", async ({ page }) => {
   const creds = lerCreds();
   await entrar(page, creds);

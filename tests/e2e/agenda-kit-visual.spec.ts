@@ -582,13 +582,57 @@ test.describe("kit visual da Agenda", () => {
     const aviso = painel.getByTestId("sem-jornada-publicada");
     await expect(aviso).toBeVisible({ timeout: ESPERA });
     await expect(aviso).toContainText("ainda não publicou");
-    // Diz o PRÓXIMO PASSO, não só a ausência.
-    await expect(aviso).toContainText(/configure|disponibilidade/i);
+    // Diz o PRÓXIMO PASSO, não só a ausência — e o próximo passo é CLICÁVEL.
+    //
+    // Esta asserção era `toContainText(/configure|disponibilidade/i)`, e o texto
+    // passava por ela dizendo "Configure a sua disponibilidade" sem levar a lugar
+    // nenhum. O dono do produto procurou onde configurar e não achou: a tela
+    // existe (aba "Atendimento" de Equipe), o caminho é que não existia.
+    // Instrução sem caminho é acusação, e uma asserção sobre PALAVRA não
+    // distingue as duas — só a asserção sobre o DESTINO distingue.
+    const porta = aviso.getByTestId("ir-configurar-horarios");
+    await expect(porta).toBeVisible();
+    await expect(porta).toHaveAttribute("href", "/app/team?aba=atendimento");
 
     // E o painel do caso normal NÃO mostra este aviso — senão ele apareceria
     // sempre, e aviso que aparece sempre não informa nada.
     const normal = page.getByTestId("secao-marcacao").getByTestId("painel-de-marcacao");
     await expect(normal.getByTestId("sem-jornada-publicada")).toHaveCount(0);
+  });
+
+  test("o dia apagado diz POR QUÊ, e não só que está apagado", async () => {
+    /**
+     * O que o usuário via: o calendário do mês inteiro, todos os dias sem
+     * clique, e nada explicando. O aviso existia, mas dependia de OUTRO dado —
+     * o dia é apagado pelos SLOTS daquela data, o aviso pelas JANELAS lidas do
+     * banco. Dois booleanos independentes, então havia estado em que a grade
+     * trava sem avisar nada: instalação fresca (a rota devolve 422, o hook joga
+     * num toast, o `?? true` do chamador diz "publicou"), ou dois cliques em
+     * "Próximo mês", que a consulta nunca cobriu.
+     *
+     * O rótulo do dia era `— sem horário` para TUDO: dia de outro mês, dia sem
+     * vaga e dia com a consulta quebrada liam igual. Quem usa leitor de tela
+     * recebia a constatação da ausência sem a causa.
+     */
+    const painel = page.getByTestId("secao-nao-configurado").getByTestId("painel-de-marcacao");
+    await painel.scrollIntoViewIfNeeded();
+
+    const apagados = painel.locator('[data-testid^="dia-"][data-disponivel="false"]');
+    await expect(apagados.first()).toBeVisible({ timeout: ESPERA });
+
+    // O motivo tem de estar no rótulo — e ser O MOTIVO, não a constatação.
+    const rotulos = await apagados.evaluateAll((nos) =>
+      nos.map((n) => n.getAttribute("aria-label") ?? ""),
+    );
+    expect(rotulos.length, "nenhum dia apagado nesta seção — o cenário mudou").toBeGreaterThan(0);
+    expect(
+      rotulos.some((r) => /não publicou seus horários/i.test(r)),
+      `nenhum dia diz por que está apagado: ${JSON.stringify(rotulos.slice(0, 3))}`,
+    ).toBe(true);
+    expect(
+      rotulos.some((r) => /— sem horário$/.test(r)),
+      "ainda há dia com o rótulo genérico antigo, que não distingue as causas",
+    ).toBe(false);
   });
 
   test("o que a API conta além dos slots chega à tela", async () => {

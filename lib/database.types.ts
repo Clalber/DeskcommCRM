@@ -1727,6 +1727,7 @@ export type Database = {
           google_sequence: number
           google_sync_error: string | null
           google_synced_at: string | null
+          needs_google_push: boolean | null
           id: string
           location_details: string | null
           location_kind: string
@@ -1762,6 +1763,7 @@ export type Database = {
           google_sequence?: number
           google_sync_error?: string | null
           google_synced_at?: string | null
+          needs_google_push?: boolean | null
           id?: string
           location_details?: string | null
           location_kind?: string
@@ -1797,6 +1799,7 @@ export type Database = {
           google_sequence?: number
           google_sync_error?: string | null
           google_synced_at?: string | null
+          needs_google_push?: boolean | null
           id?: string
           location_details?: string | null
           location_kind?: string
@@ -5627,6 +5630,30 @@ export type Database = {
           revoked_by?: string | null
           scope?: string
           user_id?: string
+        }
+        Relationships: []
+      }
+      platform_google_oauth: {
+        Row: {
+          client_id: string | null
+          client_secret_encrypted: string | null
+          id: number
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          client_id?: string | null
+          client_secret_encrypted?: string | null
+          id?: number
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          client_id?: string | null
+          client_secret_encrypted?: string | null
+          id?: number
+          updated_at?: string
+          updated_by?: string | null
         }
         Relationships: []
       }

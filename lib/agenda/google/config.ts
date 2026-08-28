@@ -30,6 +30,9 @@
  */
 
 import { env } from "@/lib/env";
+import { logger } from "@/lib/logger";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { decryptWebhookSecret } from "@/lib/webhooks/secrets";
 
 /** O caminho da rota de callback. Tem de estar registrado no console do Google. */
 export const CAMINHO_DO_CALLBACK = "/api/v1/agenda/google/callback";
@@ -61,11 +64,18 @@ export function enderecoDeRetorno(urlDaAplicacao: string = env.NEXT_PUBLIC_APP_U
 }
 
 /**
- * A configuração, ou `null` quando a instalação não tem app OAuth.
+ * O que o AMBIENTE traz — puro, síncrono, sem banco.
  *
- * Nunca lança — ver o cabeçalho.
+ * Continua existindo separado de propósito. Ele é o PISO DE ROLLBACK: o
+ * `agent.sh` do kit, em falha de update, reverte só a IMAGEM — não o schema.
+ * Ou seja, o rollback põe código antigo sobre banco novo por construção, e
+ * código antigo não conhece `platform_google_oauth`. Com o `.env` intacto, a
+ * conexão do Google degrada em vez de sumir no pior momento possível. É o mesmo
+ * argumento, palavra por palavra, que sustenta o `.env` da marca própria.
+ *
+ * E ser síncrono e sem banco mantém testável o que é regra pura.
  */
-export function configuracaoDoGoogle(): AppDoGoogleConfigurado | null {
+export function configuracaoDoAmbiente(): AppDoGoogleConfigurado | null {
   const clientId = texto(env.GOOGLE_CALENDAR_CLIENT_ID);
   const clientSecret = texto(env.GOOGLE_CALENDAR_CLIENT_SECRET);
   if (!clientId || !clientSecret) return null;
@@ -80,9 +90,102 @@ export function configuracaoDoGoogle(): AppDoGoogleConfigurado | null {
   return { clientId, clientSecret, redirectUri: enderecoDeRetorno() };
 }
 
+/**
+ * Memo de processo com TTL, cópia declarada de `lib/branding/instalacao.ts`.
+ *
+ * Mora no `globalThis` e não num `let` deste módulo — a diferença não é estilo:
+ * o Turbopack instancia o mesmo módulo DUAS vezes no mesmo processo (entrada de
+ * rota e entrada de página carregam runtimes diferentes), e um `let` daria dois
+ * memos que não se invalidam. Já medido neste repo.
+ *
+ * 30s é abaixo do que uma pessoa espera antes de concluir "não salvou", e acima
+ * do intervalo entre dois renders.
+ */
+const TTL_MS = 30_000;
+
+declare global {
+  // eslint-disable-next-line no-var
+  var __memoDoAppDoGoogle: { readonly valor: LinhaDoApp | null; readonly expiraEm: number } | null | undefined;
+}
+
+interface LinhaDoApp {
+  client_id: string | null;
+  client_secret_encrypted: string | null;
+}
+
+/** Chamada por quem ESCREVE a credencial — a server action do /admin. */
+export function invalidarCredencialDoGoogle(): void {
+  globalThis.__memoDoAppDoGoogle = null;
+}
+
+async function linhaDoBanco(): Promise<LinhaDoApp | null> {
+  const memo = globalThis.__memoDoAppDoGoogle;
+  if (memo && memo.expiraEm > Date.now()) return memo.valor;
+
+  let valor: LinhaDoApp | null = null;
+  try {
+    const { data, error } = await createAdminClient()
+      .from("platform_google_oauth")
+      .select("client_id, client_secret_encrypted")
+      .eq("id", 1)
+      .maybeSingle();
+    // Clone que ainda não aplicou a 0201 devolve 42P01 aqui. Isso NÃO é erro
+    // desta instalação — é o piso de rollback funcionando, e o `.env` assume.
+    if (error) {
+      logger.info("[agenda.google.config] sem credencial no banco; vale o .env", {
+        codigo: error.code,
+      });
+    } else {
+      valor = (data as LinhaDoApp | null) ?? null;
+    }
+  } catch (err) {
+    // NUNCA LANÇA: esta função é chamada no render da Agenda, e um throw aqui é
+    // 500 na tela inteira. Mesma disciplina do resolvedor de marca.
+    logger.warn("[agenda.google.config] leitura falhou; vale o .env", {
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+  globalThis.__memoDoAppDoGoogle = { valor, expiraEm: Date.now() + TTL_MS };
+  return valor;
+}
+
+/**
+ * A configuração em vigor, ou `null` quando a instalação não tem app OAuth.
+ *
+ * BANCO PRIMEIRO, `.env` COMO FALLBACK. A ordem é a que os adapters de canal
+ * já usam em `lib/channels/<provider>/credentials.ts`, e o argumento é o mesmo:
+ * no contrário, um env esquecido silenciaria a configuração feita pela tela e o
+ * operador não entenderia por que nada mudou.
+ *
+ * O provider não é nomeado aqui de propósito. `lint:channels` proíbe o nome
+ * fora de `lib/channels/`, e lê comentário como lê código — corretamente: a
+ * prosa que nomeia um provider é a que ensina o próximo a acoplar a ele.
+ *
+ * Nunca lança — ver o cabeçalho.
+ */
+export async function configuracaoDoGoogle(): Promise<AppDoGoogleConfigurado | null> {
+  const linha = await linhaDoBanco();
+  const clientId = texto(linha?.client_id);
+  const cifrado = texto(linha?.client_secret_encrypted);
+
+  if (clientId && cifrado) {
+    const segredo = await decryptWebhookSecret(createAdminClient(), cifrado);
+    // Decifra falhou (chave mestra trocada, linha corrompida): NÃO usa o
+    // client_id do banco com o secret do .env — misturar as duas fontes daria um
+    // par que não existe em app OAuth nenhum, e o erro do Google apontaria para
+    // o lugar errado. Cai inteiro para o ambiente.
+    if (segredo) {
+      return { clientId, clientSecret: segredo, redirectUri: enderecoDeRetorno() };
+    }
+    logger.warn("[agenda.google.config] segredo do banco não decifrou; vale o .env inteiro");
+  }
+
+  return configuracaoDoAmbiente();
+}
+
 /** Conectar o Google está disponível nesta instalação? */
-export function googleEstaConfigurado(): boolean {
-  return configuracaoDoGoogle() !== null;
+export async function googleEstaConfigurado(): Promise<boolean> {
+  return (await configuracaoDoGoogle()) !== null;
 }
 
 /**
@@ -91,8 +194,13 @@ export function googleEstaConfigurado(): boolean {
  * Controle desabilitado sem explicação é o mesmo defeito que controle
  * decorativo, virado do avesso: o operador vê que não pode e não descobre por
  * quê.
+ *
+ * ⚠️ Só devolve algo quando as DUAS fontes estão vazias. Antes ele lia só o
+ * ambiente, e depois da 0201 isso mandaria o dono editar o `.env` de uma
+ * instalação que já tem a credencial gravada pela tela.
  */
-export function faltaParaConectarOGoogle(): string[] {
+export async function faltaParaConectarOGoogle(): Promise<string[]> {
+  if (await configuracaoDoGoogle()) return [];
   const faltando: string[] = [];
   if (!texto(env.GOOGLE_CALENDAR_CLIENT_ID)) faltando.push("GOOGLE_CALENDAR_CLIENT_ID");
   if (!texto(env.GOOGLE_CALENDAR_CLIENT_SECRET)) faltando.push("GOOGLE_CALENDAR_CLIENT_SECRET");

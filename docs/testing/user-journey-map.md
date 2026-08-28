@@ -76,7 +76,7 @@ fonte só (`lib/onboarding/passos.ts`) — eram três listas que discordavam. Ga
 >
 > O que travava a virada era o editor novo exigir `credential_id`, enquanto instalação pelo kit funciona com a chave de plataforma do `.env` e não tem nenhuma linha em `ai_provider_credentials` — o dono cairia numa tela onde não consegue salvar nada. Resolvido nas duas pontas: `versionShapeSchema` aceita `credential_id: null` (= a chave da instalação), o seletor oferece essa opção, e a rota de versões **recusa** o nulo quando o ambiente não tem chave daquele provedor (falha fechada — senão publicaria um agente que morre em toda mensagem).
 >
-> MEDIDO na tela, num tenant fresco: o funcionário criado no wizard abre no editor atual, com "Chave de acesso: A chave desta instalação (anthropic)", "12 de 20 capacidades ligadas" e "Vender e mover o funil" ativo.
+> MEDIDO na tela, num tenant fresco: o funcionário criado no wizard abre no editor atual, com "Chave de acesso: A chave desta instalação (anthropic)", o pacote "Vender e mover o funil" ativo, e a contagem de capacidades que ele traz. (O número saiu daqui: já dizia 12 quando eram 16, e o teto foi de 20 para 25. Para o valor de hoje: `pnpm exec tsx -e 'import("@/lib/ai/agents/capacidades-padrao").then(m => console.log(m.capacidadesPadraoDoOnboarding().length))'`.)
 
 ## J2 — Conectar WhatsApp e Central de Conexões `[P0]`
 
@@ -106,9 +106,9 @@ fonte só (`lib/onboarding/passos.ts`) — eram três listas que discordavam. Ga
 | J3.10 | Escolher o que o agente pode fazer, por jornada de trabalho | 6 pacotes em português, com explicação e contagem — não uma lista de `crm_*` monoespaçado · **PASS** (`tests/e2e/capacidades-do-agente.spec.ts`) |
 | J3.11 | Ligar "Atender e responder" NÃO dá direito de mandar WhatsApp | a capacidade de risco crítico fica destacada, exigindo marcação individual; desligar a jornada leva ela junto · **PASS** |
 | J3.12 | Modo avançado: ficha por capacidade + nome técnico | o `name` técnico só aparece aqui; fora dele o leigo lê rótulo, o que toca e risco · **PASS** |
-| J3.13 | A escolha sobrevive ao salvar e recarregar | o servidor aceita a lista (mesmo teto de 20 da tela) e o estado volta igual · **PASS** |
+| J3.13 | A escolha sobrevive ao salvar e recarregar | o servidor aceita a lista (o mesmo teto da tela, `TETO_TOOLS_POR_AGENTE`, fonte única) e o estado volta igual · **PASS** |
 | J3.14 | Ver se o que está ligado está funcionando (aba Capacidades) | usos, falhas, quantos vieram de teste, última vez — e o que fazer com cada número · **PASS** (números escritos pelo emissor real de audit) |
-| J3.15 | Teto de 20 recusa a passagem, explicando em português | **NÃO EXERCITÁVEL HOJE**: com 16 capacidades no catálogo, ligar tudo não chega a 20. Coberto por teste unitário; vira exercitável quando as waves de capacidades entregarem |
+| J3.15 | O teto recusa a passagem, explicando em português | **PASS** — exercitável desde que o catálogo cresceu (57 capacidades). `capacidades-do-agente.spec.ts` liga "Atender" sobre as 8 do seed e prova a recusa por 1 vaga. A afirmação "não exercitável hoje, com 16 capacidades no catálogo" VENCEU |
 
 ## J4 — CRM e Pipelines `[P1]`
 
@@ -420,6 +420,115 @@ divide o servidor. Só aparece exercitando o produto pela tela.
 > não roda quando um caso falha). Corrigidos antes da primeira execução; o
 > resultado real entra aqui quando o CI disser.
 
+## J12 — A tela diz o que ESTA instalação consegue fazer `[P0]`
+
+**Por que P0:** é primeira impressão pura. **Nenhuma instalação nasce com o par
+VAPID** — o `.env.hostgator.example` grava as duas linhas vazias e gerar o par é
+um passo opcional que ninguém é obrigado a dar. Ou seja, o estado testado aqui é
+o estado em que 100% das instalações começam, e a tela de Notificações tem porta
+na navegação (`lib/navigation/registry.ts:470`), então qualquer pessoa chega nela
+no primeiro dia.
+
+**O defeito era de tela, e o backend estava certo o tempo todo.**
+`GET /api/v1/notifications/push` já devolvia `enabled:false` sem as chaves, e o
+`PUT` já recusava com 503 «Web Push não configurado nesta instalação». Quem nunca
+perguntou foi `app/app/settings/notifications/page.tsx`, que afirmava «In-app
+(toast) e Push (Chrome) já funcionam para as cinco categorias» de forma
+incondicional. A sequência que a pessoa vivia:
+
+1. a tela promete Push;
+2. ela liga o interruptor e o navegador pede permissão — incômodo real, cobrado dela;
+3. ela concede, e `syncPushSubscription()` faz `return` em silêncio
+   (`if (!cfg?.data?.enabled || !publicKey) return`);
+4. o interruptor fica ligado prometendo o que a instalação não entrega, e **nada
+   no produto** conta que faltam duas variáveis no `.env`, nem como consegui-las.
+
+Informação que existe no servidor e não chega a quem decide é o mesmo que
+informação ausente.
+
+**O conserto exagerado, recusado de propósito:** desabilitar o interruptor sem
+VAPID. Sem as chaves o aviso na bandeja **ainda funciona com a aba aberta** —
+é `new Notification()` em `lib/notifications/emit.ts`, que não depende de
+inscrição nenhuma. Desabilitar trocaria prometer demais por entregar de menos, e
+o segundo não deixa rastro. **J12.5** existe para impedir esse conserto (era
+J12.3, no `e2e`, até a medição mostrar que ali ela não era observável — ver
+abaixo).
+
+Spec: `tests/e2e/notificacoes-diz-o-que-falta.spec.ts` (estado SEM as chaves —
+o do `.env.e2e` e o do primeiro deploy).
+Evidência: `.superpowers/evidence/notificacoes-sem-chaves/`.
+Os DOIS estados: `tests/unit/notificacoes-tela-diz-o-que-falta.test.tsx` — o
+servidor lê `vapidPronto()` uma vez por processo, então provar o estado COM as
+chaves pela tela exigiria um segundo `next start` só para trocar duas variáveis,
+num job que já leva meia hora.
+
+| # | Caso | Expectativa | Resultado |
+|---|------|-------------|-----------|
+| J12.1 | Sem VAPID, a tela não fica muda | aviso `push-status-faltando-chaves` visível, e o de «pronto» ausente | PASS |
+| J12.2 | Ela diz o que FAZER, não só o que falta | o comando `npx web-push generate-vapid-keys` e as duas chaves, nominalmente | PASS |
+| J12.3 | O controle de Push não some, e a tela diz por que está travado | interruptor visível + «o navegador bloqueou as notificações» | PASS |
+| J12.5 | VAPID ausente NÃO desabilita o Push | com `granted` e sem chaves, nasce habilitado | PASS (unit) |
+| J12.4 | Com VAPID, anuncia a aba fechada | e para de mandar gerar o par que já existe | PASS (unit) |
+
+**Por que J12.5 não é `e2e`, medido e não suposto.** Ela nasceu como asserção
+`toBeEnabled()` na spec, e não podia viver lá. Medido no Chromium do Playwright,
+contra um servidor HTTP local:
+
+    baseline headless                              -> denied
+    grantPermissions(["notifications"]) sem origin -> denied
+    grant com origin explícito                     -> denied
+    headless:false + grant                         -> granted
+
+`Notification.permission` é **`denied` em headless, sempre**, e o CI roda
+headless. Como `_client.tsx` desabilita por `denied || unsupported`, o controle
+está travado ali por um motivo que nada tem a ver com VAPID — e nenhuma
+permissão concedida muda isso. A asserção passou uma vez só porque ganhava a
+corrida contra a hidratação; fechada a janela (`useSyncExternalStore` no hook),
+ela passaria a falhar sempre, e com razão.
+
+**NÃO COBERTO, declarado:** a notificação chegando na bandeja do sistema com a
+aba fechada. Depende do serviço de push do navegador (FCM), de rede externa e de
+um par VAPID real — não é reproduzível num runner, e fingir com mock seria pior
+que a ausência declarada. O que está provado é o contrato entre a TELA e o
+SERVIDOR. Continua aberto na issue #366.
+
+## J13 — A Agenda como o dono do produto a usou na VPS `[P0]`
+
+**Por que P0:** é a primeira impressão de um módulo que acabou de sair (v1.7.0).
+O dono instalou na VPS dele, usou como um cliente usaria, e achou **seis defeitos
+em quinze minutos**. Um sétimo aparecia no log de produção a cada cinco minutos e
+ninguém tinha visto; um oitavo saiu de varredura. Todo módulo novo tem uma janela
+em que ninguém o usou de verdade — esta jornada existe porque ela custou oito.
+
+**O que a suíte não conseguia enxergar, e por quê.** Toda spec até aqui roda com
+usuário de UMA organização. O defeito de escopo (D4) é invisível nesse cenário
+por construção: sem duas organizações, a RLS e o filtro explícito devolvem
+exatamente o mesmo conjunto. `scripts/seed-e2e-duas-organizacoes.ts` monta o
+cenário que faltava — o MESMO usuário em duas orgs, com um tipo exclusivo em cada
+uma, para a asserção poder ser sobre o CONJUNTO DE NOMES e não sobre a contagem.
+
+| # | Caso | Resultado |
+|---|---|---|
+| J13.1 | Membro de duas organizações abre a Agenda e vê só os tipos da org ativa; trocar de organização troca a lista | **PASS** — `agenda-escopo-da-organizacao.spec.ts`, contra o app real. Evidência: `evidence/calendario/d4-agenda-escopo-org-b.png` |
+| J13.2 | O aviso "você ainda não publicou seus horários" LEVA até onde se publica, e a aba de Atendimento se anuncia como o lugar dos horários | **PASS** — `agenda-caminho-ate-os-horarios.spec.ts`. Evidência: `evidence/calendario/d1-aba-atendimento.png` |
+| J13.3 | Endereço de aba desconhecido cai na aba padrão, não numa tela sem conteúdo | **PASS** — mesma spec |
+| J13.4 | O tipo de agendamento NASCE com responsável; quem escolhe "Definir depois" é avisado e o aviso ABRE o seletor | **PASS** — `agenda-tipos-de-agendamento.spec.ts`. Evidência: `evidence/calendario/d6-tipo-com-responsavel.png` |
+| J13.5 | O dia apagado diz POR QUÊ, e o rótulo genérico antigo não volta | **PASS** — `agenda-kit-visual.spec.ts` |
+| J13.6 | O teto de capacidades recusa a passagem explicando quantas vagas faltam | **PASS** — `capacidades-do-agente.spec.ts`, com o teto em 25 |
+| J13.7 | A ida ao Google seleciona os pendentes (o filtro antigo devolvia HTTP 400) | **PASS** — medido contra o PostgREST real do ambiente e2e: filtro antigo `400 / 22007`, filtro novo `200` com as linhas pendentes |
+| J13.8 | Sincronizar tira a linha da fila, e editar recoloca (o laço dos dois relógios) | **PASS** — medido no Postgres real: `true` → `false` com delta `00:00:00` → `true` |
+| J13.9 | A credencial do Google não é servida pelo PostgREST | **PASS** — `anon` recebe `42501 permission denied`; `service_role` recebe 200 (controle positivo) |
+| J13.10 | Cadastrar a credencial do Google pela tela do admin | **NÃO EXERCITADO** — a tela e a server action existem e o `next build` passa, mas o ambiente e2e não tem a chave mestra de cifra semeada (`fn_encrypt_oauth` levanta `NUVEMSHOP_OAUTH_ENCRYPTION_KEY ausente`), que é justamente o caminho em que a action RECUSA gravar. Falta o caso pela tela com a chave presente |
+
+**Registro honesto do que NÃO foi exercitado:** `pnpm test:db` não rodou nesta
+máquina — o daemon do Docker travou depois de o disco encher, e o harness de
+invariantes exige contêiner. Os dois invariantes novos
+(`agenda-ida-ao-google-termina`, `credencial-do-google-e-server-side`) estão
+escritos e a SUBSTÂNCIA deles foi medida à mão contra o Postgres real do
+ambiente e2e; falta a passada do harness no CI.
+
+---
+
 ## J7 — Exploração completa `[P2]`
 
 Andar por TODAS as rotas navegáveis logado como admin e como agent: settings, contacts,
@@ -593,6 +702,49 @@ espaço e acento, que era o gatilho do defeito #6.
 | 28 | 🟠 **CI vermelho por lentidão, não por defeito.** O teste que abre processo filho (`npx tsx`) leva ~5s e o timeout padrão do vitest é 5s — derrubou a `main` num PR que só mexia em documentação | corrigido — timeout explícito de 60s; 3 rodadas seguidas verdes. O controle positivo continua provando o aparato |
 
 **Nota de ambiente:** o `.env` da VPS foi apontado para `ghcr.io/...:latest` durante o QA, porque o fluxo de release novo fixa a imagem numa tag (`1.1.0`) e as correções desta sessão estão à frente dela. Para voltar ao comportamento de release, basta repor `APP_IMAGE` com a tag desejada.
+
+## Acervo de conhecimento — o acervo é da organização (2026-08-26)
+
+> **O que o CI NÃO prova aqui.** `tests/e2e/acervo-de-conhecimento.spec.ts` tem 6
+> casos, e **4 deles pulam no CI** por falta de `OPENAI_API_KEY_E2E` — chave paga,
+> que não vai para segredo de repositório público. Medido, não suposto: a parte 2
+> do `e2e` era `73 passed / 0 skipped` na main sem a spec e virou `75 passed /
+> 4 skipped` com ela. O CI prova que a tela DIZ que falta chave e que o material
+> sem chave fica esperando; **que o material vira trecho buscável — o produto — só
+> é provado rodando a spec com a chave**, e essa rodada está em
+> `evidence/acervo-de-conhecimento/`. Mesmo formato do aviso que a doutrina já dá
+> sobre `vps-fresh-onboarding`: um `skip` silencioso é indistinguível de um `pass`
+> no placar agregado.
+
+**A afirmação de 2026-07-30 abaixo ("implementado e provado") era verdadeira para
+UM caminho e falsa para o produto.** O que estava provado era: FAQ colada, pelo
+agente padrão, numa organização com a chave no `.env`. Fora disso, medido agora:
+
+| # | Achado | O que a pessoa via |
+|---|---|---|
+| 1 | 🔴 **O indexador resolvia o agente pela ORGANIZAÇÃO** (`resolveAgent(organizationId)` → `is_default desc, created_at asc, limit 1`) e ignorava o `agent_id` que os três emissores mandavam no payload | com dois assistentes, o material do segundo nunca virava trecho. Sem erro, sem estado, sem nada na tela |
+| 2 | 🔴 **A tela de conhecimento era presa a `is_default = true`** — e todo agente criado pela interface nasce `is_default: false` | o acervo de qualquer assistente que você criasse era inalcançável |
+| 3 | 🔴 **Cadastrar a chave da OpenAI pela tela não habilitava nada.** `lib/ai/embed.ts` lia só `process.env`, enquanto `lib/ai/pontos/provedores.ts` promete na tela que a OpenAI é "necessária para indexar o seu material" | a pessoa cadastrava a chave em IA › Credenciais e o material continuava parado |
+| 4 | 🔴 **Sem chave, o evento era consumido para sempre.** O worker devolvia `skipped`, e `drain.ts` conta `skipped` como sucesso | cadastrar a chave depois não recuperava o que ficou para trás |
+| 5 | 🔴 **Upload de arquivo extraía o texto e DESCARTAVA** (`ingestPolicyFile` devolvia `{ chunkCount }` sem persistir), e a rota não tinha chamador nenhum na interface | o PDF subia e o agente nunca sabia o que estava nele |
+| 6 | 🔴 **Preparar um material derrubava o outro**: a ingestão de conversas e a de FAQ competiam pelo único `active_kb_version_id` do agente | quem indexasse por último apagava o acervo do outro |
+| 7 | 🔴 **Debounce sem timeout travava o evento para SEMPRE.** Com o Redis configurado e inalcançável — VPS com o contêiner caído —, `redis.set()` não voltava; `drainEventLog` marca `processing` ANTES do handler e **nada devolvia a linha** (o `job_queue` tem reaper, o `event_log` não tinha) | material cadastrado, nada acontece, e nem tentar de novo resolve |
+| 8 | 🟠 **Arquivar não liberava o espaço** — nenhuma linha do repo jamais escreveu `is_active = false` | não dava para criar outro material do mesmo tipo, nunca mais |
+| 9 | 🟠 **O limiar do código (0.72) vencia o calibrado (0.40)** em três sítios | paráfrase descartada: "posso trocar se não servir?" não achava a resposta escrita |
+| 10 | 🟠 **Duplicar assistente perdia `pipeline_ids`**, e três INSERTs aceitavam `operator_*`/`pipeline_ids` no corpo e os descartavam | a cópia nascia sem escopo, com 201 dizendo que deu certo |
+| 11 | 🔴 **Segurança**: as 4 tabelas do acervo aceitavam escrita de `viewer` pelo PostgREST | qualquer membro apagava a base de conhecimento da organização |
+| 12 | 🟠 **O diálogo de cadastro não cabia na tela** — o botão "Adicionar ao acervo" ficava fora da viewport em 720px | o formulário existia e não se enviava (achado pela prova de tela) |
+
+**Prova**: `tests/e2e/acervo-de-conhecimento.spec.ts` (6 casos, jornada inteira
+pela tela) + `tests/invariants/rag-acervo-da-organizacao.test.ts` (recorte da
+busca, versões legadas, imutabilidade do escopo, RBAC das 4 tabelas) +
+`tests/unit/dreno-nao-perde-evento.test.ts`.
+
+**NÃO MEDIDO**: o comportamento com acervo grande (milhares de trechos). O índice
+vetorial `ivfflat` existe e o planner não o escolhe com o recorte de tenant — a
+busca é exata e linear, correta e sem teto de recall. Vira issue.
+
+---
 
 ## RAG do tenant — implementado e provado (2026-07-30)
 

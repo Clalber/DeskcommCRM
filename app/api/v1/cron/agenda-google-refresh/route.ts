@@ -81,7 +81,7 @@ export async function renovarAgendasDoGoogle(
     semAppOAuth: false,
   };
 
-  const app = configuracaoDoGoogle();
+  const app = await configuracaoDoGoogle();
   if (!app) {
     // Instalação sem app OAuth não tem conexão para renovar. Não é falha, e não
     // audita — é o estado de quem nunca conectou o Google.
