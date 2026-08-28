@@ -529,6 +529,212 @@ ambiente e2e; falta a passada do harness no CI.
 
 ---
 
+## J14 — Marcar um horário, na tela em que o dono marcou `[P0]`
+
+**Por que P0:** os dois defeitos aqui impedem a ação central do módulo — escolher
+um horário e chegar até ele. O dono achou os dois usando a v1.8.0 na VPS.
+
+**A crítica que originou esta jornada, e ela é justa:** havia 20 casos Playwright
+sobre esta tela (a J13) e nenhum pegou. Todos assertam PRESENÇA (`toBeVisible`,
+`toHaveCount`), e **elemento cortado continua presente** — está no DOM, tem
+tamanho, e o Playwright o considera visível. A borda que o corta é do PAI.
+Presença nunca vai medir isto; só geometria mede.
+
+| # | Caso | Resultado |
+|---|---|---|
+| J14.1 | A coluna de horários cabe no painel, e o painel no Sheet que o hospeda | **PASS** — `agenda-painel-cabe-na-tela.spec.ts`, por `boundingBox` em cinco larguras. Antes: painel de 982px num Sheet de 768, transbordando 239px |
+| J14.2 | A coluna de horários fica dentro da VIEWPORT | **PASS** — antes, só 42 dos 280px apareciam, em 1280, 1440 e 1920 |
+| J14.3 | Dá para CLICAR num horário | **PASS** — a geometria é o diagnóstico; a ação é o desfecho. Evidência: `evidence/calendario/d1-painel-cabe-1280.png` |
+| J14.4 | Abaixo de `lg` os horários empilham sob o calendário | **PASS** — caso de 900px |
+| J14.5 | O limiar de 1024px, onde as 3 colunas passam a valer com 44px de folga | **PASS** — é onde um ajuste de padding estoura primeiro |
+| J14.6 | "Ver na agenda" leva até o compromisso, inclusive em outra semana | **PASS** — `agenda-ver-na-agenda.spec.ts`. O botão não tinha `onClick` nenhum. Evidência: `evidence/calendario/d2-ver-na-agenda.png` |
+
+**Duas correções ao diagnóstico inicial, ambas medidas:**
+1. O defeito de largura **não sumia em tela grande** — em 1920 o transbordo era
+   idêntico, porque o Sheet é fixo em 768px e ancorado à direita.
+2. A primeira versão da asserção de geometria media "coluna contra painel" e
+   ficava vermelha — mas por medir no meio da transição de `width`. No estado
+   estável ela PASSA. Falso vermelho hoje é falso verde amanhã; a spec passou a
+   esperar a largura estabilizar, e a régua certa é o painel contra o Sheet.
+
+**Sobre um diagnóstico que a medição derrubou:** ao ver 4 falhas num run de 5
+specs juntas, atribuí ao `AUTH_RATE_LIMIT_LOGIN_IP` que o CI define e o ensaio
+local não. **Estava errado** — o run seguinte passou 30/30 sem essa variável, e o
+seguinte também. A diferença era tempo: 51s contra 11,2min, com um `next build`
+disputando CPU. A diferença de ambiente entre ensaio e CI é real e vale saber,
+mas não era a causa desta falha.
+
+## J15 — A grade da Agenda como agenda de verdade `[P0]`
+
+**Por que P0:** é a tela que quem atende deixa aberta o dia inteiro, e ela era
+**desenho**. Sete colunas, faixas de hora, cards — e nenhum gesto: clicar num
+espaço vazio não fazia nada, arrastar um compromisso não fazia nada. Marcar
+exigia sair da grade, abrir "Novo agendamento" e reescolher no mini-calendário a
+data que a pessoa acabara de apontar com o dedo. Nenhuma spec reprovava, porque
+nenhuma spec tentava: as irmãs entram pelo botão e pelo histórico, que são
+caminhos que já existiam.
+
+**O jeito errado de consertar, e o que o vigia.** Calcular o horário a partir do
+pixel clicado. A tela passaria a oferecer instantes que a disponibilidade
+publicada não tem — 422 `agenda_disponibilidade_invalida` na cara de quem
+clicou, e a agenda discordando do agente sobre o que está livre. A defesa é de
+construção: a grade **pergunta** a `GET /api/v1/agenda/horarios-livres` (a mesma
+rota do painel e do agente) e um bloco só é clicável quando existe horário
+publicado ali. Ela não tem de onde tirar um instante que a regra não deu.
+
+| # | Caso | Resultado |
+|---|---|---|
+| J15.1 | Clicar num bloco livre abre a marcação **naquele horário** — a asserção é o horário exibido, não que "algo abriu" | **PASS** — `agenda-grade-interativa.spec.ts`. Evidência: `evidence/calendario/grade-clique-abre-no-horario.png` |
+| J15.2 | Bloco fora da disponibilidade não é clicável **e diz por quê** (`disabled` + razão no `aria-label` e no `title`) | **PASS** — mesma spec. Evidência: `evidence/calendario/grade-bloco-recusado-diz-por-que.png` |
+| J15.3 | Arrastar um card remarca, e o horário novo é conferido **na API depois do reload** — não só na tela | **PASS** — mesma spec. Evidência: `evidence/calendario/grade-arraste-fantasma.png` e `evidence/calendario/grade-confirma-antes-de-remarcar.png` |
+| J15.4 | Arrastar para fora da disponibilidade é recusado com o motivo, **nenhum PATCH sai**, e o card volta ao lugar (medido por `boundingBox`) | **PASS** — mesma spec. Evidência: `evidence/calendario/grade-arraste-recusado.png` |
+| J15.5 | Geometria por ferramenta: o topo do card remarcado contra o topo da faixa daquela hora, tolerância de 2px | **PASS** — mesma spec |
+| J15.6 | Remarcar pelo **teclado** (`Alt+↑/↓` salta de vaga em vaga, `Enter` confirma, `Esc` desfaz) pelo mesmo mecanismo do arraste | **PASS** — `tests/unit/agenda-grade-aceita-clique.test.tsx` (jsdom — o arraste por ponteiro precisa de geometria real e fica no Playwright) |
+
+**As asserções foram provadas vermelhas antes**, e não só escritas depois:
+
+| Sabotagem | Previsão | Medido |
+|---|---|---|
+| A camada de blocos vazios volta a não existir (a grade de antes) | 4 vermelhas | **4 vermelhas**, todas em "nenhum bloco livre na semana desenhada" |
+| A recusa vira pergunta **e** o destino válido remarca sem confirmar | J15.3 e J15.4 vermelhos, J15.1 e J15.2 verdes | **exatamente isso** — "soltar remarcou sem perguntar" e `remarcacao-recusada` não encontrado |
+
+**Dois defeitos que só apareceram executando** (nenhum apareceria lendo o código):
+
+1. A grade oferecia a disponibilidade de `tiposIniciais[0]` — o primeiro tipo em
+   **ordem alfabética**, escolhido por ninguém e sem seletor fora do painel de
+   marcação. Numa organização com quatro tipos e jornada publicada em um só, a
+   grade inteira travava com "não consegui carregar os horários" **enquanto
+   havia vaga**. O tipo ganhou superfície na tela.
+2. Card de compromisso **cancelado** cobria o bloco vazio e comia o clique — e
+   cancelar é justamente o que devolve o horário (`cancelled` está em
+   `SITUACOES_QUE_LIBERAM`). Numa clínica com uma semana de cancelamentos, todo
+   horário reaberto ficaria inalcançável pela grade. O card perdeu o ponteiro e
+   manteve a presença: é registro, não ação.
+
+---
+
+## J16 — Conectar o Google, e conseguir enxergar que conectou `[P0]`
+
+**Por que P0:** o dono instalou a v1.9.0 e relatou quatro sintomas numa frase só
+— "conecto, ELE DESLOGA DA MINHA CONTA, quando logo de novo diz que conectou, mas
+nada funciona e o botão Conectar continua lá". Três defeitos independentes, e o
+mais humilhante é que **a conexão sempre funcionou**: ninguém conseguia ver.
+
+| # | Caso | Resultado |
+|---|---|---|
+| J16.1 | Voltar do consentimento não cai no `/login` | **PASS** — `agenda-google-volta-nao-desloga.spec.ts`. Sem o conserto, o usuário logado para em `/login?next=%2Fapp%2Fagenda%3Ferro%3D...`, medido em Chromium |
+| J16.2 | O CHECK do banco proíbe o valor que três consultas procuravam | **PASS** — invariante `agenda-conexao-do-google-e-encontrada`, contra Postgres real |
+| J16.3 | A conexão que o callback grava é encontrada pelo predicado do worker | **PASS** — mesmo invariante: 1 achada com o valor certo, 0 com o antigo |
+| J16.4 | Nenhuma consulta filtra por valor que a coluna proíbe | **PASS** — varredura `consulta-usa-o-vocabulario-do-banco`; previ 3 achados antes de rodar e vieram os 3 |
+| J16.5 | A lista de horários rola, e o último horário é clicável | **PASS** — `agenda-painel-cabe-na-tela.spec.ts`, viewport 1280×700. Evidência: `evidence/calendario/d4-lista-rola-1280x700.png` |
+
+**Três correções ao briefing, todas medidas:**
+1. A retenção do cookie no segundo salto era **dedução** marcada NÃO MEDIDA. Foi
+   observada em navegador: é real, em Chromium. (Firefox não foi medido.)
+2. A régua anti-regressão proposta (`body.scrollHeight - innerHeight <= 1`) vinha
+   com a nota "já passa hoje". **Não passa** — e o crescimento é idêntico com e
+   sem o conserto (1566px nos dois), portanto pré-existente. A régua passou a
+   medir o que queria proteger: que o Sheet continua `position: fixed`.
+3. A pré-condição de suficiência da lista comparava o conteúdo com a altura da
+   JANELA; a régua certa é o espaço abaixo do topo da lista. Da primeira forma
+   ela reprovou um cenário suficiente.
+
+**Dívida declarada, não consertada aqui:** com o painel aberto em 1280×700 o body
+vai a 1566px contra 700 de janela. É anterior a este PR e misturá-la esconderia
+as duas.
+
+---
+
+## J17 — Trocar de organização, incluindo a que não foi configurada `[P0]`
+
+**Por que P0:** o seletor de organização fica no topo de toda tela do produto e
+é uma das ações mais banais do cabeçalho — e ela podia terminar num beco sem
+saída. `app/app/layout.tsx:51` manda para `/onboarding` toda organização ativa
+sem `onboarded_at`; o layout de `/app` sai inteiro da árvore e leva o
+`TenantSwitcher` junto. Quem foi convidado para uma organização nova e trocou
+para ver o que era **perdia o caminho de volta**: no wizard sobravam "Termos de
+Uso", "Política de Privacidade" e um "Continuar" desabilitado — medido no
+snapshot de uma falha do CI (run 33164258175), não deduzido. A saída real era
+limpar os dados do site.
+
+**Como o defeito apareceu, e por que ele estava escondido:** ele não foi
+reportado por ninguém — saiu de uma `main` vermelha. Dois seeds
+(`seed-e2e-funis` e `seed-e2e-duas-organizacoes`) inseriam em `organizations`
+com o mesmo slug e colunas diferentes, e quem rodasse primeiro vencia. Com a org
+de teste chegando sem `onboarded_at`, `agenda-escopo-da-organizacao` reprovava
+com `element(s) not found` no seletor. O conserto do harness devolveu o CI ao
+verde; o defeito de produto que ele expôs sobrevive a esse conserto, e é o que
+esta jornada prende.
+
+| # | Caso | Resultado |
+|---|---|---|
+| J17.1 | Trocar para uma organização não configurada leva ao wizard — o destino está certo, a organização não foi configurada mesmo | **PASS** — `troca-de-organizacao-tem-volta.spec.ts` |
+| J17.2 | O seletor de organização **não** sobrevive ao redirect (é a razão de o wizard precisar de saída própria) | **PASS** — mesma spec, `toHaveCount(0)` |
+| J17.3 | O wizard oferece o caminho de volta, e voltar traz para a organização de ANTES (conferido pelo nome, não por "saiu de lá") | **PASS** — mesma spec. Evidência: `evidence/onboarding/troca-de-org-tem-volta.png` |
+| J17.4 | Sem outra organização, o controle não existe — prometer ação vazia é o controle decorativo | **PASS** — `tests/unit/onboarding-tem-saida.test.tsx` |
+| J17.5 | Trocar **navega**: `setActiveOrg` revalida `/app`, não `/onboarding`, e sem o `replace` o clique pareceria não fazer nada | **PASS** — mesma unit |
+| J17.6 | Dois seeds não criam a mesma organização (a classe, não a instância) | **PASS** — `tests/unit/seeds-nao-disputam-organizacao.test.ts`, com controle positivo contra a regex cegar |
+
+**As asserções foram provadas vermelhas antes:**
+
+| Sabotagem | Previsão | Medido |
+|---|---|---|
+| O layout volta a não montar a saída (o estado de antes) | J17.3 vermelho, `agenda-escopo` verde ao lado | **exatamente isso** — a cerca discrimina, não reage a qualquer estrago |
+| A saída nunca renderiza | 3 unit vermelhos | **3** |
+| Troca sem navegar | 1 unit vermelho | **1** |
+| O slug compartilhado volta ao seed | o gate de seeds reprova nomeando os dois arquivos | **reprovou**, com `e2e-segunda-org ← seed-e2e-duas-organizacoes.ts + seed-e2e-funis.ts` |
+| Seed antigo restaurado (`git show HEAD~1`) e re-semeado | `agenda-escopo` reprova como no CI | **reprovou** com `não terminou` + `element(s) not found`, literal |
+## J18 — O follow-up anda em hospedagem sem agendador `[P0]`
+
+**Por que P0:** para quem **não tem** o `scheduler` da VPS — o plano gratuito da
+Vercel é o caso comum, e é o cenário inteiro do runbook
+[`vercel-hobby-relogio.md`](../runbooks/vercel-hobby-relogio.md) — o relógio
+externo não é conveniência: é o **único** motor do follow-up. E a falha dele é
+silenciosa: os follow-ups não andam, ninguém recebe erro, e a instalação parece
+saudável.
+
+**O que existia media TEXTO.** `tests/unit/relogio-hobby-workflow.test.ts`
+confere que o `.yml` cita o caminho do tick, a variável e o `exit 1` — ancora o
+contrato do arquivo, não prova que uma batida faz alguma coisa. Nenhum teste, em
+lugar nenhum, chegava a bater na rota. Era o item 2 da issue #366.
+
+**O emissor é externo de propósito.** `execFileSync("curl", …)` — outro
+processo, sem contexto de browser, sem cookie: é literalmente o comando que
+`comandoCurlDoRelogio()` gera e que o runbook manda colar no cron-job.org.
+`page.request` compartilharia o contexto do teste e provaria menos, já que a
+rota está em `PUBLIC_PATHS` justamente porque quem a chama não tem sessão.
+
+Spec: `tests/e2e/relogio-http-cron-externo.spec.ts` (`SPECS_PARTE_1`).
+
+| # | Caso | Expectativa | Resultado |
+|---|------|-------------|-----------|
+| J18.1 | Segredo errado é recusado | 403 **e** o enrollment não se move | PASS |
+| J18.2 | 1ª batida executa o `wait` | agenda a espera para o futuro, `steps_taken` sobe | PASS |
+| J18.3 | 2ª batida, vencido o prazo, avança | `current_node_id` chega ao nó final | PASS |
+
+**Duas batidas, e não uma — medido.** A primeira versão do caso esperava avanço
+numa batida só, e o run devolveu `{claimed:1, advanced:0, scheduled:1}`: um
+enrollment vencido *parado* num nó `wait` significa "chegou a hora de EXECUTAR o
+wait", e executar um wait é **agendar** a espera. O avanço só vem na batida
+depois do prazo — que é exatamente o que um cron externo faz, batendo de poucos
+em poucos minutos. O relógio do fixture é adiantado entre as duas porque o
+mínimo do `wait` é 5 min por regra de produto (`graph-schema.ts` recusa
+`duration_ms` abaixo de `300000`; com `1` o tick devolve `failed: 1`).
+
+**Sabotado, com a previsão declarada antes de rodar:**
+
+    auth aceita qualquer segredo   -> caso 1 vermelho, casos 2/3 verdes
+    tick responde 200 e não acha
+      o que avançar (claim vazio)  -> caso 1 verde, casos 2/3 vermelhos
+    restaurado                     -> 2 de 2
+
+**NÃO COBERTO, declarado:** o `.github/workflows/relogio.yml` em si — ele nasce
+desligado (`RELOGIO_LIGADO`) e quem o exercitaria é o Actions de um fork, não
+este job. O que está provado é que **a batida faz efeito**; que o agendador do
+GitHub dispara no horário é do GitHub.
+
+---
+
 ## J7 — Exploração completa `[P2]`
 
 Andar por TODAS as rotas navegáveis logado como admin e como agent: settings, contacts,
