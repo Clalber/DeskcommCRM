@@ -1,4 +1,4 @@
--- 0203 — um pareamento pendente por organização, garantido pelo Postgres
+-- 0204 — um pareamento pendente por organização, garantido pelo Postgres
 --
 -- ─── O defeito, medido em produção ──────────────────────────────────────────
 --
@@ -40,7 +40,7 @@
 --        ANDAMENTO. `FAILED`/`STOPPED` é a órfã que este defeito deixava para
 --        trás: contá-la travaria TODA conexão nova, trocando o defeito por um
 --        pior.
---   `provider = 'waha'`     — a 0202 tornou esta tabela MULTI-PROVIDER. Sem o
+--   `provider = 'waha'`     — a 0203 tornou esta tabela MULTI-PROVIDER. Sem o
 --        escopo, uma sessão de Instagram em STARTING bloquearia o pareamento de
 --        um WhatsApp (e vice-versa), e a dedup acima marcaria FAILED uma linha
 --        que não tem nada a ver com este defeito. O defeito é do fluxo de QR do
@@ -78,7 +78,7 @@ with pendentes as (
 )
 update public.channel_sessions s
    set status = 'FAILED',
-       status_reason = 'duplicata de pareamento resolvida pela migration 0203',
+       status_reason = 'duplicata de pareamento resolvida pela migration 0204',
        last_status_change_at = now()
   from pendentes p
  where p.id = s.id

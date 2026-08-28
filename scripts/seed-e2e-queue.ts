@@ -66,7 +66,7 @@ async function ensureSession(orgId: string): Promise<string> {
       waha_session_name: SESSION_NAME,
       display_name: "Número Fila E2E",
       // `WORKING` explícito: o default da coluna é `STARTING`, e o índice
-      // `channel_sessions_um_pareamento_pendente_por_org` (migration 0203) só
+      // `channel_sessions_um_pareamento_pendente_por_org` (migration 0204) só
       // admite UMA sessão nesse estado por organização. Os seeds de e2e
       // COMPARTILHAM a org do `.e2e-creds.json` e cada um procura apenas pelo
       // PRÓPRIO `waha_session_name`, então dois na mesma rodada colidiam com

@@ -8,7 +8,7 @@ import { describe, expect, it } from "vitest";
  *
  * ─── Por que esta guarda existe ─────────────────────────────────────────────
  *
- * O índice `channel_sessions_um_pareamento_pendente_por_org` (migration 0203)
+ * O índice `channel_sessions_um_pareamento_pendente_por_org` (migration 0204)
  * admite UMA sessão por organização com `status in ('STARTING','SCAN_QR_CODE')`
  * e sem telefone. O default da coluna `status` é justamente `STARTING`.
  *
@@ -75,7 +75,7 @@ describe("seeds de e2e não deixam pareamento pendente", () => {
     expect(
       faltando,
       "Seed que insere channel_sessions sem `status` herda o default `STARTING` e\n" +
-        "entra no índice de pareamento pendente da migration 0203. Como os seeds\n" +
+        "entra no índice de pareamento pendente da migration 0204. Como os seeds\n" +
         "compartilham a organização do .e2e-creds.json, o SEGUNDO da rodada leva\n" +
         "23505 e derruba a spec no beforeAll.\n" +
         'Conserto: `status: "WORKING"` — é o que o seed simula de verdade.',

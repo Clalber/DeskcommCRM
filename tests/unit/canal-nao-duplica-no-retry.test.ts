@@ -17,7 +17,7 @@
  * A primeira versão deste arquivo testava um `ehPareamentoPendente()` que a rota
  * NÃO chamava. Apagar a guarda inteira deixava os sete casos verdes — o teste
  * media uma regra que não governava nada. Aqui a rota é exercitada, e o fake do
- * Supabase devolve o `23505` que o índice parcial da migration 0203 produz.
+ * Supabase devolve o `23505` que o índice parcial da migration 0204 produz.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -116,7 +116,7 @@ describe("POST /channel-sessions — retentativa não duplica sessão", () => {
   });
 
   it("a RETENTATIVA recebe 200 com a sessão que já estava pendente", async () => {
-    // 23505 é o que o índice parcial da 0203 devolve quando a org já tem um
+    // 23505 é o que o índice parcial da 0204 devolve quando a org já tem um
     // pareamento em andamento. É o caso real: a linha da 1ª tentativa existe.
     respostaDoInsert = { data: null, error: { code: "23505", message: "duplicate key" } };
 
@@ -169,7 +169,7 @@ describe("POST /channel-sessions — retentativa não duplica sessão", () => {
   });
 
   it("compensação que FALHA não some — o id da linha presa vai para o log", async () => {
-    // Sem isto a linha fica `STARTING`, segura o índice da 0203, e toda
+    // Sem isto a linha fica `STARTING`, segura o índice da 0204, e toda
     // tentativa seguinte recebe 200 apontando para ela enquanto o WAHA estiver
     // fora. O erro do banco é a única pista de onde destravar.
     startSession.mockRejectedValueOnce(new Error("waha fora do ar"));

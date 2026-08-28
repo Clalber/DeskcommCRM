@@ -1,8 +1,8 @@
--- 0204 — a 0202 encolheu o vocabulário de avisos, e a guarda não viu
+-- 0205 — a 0203 encolheu o vocabulário de avisos, e a guarda não viu
 
 -- ─── O defeito ──────────────────────────────────────────────────────────────
 --
--- A migration 0202 reconstruiu `agent_inbox_items_kind_check` para acrescentar
+-- A migration 0203 reconstruiu `agent_inbox_items_kind_check` para acrescentar
 -- `channel_credential_expiring` — e, ao reescrever a lista inteira, DERRUBOU
 -- `conhecimento_nao_indexado`, que a 0181 tinha acrescentado dois dias antes.
 --
@@ -17,13 +17,13 @@
 -- Existe guarda para exatamente isto — `tests/unit/kind-check-migration-x-
 -- baseline.test.ts`, cujo cabeçalho diz que uma régua que "parasse de casar
 -- devolveria [] e o teste ficaria verde por não medir nada". Foi o que houve: a
--- régua só reconhecia `check (kind in (...))`, e a 0202 escreveu
+-- régua só reconhecia `check (kind in (...))`, e a 0203 escreveu
 -- `check (kind = any (array[...]))`. A migration ficou INVISÍVEL para a guarda,
 -- que passou a comparar o baseline com uma migration anterior e a dar verde.
 --
 -- A régua foi corrigida junto com esta migration; foi ela que revelou o buraco.
 --
--- ─── Forward-fix, e não edição da 0202 ──────────────────────────────────────
+-- ─── Forward-fix, e não edição da 0203 ──────────────────────────────────────
 --
 -- A 0202 já foi commitada, publicada em imagem e aplicada. A doutrina de
 -- migrations proíbe editar migration aplicada: quem já a registrou não a

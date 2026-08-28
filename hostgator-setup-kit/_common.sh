@@ -447,6 +447,13 @@ psql_run() { docker run --rm -i postgres:17-alpine psql "$(url_do_schema)" -v ON
 # própria — e as tags de lá NÃO devem ser empurradas para cá, senão o
 # `agent.sh`, que oferece a MAIOR tag `v*` a cada VPS, passaria a oferecer uma
 # versão cuja imagem não existe neste registro.
+#
+# Esta linha é a ÚNICA fonte do namespace para tudo que executa — os testes do
+# kit a leem em vez de repetir a string. Quem a confere é
+# `tests/unit/namespace-das-imagens.test.ts`, que assere este valor e cobra que
+# `docker-compose.prod.yml`, `.env.hostgator.example` e a matriz de
+# `publish-image.yml` digam o mesmo. Este fork JÁ fez essa troca — o teste assere `ghcr.io/clalber`, e a lista
+# do que anda junto está lá.
 IMG_NS="ghcr.io/clalber"
 IMG_APP="${IMG_NS}/deskcommcrm"
 IMG_WORKER="${IMG_NS}/deskcomm-worker"

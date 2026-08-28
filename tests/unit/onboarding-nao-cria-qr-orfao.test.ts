@@ -5,7 +5,7 @@
  *
  * `POST /api/v1/onboarding/whatsapp/session` procura a sessão por NOME
  * (determinístico: `org_<8>`), e insere se não achar. Com o índice parcial da
- * migration 0203 no lugar, esse insert passa a bater em `23505` quando a org já
+ * migration 0204 no lugar, esse insert passa a bater em `23505` quando a org já
  * tem um pareamento em andamento — tipicamente um criado pela tela de Conexões,
  * cujo nome leva sufixo aleatório.
  *

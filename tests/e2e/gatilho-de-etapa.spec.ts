@@ -126,7 +126,7 @@ test.describe("gatilho de etapa do funil", () => {
     }
     // ⚠️ A PRECONDIÇÃO DO PUBLISH É EXPLÍCITA AQUI, e não herdada de outra spec.
     // `seed-e2e-followup-agent.ts` cria a credential SEM `validated_at`. A
-    // sessão ele já cria em `'WORKING'` — mudou com a migration 0203, cujo
+    // sessão ele já cria em `'WORKING'` — mudou com a migration 0204, cujo
     // índice só admite UMA sessão pendente por organização e fazia dois seeds
     // da mesma org colidirem. `fn_publish_ai_agent_version` EXIGE
     // `validated_at not null` e `status = 'WORKING'`, então o `update` de

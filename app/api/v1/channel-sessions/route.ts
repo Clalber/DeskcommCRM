@@ -99,7 +99,7 @@ export async function POST(req: NextRequest): Promise<Response> {
     .from("channel_sessions")
     .insert({
       organization_id: activeOrg.orgId,
-      // EXPLÍCITO, mesmo com default 'waha' na coluna: o índice da 0203 tem
+      // EXPLÍCITO, mesmo com default 'waha' na coluna: o índice da 0204 tem
       // `provider='waha'` no predicado, e depender do default faria a trava e a
       // linha concordarem por coincidência, não por construção.
       provider: PROVIDER_DO_QR,
@@ -119,7 +119,7 @@ export async function POST(req: NextRequest): Promise<Response> {
 
   // ── 23505 = já existe um pareamento pendente nesta organização ─────────────
   //
-  // A trava é o índice parcial da migration 0203, e ela existe porque UM clique
+  // A trava é o índice parcial da migration 0204, e ela existe porque UM clique
   // criava DUAS sessões: `lib/api/client.ts` RETENTA mutação (`:126`, `:151`,
   // `:188`) e esta rota chama o WAHA DEPOIS do insert — WAHA lento faz o cliente
   // abortar e retentar com a linha já gravada. Medido em produção: dois
@@ -182,7 +182,7 @@ export async function POST(req: NextRequest): Promise<Response> {
     // consultaria um id inexistente e travaria em "Preparando…" para sempre.
     //
     // `FAILED` resolve os dois lados: a linha existe para quem a recebeu (a tela
-    // mostra o erro em vez de girar), e sai do índice parcial da 0203 — que só
+    // mostra o erro em vez de girar), e sai do índice parcial da 0204 — que só
     // cobre STARTING/SCAN_QR_CODE —, então a próxima tentativa cria normalmente.
     const { error: compErr } = await supabase
       .from("channel_sessions")

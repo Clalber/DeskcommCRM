@@ -1,8 +1,8 @@
--- 0205 — a tabela de identidade externa entra com RBAC, não só com tenancy
+-- 0206 — a tabela de identidade externa entra com RBAC, não só com tenancy
 
 -- ─── O defeito ──────────────────────────────────────────────────────────────
 --
--- A 0202 criou `channel_contact_identities` com UMA policy `for all` que só
+-- A 0203 criou `channel_contact_identities` com UMA policy `for all` que só
 -- checa organização. Isso significa que qualquer papel — inclusive `viewer` —
 -- pode INSERIR, ALTERAR e APAGAR linhas da própria organização falando direto
 -- com o PostgREST, com o JWT dele.

@@ -59,7 +59,7 @@ function defaultSessionName(orgId: string): string {
  * A sessão de WhatsApp que já está sendo pareada nesta organização, se houver.
  *
  * Existe porque DOIS caminhos desta rota entram no predicado do índice parcial
- * da migration 0203 — o INSERT de sessão nova e o UPDATE que ressuscita uma
+ * da migration 0204 — o INSERT de sessão nova e o UPDATE que ressuscita uma
  * arquivada (`reactivateChannelSession` grava `status='STARTING'` e
  * `phone_number=null`). Os dois podem levar `23505`, e num onboarding um erro
  * não tratado é 500 na PRIMEIRA tela do produto.
@@ -145,7 +145,7 @@ async function ensureChannelSession(
       actor,
     );
     // A ressurreição grava `STARTING` + `phone_number=null`, então ela TAMBÉM
-    // entra no predicado do índice da 0203. Cenário real: a org conectou pelo
+    // entra no predicado do índice da 0204. Cenário real: a org conectou pelo
     // onboarding, excluiu o canal (arquivado), começou uma conexão nova pela
     // Central sem concluir, e voltou ao onboarding — aqui o UPDATE colide.
     //
@@ -162,7 +162,7 @@ async function ensureChannelSession(
     .from("channel_sessions")
     .insert({
       organization_id: orgId,
-      // EXPLÍCITO: o índice da 0203 tem `provider='waha'` no predicado, e
+      // EXPLÍCITO: o índice da 0204 tem `provider='waha'` no predicado, e
       // depender do default faria a trava e a linha concordarem por
       // coincidência. Mesmo argumento de `channel-sessions/route.ts`.
       provider: PROVIDER_DO_QR,

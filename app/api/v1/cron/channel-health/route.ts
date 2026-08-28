@@ -130,7 +130,7 @@ async function handle(req: NextRequest): Promise<Response> {
           .eq("id", s.id)
           .eq("organization_id", s.organization_id);
 
-        // O erro era descartado, e a migration 0203 deu um gatilho NOVO a esse
+        // O erro era descartado, e a migration 0204 deu um gatilho NOVO a esse
         // silêncio: uma órfã FAILED que o transporte devolve como
         // `SCAN_QR_CODE` entra no predicado do índice; se já houver outra
         // pendente na organização, o update leva 23505 e o banco fica divergindo

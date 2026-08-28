@@ -5,16 +5,63 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useT } from "@/hooks/i18n/useT";
 
 /**
  * Conectar o Instagram Direct — a FORMA da tela, antes do transporte.
  *
- * Campos desabilitados de propósito: o transporte não existe (`getAdapter`
- * lança). As alternativas descartadas — não mostrar nada, ou aceitar a chave
- * secreta sem ter onde guardá-la — estão na mensagem do commit e no fragmento
- * em `.changes/`.
+ * ─── Por que os campos estão desabilitados, e não funcionando ───────────────
+ *
+ * O schema e o vocabulário deste canal já existem (migration 0203), mas o
+ * TRANSPORTE não: não há adapter, não há OAuth, não há webhook. `getAdapter`
+ * lança de propósito para quem tentar enviar.
+ *
+ * A escolha aqui foi entre três telas, e duas são piores:
+ *
+ *   1. Não mostrar nada — some a informação de que o canal está a caminho, e
+ *      quem opera não tem como saber o que falta.
+ *   2. Formulário que ACEITA credencial e não a guarda — pior que não existir.
+ *      App Secret e token são segredo de verdade: um campo que os recebe e os
+ *      joga fora convida alguém a colar o segredo do cliente num lugar que não
+ *      existe, e ninguém descobre até vazar.
+ *   3. Formulário DESABILITADO, com o estado dito em voz alta — é esta. Mostra
+ *      exatamente o que vai ser pedido, sem convidar ninguém a preencher.
+ *
+ * Isto é aplicação direta da doutrina "toda configuração tem superfície"
+ * (`docs/doctrine/restricao-de-canal.md`): o que acontece quando falta
+ * configuração precisa ser VISÍVEL, nunca um silêncio.
+ *
+ * ─── Por que a tela pode escrever "Instagram" ───────────────────────────────
+ *
+ * O `lint:channels` proíbe nomear PROVIDER fora de `lib/channels/`, e o regex
+ * dele não distingue prosa de código — então o nome do transporte não cabe
+ * nem neste comentário. "Instagram" passa porque é o nome do CANAL, que é
+ * outra coisa: é o que o usuário reconhece, e o mesmo motivo pelo qual
+ * `conversations.channel` grava `whatsapp` em vez do transporte por trás.
  */
 
+/**
+ * O que a conexão vai pedir. Sai daqui, e não de JSX solto, porque a mesma
+ * lista precisa aparecer no passo a passo entregue ao cliente que vai criar o
+ * app na Meta — duas listas divergem na primeira que alguém editar.
+ */
+const CAMPOS_DA_CREDENCIAL = [
+  {
+    id: "ig-app-id",
+    rotulo: "ID do aplicativo",
+    ajuda: "O identificador do app que o dono da conta criou na Meta.",
+  },
+  {
+    id: "ig-app-secret",
+    rotulo: "Chave secreta do aplicativo",
+    ajuda: "Secreta. Fica cifrada no banco, nunca no arquivo de configuração.",
+  },
+  {
+    id: "ig-verify-token",
+    rotulo: "Token de verificação",
+    ajuda: "Inventado por você; a Meta o devolve ao registrar o webhook, e é assim que confirmamos que é ela.",
+  },
+] as const;
 
 /**
  * As três permissões pedidas na MESMA submissão à Meta. A de mensagens não
@@ -28,50 +75,48 @@ const PERMISSOES = [
 ] as const;
 
 export function CanalInstagramClient() {
+  const t = useT();
+
   return (
     <div className="flex flex-col gap-4">
       <Card className="flex flex-col gap-4 p-4">
         <div className="flex items-center justify-between gap-3">
           <div className="flex flex-col gap-1">
-            <h2 className="text-sm font-medium">Instagram Direct</h2>
+            <h2 className="text-sm font-medium">{t("Instagram Direct")}</h2>
             <p className="text-muted-foreground text-sm">
-              Atender as mensagens diretas do Instagram no mesmo Inbox do WhatsApp.
+              {t("Atender as mensagens diretas do Instagram no mesmo Inbox do WhatsApp.")}
             </p>
           </div>
           {/* O estado real, dito sem rodeio. "Em construção" seria vago; o que o
               operador precisa saber é que NÃO dá para conectar ainda. */}
-          <Badge variant="outline">Transporte pendente</Badge>
+          <Badge variant="outline">{t("Transporte pendente")}</Badge>
         </div>
 
         <div className="border-muted-foreground/30 bg-muted/40 rounded-md border border-dashed p-3">
           <p className="text-sm">
-            O canal já existe no banco e no roteamento, mas ainda{" "}
-            <strong>não é possível conectar uma conta</strong>: falta a
-            autorização pela Meta e a entrega de mensagens. Esta tela mostra o
-            que será pedido, para você preparar o lado da Meta enquanto isso.
+            {t(
+              "O canal já existe no banco e no roteamento, mas ainda não é possível conectar uma conta: falta a autorização pela Meta e a entrega de mensagens. Esta tela mostra o que será pedido, para você preparar o lado da Meta enquanto isso.",
+            )}
           </p>
         </div>
       </Card>
 
       <Card className="flex flex-col gap-4 p-4">
         <div className="flex flex-col gap-1">
-          <h3 className="text-sm font-medium">Credenciais da conta</h3>
+          <h3 className="text-sm font-medium">{t("Credenciais da conta")}</h3>
           <p className="text-muted-foreground text-sm">
-            Cada cliente cria o próprio aplicativo na Meta e cola as credenciais
-            dele aqui — não existe um aplicativo único para todo mundo.
+            {t(
+              "Cada cliente cria o próprio aplicativo na Meta e cola as credenciais dele aqui — não existe um aplicativo único para todo mundo.",
+            )}
           </p>
         </div>
 
         <div className="grid gap-4 sm:grid-cols-3">
-          {[
-            ["ig-app-id", "ID do aplicativo", "O identificador do app que o dono da conta criou na Meta."],
-            ["ig-app-secret", "Chave secreta do aplicativo", "Secreta. Fica cifrada no banco, nunca no arquivo de configuração."],
-            ["ig-verify-token", "Token de verificação", "Inventado por você; é assim que confirmamos que quem chama é a Meta."],
-          ].map(([id, rotulo, ajuda]) => (
-            <div key={id} className="flex flex-col gap-1.5">
-              <Label htmlFor={id}>{rotulo}</Label>
-              <Input id={id} disabled placeholder="—" />
-              <p className="text-muted-foreground text-xs">{ajuda}</p>
+          {CAMPOS_DA_CREDENCIAL.map((campo) => (
+            <div key={campo.id} className="flex flex-col gap-1.5">
+              <Label htmlFor={campo.id}>{t(campo.rotulo)}</Label>
+              <Input id={campo.id} disabled placeholder="—" />
+              <p className="text-muted-foreground text-xs">{t(campo.ajuda)}</p>
             </div>
           ))}
         </div>
@@ -79,50 +124,48 @@ export function CanalInstagramClient() {
         <div>
           {/* Desabilitado, e o `title` diz por quê — botão morto sem explicação
               faz o operador clicar três vezes e concluir que a tela quebrou. */}
-          <Button disabled title="Disponível quando a conexão com a Meta estiver implementada">
-            Conectar conta
+          <Button disabled title={t("Disponível quando a conexão com a Meta estiver implementada")}>
+            {t("Conectar conta")}
           </Button>
         </div>
       </Card>
 
       <Card className="flex flex-col gap-3 p-4">
         <div className="flex flex-col gap-1">
-          <h3 className="text-sm font-medium">O que preparar na Meta</h3>
+          <h3 className="text-sm font-medium">{t("O que preparar na Meta")}</h3>
           <p className="text-muted-foreground text-sm">
-            A aprovação leva de semanas a meses, então vale começar antes. É
-            preciso uma conta profissional do Instagram e um portfólio de
-            negócios verificado.
+            {t(
+              "A aprovação leva de semanas a meses, então vale começar antes. É preciso uma conta profissional do Instagram e um portfólio de negócios verificado.",
+            )}
           </p>
         </div>
         <ul className="flex flex-col gap-2">
           {PERMISSOES.map((p) => (
             <li key={p.nome} className="flex flex-col gap-0.5">
               <code className="text-xs">{p.nome}</code>
-              <span className="text-muted-foreground text-xs">{p.para}</span>
+              <span className="text-muted-foreground text-xs">{t(p.para)}</span>
             </li>
           ))}
         </ul>
       </Card>
 
       <Card className="flex flex-col gap-2 p-4">
-        <h3 className="text-sm font-medium">Como este canal se comporta</h3>
+        <h3 className="text-sm font-medium">{t("Como este canal se comporta")}</h3>
         {/* Não é enfeite: é a diferença de COMPORTAMENTO que quem opera precisa
             saber antes de vender atendimento por aqui. Fora da janela o agente
             de IA não tem jogada — e isso é o canal, não um defeito nosso. */}
         <ul className="text-muted-foreground flex list-disc flex-col gap-1 pl-4 text-sm">
           <li>
-            A conversa fica aberta por <strong>24 horas</strong> a partir da
-            última mensagem do cliente.
+            {t("A conversa fica aberta por 24 horas a partir da última mensagem do cliente.")}
           </li>
           <li>
-            Passadas as 24 horas <strong>não existe modelo aprovado</strong> para
-            reabrir, como há no WhatsApp — quem responde tem que ser uma pessoa.
-            O agente de IA encerra o turno e escala.
+            {t(
+              "Passadas as 24 horas não existe modelo aprovado para reabrir, como há no WhatsApp — quem responde tem que ser uma pessoa. O agente de IA encerra o turno e escala.",
+            )}
           </li>
-          <li>Não há grupos, e a mensagem não é cobrada por unidade.</li>
+          <li>{t("Não há grupos, e a mensagem não é cobrada por unidade.")}</li>
           <li>
-            A credencial <strong>vence</strong> e precisa ser renovada — algo que
-            o WhatsApp por QR não exige.
+            {t("A credencial vence e precisa ser renovada — algo que o WhatsApp por QR não exige.")}
           </li>
         </ul>
       </Card>

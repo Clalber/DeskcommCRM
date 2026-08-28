@@ -19,7 +19,7 @@ import { indexExists, lastLine, sql } from "./gov-helpers";
  *
  * O unitário (`tests/unit/canal-nao-duplica-no-retry.test.ts`) prova que a ROTA
  * trata o `23505`. Ele não pode provar que o `23505` ACONTECE — isso é o índice
- * parcial da 0203, e um índice só existe num Postgres. Com o unitário sozinho, o
+ * parcial da 0204, e um índice só existe num Postgres. Com o unitário sozinho, o
  * conserto passaria verde com o índice ausente do baseline: a rota trataria um
  * erro que o banco nunca produz, e o clone seguiria duplicando.
  *
@@ -117,7 +117,7 @@ describe("um pareamento pendente por organização", () => {
     expect(doBanco).toEqual(statusDoTypeScript());
   });
 
-  it("o índice é ESCOPADO ao WAHA — a 0202 tornou a tabela multi-provider", () => {
+  it("o índice é ESCOPADO ao WAHA — a 0203 tornou a tabela multi-provider", () => {
     expect(predicadoDoIndice()).toContain(`provider = '${providerDoTypeScript()}'`);
   });
 
@@ -144,7 +144,7 @@ describe("um pareamento pendente por organização", () => {
     // Instagram — que a 0202 acabara de admitir no schema — travaria o WhatsApp.
     //
     // `instagram_user_id` não é enfeite: `channel_sessions_provider_ref_check`
-    // (0202) exige o identificador da conta para cada provider. Sem ele o insert
+    // (0203) exige o identificador da conta para cada provider. Sem ele o insert
     // morre com 23514 ANTES de o índice opinar, e o caso mediria a constraint
     // errada — vermelho por acidente, ou verde por acidente depois.
     const org = novaOrg(`inv-0203-prov-${Date.now()}`);
