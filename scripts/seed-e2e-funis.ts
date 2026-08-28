@@ -74,6 +74,17 @@ async function main(): Promise<void> {
         slug: SEGUNDA_SLUG,
         legal_name: "E2E Segunda Org LTDA",
         display_name: "E2E Segunda Org",
+        // ⚠️ SEM `onboarded_at` DE PROPÓSITO — e agora isso é o fixture, não um
+        // descuido.
+        //
+        // Esta org existe para o caso do funil homônimo, e ficou sem onboarding
+        // por omissão. Enquanto ela dividia o slug com o seed de duas
+        // organizações, essa omissão vazava para uma spec que não a pediu e
+        // derrubava o CI (ver o cabeçalho de `seed-e2e-duas-organizacoes.ts`).
+        // Com os slugs separados, ela passa a ser o único lugar do harness com
+        // uma organização legitimamente NÃO configurada — que é exatamente o
+        // estado de que `troca-de-organizacao-tem-volta.spec.ts` precisa para
+        // provar que dá para sair do wizard.
       })
       .select("id")
       .single();
