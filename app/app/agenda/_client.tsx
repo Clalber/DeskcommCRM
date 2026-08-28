@@ -93,7 +93,6 @@ export function AgendaClient({
 }) {
   const localeDaData = useLocaleDeData();
   const t = useT();
-  const localeDaData = useLocaleDeData();
   const [marcando, setMarcando] = React.useState(false);
   // O horário que veio de um CLIQUE NA GRADE. Preenchido, o painel abre já em
   // "confirmando" naquele instante; vazio, ele abre pedindo o dia, como sempre.

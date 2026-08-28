@@ -7,7 +7,6 @@ import { useT } from "@/hooks/i18n/useT";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useT } from "@/hooks/i18n/useT";
 import { useClaimConversation } from "@/hooks/inbox/useClaimConversation";
 import { useAtRiskLeads, type AtRiskLead } from "@/hooks/leads/useAtRiskLeads";
 import type { RiskBucket } from "@/lib/leads/risk-radar";

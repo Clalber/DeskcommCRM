@@ -32,7 +32,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { apiClient } from "@/lib/api/client";
 import { showApiError } from "@/components/feedback/ApiErrorToast";
-import { useT } from "@/hooks/i18n/useT";
 
 export interface EstadoDaChave {
   pode_indexar: boolean;

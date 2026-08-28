@@ -4,7 +4,6 @@ import { useT } from "@/hooks/i18n/useT";
 
 import { useState } from "react";
 
-import { useT } from "@/hooks/i18n/useT";
 import { Card } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { useNotificationPermission } from "@/hooks/notifications/useNotificationPermission";

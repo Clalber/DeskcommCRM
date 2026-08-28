@@ -109,7 +109,6 @@ export function HistoricoDaAgenda({
 }) {
   const localeDaData = useLocaleDeData();
   const t = useT();
-  const localeDaData = useLocaleDeData();
   const [aba, setAba] = React.useState<AbaDoHistorico>("proximos");
   const grupos = React.useMemo(() => separar(agendamentos, agora), [agendamentos, agora]);
   const daAba = grupos[aba];

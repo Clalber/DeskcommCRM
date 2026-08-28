@@ -137,6 +137,7 @@ function toTriggerConfig(form: TriggerFormState): Record<string, unknown> {
 function summaryLabel(
   cfg: Record<string, unknown>,
   etapa: { stageName: string; pipelineName: string } | null,
+  t: (texto: string) => string = (texto) => texto,
 ): string {
   if (cfg.kind === "silence") {
     const minutes = (cfg.params as { threshold_minutes?: number } | undefined)?.threshold_minutes;
@@ -221,7 +222,7 @@ export function TriggerConfigControl({ flowId, triggerConfig }: Props) {
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <Button type="button" variant="outline" size="sm" data-testid="trigger-config-button">
-          {summaryLabel(triggerConfig, etapaSalva ?? null)}
+          {summaryLabel(triggerConfig, etapaSalva ?? null, t)}
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-80" align="end" data-testid="trigger-config-panel">

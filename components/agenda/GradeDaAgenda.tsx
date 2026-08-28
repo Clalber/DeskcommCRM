@@ -1,5 +1,7 @@
 "use client";
 
+import * as React from "react";
+
 import { useLocaleDeData } from "@/hooks/i18n/useLocaleDeData";
 
 

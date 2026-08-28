@@ -11,7 +11,6 @@ import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { format, formatRelative, isToday, isYesterday } from "date-fns";
 import { toast } from "sonner";
-import { useT } from "@/hooks/i18n/useT";
 import { CaretDown, CaretUp, ChatCircle, Trash } from "@/lib/ui/icons";
 import {
   Table,
@@ -45,8 +44,8 @@ interface Props {
   onSort: (column: ContactOrderBy) => void;
 }
 
-function displayName(c: Contact): string {
-  return rotuloDoContato(c);
+function displayName(c: Contact, t: (texto: string) => string = (texto) => texto): string {
+  return rotuloDoContato(c, t);
 }
 
 /** Hoje/ontem: relativo ("há 2 horas", "ontem"). Mais antigo: data, não dia da semana. */

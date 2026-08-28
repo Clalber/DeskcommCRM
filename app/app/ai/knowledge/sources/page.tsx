@@ -4,8 +4,6 @@ import { requireAuth, resolveActiveOrg } from "@/lib/auth/server";
 import { traduzir } from "@/lib/i18n/dicionario";
 import { ROLE_RANK } from "@/lib/auth/types";
 import { createClient } from "@/lib/supabase/server";
-import { normalizarIdioma } from "@/lib/i18n/idiomas";
-import { traduzir } from "@/lib/i18n/dicionario";
 import {
   EXPLICACAO_DA_ORIGEM,
   resolverChaveDeEmbedding,
@@ -45,8 +43,6 @@ export default async function AcervoPage() {
     redirect("/403");
   }
 
-  const idioma = normalizarIdioma(user.locale);
-  const t = (texto: string) => traduzir(texto, idioma);
 
   const supabase = await createClient();
 

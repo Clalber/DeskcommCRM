@@ -28,7 +28,6 @@ import {
 } from "@/components/ui/dialog";
 import { apiClient } from "@/lib/api/client";
 import { showApiError } from "@/components/feedback/ApiErrorToast";
-import { useT } from "@/hooks/i18n/useT";
 import { parseFaqMarkdown } from "@/lib/ai/rag/ingest/faq";
 
 interface ItemDaFaq {

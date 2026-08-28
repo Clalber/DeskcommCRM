@@ -464,7 +464,7 @@ export function AttendantsClient({ canManage }: Props) {
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">
                       <div className="flex items-center gap-2">
-                        <span>{summarizeSchedule(windows)}</span>
+                        <span>{summarizeSchedule(windows, t)}</span>
                         {canManage ? (
                           <Button
                             variant="ghost"

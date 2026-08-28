@@ -6,7 +6,6 @@ import { useState } from "react";
 import { useT } from "@/hooks/i18n/useT";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { useT } from "@/hooks/i18n/useT";
 import { useAtritoMetrics, useSalvarReguaAbandono } from "@/hooks/metrics/useAtritoMetrics";
 import { formatarMedida, type Medida, type Par } from "@/lib/metrics/atrito";
 

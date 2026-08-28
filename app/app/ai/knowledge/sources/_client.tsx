@@ -6,7 +6,6 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Plus } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { useT } from "@/hooks/i18n/useT";
 import { useRealtimeChannel } from "@/hooks/realtime/useRealtimeChannel";
 import {
   chaveQueryKey,

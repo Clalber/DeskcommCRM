@@ -21,7 +21,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { apiClient } from "@/lib/api/client";
-import { useT } from "@/hooks/i18n/useT";
 
 interface Trecho {
   id: string;

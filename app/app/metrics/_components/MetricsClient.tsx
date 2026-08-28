@@ -3,7 +3,6 @@
 import { useT } from "@/hooks/i18n/useT";
 import { useState } from "react";
 
-import { useT } from "@/hooks/i18n/useT";
 import { useAttendantMetrics, type AttendantMetric } from "@/hooks/metrics/useAttendantMetrics";
 import { AtritoPanel } from "./AtritoPanel";
 import { useTeamMembers } from "@/hooks/team/useTeamMembers";

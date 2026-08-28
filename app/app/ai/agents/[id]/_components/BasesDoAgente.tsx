@@ -28,7 +28,6 @@ import Link from "next/link";
 
 import { Card } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
-import { useT } from "@/hooks/i18n/useT";
 
 export interface MaterialDoAcervo {
   id: string;

@@ -4,6 +4,7 @@ import { toast } from "sonner";
 
 import { apiClient } from "@/lib/api/client";
 import { showApiError } from "@/components/feedback/ApiErrorToast";
+import { useT } from "@/hooks/i18n/useT";
 import type { FlowGraph } from "@/lib/followup/graph-schema";
 import type { FollowupFlowStatus } from "./useFollowupFlows";
 
@@ -71,6 +72,7 @@ export function useSaveFollowupFlowDraft(id: string) {
  * offending node — a generic toast would duplicate/bury that signal.
  */
 export function usePublishFollowupFlow(id: string) {
+  const t = useT();
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async () => {
@@ -102,6 +104,7 @@ export function useDeleteFollowupFlow() {
 }
 
 export function useDisableFollowupFlow(id: string) {
+  const t = useT();
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async () => {
