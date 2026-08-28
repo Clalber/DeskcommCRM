@@ -549,12 +549,32 @@ publicado ali. Ela não tem de onde tirar um instante que a regra não deu.
 
 | # | Caso | Resultado |
 |---|---|---|
-| J14.1 | Clicar num bloco livre abre a marcação **naquele horário** — a asserção é o horário exibido, não que "algo abriu" | `agenda-grade-interativa.spec.ts` |
-| J14.2 | Bloco fora da disponibilidade não é clicável **e diz por quê** (`disabled` + razão no `aria-label` e no `title`) | mesma spec |
-| J14.3 | Arrastar um card remarca, e o horário novo é conferido **na API depois do reload** — não só na tela | mesma spec |
-| J14.4 | Arrastar para fora da disponibilidade é recusado com o motivo, **nenhum PATCH sai**, e o card volta ao lugar (medido por `boundingBox`) | mesma spec |
-| J14.5 | Geometria por ferramenta: o topo do card remarcado contra o topo da faixa daquela hora, tolerância de 2px | mesma spec |
-| J14.6 | Remarcar pelo **teclado** (`Alt+↑/↓` salta de vaga em vaga, `Enter` confirma, `Esc` desfaz) pelo mesmo mecanismo do arraste | `tests/unit/agenda-grade-aceita-clique.test.tsx` (jsdom — o arraste por ponteiro precisa de geometria real e fica no Playwright) |
+| J14.1 | Clicar num bloco livre abre a marcação **naquele horário** — a asserção é o horário exibido, não que "algo abriu" | **PASS** — `agenda-grade-interativa.spec.ts`. Evidência: `evidence/calendario/grade-clique-abre-no-horario.png` |
+| J14.2 | Bloco fora da disponibilidade não é clicável **e diz por quê** (`disabled` + razão no `aria-label` e no `title`) | **PASS** — mesma spec. Evidência: `evidence/calendario/grade-bloco-recusado-diz-por-que.png` |
+| J14.3 | Arrastar um card remarca, e o horário novo é conferido **na API depois do reload** — não só na tela | **PASS** — mesma spec. Evidência: `evidence/calendario/grade-arraste-fantasma.png` e `grade-confirma-antes-de-remarcar.png` |
+| J14.4 | Arrastar para fora da disponibilidade é recusado com o motivo, **nenhum PATCH sai**, e o card volta ao lugar (medido por `boundingBox`) | **PASS** — mesma spec. Evidência: `evidence/calendario/grade-arraste-recusado.png` |
+| J14.5 | Geometria por ferramenta: o topo do card remarcado contra o topo da faixa daquela hora, tolerância de 2px | **PASS** — mesma spec |
+| J14.6 | Remarcar pelo **teclado** (`Alt+↑/↓` salta de vaga em vaga, `Enter` confirma, `Esc` desfaz) pelo mesmo mecanismo do arraste | **PASS** — `tests/unit/agenda-grade-aceita-clique.test.tsx` (jsdom — o arraste por ponteiro precisa de geometria real e fica no Playwright) |
+
+**As asserções foram provadas vermelhas antes**, e não só escritas depois:
+
+| Sabotagem | Previsão | Medido |
+|---|---|---|
+| A camada de blocos vazios volta a não existir (a grade de antes) | 4 vermelhas | **4 vermelhas**, todas em "nenhum bloco livre na semana desenhada" |
+| A recusa vira pergunta **e** o destino válido remarca sem confirmar | J14.3 e J14.4 vermelhos, J14.1 e J14.2 verdes | **exatamente isso** — "soltar remarcou sem perguntar" e `remarcacao-recusada` não encontrado |
+
+**Dois defeitos que só apareceram executando** (nenhum apareceria lendo o código):
+
+1. A grade oferecia a disponibilidade de `tiposIniciais[0]` — o primeiro tipo em
+   **ordem alfabética**, escolhido por ninguém e sem seletor fora do painel de
+   marcação. Numa organização com quatro tipos e jornada publicada em um só, a
+   grade inteira travava com "não consegui carregar os horários" **enquanto
+   havia vaga**. O tipo ganhou superfície na tela.
+2. Card de compromisso **cancelado** cobria o bloco vazio e comia o clique — e
+   cancelar é justamente o que devolve o horário (`cancelled` está em
+   `SITUACOES_QUE_LIBERAM`). Numa clínica com uma semana de cancelamentos, todo
+   horário reaberto ficaria inalcançável pela grade. O card perdeu o ponteiro e
+   manteve a presença: é registro, não ação.
 
 ---
 

@@ -155,6 +155,9 @@ test("clicar num bloco livre abre a marcação NAQUELE horário", async ({ page 
     "o painel abriu, mas não no tempo de confirmar — quem clicou num bloco já escolheu o horário",
   ).toHaveAttribute("data-tempo", "confirmando", { timeout: 10_000 });
   await expect(page.getByTestId("confirmacao")).toContainText(oferecido!);
+  // A evidência é gravada DEPOIS da asserção, e não no lugar dela: imagem prova
+  // o que a régua já mediu, e serve para o humano que vai revisar sem rodar.
+  await page.screenshot({ path: "evidence/calendario/grade-clique-abre-no-horario.png" });
 });
 
 test("bloco fora da disponibilidade não marca — e diz por quê", async ({ page }) => {
@@ -183,6 +186,7 @@ test("bloco fora da disponibilidade não marca — e diz por quê", async ({ pag
   // Clicar não abre marcação nenhuma.
   await bloqueado.click({ force: true });
   await expect(page.getByTestId("painel-de-marcacao")).toHaveCount(0);
+  await page.screenshot({ path: "evidence/calendario/grade-bloco-recusado-diz-por-que.png" });
 });
 
 test("arrastar um card remarca — e o horário novo sobrevive ao reload", async ({ page }) => {
@@ -276,6 +280,7 @@ test("arrastar um card remarca — e o horário novo sobrevive ao reload", async
     page.getByTestId("fantasma-do-arraste"),
     "arrastar não desenhou onde o card cairia — o gesto não está sendo capturado",
   ).toBeVisible();
+  await page.screenshot({ path: "evidence/calendario/grade-arraste-fantasma.png" });
   await page.mouse.up();
 
   // ── confirmação ANTES de consumar: remarcar avisa quem está do outro lado ──
@@ -285,6 +290,7 @@ test("arrastar um card remarca — e o horário novo sobrevive ao reload", async
     "soltar remarcou sem perguntar — o cliente do outro lado recebe aviso de remarcação",
   ).toBeVisible({ timeout: 10_000 });
   await expect(confirmacao).toContainText(horarioOferecido);
+  await page.screenshot({ path: "evidence/calendario/grade-confirma-antes-de-remarcar.png" });
   await page.getByTestId("confirmar-remarcacao-botao").click();
 
   // ── ⚠️ A PROVA NÃO É A TELA ───────────────────────────────────────────
@@ -403,6 +409,7 @@ test("arrastar para fora da disponibilidade é RECUSADO e o card volta", async (
   // Recusa explícita, com o motivo. E NENHUMA confirmação: remarcar para um
   // horário fora da disponibilidade publicada não é uma pergunta a fazer.
   await expect(page.getByTestId("remarcacao-recusada")).toBeVisible({ timeout: 10_000 });
+  await page.screenshot({ path: "evidence/calendario/grade-arraste-recusado.png" });
   await expect(page.getByTestId("confirmar-remarcacao")).toHaveCount(0);
 
   // O CARD VOLTOU. Não basta não ter remarcado: o card tem de estar onde
