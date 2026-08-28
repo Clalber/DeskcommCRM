@@ -242,12 +242,12 @@ export function PainelDeMarcacao({
   /** O mesmo motivo, na voz de quem olha UM dia apagado. */
   const razaoDoDia = (noMes: boolean): string =>
     !noMes
-      ? "fora deste mês"
+      ? t("fora deste mês")
       : motivoDoBloqueio === "sem-jornada"
-        ? "você ainda não publicou seus horários"
+        ? t("você ainda não publicou seus horários")
         : motivoDoBloqueio === "erro"
-          ? "não consegui carregar os horários"
-          : "nenhum horário livre neste dia";
+          ? t("não consegui carregar os horários")
+          : t("nenhum horário livre neste dia");
 
   const doDia = dia ? (horariosPorDia[format(dia, "yyyy-MM-dd")] ?? []) : [];
 
@@ -263,12 +263,12 @@ export function PainelDeMarcacao({
           {/* "Marcado." — ponto final. Exclamação em sucesso é anti-pattern
               declarado do design system deste produto, e emoji em UI funcional
               também. */}
-          <h3 className="mt-3 text-base font-semibold">Marcado.</h3>
+          <h3 className="mt-3 text-base font-semibold">{t("Marcado.")}</h3>
           <p className="mt-1 text-sm text-text-muted">
-            {format(new Date(marcado.instante), "EEEE, d 'de' MMMM 'às' HH:mm", { locale: localeDaData })}
+            {format(new Date(marcado.instante), t("EEEE, d 'de' MMMM 'às' HH:mm"), { locale: localeDaData })}
           </p>
           <p className="mt-0.5 text-xs text-text-subtle">
-            {tipo} · {duracaoMin} {t("min · com")} {responsavel.nome}
+            {t(tipo)} · {duracaoMin} {t("min · com")} {responsavel.nome}
           </p>
           {quemSeraAtendido && !quemSeraAtendido.aceitaMensagem && (
             // Repetido aqui de propósito: o aviso do passo anterior sumiu da
@@ -280,7 +280,7 @@ export function PainelDeMarcacao({
           )}
           <div className="mt-5 flex gap-2">
             <Button variant="outline" size="sm" onClick={() => { setMarcado(null); setHorario(null); setDia(null); }}>
-              Marcar outro
+              {t("Marcar outro")}
             </Button>
             {/*
               ⚠️ ESTE BOTÃO NÃO TINHA `onClick` NENHUM.
@@ -304,7 +304,7 @@ export function PainelDeMarcacao({
                 data-testid="ver-na-agenda"
                 onClick={() => onVerNaAgenda(marcado.instante)}
               >
-                Ver na agenda
+                {t("Ver na agenda")}
               </Button>
             )}
           </div>
@@ -386,7 +386,7 @@ export function PainelDeMarcacao({
       >
         <div className="mb-3 flex items-center justify-between">
           <span className="text-sm font-semibold first-letter:uppercase">
-            {format(mes, "MMMM 'de' yyyy", { locale: localeDaData })}
+            {format(mes, t("MMMM 'de' yyyy"), { locale: localeDaData })}
           </span>
           <div className="flex items-center gap-1">
             <Button
@@ -491,7 +491,9 @@ export function PainelDeMarcacao({
               {t("Nenhum horário livre em")} {format(mes, "MMMM", { locale: localeDaData })}
             </p>
             <p className="mt-1 text-xs leading-4 text-text-muted">
-              {t("Os próximos 30 dias são o que está publicado hoje — meses adiante aparecem conforme a data se aproxima.")}
+              {t(
+                "Os próximos 30 dias são o que está publicado hoje — meses adiante aparecem conforme a data se aproxima.",
+              )}
             </p>
           </div>
         )}
@@ -542,8 +544,8 @@ export function PainelDeMarcacao({
                 // e é por isso que o motivo também está em texto no bloco acima.
                 aria-label={
                   disponivel
-                    ? `${format(d, "d 'de' MMMM", { locale: localeDaData })} — ${livres.length} horários`
-                    : `${format(d, "d 'de' MMMM", { locale: localeDaData })} — ${razaoDoDia(isSameMonth(d, mes))}`
+                    ? `${format(d, t("d 'de' MMMM"), { locale: localeDaData })} — ${livres.length} ${t("horários")}`
+                    : `${format(d, t("d 'de' MMMM"), { locale: localeDaData })} — ${razaoDoDia(isSameMonth(d, mes))}`
                 }
                 title={disponivel ? undefined : razaoDoDia(isSameMonth(d, mes))}
                 onClick={() => { setDia(d); setHorario(null); }}
@@ -566,9 +568,9 @@ export function PainelDeMarcacao({
         {tempo === "confirmando" && horario && (
           <div className="mt-4 border-t border-border pt-4" data-testid="confirmacao">
             <p className="text-sm">
-              <span className="text-text-muted">Confirmar </span>
+              <span className="text-text-muted">{t("Confirmar")} </span>
               <span className="font-semibold">
-                {format(new Date(horario.instante), "EEEE, d 'de' MMMM 'às' HH:mm", { locale: localeDaData })}
+                {format(new Date(horario.instante), t("EEEE, d 'de' MMMM 'às' HH:mm"), { locale: localeDaData })}
               </span>
             </p>
 
@@ -591,7 +593,7 @@ export function PainelDeMarcacao({
             )}
             <div className="mt-3 flex items-center justify-end gap-2">
               <Button variant="ghost" size="sm" onClick={() => setHorario(null)}>
-                Voltar
+                {t("Voltar")}
               </Button>
               <Button
                 size="sm"
@@ -616,7 +618,7 @@ export function PainelDeMarcacao({
                   }
                 }}
               >
-                Confirmar
+                {t("Confirmar")}
               </Button>
             </div>
           </div>
@@ -641,7 +643,7 @@ export function PainelDeMarcacao({
             caber: o conteúdo segurava 240px mesmo quando o pai não os tinha. */}
         <div className="flex h-full w-full flex-col p-3 lg:w-[280px]">
           <p className="mb-2 shrink-0 text-xs font-semibold text-text-muted first-letter:uppercase">
-            {dia ? format(dia, "EEEE, d 'de' MMM", { locale: localeDaData }) : ""}
+            {dia ? format(dia, t("EEEE, d 'de' MMM"), { locale: localeDaData }) : ""}
           </p>
           {/*
             `data-testid` para a lista poder ser MEDIDA, e não só vista. O

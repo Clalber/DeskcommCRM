@@ -17,6 +17,7 @@ import { JANELA_DA_GRADE } from "./GradeDaAgenda";
  * página trocou. As mesmas 7 colunas e a mesma janela de horas da grade real.
  */
 export function AgendaCarregando() {
+  const t = useT();
   // `bg-neutral-400` em cada Skeleton, e não o default do primitivo.
   //
   // `components/ui/skeleton.tsx` usa `bg-primary/10` — a accent a 10% —, que dá
@@ -49,7 +50,7 @@ export function AgendaCarregando() {
     <div
       data-testid="agenda-carregando"
       aria-busy="true"
-      aria-label="Carregando a agenda"
+      aria-label={t("Carregando a agenda")}
       className="flex min-h-0 flex-1 overflow-hidden rounded-lg border border-border bg-surface"
     >
       <div className="w-12 shrink-0 border-r border-border">
@@ -103,12 +104,12 @@ export function AgendaComErro({
       <WarningOctagon size={28} weight="duotone" className="text-error" aria-hidden />
       <div>
         <p className="text-sm font-semibold text-text">{t("Não consegui carregar a agenda")}</p>
-        <p className="mt-1 max-w-sm text-xs text-text-muted">{motivo}</p>
+        <p className="mt-1 max-w-sm text-xs text-text-muted">{t(motivo)}</p>
       </div>
       {onTentarDeNovo && (
         <Button variant="outline" size="sm" onClick={onTentarDeNovo} data-testid="tentar-de-novo">
           <ArrowsClockwise size={16} weight="bold" aria-hidden />
-          <span>Tentar de novo</span>
+          <span>{t("Tentar de novo")}</span>
         </Button>
       )}
     </div>

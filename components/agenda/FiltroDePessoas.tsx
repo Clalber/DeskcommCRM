@@ -53,7 +53,9 @@ export function FiltroDePessoas({
               data-testid={`botao-pessoa-${p.id}`}
               aria-pressed={isolada === p.id}
               aria-label={
-                isolada === p.id ? `Mostrar todos (agora só ${p.nome})` : `Ver só a agenda de ${p.nome}`
+                isolada === p.id
+                  ? `${t("Mostrar todos (agora só")} ${p.nome})`
+                  : `${t("Ver só a agenda de")} ${p.nome}`
               }
               onClick={() => onIsolar(isolada === p.id ? null : p.id)}
               className={cn(

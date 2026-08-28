@@ -109,6 +109,7 @@ export function HistoricoDaAgenda({
 }) {
   const localeDaData = useLocaleDeData();
   const t = useT();
+  const localeDaData = useLocaleDeData();
   const [aba, setAba] = React.useState<AbaDoHistorico>("proximos");
   const grupos = React.useMemo(() => separar(agendamentos, agora), [agendamentos, agora]);
   const daAba = grupos[aba];
@@ -138,7 +139,7 @@ export function HistoricoDaAgenda({
                   : "text-text-muted hover:bg-surface-elevated hover:text-text",
               )}
             >
-              <span>{a.rotulo}</span>
+              <span>{t(a.rotulo)}</span>
               {/* O contador vem SEMPRE, inclusive zero: "Cancelados 0" responde a
                   pergunta sem gastar um clique, e some-lo faria a aba vazia
                   parecer não carregada. */}
@@ -183,7 +184,7 @@ export function HistoricoDaAgenda({
                   />
                   <div className="w-28 shrink-0">
                     <div className="text-sm font-medium tabular-nums first-letter:uppercase">
-                      {format(comeca, "d 'de' MMM", { locale: localeDaData })}
+                      {format(comeca, t("d 'de' MMM"), { locale: localeDaData })}
                     </div>
                     <div className="text-[11px] tabular-nums text-text-muted">
                       {format(comeca, "HH:mm")}
@@ -192,15 +193,15 @@ export function HistoricoDaAgenda({
                     </div>
                   </div>
                   <div className="min-w-0 flex-1">
-                    <div className="truncate text-sm">{a.quemSeraAtendido ?? a.titulo}</div>
+                    <div className="truncate text-sm">{a.quemSeraAtendido ?? t(a.titulo)}</div>
                     <div className="truncate text-[11px] text-text-muted">
-                      {a.tipo ?? "Agendamento"}
-                      {pessoa ? ` · com ${pessoa.nome}` : ""}
+                      {a.tipo ? t(a.tipo) : t("Agendamento")}
+                      {pessoa ? ` · ${t("com")} ${pessoa.nome}` : ""}
                     </div>
                   </div>
                   {pessoa && <AvatarDaPessoa pessoa={pessoa} tamanho="sm" />}
                   <Badge variant={variante} className="shrink-0">
-                    {ROTULO_DA_SITUACAO[a.situacao]}
+                    {t(ROTULO_DA_SITUACAO[a.situacao])}
                   </Badge>
                   <div className="flex shrink-0 items-center gap-1">
                     {/*
@@ -218,20 +219,20 @@ export function HistoricoDaAgenda({
                           size="sm"
                           data-testid={`remarcar-${a.id}`}
                           disabled={!onRemarcar}
-                          title={onRemarcar ? undefined : "Disponível quando a agenda estiver conectada"}
+                          title={onRemarcar ? undefined : t("Disponível quando a agenda estiver conectada")}
                           onClick={() => onRemarcar?.(a.id)}
                         >
-                          Remarcar
+                          {t("Remarcar")}
                         </Button>
                         <Button
                           variant="ghost"
                           size="sm"
                           data-testid={`cancelar-${a.id}`}
                           disabled={!onCancelar}
-                          title={onCancelar ? undefined : "Disponível quando a agenda estiver conectada"}
+                          title={onCancelar ? undefined : t("Disponível quando a agenda estiver conectada")}
                           onClick={() => onCancelar?.(a.id)}
                         >
-                          Cancelar
+                          {t("Cancelar")}
                         </Button>
                       </>
                     )}
@@ -259,7 +260,7 @@ export function HistoricoDaAgenda({
                           disabled={!onRealizado}
                           onClick={() => onRealizado?.(a.id)}
                         >
-                          Realizado
+                          {t("Realizado")}
                         </Button>
                         <Button
                           variant="ghost"
@@ -268,7 +269,7 @@ export function HistoricoDaAgenda({
                           disabled={!onFaltou}
                           onClick={() => onFaltou?.(a.id)}
                         >
-                          Faltou
+                          {t("Faltou")}
                         </Button>
                       </>
                     )}

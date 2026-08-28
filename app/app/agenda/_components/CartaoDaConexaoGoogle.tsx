@@ -76,11 +76,11 @@ export function CartaoDaConexaoGoogle({
               <>
                 {" "}
                 <span data-testid="o-que-falta" className="font-mono text-[11px]">
-                  {falta.join(" e ")}
+                  {falta.join(` ${t("e")} `)}
                 </span>
               </>
             ) : (
-              " as credenciais"
+              ` ${t("as credenciais")}`
             )}
           </p>
         )}
@@ -90,7 +90,7 @@ export function CartaoDaConexaoGoogle({
             data-testid="ir-configurar-google"
             className="mt-2 inline-block text-xs font-medium text-accent underline underline-offset-2 hover:text-accent-strong"
           >
-            Cadastrar as credenciais do Google
+            {t("Cadastrar as credenciais do Google")}
           </a>
         ) : null}
         {enderecoDeRetorno ? (
@@ -102,7 +102,7 @@ export function CartaoDaConexaoGoogle({
                 endereço do app (`http://.../`) e não o da ROTA, porque nada no
                 produto dizia qual é. Agora diz, e dá para copiar. */}
             {t("E, no console do Google, registrar este endereço de retorno —")}{" "}
-            <span className="font-medium">exatamente assim</span>:{" "}
+            <span className="font-medium">{t("exatamente assim")}</span>:{" "}
             <code
               data-testid="endereco-de-retorno"
               className="select-all break-all font-mono text-[11px] text-text"
@@ -126,7 +126,7 @@ export function CartaoDaConexaoGoogle({
       >
         <GoogleLogo size={16} weight="bold" className="shrink-0 text-text-muted" aria-hidden />
         <p className="min-w-0 flex-1 truncate text-sm">
-          <span className="text-text-muted">Agenda conectada: </span>
+          <span className="text-text-muted">{t("Agenda conectada:")} </span>
           <span className="font-medium">{contaConectada}</span>
         </p>
         <Button
@@ -147,7 +147,7 @@ export function CartaoDaConexaoGoogle({
               .catch(() => setDesconectando(false));
           }}
         >
-          {desconectando ? "Desconectando…" : "Desconectar"}
+          {desconectando ? t("Desconectando…") : t("Desconectar")}
         </Button>
       </div>
     );
@@ -161,7 +161,7 @@ export function CartaoDaConexaoGoogle({
       <Button variant="outline" size="sm" data-testid="conectar-google" asChild>
         <a href="/api/v1/agenda/google/connect">
           <GoogleLogo size={16} weight="bold" aria-hidden />
-          <span>Conectar Google</span>
+          <span>{t("Conectar Google")}</span>
         </a>
       </Button>
     </div>

@@ -12,7 +12,6 @@ import {
   startOfMonth,
   startOfWeek,
 } from "date-fns";
-import * as React from "react";
 
 import {
   PASSO_DA_CELULA_MIN,
@@ -26,6 +25,7 @@ import {
   type MotivoDaGradeTravada,
 } from "@/lib/agenda/grade-interativa";
 import { cn } from "@/lib/utils";
+import { useT } from "@/hooks/i18n/useT";
 
 import { corDaTrilha, fundoDaTrilha } from "./paleta";
 import type { Agendamento, Pessoa, VisaoDaAgenda } from "./tipos";
@@ -316,6 +316,7 @@ function BlocoDeAgendamento({
     moveu: () => boolean;
   };
 }) {
+  const t = useT();
   const comeca = new Date(agendamento.comeca);
   const termina = new Date(agendamento.termina);
   const duracao = Math.max(differenceInMinutes(termina, comeca), 15);
@@ -356,10 +357,10 @@ function BlocoDeAgendamento({
       // rótulo dizia `, com ${pessoa.nome}`, que é o ATENDENTE: quem usa leitor
       // de tela ouvia os dois papéis trocados, e o card visual não desmente
       // porque em compromisso de 30min ele nem mostra o contato.
-      aria-label={`${agendamento.titulo}, ${format(comeca, "HH:mm")} às ${format(termina, "HH:mm")}${
-        agendamento.quemSeraAtendido ? `, com ${agendamento.quemSeraAtendido}` : ""
-      }${pessoa ? `, atendido por ${pessoa.nome}` : ""}${
-        doGoogle ? ", ocupado na agenda do Google" : ""
+      aria-label={`${t(agendamento.titulo)}, ${format(comeca, "HH:mm")} ${t("às")} ${format(termina, "HH:mm")}${
+        agendamento.quemSeraAtendido ? `, ${t("com")} ${agendamento.quemSeraAtendido}` : ""
+      }${pessoa ? `, ${t("atendido por")} ${pessoa.nome}` : ""}${
+        doGoogle ? `, ${t("ocupado na agenda do Google")}` : ""
       }`}
       className={cn(
         "absolute flex flex-col items-start overflow-hidden rounded-sm px-1.5 py-0.5 text-left",
@@ -628,6 +629,7 @@ function VisaoDeMes({
   agendamentos: Agendamento[];
   pessoas: Pessoa[];
 }) {
+  const t = useT();
   const localeDaData = useLocaleDeData();
   const primeiro = startOfWeek(startOfMonth(ancora), { weekStartsOn: 0 });
   // SEIS semanas sempre, mesmo quando o mês cabe em cinco.
@@ -700,7 +702,7 @@ function VisaoDeMes({
                         style={{ backgroundColor: corDaTrilha(trilha) }}
                       />
                       <span className="truncate text-[10px] leading-4 text-text">
-                        {format(new Date(c.comeca), "HH:mm")} {c.titulo}
+                        {format(new Date(c.comeca), "HH:mm")} {t(c.titulo)}
                       </span>
                     </div>
                   );
