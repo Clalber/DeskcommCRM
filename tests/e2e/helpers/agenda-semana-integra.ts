@@ -88,6 +88,51 @@ export async function irParaASemanaSeguinte(page: Page): Promise<string[]> {
   return depois;
 }
 
+/**
+ * Leva a grade até a semana que contém um COMPROMISSO já marcado, e devolve o
+ * dia dele em `yyyy-MM-dd`.
+ *
+ * ⚠️ Quem marca por API não escolhe a semana — recebe. `agente-marca-consulta`
+ * pede o PRIMEIRO horário livre dos próximos 14 dias e manda a IA marcar nele;
+ * antes das 17h esse primeiro é hoje, e a grade — que desenha a semana de hoje —
+ * mostra o cartão sem ninguém navegar. Depois das 17h o primeiro livre é a
+ * segunda-feira, o cartão nasce na semana seguinte, e a asserção "o compromisso
+ * aparece na Agenda" reprova com `element(s) not found`. Medido no CI às 21h01
+ * UTC, no run do PR que consertava as outras cinco specs: a mesma classe, na
+ * sexta spec.
+ *
+ * O dia sai de um `page.evaluate` de propósito: a grade formata as chaves no
+ * fuso do BROWSER, e converter o instante no Node daria uma data diferente
+ * sempre que os dois fusos discordassem.
+ */
+export async function irParaASemanaDoCompromisso(page: Page, instanteISO: string): Promise<string> {
+  const dia = await page.evaluate((iso) => {
+    const d = new Date(iso);
+    const dd = (n: number) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${dd(d.getMonth() + 1)}-${dd(d.getDate())}`;
+  }, instanteISO);
+
+  await expect(
+    page.locator('[data-testid^="coluna-dia-"]').first(),
+    "a grade não desenhou dia nenhum — a tela da agenda não chegou a montar",
+  ).toBeAttached({ timeout: 25_000 });
+
+  // Teto explícito: a consulta que alimenta estas specs olha 14 dias à frente,
+  // então três saltos bastam. Sem teto, uma chave que a grade nunca desenha
+  // viraria um laço de cliques até o timeout do caso — e a falha diria
+  // "timeout", que é indistinguível de defeito.
+  for (let salto = 0; salto < 4; salto++) {
+    if ((await diasDesenhados(page)).includes(dia)) return dia;
+    await irParaASemanaSeguinte(page);
+  }
+  expect(
+    await diasDesenhados(page),
+    `a grade não chegou à semana de ${dia} em quatro saltos — o compromisso está ` +
+      "fora da janela que a tela sabe desenhar",
+  ).toContain(dia);
+  return dia;
+}
+
 /** Os dias que a grade desenha AGORA, lidos da própria tela. */
 export async function diasDesenhados(page: Page): Promise<string[]> {
   return (

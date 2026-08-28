@@ -64,6 +64,7 @@ const MODULO = path.join(DIR_E2E, "helpers/agenda-semana-integra.ts");
 /** As funções que o módulo publica — chamar qualquer uma satisfaz a régua 2. */
 const CHAMADAS = [
   "irParaASemanaSeguinte",
+  "irParaASemanaDoCompromisso",
   "escolherDiaDesenhado",
   "escolherPrimeiroDiaCheio",
   "escolherUltimoDiaCheio",
@@ -81,17 +82,64 @@ const DISPENSADAS: Record<string, string> = {
     "data no passado.",
 };
 
+/**
+ * A fonte sem os callbacks de `page.evaluate` — o que roda no BROWSER.
+ *
+ * Conta parênteses em vez de casar com regex: a primeira versão usava
+ * `/page\.evaluate\(\(\)\s*=>/`, que só reconhecia callback SEM argumento, e
+ * deixou passar `page.evaluate((iso) => …, instanteISO)`. A guarda acusou o
+ * módulo de ler o relógio do processo quando ele lia o do browser — falso
+ * positivo, que é como uma guarda perde a confiança de quem a lê.
+ *
+ * Se a contagem se perder, o recorte devolve texto demais e a guarda fica
+ * VERMELHA. É a direção certa de falhar para uma guarda: fechada.
+ */
+function foraDoBrowser(fonte: string): string {
+  let fora = "";
+  let i = 0;
+  for (;;) {
+    const inicio = fonte.indexOf("page.evaluate(", i);
+    if (inicio === -1) return fora + fonte.slice(i);
+    fora += fonte.slice(i, inicio);
+    let k = inicio + "page.evaluate".length;
+    let nivel = 0;
+    for (; k < fonte.length; k++) {
+      if (fonte[k] === "(") nivel++;
+      else if (fonte[k] === ")" && --nivel === 0) {
+        k++;
+        break;
+      }
+    }
+    fora += "<browser>";
+    i = k;
+  }
+}
+
 function specsDeAgenda(): string[] {
   return readdirSync(DIR_E2E)
     .filter((f) => f.endsWith(".spec.ts"))
     .filter((f) => {
       const fonte = readFileSync(path.join(DIR_E2E, f), "utf8");
       const naAgenda = /\/app\/agenda|tela-agenda|painel-de-marcacao/.test(fonte);
-      // A spec JÁ MIGRADA não tem mais os seletores literais — eles moraram para
-      // o módulo. Sem contá-la aqui, migrar uma spec a tiraria do conjunto e o
-      // controle de vacuidade abaixo mediria um conjunto que só encolhe.
+      // ⚠️ O DETECTOR PRECISOU CRESCER, e quem o corrigiu foi o CI.
+      //
+      // A primeira versão procurava só os seletores de dia e bloco, e deixou
+      // passar `agente-marca-consulta`: ela não seleciona dia nenhum — marca por
+      // API, no primeiro horário livre que a rota oferecer, e depois procura o
+      // cartão na Agenda. Mesmíssima dependência ("em que semana isto cai?"),
+      // nenhum dos sinais que eu tinha escolhido. Reprovou no CI às 21h01 UTC
+      // com `element(s) not found`, uma spec depois das cinco que eu havia
+      // consertado.
+      //
+      // Os sinais agora são todos os jeitos de a spec depender de QUANDO o
+      // horário cai: escolher dia/bloco, procurar um cartão por `faixa-`,
+      // escolher um `horario-`, confirmar uma marcação, ou mandar a IA marcar.
+      // A spec já migrada entra pelo import — sem isso, migrar uma spec a
+      // tiraria do conjunto e o controle de vacuidade mediria um conjunto que só
+      // encolhe.
       const escolhePeriodo =
-        /\[data-testid\^="(dia|bloco)-"\]|getByTestId\(`(dia|bloco)-/.test(fonte) ||
+        /\[data-testid\^="(dia|bloco|horario)-"\]|getByTestId\(`(dia|bloco|faixa)-/.test(fonte) ||
+        /faixa-\$\{|confirmar-marcacao|crm_book_appointment/.test(fonte) ||
         /from "\.\/helpers\/agenda-semana-integra"/.test(fonte);
       return naAgenda && escolhePeriodo;
     });
@@ -101,9 +149,10 @@ describe("spec de agenda não escolhe o período sozinha", () => {
   it("a varredura ENCONTRA specs — uma lista vazia passaria por vacuidade", () => {
     // Sem este caso, quebrar o regex acima (ou renomear os `data-testid`) faria
     // os dois casos abaixo ficarem verdes sobre um conjunto vazio.
-    // Cinco em 2026-08-28, e cada uma foi uma instância da classe. O piso é o
-    // que havia quando a guarda nasceu: spec de agenda não some, só aparece.
-    expect(specsDeAgenda().length).toBeGreaterThanOrEqual(5);
+    // Sete em 2026-08-28 — seis foram instâncias da classe no mesmo dia, e a
+    // sétima é a dispensada da vitrine. O piso é o que havia quando a guarda nasceu: spec
+    // de agenda não some, só aparece.
+    expect(specsDeAgenda().length).toBeGreaterThanOrEqual(7);
   });
 
   it("toda spec que escolhe dia ou bloco na agenda passa pelo módulo do período", () => {
@@ -134,11 +183,8 @@ describe("spec de agenda não escolhe o período sozinha", () => {
     // Comentário NÃO é código, e este arquivo cita `ancora={new Date()}` ao
     // explicar por que o mini-calendário abre no mês de hoje. Uma guarda que
     // lesse a prosa como código proibiria a explicação do próprio defeito.
-    const semProsa = fonte
-      .replace(/\/\*[\s\S]*?\*\//g, "")
-      .replace(/\/\/.*$/gm, "")
-      .replace(/page\.evaluate\(\(\)\s*=>\s*\{[\s\S]*?\n\s*\}\)/g, "<browser>");
-    const noNode = semProsa.match(/new Date\(|Date\.now\(/g) ?? [];
+    const semProsa = fonte.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
+    const noNode = foraDoBrowser(semProsa).match(/new Date\(|Date\.now\(/g) ?? [];
     expect(
       noNode,
       "o módulo passou a ler o relógio do processo. O período tem de sair do que a TELA " +
