@@ -6269,6 +6269,20 @@ export const DICIONARIO: Traducoes = {
   "Ver na agenda": { es: "Ver en la agenda" },
   "horários": { es: "horarios" },
   "Carregando a agenda": { es: "Cargando la agenda" },
+
+  // ═══ O que a reconciliação dos três PRs deixou a descoberto ═══
+  //
+  // Cinco chamadas `t()` que os merges trouxeram sem a chave correspondente —
+  // o texto era embrulhado e caía no português —, mais a saída do onboarding
+  // que a `main` acrescentou depois do último passe de tradução. Foi o guarda
+  // de AST que apontou as seis, uma a uma; nenhuma apareceria abrindo tela.
+  "Preparado": { es: "Preparado" },
+  "Consultado por": { es: "Consultado por" },
+  "Preparando…": { es: "Preparando…" },
+  "Guardando…": { es: "Guardando…" },
+  "tokens": { es: "tokens" },
+  "Voltar para": { es: "Volver a" },
+  "Ir para outra organização": { es: "Ir a otra organización" },
 };
 
 /**
