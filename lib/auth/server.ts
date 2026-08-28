@@ -12,6 +12,7 @@ import { logger } from "@/lib/logger";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { empresaExigeMfa, exigeCadastroDeMfa } from "@/lib/auth/politica-mfa";
+import { normalizarIdioma } from "@/lib/i18n/idiomas";
 import type { AuthUser, Role, UserOrgMembership, ActiveOrg } from "./types";
 
 const ACTIVE_ORG_COOKIE = "active_org";
@@ -21,7 +22,47 @@ interface RawMembershipRow {
   role: string;
   /** Só para ORDENAR — a lista decide qual organização fica ativa sem cookie. */
   accepted_at?: string | null;
-  organizations: { display_name: string } | { display_name: string }[] | null;
+  organizations: OrgJoin | OrgJoin[] | null;
+}
+
+interface OrgJoin {
+  display_name: string;
+  locale: string | null;
+}
+
+/**
+ * O idioma padrão da organização ativa — `null` se não há organização.
+ */
+async function localeDaOrgAtiva(memberships: UserOrgMembership[]): Promise<string | null> {
+  if (memberships.length === 0) return null;
+  const store = await cookies();
+  return escolherMembroAtivo(memberships, store.get(ACTIVE_ORG_COOKIE)?.value)?.locale ?? null;
+}
+
+/**
+ * Qual organização está ativa, dado o cookie.
+ *
+ * Extraída porque DUAS coisas precisam da mesma resposta e não podem divergir:
+ * `resolveActiveOrg`, que decide o escopo dos dados, e a resolução do idioma
+ * dentro de `loadAuthUser`. Se cada uma escolhesse por conta, dava para ver os
+ * dados de uma empresa com a interface no idioma de outra.
+ *
+ * ⚠️ O `memberships[0]` do fim só é uma ESCOLHA porque quem monta `memberships`
+ * ordena a consulta (`accepted_at`, depois `organization_id`). Sem aquele
+ * `ORDER BY`, isto aqui é um sorteio — e desde que o idioma passou a vir junto
+ * da organização ativa, o sorteio decide TAMBÉM em que língua o sistema abre.
+ * As duas coisas andam juntas: não tire a ordenação de lá sem resolver isto.
+ */
+function escolherMembroAtivo(
+  memberships: UserOrgMembership[],
+  cookieOrg: string | undefined,
+): UserOrgMembership | null {
+  if (memberships.length === 0) return null;
+  if (cookieOrg) {
+    const achado = memberships.find((o) => o.organization_id === cookieOrg);
+    if (achado) return achado;
+  }
+  return memberships[0] ?? null;
 }
 
 /**
@@ -134,7 +175,7 @@ export async function loadAuthUser(): Promise<AuthUser | null> {
   // de quem foi convidado para várias no mesmo lote).
   const { data: rawMemberships, error: membErro } = await supabase
     .from("user_organizations")
-    .select("organization_id, role, accepted_at, organizations(display_name)")
+    .select("organization_id, role, accepted_at, organizations(display_name, locale)")
     .eq("user_id", user.id)
     .is("revoked_at", null)
     .order("accepted_at", { ascending: true, nullsFirst: true })
@@ -175,17 +216,26 @@ export async function loadAuthUser(): Promise<AuthUser | null> {
   const rows = (rawMemberships ?? []) as RawMembershipRow[];
   const memberships: UserOrgMembership[] = rows.map((row) => {
     const orgs = row.organizations;
-    const name = Array.isArray(orgs) ? (orgs[0]?.display_name ?? "—") : (orgs?.display_name ?? "—");
+    const org = Array.isArray(orgs) ? (orgs[0] ?? null) : orgs;
     return {
       organization_id: row.organization_id,
-      organization_name: name,
+      organization_name: org?.display_name ?? "—",
       role: row.role as Role,
+      locale: org?.locale ?? null,
     };
   });
 
   const fullName = (user.user_metadata?.full_name as string | undefined) ?? null;
   const avatarUrl = (user.user_metadata?.avatar_url as string | undefined) ?? null;
   const locale = (user.user_metadata?.locale as string | undefined) ?? null;
+  // A cadeia inteira num lugar só: pessoa → organização ativa → padrão. Quem
+  // consome pede `idioma` e não precisa saber que existe uma ordem.
+  //
+  // O cookie só é lido quando a resposta DEPENDE dele: quem já tem preferência
+  // própria, e quem não pertence a organização nenhuma, não têm o que resolver.
+  // Ler assim mesmo faria toda tela do produto tocar o cookie para descartar o
+  // valor em seguida.
+  const idioma = normalizarIdioma(locale ?? (await localeDaOrgAtiva(memberships)));
   const timezone = (user.user_metadata?.timezone as string | undefined) ?? null;
 
   return {
@@ -195,6 +245,7 @@ export async function loadAuthUser(): Promise<AuthUser | null> {
     avatar_url: avatarUrl,
     is_platform_admin: !!paRow,
     locale,
+    idioma,
     timezone,
     organizations: memberships,
   };
@@ -206,18 +257,10 @@ export async function loadAuthUser(): Promise<AuthUser | null> {
  * Returns null if user has zero memberships.
  */
 export async function resolveActiveOrg(authUser: AuthUser): Promise<ActiveOrg | null> {
-  if (authUser.organizations.length === 0) return null;
   const store = await cookies();
-  const cookieOrg = store.get(ACTIVE_ORG_COOKIE)?.value;
-  if (cookieOrg) {
-    const found = authUser.organizations.find((o) => o.organization_id === cookieOrg);
-    if (found) {
-      return { orgId: found.organization_id, name: found.organization_name, role: found.role };
-    }
-  }
-  const first = authUser.organizations[0];
-  if (!first) return null;
-  return { orgId: first.organization_id, name: first.organization_name, role: first.role };
+  const ativo = escolherMembroAtivo(authUser.organizations, store.get(ACTIVE_ORG_COOKIE)?.value);
+  if (!ativo) return null;
+  return { orgId: ativo.organization_id, name: ativo.organization_name, role: ativo.role };
 }
 
 /**
