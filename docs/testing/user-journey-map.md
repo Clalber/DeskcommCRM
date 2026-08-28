@@ -529,6 +529,43 @@ ambiente e2e; falta a passada do harness no CI.
 
 ---
 
+## J14 — Marcar um horário, na tela em que o dono marcou `[P0]`
+
+**Por que P0:** os dois defeitos aqui impedem a ação central do módulo — escolher
+um horário e chegar até ele. O dono achou os dois usando a v1.8.0 na VPS.
+
+**A crítica que originou esta jornada, e ela é justa:** havia 20 casos Playwright
+sobre esta tela (a J13) e nenhum pegou. Todos assertam PRESENÇA (`toBeVisible`,
+`toHaveCount`), e **elemento cortado continua presente** — está no DOM, tem
+tamanho, e o Playwright o considera visível. A borda que o corta é do PAI.
+Presença nunca vai medir isto; só geometria mede.
+
+| # | Caso | Resultado |
+|---|---|---|
+| J14.1 | A coluna de horários cabe no painel, e o painel no Sheet que o hospeda | **PASS** — `agenda-painel-cabe-na-tela.spec.ts`, por `boundingBox` em cinco larguras. Antes: painel de 982px num Sheet de 768, transbordando 239px |
+| J14.2 | A coluna de horários fica dentro da VIEWPORT | **PASS** — antes, só 42 dos 280px apareciam, em 1280, 1440 e 1920 |
+| J14.3 | Dá para CLICAR num horário | **PASS** — a geometria é o diagnóstico; a ação é o desfecho. Evidência: `evidence/calendario/d1-painel-cabe-1280.png` |
+| J14.4 | Abaixo de `lg` os horários empilham sob o calendário | **PASS** — caso de 900px |
+| J14.5 | O limiar de 1024px, onde as 3 colunas passam a valer com 44px de folga | **PASS** — é onde um ajuste de padding estoura primeiro |
+| J14.6 | "Ver na agenda" leva até o compromisso, inclusive em outra semana | **PASS** — `agenda-ver-na-agenda.spec.ts`. O botão não tinha `onClick` nenhum. Evidência: `evidence/calendario/d2-ver-na-agenda.png` |
+
+**Duas correções ao diagnóstico inicial, ambas medidas:**
+1. O defeito de largura **não sumia em tela grande** — em 1920 o transbordo era
+   idêntico, porque o Sheet é fixo em 768px e ancorado à direita.
+2. A primeira versão da asserção de geometria media "coluna contra painel" e
+   ficava vermelha — mas por medir no meio da transição de `width`. No estado
+   estável ela PASSA. Falso vermelho hoje é falso verde amanhã; a spec passou a
+   esperar a largura estabilizar, e a régua certa é o painel contra o Sheet.
+
+**Sobre um diagnóstico que a medição derrubou:** ao ver 4 falhas num run de 5
+specs juntas, atribuí ao `AUTH_RATE_LIMIT_LOGIN_IP` que o CI define e o ensaio
+local não. **Estava errado** — o run seguinte passou 30/30 sem essa variável, e o
+seguinte também. A diferença era tempo: 51s contra 11,2min, com um `next build`
+disputando CPU. A diferença de ambiente entre ensaio e CI é real e vale saber,
+mas não era a causa desta falha.
+
+---
+
 ## J7 — Exploração completa `[P2]`
 
 Andar por TODAS as rotas navegáveis logado como admin e como agent: settings, contacts,

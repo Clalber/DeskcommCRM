@@ -379,7 +379,16 @@ export function AgendaClient({
           if (!aberto) setRemarcandoId(null);
         }}
       >
-        <SheetContent side="right" className="w-full sm:max-w-3xl">
+        {/*
+          `lg:max-w-[1040px]` — o painel de marcar precisa de 980px para as três
+          colunas (contexto 280 + calendário 420 + horários 280), e cabia num
+          Sheet de 768px cortando 239px em silêncio.
+          
+          O `sm:max-w-3xl` fica para as telas menores DE PROPÓSITO: lá o painel
+          empilha os horários sob o calendário, então 768px bastam e um Sheet
+          maior só roubaria contexto da tela atrás.
+        */}
+        <SheetContent side="right" className="w-full sm:max-w-3xl lg:max-w-[1040px]">
           <SheetHeader>
             <SheetTitle>{remarcandoId ? "Remarcar agendamento" : "Novo agendamento"}</SheetTitle>
           </SheetHeader>
@@ -468,6 +477,25 @@ export function AgendaClient({
                       });
                   }
                   return marcar.mutateAsync({ event_type_id: tipo.id, starts_at: instante });
+                }}
+                // "VER NA AGENDA" — o botão que não fazia nada.
+                //
+                // Ele não tinha `onClick`: parecia ativo e o clique era mudo. E
+                // fechar o painel sozinho não bastaria — o compromisso recém
+                // marcado costuma ser de OUTRA semana (o do relato era 8 de
+                // setembro), e a grade abre na semana corrente. Voltar para uma
+                // grade que não mostra o que acabou de nascer é o mesmo "nada
+                // acontece" com um passo a mais.
+                //
+                // Por isso a âncora vai junto: fecha o painel E leva a grade até
+                // o dia do compromisso. `startOfDay` porque a âncora é o DIA de
+                // referência da visão — mandar o instante exato funcionaria por
+                // acidente na visão de semana e escolheria a hora errada na de
+                // dia.
+                onVerNaAgenda={(instante) => {
+                  setAncora(startOfDay(new Date(instante)));
+                  setMarcando(false);
+                  setRemarcandoId(null);
                 }}
               />
             </div>
