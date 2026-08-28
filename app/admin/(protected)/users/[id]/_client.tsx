@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/table";
 import { CaretLeft } from "@/lib/ui/icons";
 import { useAdminUser } from "@/hooks/useAdminUser";
+import { useT } from "@/hooks/i18n/useT";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -40,9 +41,10 @@ const ROLE_LABELS: Record<string, string> = {
 };
 
 function RoleBadge({ role }: { role: string }) {
+  const t = useT();
   return (
     <Badge variant={ROLE_VARIANTS[role] ?? "neutral"}>
-      {ROLE_LABELS[role] ?? role}
+      {t(ROLE_LABELS[role] ?? role)}
     </Badge>
   );
 }
@@ -74,6 +76,7 @@ interface UserDetailClientProps {
 }
 
 export function UserDetailClient({ id }: UserDetailClientProps) {
+  const t = useT();
   const { data, isLoading, isError } = useAdminUser(id);
 
   if (isLoading) {
@@ -90,11 +93,11 @@ export function UserDetailClient({ id }: UserDetailClientProps) {
   if (isError || !data?.data) {
     return (
       <div className="flex flex-col items-center justify-center gap-3 py-16 text-center text-muted-foreground">
-        <p className="text-sm font-medium">Usuário não encontrado</p>
+        <p className="text-sm font-medium">{t("Usuário não encontrado")}</p>
         <Button asChild variant="outline" size="sm">
           <Link href="/admin/users">
             <CaretLeft size={14} aria-hidden />
-            Voltar
+            {t("Voltar")}
           </Link>
         </Button>
       </div>
@@ -113,14 +116,14 @@ export function UserDetailClient({ id }: UserDetailClientProps) {
           className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
         >
           <CaretLeft size={14} aria-hidden />
-          Usuários
+          {t("Usuários")}
         </Link>
       </div>
 
       {/* Header */}
       <div className="space-y-1">
         <h1 className="text-2xl font-semibold tracking-tight">
-          {user.full_name ?? user.email ?? "Usuário sem nome"}
+          {user.full_name ?? user.email ?? t("Usuário sem nome")}
         </h1>
         {user.full_name && (
           <p className="font-mono text-sm text-muted-foreground">{user.email}</p>
@@ -133,35 +136,35 @@ export function UserDetailClient({ id }: UserDetailClientProps) {
       {/* User info card */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-sm font-medium">Informações do usuário</CardTitle>
+          <CardTitle className="text-sm font-medium">{t("Informações do usuário")}</CardTitle>
         </CardHeader>
         <CardContent>
           <dl className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm sm:grid-cols-3">
             <div>
-              <dt className="text-xs text-muted-foreground mb-0.5">Email confirmado</dt>
-              <dd>{user.email_confirmed_at ? absoluteDate(user.email_confirmed_at) : <Badge variant="warning">Pendente</Badge>}</dd>
+              <dt className="text-xs text-muted-foreground mb-0.5">{t("Email confirmado")}</dt>
+              <dd>{user.email_confirmed_at ? absoluteDate(user.email_confirmed_at) : <Badge variant="warning">{t("Pendente")}</Badge>}</dd>
             </div>
             <div>
-              <dt className="text-xs text-muted-foreground mb-0.5">Último acesso</dt>
+              <dt className="text-xs text-muted-foreground mb-0.5">{t("Último acesso")}</dt>
               <dd className="text-sm">{relativeDate(user.last_sign_in_at)}</dd>
             </div>
             <div>
-              <dt className="text-xs text-muted-foreground mb-0.5">Criado em</dt>
+              <dt className="text-xs text-muted-foreground mb-0.5">{t("Criado em")}</dt>
               <dd className="text-sm">{absoluteDate(user.created_at)}</dd>
             </div>
             <div>
               <dt className="text-xs text-muted-foreground mb-0.5">MFA</dt>
               <dd>
                 {hasMfa ? (
-                  <Badge variant="success">Ativo</Badge>
+                  <Badge variant="success">{t("Ativo")}</Badge>
                 ) : (
-                  <Badge variant="neutral">Inativo</Badge>
+                  <Badge variant="neutral">{t("Inativo")}</Badge>
                 )}
               </dd>
             </div>
             {user.phone && (
               <div>
-                <dt className="text-xs text-muted-foreground mb-0.5">Telefone</dt>
+                <dt className="text-xs text-muted-foreground mb-0.5">{t("Telefone")}</dt>
                 <dd className="font-mono text-sm">{user.phone}</dd>
               </div>
             )}
@@ -179,7 +182,7 @@ export function UserDetailClient({ id }: UserDetailClientProps) {
         <CardContent className="p-0">
           {memberships.length === 0 ? (
             <p className="px-6 py-4 text-xs text-muted-foreground">
-              Sem memberships registrados.
+              {t("Sem memberships registrados.")}
             </p>
           ) : (
             <Table>
@@ -187,8 +190,8 @@ export function UserDetailClient({ id }: UserDetailClientProps) {
                 <TableRow>
                   <TableHead>Tenant</TableHead>
                   <TableHead className="w-[100px]">Role</TableHead>
-                  <TableHead className="w-[140px]">Aceito em</TableHead>
-                  <TableHead className="w-[100px]">Status</TableHead>
+                  <TableHead className="w-[140px]">{t("Aceito em")}</TableHead>
+                  <TableHead className="w-[100px]">{t("Status")}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -217,9 +220,9 @@ export function UserDetailClient({ id }: UserDetailClientProps) {
                     </TableCell>
                     <TableCell>
                       {m.revoked_at ? (
-                        <Badge variant="error">Revogado</Badge>
+                        <Badge variant="error">{t("Revogado")}</Badge>
                       ) : (
-                        <Badge variant="success">Ativo</Badge>
+                        <Badge variant="success">{t("Ativo")}</Badge>
                       )}
                     </TableCell>
                   </TableRow>
@@ -234,13 +237,13 @@ export function UserDetailClient({ id }: UserDetailClientProps) {
       <Card>
         <CardHeader>
           <CardTitle className="text-sm font-medium">
-            Audit recente ({recent_audit.length}{recent_audit.length === 50 ? "+" : ""})
+            {t("Audit recente")} ({recent_audit.length}{recent_audit.length === 50 ? "+" : ""})
           </CardTitle>
         </CardHeader>
         <CardContent>
           {recent_audit.length === 0 ? (
             <p className="text-xs text-muted-foreground">
-              Nenhuma entrada de auditoria encontrada para este usuário.
+              {t("Nenhuma entrada de auditoria encontrada para este usuário.")}
             </p>
           ) : (
             <div className="space-y-3 max-h-96 overflow-auto pr-1">

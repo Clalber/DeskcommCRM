@@ -1,4 +1,6 @@
 "use client";
+
+import { useT } from "@/hooks/i18n/useT";
 /**
  * O QUE O AGENTE APRENDEU DESTE MATERIAL.
  *
@@ -43,6 +45,7 @@ interface Props {
 }
 
 export function TrechosDoMaterialDialog({ sourceId, nome, aberto, onFechar }: Props) {
+  const t = useT();
   const { data, isLoading, isError } = useQuery({
     queryKey: ["ai", "knowledge", "trechos", sourceId],
     queryFn: async () => {
@@ -60,20 +63,18 @@ export function TrechosDoMaterialDialog({ sourceId, nome, aberto, onFechar }: Pr
         <DialogHeader>
           <DialogTitle>O que o agente aprendeu de “{nome}”</DialogTitle>
           <DialogDescription>
-            São estes os trechos que ele procura antes de responder. Quando ele erra sobre este
-            assunto, é aqui que se vê o porquê.
+            {t("São estes os trechos que ele procura antes de responder. Quando ele erra sobre este assunto, é aqui que se vê o porquê.")}
           </DialogDescription>
         </DialogHeader>
 
         <div className="max-h-[60vh] space-y-3 overflow-y-auto" data-testid="material-trechos-lista">
           {isLoading ? <p className="text-sm text-text-muted">Carregando…</p> : null}
           {isError ? (
-            <p className="text-sm text-error-fg">Não consegui ler os trechos agora.</p>
+            <p className="text-sm text-error-fg">{t("Não consegui ler os trechos agora.")}</p>
           ) : null}
           {data && data.trechos.length === 0 ? (
             <p className="text-sm text-text-muted">
-              Este material ainda não foi preparado — não há trecho nenhum para o agente
-              encontrar.
+              {t("Este material ainda não foi preparado — não há trecho nenhum para o agente encontrar.")}
             </p>
           ) : null}
           {data?.trechos.map((t) => (
@@ -87,8 +88,7 @@ export function TrechosDoMaterialDialog({ sourceId, nome, aberto, onFechar }: Pr
           ))}
           {data?.truncado ? (
             <p className="text-xs text-text-muted">
-              Mostrando os primeiros trechos de {data.total}. Uma tela não folheia mil pedaços —
-              o restante está no acervo e o agente alcança todos.
+              {t("Mostrando os primeiros trechos de")} {data.total}{t(". Uma tela não folheia mil pedaços — o restante está no acervo e o agente alcança todos.")}
             </p>
           ) : null}
         </div>

@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useT } from "@/hooks/i18n/useT";
 import { useClaimConversation } from "@/hooks/inbox/useClaimConversation";
 import { useAtRiskLeads, type AtRiskLead } from "@/hooks/leads/useAtRiskLeads";
 import type { RiskBucket } from "@/lib/leads/risk-radar";
@@ -40,6 +41,7 @@ function followupWhen(iso: string): string {
 }
 
 export function RiskRadarList() {
+  const t = useT();
   const { data, isLoading } = useAtRiskLeads();
 
   if (isLoading) {
@@ -64,9 +66,9 @@ export function RiskRadarList() {
         data-testid="radar-empty"
       >
         <CheckCircle size={28} className="text-success-fg/70" aria-hidden />
-        <p className="text-sm font-medium">Nenhuma demanda em risco</p>
+        <p className="text-sm font-medium">{t("Nenhuma demanda em risco")}</p>
         <p className="text-xs text-muted-foreground">
-          Toda demanda aberta teve atividade recente ou já tem um retorno agendado.
+          {t("Toda demanda aberta teve atividade recente ou já tem um retorno agendado.")}
         </p>
       </div>
     );
@@ -85,19 +87,20 @@ export function RiskRadarList() {
           <p className="text-sm font-medium">
             {semPasso.length}{" "}
             {semPasso.length === 1
-              ? "demanda aberta sem próximo passo"
-              : "demandas abertas sem próximo passo"}
+              ? t("demanda aberta sem próximo passo")
+              : t("demandas abertas sem próximo passo")}
           </p>
           <p className="mb-2 text-xs text-muted-foreground">
-            Ninguém marcou o que acontece a seguir. Cada uma é alguém esperando sem que nada
-            esteja combinado.
+            {t(
+              "Ninguém marcou o que acontece a seguir. Cada uma é alguém esperando sem que nada esteja combinado.",
+            )}
           </p>
           <ul className="flex flex-col gap-1">
             {semPasso.slice(0, 8).map((d) => (
               <li key={d.id} className="flex items-baseline justify-between gap-3 text-xs">
-                <span className="truncate">{d.contact_name ?? "Contato sem nome"}</span>
+                <span className="truncate">{d.contact_name ?? t("Contato sem nome")}</span>
                 <span className="shrink-0 tabular-nums text-muted-foreground">
-                  aberta há {d.horas_aberta}h
+                  {t("aberta há")} {d.horas_aberta}h
                 </span>
               </li>
             ))}
@@ -106,9 +109,15 @@ export function RiskRadarList() {
       ) : null}
 
       <div className="flex flex-wrap gap-2" data-testid="radar-counts">
-        <Badge variant="error">{data.counts.critico} crítico</Badge>
-        <Badge variant="warning">{data.counts.em_risco} em risco</Badge>
-        <Badge variant="info">{data.counts.em_voo} em voo</Badge>
+        <Badge variant="error">
+          {data.counts.critico} {t("crítico")}
+        </Badge>
+        <Badge variant="warning">
+          {data.counts.em_risco} {t("em risco")}
+        </Badge>
+        <Badge variant="info">
+          {data.counts.em_voo} {t("em voo")}
+        </Badge>
       </div>
 
       <ul className="divide-y divide-border rounded-lg border border-border">
@@ -121,6 +130,7 @@ export function RiskRadarList() {
 }
 
 function RadarRow({ lead }: { lead: AtRiskLead }) {
+  const t = useT();
   const meta = RISK_META[lead.risk as Exclude<RiskBucket, "em_dia">] ?? RISK_META.em_risco;
   const href = lead.conversation_id
     ? `/app/inbox?id=${lead.conversation_id}`
@@ -191,7 +201,7 @@ function RadarRow({ lead }: { lead: AtRiskLead }) {
           ) : (
             <p className="mt-1 inline-flex items-center gap-1 text-xs text-warning-fg">
               <Warning size={13} aria-hidden />
-              Sem próximo passo agendado
+              {t("Sem próximo passo agendado")}
             </p>
           )}
         </div>

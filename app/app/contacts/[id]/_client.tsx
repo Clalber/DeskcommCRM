@@ -1,4 +1,6 @@
 "use client";
+
+import { useT } from "@/hooks/i18n/useT";
 import { useState } from "react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -24,6 +26,7 @@ interface Props {
 }
 
 export function ContactDetailClient({ contactId }: Props) {
+  const t = useT();
   const q = useContact(contactId);
   const { user, activeOrg } = useAuth();
   const [editOpen, setEditOpen] = useState(false);
@@ -70,7 +73,7 @@ export function ContactDetailClient({ contactId }: Props) {
             Contato anonimizado (LGPD)
             {contact.anonymized_at &&
               ` em ${format(new Date(contact.anonymized_at), "dd/MM/yyyy", { locale: ptBR })}`}
-            {" — edição bloqueada."}
+            {t(" — edição bloqueada.")}
           </span>
         </div>
       )}
@@ -118,7 +121,7 @@ export function ContactDetailClient({ contactId }: Props) {
 
       <Tabs defaultValue="overview">
         <TabsList>
-          <TabsTrigger value="overview">Visão geral</TabsTrigger>
+          <TabsTrigger value="overview">{t("Visão geral")}</TabsTrigger>
           <TabsTrigger value="timeline">Timeline</TabsTrigger>
           {isAdmin && <TabsTrigger value="lgpd">LGPD</TabsTrigger>}
         </TabsList>
@@ -147,7 +150,7 @@ export function ContactDetailClient({ contactId }: Props) {
                 <dd className="mt-1">{contact.source}</dd>
               </div>
               <div>
-                <dt className="text-xs uppercase text-muted-foreground">Última atividade</dt>
+                <dt className="text-xs uppercase text-muted-foreground">{t("Última atividade")}</dt>
                 <dd className="mt-1">
                   {contact.last_activity_at
                     ? format(new Date(contact.last_activity_at), "dd/MM/yyyy HH:mm", {
@@ -186,13 +189,12 @@ export function ContactDetailClient({ contactId }: Props) {
               <div>
                 <h2 className="text-lg font-semibold">Direito ao esquecimento (LGPD)</h2>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  A anonimização é irreversível. Use somente após confirmação formal
-                  do titular ou ordem judicial.
+                  {t("A anonimização é irreversível. Use somente após confirmação formal do titular ou ordem judicial.")}
                 </p>
               </div>
               {contact.is_anonymized ? (
                 <p className="text-sm text-muted-foreground">
-                  Este contato já foi anonimizado
+                  {t("Este contato já foi anonimizado")}
                   {contact.anonymized_at &&
                     ` em ${format(new Date(contact.anonymized_at), "dd/MM/yyyy HH:mm", { locale: ptBR })}`}
                   .

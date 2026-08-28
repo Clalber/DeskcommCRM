@@ -1,4 +1,6 @@
 "use client";
+
+import { useT } from "@/hooks/i18n/useT";
 import { useEffect, useMemo } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
@@ -60,6 +62,7 @@ export function NewLeadDialog({
   contactId,
   onCreated,
 }: Props) {
+  const t = useT();
   const create = useCreateLead(pipelineId);
   const initialStage = useMemo(() => defaultStageId(stages), [stages]);
 
@@ -143,12 +146,12 @@ export function NewLeadDialog({
         <DialogHeader>
           <DialogTitle>Novo Lead</DialogTitle>
           <DialogDescription>
-            Crie um lead manualmente neste pipeline.
+            {t("Crie um lead manualmente neste pipeline.")}
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="title">Título</Label>
+            <Label htmlFor="title">{t("Título")}</Label>
             <Input
               id="title"
               placeholder="Ex: Pedido Maria — combo presente"
@@ -157,11 +160,11 @@ export function NewLeadDialog({
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="description">Descrição</Label>
+            <Label htmlFor="description">{t("Descrição")}</Label>
             <Textarea
               id="description"
               rows={3}
-              placeholder="Contexto, observações, links…"
+              placeholder={t("Contexto, observações, links…")}
               {...form.register("description")}
             />
           </div>
@@ -214,7 +217,7 @@ export function NewLeadDialog({
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="tagsRaw">Tags (separadas por vírgula)</Label>
+            <Label htmlFor="tagsRaw">{t("Tags (separadas por vírgula)")}</Label>
             <Input
               id="tagsRaw"
               placeholder="vip, recompra"

@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/table";
 import { Warning } from "@/lib/ui/icons";
 import type { AdminIncidentRow, IncidentSeverity, IncidentStatus } from "@/hooks/useAdminIncidents";
+import { useT } from "@/hooks/i18n/useT";
 
 // ---------------------------------------------------------------------------
 // Badge helpers
@@ -45,17 +46,19 @@ const STATUS_LABELS: Record<IncidentStatus, string> = {
 };
 
 function SeverityBadge({ severity }: { severity: IncidentSeverity }) {
+  const t = useT();
   return (
     <Badge variant={SEVERITY_VARIANTS[severity]}>
-      {SEVERITY_LABELS[severity]}
+      {t(SEVERITY_LABELS[severity])}
     </Badge>
   );
 }
 
 function StatusBadge({ status }: { status: IncidentStatus }) {
+  const t = useT();
   return (
     <Badge variant={STATUS_VARIANTS[status]}>
-      {STATUS_LABELS[status]}
+      {t(STATUS_LABELS[status])}
     </Badge>
   );
 }
@@ -74,16 +77,17 @@ function relativeDate(iso: string): string {
 // ---------------------------------------------------------------------------
 
 export function IncidentsTableSkeleton() {
+  const t = useT();
   return (
     <div className="rounded-md border">
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead className="w-[140px]">Quando</TableHead>
-            <TableHead>Tipo</TableHead>
+            <TableHead className="w-[140px]">{t("Quando")}</TableHead>
+            <TableHead>{t("Tipo")}</TableHead>
             <TableHead className="w-[160px]">Tenant</TableHead>
-            <TableHead className="w-[110px]">Severidade</TableHead>
-            <TableHead className="w-[120px]">Status</TableHead>
+            <TableHead className="w-[110px]">{t("Severidade")}</TableHead>
+            <TableHead className="w-[120px]">{t("Status")}</TableHead>
             <TableHead className="w-[60px]" />
           </TableRow>
         </TableHeader>
@@ -120,13 +124,14 @@ export function IncidentsTable({
   isFetchingNextPage,
   onLoadMore,
 }: IncidentsTableProps) {
+  const t = useT();
   if (data.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center gap-3 rounded-md border py-16 text-center text-muted-foreground">
         <Warning size={36} weight="duotone" className="opacity-40" aria-hidden />
-        <p className="text-sm font-medium">Nenhum incidente encontrado</p>
+        <p className="text-sm font-medium">{t("Nenhum incidente encontrado")}</p>
         <p className="max-w-xs text-xs opacity-70">
-          Ajuste os filtros para ver outros incidentes.
+          {t("Ajuste os filtros para ver outros incidentes.")}
         </p>
       </div>
     );
@@ -138,11 +143,11 @@ export function IncidentsTable({
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="w-[140px]">Quando</TableHead>
-              <TableHead>Tipo</TableHead>
+              <TableHead className="w-[140px]">{t("Quando")}</TableHead>
+              <TableHead>{t("Tipo")}</TableHead>
               <TableHead className="w-[160px]">Tenant</TableHead>
-              <TableHead className="w-[110px]">Severidade</TableHead>
-              <TableHead className="w-[120px]">Status</TableHead>
+              <TableHead className="w-[110px]">{t("Severidade")}</TableHead>
+              <TableHead className="w-[120px]">{t("Status")}</TableHead>
               <TableHead className="w-[60px]" />
             </TableRow>
           </TableHeader>
@@ -171,7 +176,7 @@ export function IncidentsTable({
                     href={`/admin/incidents/${row.id}`}
                     className="text-xs font-medium text-accent hover:underline"
                   >
-                    Ver
+                    {t("Ver")}
                   </Link>
                 </TableCell>
               </TableRow>
@@ -188,7 +193,7 @@ export function IncidentsTable({
             onClick={onLoadMore}
             disabled={isFetchingNextPage}
           >
-            {isFetchingNextPage ? "Carregando..." : "Carregar mais"}
+            {isFetchingNextPage ? t("Carregando...") : t("Carregar mais")}
           </Button>
         </div>
       )}

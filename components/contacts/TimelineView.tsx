@@ -2,6 +2,7 @@
 import { useMemo } from "react";
 import { format, isToday, isYesterday } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { useT } from "@/hooks/i18n/useT";
 import { ChatCircle, Users, Storefront, Robot, Gear } from "@/lib/ui/icons";
 import type { Icon as PhosphorIcon } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
@@ -25,9 +26,9 @@ const ICON_MAP: Record<string, PhosphorIcon> = {
   system: Gear,
 };
 
-function dayHeader(d: Date): string {
-  if (isToday(d)) return "Hoje";
-  if (isYesterday(d)) return "Ontem";
+function dayHeader(d: Date, t: (texto: string) => string = (texto) => texto): string {
+  if (isToday(d)) return t("Hoje");
+  if (isYesterday(d)) return t("Ontem");
   return format(d, "dd/MM/yyyy", { locale: ptBR });
 }
 
@@ -48,6 +49,7 @@ function summarizePayload(p: Record<string, unknown>): string {
 }
 
 export function TimelineView({ contactId, types }: Props) {
+  const t = useT();
   const q = useTimeline(contactId, types);
 
   const grouped = useMemo(() => {
@@ -76,9 +78,9 @@ export function TimelineView({ contactId, types }: Props) {
   if (q.isError) {
     return (
       <Card className="p-4">
-        <p className="text-sm text-error-fg">Erro ao carregar timeline.</p>
+        <p className="text-sm text-error-fg">{t("Erro ao carregar timeline.")}</p>
         <Button size="sm" variant="outline" className="mt-2" onClick={() => q.refetch()}>
-          Tentar novamente
+          {t("Tentar novamente")}
         </Button>
       </Card>
     );
@@ -87,7 +89,7 @@ export function TimelineView({ contactId, types }: Props) {
   if (grouped.length === 0) {
     return (
       <Card className="p-6 text-center text-sm text-muted-foreground">
-        Nenhuma atividade registrada ainda.
+        {t("Nenhuma atividade registrada ainda.")}
       </Card>
     );
   }
@@ -99,18 +101,22 @@ export function TimelineView({ contactId, types }: Props) {
         return (
           <section key={key} className="space-y-2">
             <h3 className="sticky top-0 z-10 bg-background py-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              {dayHeader(date)}
+              {dayHeader(date, t)}
             </h3>
             <ul className="space-y-2">
               {items.map((it) => {
                 const Icon = ICON_MAP[it.source_module] ?? Gear;
-                const label = activityLabel(it.type);
+                const label = t(activityLabel(it.type));
                 const corpo = (it.reason ?? "").trim() || summarizePayload(it.payload);
                 const forma = actorShape(it.actor_kind ?? null);
-                const quem = actorName(it.actor_kind ?? null, {
-                  agente: it.actor_agent_name,
-                  usuario: it.actor_user_name,
-                });
+                const quem = actorName(
+                  it.actor_kind ?? null,
+                  {
+                    agente: it.actor_agent_name,
+                    usuario: it.actor_user_name,
+                  },
+                  t,
+                );
                 const time = format(new Date(it.performed_at), "HH:mm", { locale: ptBR });
                 return (
                   <li
@@ -172,7 +178,7 @@ export function TimelineView({ contactId, types }: Props) {
             onClick={() => q.fetchNextPage()}
             disabled={q.isFetchingNextPage}
           >
-            {q.isFetchingNextPage ? "Carregando…" : "Carregar mais"}
+            {q.isFetchingNextPage ? t("Carregando…") : t("Carregar mais")}
           </Button>
         </div>
       )}

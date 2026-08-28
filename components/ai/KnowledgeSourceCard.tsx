@@ -1,4 +1,6 @@
 "use client";
+
+import { useT } from "@/hooks/i18n/useT";
 /**
  * UM MATERIAL DO ACERVO.
  *
@@ -74,6 +76,7 @@ export function KnowledgeSourceCard({
   onMudou,
   isReindexing,
 }: Props) {
+  const t = useT();
   const [vendoTrechos, setVendoTrechos] = useState(false);
   const [editando, setEditando] = useState(false);
 
@@ -117,7 +120,7 @@ export function KnowledgeSourceCard({
           <span className="text-right">
             {usadoPor.length === 0 ? (
               <span className="text-warning-fg" data-testid={`material-orfao-${source.id}`}>
-                nenhum assistente ainda
+                {t("nenhum assistente ainda")}
               </span>
             ) : (
               usadoPor.join(", ")
@@ -127,7 +130,7 @@ export function KnowledgeSourceCard({
 
         {mostraErro ? (
           <details className="rounded-md border border-error-bg bg-error-bg/30 p-2 text-xs text-error-fg">
-            <summary className="cursor-pointer font-medium">Por que não entrou</summary>
+            <summary className="cursor-pointer font-medium">{t("Por que não entrou")}</summary>
             <p className="mt-1 whitespace-pre-wrap break-words">{source.last_index_error}</p>
           </details>
         ) : null}
@@ -180,7 +183,7 @@ export function KnowledgeSourceCard({
               onClick={() => setEditando(true)}
               data-testid={`material-editar-${source.id}`}
             >
-              Editar conteúdo
+              {t("Editar conteúdo")}
             </Button>
             {editando ? (
               <EditarFaqDialog

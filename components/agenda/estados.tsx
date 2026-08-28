@@ -1,9 +1,10 @@
 "use client";
 
+import { useT } from "@/hooks/i18n/useT";
+
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ArrowsClockwise, WarningOctagon } from "@/lib/ui/icons";
-import { useT } from "@/hooks/i18n/useT";
 
 import { JANELA_DA_GRADE } from "./GradeDaAgenda";
 

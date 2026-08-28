@@ -1,8 +1,9 @@
 "use client";
 
+import { useT } from "@/hooks/i18n/useT";
+
 import { Button } from "@/components/ui/button";
 import * as React from "react";
-import { useT } from "@/hooks/i18n/useT";
 import { useRouter } from "next/navigation";
 
 import { GoogleLogo } from "@/lib/ui/icons";
@@ -54,9 +55,7 @@ export function CartaoDaConexaoGoogle({
         data-testid="google-nao-configurado"
         className="rounded-lg border border-border bg-surface-elevated/50 p-3"
       >
-        <p className="text-sm font-medium text-text">
-          {t("Sincronizar com o Google ainda não está disponível")}
-        </p>
+        <p className="text-sm font-medium text-text">{t("Sincronizar com o Google ainda não está disponível")}</p>
         {/*
           DUAS FRASES, porque são duas pessoas.
           
@@ -68,15 +67,11 @@ export function CartaoDaConexaoGoogle({
         */}
         {linkDeConfiguracao ? (
           <p className="mt-1 text-xs leading-4 text-text-muted">
-            {t(
-              "Falta cadastrar o aplicativo do Google desta instalação. Leva um minuto e você faz por aqui mesmo.",
-            )}
+            {t("Falta cadastrar o aplicativo do Google desta instalação. Leva um minuto e você faz por aqui mesmo.")}
           </p>
         ) : (
           <p className="mt-1 text-xs leading-4 text-text-muted">
-            {t(
-              "Esta instalação não tem as credenciais do Google cadastradas — não é nada que você tenha feito. Quem instalou o sistema precisa configurar",
-            )}
+            {t("Esta instalação não tem as credenciais do Google cadastradas — não é nada que você tenha feito. Quem instalou o sistema precisa configurar")}
             {falta.length > 0 ? (
               <>
                 {" "}
@@ -161,9 +156,7 @@ export function CartaoDaConexaoGoogle({
   return (
     <div className="flex items-center gap-3 rounded-lg border border-border bg-surface p-3">
       <p className="min-w-0 flex-1 text-sm text-text-muted">
-        {t(
-          "Conecte sua agenda do Google para ver aqui o que já está marcado lá — e enviar para lá o que for marcado aqui.",
-        )}
+        {t("Conecte sua agenda do Google para ver aqui o que já está marcado lá — e enviar para lá o que for marcado aqui.")}
       </p>
       <Button variant="outline" size="sm" data-testid="conectar-google" asChild>
         <a href="/api/v1/agenda/google/connect">

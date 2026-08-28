@@ -24,9 +24,10 @@ import {
   type AutomationRuleRunActionResult,
 } from "@/hooks/webhooks/useAutomationRules";
 import { ACTION_LABELS, type ActionType } from "./labels";
+import { useT } from "@/hooks/i18n/useT";
 
-function actionLabel(type: string): string {
-  return ACTION_LABELS[type as ActionType] ?? type;
+function actionLabel(type: string, t: (texto: string) => string): string {
+  return t(ACTION_LABELS[type as ActionType] ?? type);
 }
 
 function relativeCreatedAt(iso: string): string {
@@ -42,16 +43,16 @@ function statusBadgeVariant(
   return "warning";
 }
 
-function statusBadgeLabel(status: AutomationRuleRunRow["status"]): string {
-  if (status === "success") return "Sucesso";
-  if (status === "failed") return "Falhou";
+function statusBadgeLabel(status: AutomationRuleRunRow["status"], t: (texto: string) => string): string {
+  if (status === "success") return t("Sucesso");
+  if (status === "failed") return t("Falhou");
   // "Aguardando envio", e não "Aguardando horário": desde que o agregador passou
   // a marcar `adiado` também quando a mensagem ficou na fila do canal (número
   // desconectado, transporte não configurado), o rótulo antigo afirmava uma
   // causa — o relógio — que muitas vezes não é a certa. A causa exata aparece
   // na linha da ação, logo abaixo, onde ela pode ser específica.
-  if (status === "adiado") return "Aguardando envio";
-  return "Parcial";
+  if (status === "adiado") return t("Aguardando envio");
+  return t("Parcial");
 }
 
 /**
@@ -79,11 +80,14 @@ const MOTIVO_DA_PARADA: Record<string, string> = {
   texto_vazio: "A IA não devolveu texto. Revise o contexto que você escreveu para ela.",
 };
 
-function explicacaoDe(action: AutomationRuleRunActionResult): string | null {
+function explicacaoDe(
+  action: AutomationRuleRunActionResult,
+  t: (texto: string) => string,
+): string | null {
   const detail = action.detail ?? {};
-  if (typeof detail.explicacao === "string") return detail.explicacao;
+  if (typeof detail.explicacao === "string") return t(detail.explicacao);
   const reason = typeof detail.reason === "string" ? detail.reason : null;
-  if (reason && MOTIVO_DA_PARADA[reason]) return MOTIVO_DA_PARADA[reason];
+  if (reason && MOTIVO_DA_PARADA[reason]) return t(MOTIVO_DA_PARADA[reason]);
   return reason;
 }
 
@@ -96,6 +100,7 @@ function horarioDeRetorno(action: AutomationRuleRunActionResult): string | null 
 }
 
 function ActionLine({ action, run }: { action: AutomationRuleRunActionResult; run: AutomationRuleRunRow }) {
+  const t = useT();
   const resend = useResendAutomationRun();
 
   const icon =
@@ -114,14 +119,14 @@ function ActionLine({ action, run }: { action: AutomationRuleRunActionResult; ru
   // chegam em `action.error` como CÓDIGO, o ramo de falha imprime `error` cru, e
   // o mapa de frases logo acima nunca era consultado. Escrever as frases e não
   // ligá-las é o mesmo que não tê-las.
-  const explicacao = explicacaoDe(action);
+  const explicacao = explicacaoDe(action, t);
   const retorno = horarioDeRetorno(action);
 
   return (
     <div className="space-y-1">
       <div className="flex items-center gap-2 text-sm">
         {icon}
-        <span>{actionLabel(action.type)}</span>
+        <span>{actionLabel(action.type, t)}</span>
       </div>
       {action.status === "failed" ? (
         // `action.error` é texto de fora (resposta do webhook externo) — sem
@@ -134,7 +139,7 @@ function ActionLine({ action, run }: { action: AutomationRuleRunActionResult; ru
                 IA ele é o código (`sem_agente_publicado`) — e é para esses que
                 `explicacao` existe. O `??` mantém o erro do webhook externo,
                 que não tem tradução possível e é a única pista real. */}
-            {explicacao ?? action.error ?? "Essa ação não funcionou."}
+            {explicacao ?? action.error ?? t("Essa ação não funcionou.")}
           </p>
           {action.type === "call_webhook" ? (
             <Button
@@ -145,11 +150,11 @@ function ActionLine({ action, run }: { action: AutomationRuleRunActionResult; ru
               disabled={resend.isPending}
               onClick={() =>
                 resend.mutate(run.id, {
-                  onSuccess: () => toast.success("Reenviado."),
+                  onSuccess: () => toast.success(t("Reenviado.")),
                 })
               }
             >
-              <PaperPlaneTilt /> Reenviar
+              <PaperPlaneTilt /> {t("Reenviar")}
             </Button>
           ) : null}
         </div>
@@ -159,7 +164,7 @@ function ActionLine({ action, run }: { action: AutomationRuleRunActionResult; ru
         <div className="ml-6 rounded-sm bg-muted px-2 py-1.5">
           <p className="break-words text-xs text-muted-foreground">
             {explicacao}
-            {retorno ? ` Nova tentativa em ${retorno}.` : null}
+            {retorno ? ` ${t("Nova tentativa em")} ${retorno}.` : null}
           </p>
         </div>
       ) : null}
@@ -168,6 +173,7 @@ function ActionLine({ action, run }: { action: AutomationRuleRunActionResult; ru
 }
 
 export function ActivityTab() {
+  const t = useT();
   const { data, isLoading, refetch, isRefetching } = useAutomationRuns();
   const runs = data?.data ?? [];
 
@@ -181,7 +187,7 @@ export function ActivityTab() {
           disabled={isRefetching}
           className="w-full sm:w-auto"
         >
-          <ArrowsClockwise className={cn(isRefetching && "animate-spin")} /> Atualizar
+          <ArrowsClockwise className={cn(isRefetching && "animate-spin")} /> {t("Atualizar")}
         </Button>
       </div>
 
@@ -194,8 +200,9 @@ export function ActivityTab() {
         <div className="flex justify-center pt-10">
           <Card className="max-w-md">
             <CardContent className="pt-6 text-center text-sm text-muted-foreground">
-              Nenhuma automação rodou ainda. Assim que uma regra ligada disparar, o histórico
-              aparece aqui.
+              {t(
+                "Nenhuma automação rodou ainda. Assim que uma regra ligada disparar, o histórico aparece aqui.",
+              )}
             </CardContent>
           </Card>
         </div>
@@ -206,9 +213,9 @@ export function ActivityTab() {
               <CardHeader className="space-y-1">
                 <div className="flex items-center justify-between gap-2">
                   <CardTitle className="truncate text-sm">
-                    {run.automation_rules?.name ?? "Automação removida"}
+                    {run.automation_rules?.name ?? t("Automação removida")}
                   </CardTitle>
-                  <Badge variant={statusBadgeVariant(run.status)}>{statusBadgeLabel(run.status)}</Badge>
+                  <Badge variant={statusBadgeVariant(run.status)}>{statusBadgeLabel(run.status, t)}</Badge>
                 </div>
                 <p className="text-xs text-muted-foreground">{relativeCreatedAt(run.created_at)}</p>
               </CardHeader>

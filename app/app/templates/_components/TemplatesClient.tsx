@@ -1,4 +1,6 @@
 "use client";
+
+import { useT } from "@/hooks/i18n/useT";
 import * as React from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -31,6 +33,7 @@ interface Props {
 }
 
 export function TemplatesClient({ canShare, currentUserId }: Props) {
+  const t = useT();
   const { data: templates, isLoading } = useMessageTemplates();
   const qc = useQueryClient();
   const del = useMutation({
@@ -67,7 +70,7 @@ export function TemplatesClient({ canShare, currentUserId }: Props) {
         </Button>
       </div>
       {!templates?.length ? (
-        <p className="text-sm text-muted-foreground">Nenhum template ainda.</p>
+        <p className="text-sm text-muted-foreground">{t("Nenhum template ainda.")}</p>
       ) : (
         <ul className="space-y-2">
           {templates.map((template) => {
@@ -86,7 +89,7 @@ export function TemplatesClient({ canShare, currentUserId }: Props) {
                   <div className="flex items-center gap-2">
                     <span className="font-medium">{template.title}</span>
                     <Badge variant={template.owner_user_id ? "neutral" : "default"}>
-                      {template.owner_user_id ? "Pessoal" : "Compartilhado"}
+                      {template.owner_user_id ? t("Pessoal") : t("Compartilhado")}
                     </Badge>
                   </div>
                   <p className="line-clamp-2 text-sm text-muted-foreground">{template.body}</p>
@@ -115,9 +118,9 @@ export function TemplatesClient({ canShare, currentUserId }: Props) {
                       </AlertDialogTrigger>
                       <AlertDialogContent>
                         <AlertDialogHeader>
-                          <AlertDialogTitle>Excluir este template?</AlertDialogTitle>
+                          <AlertDialogTitle>{t("Excluir este template?")}</AlertDialogTitle>
                           <AlertDialogDescription>
-                            Essa ação não pode ser desfeita.
+                            {t("Essa ação não pode ser desfeita.")}
                           </AlertDialogDescription>
                         </AlertDialogHeader>
                         <AlertDialogFooter>

@@ -1,12 +1,13 @@
 "use client";
 
+import { useT } from "@/hooks/i18n/useT";
+
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
 import { showApiError } from "@/components/feedback/ApiErrorToast";
 import { Button } from "@/components/ui/button";
-import { useT } from "@/hooks/i18n/useT";
 import { LOCAIS_DE_ATENDIMENTO } from "@/lib/agenda/locais";
 import { apiClient } from "@/lib/api/client";
 
@@ -214,7 +215,7 @@ export function TiposDeAgendamentoClient({
                     dono para saber de QUEM é a jornada; sem ele a rota devolve
                     `sem_responsavel` e a tela de marcar não oferece horário nenhum.
                     Era exatamente o estado dos três tipos semeados. */}
-                Quem atende (sem isto, não há horário para oferecer)
+                {t("Quem atende (sem isto, não há horário para oferecer)")}
                 <select
                   data-testid="novo-tipo-dono"
                   value={rascunho.default_owner_user_id}
@@ -251,7 +252,7 @@ export function TiposDeAgendamentoClient({
       <ul className="flex flex-col gap-2" data-testid="lista-de-tipos">
         {tiposIniciais.length === 0 ? (
           <li data-testid="sem-tipos" className="rounded-lg border border-border bg-surface p-4 text-sm text-text-muted">
-            Nenhum tipo de agendamento ainda. Crie o primeiro para que a Agenda tenha o que oferecer.
+            {t("Nenhum tipo de agendamento ainda. Crie o primeiro para que a Agenda tenha o que oferecer.")}
           </li>
         ) : null}
         {tiposIniciais.map((tipo) => (
@@ -386,7 +387,7 @@ export function TiposDeAgendamentoClient({
                   />
                 </label>
                 <label className="flex flex-col gap-1 text-xs text-text-muted">
-                  Duração
+                  {t("Duração")}
                   <input
                     name="duration_minutes"
                     type="number"
@@ -398,14 +399,14 @@ export function TiposDeAgendamentoClient({
                   />
                 </label>
                 <label className="flex flex-col gap-1 text-xs text-text-muted">
-                  Quem atende
+                  {t("Quem atende")}
                   <select
                     name="default_owner_user_id"
                     defaultValue={tipo.default_owner_user_id ?? ""}
                     data-testid={`editar-dono-${tipo.id}`}
                     className="rounded-md border border-border bg-surface-elevated p-2 text-sm text-text"
                   >
-                    <option value="">Sem responsável</option>
+                    <option value="">{t("Sem responsável")}</option>
                     {pessoas.map((p) => (
                       <option key={p.id} value={p.id}>
                         {p.nome}

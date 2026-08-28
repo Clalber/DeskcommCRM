@@ -30,6 +30,7 @@ import {
 } from "@/hooks/webhooks/useLeadCaptures";
 import { useWebhookSources } from "@/hooks/webhooks/useWebhookSources";
 import { CapturaDetail } from "./CapturaDetail";
+import { useT } from "@/hooks/i18n/useT";
 
 const TODAS = "__todas__";
 
@@ -61,8 +62,8 @@ function quando(iso: string): { data: string; hora: string } {
   };
 }
 
-function identidade(row: LeadCaptureRow): string {
-  return row.captured_name ?? row.captured_phone ?? row.captured_email ?? "(sem identificação)";
+function identidade(row: LeadCaptureRow, t: (texto: string) => string): string {
+  return row.captured_name ?? row.captured_phone ?? row.captured_email ?? t("(sem identificação)");
 }
 
 /** `datetime-local` devolve hora local sem fuso; o filtro é ISO. */
@@ -73,6 +74,7 @@ function paraIso(valor: string): string | undefined {
 }
 
 export function CapturasTab() {
+  const t = useT();
   const [busca, setBusca] = React.useState("");
   const [buscaAplicada, setBuscaAplicada] = React.useState("");
   const [fonte, setFonte] = React.useState<string>(TODAS);
@@ -106,7 +108,7 @@ export function CapturasTab() {
         <div className="grid grid-cols-1 gap-3 md:grid-cols-5">
           <div className="space-y-1">
             <label className="text-xs text-muted-foreground" htmlFor="captura-busca">
-              Nome, telefone ou e-mail
+              {t("Nome, telefone ou e-mail")}
             </label>
             <div className="flex gap-2">
               <Input
@@ -116,13 +118,13 @@ export function CapturasTab() {
                 onKeyDown={(e) => {
                   if (e.key === "Enter") setBuscaAplicada(busca.trim());
                 }}
-                placeholder="quem você procura"
+                placeholder={t("quem você procura")}
               />
               <Button
                 type="button"
                 variant="secondary"
                 size="icon"
-                aria-label="Buscar"
+                aria-label={t("Buscar")}
                 onClick={() => setBuscaAplicada(busca.trim())}
               >
                 <MagnifyingGlass />
@@ -130,13 +132,13 @@ export function CapturasTab() {
             </div>
           </div>
           <div className="space-y-1">
-            <label className="text-xs text-muted-foreground">Fonte</label>
+            <label className="text-xs text-muted-foreground">{t("Fonte")}</label>
             <Select value={fonte} onValueChange={setFonte}>
-              <SelectTrigger aria-label="Filtrar por fonte">
+              <SelectTrigger aria-label={t("Filtrar por fonte")}>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value={TODAS}>Todas as fontes</SelectItem>
+                <SelectItem value={TODAS}>{t("Todas as fontes")}</SelectItem>
                 {fontes.map((f) => (
                   <SelectItem key={f.id} value={f.id}>
                     {f.name}
@@ -146,22 +148,22 @@ export function CapturasTab() {
             </Select>
           </div>
           <div className="space-y-1">
-            <label className="text-xs text-muted-foreground">Resultado</label>
+            <label className="text-xs text-muted-foreground">{t("Resultado")}</label>
             <Select value={desfecho} onValueChange={setDesfecho}>
-              <SelectTrigger aria-label="Filtrar por resultado">
+              <SelectTrigger aria-label={t("Filtrar por resultado")}>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value={TODAS}>Todos</SelectItem>
-                <SelectItem value="criado">Virou lead</SelectItem>
-                <SelectItem value="duplicado">Reenvio</SelectItem>
-                <SelectItem value="recusado">Não entrou</SelectItem>
+                <SelectItem value={TODAS}>{t("Todos")}</SelectItem>
+                <SelectItem value="criado">{t(DESFECHO_LABEL.criado)}</SelectItem>
+                <SelectItem value="duplicado">{t(DESFECHO_LABEL.duplicado)}</SelectItem>
+                <SelectItem value="recusado">{t(DESFECHO_LABEL.recusado)}</SelectItem>
               </SelectContent>
             </Select>
           </div>
           <div className="space-y-1">
             <label className="text-xs text-muted-foreground" htmlFor="captura-de">
-              De
+              {t("De")}
             </label>
             <Input
               id="captura-de"
@@ -172,7 +174,7 @@ export function CapturasTab() {
           </div>
           <div className="space-y-1">
             <label className="text-xs text-muted-foreground" htmlFor="captura-ate">
-              Até
+              {t("Até")}
             </label>
             <Input
               id="captura-ate"
@@ -199,12 +201,12 @@ export function CapturasTab() {
         <div className="flex justify-center pt-10">
           <Card className="max-w-md">
             <CardContent className="space-y-3 pt-6 text-center">
-              <p className="text-sm text-text">Não foi possível carregar o histórico.</p>
+              <p className="text-sm text-text">{t("Não foi possível carregar o histórico.")}</p>
               <p className="text-xs text-muted-foreground">
-                Isto é uma falha ao consultar — não quer dizer que ninguém preencheu.
+                {t("Isto é uma falha ao consultar — não quer dizer que ninguém preencheu.")}
               </p>
               <Button type="button" variant="secondary" onClick={() => refetch()}>
-                Tentar de novo
+                {t("Tentar de novo")}
               </Button>
             </CardContent>
           </Card>
@@ -216,8 +218,10 @@ export function CapturasTab() {
               <Tray className="mx-auto h-10 w-10 text-accent" />
               <p className="text-sm text-muted-foreground">
                 {temFiltro
-                  ? "Nenhuma captação com esses filtros. Tente ampliar o período."
-                  : "Ninguém preencheu seus formulários ainda. Assim que o primeiro envio chegar, ele aparece aqui — com os dados, o horário e a origem."}
+                  ? t("Nenhuma captação com esses filtros. Tente ampliar o período.")
+                  : t(
+                      "Ninguém preencheu seus formulários ainda. Assim que o primeiro envio chegar, ele aparece aqui — com os dados, o horário e a origem.",
+                    )}
               </p>
             </CardContent>
           </Card>
@@ -230,17 +234,17 @@ export function CapturasTab() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Quem</TableHead>
-                  <TableHead>Contato</TableHead>
-                  <TableHead>Fonte</TableHead>
-                  <TableHead>Quando</TableHead>
-                  <TableHead>Origem</TableHead>
-                  <TableHead>Resultado</TableHead>
+                  <TableHead>{t("Quem")}</TableHead>
+                  <TableHead>{t("Contato")}</TableHead>
+                  <TableHead>{t("Fonte")}</TableHead>
+                  <TableHead>{t("Quando")}</TableHead>
+                  <TableHead>{t("Origem")}</TableHead>
+                  <TableHead>{t("Resultado")}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {linhas.map((row) => {
-                  const t = quando(row.received_at);
+                  const w = quando(row.received_at);
                   return (
                     // A linha continua sendo `row` para quem usa leitor de tela:
                     // um `role="button"` na <tr> a TIRA da tabela, e o leitor
@@ -258,7 +262,7 @@ export function CapturasTab() {
                             setAberta(row);
                           }}
                         >
-                          {identidade(row)}
+                          {identidade(row, t)}
                         </button>
                       </TableCell>
                       <TableCell className="text-sm text-muted-foreground">
@@ -268,14 +272,14 @@ export function CapturasTab() {
                         {row.source_name}
                       </TableCell>
                       <TableCell className="whitespace-nowrap text-sm text-muted-foreground">
-                        {t.data} <span className="tabular-nums">{t.hora}</span>
+                        {w.data} <span className="tabular-nums">{w.hora}</span>
                       </TableCell>
                       <TableCell className="max-w-[200px] truncate text-sm text-muted-foreground">
                         {row.origin ?? row.remote_ip ?? "—"}
                       </TableCell>
                       <TableCell>
                         <Badge variant={DESFECHO_VARIANTE[row.outcome]}>
-                          {DESFECHO_LABEL[row.outcome]}
+                          {t(DESFECHO_LABEL[row.outcome])}
                         </Badge>
                       </TableCell>
                     </TableRow>
@@ -293,7 +297,7 @@ export function CapturasTab() {
                 onClick={() => fetchNextPage()}
                 disabled={isFetchingNextPage}
               >
-                {isFetchingNextPage ? "Carregando…" : "Carregar mais"}
+                {isFetchingNextPage ? t("Carregando…") : t("Carregar mais")}
               </Button>
             </div>
           ) : null}

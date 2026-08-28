@@ -1,5 +1,7 @@
 "use client";
 
+import { useT } from "@/hooks/i18n/useT";
+
 import { format, isBefore } from "date-fns";
 import * as React from "react";
 
@@ -10,7 +12,6 @@ import { cn } from "@/lib/utils";
 import { AvatarDaPessoa } from "./AvatarDaPessoa";
 import { corDaTrilha } from "./paleta";
 import { ROTULO_DA_SITUACAO } from "@/lib/agenda/tipos";
-import { useT } from "@/hooks/i18n/useT";
 import { useLocaleDeData } from "@/lib/i18n/locale-de-data";
 
 import type { Agendamento, Pessoa, SituacaoDoAgendamento } from "./tipos";

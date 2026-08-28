@@ -14,6 +14,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import type { AdminAuditRow } from "@/hooks/useAdminAuditLog";
+import { useT } from "@/hooks/i18n/useT";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -47,12 +48,13 @@ function shortId(id: string | null | undefined): string {
 // ---------------------------------------------------------------------------
 
 export function AuditTableSkeleton() {
+  const t = useT();
   return (
     <div className="rounded-md border">
       <Table>
         <TableHeader>
           <TableRow>
-            {["Quando", "Action", "Tenant", "Actor", "Recurso", ""].map((h) => (
+            {[t("Quando"), "Action", "Tenant", "Actor", t("Recurso"), ""].map((h) => (
               <TableHead key={h}>{h}</TableHead>
             ))}
           </TableRow>
@@ -78,13 +80,14 @@ export function AuditTableSkeleton() {
 // ---------------------------------------------------------------------------
 
 function EmptyState() {
+  const t = useT();
   return (
     <div className="flex flex-col items-center justify-center rounded-lg border border-dashed py-16 text-center">
       <p className="text-sm font-medium text-muted-foreground">
-        Nenhum evento encontrado
+        {t("Nenhum evento encontrado")}
       </p>
       <p className="mt-1 text-xs text-muted-foreground">
-        Ajuste os filtros para ver entradas do audit log.
+        {t("Ajuste os filtros para ver entradas do audit log.")}
       </p>
     </div>
   );
@@ -107,6 +110,7 @@ export function AuditTable({
   isFetchingNextPage,
   onLoadMore,
 }: AuditTableProps) {
+  const t = useT();
   if (data.length === 0) {
     return <EmptyState />;
   }
@@ -117,11 +121,11 @@ export function AuditTable({
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="w-[130px]">Quando</TableHead>
+              <TableHead className="w-[130px]">{t("Quando")}</TableHead>
               <TableHead>Action</TableHead>
               <TableHead className="w-[130px]">Tenant</TableHead>
               <TableHead className="w-[160px]">Actor</TableHead>
-              <TableHead className="w-[180px]">Recurso</TableHead>
+              <TableHead className="w-[180px]">{t("Recurso")}</TableHead>
               <TableHead className="w-[60px]" />
             </TableRow>
           </TableHeader>
@@ -156,7 +160,7 @@ export function AuditTable({
                 </TableCell>
                 <TableCell>
                   <Button asChild variant="ghost" size="sm" className="h-7 px-2 text-xs">
-                    <Link href={`/admin/audit/${row.id}`}>Ver</Link>
+                    <Link href={`/admin/audit/${row.id}`}>{t("Ver")}</Link>
                   </Button>
                 </TableCell>
               </TableRow>
@@ -173,7 +177,7 @@ export function AuditTable({
             disabled={isFetchingNextPage}
             onClick={onLoadMore}
           >
-            {isFetchingNextPage ? "Carregando..." : "Carregar mais"}
+            {isFetchingNextPage ? t("Carregando...") : t("Carregar mais")}
           </Button>
         </div>
       )}

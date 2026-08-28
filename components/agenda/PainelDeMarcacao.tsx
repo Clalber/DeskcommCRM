@@ -1,5 +1,7 @@
 "use client";
 
+import { useT } from "@/hooks/i18n/useT";
+
 import { addDays, format, isSameDay, isSameMonth, startOfMonth, startOfWeek } from "date-fns";
 import Link from "next/link";
 import * as React from "react";
@@ -7,7 +9,6 @@ import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { CaretLeft, CaretRight, CheckCircle, Clock, MapPin, Warning } from "@/lib/ui/icons";
 import { cn } from "@/lib/utils";
-import { useT } from "@/hooks/i18n/useT";
 import { useLocaleDeData } from "@/lib/i18n/locale-de-data";
 
 import { AvatarDaPessoa } from "./AvatarDaPessoa";
@@ -214,15 +215,14 @@ export function PainelDeMarcacao({
             {format(new Date(marcado.instante), t("EEEE, d 'de' MMMM 'às' HH:mm"), { locale: localeDeData })}
           </p>
           <p className="mt-0.5 text-xs text-text-subtle">
-            {t(tipo)} · {duracaoMin} min · {t("com")} {responsavel.nome}
+            {t(tipo)} · {duracaoMin} {t("min · com")} {responsavel.nome}
           </p>
           {quemSeraAtendido && !quemSeraAtendido.aceitaMensagem && (
             // Repetido aqui de propósito: o aviso do passo anterior sumiu da
             // tela junto com o formulário, e quem fecha o painel agora não tem
             // como saber que aquele agendamento não terá lembrete.
             <p data-testid="aviso-sem-lembrete-no-resumo" className="mt-2 text-xs text-warning">
-              {t("Sem lembrete automático —")} {quemSeraAtendido.nome}{" "}
-              {t("pediu para não receber mensagens.")}
+              {t("Sem lembrete automático —")} {quemSeraAtendido.nome} {t("pediu para não receber mensagens.")}
             </p>
           )}
           <div className="mt-5 flex gap-2">
@@ -279,7 +279,7 @@ export function PainelDeMarcacao({
         </dl>
         {fuso ? (
           <p className="mt-4 border-t border-border pt-3 text-[11px] leading-4 text-text-subtle">
-            Horários no fuso <span className="font-mono">{fuso.replace("_", " ")}</span>.
+            {t("Horários no fuso")} <span className="font-mono">{fuso.replace("_", " ")}</span>.
           </p>
         ) : null}
       </aside>
@@ -333,10 +333,10 @@ export function PainelDeMarcacao({
             className="mb-3 rounded-sm border border-warning/40 bg-warning-bg p-3"
           >
             <p className="text-sm font-semibold text-text">
-              Você ainda não publicou seus horários de atendimento
+              {t("Você ainda não publicou seus horários de atendimento")}
             </p>
             <p className="mt-1 text-xs leading-4 text-text-muted">
-              Sem eles ninguém consegue marcar — nem você, nem o agente.
+              {t("Sem eles ninguém consegue marcar — nem você, nem o agente.")}
             </p>
             {/*
               O AVISO VIRA PORTA.
@@ -375,16 +375,14 @@ export function PainelDeMarcacao({
           >
             <p className="text-sm font-semibold text-text">{t("Não consegui carregar os horários")}</p>
             <p className="mt-1 text-xs leading-4 text-text-muted">
-              {t(
-                "Os dias ficam bloqueados até eu conseguir — é mais seguro que oferecer um horário que talvez não exista. Numa instalação nova, isso costuma ser a jornada de atendimento que ainda não foi publicada.",
-              )}
+              {t("Os dias ficam bloqueados até eu conseguir — é mais seguro que oferecer um horário que talvez não exista. Numa instalação nova, isso costuma ser a jornada de atendimento que ainda não foi publicada.")}
             </p>
             <Link
               href="/app/team?aba=atendimento"
               data-testid="ir-configurar-horarios"
               className="mt-2 inline-block text-xs font-medium text-accent underline underline-offset-2 hover:text-accent-strong"
             >
-              Configurar meus horários de atendimento
+              {t("Configurar meus horários de atendimento")}
             </Link>
           </div>
         )}
@@ -408,8 +406,7 @@ export function PainelDeMarcacao({
 
         {fusoSuposto && (
           <p data-testid="fuso-suposto" className="mb-2 text-[11px] leading-4 text-text-subtle">
-            Estamos supondo o fuso <span className="font-mono">{(fuso ?? "").replace("_", " ")}</span> —
-            ninguém escolheu ainda. O agente oferece horário usando ele.
+            {t("Estamos supondo o fuso")} <span className="font-mono">{(fuso ?? "").replace("_", " ")}</span> {t("— ninguém escolheu ainda. O agente oferece horário usando ele.")}
           </p>
         )}
 
@@ -495,9 +492,7 @@ export function PainelDeMarcacao({
               >
                 <Warning size={16} weight="fill" className="mt-0.5 shrink-0 text-warning" aria-hidden />
                 <p className="text-xs leading-4 text-text">
-                  <span className="font-semibold">
-                    {quemSeraAtendido.nome} {t("pediu para não receber mensagens.")}
-                  </span>{" "}
+                  <span className="font-semibold">{quemSeraAtendido.nome} {t("pediu para não receber mensagens.")}</span>{" "}
                   {t("O lembrete não será enviado — combine por telefone.")}
                 </p>
               </div>

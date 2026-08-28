@@ -88,8 +88,8 @@ const STATUS: Record<string, { rotulo: string; tom: TomDoStatus }> = {
   cancelada: { rotulo: "Cancelada", tom: "neutral" },
 };
 
-export function rotuloDoStatus(status: string): string {
-  return STATUS[status]?.rotulo ?? status;
+export function rotuloDoStatus(status: string, t: (texto: string) => string = (texto) => texto): string {
+  return t(STATUS[status]?.rotulo ?? status);
 }
 
 export function tomDoStatus(status: string): TomDoStatus {

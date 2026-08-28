@@ -10,6 +10,7 @@ import {
 } from "recharts";
 import type { UsageSeries } from "@/app/api/v1/admin/usage/route";
 import { formatCentsUSD } from "@/lib/money";
+import { useT } from "@/hooks/i18n/useT";
 
 interface UsageChartsProps {
   series: UsageSeries;
@@ -28,9 +29,10 @@ function formatNumber(n: number): string {
 }
 
 function EmptyChart() {
+  const t = useT();
   return (
     <div className="flex h-40 items-center justify-center text-sm text-muted-foreground">
-      Sem dados no período
+      {t("Sem dados no período")}
     </div>
   );
 }
@@ -50,6 +52,7 @@ function ChartCard({ title, children }: ChartCardProps) {
 }
 
 export function UsageCharts({ series }: UsageChartsProps) {
+  const t = useT();
   const hasMessages = series.messages.some((p) => p.count > 0);
   const hasCost = series.ai_cost.some((p) => p.cents > 0);
   const hasTokens = series.ai_tokens.some((p) => p.tokens > 0);
@@ -57,7 +60,7 @@ export function UsageCharts({ series }: UsageChartsProps) {
   return (
     <div className="grid gap-4 md:grid-cols-2">
       {/* Messages per day */}
-      <ChartCard title="Mensagens / dia">
+      <ChartCard title={t("Mensagens / dia")}>
         {!hasMessages ? (
           <EmptyChart />
         ) : (
@@ -89,7 +92,7 @@ export function UsageCharts({ series }: UsageChartsProps) {
                 width={45}
               />
               <Tooltip
-                formatter={(value) => [formatNumber(Number(value)), "Mensagens"]}
+                formatter={(value) => [formatNumber(Number(value)), t("Mensagens")]}
                 labelFormatter={(label) => formatDateTick(String(label))}
                 contentStyle={{
                   borderRadius: "8px",
@@ -110,7 +113,7 @@ export function UsageCharts({ series }: UsageChartsProps) {
       </ChartCard>
 
       {/* AI Cost per day */}
-      <ChartCard title="Custo AI / dia (R$)">
+      <ChartCard title={t("Custo AI / dia (R$)")}>
         {!hasCost ? (
           <EmptyChart />
         ) : (
@@ -144,7 +147,7 @@ export function UsageCharts({ series }: UsageChartsProps) {
                 width={70}
               />
               <Tooltip
-                formatter={(value) => [formatCurrency(Number(value)), "Custo"]}
+                formatter={(value) => [formatCurrency(Number(value)), t("Custo")]}
                 labelFormatter={(label) => formatDateTick(String(label))}
                 contentStyle={{
                   borderRadius: "8px",
@@ -166,7 +169,7 @@ export function UsageCharts({ series }: UsageChartsProps) {
 
       {/* AI Tokens per day — full width */}
       <div className="md:col-span-2">
-        <ChartCard title="AI Tokens / dia">
+        <ChartCard title={t("AI Tokens / dia")}>
           {!hasTokens ? (
             <EmptyChart />
           ) : (

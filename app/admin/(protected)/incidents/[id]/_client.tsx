@@ -11,6 +11,7 @@ import { CaretLeft } from "@/lib/ui/icons";
 import { useAdminIncident } from "@/hooks/useAdminIncident";
 import { ResolveIncidentDialog } from "@/components/admin/incidents/ResolveIncidentDialog";
 import type { IncidentSeverity, IncidentStatus } from "@/hooks/useAdminIncidents";
+import { useT } from "@/hooks/i18n/useT";
 
 // ---------------------------------------------------------------------------
 // Badge helpers
@@ -49,6 +50,7 @@ interface IncidentDetailClientProps {
 }
 
 export function IncidentDetailClient({ id }: IncidentDetailClientProps) {
+  const t = useT();
   const { data, isLoading, error } = useAdminIncident(id);
 
   if (isLoading) {
@@ -64,11 +66,11 @@ export function IncidentDetailClient({ id }: IncidentDetailClientProps) {
   if (error || !data?.data) {
     return (
       <div className="flex flex-col items-center justify-center gap-3 py-16 text-center text-muted-foreground">
-        <p className="text-sm font-medium">Incidente não encontrado</p>
+        <p className="text-sm font-medium">{t("Incidente não encontrado")}</p>
         <Button asChild variant="outline" size="sm">
           <Link href="/admin/incidents">
             <CaretLeft size={14} aria-hidden />
-            Voltar
+            {t("Voltar")}
           </Link>
         </Button>
       </div>
@@ -88,7 +90,7 @@ export function IncidentDetailClient({ id }: IncidentDetailClientProps) {
           className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
         >
           <CaretLeft size={14} aria-hidden />
-          Incidentes
+          {t("Incidentes")}
         </Link>
       </div>
 
@@ -100,10 +102,10 @@ export function IncidentDetailClient({ id }: IncidentDetailClientProps) {
           </h1>
           <div className="flex flex-wrap items-center gap-2">
             <Badge variant={SEVERITY_VARIANTS[severity]}>
-              {SEVERITY_LABELS[severity]}
+              {t(SEVERITY_LABELS[severity])}
             </Badge>
             <Badge variant={STATUS_VARIANTS[status]}>
-              {STATUS_LABELS[status]}
+              {t(STATUS_LABELS[status])}
             </Badge>
             {incident.tenant && (
               <Badge variant="neutral" className="font-mono text-xs">
@@ -112,7 +114,7 @@ export function IncidentDetailClient({ id }: IncidentDetailClientProps) {
             )}
           </div>
           <p className="text-xs text-muted-foreground">
-            Criado{" "}
+            {t("Criado")}{" "}
             {formatDistanceToNow(new Date(incident.created_at), {
               addSuffix: true,
               locale: ptBR,
@@ -155,7 +157,7 @@ export function IncidentDetailClient({ id }: IncidentDetailClientProps) {
           <CardContent>
             {incident.audit_trail.length === 0 ? (
               <p className="text-xs text-muted-foreground">
-                Nenhuma entrada de auditoria encontrada.
+                {t("Nenhuma entrada de auditoria encontrada.")}
               </p>
             ) : (
               <div className="space-y-3 max-h-80 overflow-auto pr-1">
@@ -187,7 +189,7 @@ export function IncidentDetailClient({ id }: IncidentDetailClientProps) {
       {status === "resolved" && incident.resolution_note && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-sm font-medium">Resolução</CardTitle>
+            <CardTitle className="text-sm font-medium">{t("Resolução")}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
             <p className="text-sm text-foreground whitespace-pre-wrap">
@@ -195,7 +197,7 @@ export function IncidentDetailClient({ id }: IncidentDetailClientProps) {
             </p>
             {incident.resolved_at && (
               <p className="text-xs text-muted-foreground">
-                Resolvido em{" "}
+                {t("Resolvido em")}{" "}
                 {format(new Date(incident.resolved_at), "dd/MM/yyyy HH:mm", {
                   locale: ptBR,
                 })}

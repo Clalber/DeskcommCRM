@@ -12,6 +12,7 @@
 import * as React from "react";
 
 import { Badge } from "@/components/ui/badge";
+import { useT } from "@/hooks/i18n/useT";
 
 interface ToolCallStep {
   step?: number;
@@ -54,11 +55,12 @@ export function RunTrace({
   finalText,
   emptyMessage = "Sem trace disponível.",
 }: Props) {
+  const t = useT();
   const steps = asArray(toolCalls);
 
   if (steps.length === 0 && !finalText) {
     return (
-      <p className="text-sm text-muted-foreground">{emptyMessage}</p>
+      <p className="text-sm text-muted-foreground">{t(emptyMessage)}</p>
     );
   }
 
@@ -77,10 +79,10 @@ export function RunTrace({
                 <Badge variant="outline" className="font-mono text-xs">
                   #{stepNum}
                 </Badge>
-                <span className="font-mono">{s.tool_name ?? "(sem nome)"}</span>
+                <span className="font-mono">{s.tool_name ?? t("(sem nome)")}</span>
                 {errMsg ? (
                   <Badge variant="destructive" className="text-xs">
-                    erro
+                    {t("erro")}
                   </Badge>
                 ) : null}
               </span>
@@ -90,20 +92,20 @@ export function RunTrace({
             </summary>
             <div className="space-y-3 border-t border-border/60 px-3 py-3 text-xs">
               <div>
-                <p className="mb-1 font-medium text-muted-foreground">Args</p>
+                <p className="mb-1 font-medium text-muted-foreground">{t("Args")}</p>
                 <pre className="overflow-x-auto rounded bg-muted/40 p-2 font-mono leading-relaxed">
                   {clip(fmtJson(s.args))}
                 </pre>
               </div>
               <div>
-                <p className="mb-1 font-medium text-muted-foreground">Result</p>
+                <p className="mb-1 font-medium text-muted-foreground">{t("Result")}</p>
                 <pre className="overflow-x-auto rounded bg-muted/40 p-2 font-mono leading-relaxed">
                   {clip(fmtJson(s.result))}
                 </pre>
               </div>
               {errMsg ? (
                 <div>
-                  <p className="mb-1 font-medium text-destructive">Error</p>
+                  <p className="mb-1 font-medium text-destructive">{t("Error")}</p>
                   <pre className="overflow-x-auto rounded bg-destructive/10 p-2 font-mono leading-relaxed text-destructive">
                     {clip(errMsg)}
                   </pre>
@@ -122,7 +124,7 @@ export function RunTrace({
       {finalText ? (
         <div className="rounded-md border border-primary/30 bg-primary/5 p-3 text-sm">
           <p className="mb-1 text-xs font-medium uppercase tracking-wide text-primary">
-            Mensagem que SERIA enviada
+            {t("Mensagem que SERIA enviada")}
           </p>
           <p className="whitespace-pre-wrap">{finalText}</p>
         </div>

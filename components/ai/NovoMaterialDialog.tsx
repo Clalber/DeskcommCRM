@@ -1,4 +1,6 @@
 "use client";
+
+import { useT } from "@/hooks/i18n/useT";
 /**
  * ADICIONAR MATERIAL AO ACERVO.
  *
@@ -64,6 +66,7 @@ interface Props {
 }
 
 export function NovoMaterialDialog({ aberto, onFechar, onCriado, podeIndexar }: Props) {
+  const t = useT();
   const [tipo, setTipo] = useState<TipoDeFonteId>("faq");
   const [nome, setNome] = useState("");
   const [conteudo, setConteudo] = useState("");
@@ -142,13 +145,13 @@ export function NovoMaterialDialog({ aberto, onFechar, onCriado, podeIndexar }: 
         <DialogHeader>
           <DialogTitle>Ensinar algo novo ao agente</DialogTitle>
           <DialogDescription>
-            Ele consulta este material antes de responder sobre o seu negócio.
+            {t("Ele consulta este material antes de responder sobre o seu negócio.")}
           </DialogDescription>
         </DialogHeader>
 
         <div className="flex-1 space-y-4 overflow-y-auto pr-1">
           <div className="space-y-2">
-            <Label>Que tipo de material é</Label>
+            <Label>{t("Que tipo de material é")}</Label>
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2" data-testid="material-tipos">
               {TIPOS_DE_FONTE.map((t) => {
                 const rotina = ePreenchidoPorRotina(t.id);
@@ -202,8 +205,7 @@ export function NovoMaterialDialog({ aberto, onFechar, onCriado, podeIndexar }: 
                 disabled={enviando}
               />
               <p className="text-xs text-text-muted">
-                PDF, Markdown ou texto, até 20 MB. Um PDF só de imagens escaneadas não tem
-                letra nenhuma para ler — envie uma versão com texto selecionável.
+                {t("PDF, Markdown ou texto, até 20 MB. Um PDF só de imagens escaneadas não tem letra nenhuma para ler — envie uma versão com texto selecionável.")}
               </p>
             </div>
           ) : null}
@@ -211,7 +213,7 @@ export function NovoMaterialDialog({ aberto, onFechar, onCriado, podeIndexar }: 
           {!porRotina && !arquivo ? (
             <div className="space-y-2">
               <Label htmlFor="material-conteudo">
-                {aceitaArquivo(tipo) ? "…ou cole o texto aqui" : "Conteúdo"}
+                {aceitaArquivo(tipo) ? t("…ou cole o texto aqui") : t("Conteúdo")}
               </Label>
               <Textarea
                 id="material-conteudo"
@@ -224,8 +226,7 @@ export function NovoMaterialDialog({ aberto, onFechar, onCriado, podeIndexar }: 
               />
               {ePerguntaEResposta(tipo) ? (
                 <p className="text-xs text-text-muted">
-                  Uma linha <code>## Pergunta:</code> e uma <code>## Resposta:</code> por item,
-                  separados por uma linha em branco.
+                  {t("Uma linha")} <code>{t("## Pergunta:")}</code> {t("e uma")} <code>{t("## Resposta:")}</code> {t("por item, separados por uma linha em branco.")}
                 </p>
               ) : null}
             </div>
@@ -233,8 +234,7 @@ export function NovoMaterialDialog({ aberto, onFechar, onCriado, podeIndexar }: 
 
           {!podeIndexar ? (
             <p className="text-xs text-warning-fg" data-testid="material-aviso-sem-chave">
-              Sem uma chave da OpenAI, o material fica guardado e esperando — o agente só passa
-              a conhecê-lo depois que a chave for cadastrada.
+              {t("Sem uma chave da OpenAI, o material fica guardado e esperando — o agente só passa a conhecê-lo depois que a chave for cadastrada.")}
             </p>
           ) : null}
         </div>

@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/table";
 import { Users } from "@/lib/ui/icons";
 import type { AdminUserRow } from "@/hooks/useAdminUsers";
+import { useT } from "@/hooks/i18n/useT";
 
 // ---------------------------------------------------------------------------
 // Role badge
@@ -38,9 +39,10 @@ const ROLE_LABELS: Record<string, string> = {
 };
 
 function RoleBadge({ role }: { role: string }) {
+  const t = useT();
   return (
     <Badge variant={ROLE_VARIANTS[role] ?? "neutral"}>
-      {ROLE_LABELS[role] ?? role}
+      {t(ROLE_LABELS[role] ?? role)}
     </Badge>
   );
 }
@@ -66,12 +68,13 @@ function relativeDate(iso: string | null): string {
 // ---------------------------------------------------------------------------
 
 export function UsersTableAdminSkeleton() {
+  const t = useT();
   return (
     <div className="rounded-md border">
       <Table>
         <TableHeader>
           <TableRow>
-            {["Email", "Nome", "Tenant", "Role", "Último acesso", "Status", ""].map(
+            {["Email", t("Nome"), "Tenant", "Role", t("Último acesso"), t("Status"), ""].map(
               (h) => (
                 <TableHead key={h}>{h}</TableHead>
               ),
@@ -111,13 +114,14 @@ export function UsersTableAdmin({
   isFetchingNextPage,
   onLoadMore,
 }: UsersTableAdminProps) {
+  const t = useT();
   if (data.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center gap-3 rounded-md border py-16 text-center text-muted-foreground">
         <Users size={36} weight="duotone" className="opacity-40" aria-hidden />
-        <p className="text-sm font-medium">Nenhum usuário encontrado</p>
+        <p className="text-sm font-medium">{t("Nenhum usuário encontrado")}</p>
         <p className="max-w-xs text-xs opacity-70">
-          Ajuste os filtros para refinar a busca.
+          {t("Ajuste os filtros para refinar a busca.")}
         </p>
       </div>
     );
@@ -130,11 +134,11 @@ export function UsersTableAdmin({
           <TableHeader>
             <TableRow>
               <TableHead>Email</TableHead>
-              <TableHead className="w-[160px]">Nome</TableHead>
+              <TableHead className="w-[160px]">{t("Nome")}</TableHead>
               <TableHead className="w-[160px]">Tenant</TableHead>
               <TableHead className="w-[100px]">Role</TableHead>
-              <TableHead className="w-[160px]">Último acesso</TableHead>
-              <TableHead className="w-[100px]">Status</TableHead>
+              <TableHead className="w-[160px]">{t("Último acesso")}</TableHead>
+              <TableHead className="w-[100px]">{t("Status")}</TableHead>
               <TableHead className="w-[60px]" />
             </TableRow>
           </TableHeader>
@@ -163,9 +167,9 @@ export function UsersTableAdmin({
                 </TableCell>
                 <TableCell>
                   {row.revoked_at ? (
-                    <Badge variant="error">Revogado</Badge>
+                    <Badge variant="error">{t("Revogado")}</Badge>
                   ) : (
-                    <Badge variant="success">Ativo</Badge>
+                    <Badge variant="success">{t("Ativo")}</Badge>
                   )}
                 </TableCell>
                 <TableCell>
@@ -173,7 +177,7 @@ export function UsersTableAdmin({
                     href={`/admin/users/${row.user_id}`}
                     className="text-xs font-medium text-accent hover:underline"
                   >
-                    Ver
+                    {t("Ver")}
                   </Link>
                 </TableCell>
               </TableRow>
@@ -190,7 +194,7 @@ export function UsersTableAdmin({
             onClick={onLoadMore}
             disabled={isFetchingNextPage}
           >
-            {isFetchingNextPage ? "Carregando..." : "Carregar mais"}
+            {isFetchingNextPage ? t("Carregando...") : t("Carregar mais")}
           </Button>
         </div>
       )}

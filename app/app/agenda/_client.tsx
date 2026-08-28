@@ -1,5 +1,7 @@
 "use client";
 
+import { useT } from "@/hooks/i18n/useT";
+
 import { addDays, endOfMonth, format, startOfDay, startOfMonth, startOfWeek } from "date-fns";
 import * as React from "react";
 
@@ -26,7 +28,6 @@ import {
 import { usePessoasDaAgenda } from "@/hooks/agenda/usePessoasDaAgenda";
 import { CalendarPlus, CaretLeft, CaretRight } from "@/lib/ui/icons";
 import { cn } from "@/lib/utils";
-import { useT } from "@/hooks/i18n/useT";
 import { useLocaleDeData } from "@/lib/i18n/locale-de-data";
 
 const VISOES: Array<{ id: VisaoDaAgenda; rotulo: string }> = [
@@ -395,22 +396,22 @@ export function AgendaClient({
             <div className="mt-4" data-testid="tipos-de-agendamento">
               <p className="mb-2 text-xs font-medium text-text-muted">{t("Tipo de agendamento")}</p>
               <div className="flex flex-wrap gap-1.5">
-                {tiposIniciais.map((t) => (
+                {tiposIniciais.map((opcao) => (
                   <button
-                    key={t.id}
+                    key={opcao.id}
                     type="button"
-                    data-testid={`tipo-${t.id}`}
-                    aria-pressed={t.id === tipo?.id}
-                    onClick={() => setTipoId(t.id)}
+                    data-testid={`tipo-${opcao.id}`}
+                    aria-pressed={opcao.id === tipo?.id}
+                    onClick={() => setTipoId(opcao.id)}
                     className={cn(
                       "rounded-full border px-3 py-1 text-xs transition-colors duration-fast",
-                      t.id === tipo?.id
+                      opcao.id === tipo?.id
                         ? "border-transparent bg-accent text-accent-foreground"
                         : "border-border text-text-muted hover:border-border-strong hover:text-text",
                     )}
                   >
-                    {t.nome}
-                    <span className="ml-1 opacity-70 tabular-nums">{t.duracaoMin}min</span>
+                    {opcao.nome}
+                    <span className="ml-1 opacity-70 tabular-nums">{opcao.duracaoMin}min</span>
                   </button>
                 ))}
               </div>
