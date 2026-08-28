@@ -82,7 +82,7 @@ function providerDoTypeScript(): string {
 function novaOrg(slug: string): string {
   sql(`
     insert into public.organizations (slug, legal_name, display_name)
-    values ('${slug}', 'inv 0203', 'inv 0203');
+    values ('${slug}', 'inv 0204', 'inv 0204');
   `);
   return sql(`select id from public.organizations where slug = '${slug}'`).trim();
 }
@@ -122,7 +122,7 @@ describe("um pareamento pendente por organização", () => {
   });
 
   it("a SEGUNDA sessão pendente da mesma org é RECUSADA, e pela trava certa", () => {
-    const org = novaOrg(`inv-0203-dup-${Date.now()}`);
+    const org = novaOrg(`inv-0204-dup-${Date.now()}`);
     expect(lastLine(insertSession(org, { status: `'STARTING'` }))).toBe("ok");
 
     const erro = erroDe(() => insertSession(org, { status: `'SCAN_QR_CODE'` }));
@@ -132,7 +132,7 @@ describe("um pareamento pendente por organização", () => {
   });
 
   it("uma sessão JÁ PAREADA não é barrada — conectar um 2º aparelho é legítimo", () => {
-    const org = novaOrg(`inv-0203-fone-${Date.now()}`);
+    const org = novaOrg(`inv-0204-fone-${Date.now()}`);
     insertSession(org, { status: `'STARTING'` });
     expect(
       lastLine(insertSession(org, { status: `'WORKING'`, phone_number: `'5511999999999'` })),
@@ -141,13 +141,13 @@ describe("um pareamento pendente por organização", () => {
 
   it("uma pendente de OUTRO provider convive com a do WhatsApp", () => {
     // A prova do escopo. Antes desta linha o índice era cego ao provider, e o
-    // Instagram — que a 0202 acabara de admitir no schema — travaria o WhatsApp.
+    // Instagram — que a 0203 acabara de admitir no schema — travaria o WhatsApp.
     //
     // `instagram_user_id` não é enfeite: `channel_sessions_provider_ref_check`
     // (0203) exige o identificador da conta para cada provider. Sem ele o insert
     // morre com 23514 ANTES de o índice opinar, e o caso mediria a constraint
     // errada — vermelho por acidente, ou verde por acidente depois.
-    const org = novaOrg(`inv-0203-prov-${Date.now()}`);
+    const org = novaOrg(`inv-0204-prov-${Date.now()}`);
     insertSession(org, { status: `'STARTING'` });
     expect(
       lastLine(
