@@ -6,6 +6,8 @@ import { PROVEDOR_GOOGLE } from "@/lib/agenda/tipos";
 import { requireAuth, resolveActiveOrg } from "@/lib/auth/server";
 import { createClient } from "@/lib/supabase/server";
 
+import type { Agendamento as AgendamentoDaTela } from "@/components/agenda/tipos";
+
 import { AgendaClient } from "./_client";
 
 export const dynamic = "force-dynamic";
@@ -104,6 +106,47 @@ export default async function AgendaPage() {
       .order("starts_at"),
   ]);
 
+  /**
+   * A OCUPAÇÃO QUE VEM DO GOOGLE — o que o dono cria lá e não via aqui.
+   *
+   * ⚠️ ESTE FIO NUNCA EXISTIU, e é o Lado B do relato: "quando marco algo pelo
+   * calendar não mostra no deskcomm". Medido na VPS: 27 linhas em
+   * `calendar_external_events`, entrando certo. Mas essa tabela só alimentava o
+   * motor de disponibilidade (`lib/agenda/ocupados.ts`) — o horário ficava
+   * bloqueado e o bloco não aparecia. O dono via a agenda vazia e o horário
+   * indisponível ao mesmo tempo.
+   *
+   * ⚠️ E O `title` NÃO É LIDO, de propósito. A tabela tem a coluna e nós a
+   * gravamos; esta consulta a deixa de fora.
+   *
+   * A razão é medida, não estética. A agenda conectada é PESSOAL de quem atende,
+   * e esta tela é multi-tenant, vista por gestor: "consulta médica", "terapia",
+   * "entrevista" apareceriam para o chefe. O cal.com — a referência madura do
+   * mercado — decidiu o mesmo, e a prova de que é DECISÃO e não limitação é que
+   * eles gravam `summary`/`description`/`location` no cache e o `select` da
+   * leitura devolve só `start`/`end`/`timeZone`
+   * (`packages/features/calendar-subscription/lib/cache/CalendarCacheEventRepository.ts`).
+   * As telas deles escrevem "Busy" na mão.
+   *
+   * Mostrar o título é uma linha; retirá-lo depois de vazado não é. Se o dono
+   * quiser o nome do evento, é decisão dele — e nesta ordem.
+   *
+   * O dono vem por `connection_id → calendar_connections.user_id`, porque esta
+   * tabela não tem `user_id` — é a mesma junção que `ocupados.ts` já faz.
+   */
+  const { data: externos } = await supabase
+    .from("calendar_external_events")
+    .select("id, starts_at, ends_at, status, transparency, calendar_connections!inner(user_id)")
+    .eq("organization_id", activeOrg.orgId)
+    .gte("starts_at", inicio.toISOString())
+    .lt("starts_at", fim.toISOString())
+    // `transparent` no Google é "livre": o evento existe e não ocupa. Trazê-lo
+    // como bloco diria que o horário está tomado quando a própria pessoa marcou
+    // que não está.
+    .neq("transparency", "transparent")
+    .neq("status", "cancelled")
+    .order("starts_at");
+
   // QUAL conta está conectada — o prop existia no cartão e NUNCA era passado,
   // então o ramo "Agenda conectada" era código morto e o botão "Conectar Google"
   // não sumia depois de conectar. Segunda conexão era um clique no mesmo botão.
@@ -155,7 +198,7 @@ export default async function AgendaPage() {
         localKind: t.location_kind ?? null,
         localDetalhes: t.location_details ?? null,
       }))}
-      agendamentosIniciais={(linhas ?? []).map((a) => ({
+      agendamentosIniciais={((linhas ?? []).map((a) => ({
         id: a.id,
         titulo: a.title ?? "Agendamento",
         responsavelId: a.owner_user_id ?? "",
@@ -172,7 +215,34 @@ export default async function AgendaPage() {
         // (`app/app/lgpd/requests/[id]/PreviewPanel.tsx`); as duas colunas são
         // reescritas pelo cascade de LGPD, então nenhuma vaza titular anonimizado.
         quemSeraAtendido: nomeDoContato(a.contacts),
-      }))}
+      })) as AgendamentoDaTela[]).concat(
+        /**
+         * A ocupação do Google entra na MESMA lista, com `origem: "google_sync"`.
+         *
+         * A grade já sabia tratar essa origem — `GradeDaAgenda` desabilita o
+         * bloco, tira o clique, tira o arraste e diz "ocupado na agenda do
+         * Google" no rótulo acessível. O que faltava era alguém entregar os
+         * dados: o tratamento existia e nunca recebia uma linha.
+         *
+         * `titulo: "Ocupado"` é o rótulo, não o nome do evento — ver o
+         * comentário da consulta acima sobre por que o `title` não é lido.
+         * `quemSeraAtendido` fica ausente de propósito: o tipo já documenta essa
+         * ausência como o caso do Google.
+         */
+        (externos ?? []).map((e) => {
+          const conexao = e.calendar_connections as { user_id: string } | { user_id: string }[] | null;
+          const dono = Array.isArray(conexao) ? conexao[0]?.user_id : conexao?.user_id;
+          return {
+            id: e.id,
+            titulo: "Ocupado",
+            responsavelId: dono ?? "",
+            comeca: e.starts_at,
+            termina: e.ends_at,
+            origem: "google_sync" as const,
+            situacao: "confirmed" as const,
+          };
+        }) as AgendamentoDaTela[],
+      )}
     />
   );
 }
