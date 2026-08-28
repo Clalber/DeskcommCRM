@@ -6080,6 +6080,23 @@ export const DICIONARIO: Traducoes = {
   "Usando o gateway de IA configurado nesta instalação.": { es: "Usando el gateway de IA configurado en esta instalación." },
   "Usando a chave que veio na instalação.": { es: "Usando la clave que vino con la instalación." },
   "A chave escolhida no painel de Provedores para este ponto não está utilizável (desativada, apagada ou ainda não validada). Seguindo com a próxima chave disponível.": { es: "La clave elegida en el panel de Proveedores para este punto no es utilizable (desactivada, borrada o todavía sin validar). Seguimos con la siguiente clave disponible." },
+
+  // ─── Acervo: a listagem (app/app/ai/knowledge/sources/_client.tsx) ───
+  //
+  // Este arquivo escapou das DUAS varreduras do merge: não é arquivo NOVO (a
+  // 1.8.0 o modificou), e não estava entre os que 'os dois lados tocaram'
+  // porque o nosso lado nunca o tocou — ele já vinha sem i18n de antes. Um
+  // arquivo com ZERO chamadas de `t()` também é invisível para o conferidor de
+  // chaves, que só sabe achar `t()` cuja chave falta. Achado por QA visual: o
+  // cartão da chave aparecia em espanhol e a lista logo abaixo, em português.
+  "Nenhum material ainda.": { es: "Todavía no hay material." },
+  "no acervo.": { es: "en el acervo." },
+  "Adicionar material": { es: "Agregar material" },
+  "O agente ainda não conhece o seu negócio": { es: "El agente todavía no conoce tu negocio" },
+  "Comece pelo que ele mais vai precisar: as perguntas que se repetem, e a política que você mais explica. Ele passa a consultar isso antes de responder, em vez de improvisar.": { es: "Empieza por lo que más va a necesitar: las preguntas que se repiten, y la política que más explicas. Pasa a consultar eso antes de responder, en vez de improvisar." },
+  "arquivado": { es: "archivado" },
+  "arquivados": { es: "archivados" },
+  "Material arquivado não é consultado por nenhum assistente, e não é apagado — o histórico do que o agente já soube continua existindo.": { es: "El material archivado no lo consulta ningún asistente, y no se borra — el historial de lo que el agente supo sigue existiendo." },
 };
 
 /**
