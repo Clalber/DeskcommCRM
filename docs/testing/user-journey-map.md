@@ -613,6 +613,38 @@ publicado ali. Ela não tem de onde tirar um instante que a regra não deu.
 
 ---
 
+## J16 — Conectar o Google, e conseguir enxergar que conectou `[P0]`
+
+**Por que P0:** o dono instalou a v1.9.0 e relatou quatro sintomas numa frase só
+— "conecto, ELE DESLOGA DA MINHA CONTA, quando logo de novo diz que conectou, mas
+nada funciona e o botão Conectar continua lá". Três defeitos independentes, e o
+mais humilhante é que **a conexão sempre funcionou**: ninguém conseguia ver.
+
+| # | Caso | Resultado |
+|---|---|---|
+| J16.1 | Voltar do consentimento não cai no `/login` | **PASS** — `agenda-google-volta-nao-desloga.spec.ts`. Sem o conserto, o usuário logado para em `/login?next=%2Fapp%2Fagenda%3Ferro%3D...`, medido em Chromium |
+| J16.2 | O CHECK do banco proíbe o valor que três consultas procuravam | **PASS** — invariante `agenda-conexao-do-google-e-encontrada`, contra Postgres real |
+| J16.3 | A conexão que o callback grava é encontrada pelo predicado do worker | **PASS** — mesmo invariante: 1 achada com o valor certo, 0 com o antigo |
+| J16.4 | Nenhuma consulta filtra por valor que a coluna proíbe | **PASS** — varredura `consulta-usa-o-vocabulario-do-banco`; previ 3 achados antes de rodar e vieram os 3 |
+| J16.5 | A lista de horários rola, e o último horário é clicável | **PASS** — `agenda-painel-cabe-na-tela.spec.ts`, viewport 1280×700. Evidência: `evidence/calendario/d4-lista-rola-1280x700.png` |
+
+**Três correções ao briefing, todas medidas:**
+1. A retenção do cookie no segundo salto era **dedução** marcada NÃO MEDIDA. Foi
+   observada em navegador: é real, em Chromium. (Firefox não foi medido.)
+2. A régua anti-regressão proposta (`body.scrollHeight - innerHeight <= 1`) vinha
+   com a nota "já passa hoje". **Não passa** — e o crescimento é idêntico com e
+   sem o conserto (1566px nos dois), portanto pré-existente. A régua passou a
+   medir o que queria proteger: que o Sheet continua `position: fixed`.
+3. A pré-condição de suficiência da lista comparava o conteúdo com a altura da
+   JANELA; a régua certa é o espaço abaixo do topo da lista. Da primeira forma
+   ela reprovou um cenário suficiente.
+
+**Dívida declarada, não consertada aqui:** com o painel aberto em 1280×700 o body
+vai a 1566px contra 700 de janela. É anterior a este PR e misturá-la esconderia
+as duas.
+
+---
+
 ## J7 — Exploração completa `[P2]`
 
 Andar por TODAS as rotas navegáveis logado como admin e como agent: settings, contacts,
