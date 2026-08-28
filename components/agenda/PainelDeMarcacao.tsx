@@ -41,6 +41,7 @@ export function PainelDeMarcacao({
   fusoSuposto = false,
   fontesDefasadas,
   quemSeraAtendido,
+  horarioInicial,
   onConfirmar,
   onVerNaAgenda,
   className,
@@ -118,13 +119,51 @@ export function PainelDeMarcacao({
    * âncora é o `_client`, que é dono dela; este painel só sabe QUANDO é.
    */
   onVerNaAgenda?: (instante: string) => void;
+
+  /**
+   * O horário JÁ ESCOLHIDO — quem abriu o painel clicando num bloco da grade
+   * não deve ser obrigado a escolher de novo o que acabou de apontar.
+   *
+   * Ele salta os dois primeiros tempos da máquina (`escolhendo-dia` e
+   * `escolhendo-horario`) e abre direto em `confirmando`, com o mini-calendário
+   * no mês certo e o dia marcado — voltar continua possível pelo botão
+   * "Voltar", que é o que devolve a escolha a quem se enganou no bloco.
+   *
+   * O instante vem da MESMA rota que alimenta a coluna de horários, então não
+   * há como o painel abrir confirmando um horário que ele próprio não
+   * ofereceria.
+   */
+  horarioInicial?: HorarioLivre;
   onConfirmar?: (instante: string) => void | Promise<unknown>;
   className?: string;
 }) {
-  const [dia, setDia] = React.useState<Date | null>(null);
-  const [horario, setHorario] = React.useState<HorarioLivre | null>(null);
+  const [dia, setDia] = React.useState<Date | null>(
+    horarioInicial ? new Date(horarioInicial.instante) : null,
+  );
+  const [horario, setHorario] = React.useState<HorarioLivre | null>(horarioInicial ?? null);
   const [marcado, setMarcado] = React.useState<HorarioLivre | null>(null);
-  const [mes, setMes] = React.useState(() => startOfMonth(ancora));
+  const [mes, setMes] = React.useState(() =>
+    startOfMonth(horarioInicial ? new Date(horarioInicial.instante) : ancora),
+  );
+
+  /**
+   * O painel pode continuar montado entre duas aberturas (o `Sheet` decide
+   * isso, não nós), e aí o estado inicial acima não roda de novo — clicar num
+   * segundo bloco abriria o painel no horário do primeiro.
+   *
+   * A dependência é o INSTANTE e não o objeto: `horarioInicial` é literal do
+   * chamador, novo a cada render dele, e um efeito com o objeto na lista
+   * dispararia para sempre.
+   */
+  const instanteInicial = horarioInicial?.instante;
+  React.useEffect(() => {
+    if (!instanteInicial) return;
+    const d = new Date(instanteInicial);
+    setDia(d);
+    setHorario({ instante: instanteInicial, rotulo: format(d, "HH:mm") });
+    setMes(startOfMonth(d));
+    setMarcado(null);
+  }, [instanteInicial]);
 
   const tempo: TempoDaMarcacao = marcado
     ? "marcado"

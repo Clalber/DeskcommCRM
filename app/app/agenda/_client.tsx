@@ -7,10 +7,10 @@ import * as React from "react";
 import { AvisoDaConexaoGoogle } from "./_components/AvisoDaConexaoGoogle";
 import { CartaoDaConexaoGoogle } from "./_components/CartaoDaConexaoGoogle";
 
+import { AgendaInterativa } from "@/components/agenda/AgendaInterativa";
 import { FiltroDePessoas } from "@/components/agenda/FiltroDePessoas";
-import { GradeDaAgenda } from "@/components/agenda/GradeDaAgenda";
 import { HistoricoDaAgenda } from "@/components/agenda/HistoricoDaAgenda";
-import type { Agendamento, VisaoDaAgenda } from "@/components/agenda/tipos";
+import type { Agendamento, HorarioLivre, VisaoDaAgenda } from "@/components/agenda/tipos";
 import { EmptyAgenda } from "@/components/empty";
 import { rotuloDoLocal } from "@/lib/agenda/locais";
 import { Button } from "@/components/ui/button";
@@ -89,6 +89,9 @@ export function AgendaClient({
   agendamentosIniciais: Agendamento[];
 }) {
   const [marcando, setMarcando] = React.useState(false);
+  // O horário que veio de um CLIQUE NA GRADE. Preenchido, o painel abre já em
+  // "confirmando" naquele instante; vazio, ele abre pedindo o dia, como sempre.
+  const [horarioEscolhido, setHorarioEscolhido] = React.useState<HorarioLivre | null>(null);
   // REMARCAR reusa o painel de marcação: escolher horário novo é o MESMO gesto
   // de escolher o primeiro, e uma segunda tela para a mesma pergunta seria duas
   // coisas para manter em sincronia. Quando `remarcandoId` está preenchido, a
@@ -375,8 +378,13 @@ export function AgendaClient({
         onOpenChange={(aberto) => {
           setMarcando(aberto);
           // Fechar sem confirmar volta ao modo normal — senão o próximo "Novo
-          // agendamento" remarcaria o compromisso anterior em silêncio.
-          if (!aberto) setRemarcandoId(null);
+          // agendamento" remarcaria o compromisso anterior em silêncio. O
+          // horário vindo da grade some pela mesma razão: abrir o painel pelo
+          // botão depois de fechar um bloco reabriria no horário do bloco.
+          if (!aberto) {
+            setRemarcandoId(null);
+            setHorarioEscolhido(null);
+          }
         }}
       >
         {/*
@@ -450,6 +458,7 @@ export function AgendaClient({
                 erroAoCarregar={horariosFalharam}
                 fusoSuposto={horarios?.fuso_suposto ?? false}
                 fontesDefasadas={horarios?.fontes_defasadas}
+                horarioInicial={horarioEscolhido ?? undefined}
                 // ESTE é o fio que faltava. Sem ele o "Marcado ✓" era estado
                 // local do React e nenhuma linha nascia no banco.
                 onConfirmar={(instante) => {
@@ -614,14 +623,27 @@ export function AgendaClient({
           <EmptyAgenda />
         </div>
       ) : null}
-      <GradeDaAgenda
-          visao={visao}
-          ancora={ancora}
-          agora={new Date()}
-          pessoas={pessoas}
-          agendamentos={agendamentos}
-          className="min-h-0 flex-1"
-        />
+      {/* A GRADE INTERATIVA — clicar num bloco livre marca ali, arrastar um card
+          remarca. Toda a fiação (a consulta de horários da janela desenhada, a
+          proposta de remarcação, o otimismo com volta atrás) mora em
+          `AgendaInterativa`; aqui fica só o que esta tela já sabia. */}
+      <AgendaInterativa
+        visao={visao}
+        ancora={ancora}
+        agora={new Date()}
+        pessoas={pessoas}
+        agendamentos={agendamentos}
+        recorte={recorteDaGrade}
+        tipos={tiposIniciais.map((t) => ({ id: t.id, nome: t.nome, duracaoMin: t.duracaoMin }))}
+        tipo={tipo ? { id: tipo.id, duracaoMin: tipo.duracaoMin } : null}
+        onEscolherTipo={setTipoId}
+        onMarcarEm={(instante) => {
+          setHorarioEscolhido({ instante, rotulo: format(new Date(instante), "HH:mm") });
+          setRemarcandoId(null);
+          setMarcando(true);
+        }}
+        className="min-h-0 flex-1"
+      />
 
     </div>
   );

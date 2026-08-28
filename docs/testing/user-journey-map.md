@@ -564,6 +564,53 @@ seguinte também. A diferença era tempo: 51s contra 11,2min, com um `next build
 disputando CPU. A diferença de ambiente entre ensaio e CI é real e vale saber,
 mas não era a causa desta falha.
 
+## J15 — A grade da Agenda como agenda de verdade `[P0]`
+
+**Por que P0:** é a tela que quem atende deixa aberta o dia inteiro, e ela era
+**desenho**. Sete colunas, faixas de hora, cards — e nenhum gesto: clicar num
+espaço vazio não fazia nada, arrastar um compromisso não fazia nada. Marcar
+exigia sair da grade, abrir "Novo agendamento" e reescolher no mini-calendário a
+data que a pessoa acabara de apontar com o dedo. Nenhuma spec reprovava, porque
+nenhuma spec tentava: as irmãs entram pelo botão e pelo histórico, que são
+caminhos que já existiam.
+
+**O jeito errado de consertar, e o que o vigia.** Calcular o horário a partir do
+pixel clicado. A tela passaria a oferecer instantes que a disponibilidade
+publicada não tem — 422 `agenda_disponibilidade_invalida` na cara de quem
+clicou, e a agenda discordando do agente sobre o que está livre. A defesa é de
+construção: a grade **pergunta** a `GET /api/v1/agenda/horarios-livres` (a mesma
+rota do painel e do agente) e um bloco só é clicável quando existe horário
+publicado ali. Ela não tem de onde tirar um instante que a regra não deu.
+
+| # | Caso | Resultado |
+|---|---|---|
+| J15.1 | Clicar num bloco livre abre a marcação **naquele horário** — a asserção é o horário exibido, não que "algo abriu" | **PASS** — `agenda-grade-interativa.spec.ts`. Evidência: `evidence/calendario/grade-clique-abre-no-horario.png` |
+| J15.2 | Bloco fora da disponibilidade não é clicável **e diz por quê** (`disabled` + razão no `aria-label` e no `title`) | **PASS** — mesma spec. Evidência: `evidence/calendario/grade-bloco-recusado-diz-por-que.png` |
+| J15.3 | Arrastar um card remarca, e o horário novo é conferido **na API depois do reload** — não só na tela | **PASS** — mesma spec. Evidência: `evidence/calendario/grade-arraste-fantasma.png` e `grade-confirma-antes-de-remarcar.png` |
+| J15.4 | Arrastar para fora da disponibilidade é recusado com o motivo, **nenhum PATCH sai**, e o card volta ao lugar (medido por `boundingBox`) | **PASS** — mesma spec. Evidência: `evidence/calendario/grade-arraste-recusado.png` |
+| J15.5 | Geometria por ferramenta: o topo do card remarcado contra o topo da faixa daquela hora, tolerância de 2px | **PASS** — mesma spec |
+| J15.6 | Remarcar pelo **teclado** (`Alt+↑/↓` salta de vaga em vaga, `Enter` confirma, `Esc` desfaz) pelo mesmo mecanismo do arraste | **PASS** — `tests/unit/agenda-grade-aceita-clique.test.tsx` (jsdom — o arraste por ponteiro precisa de geometria real e fica no Playwright) |
+
+**As asserções foram provadas vermelhas antes**, e não só escritas depois:
+
+| Sabotagem | Previsão | Medido |
+|---|---|---|
+| A camada de blocos vazios volta a não existir (a grade de antes) | 4 vermelhas | **4 vermelhas**, todas em "nenhum bloco livre na semana desenhada" |
+| A recusa vira pergunta **e** o destino válido remarca sem confirmar | J15.3 e J15.4 vermelhos, J15.1 e J15.2 verdes | **exatamente isso** — "soltar remarcou sem perguntar" e `remarcacao-recusada` não encontrado |
+
+**Dois defeitos que só apareceram executando** (nenhum apareceria lendo o código):
+
+1. A grade oferecia a disponibilidade de `tiposIniciais[0]` — o primeiro tipo em
+   **ordem alfabética**, escolhido por ninguém e sem seletor fora do painel de
+   marcação. Numa organização com quatro tipos e jornada publicada em um só, a
+   grade inteira travava com "não consegui carregar os horários" **enquanto
+   havia vaga**. O tipo ganhou superfície na tela.
+2. Card de compromisso **cancelado** cobria o bloco vazio e comia o clique — e
+   cancelar é justamente o que devolve o horário (`cancelled` está em
+   `SITUACOES_QUE_LIBERAM`). Numa clínica com uma semana de cancelamentos, todo
+   horário reaberto ficaria inalcançável pela grade. O card perdeu o ponteiro e
+   manteve a presença: é registro, não ação.
+
 ---
 
 ## J7 — Exploração completa `[P2]`
