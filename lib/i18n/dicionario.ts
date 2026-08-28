@@ -5613,7 +5613,7 @@ export const DICIONARIO: Traducoes = {
   "chave não encontrada nesta organização": { es: "clave no encontrada en esta organización" },
   "Conexão não encontrada nesta organização.": { es: "Conexión no encontrada en esta organización." },
   "Conexão sem identificador utilizável.": { es: "Conexión sin identificador utilizable." },
-  "Conflito de versionamento — tente novamente.": { es: "Conflicto de versionado — intente de nuevo." },
+  "Conflito de versionamento — tente novamente.": { es: "Conflicto de versionado — intenta de nuevo." },
   "Contato não encontrado.": { es: "Contacto no encontrado." },
   "content é obrigatório.": { es: "content es obligatorio." },
   "Conversa do caso sem contato associado.": { es: "La conversación del caso no tiene contacto asociado." },
@@ -5632,9 +5632,9 @@ export const DICIONARIO: Traducoes = {
   "Demanda não encontrada, ou já encerrada.": { es: "Demanda no encontrada, o ya cerrada." },
   "Destino não é um atendente desta organização.": { es: "El destino no es un atendiente de esta organización." },
   "Dê um nome à etapa — é o que aparece no topo da coluna.": {
-    es: "Ponga un nombre a la etapa — es lo que aparece en la parte superior de la columna.",
+    es: "Ponle un nombre a la etapa — es lo que aparece arriba de la columna.",
   },
-  "Dê um nome ao funil — é o que aparece na lista.": { es: "Ponga un nombre al embudo — es lo que aparece en la lista." },
+  "Dê um nome ao funil — é o que aparece na lista.": { es: "Ponle un nombre al embudo — es lo que aparece en la lista." },
   "Duas intenções não podem ter o mesmo nome no router.": {
     es: "Dos intenciones no pueden tener el mismo nombre en el router.",
   },
@@ -5642,7 +5642,7 @@ export const DICIONARIO: Traducoes = {
   "Enrollment não encontrado.": { es: "Enrollment no encontrado." },
   "Entrada de memória não encontrada nesta organização.": { es: "Entrada de memoria no encontrada en esta organización." },
   "Envie o arquivo como multipart/form-data no campo 'file'.": {
-    es: "Envíe el archivo como multipart/form-data en el campo 'file'.",
+    es: "Envía el archivo como multipart/form-data en el campo 'file'.",
   },
   "Erro ao agregar o uso de IA.": { es: "Error al agregar el uso de IA." },
   "Erro ao arquivar fonte.": { es: "Error al archivar la fuente." },
@@ -5721,8 +5721,8 @@ export const DICIONARIO: Traducoes = {
   "Este caso já foi respondido por outra pessoa.": { es: "Este caso ya fue respondido por otra persona." },
   "Este número já tem um roteador ativo.": { es: "Este número ya tiene un router activo." },
   "Este retorno já aconteceu ou já foi cancelado.": { es: "Este seguimiento ya ocurrió o ya fue cancelado." },
-  "Faça login.": { es: "Inicie sesión." },
-  "Faça login para continuar.": { es: "Inicie sesión para continuar." },
+  "Faça login.": { es: "Inicia sesión." },
+  "Faça login para continuar.": { es: "Inicia sesión para continuar." },
   "Falha ao atualizar o aviso.": { es: "Fallo al actualizar el aviso." },
   "Falha ao carregar as propostas.": { es: "Fallo al cargar las propuestas." },
   "Falha ao carregar conexões/knobs.": { es: "Fallo al cargar conexiones/knobs." },
@@ -5743,7 +5743,7 @@ export const DICIONARIO: Traducoes = {
   "Fonte de conhecimento não encontrada.": { es: "Fuente de conocimiento no encontrada." },
   "Fonte não encontrada.": { es: "Fuente no encontrada." },
   "Funil não encontrado.": { es: "Embudo no encontrado." },
-  "Informe o novo horário.": { es: "Indique el nuevo horario." },
+  "Informe o novo horário.": { es: "Indica el nuevo horario." },
   "Já existe um fluxo com este nome.": { es: "Ya existe un flujo con este nombre." },
   "Janela inválida.": { es: "Ventana inválida." },
   "Janela inválida: 'from' deve ser anterior a 'to'.": { es: "Ventana inválida: 'from' debe ser anterior a 'to'." },
@@ -5753,7 +5753,7 @@ export const DICIONARIO: Traducoes = {
   "Mensagem sem mídia.": { es: "Mensaje sin contenido multimedia." },
   "Mídia indisponível no momento.": { es: "Contenido multimedia no disponible en este momento." },
   "Muitas trocas de logo seguidas. Tente em alguns minutos.": {
-    es: "Demasiados cambios de logo seguidos. Intente en unos minutos.",
+    es: "Demasiados cambios de logo seguidos. Intenta en unos minutos.",
   },
   "nada foi gravado — verifique as permissões da organização": {
     es: "no se guardó nada — verifique los permisos de la organización",
@@ -5843,8 +5843,8 @@ export const DICIONARIO: Traducoes = {
   "Validação de publish falhou.": { es: "La validación de publish falló." },
   "Versão não encontrada nesta organização.": { es: "Versión no encontrada en esta organización." },
   "Version não encontrada.": { es: "Version no encontrada." },
-  "Você já está na versão mais recente.": { es: "Ya está en la versión más reciente." },
-  "Você não está atribuído a essa conversa.": { es: "No está asignado a esta conversación." },
+  "Você já está na versão mais recente.": { es: "Ya estás en la versión más reciente." },
+  "Você não está atribuído a essa conversa.": { es: "No estás asignado a esta conversación." },
   "Web Push ainda não está no banco desta instalação.": { es: "Web Push aún no está en la base de datos de esta instalación." },
   "Web Push não configurado nesta instalação.": { es: "Web Push no configurado en esta instalación." },
 
@@ -5868,7 +5868,7 @@ export const DICIONARIO: Traducoes = {
   },
   "Só gerentes e administradores editam os horários de atendimento da equipe. Para publicar os seus, peça a um gerente que abra esta aba e use o botão “Editar horário” ao lado do seu nome.":
     {
-      es: "Solo gerentes y administradores editan los horarios de atención del equipo. Para publicar los suyos, pida a un gerente que abra esta pestaña y use el botón “Editar horario” junto a su nombre.",
+      es: "Solo gerentes y administradores editan los horarios de atención del equipo. Para publicar los tuyos, pídele a un gerente que abra esta pestaña y use el botón “Editar horario” junto a tu nombre.",
     },
   "Email ainda não está disponível. In-app (toast) e Push (Chrome) já funcionam para as cinco categorias, inclusive com a aba fechada.":
     {
@@ -5879,7 +5879,7 @@ export const DICIONARIO: Traducoes = {
   },
   "Ligar o Push abaixo já faz o aviso aparecer na bandeja do sistema enquanto você está com o site aberto numa aba. Para receber também com a aba fechada, quem administra o servidor precisa gerar um par de chaves uma única vez e reiniciar:":
     {
-      es: "Activar el Push abajo ya hace que el aviso aparezca en la bandeja del sistema mientras tiene el sitio abierto en una pestaña. Para recibirlo también con la pestaña cerrada, quien administra el servidor debe generar un par de claves una sola vez y reiniciar:",
+      es: "Activar el Push abajo ya hace que el aviso aparezca en la bandeja del sistema mientras tienes el sitio abierto en una pestaña. Para recibirlo también con la pestaña cerrada, quien administra el servidor debe generar un par de claves una sola vez y reiniciar:",
     },
   "O resultado vai no arquivo": { es: "El resultado va en el archivo" },
   "Email ainda não está disponível.": { es: "El email todavía no está disponible." },
@@ -5891,12 +5891,12 @@ export const DICIONARIO: Traducoes = {
   "O que o agente sabe": { es: "Lo que el agente sabe" },
   "O material do seu negócio que os assistentes consultam antes de responder. Cada assistente escolhe, na tela dele, o que pode ler daqui.":
     {
-      es: "El material de su negocio que los asistentes consultan antes de responder. Cada asistente elige, en su propia pantalla, qué puede leer de aquí.",
+      es: "El material de tu negocio que los asistentes consultan antes de responder. Cada asistente elige, en su propia pantalla, qué puede leer de aquí.",
     },
   "Não publicado": { es: "No publicado" },
   "Sem janelas, o roteamento aceita conversa a qualquer hora — mas a Agenda não oferece NENHUM horário para marcar. Adicione janelas para publicar seus horários de atendimento.":
     {
-      es: "Sin ventanas, el enrutamiento acepta conversaciones a cualquier hora — pero la Agenda no ofrece NINGÚN horario para agendar. Agregue ventanas para publicar sus horarios de atención.",
+      es: "Sin ventanas, el enrutamiento acepta conversaciones a cualquier hora — pero la Agenda no ofrece NINGÚN horario para agendar. Agrega ventanas para publicar tus horarios de atención.",
     },
   "Nenhuma janela publicada — ninguém consegue marcar com esta pessoa.": {
     es: "Ninguna ventana publicada — nadie puede agendar con esta persona.",
@@ -5906,6 +5906,180 @@ export const DICIONARIO: Traducoes = {
     {
       es: "Estado, carga y capacidad de cada atendiente — y la jornada semanal que decide los horarios ofrecidos en la Agenda. Sin ella nadie puede agendar.",
     },
+
+  // ─── Caixa de avisos do assistente (lib/ai/agent-inbox-copy.ts) ───
+  //
+  // ⚠️ Estas 24 NÃO são dívida do merge: `kindLabel(item.kind, t)` e
+  // `t(SEVERITY_LABEL[...])` em `AgentInboxList.tsx` sempre chamaram `t()`
+  // corretamente, e o dicionário nunca teve uma linha para nenhum dos rótulos —
+  // a tela inteira saía em português com todo gate verde. É a falha silenciosa
+  // que `t(IDENTIFICADOR)` produz: o conferidor de chamadas literais não
+  // enxerga o argumento, então nada fica vermelho. Só `conhecimento_nao_indexado`
+  // veio com a 1.8.0; as outras 23 estavam faltando desde sempre.
+  "Conexão do WhatsApp caiu — precisa escanear o QR de novo": {
+    es: "Se cayó la conexión de WhatsApp — hay que escanear el QR de nuevo",
+  },
+  "Uma tarefa do assistente falhou e parou de tentar": {
+    es: "Una tarea del asistente falló y dejó de intentarlo",
+  },
+  "Um evento recebido não pôde ser processado": { es: "Un evento recibido no se pudo procesar" },
+  "O orçamento de IA foi atingido": { es: "Se alcanzó el presupuesto de IA" },
+  "O assistente passou um atendimento para um humano": {
+    es: "El asistente pasó una atención a una persona",
+  },
+  "Proposta de melhoria do assistente aguardando sua revisão": {
+    es: "Propuesta de mejora del asistente esperando tu revisión",
+  },
+  "O avaliador de qualidade precisa de recalibragem": {
+    es: "El evaluador de calidad necesita recalibración",
+  },
+  "Um fluxo de follow-up parou de tentar": { es: "Un flujo de follow-up dejó de intentarlo" },
+  "O lead não respondeu no prazo que você definiu": {
+    es: "El lead no respondió en el plazo que definiste",
+  },
+  "Próxima ação sem negócio definido — precisa da sua escolha": {
+    es: "Próxima acción sin negocio definido — necesita que elijas",
+  },
+  "Negócios que já estavam parados — precisam de uma decisão": {
+    es: "Negocios que ya estaban detenidos — necesitan una decisión",
+  },
+  "A sugestão de retomar contato venceu — decida": {
+    es: "La sugerencia de retomar contacto venció — decide",
+  },
+  "Um atendimento saiu sem as ferramentas que você ligou": {
+    es: "Una atención salió sin las capacidades que activaste",
+  },
+  "Uma resposta ficou presa e não chegou ao cliente": {
+    es: "Una respuesta quedó atascada y no llegó al cliente",
+  },
+  "O agente não conseguiu ler uma foto ou áudio que o cliente enviou": {
+    es: "El agente no pudo leer una foto o un audio que envió el cliente",
+  },
+  "Um modelo de mensagem mudou de situação na revisão": {
+    es: "Una plantilla de mensaje cambió de estado en la revisión",
+  },
+  "Seu número de WhatsApp precisa de atenção": { es: "Tu número de WhatsApp necesita atención" },
+  "O assistente prometeu algo a um cliente e ninguém ficou responsável": {
+    es: "El asistente le prometió algo a un cliente y nadie quedó a cargo",
+  },
+  "Uma informação que o assistente ouviu de um cliente venceu sem ninguém conferir": {
+    es: "Una información que el asistente escuchó de un cliente venció sin que nadie la revisara",
+  },
+  "O gasto de IA passou do aviso que você definiu": {
+    es: "El gasto de IA superó el aviso que definiste",
+  },
+  "Um material que você enviou não entrou na base de conhecimento": {
+    es: "Un material que enviaste no entró en la base de conocimiento",
+  },
+  "Aviso do assistente": { es: "Aviso del asistente" },
+  // `informativo` e `crítico` saem iguais nos dois idiomas — sem linha, por isso.
+  "atenção": { es: "atención" },
+
+  // ─── Estado do material do acervo (components/ai/SourceStatusBadge.tsx) ───
+  //
+  // A 1.8.0 reescreveu os seis rótulos e criou dois estados novos
+  // (`indexando`, `sem_credencial`). O `t(label)` do componente sobreviveu ao
+  // merge intacto — o que não sobreviveu foi a correspondência com o
+  // dicionário, porque as CHAVES mudaram. Mesma classe da seção acima.
+  "O agente já sabe": { es: "El agente ya lo sabe" },
+  "Esperando a chave": { es: "Esperando la clave" },
+  "Entrou pela metade": { es: "Entró a medias" },
+  "Ainda não preparado": { es: "Todavía sin preparar" },
+  // `Arquivado` não entra aqui: já existe lá em cima, sem aspas na chave.
+
+  // ─── Navegação do painel de plataforma (components/admin/AdminSidebar.tsx) ───
+  //
+  // O único rótulo novo da 1.8.0 que NÃO é o empréstimo do inglês que esta
+  // barra adota por convenção (Dashboard, Tenants, Audit…): é o nome próprio do
+  // produto do Google, que muda de idioma — "Google Agenda" em pt-BR é
+  // "Google Calendar" em espanhol.
+  "Google Agenda": { es: "Google Calendar" },
+
+  // ─── Acervo de conhecimento da 1.8.0 (PR #354) — telas novas do merge ───
+  //
+  // As cinco telas que a 1.8.0 trouxe (`NovoMaterialDialog`,
+  // `ChaveDeConhecimento`, `EditarFaqDialog`, `TrechosDoMaterialDialog` e
+  // `BasesDoAgente`) chegaram sem uma chamada de `t()` — 857 linhas de tela
+  // nova em português. Junto vão os dois catálogos fechados que elas leem:
+  // `TIPOS_DE_FONTE` (lib/ai/rag/tipos-de-fonte.ts) e `EXPLICACAO_DA_ORIGEM`
+  // (lib/ai/embeddings/chave.ts), traduzidos no ponto de render, sem tocar
+  // nos módulos — mesma fronteira dos outros vocabulários deste arquivo.
+  //
+  // Fora daqui de propósito: os avisos de `chave.ts` que interpolam contagem
+  // ou nome de modelo (chave literal não casa com texto que muda por
+  // requisição) e os dois EXEMPLOS do campo de conteúdo, presos ao regex de
+  // língua fixa de `lib/ai/rag/ingest/faq.ts`.
+  "O que ele consulta antes de responder": { es: "Lo que consulta antes de responder" },
+  "Marque o material do seu negócio que este assistente pode ler. Ele procura ali antes de responder, em vez de improvisar — e cita de onde tirou.": { es: "Marca el material de tu negocio que este asistente puede leer. Busca ahí antes de responder, en vez de improvisar — y cita de dónde lo sacó." },
+  "Você ainda não cadastrou nenhum material.": { es: "Todavía no has cargado ningún material." },
+  "Comece pelo que ele mais vai precisar": { es: "Empieza por lo que más va a necesitar" },
+  "— as perguntas que se repetem, e a política que você mais explica.": { es: "— las preguntas que se repiten, y la política que más explicas." },
+  "trecho": { es: "fragmento" },
+  "trechos": { es: "fragmentos" },
+  "ainda não preparado": { es: "todavía sin preparar" },
+  "Sem nenhum material marcado, ele conversa normalmente — mas responde só com o que o modelo já sabe, e a ferramenta de busca nem entra na conversa dele.": { es: "Sin ningún material marcado, conversa normalmente — pero responde solo con lo que el modelo ya sabe, y la herramienta de búsqueda ni entra en su conversación." },
+  "Você tem": { es: "Tienes" },
+  "materiais": { es: "materiales" },
+  "no acervo e este assistente não lê nenhum. Ele vai responder de improviso sobre assuntos que já estão escritos.": { es: "en el acervo y este asistente no lee ninguno. Va a responder de improviso sobre asuntos que ya están escritos." },
+  "está marcado mas ainda não foi preparado — o agente não vai achar nada nele.": { es: "está marcado pero todavía no fue preparado — el agente no va a encontrar nada en él." },
+  "materiais marcados ainda não foram preparados — o agente não vai achar nada neles.": { es: "materiales marcados todavía no fueron preparados — el agente no va a encontrar nada en ellos." },
+  "Ver o acervo": { es: "Ver el acervo" },
+  "Chave da OpenAI": { es: "Clave de OpenAI" },
+  "Cole a chave inteira antes de salvar.": { es: "Pega la clave entera antes de guardar." },
+  "Chave salva. Estamos conferindo com a OpenAI — leva alguns segundos.": { es: "Clave guardada. La estamos verificando con OpenAI — toma unos segundos." },
+  "Conferindo a chave com a OpenAI — leva alguns segundos.": { es: "Verificando la clave con OpenAI — toma unos segundos." },
+  "Pronto para preparar material.": { es: "Listo para preparar material." },
+  "Usando a chave": { es: "Usando la clave" },
+  "Falta uma chave da OpenAI para o agente aprender o seu material": { es: "Falta una clave de OpenAI para que el agente aprenda tu material" },
+  "Preparar um documento para o agente encontrá-lo usa a OpenAI, mesmo que o resto do seu assistente rode em outro provedor. Sem ela você consegue cadastrar o material, mas ele fica esperando — e o agente segue sem saber o que está nele.": { es: "Preparar un documento para que el agente lo encuentre usa OpenAI, aunque el resto de tu asistente corra en otro proveedor. Sin ella puedes cargar el material, pero queda esperando — y el agente sigue sin saber qué hay dentro." },
+  "Como você quer chamar esta chave": { es: "Cómo quieres llamar a esta clave" },
+  "Você pega em": { es: "La obtienes en" },
+  "Ela é guardada cifrada e nunca aparece de volta na tela.": { es: "Se guarda cifrada y nunca vuelve a aparecer en pantalla." },
+  "Salvar chave": { es: "Guardar clave" },
+  "Cadastrar a chave aqui": { es: "Cargar la clave aquí" },
+  "ou veja todas em": { es: "o velas todas en" },
+  "Não achei nenhum par pergunta/resposta. Use uma linha": { es: "No encontré ningún par pregunta/respuesta. Usa una línea" },
+  "por item.": { es: "por elemento." },
+  "Conteúdo salvo. Estou preparando de novo — leva alguns instantes.": { es: "Contenido guardado. Lo estoy preparando de nuevo — toma unos instantes." },
+  "O que você salvar aqui substitui o conteúdo atual, e o agente é preparado de novo.": { es: "Lo que guardes aquí reemplaza el contenido actual, y el agente se prepara de nuevo." },
+  "Salvar conteúdo": { es: "Guardar contenido" },
+  "Dê um nome ao material — é assim que você o encontra depois.": { es: "Ponle un nombre al material — así lo encuentras después." },
+  "Envie um arquivo ou cole o conteúdo.": { es: "Envía un archivo o pega el contenido." },
+  "Não consegui guardar o arquivo.": { es: "No pude guardar el archivo." },
+  "Material cadastrado. Estou preparando — em instantes o agente já sabe.": { es: "Material cargado. Lo estoy preparando — en instantes el agente ya lo sabe." },
+  "Material cadastrado. Ele fica esperando a chave da OpenAI para ser preparado.": { es: "Material cargado. Queda esperando la clave de OpenAI para ser preparado." },
+  "Ensinar algo novo ao agente": { es: "Enseñarle algo nuevo al agente" },
+  "Ele consulta este material antes de responder sobre o seu negócio.": { es: "Consulta este material antes de responder sobre tu negocio." },
+  "Que tipo de material é": { es: "Qué tipo de material es" },
+  "Nome do material": { es: "Nombre del material" },
+  "Perguntas frequentes da loja": { es: "Preguntas frecuentes de la tienda" },
+  "Política de troca": { es: "Política de cambios" },
+  "Arquivo (opcional)": { es: "Archivo (opcional)" },
+  "PDF, Markdown ou texto, até 20 MB. Um PDF só de imagens escaneadas não tem letra nenhuma para ler — envie uma versão com texto selecionável.": { es: "PDF, Markdown o texto, hasta 20 MB. Un PDF solo de imágenes escaneadas no tiene ni una letra para leer — envía una versión con texto seleccionable." },
+  "…ou cole o texto aqui": { es: "…o pega el texto aquí" },
+  "Sem uma chave da OpenAI, o material fica guardado e esperando — o agente só passa a conhecê-lo depois que a chave for cadastrada.": { es: "Sin una clave de OpenAI, el material queda guardado y esperando — el agente solo pasa a conocerlo después de que cargues la clave." },
+  "Adicionar ao acervo": { es: "Agregar al acervo" },
+  "O que o agente aprendeu de": { es: "Lo que el agente aprendió de" },
+  "São estes os trechos que ele procura antes de responder. Quando ele erra sobre este assunto, é aqui que se vê o porquê.": { es: "Estos son los fragmentos que busca antes de responder. Cuando se equivoca sobre este asunto, es aquí donde se ve por qué." },
+  "Não consegui ler os trechos agora.": { es: "No pude leer los fragmentos ahora." },
+  "Este material ainda não foi preparado — não há trecho nenhum para o agente encontrar.": { es: "Este material todavía no fue preparado — no hay ningún fragmento para que el agente encuentre." },
+  "Trecho": { es: "Fragmento" },
+  "Mostrando os primeiros trechos de": { es: "Mostrando los primeros fragmentos de" },
+  "Uma tela não folheia mil pedaços — o restante está no acervo e o agente alcança todos.": { es: "Una pantalla no hojea mil pedazos — el resto está en el acervo y el agente los alcanza todos." },
+  "Perguntas e respostas": { es: "Preguntas y respuestas" },
+  "As dúvidas que se repetem, com a resposta pronta. É o formato que o agente cita melhor, porque cada resposta chega inteira.": { es: "Las dudas que se repiten, con la respuesta lista. Es el formato que el agente cita mejor, porque cada respuesta llega entera." },
+  "Um texto do seu negócio — política de troca, tabela de preços, manual, contrato. Envie o arquivo (PDF, Markdown ou texto) ou cole o conteúdo.": { es: "Un texto de tu negocio — política de cambios, lista de precios, manual, contrato. Envía el archivo (PDF, Markdown o texto) o pega el contenido." },
+  "Conversas anteriores": { es: "Conversaciones anteriores" },
+  "Atendimentos já resolvidos que alguém marcou como aproveitáveis, com os dados pessoais removidos.": { es: "Atenciones ya resueltas que alguien marcó como aprovechables, con los datos personales quitados." },
+  "Entra sozinha: conversas resolvidas que alguém marcar como aproveitáveis pela IA são anonimizadas e indexadas em lote.": { es: "Entra sola: las conversaciones resueltas que alguien marque como aprovechables por la IA se anonimizan y se indexan en lote." },
+  "Catálogo de produtos": { es: "Catálogo de productos" },
+  "Os produtos sincronizados da sua loja, com preço, descrição e disponibilidade.": { es: "Los productos sincronizados de tu tienda, con precio, descripción y disponibilidad." },
+  "Entra sozinho: os produtos vêm da sincronização com a sua loja, não de conteúdo digitado aqui.": { es: "Entra solo: los productos vienen de la sincronización con tu tienda, no de contenido escrito aquí." },
+  "Escolhida por você no painel de Provedores.": { es: "La elegiste en el panel de Proveedores." },
+  "Usando a chave OpenAI cadastrada em Credenciais.": { es: "Usando la clave de OpenAI cargada en Credenciales." },
+  "Usando o gateway de IA configurado nesta instalação.": { es: "Usando el gateway de IA configurado en esta instalación." },
+  "Usando a chave que veio na instalação.": { es: "Usando la clave que vino con la instalación." },
+  "A chave escolhida no painel de Provedores para este ponto não está utilizável (desativada, apagada ou ainda não validada). Seguindo com a próxima chave disponível.": { es: "La clave elegida en el panel de Proveedores para este punto no es utilizable (desactivada, borrada o todavía sin validar). Seguimos con la siguiente clave disponible." },
 };
 
 /**
