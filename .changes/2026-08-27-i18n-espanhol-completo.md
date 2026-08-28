@@ -37,3 +37,11 @@ Duas exceções, de propósito: os **e-mails** que o sistema envia seguem em
 português (quem recebe um convite ainda não tem conta, então não há preferência
 de idioma para consultar), e o **relatório de LGPD** também — ele responde a uma
 lei brasileira, e mudar a forma dele conforme quem apertou o botão seria errado.
+
+---
+
+A tradução para espanhol é, em boa parte, contribuição de **@JowaniOrantes**, que
+abriu três frentes de trabalho por conta própria: as áreas de IA e administração
+(#352), o módulo de Agenda (#379) e as correções que vieram do QA visual dele.
+São 57 commits e mais de 460 entradas de dicionário que este release não teria
+sem esse trabalho.
