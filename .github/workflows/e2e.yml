@@ -253,6 +253,7 @@ jobs:
         troca-de-organizacao-tem-volta.spec.ts
         agenda-caminho-ate-os-horarios.spec.ts
         agenda-google-volta-do-consentimento.spec.ts
+        agenda-google-volta-nao-desloga.spec.ts
       # Cada item aqui tem o motivo MEDIDO, não presumido — e o gate cobra que a
       # lista exista e some com as outras duas.
       #

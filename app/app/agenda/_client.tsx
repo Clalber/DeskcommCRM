@@ -396,7 +396,31 @@ export function AgendaClient({
           empilha os horários sob o calendário, então 768px bastam e um Sheet
           maior só roubaria contexto da tela atrás.
         */}
-        <SheetContent side="right" className="w-full sm:max-w-3xl lg:max-w-[1040px]">
+        {/*
+          A CADEIA DE ALTURAS, e ela é o que faz a lista de horários rolar.
+          
+          O `overflow-y-auto` da lista (`PainelDeMarcacao`) sempre esteve no
+          elemento certo e era INERTE: `overflow-y-auto` cujo pai tem altura
+          `auto` não rola — o filho cresce, `scrollHeight === clientHeight`, e os
+          últimos horários ficavam abaixo da dobra sem nenhum jeito de alcançá-los.
+          E a página também não rolava: o `SheetContent` é `position: fixed`, e
+          transbordo de elemento fixo não estende a área rolável do documento.
+          
+          Abaixo de `lg` o próprio Sheet rola (ali o painel empilha e a lista é
+          uma seção, não uma coluna). De `lg` para cima o Sheet segura a altura e
+          a LISTA rola, com calendário e contexto parados.
+          
+          ⚠️ `lg:overflow-hidden` e não `overflow-y-auto` em todo breakpoint: em
+          `lg` o Sheet tem 1040px com `p-6` → 992px de caixa contra ~980px de
+          painel. Uma barra vertical come essa folga, e como o CSS computa
+          `overflow-x: visible` como `auto` quando `overflow-y` não é `visible`,
+          nasceria barra HORIZONTAL exatamente no breakpoint que o conserto de
+          largura acabou de reparar.
+        */}
+        <SheetContent
+          side="right"
+          className="flex w-full flex-col overflow-y-auto sm:max-w-3xl lg:max-w-[1040px] lg:overflow-hidden"
+        >
           <SheetHeader>
             <SheetTitle>{remarcandoId ? "Remarcar agendamento" : "Novo agendamento"}</SheetTitle>
           </SheetHeader>
@@ -426,8 +450,9 @@ export function AgendaClient({
             </div>
           )}
           {tipo && (
-            <div className="mt-4">
+            <div className="mt-4 lg:min-h-0 lg:flex-1">
               <PainelDeMarcacao
+                className="lg:h-full"
                 ancora={new Date()}
                 agora={new Date()}
                 responsavel={

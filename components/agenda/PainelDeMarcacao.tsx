@@ -332,7 +332,11 @@ export function PainelDeMarcacao({
         // colunas cabem com folga. Abaixo disso o painel EMPILHA — os horários
         // viram uma seção sob o calendário, que é o que o cal.com faz e o que
         // esta base já fazia no celular.
-        "flex min-h-[450px] flex-col overflow-hidden rounded-lg border border-border bg-surface lg:w-fit lg:flex-row",
+        // `lg:min-h-0` junto do piso: em janela larga e BAIXA (menos de ~560px
+        // de altura) um `min-h-[450px]` sem teto estoura o Sheet e o
+        // `overflow-hidden` corta em silêncio — o mesmo modo de falha que este
+        // painel já teve na horizontal.
+        "flex min-h-[450px] flex-col overflow-hidden rounded-lg border border-border bg-surface lg:min-h-0 lg:w-fit lg:flex-row",
         className,
       )}
     >
@@ -636,7 +640,17 @@ export function PainelDeMarcacao({
           <p className="mb-2 shrink-0 text-xs font-semibold text-text-muted first-letter:uppercase">
             {dia ? format(dia, "EEEE, d 'de' MMM", { locale: ptBR }) : ""}
           </p>
-          <div className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto pr-1">
+          {/*
+            `data-testid` para a lista poder ser MEDIDA, e não só vista. O
+            `overflow-y-auto` aqui sempre esteve certo e era INERTE: um
+            `overflow-y-auto` cujo pai tem altura `auto` não rola, porque o filho
+            cresce e `scrollHeight === clientHeight`. Quem fecha a cadeia é o
+            `_client.tsx`, que dá teto ao Sheet.
+          */}
+          <div
+            data-testid="lista-de-horarios"
+            className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto pr-1"
+          >
             {doDia.map((h) => (
               <button
                 key={h.instante}
