@@ -114,9 +114,13 @@ describe("todo callback de OAuth é alcançável sem cookie de sessão", () => {
     // Os dois ramos falham com a MESMA mensagem, então um teste que olhasse só
     // o desfecho não veria a inversão.
     const fonte = readFileSync("app/api/v1/agenda/google/callback/route.ts", "utf8");
-    const confere = fonte.indexOf("vinculoConfere");
+    // ⚠️ ANCORAR NA CHAMADA, `if (!vinculoConfere(`, e não no símbolo solto.
+    // A primeira versão deste caso procurava `vinculoConfere` — e casava com a
+    // linha de IMPORT, que está sempre no topo do arquivo. O caso passava com a
+    // ordem invertida de propósito: era decorativo, e só a sabotagem mostrou.
+    const confere = fonte.indexOf("if (!vinculoConfere(");
     const queima = fonte.indexOf("calendar_oauth_nonces");
-    expect(confere, "`vinculoConfere` sumiu do callback").toBeGreaterThan(-1);
+    expect(confere, "a CHAMADA `if (!vinculoConfere(` sumiu do callback").toBeGreaterThan(-1);
     expect(queima, "a queima do nonce sumiu do callback").toBeGreaterThan(-1);
     expect(
       confere,
