@@ -297,9 +297,20 @@ Duas armadilhas irmãs, as duas pagas no mesmo dia:
 
   ```bash
   pnpm test:unit > /tmp/vt.log 2>&1; echo "exit=$?"
+  grep -aE "Test Files|Tests " /tmp/vt.log | tail -2                   # ← a AUTORIDADE
   grep -aE "^ *FAIL " /tmp/vt.log | sed 's/ > .*//' | sort | uniq -c   # arquivos + contagem
-  grep -aE "Test Files|Tests " /tmp/vt.log | tail -2                   # rodapé
   ```
+
+  **O rodapé é a autoridade; o `grep FAIL` é conveniência — e ele pode devolver
+  vazio COM falhas.** Medido: em execução sem TTY o reporter padrão às vezes
+  imprime só o resumo, e os nomes dos arquivos vermelhos nunca chegam a ser
+  escritos. Uma rodada com `3 failed` produziu um log de 629 bytes onde `FAIL`
+  não aparece em posição nenhuma — e o vazio dessa sonda lê exatamente como
+  "nenhuma falha".
+
+  Por isso **compare as duas saídas antes de concluir**: se o rodapé diz
+  `N failed` e o `uniq -c` não soma N, o `grep` não está enxergando — troque por
+  `--reporter=verbose` e rode de novo, em vez de acreditar no silêncio.
 
 **Vermelho local que NÃO é seu:** `lib/ai/dispatcher/rate-limit.test.ts` falha em 5 casos, com
 15s de timeout cada, quando o `.env.local` tem `UPSTASH_REDIS_REST_URL`/`TOKEN` e o Redis para o
