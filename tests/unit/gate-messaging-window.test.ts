@@ -129,3 +129,59 @@ describe("gate messaging_window — template é a saída, não um bypass", () =>
     expect(Object.keys(ctx)).not.toContain("isTemplate");
   });
 });
+
+describe("gate messaging_window — a instrução do veto vem da CAPABILITY", () => {
+  /**
+   * O defeito que estes casos trancam.
+   *
+   * A `reason` deste veto era um texto fixo mandando usar `send_template`. Isso
+   * estava certo enquanto os três canais eram WhatsApp — lá, fora da janela,
+   * template é a única porta. Num canal SEM template a frase manda o modelo
+   * chamar uma ferramenta que ele nem recebeu (`inbound-turn` remove a tool
+   * quando `requiresTemplates` é falso): a instrução aponta para uma porta que
+   * não existe, e o turno morre sem próximo passo.
+   *
+   * Invariante 2 da doutrina de canal: a capability declara a FÍSICA da
+   * restrição, porque é ela que decide o que fazer quando a restrição barra.
+   */
+  const fechada = { lastInboundAt: horasAtras(30) };
+
+  it("canal COM template manda usar template", () => {
+    const v = messagingWindowGate.evaluate(
+      baseCtx({ provider: "meta_cloud", messagingWindow: fechada }),
+    );
+    expect(v.pass).toBe(false);
+    if (v.pass) throw new Error("inalcançável");
+    expect(v.code).toBe("messaging_window_closed");
+    expect(v.reason).toContain("send_template");
+  });
+
+  it("canal SEM template manda ESCALAR — e nunca cita a ferramenta que não existe", () => {
+    const v = messagingWindowGate.evaluate(
+      baseCtx({ provider: "meta_instagram", messagingWindow: fechada }),
+    );
+    expect(v.pass).toBe(false);
+    if (v.pass) throw new Error("inalcançável");
+    expect(v.code).toBe("messaging_window_closed");
+    // A asserção que importa: a instrução IMPOSSÍVEL não pode aparecer.
+    expect(v.reason).not.toContain("send_template");
+    expect(v.reason).toContain("humano");
+  });
+
+  it("o código do veto é o MESMO nos dois — muda a saída, não o diagnóstico", () => {
+    // Quem consome o código (o follow-up, o trace) continua vendo um vocabulário
+    // só. Se o código variasse por canal, cada consumidor precisaria conhecer os
+    // canais — que é o invariante 1 ao contrário.
+    const comTemplate = messagingWindowGate.evaluate(
+      baseCtx({ provider: "meta_cloud", messagingWindow: fechada }),
+    );
+    const semTemplate = messagingWindowGate.evaluate(
+      baseCtx({ provider: "meta_instagram", messagingWindow: fechada }),
+    );
+    expect(comTemplate.pass).toBe(false);
+    expect(semTemplate.pass).toBe(false);
+    if (comTemplate.pass || semTemplate.pass) throw new Error("inalcançável");
+    expect(semTemplate.code).toBe(comTemplate.code);
+    expect(semTemplate.reason).not.toBe(comTemplate.reason);
+  });
+});
