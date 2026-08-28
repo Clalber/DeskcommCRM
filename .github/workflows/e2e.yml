@@ -59,7 +59,31 @@ permissions:
 jobs:
   e2e:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # ⚠️ ERA 30, E O TETO JÁ ERA O GARGALO — antes deste PR, medido.
+    #
+    # As duas partes rodam em SEQUÊNCIA, no mesmo job, depois de um prelúdio
+    # caro (Supabase local + baseline + `next build` de produção + seeds). O
+    # tempo soma, e a suíte cresceu até encostar:
+    #
+    #   PR #372 (Release 1.8.0)  32,4 min  cancelado pelo teto
+    #   PR #369                  30,3 min  cancelado pelo teto
+    #   PR #354                  29,4 min  passou raspando
+    #   PR #368                  29,6 min  passou raspando
+    #   PR #363                  29,5 min  passou raspando
+    #
+    #   gh run list --workflow=e2e.yml --branch main --limit 8 \
+    #     --json displayTitle,conclusion,createdAt,updatedAt
+    #
+    # Dois merges na main já tinham sido cortados por TEMPO, não por defeito —
+    # e vermelho que não distingue "quebrou" de "demorou" ensina a ignorar
+    # vermelho. Subir o teto devolve o sinal.
+    #
+    # O conserto de VERDADE é outro, e não cabe aqui: partir em jobs paralelos
+    # (matrix), pagando o prelúdio duas vezes para cortar o relógio pela
+    # metade. Isso muda a forma do workflow e merece PR próprio, com medição do
+    # que é prelúdio e do que é teste — subir o teto é o que impede a suíte de
+    # ficar vermelha enquanto esse PR não vem.
+    timeout-minutes: 45
     # ─────────────────────────────────────────────────────────────────────────
     # A COBERTURA DEIXA DE SER PROSA DIGITADA À MÃO.
     #
