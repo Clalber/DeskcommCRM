@@ -295,6 +295,15 @@ export function AgendaClient({
           <Button
             size="sm"
             disabled={!tipo}
+            // `data-testid` porque o RÓTULO deixou de ser estável: até este PR
+            // ele era literal, e `agenda-escopo-da-organizacao.spec.ts` o acha
+            // por `getByRole("button", { name: /Novo agendamento/i })`. Com o
+            // texto passando por `t()`, casar por rótulo passa a depender do
+            // idioma da conta de teste — hoje passa porque a conta nasce em
+            // português, mas é acoplamento que não precisa existir. O testid é
+            // o caminho estável; trocar a spec para usá-lo é decisão de quem a
+            // escreveu, e vai anotada no PR.
+            data-testid="novo-agendamento"
             title={tipo ? undefined : t("Cadastre um tipo de agendamento para começar")}
             onClick={() => setMarcando(true)}
           >
