@@ -36,6 +36,7 @@ import {
   celulaQueContem,
   horarioNaCelula,
   minutoSobY,
+  publicadoVizinho,
   razaoDoBloco,
   type HorarioPublicado,
 } from "@/lib/agenda/grade-interativa";
@@ -69,11 +70,17 @@ describe("horarioNaCelula — a célula oferece, nunca inventa", () => {
   });
 
   it("NÃO oferece o horário que começa exatamente no fim da célula", () => {
-    // A borda: 09:40 pertence à célula das 09:30, não à das 09:00. Fosse
-    // fechado dos dois lados, dois blocos diferentes marcariam o mesmo instante.
-    const so0940 = [publicado("09:40")];
-    expect(horarioNaCelula(so0940, minuto("09:00"))).toBeNull();
-    expect(horarioNaCelula(so0940, minuto("09:30"))?.rotulo).toBe("09:40");
+    // ⚠️ A BORDA É 09:30, e a primeira versão deste caso usava 09:40 — que está
+    // FORA da célula das 09:00 por dez minutos e passaria com qualquer
+    // comparação. Sabotei o `>=` para `>` e os 14 casos seguiram verdes: o
+    // teste do fim da célula não tocava no fim da célula.
+    //
+    // Com 09:30 a asserção fica presa ao operador: fechado dos dois lados, o
+    // mesmo instante é oferecido pela célula das 09:00 E pela das 09:30, e dois
+    // cliques em blocos diferentes marcam a mesma coisa.
+    const so0930 = [publicado("09:30")];
+    expect(horarioNaCelula(so0930, minuto("09:00"))).toBeNull();
+    expect(horarioNaCelula(so0930, minuto("09:30"))?.rotulo).toBe("09:30");
   });
 
   it("devolve null onde a disponibilidade não publicou nada", () => {
@@ -109,6 +116,31 @@ describe("alvoDoArraste — soltar perto encaixa, soltar longe recusa", () => {
 
   it("lista vazia não tem alvo — nem o mais próximo de nada", () => {
     expect(alvoDoArraste([], minuto("09:00"))).toBeNull();
+  });
+});
+
+describe("publicadoVizinho — a seta do teclado salta de vaga em vaga", () => {
+  const publicados = [publicado("09:00"), publicado("10:00"), publicado("15:00")];
+
+  it("devolve a próxima vaga adiante, e não a que já está sob o card", () => {
+    // ⚠️ ESTRITAMENTE adiante. Com `>=`, o horário atual seria sempre o próprio
+    // vizinho e a seta nunca sairia do lugar — que foi o defeito medido: a
+    // primeira versão do teclado somava meia hora e reencaixava, o empate
+    // resolvia para trás, e o card ficava parado com o fantasma válido em cima
+    // dele.
+    expect(publicadoVizinho(publicados, minuto("09:00"), 1)?.rotulo).toBe("10:00");
+    expect(publicadoVizinho(publicados, minuto("10:00"), -1)?.rotulo).toBe("09:00");
+  });
+
+  it("de um minuto sem vaga, pega a mais próxima na direção pedida", () => {
+    expect(publicadoVizinho(publicados, minuto("09:30"), 1)?.rotulo).toBe("10:00");
+    expect(publicadoVizinho(publicados, minuto("09:30"), -1)?.rotulo).toBe("09:00");
+  });
+
+  it("devolve null na ponta — quem chama decide o que fazer sem vaga adiante", () => {
+    expect(publicadoVizinho(publicados, minuto("15:00"), 1)).toBeNull();
+    expect(publicadoVizinho(publicados, minuto("09:00"), -1)).toBeNull();
+    expect(publicadoVizinho([], minuto("09:00"), 1)).toBeNull();
   });
 });
 

@@ -119,6 +119,44 @@ export function alvoDoArraste(
 }
 
 /**
+ * O horário publicado seguinte (ou anterior) a um minuto do dia.
+ *
+ * ⚠️ ESTA FUNÇÃO EXISTE PORQUE O TECLADO TRAVAVA, e o teste é quem contou.
+ *
+ * A primeira versão do caminho por teclado somava meia hora à proposta corrente
+ * e reencaixava com `alvoDoArraste`. Só que a proposta corrente JÁ está
+ * encaixada: de 14:00, somar 30 dá 14:30, que empata entre 14:00 e 15:00 e
+ * resolve para o mais cedo — 14:00 de novo. Apertar a seta dez vezes não movia
+ * o card um minuto, e a tela não tinha como dizer isso: o fantasma aparecia,
+ * válido, no lugar de sempre.
+ *
+ * Encaixar é a resposta certa para o PONTEIRO, que aponta para um pixel
+ * arbitrário; para o teclado a pergunta é outra — "qual é o próximo horário que
+ * existe?" —, e é essa que esta função responde. De quebra, ela dá a quem
+ * navega por teclado a informação que o arraste dá pelos olhos: onde estão as
+ * vagas. Pular de vaga em vaga é mais rápido do que varrer meia hora por vez.
+ */
+export function publicadoVizinho(
+  publicados: readonly HorarioPublicado[],
+  minutoAtual: number,
+  direcao: 1 | -1,
+): HorarioPublicado | null {
+  let escolhido: HorarioPublicado | null = null;
+  let melhor = Number.POSITIVE_INFINITY;
+  for (const h of publicados) {
+    const distancia = (minutoDoDia(h.instante) - minutoAtual) * direcao;
+    // Estritamente adiante: `> 0` e não `>= 0`, senão o horário em que já
+    // estamos seria sempre o vizinho e a seta nunca sairia do lugar.
+    if (distancia <= 0) continue;
+    if (distancia < melhor) {
+      melhor = distancia;
+      escolhido = h;
+    }
+  }
+  return escolhido;
+}
+
+/**
  * A razão de um bloco vazio não aceitar marcação, na voz de quem está olhando
  * para ele.
  *
