@@ -29,8 +29,20 @@ set -uo pipefail
 # asserções —, o que amarrava a suíte a UM publicador: um fork que publica as
 # próprias imagens fica vermelho sem ter quebrado nada. O que estes casos provam é
 # que as três imagens andam na MESMA versão, e isso independe de quem publica.
+#
+# O CUSTO DE DERIVAR, e onde ele é pago. Enquanto o literal estava aqui, este
+# arquivo era a única canária do repo contra um IMG_NS errado: um valor trocado
+# reprovava 4 casos (medido). Derivando, ele deixa de reprovar — os testes
+# passam a concordar entre si sobre o valor errado, que é a família do teste que
+# mede a si mesmo. A proteção não sumiu: mudou de lugar, para
+# `tests/unit/namespace-das-imagens.test.ts`, que assere o literal UMA vez e
+# confere que o compose, o `.env` de exemplo e o workflow de publicação dizem o
+# mesmo. Se você veio parar aqui procurando a guarda do namespace, é lá.
 NS="$(sed -n 's/^IMG_NS="\(.*\)"$/\1/p' "$(cd "$(dirname "${BASH_SOURCE[0]}")/../../hostgator-setup-kit" && pwd)/_common.sh" | head -1)"
 [ -n "$NS" ] || { echo "não consegui ler IMG_NS de _common.sh"; exit 1; }
+# Exportado porque o dublê de `docker` (escrito mais abaixo num heredoc quoted)
+# resolve $NS em tempo de execução, já dentro de outro processo.
+export NS
 
 
 # Capturado ANTES de qualquer `cd`: o script muda de diretório várias vezes, e
@@ -388,10 +400,15 @@ WORKER_IMAGE=${NS}/deskcomm-worker:1.3.0
 SCHEDULER_IMAGE=${NS}/deskcomm-scheduler:1.3.0" ""
 pin_caso "app num canal deliberado (:latest) → não é 'metade', silêncio" \
   "APP_IMAGE=${NS}/deskcommcrm:latest" ""
+# As aspas SIMPLES são o objeto deste caso — o `install.sh` grava assim. Elas
+# ficam literais porque estão DENTRO da string de aspas duplas; trocá-las por
+# duplas FECHA a string, e o conteúdo sai sem aspa nenhuma. Medido: nessa forma
+# o caso vira byte-a-byte igual ao "as três na mesma versão" logo acima, e o
+# rótulo passa a mentir sobre o que está sendo exercitado.
 pin_caso "valores entre aspas, como o install grava → silêncio" \
-  "APP_IMAGE="${NS}/deskcommcrm:1.3.0"
-WORKER_IMAGE="${NS}/deskcomm-worker:1.3.0"
-SCHEDULER_IMAGE="${NS}/deskcomm-scheduler:1.3.0"" ""
+  "APP_IMAGE='${NS}/deskcommcrm:1.3.0'
+WORKER_IMAGE='${NS}/deskcomm-worker:1.3.0'
+SCHEDULER_IMAGE='${NS}/deskcomm-scheduler:1.3.0'" ""
 rm -f "$PROJ/.env.pin"
 
 
@@ -410,8 +427,13 @@ cat > "$PIN_DIR/bin/docker" <<'STUBDOCKER'
 #!/usr/bin/env bash
 # inspect de contêiner → devolve o nome da imagem; de imagem → devolve a versão
 case "$*" in
-  *"Config.Image"*)  printf '${NS}/deskcomm-worker:stable
-' ;;
+  # O heredoc é quoted ('STUBDOCKER') para proteger $* e $DUBLE_VERSION, então
+  # $NS NÃO é expandido na escrita: ele chega literal aqui e é resolvido quando o
+  # dublê RODA, lendo do ambiente (por isso o `export NS` lá em cima). Sem essa
+  # resolução o dublê devolvia a string `${NS}/deskcomm-worker:stable` — uma
+  # fixture que não representa instalação nenhuma. O `:?` faz o dublê morrer alto
+  # se a variável não vier, em vez de devolver um nome começando em "/".
+  *"Config.Image"*)  printf '%s/deskcomm-worker:stable\n' "${NS:?dublê de docker sem NS no ambiente}" ;;
   *"image.version"*) printf '%s
 ' "${DUBLE_VERSION:-1.3.0}" ;;
   *) exit 1 ;;
