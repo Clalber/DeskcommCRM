@@ -1462,7 +1462,7 @@ vira imposto, porque uma linha de declaração custa menos que uma linha vazia d
 que é o risco real, já que ela polui a tela de produto do operador. Não é convenção nova: o
 `tests/unit/navegacao-completude.test.ts` já aceita exceção **com justificativa escrita**.
 
-## J11 — Quem instala em espanhol usa o sistema em espanhol? `[P0]` (2026-08-27)
+## J19 — Quem instala em espanhol usa o sistema em espanhol? `[P0]` (2026-08-27)
 
 Primeira impressão de quem instala fora do Brasil, que é o público do
 espanhol: a pessoa escolhe o idioma na instalação e abre o produto. Se a tela
