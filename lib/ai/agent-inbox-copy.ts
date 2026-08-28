@@ -47,6 +47,7 @@ export const KIND_LABEL = {
   // qual evento chegou.
   channel_template_review: "Um modelo de mensagem mudou de situação na revisão",
   channel_number_alert: "Seu número de WhatsApp precisa de atenção",
+  channel_credential_expiring: "A autorização de um canal está vencendo — renove para não parar de responder",
   // "ninguém cumpriu" é um veredito que NENHUMA linha de código apura — o
   // sistema não sabe se a promessa foi cumprida, e agendar um retorno não é
   // cumprir. "ninguém ficou responsável" é exatamente o que `apuraDonoDaPromessa`

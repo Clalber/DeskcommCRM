@@ -17082,11 +17082,32 @@ alter table public.channel_contact_identities enable row level security;
 -- (`tests/unit/baseline-reaplicavel.test.ts`). Sem o `drop`, o `update.sh` — que
 -- roda sem `ON_ERROR_STOP` e trata `already exists` como benigno — engoliria o
 -- erro e manteria a policy ANTIGA, silenciosamente.
+--
+-- PAR select/write (migration 0205), e não uma policy `for all` só de tenancy: a
+-- forma original deixava um `viewer` APAGAR a amarração entre a pessoa do outro
+-- lado e o contato do CRM — pelo PostgREST, com o JWT dele. Apagar faz a próxima
+-- mensagem daquele cliente chegar como de um desconhecido; alterar faz a
+-- resposta sair para a pessoa errada.
 drop policy if exists tenant_isolation_channel_contact_identities_all on public.channel_contact_identities;
-create policy tenant_isolation_channel_contact_identities_all
+
+drop policy if exists channel_contact_identities_tenant_select on public.channel_contact_identities;
+create policy channel_contact_identities_tenant_select
+  on public.channel_contact_identities
+  for select using (
+    organization_id in (select public.fn_user_org_ids()) or public.fn_is_platform_admin()
+  );
+
+drop policy if exists channel_contact_identities_tenant_write on public.channel_contact_identities;
+create policy channel_contact_identities_tenant_write
   on public.channel_contact_identities
   for all using (
-    organization_id in (select public.fn_user_org_ids()) or public.fn_is_platform_admin()
+    (organization_id in (select public.fn_user_org_ids())
+      and public.fn_role_at_least(organization_id, 'admin'))
+    or public.fn_is_platform_admin()
+  ) with check (
+    (organization_id in (select public.fn_user_org_ids())
+      and public.fn_role_at_least(organization_id, 'admin'))
+    or public.fn_is_platform_admin()
   );
 
 -- ---- um pareamento pendente por organização (migration 0203) ----

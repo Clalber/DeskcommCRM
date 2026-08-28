@@ -65,6 +65,14 @@ async function ensureSession(orgId: string): Promise<string> {
       organization_id: orgId,
       waha_session_name: SESSION_NAME,
       display_name: "Número Radar E2E",
+      // `WORKING` explícito: o default da coluna é `STARTING`, e o índice
+      // `channel_sessions_um_pareamento_pendente_por_org` (migration 0203) só
+      // admite UMA sessão nesse estado por organização. Os seeds de e2e
+      // COMPARTILHAM a org do `.e2e-creds.json` e cada um procura apenas pelo
+      // PRÓPRIO `waha_session_name`, então dois na mesma rodada colidiam com
+      // 23505. O que estes seeds simulam é canal CONECTADO — `WORKING` é o
+      // estado certo, não um contorno.
+      status: "WORKING",
       webhook_secret_encrypted: "\\x00",
     } as never)
     .select("id")
