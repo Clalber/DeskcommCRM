@@ -1,9 +1,10 @@
 "use client";
 
+import { useLocaleDeData } from "@/hooks/i18n/useLocaleDeData";
+
 import { useT } from "@/hooks/i18n/useT";
 
 import { addDays, endOfMonth, format, startOfDay, startOfMonth, startOfWeek } from "date-fns";
-import { ptBR } from "date-fns/locale";
 import * as React from "react";
 
 import { AvisoDaConexaoGoogle } from "./_components/AvisoDaConexaoGoogle";
@@ -90,6 +91,7 @@ export function AgendaClient({
   /** A semana corrente, resolvida no servidor: `GET /agendamentos` não existe. */
   agendamentosIniciais: Agendamento[];
 }) {
+  const localeDaData = useLocaleDeData();
   const t = useT();
   const [marcando, setMarcando] = React.useState(false);
   // REMARCAR reusa o painel de marcação: escolher horário novo é o MESMO gesto
@@ -223,10 +225,10 @@ export function AgendaClient({
   const passo = visao === "mes" ? 30 : visao === "semana" ? 7 : 1;
   const periodo =
     visao === "mes"
-      ? format(ancora, "MMMM 'de' yyyy", { locale: ptBR })
+      ? format(ancora, "MMMM 'de' yyyy", { locale: localeDaData })
       : visao === "semana"
-        ? `${format(startOfWeek(ancora, { weekStartsOn: 0 }), "d 'de' MMM", { locale: ptBR })} — ${format(addDays(startOfWeek(ancora, { weekStartsOn: 0 }), 6), "d 'de' MMM", { locale: ptBR })}`
-        : format(ancora, "EEEE, d 'de' MMMM", { locale: ptBR });
+        ? `${format(startOfWeek(ancora, { weekStartsOn: 0 }), "d 'de' MMM", { locale: localeDaData })} — ${format(addDays(startOfWeek(ancora, { weekStartsOn: 0 }), 6), "d 'de' MMM", { locale: localeDaData })}`
+        : format(ancora, "EEEE, d 'de' MMMM", { locale: localeDaData });
 
   return (
     <div
@@ -498,7 +500,7 @@ export function AgendaClient({
                 const alvo = todos.find((a) => a.id === cancelandoId);
                 if (!alvo) return "Este agendamento não está mais na lista.";
                 const quem = alvo.quemSeraAtendido ? ` de ${alvo.quemSeraAtendido}` : "";
-                return `${alvo.titulo}${quem}, ${format(new Date(alvo.comeca), "d 'de' MMMM 'às' HH:mm", { locale: ptBR })}.`;
+                return `${alvo.titulo}${quem}, ${format(new Date(alvo.comeca), "d 'de' MMMM 'às' HH:mm", { locale: localeDaData })}.`;
               })()}
             </p>
             <label className="block text-xs font-medium text-text-muted" htmlFor="motivo-do-cancelamento">

@@ -1,7 +1,10 @@
 "use client";
+
+import { useLocaleDeData } from "@/hooks/i18n/useLocaleDeData";
+
+import type { Locale } from "date-fns";
 import Link from "next/link";
 import { formatDistanceToNow } from "date-fns";
-import { ptBR } from "date-fns/locale";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -29,9 +32,9 @@ function maskEmail(email: string | null | undefined): string {
   return `${masked}@${domain}`;
 }
 
-function relativeDate(iso: string): string {
+function relativeDate(iso: string, locale: Locale): string {
   try {
-    return formatDistanceToNow(new Date(iso), { addSuffix: true, locale: ptBR });
+    return formatDistanceToNow(new Date(iso), { addSuffix: true, locale: locale });
   } catch {
     return iso;
   }
@@ -110,6 +113,7 @@ export function AuditTable({
   isFetchingNextPage,
   onLoadMore,
 }: AuditTableProps) {
+  const localeDaData = useLocaleDeData();
   const t = useT();
   if (data.length === 0) {
     return <EmptyState />;
@@ -133,7 +137,7 @@ export function AuditTable({
             {data.map((row) => (
               <TableRow key={row.id}>
                 <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
-                  {relativeDate(row.created_at)}
+                  {relativeDate(row.created_at, localeDaData)}
                 </TableCell>
                 <TableCell className="font-mono text-xs">{row.action}</TableCell>
                 <TableCell>

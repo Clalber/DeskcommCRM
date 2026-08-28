@@ -1,8 +1,11 @@
 "use client";
+
+import { useLocaleDeData } from "@/hooks/i18n/useLocaleDeData";
+
+import type { Locale } from "date-fns";
 import * as React from "react";
 import { toast } from "sonner";
 import { formatDistanceToNowStrict } from "date-fns";
-import { ptBR } from "date-fns/locale";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -30,8 +33,8 @@ function actionLabel(type: string, t: (texto: string) => string): string {
   return t(ACTION_LABELS[type as ActionType] ?? type);
 }
 
-function relativeCreatedAt(iso: string): string {
-  return formatDistanceToNowStrict(new Date(iso), { addSuffix: true, locale: ptBR });
+function relativeCreatedAt(iso: string, locale: Locale): string {
+  return formatDistanceToNowStrict(new Date(iso), { addSuffix: true, locale: locale });
 }
 
 function statusBadgeVariant(
@@ -173,6 +176,7 @@ function ActionLine({ action, run }: { action: AutomationRuleRunActionResult; ru
 }
 
 export function ActivityTab() {
+  const localeDaData = useLocaleDeData();
   const t = useT();
   const { data, isLoading, refetch, isRefetching } = useAutomationRuns();
   const runs = data?.data ?? [];
@@ -217,7 +221,7 @@ export function ActivityTab() {
                   </CardTitle>
                   <Badge variant={statusBadgeVariant(run.status)}>{statusBadgeLabel(run.status, t)}</Badge>
                 </div>
-                <p className="text-xs text-muted-foreground">{relativeCreatedAt(run.created_at)}</p>
+                <p className="text-xs text-muted-foreground">{relativeCreatedAt(run.created_at, localeDaData)}</p>
               </CardHeader>
               <CardContent className="space-y-2">
                 {run.actions_result.map((action, idx) => (

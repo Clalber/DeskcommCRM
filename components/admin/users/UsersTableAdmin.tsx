@@ -1,7 +1,10 @@
 "use client";
+
+import { useLocaleDeData } from "@/hooks/i18n/useLocaleDeData";
+
+import type { Locale } from "date-fns";
 import Link from "next/link";
 import { formatDistanceToNow } from "date-fns";
-import { ptBR } from "date-fns/locale";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -51,12 +54,12 @@ function RoleBadge({ role }: { role: string }) {
 // Helpers
 // ---------------------------------------------------------------------------
 
-function relativeDate(iso: string | null): string {
+function relativeDate(iso: string | null, locale: Locale): string {
   if (!iso) return "—";
   try {
     return formatDistanceToNow(new Date(iso), {
       addSuffix: true,
-      locale: ptBR,
+      locale: locale,
     });
   } catch {
     return iso;
@@ -114,6 +117,7 @@ export function UsersTableAdmin({
   isFetchingNextPage,
   onLoadMore,
 }: UsersTableAdminProps) {
+  const localeDaData = useLocaleDeData();
   const t = useT();
   if (data.length === 0) {
     return (
@@ -163,7 +167,7 @@ export function UsersTableAdmin({
                   <RoleBadge role={row.role} />
                 </TableCell>
                 <TableCell className="text-xs text-muted-foreground">
-                  {relativeDate(row.last_sign_in_at)}
+                  {relativeDate(row.last_sign_in_at, localeDaData)}
                 </TableCell>
                 <TableCell>
                   {row.revoked_at ? (

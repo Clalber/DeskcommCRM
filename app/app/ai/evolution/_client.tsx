@@ -1,4 +1,6 @@
 "use client";
+
+import { useTagDeIdioma } from "@/hooks/i18n/useLocaleDeData";
 import * as React from "react";
 import Link from "next/link";
 import {
@@ -125,8 +127,8 @@ function num(n: number): string {
   return n.toLocaleString("pt-BR");
 }
 
-function diaCurto(s: string): string {
-  return new Date(`${s}T00:00:00Z`).toLocaleDateString("pt-BR", {
+function diaCurto(s: string, idioma: string): string {
+  return new Date(`${s}T00:00:00Z`).toLocaleDateString(idioma, {
     day: "2-digit",
     month: "2-digit",
     timeZone: "UTC",
@@ -220,6 +222,7 @@ function GraficoDiario({
   cor: string;
   vazio: React.ReactNode;
 }) {
+  const tagDoIdioma = useTagDeIdioma();
   const t = useT();
   const temDado = dados.some((p) => p.value > 0);
   const total = dados.reduce((acc, p) => acc + p.value, 0);
@@ -241,7 +244,7 @@ function GraficoDiario({
                 <CartesianGrid strokeDasharray="3 3" className="stroke-border/50" />
                 <XAxis
                   dataKey="day"
-                  tickFormatter={diaCurto}
+                  tickFormatter={(v) => diaCurto(v, tagDoIdioma)}
                   tick={{ fontSize: 11 }}
                   tickLine={false}
                   axisLine={false}
@@ -256,7 +259,7 @@ function GraficoDiario({
                 />
                 <Tooltip
                   formatter={(v) => [num(Number(v)), t("no dia")]}
-                  labelFormatter={(l) => diaCurto(String(l))}
+                  labelFormatter={(l) => diaCurto(String(l), tagDoIdioma)}
                   contentStyle={{
                     borderRadius: "8px",
                     fontSize: "12px",

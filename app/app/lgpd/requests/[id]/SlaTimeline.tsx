@@ -1,7 +1,8 @@
 "use client";
 
+import { useLocaleDeData } from "@/hooks/i18n/useLocaleDeData";
+
 import { differenceInDays, format, isBefore } from "date-fns";
-import { ptBR } from "date-fns/locale";
 import { useT } from "@/hooks/i18n/useT";
 
 interface SlaTimelineProps {
@@ -113,6 +114,7 @@ export function SlaTimeline({ received_at, due_at, request_type }: SlaTimelinePr
       {/* Milestones */}
       <ol className="relative space-y-0">
         {milestones.map((m, idx) => {
+  const localeDaData = useLocaleDeData();
           const dotColor =
             m.status === "completed"
               ? "bg-emerald-500 border-emerald-500"
@@ -145,7 +147,7 @@ export function SlaTimeline({ received_at, due_at, request_type }: SlaTimelinePr
                   D+{m.targetDay} — {t(m.label)}
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  {format(m.date, "dd 'de' MMM yyyy", { locale: ptBR })}
+                  {format(m.date, "dd 'de' MMM yyyy", { locale: localeDaData })}
                 </p>
               </div>
             </li>

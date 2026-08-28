@@ -1,6 +1,7 @@
 "use client";
+
+import { useLocaleDeData } from "@/hooks/i18n/useLocaleDeData";
 import { format } from "date-fns";
-import { ptBR } from "date-fns/locale";
 import { useT } from "@/hooks/i18n/useT";
 import { ArrowBendUpLeft, Check, Checks, Robot, WarningOctagon } from "@/lib/ui/icons";
 import { cn } from "@/lib/utils";
@@ -37,9 +38,10 @@ function AckIndicator({ status, t }: { status: string; t: (texto: string) => str
 }
 
 export function MessageBubble({ message, debugCitations, onResponder, citada }: Props) {
+  const localeDaData = useLocaleDeData();
   const t = useT();
   const isOutbound = message.direction === "outbound";
-  const time = format(new Date(message.sent_at), "HH:mm", { locale: ptBR });
+  const time = format(new Date(message.sent_at), "HH:mm", { locale: localeDaData });
   const isFailed = message.status === "failed";
   const hasMedia = Boolean(message.media_url || message.media_storage_path);
   const isContact = message.type === "contact";

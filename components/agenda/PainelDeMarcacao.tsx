@@ -1,9 +1,10 @@
 "use client";
 
+import { useLocaleDeData } from "@/hooks/i18n/useLocaleDeData";
+
 import { useT } from "@/hooks/i18n/useT";
 
 import { addDays, format, isSameDay, isSameMonth, startOfMonth, startOfWeek } from "date-fns";
-import { ptBR } from "date-fns/locale";
 import Link from "next/link";
 import * as React from "react";
 
@@ -113,6 +114,7 @@ export function PainelDeMarcacao({
   onConfirmar?: (instante: string) => void | Promise<unknown>;
   className?: string;
 }) {
+  const localeDaData = useLocaleDeData();
   const t = useT();
   const [dia, setDia] = React.useState<Date | null>(null);
   const [horario, setHorario] = React.useState<HorarioLivre | null>(null);
@@ -211,7 +213,7 @@ export function PainelDeMarcacao({
               também. */}
           <h3 className="mt-3 text-base font-semibold">Marcado.</h3>
           <p className="mt-1 text-sm text-text-muted">
-            {format(new Date(marcado.instante), "EEEE, d 'de' MMMM 'às' HH:mm", { locale: ptBR })}
+            {format(new Date(marcado.instante), "EEEE, d 'de' MMMM 'às' HH:mm", { locale: localeDaData })}
           </p>
           <p className="mt-0.5 text-xs text-text-subtle">
             {tipo} · {duracaoMin} {t("min · com")} {responsavel.nome}
@@ -291,7 +293,7 @@ export function PainelDeMarcacao({
       >
         <div className="mb-3 flex items-center justify-between">
           <span className="text-sm font-semibold first-letter:uppercase">
-            {format(mes, "MMMM 'de' yyyy", { locale: ptBR })}
+            {format(mes, "MMMM 'de' yyyy", { locale: localeDaData })}
           </span>
           <div className="flex items-center gap-1">
             <Button
@@ -393,7 +395,7 @@ export function PainelDeMarcacao({
             className="mb-3 rounded-sm border border-border bg-surface-sunken p-3"
           >
             <p className="text-sm font-semibold text-text">
-              {t("Nenhum horário livre em")} {format(mes, "MMMM", { locale: ptBR })}
+              {t("Nenhum horário livre em")} {format(mes, "MMMM", { locale: localeDaData })}
             </p>
             <p className="mt-1 text-xs leading-4 text-text-muted">
               {t("Os próximos 30 dias são o que está publicado hoje — meses adiante aparecem conforme a data se aproxima.")}
@@ -421,7 +423,7 @@ export function PainelDeMarcacao({
         <div className="grid grid-cols-7 gap-1 text-center">
           {semanas[0]?.map((d) => (
             <span key={`c-${d.toISOString()}`} className="pb-1 text-[10px] font-semibold uppercase text-text-subtle">
-              {format(d, "EEEEEE", { locale: ptBR }).replace(".", "")}
+              {format(d, "EEEEEE", { locale: localeDaData }).replace(".", "")}
             </span>
           ))}
           {semanas.flat().map((d) => {
@@ -447,8 +449,8 @@ export function PainelDeMarcacao({
                 // e é por isso que o motivo também está em texto no bloco acima.
                 aria-label={
                   disponivel
-                    ? `${format(d, "d 'de' MMMM", { locale: ptBR })} — ${livres.length} horários`
-                    : `${format(d, "d 'de' MMMM", { locale: ptBR })} — ${razaoDoDia(isSameMonth(d, mes))}`
+                    ? `${format(d, "d 'de' MMMM", { locale: localeDaData })} — ${livres.length} horários`
+                    : `${format(d, "d 'de' MMMM", { locale: localeDaData })} — ${razaoDoDia(isSameMonth(d, mes))}`
                 }
                 title={disponivel ? undefined : razaoDoDia(isSameMonth(d, mes))}
                 onClick={() => { setDia(d); setHorario(null); }}
@@ -473,7 +475,7 @@ export function PainelDeMarcacao({
             <p className="text-sm">
               <span className="text-text-muted">Confirmar </span>
               <span className="font-semibold">
-                {format(new Date(horario.instante), "EEEE, d 'de' MMMM 'às' HH:mm", { locale: ptBR })}
+                {format(new Date(horario.instante), "EEEE, d 'de' MMMM 'às' HH:mm", { locale: localeDaData })}
               </span>
             </p>
 
@@ -540,7 +542,7 @@ export function PainelDeMarcacao({
       >
         <div className="flex h-full w-[240px] flex-col p-3 lg:w-[280px]">
           <p className="mb-2 shrink-0 text-xs font-semibold text-text-muted first-letter:uppercase">
-            {dia ? format(dia, "EEEE, d 'de' MMM", { locale: ptBR }) : ""}
+            {dia ? format(dia, "EEEE, d 'de' MMM", { locale: localeDaData }) : ""}
           </p>
           <div className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto pr-1">
             {doDia.map((h) => (

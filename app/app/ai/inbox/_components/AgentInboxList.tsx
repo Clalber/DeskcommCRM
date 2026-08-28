@@ -1,7 +1,8 @@
 "use client";
+
+import { useLocaleDeData } from "@/hooks/i18n/useLocaleDeData";
 import { useState } from "react";
 import { formatDistanceToNowStrict } from "date-fns";
-import { ptBR } from "date-fns/locale";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -80,10 +81,11 @@ function InboxRow({
   pending: boolean;
   onToggle: (status: "open" | "resolved") => void;
 }) {
+  const localeDaData = useLocaleDeData();
   const t = useT();
   const when = formatDistanceToNowStrict(new Date(item.created_at), {
     addSuffix: true,
-    locale: ptBR,
+    locale: localeDaData,
   });
   return (
     <li className="flex items-start gap-3 px-4 py-3" data-testid="inbox-item">

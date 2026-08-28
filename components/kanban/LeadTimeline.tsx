@@ -1,4 +1,6 @@
 "use client";
+
+import { useTagDeIdioma } from "@/hooks/i18n/useLocaleDeData";
 import { useState } from "react";
 
 import { useT } from "@/hooks/i18n/useT";
@@ -20,9 +22,9 @@ interface Props {
   isError: boolean;
 }
 
-function quando(iso: string): string {
+function quando(iso: string, idioma: string): string {
   try {
-    return new Intl.DateTimeFormat("pt-BR", {
+    return new Intl.DateTimeFormat(idioma, {
       day: "2-digit",
       month: "short",
       hour: "2-digit",
@@ -50,6 +52,7 @@ function Marcador({ item }: { item: TimelineItemView }) {
 }
 
 function Linha({ item, aoVivo }: { item: TimelineItemView; aoVivo?: boolean }) {
+  const tagDoIdioma = useTagDeIdioma();
   const t = useT();
   const nome = actorName(
     item.actor_kind ?? null,
@@ -75,7 +78,7 @@ function Linha({ item, aoVivo }: { item: TimelineItemView; aoVivo?: boolean }) {
         </p>
         {item.reason && <p className="mt-0.5 text-xs text-text-muted">{item.reason}</p>}
         <p className="mt-0.5 text-[11px] text-text-muted">
-          {nome} · {quando(item.performed_at)}
+          {nome} · {quando(item.performed_at, tagDoIdioma)}
         </p>
       </div>
     </li>

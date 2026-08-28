@@ -1,4 +1,6 @@
 "use client";
+
+import { useTagDeIdioma } from "@/hooks/i18n/useLocaleDeData";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -57,6 +59,7 @@ const SCOPES: { id: string; label: string }[] = [
 ];
 
 export function ApiTokensClient() {
+  const tagDoIdioma = useTagDeIdioma();
   const t = useT();
   const { data, isLoading } = useApiTokens();
   const create = useCreateApiToken();
@@ -145,7 +148,7 @@ export function ApiTokensClient() {
                     )}
                   </TableCell>
                   <TableCell className="text-sm text-muted-foreground">
-                    {tok.expires_at ? new Date(tok.expires_at).toLocaleDateString("pt-BR") : "—"}
+                    {tok.expires_at ? new Date(tok.expires_at).toLocaleDateString(tagDoIdioma) : "—"}
                   </TableCell>
                   <TableCell>
                     {!tok.revoked_at ? (

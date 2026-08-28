@@ -1,4 +1,6 @@
 "use client";
+
+import { useTagDeIdioma } from "@/hooks/i18n/useLocaleDeData";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -301,6 +303,7 @@ export function ConnectionsClient({ wahaConfigured }: { wahaConfigured: boolean 
       ) : (
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
           {list.map((c) => {
+  const tagDoIdioma = useTagDeIdioma();
             const info = statusInfo(c.status, t);
             // Sem o serviço no ar a rota de exclusão falha fechado (503) para
             // quem depende dele: oferecer o botão seria prometer uma ação que
@@ -326,7 +329,7 @@ export function ConnectionsClient({ wahaConfigured }: { wahaConfigured: boolean 
                 </div>
                 <p className="text-[11px] text-muted-foreground">
                   {c.last_health_check_at
-                    ? `${t("Verificado")} ${new Date(c.last_health_check_at).toLocaleString("pt-BR")}`
+                    ? `${t("Verificado")} ${new Date(c.last_health_check_at).toLocaleString(tagDoIdioma)}`
                     : t("Ainda não verificado")}
                 </p>
                 <div className="mt-auto flex gap-2">

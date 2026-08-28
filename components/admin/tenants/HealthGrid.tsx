@@ -1,5 +1,7 @@
 "use client";
 
+import { useTagDeIdioma } from "@/hooks/i18n/useLocaleDeData";
+
 import { HealthCard } from "./HealthCard";
 import {
   WifiHigh,
@@ -14,9 +16,9 @@ import { useT } from "@/hooks/i18n/useT";
 // Helpers
 // ---------------------------------------------------------------------------
 
-function formatDate(iso: string | null): string {
+function formatDate(iso: string | null, idioma: string): string {
   if (!iso) return "—";
-  return new Intl.DateTimeFormat("pt-BR", {
+  return new Intl.DateTimeFormat(idioma, {
     day: "2-digit",
     month: "2-digit",
     year: "numeric",
@@ -64,6 +66,7 @@ interface HealthGridProps {
 // ---------------------------------------------------------------------------
 
 export function HealthGrid({ health }: HealthGridProps) {
+  const tagDoIdioma = useTagDeIdioma();
   const t = useT();
   const { waha, nuvemshop, ai, audit } = health;
 
@@ -86,12 +89,12 @@ export function HealthGrid({ health }: HealthGridProps) {
   // Nuvemshop card
   const nuPrimary = nuvemshop.connected ? t("Conectado") : t("Não conectado");
   const nuDetails = [
-    { label: t("Última sync"), value: formatDate(nuvemshop.last_synced_at) },
+    { label: t("Última sync"), value: formatDate(nuvemshop.last_synced_at, tagDoIdioma) },
     ...(nuvemshop.days_until_expiry !== null
       ? [{ label: t("Expira em"), value: `${nuvemshop.days_until_expiry}d` }]
       : []),
     ...(nuvemshop.expires_at
-      ? [{ label: t("Token expira"), value: formatDate(nuvemshop.expires_at) }]
+      ? [{ label: t("Token expira"), value: formatDate(nuvemshop.expires_at, tagDoIdioma) }]
       : []),
   ];
 
@@ -110,7 +113,7 @@ export function HealthGrid({ health }: HealthGridProps) {
   // Audit lag card
   const auditPrimary = formatLag(audit.lag_seconds);
   const auditDetails = [
-    { label: t("Último evento"), value: formatDate(audit.last_at) },
+    { label: t("Último evento"), value: formatDate(audit.last_at, tagDoIdioma) },
     {
       label: "Lag",
       value: audit.lag_seconds !== null ? formatLag(audit.lag_seconds) : "—",

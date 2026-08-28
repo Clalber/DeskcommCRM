@@ -1,6 +1,9 @@
 "use client";
+
+import { useLocaleDeData } from "@/hooks/i18n/useLocaleDeData";
+
+import type { Locale } from "date-fns";
 import { formatDistanceToNow } from "date-fns";
-import { ptBR } from "date-fns/locale";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -24,9 +27,9 @@ import { useT } from "@/hooks/i18n/useT";
 // Helpers
 // ---------------------------------------------------------------------------
 
-function relativeDate(iso: string): string {
+function relativeDate(iso: string, locale: Locale): string {
   try {
-    return formatDistanceToNow(new Date(iso), { addSuffix: true, locale: ptBR });
+    return formatDistanceToNow(new Date(iso), { addSuffix: true, locale: locale });
   } catch {
     return iso;
   }
@@ -144,6 +147,7 @@ export function PlatformAdminsTable({ data }: PlatformAdminsTableProps) {
         </TableHeader>
         <TableBody>
           {data.map((row) => {
+  const localeDaData = useLocaleDeData();
             const isRevoked = !!row.revoked_at;
             return (
               <TableRow key={row.id} className={isRevoked ? "opacity-60" : undefined}>
@@ -165,7 +169,7 @@ export function PlatformAdminsTable({ data }: PlatformAdminsTableProps) {
 
                 {/* Granted At */}
                 <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
-                  {relativeDate(row.granted_at)}
+                  {relativeDate(row.granted_at, localeDaData)}
                 </TableCell>
 
                 {/* Granted By */}

@@ -1,5 +1,7 @@
 "use client";
 
+import { useTagDeIdioma } from "@/hooks/i18n/useLocaleDeData";
+
 import { useT } from "@/hooks/i18n/useT";
 /**
  * UM MATERIAL DO ACERVO.
@@ -55,6 +57,7 @@ interface Props {
 }
 
 function formatRelative(iso: string | null): string {
+  const tagDoIdioma = useTagDeIdioma();
   if (!iso) return "nunca";
   const then = new Date(iso).getTime();
   const diffSec = Math.floor((Date.now() - then) / 1000);
@@ -65,7 +68,7 @@ function formatRelative(iso: string | null): string {
   if (diffHr < 24) return `há ${diffHr} h`;
   const diffDay = Math.floor(diffHr / 24);
   if (diffDay < 30) return `há ${diffDay} d`;
-  return new Date(iso).toLocaleDateString("pt-BR");
+  return new Date(iso).toLocaleDateString(tagDoIdioma);
 }
 
 export function KnowledgeSourceCard({

@@ -1,12 +1,15 @@
 "use client";
 
+import { useLocaleDeData } from "@/hooks/i18n/useLocaleDeData";
+
+import type { Locale } from "date-fns";
+
 import { useT } from "@/hooks/i18n/useT";
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { format, formatRelative, isToday, isYesterday } from "date-fns";
-import { ptBR } from "date-fns/locale";
 import { toast } from "sonner";
 import { CaretDown, CaretUp, ChatCircle, Trash } from "@/lib/ui/icons";
 import {
@@ -46,12 +49,15 @@ function displayName(c: Contact): string {
 }
 
 /** Hoje/ontem: relativo ("há 2 horas", "ontem"). Mais antigo: data, não dia da semana. */
-function formatUltimaAtividade(iso: string, now = new Date()): string {
+// `locale` ANTES de `now`, e não depois: `now` tem default, e um parâmetro
+// obrigatório atrás de um opcional obriga todo chamador a passar os dois. O
+// codemod acrescentou no fim, que é o certo em 22 dos 23 casos e o errado aqui.
+function formatUltimaAtividade(iso: string, locale: Locale, now = new Date()): string {
   const d = new Date(iso);
   if (isToday(d) || isYesterday(d)) {
-    return formatRelative(d, now, { locale: ptBR });
+    return formatRelative(d, now, { locale: locale });
   }
-  return format(d, "dd/MM/yyyy", { locale: ptBR });
+  return format(d, "dd/MM/yyyy", { locale: locale });
 }
 
 function SortableHead({
@@ -100,6 +106,7 @@ function SortableHead({
 }
 
 export function ContactsTable({ contacts, orderBy, orderDir, onSort }: Props) {
+  const localeDaData = useLocaleDeData();
   const t = useT();
   const del = useDeleteContact();
   const [alvo, setAlvo] = useState<Contact | null>(null);
@@ -208,7 +215,7 @@ export function ContactsTable({ contacts, orderBy, orderDir, onSort }: Props) {
             </TableCell>
             <TableCell className="text-muted-foreground text-sm">
               {c.last_activity_at
-                ? formatUltimaAtividade(c.last_activity_at)
+                ? formatUltimaAtividade(c.last_activity_at, localeDaData)
                 : "—"}
             </TableCell>
             <TableCell>

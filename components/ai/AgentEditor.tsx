@@ -1,4 +1,6 @@
 "use client";
+
+import { useTagDeIdioma } from "@/hooks/i18n/useLocaleDeData";
 import * as React from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -90,6 +92,7 @@ function diffPatch(initial: FormState, current: FormState): AgentPatch {
 }
 
 export function AgentEditor({ agentId, initialData, readOnly = false }: Props) {
+  const tagDoIdioma = useTagDeIdioma();
   const t = useT();
   const query = useAgent(agentId, { initialData });
   const update = useUpdateAgent(agentId);
@@ -175,7 +178,7 @@ export function AgentEditor({ agentId, initialData, readOnly = false }: Props) {
           <h2 className="text-xl font-semibold tracking-tight">{agent.name}</h2>
           <p className="text-xs text-muted-foreground">
             {agent.is_default ? `${t("Agent default")} · ` : ""}
-            {t("Criado em")} {new Date(agent.created_at).toLocaleDateString("pt-BR")}
+            {t("Criado em")} {new Date(agent.created_at).toLocaleDateString(tagDoIdioma)}
           </p>
         </div>
         <div className="flex gap-2">

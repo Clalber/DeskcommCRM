@@ -1,5 +1,7 @@
 "use client";
 
+import { useTagDeIdioma } from "@/hooks/i18n/useLocaleDeData";
+
 /**
  * A tela de execuções de IA.
  *
@@ -60,6 +62,7 @@ interface Resumo {
 }
 
 export function ExecucoesDeIa() {
+  const tagDoIdioma = useTagDeIdioma();
   const t = useT();
   const [execucoes, setExecucoes] = useState<Execucao[] | null>(null);
   const [resumo, setResumo] = useState<Resumo | null>(null);
@@ -231,7 +234,7 @@ export function ExecucoesDeIa() {
               )}
 
               <p className="mt-2 text-xs text-muted-foreground">
-                {new Date(e.created_at).toLocaleString("pt-BR")}
+                {new Date(e.created_at).toLocaleString(tagDoIdioma)}
                 {e.porQueEsteModelo ? ` · ${t(e.porQueEsteModelo)}` : ""}
               </p>
             </Card>

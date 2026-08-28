@@ -1,4 +1,6 @@
 "use client";
+
+import { useTagDeIdioma } from "@/hooks/i18n/useLocaleDeData";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -442,6 +444,7 @@ export function TemplatesParceiroClient() {
       ) : (
         <ul className="divide-y divide-border rounded-md border border-border">
           {templates.map((tpl) => {
+  const tagDoIdioma = useTagDeIdioma();
             const chave = `${tpl.name}|${tpl.language}`;
             const c = lerConteudo(tpl.components);
             const expandido = aberto === chave;
@@ -513,7 +516,7 @@ export function TemplatesParceiroClient() {
                       </div>
                     )}
                     <p className="text-[10px] text-muted-foreground">
-                      {t("Sincronizado em")} {new Date(tpl.syncedAt).toLocaleString("pt-BR")}
+                      {t("Sincronizado em")} {new Date(tpl.syncedAt).toLocaleString(tagDoIdioma)}
                     </p>
                   </div>
                 )}

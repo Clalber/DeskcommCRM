@@ -1,4 +1,8 @@
 "use client";
+
+import { useLocaleDeData } from "@/hooks/i18n/useLocaleDeData";
+
+import type { Locale } from "date-fns";
 import { useState, useCallback, useMemo, useEffect, useRef } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { useAdminInbox, type AdminConversationRow } from "@/hooks/useAdminInbox";
@@ -16,7 +20,6 @@ import { Badge } from "@/components/ui/badge";
 import { CircleNotch, MagnifyingGlass } from "@/lib/ui/icons";
 import { cn } from "@/lib/utils";
 import { format, formatDistanceToNowStrict } from "date-fns";
-import { ptBR } from "date-fns/locale";
 import { useT } from "@/hooks/i18n/useT";
 
 function useDebounced<T>(value: T, delay: number): T {
@@ -36,13 +39,13 @@ function useDebounced<T>(value: T, delay: number): T {
 // Helpers
 // ---------------------------------------------------------------------------
 
-function relativeTime(iso: string | null): string {
+function relativeTime(iso: string | null, locale: Locale): string {
   if (!iso) return "";
   const d = new Date(iso);
   const now = new Date();
   if (d.toDateString() === now.toDateString()) return format(d, "HH:mm");
   const diff = (now.getTime() - d.getTime()) / (1000 * 60 * 60 * 24);
-  if (diff < 7) return formatDistanceToNowStrict(d, { addSuffix: false, locale: ptBR });
+  if (diff < 7) return formatDistanceToNowStrict(d, { addSuffix: false, locale: locale });
   return format(d, "dd/MM");
 }
 
@@ -161,12 +164,13 @@ export function InboxList() {
         )}
 
         {rows.map((row) => {
+  const localeDaData = useLocaleDeData();
           const isSelected = selectedId === row.id;
           const name = contactName(row, t);
           const org = row.organizations;
           const unread = row.unread_count_for_assignee ?? 0;
           const preview = row.last_message_preview?.trim() || t("Sem mensagens");
-          const time = relativeTime(row.last_message_at);
+          const time = relativeTime(row.last_message_at, localeDaData);
 
           return (
             <button

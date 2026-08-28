@@ -1,4 +1,6 @@
 "use client";
+
+import { useTagDeIdioma } from "@/hooks/i18n/useLocaleDeData";
 import { useRef } from "react";
 
 import { useT } from "@/hooks/i18n/useT";
@@ -58,6 +60,7 @@ export function LeadDossier({
   stageName,
   ownerNames,
 }: Props) {
+  const tagDoIdioma = useTagDeIdioma();
   const t = useT();
   const campos = useRef<HTMLDivElement | null>(null);
   const timeline = useLeadTimeline(open ? lead.id : null, lead.contact_id);
@@ -123,7 +126,7 @@ export function LeadDossier({
         {score?.at && (
           <p className="pt-2 text-[11px] text-text-muted">
             {t("Probabilidade recalculada automaticamente")} ·{" "}
-            {new Date(score.at).toLocaleString("pt-BR")}
+            {new Date(score.at).toLocaleString(tagDoIdioma)}
           </p>
         )}
 

@@ -1,9 +1,10 @@
 "use client";
 
+import { useLocaleDeData } from "@/hooks/i18n/useLocaleDeData";
+
 import { useT } from "@/hooks/i18n/useT";
 
 import { format, isBefore } from "date-fns";
-import { ptBR } from "date-fns/locale";
 import * as React from "react";
 
 import { Badge } from "@/components/ui/badge";
@@ -165,6 +166,7 @@ export function HistoricoDaAgenda({
         ) : (
           <ul>
             {daAba.map((a) => {
+  const localeDaData = useLocaleDeData();
               const pessoa = pessoas.find((p) => p.id === a.responsavelId);
               const variante = VARIANTE_DA_SITUACAO[a.situacao];
               const comeca = new Date(a.comeca);
@@ -181,7 +183,7 @@ export function HistoricoDaAgenda({
                   />
                   <div className="w-28 shrink-0">
                     <div className="text-sm font-medium tabular-nums first-letter:uppercase">
-                      {format(comeca, "d 'de' MMM", { locale: ptBR })}
+                      {format(comeca, "d 'de' MMM", { locale: localeDaData })}
                     </div>
                     <div className="text-[11px] tabular-nums text-text-muted">
                       {format(comeca, "HH:mm")}

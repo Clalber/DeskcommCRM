@@ -1,6 +1,7 @@
 "use client";
+
+import { useLocaleDeData } from "@/hooks/i18n/useLocaleDeData";
 import { formatDistanceToNowStrict } from "date-fns";
-import { ptBR } from "date-fns/locale";
 
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -10,6 +11,7 @@ import { useT } from "@/hooks/i18n/useT";
 import { CaseReplyPanel } from "./CaseReplyPanel";
 
 export function CaseDetail({ caseId }: { caseId: string | null }) {
+  const localeDaData = useLocaleDeData();
   const t = useT();
   const { data, isLoading } = useCase(caseId);
 
@@ -75,7 +77,7 @@ export function CaseDetail({ caseId }: { caseId: string | null }) {
               <span className="text-text">{t(caseEventLabel(ev))}</span>
               {ev.body ? <>: {ev.body}</> : null}
               {" · "}
-              {formatDistanceToNowStrict(new Date(ev.created_at), { addSuffix: true, locale: ptBR })}
+              {formatDistanceToNowStrict(new Date(ev.created_at), { addSuffix: true, locale: localeDaData })}
             </li>
           ))}
         </ul>

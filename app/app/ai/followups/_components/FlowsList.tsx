@@ -1,5 +1,7 @@
 "use client";
 
+import { useTagDeIdioma } from "@/hooks/i18n/useLocaleDeData";
+
 import { useT } from "@/hooks/i18n/useT";
 import { useState } from "react";
 import Link from "next/link";
@@ -17,8 +19,8 @@ interface Props {
   canWrite: boolean;
 }
 
-function formatUpdatedAt(iso: string): string {
-  return new Date(iso).toLocaleDateString("pt-BR", {
+function formatUpdatedAt(iso: string, idioma: string): string {
+  return new Date(iso).toLocaleDateString(idioma, {
     day: "2-digit",
     month: "2-digit",
     year: "numeric",
@@ -26,6 +28,7 @@ function formatUpdatedAt(iso: string): string {
 }
 
 export function FlowsList({ initialData, canWrite }: Props) {
+  const tagDoIdioma = useTagDeIdioma();
   const t = useT();
   const { data } = useFollowupFlows({ initialData });
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -82,7 +85,7 @@ export function FlowsList({ initialData, canWrite }: Props) {
                   </div>
                 </dl>
                 <p className="mt-auto pt-2 text-xs text-text-muted">
-                  Atualizado em {formatUpdatedAt(flow.updated_at)}
+                  Atualizado em {formatUpdatedAt(flow.updated_at, tagDoIdioma)}
                 </p>
               </Link>
               {canWrite && (

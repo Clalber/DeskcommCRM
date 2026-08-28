@@ -1,5 +1,7 @@
 "use client";
 
+import { useTagDeIdioma } from "@/hooks/i18n/useLocaleDeData";
+
 import { Skeleton } from "@/components/ui/skeleton";
 import { useTenantHealth } from "@/hooks/useTenantHealth";
 import { HealthGrid } from "@/components/admin/tenants/HealthGrid";
@@ -19,6 +21,7 @@ interface TenantHealthClientProps {
 // ---------------------------------------------------------------------------
 
 export function TenantHealthClient({ id }: TenantHealthClientProps) {
+  const tagDoIdioma = useTagDeIdioma();
   const t = useT();
   const { data, isLoading, isError, isFetching, dataUpdatedAt } = useTenantHealth(id);
 
@@ -43,7 +46,7 @@ export function TenantHealthClient({ id }: TenantHealthClientProps) {
   }
 
   const lastChecked = dataUpdatedAt
-    ? new Intl.DateTimeFormat("pt-BR", {
+    ? new Intl.DateTimeFormat(tagDoIdioma, {
         hour: "2-digit",
         minute: "2-digit",
         second: "2-digit",

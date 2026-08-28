@@ -1,5 +1,8 @@
 "use client";
 
+import { useLocaleDeData } from "@/hooks/i18n/useLocaleDeData";
+
+
 import {
   addDays,
   differenceInMinutes,
@@ -9,7 +12,6 @@ import {
   startOfMonth,
   startOfWeek,
 } from "date-fns";
-import { ptBR } from "date-fns/locale";
 
 import { cn } from "@/lib/utils";
 
@@ -251,6 +253,7 @@ function ColunaDeDia({
   onAbrir?: (id: string) => void;
   destacado: boolean;
 }) {
+  const localeDaData = useLocaleDeData();
   const doDia = agendamentos.filter((c) => isSameDay(new Date(c.comeca), dia));
   const ehHoje = isSameDay(dia, agora);
 
@@ -268,7 +271,7 @@ function ColunaDeDia({
         )}
       >
         <span className="truncate text-[11px] font-semibold uppercase tracking-wide text-text-muted">
-          {format(dia, "EEE", { locale: ptBR }).replace(".", "")}
+          {format(dia, "EEE", { locale: localeDaData }).replace(".", "")}
         </span>
         <span
           className={cn(
@@ -315,6 +318,7 @@ function VisaoDeMes({
   agendamentos: Agendamento[];
   pessoas: Pessoa[];
 }) {
+  const localeDaData = useLocaleDeData();
   const primeiro = startOfWeek(startOfMonth(ancora), { weekStartsOn: 0 });
   // SEIS semanas sempre, mesmo quando o mês cabe em cinco.
   //
@@ -334,7 +338,7 @@ function VisaoDeMes({
             key={`cab-${d.toISOString()}`}
             className="px-2 py-1.5 text-center text-[11px] font-semibold uppercase tracking-wide text-text-muted"
           >
-            {format(d, "EEEEEE", { locale: ptBR }).replace(".", "")}
+            {format(d, "EEEEEE", { locale: localeDaData }).replace(".", "")}
           </div>
         ))}
       </div>

@@ -1,7 +1,10 @@
 "use client";
+
+import { useLocaleDeData } from "@/hooks/i18n/useLocaleDeData";
+
+import type { Locale } from "date-fns";
 import Link from "next/link";
 import { formatDistanceToNow, format } from "date-fns";
-import { ptBR } from "date-fns/locale";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -22,17 +25,17 @@ function maskEmail(email: string | null | undefined): string {
   return `${masked}@${domain}`;
 }
 
-function formatDate(iso: string): string {
+function formatDate(iso: string, locale: Locale): string {
   try {
-    return format(new Date(iso), "dd/MM/yyyy HH:mm:ss", { locale: ptBR });
+    return format(new Date(iso), "dd/MM/yyyy HH:mm:ss", { locale: locale });
   } catch {
     return iso;
   }
 }
 
-function relativeDate(iso: string): string {
+function relativeDate(iso: string, locale: Locale): string {
   try {
-    return formatDistanceToNow(new Date(iso), { addSuffix: true, locale: ptBR });
+    return formatDistanceToNow(new Date(iso), { addSuffix: true, locale: locale });
   } catch {
     return iso;
   }
@@ -67,6 +70,7 @@ interface AuditDetailClientProps {
 // ---------------------------------------------------------------------------
 
 export function AuditDetailClient({ entryId }: AuditDetailClientProps) {
+  const localeDaData = useLocaleDeData();
   const t = useT();
   const { data, isLoading, isError } = useAdminAuditEntry(entryId);
   const detail = data?.data;
@@ -120,7 +124,7 @@ export function AuditDetailClient({ entryId }: AuditDetailClientProps) {
           )}
         </div>
         <p className="text-sm text-muted-foreground">
-          {formatDate(entry.created_at)}&nbsp;·&nbsp;{relativeDate(entry.created_at)}
+          {formatDate(entry.created_at, localeDaData)}&nbsp;·&nbsp;{relativeDate(entry.created_at, localeDaData)}
         </p>
       </div>
 

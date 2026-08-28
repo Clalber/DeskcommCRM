@@ -1,4 +1,6 @@
 "use client";
+
+import { useTagDeIdioma } from "@/hooks/i18n/useLocaleDeData";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -57,9 +59,9 @@ function StatusBadge({
 // Helpers
 // ---------------------------------------------------------------------------
 
-function formatDate(iso: string | null): string {
+function formatDate(iso: string | null, idioma: string): string {
   if (!iso) return "—";
-  return new Intl.DateTimeFormat("pt-BR", {
+  return new Intl.DateTimeFormat(idioma, {
     day: "2-digit",
     month: "2-digit",
     year: "2-digit",
@@ -132,6 +134,7 @@ export function TenantsTable({
   isFetchingNextPage,
   onLoadMore,
 }: TenantsTableProps) {
+  const tagDoIdioma = useTagDeIdioma();
   const t = useT();
   if (data.length === 0) {
     return (
@@ -179,7 +182,7 @@ export function TenantsTable({
                   {extractCount(row.conversations_count)}
                 </TableCell>
                 <TableCell className="text-xs text-muted-foreground">
-                  {formatDate(row.created_at)}
+                  {formatDate(row.created_at, tagDoIdioma)}
                 </TableCell>
                 <TableCell>
                   <Link

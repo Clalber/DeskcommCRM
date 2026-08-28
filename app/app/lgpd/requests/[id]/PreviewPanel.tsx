@@ -1,5 +1,7 @@
 "use client";
 
+import { useTagDeIdioma } from "@/hooks/i18n/useLocaleDeData";
+
 import { useState } from "react";
 import { useT } from "@/hooks/i18n/useT";
 import { Eye, ChartBar, Warning } from "@/lib/ui/icons";
@@ -29,6 +31,7 @@ const COUNT_LABELS: Record<keyof LgpdPreviewCounts, string> = {
 };
 
 export function PreviewPanel({ requestId }: PreviewPanelProps) {
+  const tagDoIdioma = useTagDeIdioma();
   const t = useT();
   const [open, setOpen] = useState(false);
   const [showSample, setShowSample] = useState(false);
@@ -148,7 +151,7 @@ export function PreviewPanel({ requestId }: PreviewPanelProps) {
               )}
 
               <p className="text-center text-xs text-muted-foreground">
-                {t("Gerado em")} {new Date(preview.generated_at).toLocaleString("pt-BR")} · PII{" "}
+                {t("Gerado em")} {new Date(preview.generated_at).toLocaleString(tagDoIdioma)} · PII{" "}
                 {t("mascarada")} · CPF {t("não exibido")}
               </p>
             </div>

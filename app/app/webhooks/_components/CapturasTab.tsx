@@ -1,4 +1,6 @@
 "use client";
+
+import { useTagDeIdioma } from "@/hooks/i18n/useLocaleDeData";
 import * as React from "react";
 
 import { Badge } from "@/components/ui/badge";
@@ -54,11 +56,11 @@ const DESFECHO_VARIANTE: Record<DesfechoDaCaptacao, "success" | "neutral" | "err
  * pessoa está conferindo se o lead que ela viu chegar às 14h07 é o mesmo que
  * está no funil, e relativo não casa com nada que ela tenha em mãos.
  */
-function quando(iso: string): { data: string; hora: string } {
+function quando(iso: string, idioma: string): { data: string; hora: string } {
   const d = new Date(iso);
   return {
-    data: d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit" }),
-    hora: d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }),
+    data: d.toLocaleDateString(idioma, { day: "2-digit", month: "2-digit", year: "2-digit" }),
+    hora: d.toLocaleTimeString(idioma, { hour: "2-digit", minute: "2-digit" }),
   };
 }
 
@@ -244,7 +246,8 @@ export function CapturasTab() {
               </TableHeader>
               <TableBody>
                 {linhas.map((row) => {
-                  const w = quando(row.received_at);
+  const tagDoIdioma = useTagDeIdioma();
+                  const w = quando(row.received_at, tagDoIdioma);
                   return (
                     // A linha continua sendo `row` para quem usa leitor de tela:
                     // um `role="button"` na <tr> a TIRA da tabela, e o leitor

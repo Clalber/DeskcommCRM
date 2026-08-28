@@ -1,4 +1,6 @@
 "use client";
+
+import { useTagDeIdioma } from "@/hooks/i18n/useLocaleDeData";
 import {
   ResponsiveContainer,
   LineChart,
@@ -17,9 +19,9 @@ interface Props {
   payload: UsagePayload;
 }
 
-function formatDateTick(s: string): string {
+function formatDateTick(s: string, idioma: string): string {
   const d = new Date(`${s}T00:00:00Z`);
-  return d.toLocaleDateString("pt-BR", {
+  return d.toLocaleDateString(idioma, {
     day: "2-digit",
     month: "2-digit",
     timeZone: "UTC",
@@ -62,6 +64,7 @@ const tooltipStyle = {
 };
 
 export function UsageChart({ payload }: Props) {
+  const tagDoIdioma = useTagDeIdioma();
   const t = useT();
   const { series } = payload;
 
@@ -96,7 +99,7 @@ export function UsageChart({ payload }: Props) {
               <CartesianGrid strokeDasharray="3 3" className="stroke-border/50" />
               <XAxis
                 dataKey="day"
-                tickFormatter={formatDateTick}
+                tickFormatter={(v) => formatDateTick(v, tagDoIdioma)}
                 tick={{ fontSize: 11 }}
                 tickLine={false}
                 axisLine={false}
@@ -111,7 +114,7 @@ export function UsageChart({ payload }: Props) {
               />
               <Tooltip
                 formatter={(value) => [formatCentsUSD(Number(value)), t("Custo")]}
-                labelFormatter={(label) => formatDateTick(String(label))}
+                labelFormatter={(label) => formatDateTick(String(label), tagDoIdioma)}
                 contentStyle={tooltipStyle}
               />
               <Line
@@ -138,7 +141,7 @@ export function UsageChart({ payload }: Props) {
               <CartesianGrid strokeDasharray="3 3" className="stroke-border/50" />
               <XAxis
                 dataKey="day"
-                tickFormatter={formatDateTick}
+                tickFormatter={(v) => formatDateTick(v, tagDoIdioma)}
                 tick={{ fontSize: 11 }}
                 tickLine={false}
                 axisLine={false}
@@ -153,7 +156,7 @@ export function UsageChart({ payload }: Props) {
               />
               <Tooltip
                 formatter={(value) => [formatNumber(Number(value)), t("Tokens")]}
-                labelFormatter={(label) => formatDateTick(String(label))}
+                labelFormatter={(label) => formatDateTick(String(label), tagDoIdioma)}
                 contentStyle={tooltipStyle}
               />
               <Line
@@ -180,7 +183,7 @@ export function UsageChart({ payload }: Props) {
               <CartesianGrid strokeDasharray="3 3" className="stroke-border/50" />
               <XAxis
                 dataKey="day"
-                tickFormatter={formatDateTick}
+                tickFormatter={(v) => formatDateTick(v, tagDoIdioma)}
                 tick={{ fontSize: 11 }}
                 tickLine={false}
                 axisLine={false}
@@ -205,7 +208,7 @@ export function UsageChart({ payload }: Props) {
                   `${(Number(value) / 1000).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} s`,
                   name,
                 ]}
-                labelFormatter={(label) => formatDateTick(String(label))}
+                labelFormatter={(label) => formatDateTick(String(label), tagDoIdioma)}
                 contentStyle={tooltipStyle}
               />
               <Legend wrapperStyle={{ fontSize: 11 }} />
@@ -242,7 +245,7 @@ export function UsageChart({ payload }: Props) {
               <CartesianGrid strokeDasharray="3 3" className="stroke-border/50" />
               <XAxis
                 dataKey="day"
-                tickFormatter={formatDateTick}
+                tickFormatter={(v) => formatDateTick(v, tagDoIdioma)}
                 tick={{ fontSize: 11 }}
                 tickLine={false}
                 axisLine={false}
@@ -257,7 +260,7 @@ export function UsageChart({ payload }: Props) {
               />
               <Tooltip
                 formatter={(value) => [`${Number(value).toFixed(2)}%`, t("Handoff")]}
-                labelFormatter={(label) => formatDateTick(String(label))}
+                labelFormatter={(label) => formatDateTick(String(label), tagDoIdioma)}
                 contentStyle={tooltipStyle}
               />
               <Line

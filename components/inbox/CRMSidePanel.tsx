@@ -1,9 +1,12 @@
 "use client";
+
+import { useLocaleDeData } from "@/hooks/i18n/useLocaleDeData";
+
+import type { Locale } from "date-fns";
 import Link from "next/link";
 import { useT } from "@/hooks/i18n/useT";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { format } from "date-fns";
-import { ptBR } from "date-fns/locale";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -199,8 +202,8 @@ function formatMoney(cents: number | null, currency: string | null): string {
   }
 }
 
-function shortDate(iso: string): string {
-  return format(new Date(iso), "dd/MM/yy HH:mm", { locale: ptBR });
+function shortDate(iso: string, locale: Locale): string {
+  return format(new Date(iso), "dd/MM/yy HH:mm", { locale: locale });
 }
 
 /**
@@ -353,6 +356,7 @@ function CamposDoFunil({
 }
 
 export function CRMSidePanel({ conversation }: Props) {
+  const localeDaData = useLocaleDeData();
   const t = useT();
   const contact = conversation?.contacts ?? null;
   const contactId = contact?.id ?? null;
@@ -695,7 +699,7 @@ export function CRMSidePanel({ conversation }: Props) {
                 </div>
                 {a.reason && <div className="mt-0.5 truncate text-muted-foreground">{a.reason}</div>}
                 <div className="text-muted-foreground">
-                  {a.performed_by_name ?? t(actorLabel(a.actor_kind))} · {shortDate(a.performed_at)}
+                  {a.performed_by_name ?? t(actorLabel(a.actor_kind))} · {shortDate(a.performed_at, localeDaData)}
                 </div>
               </li>
             ))}

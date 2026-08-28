@@ -1,7 +1,8 @@
 "use client";
+
+import { useLocaleDeData } from "@/hooks/i18n/useLocaleDeData";
 import Link from "next/link";
 import { formatDistanceToNowStrict } from "date-fns";
-import { ptBR } from "date-fns/locale";
 
 import { Robot, Gear } from "@/lib/ui/icons";
 import { autorNaTela, mudadoPorAgente } from "@/lib/operacao/autoria";
@@ -39,6 +40,7 @@ export function SeloDeAutoria({
   em: string | null;
   className?: string;
 }) {
+  const localeDaData = useLocaleDeData();
   const t = useT();
   const texto = autorNaTela(kind);
   if (!texto) return null;
@@ -46,7 +48,7 @@ export function SeloDeAutoria({
   const doAgente = mudadoPorAgente(kind);
   const Icone = doAgente ? Robot : Gear;
   const quando = em
-    ? ` ${formatDistanceToNowStrict(new Date(em), { addSuffix: true, locale: ptBR })}`
+    ? ` ${formatDistanceToNowStrict(new Date(em), { addSuffix: true, locale: localeDaData })}`
     : "";
 
   return (

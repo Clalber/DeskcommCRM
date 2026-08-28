@@ -1,11 +1,12 @@
 "use client";
+
+import { useLocaleDeData } from "@/hooks/i18n/useLocaleDeData";
 /**
  * Aba "Propostas" do agente (Operação Visível F3): melhorias que o flywheel
  * destilou das conversas reais. NADA se aplica sozinho — o botão é o gate
  * humano; aplicar cria uma versão NOVA do agente (publish-por-ponteiro).
  */
 import { formatDistanceToNowStrict } from "date-fns";
-import { ptBR } from "date-fns/locale";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -76,9 +77,10 @@ export function ProposalsPanel({
   return (
     <ul className="divide-y divide-border rounded-lg border border-border">
       {items.map((p) => {
+  const localeDaData = useLocaleDeData();
         const when = formatDistanceToNowStrict(new Date(p.proposed_at), {
           addSuffix: true,
-          locale: ptBR,
+          locale: localeDaData,
         });
         return (
           <li key={p.id} className="flex items-start gap-3 px-4 py-3" data-testid="proposal-item">

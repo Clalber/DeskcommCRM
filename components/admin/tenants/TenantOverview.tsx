@@ -1,4 +1,6 @@
 "use client";
+
+import { useTagDeIdioma } from "@/hooks/i18n/useLocaleDeData";
 import { Badge } from "@/components/ui/badge";
 import { Warning } from "@/lib/ui/icons";
 import type {
@@ -12,9 +14,9 @@ import { useT } from "@/hooks/i18n/useT";
 // Helpers
 // ---------------------------------------------------------------------------
 
-function formatDate(iso: string | null): string {
+function formatDate(iso: string | null, idioma: string): string {
   if (!iso) return "—";
-  return new Intl.DateTimeFormat("pt-BR", {
+  return new Intl.DateTimeFormat(idioma, {
     day: "2-digit",
     month: "2-digit",
     year: "numeric",
@@ -92,6 +94,7 @@ interface TenantOverviewProps {
 // ---------------------------------------------------------------------------
 
 export function TenantOverview({ organization, counts, integrations }: TenantOverviewProps) {
+  const tagDoIdioma = useTagDeIdioma();
   const t = useT();
   const plan = (organization.settings as { plan?: string } | null)?.plan ?? "—";
 
@@ -116,10 +119,10 @@ export function TenantOverview({ organization, counts, integrations }: TenantOve
           <InfoRow label={t("Plano")} value={<Badge variant="neutral" className="capitalize">{plan}</Badge>} />
           <InfoRow label={t("Razão social")} value={organization.legal_name} />
           <InfoRow label="CNPJ" value={organization.cnpj} />
-          <InfoRow label={t("Onboarding concluído")} value={formatDate(organization.onboarded_at)} />
-          <InfoRow label={t("Criado em")} value={formatDate(organization.created_at)} />
+          <InfoRow label={t("Onboarding concluído")} value={formatDate(organization.onboarded_at, tagDoIdioma)} />
+          <InfoRow label={t("Criado em")} value={formatDate(organization.created_at, tagDoIdioma)} />
           {organization.suspended_at && (
-            <InfoRow label={t("Suspenso em")} value={formatDate(organization.suspended_at)} />
+            <InfoRow label={t("Suspenso em")} value={formatDate(organization.suspended_at, tagDoIdioma)} />
           )}
         </div>
       </div>
@@ -154,7 +157,7 @@ export function TenantOverview({ organization, counts, integrations }: TenantOve
             {integrations.nuvemshop_connected_at && (
               <InfoRow
                 label={t("Conectado em")}
-                value={formatDate(integrations.nuvemshop_connected_at)}
+                value={formatDate(integrations.nuvemshop_connected_at, tagDoIdioma)}
               />
             )}
             <InfoRow label="WAHA sessions" value={counts.waha_sessions_count} />

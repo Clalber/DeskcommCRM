@@ -1,6 +1,7 @@
 "use client";
+
+import { useLocaleDeData } from "@/hooks/i18n/useLocaleDeData";
 import { format } from "date-fns";
-import { ptBR } from "date-fns/locale";
 import { useT } from "@/hooks/i18n/useT";
 import { Note as NoteIcon, Trash } from "@/lib/ui/icons";
 import type { Note } from "@/lib/types/messaging";
@@ -12,8 +13,9 @@ interface Props {
 
 /** Onda 5.2: nota interna inline no thread — nunca vai ao cliente, destaque âmbar (token `warning`). */
 export function NoteCard({ note, onDelete }: Props) {
+  const localeDaData = useLocaleDeData();
   const t = useT();
-  const time = format(new Date(note.created_at), "HH:mm", { locale: ptBR });
+  const time = format(new Date(note.created_at), "HH:mm", { locale: localeDaData });
 
   return (
     <div className="group flex w-full justify-center px-4 py-1">

@@ -154,17 +154,15 @@ const ENDERECO_DE_REDE =
 /**
  * Padrão de FORMATAÇÃO do date-fns (`"EEEE, d 'de' MMMM 'às' HH:mm"`), não prosa.
  *
- * ⚠️ E aqui mora uma DÍVIDA DECLARADA, que este guarda não mede e nenhum outro
- * mede: a data em si continua saindo em português para quem escolheu espanhol,
- * porque o `locale: ptBR` do date-fns é passado explicitamente em **38
- * arquivos**, mais **24** chamadas de `Intl`/`toLocaleString("pt-BR")`
- * (medido no HEAD desta branch; recontar com
- * `grep -rln 'from "date-fns/locale"' --include=*.tsx app components lib hooks | wc -l`).
+ * A dívida que este bloco declarava — a data saindo em português para quem
+ * escolheu espanhol — FOI PAGA, e quem a vigia agora é
+ * `tests/unit/i18n-a-data-segue-o-idioma.test.ts`: existe uma camada
+ * (`lib/i18n/datas.ts`), e nenhuma tela pode importar o locale do date-fns
+ * direto nem fixar `"pt-BR"` dentro de `toLocaleDateString`.
  *
- * Trocar isso é um passe próprio — mexe em como TODA tela imprime data, precisa
- * de prova visual, e não cabe junto da tradução de texto. Está escrito aqui, e
- * não omitido, para que a ausência não se leia como cobertura: o guarda diz
- * "nenhuma PROSA vaza", nunca "nada em português vaza".
+ * O padrão de formato em si continua fora da conta AQUI, e por outro motivo:
+ * `"EEEE, d 'de' MMMM"` é gramática do date-fns, não frase. Traduzi-lo faria a
+ * data parar de sair.
  */
 function ehPadraoDeData(texto: string): boolean {
   // Fora das aspas simples, um padrão do date-fns só tem token de formato e
