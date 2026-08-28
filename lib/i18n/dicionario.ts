@@ -2143,7 +2143,6 @@ export const DICIONARIO: Traducoes = {
   "organizações ativas": { es: "organizaciones activas" },
   "Pendentes >10min": { es: "Pendientes >10min" },
   "conversas sem resposta": { es: "conversaciones sin respuesta" },
-  "Alertas WAHA": { es: "Alertas WAHA" },
   "sessões com problema": { es: "sesiones con problema" },
   "LGPD em Risco": { es: "LGPD en Riesgo" },
   "requisições próximas do prazo": { es: "solicitudes próximas al plazo" },
