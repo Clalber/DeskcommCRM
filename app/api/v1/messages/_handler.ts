@@ -467,6 +467,15 @@ export async function sendMessageHandler(
     },
   };
 
+  // Quem está falando, na MESMA grafia que a linha grava em `sent_via` logo
+  // acima. Derivado uma vez e reusado nos envelopes: duas derivações da mesma
+  // pergunta divergem na primeira vez que uma delas ganhar um caso novo.
+  //
+  // O canal precisa disto porque há plataforma cuja permissão de reengajamento
+  // fora da janela é EXCLUSIVA de atendimento humano — usá-la num turno de IA
+  // seria afirmar a ela algo que não é verdade.
+  const sentVia = ctx.actor.type !== "user" ? ("ai" as const) : ("user" as const);
+
   const { data: created, error: insErr } = await supabase
     .from("messages")
     .insert(insertRow)
@@ -623,6 +632,7 @@ export async function sendMessageHandler(
           organizationId: ctx.organization_id,
           sessionRef: resolveSessionRef(c.channel_sessions),
           to: chatId,
+          sentVia,
           providerConversationId: c.provider_conversation_id,
           kind: input.type,
           media: {
@@ -653,6 +663,7 @@ export async function sendMessageHandler(
           organizationId: ctx.organization_id,
           sessionRef: resolveSessionRef(c.channel_sessions),
           to: chatId,
+          sentVia,
           providerConversationId: c.provider_conversation_id,
           kind: "contact",
           body: outboundBody ?? nome,
@@ -668,6 +679,7 @@ export async function sendMessageHandler(
           organizationId: ctx.organization_id,
           sessionRef: resolveSessionRef(c.channel_sessions),
           to: chatId,
+          sentVia,
           providerConversationId: c.provider_conversation_id,
           kind: input.type,
           body: input.body ?? "",

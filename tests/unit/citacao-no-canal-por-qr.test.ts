@@ -106,6 +106,7 @@ describe("o adapter repassa o que o envelope traz", () => {
       organizationId: "org-1",
       sessionRef: "s1",
       to: "595@c.us",
+      sentVia: "ai",
       kind: "text",
       body: "hijale no recuerdo bro",
       replyToExternalId: CITADA,

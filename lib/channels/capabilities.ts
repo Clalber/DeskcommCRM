@@ -14,6 +14,8 @@ export const CHANNEL_CAPABILITIES: Record<ChannelProvider, ChannelCapabilities> 
   // Auto-restrição: falo quando quiser, mas o WhatsApp me bane se eu abusar.
   waha: {
     freeformOutsideWindow: true,
+    // Sem janela, não há o que reengajar — a pergunta não se aplica.
+    reengajamento: "sem_janela",
     requiresTemplates: false,
     // Não há WABA por trás: não existe definição aprovada para gerir.
     canManageTemplates: false,
@@ -26,6 +28,10 @@ export const CHANNEL_CAPABILITIES: Record<ChannelProvider, ChannelCapabilities> 
   // Hetero-restrição: não me banem, mas a Meta me proíbe e me cobra.
   meta_cloud: {
     freeformOutsideWindow: false,
+    // Template aprovado é a saída — e o próprio `reason` do veto de janela já
+    // mandava usá-lo. Aqui a instrução deixa de ser texto hardcodado e passa a
+    // ser dado, para que o canal que NÃO tem template possa dizer outra coisa.
+    reengajamento: "template",
     requiresTemplates: true,
     // A Graph API cria e edita definições; o repo hoje só ESPELHA, e é essa
     // lacuna que a capability torna visível em vez de deixar implícita.
@@ -61,6 +67,8 @@ export const CHANNEL_CAPABILITIES: Record<ChannelProvider, ChannelCapabilities> 
   // abre, respondendo. Quem ler o 200 como "enviado" acha que funciona.
   zernio: {
     freeformOutsideWindow: false,
+    // Mesma WABA, mesmos templates da Meta por baixo.
+    reengajamento: "template",
     requiresTemplates: true,
     canManageTemplates: true,
     banRisk: false,
@@ -68,6 +76,44 @@ export const CHANNEL_CAPABILITIES: Record<ChannelProvider, ChannelCapabilities> 
     voiceNote: "opus-only",
     groups: "limited",
     costPerMessage: true,
+  },
+  // O PRIMEIRO canal que não é WhatsApp — e é isso que torna a linha abaixo
+  // diferente de tudo que veio antes, não o nome do provider.
+  //
+  // A combinação que não existia: `freeformOutsideWindow: false` COM
+  // `requiresTemplates: false`. Nos três canais acima, "não posso falar livre"
+  // implicava "então mando template". Aqui não implica: a plataforma não hospeda
+  // definição de mensagem nenhuma. Fora da janela, a única saída é uma PESSOA
+  // responder, sob permissão própria — por isso `reengajamento: 'agente_humano'`.
+  //
+  // Consequência de produto, e ela não é um defeito a consertar depois: fora da
+  // janela o agente de IA não tem jogada. O turno dele acaba em escalação.
+  meta_instagram: {
+    freeformOutsideWindow: false,
+    reengajamento: "agente_humano",
+    requiresTemplates: false,
+    canManageTemplates: false,
+    // ⚠️ NÃO MEDIDO — declarado conservador de propósito.
+    //
+    // `banRisk: false` desarma, de uma vez, warm-up + cap diário + throttle
+    // (`lib/agent-engine/guardrails/pacing/engine.ts`), e o `return` que o
+    // desarma fica ACIMA do teto diário que o OPERADOR configura na tela — ou
+    // seja, `false` também ignora o limite que a pessoa pediu.
+    //
+    // A régua deste repo é "medido, não deduzido", e não há medição de conta
+    // nova de Instagram de cliente sendo limitada. Enquanto não houver, o valor
+    // fica `true`: errar para cá custa envio mais lento; errar para o outro lado
+    // custa a conta do cliente. Trocar exige medição, não opinião.
+    banRisk: true,
+    minIntervalMs: null,
+    // ⚠️ NÃO MEDIDO. O comentário do `zernio` acima explica por que este campo
+    // não se deduz da documentação: ler um booleano de "suporta áudio" como
+    // "ele converte para mim" é o erro que entrega anexo de música ao cliente.
+    // `opus-only` é a suposição conservadora: entregamos já convertido.
+    voiceNote: "opus-only",
+    groups: "none",
+    // Mensagem de Instagram não é cobrada por unidade como a da Cloud API.
+    costPerMessage: false,
   },
 };
 
@@ -90,6 +136,7 @@ export const DEFAULT_CHANNEL_PROVIDER: ChannelProvider = "waha";
 export const CHANNEL_PROVIDER_WAHA: ChannelProvider = "waha";
 export const CHANNEL_PROVIDER_META: ChannelProvider = "meta_cloud";
 export const CHANNEL_PROVIDER_ZERNIO: ChannelProvider = "zernio";
+export const CHANNEL_PROVIDER_INSTAGRAM: ChannelProvider = "meta_instagram";
 
 export function capabilitiesOf(provider: ChannelProvider): ChannelCapabilities {
   const caps = CHANNEL_CAPABILITIES[provider];

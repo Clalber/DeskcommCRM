@@ -5,6 +5,17 @@
  * recém-instalada não tem chave do Google nenhuma, e a Agenda tem de funcionar
  * inteira assim mesmo. Módulo que se recusa a abrir porque falta uma chave que o
  * operador nem sabia que existia é abandono na primeira tela.
+ *
+ * ⚠️ ESTES CASOS MEDEM O AMBIENTE, e agora dizem isso no nome da função que
+ * chamam. `configuracaoDoGoogle()` passou a ser ASSÍNCRONA e a ler
+ * `platform_google_oauth` antes do `.env` (migration 0201, banco primeiro) —
+ * mantê-los apontando para ela faria cada caso puro depender de um client de
+ * banco. `configuracaoDoAmbiente()` é o leitor puro e síncrono, e é ele que
+ * carrega a propriedade que este arquivo existe para proteger: o piso de
+ * rollback continua de pé quando o código antigo volta sobre o banco novo.
+ *
+ * A resolução com banco tem cerca própria em `agenda-google-credencial-do-banco`
+ * (precedência, decifra que falha, e o `.env` como piso).
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -32,11 +43,10 @@ const COMPLETO = {
   NEXT_PUBLIC_APP_URL: "https://crm.exemplo",
 };
 
-describe("configuracaoDoGoogle", () => {
+describe("configuracaoDoAmbiente", () => {
   it("devolve a configuração quando a instalação tem app OAuth", async () => {
-    const { configuracaoDoGoogle, googleEstaConfigurado } = await importarComEnv(COMPLETO);
-    expect(googleEstaConfigurado()).toBe(true);
-    expect(configuracaoDoGoogle()).toEqual({
+    const { configuracaoDoAmbiente } = await importarComEnv(COMPLETO);
+    expect(configuracaoDoAmbiente()).toEqual({
       clientId: "123.apps.googleusercontent.com",
       clientSecret: "GOCSPX-segredo",
       redirectUri: "https://crm.exemplo/api/v1/agenda/google/callback",
@@ -46,13 +56,12 @@ describe("configuracaoDoGoogle", () => {
   it("devolve `null` — e NÃO lança — quando falta chave", async () => {
     // Lançar aqui derrubaria a tela de Agenda inteira numa instalação que só
     // não conectou o Google, que é o estado normal de um primeiro deploy.
-    const { configuracaoDoGoogle, googleEstaConfigurado } = await importarComEnv({
+    const { configuracaoDoAmbiente } = await importarComEnv({
       ...COMPLETO,
       GOOGLE_CALENDAR_CLIENT_SECRET: "",
     });
-    expect(() => configuracaoDoGoogle()).not.toThrow();
-    expect(configuracaoDoGoogle()).toBeNull();
-    expect(googleEstaConfigurado()).toBe(false);
+    expect(() => configuracaoDoAmbiente()).not.toThrow();
+    expect(configuracaoDoAmbiente()).toBeNull();
   });
 
   it("a URL pública vazia nem carrega o módulo — a garantia é do env.ts, não guarda daqui", async () => {
@@ -70,8 +79,8 @@ describe("configuracaoDoGoogle", () => {
   it("espaço em branco não conta como configurado", async () => {
     // `install.sh` grava a chave declarada mesmo quando o operador não
     // responde, então "vazio" chega como string — às vezes com espaço.
-    const { configuracaoDoGoogle } = await importarComEnv({ ...COMPLETO, GOOGLE_CALENDAR_CLIENT_ID: "   " });
-    expect(configuracaoDoGoogle()).toBeNull();
+    const { configuracaoDoAmbiente } = await importarComEnv({ ...COMPLETO, GOOGLE_CALENDAR_CLIENT_ID: "   " });
+    expect(configuracaoDoAmbiente()).toBeNull();
   });
 });
 
@@ -80,8 +89,8 @@ describe("enderecoDeRetorno", () => {
     // O Google compara o redirect_uri dos dois lados byte a byte. Duas fontes
     // que divergem quebram com `redirect_uri_mismatch`, um erro que aponta para
     // o Google e não para a divergência.
-    const { enderecoDeRetorno, configuracaoDoGoogle } = await importarComEnv(COMPLETO);
-    expect(configuracaoDoGoogle()?.redirectUri).toBe(enderecoDeRetorno());
+    const { enderecoDeRetorno, configuracaoDoAmbiente } = await importarComEnv(COMPLETO);
+    expect(configuracaoDoAmbiente()?.redirectUri).toBe(enderecoDeRetorno());
   });
 
   it("não produz barra dupla nem barra final", async () => {
@@ -101,7 +110,7 @@ describe("faltaParaConectarOGoogle", () => {
       GOOGLE_CALENDAR_CLIENT_ID: "",
       GOOGLE_CALENDAR_CLIENT_SECRET: "",
     });
-    expect(faltaParaConectarOGoogle()).toEqual([
+    expect(await faltaParaConectarOGoogle()).toEqual([
       "GOOGLE_CALENDAR_CLIENT_ID",
       "GOOGLE_CALENDAR_CLIENT_SECRET",
     ]);
@@ -109,6 +118,6 @@ describe("faltaParaConectarOGoogle", () => {
 
   it("nada falta quando está tudo lá", async () => {
     const { faltaParaConectarOGoogle } = await importarComEnv(COMPLETO);
-    expect(faltaParaConectarOGoogle()).toEqual([]);
+    expect(await faltaParaConectarOGoogle()).toEqual([]);
   });
 });

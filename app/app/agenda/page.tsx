@@ -78,10 +78,18 @@ export default async function AgendaPage() {
   const inicio = startOfWeek(new Date(), { weekStartsOn: 0 });
   const fim = addDays(inicio, 7);
 
+  // `.eq("organization_id", activeOrg.orgId)` em TODA consulta desta página, e
+  // não só a RLS. A `fn_user_org_ids()` que as policies usam devolve TODAS as
+  // organizações do usuário: ela é PISO (impede vazamento entre inquilinos), não
+  // ESCOPO (não escolhe a org ativa). Sem o filtro, quem é membro de duas
+  // organizações via seis tipos onde há três — e clicar no da outra org dava
+  // "Tipo de agendamento não encontrado", porque a rota que marca ESCAPA a org
+  // certa e não achava o tipo que esta tela ofereceu.
   const [{ data: tipos }, { data: linhas }] = await Promise.all([
     supabase
       .from("calendar_event_types")
       .select("id, name, duration_minutes, location_kind, location_details, is_active, default_owner_user_id")
+      .eq("organization_id", activeOrg.orgId)
       .eq("is_active", true)
       .order("name"),
     supabase
@@ -89,6 +97,7 @@ export default async function AgendaPage() {
       .select(
         "id, title, starts_at, ends_at, status, owner_user_id, contact_id, event_type_id, location_kind, contacts(name, display_name)",
       )
+      .eq("organization_id", activeOrg.orgId)
       .gte("starts_at", inicio.toISOString())
       .lt("starts_at", fim.toISOString())
       .order("starts_at"),
@@ -100,13 +109,18 @@ export default async function AgendaPage() {
   const { data: conexao } = await supabase
     .from("calendar_connections")
     .select("account_email, status")
+    .eq("organization_id", activeOrg.orgId)
     .eq("user_id", user.id)
     .eq("provider", "google")
     .neq("status", "disconnected")
     .maybeSingle();
 
-  const googleConfigurado = googleEstaConfigurado();
-  const faltaNoGoogle = googleConfigurado ? [] : faltaParaConectarOGoogle();
+  // `await`: a credencial pode vir do BANCO agora (migration 0201), não só do
+  // `.env`. `faltaParaConectarOGoogle` já só devolve nomes de variável quando as
+  // DUAS fontes estão vazias — mandar editar o `.env` de uma instalação que
+  // gravou a credencial pela tela seria pior que não dizer nada.
+  const googleConfigurado = await googleEstaConfigurado();
+  const faltaNoGoogle = googleConfigurado ? [] : await faltaParaConectarOGoogle();
 
   return (
     <AgendaClient
@@ -115,6 +129,10 @@ export default async function AgendaPage() {
       contaConectada={conexao?.account_email ?? null}
       enderecoDeRetorno={enderecoDeRetorno()}
       faltaNoGoogle={faltaNoGoogle}
+      // SÓ para quem administra a INSTALAÇÃO. A tela do app OAuth vive em
+      // `/admin` e faz `notFound()` para o resto — oferecer o link a quem não
+      // pode entrar seria trocar um beco por outro.
+      linkDeConfiguracaoDoGoogle={user.is_platform_admin ? "/admin/google" : undefined}
       tiposIniciais={(tipos ?? []).map((t) => ({
         id: t.id,
         nome: t.name,
@@ -123,6 +141,12 @@ export default async function AgendaPage() {
         // lista de pessoas como responsável e marcava na agenda dele — enquanto
         // os horários oferecidos vinham da jornada de outra pessoa.
         donoId: t.default_owner_user_id ?? null,
+        // O LOCAL DE VERDADE. O `select` acima já trazia `location_kind` e
+        // `location_details`, e o mapeamento os descartava — então o painel caía
+        // no default de parâmetro e toda clínica de toda instalação lia
+        // "Presencial · Sala 2" numa tela real.
+        localKind: t.location_kind ?? null,
+        localDetalhes: t.location_details ?? null,
       }))}
       agendamentosIniciais={(linhas ?? []).map((a) => ({
         id: a.id,

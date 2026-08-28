@@ -7,18 +7,23 @@ import * as React from "react";
 import { AvisoDaConexaoGoogle } from "./_components/AvisoDaConexaoGoogle";
 import { CartaoDaConexaoGoogle } from "./_components/CartaoDaConexaoGoogle";
 
+import { AgendaInterativa } from "@/components/agenda/AgendaInterativa";
 import { FiltroDePessoas } from "@/components/agenda/FiltroDePessoas";
-import { GradeDaAgenda } from "@/components/agenda/GradeDaAgenda";
 import { HistoricoDaAgenda } from "@/components/agenda/HistoricoDaAgenda";
-import type { Agendamento, VisaoDaAgenda } from "@/components/agenda/tipos";
+import type { Agendamento, HorarioLivre, VisaoDaAgenda } from "@/components/agenda/tipos";
 import { EmptyAgenda } from "@/components/empty";
+import { rotuloDoLocal } from "@/lib/agenda/locais";
 import { Button } from "@/components/ui/button";
 import { PainelDeMarcacao } from "@/components/agenda/PainelDeMarcacao";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { useAgendamentos } from "@/hooks/agenda/useAgendamentos";
 import { useHorariosLivres } from "@/hooks/agenda/useHorariosLivres";
 import { useMarcarAgendamento } from "@/hooks/agenda/useMarcarAgendamento";
-import { useCancelarAgendamento, useRemarcarAgendamento } from "@/hooks/agenda/useRemarcarAgendamento";
+import {
+  useCancelarAgendamento,
+  useRegistrarDesfecho,
+  useRemarcarAgendamento,
+} from "@/hooks/agenda/useRemarcarAgendamento";
 import { usePessoasDaAgenda } from "@/hooks/agenda/usePessoasDaAgenda";
 import { CalendarPlus, CaretLeft, CaretRight } from "@/lib/ui/icons";
 import { cn } from "@/lib/utils";
@@ -60,6 +65,7 @@ export function AgendaClient({
   contaConectada,
   enderecoDeRetorno,
   faltaNoGoogle,
+  linkDeConfiguracaoDoGoogle,
   tiposIniciais,
   agendamentosIniciais,
 }: {
@@ -68,12 +74,24 @@ export function AgendaClient({
   contaConectada?: string | null;
   enderecoDeRetorno?: string;
   faltaNoGoogle: string[];
+  /** Preenchido só para quem administra a instalação — ver `page.tsx`. */
+  linkDeConfiguracaoDoGoogle?: string;
   /** Tipos ativos, resolvidos no servidor: não há rota que os liste ainda. */
-  tiposIniciais: Array<{ id: string; nome: string; duracaoMin: number; donoId: string | null }>;
+  tiposIniciais: Array<{
+    id: string;
+    nome: string;
+    duracaoMin: number;
+    donoId: string | null;
+    localKind: string | null;
+    localDetalhes: string | null;
+  }>;
   /** A semana corrente, resolvida no servidor: `GET /agendamentos` não existe. */
   agendamentosIniciais: Agendamento[];
 }) {
   const [marcando, setMarcando] = React.useState(false);
+  // O horário que veio de um CLIQUE NA GRADE. Preenchido, o painel abre já em
+  // "confirmando" naquele instante; vazio, ele abre pedindo o dia, como sempre.
+  const [horarioEscolhido, setHorarioEscolhido] = React.useState<HorarioLivre | null>(null);
   // REMARCAR reusa o painel de marcação: escolher horário novo é o MESMO gesto
   // de escolher o primeiro, e uma segunda tela para a mesma pergunta seria duas
   // coisas para manter em sincronia. Quando `remarcandoId` está preenchido, a
@@ -86,6 +104,7 @@ export function AgendaClient({
   const marcar = useMarcarAgendamento();
   const remarcar = useRemarcarAgendamento();
   const cancelar = useCancelarAgendamento();
+  const desfecho = useRegistrarDesfecho();
   // ⚠️ ERA `tiposIniciais[0] ?? null` — uma constante, sem seletor em lugar
   // nenhum. `page.tsx` ordena os tipos por NOME, então a tela marcava sempre o
   // primeiro em ordem alfabética e não havia como marcar outro: numa org com
@@ -128,7 +147,12 @@ export function AgendaClient({
 
   // Os horários vêm da rota real — a mesma que a IA usa, então tela e agente
   // oferecem exatamente os mesmos horários. Só consulta quando o painel abre.
-  const { data: horarios } = useHorariosLivres(
+  // `isError` junto, e não só `data`: sem ele a tela MENTE por default. O
+  // `publicouHorarios={horarios?.publicou_horarios ?? true}` abaixo transforma
+  // "a consulta falhou" em "publicou, só não tem vaga" — dias travados e aviso
+  // nenhum, que é exatamente o que uma instalação fresca produz (a rota devolve
+  // 422 porque ninguém está em `attendant_availability`).
+  const { data: horarios, isError: horariosFalharam } = useHorariosLivres(
     marcando && tipo ? { event_type_id: tipo.id, de: janelaDeBusca.de, ate: janelaDeBusca.ate } : null,
   );
 
@@ -223,6 +247,7 @@ export function AgendaClient({
       <CartaoDaConexaoGoogle
         configurado={googleConfigurado}
         falta={faltaNoGoogle}
+        linkDeConfiguracao={linkDeConfiguracaoDoGoogle}
         contaConectada={contaConectada}
         enderecoDeRetorno={enderecoDeRetorno}
       />
@@ -353,11 +378,25 @@ export function AgendaClient({
         onOpenChange={(aberto) => {
           setMarcando(aberto);
           // Fechar sem confirmar volta ao modo normal — senão o próximo "Novo
-          // agendamento" remarcaria o compromisso anterior em silêncio.
-          if (!aberto) setRemarcandoId(null);
+          // agendamento" remarcaria o compromisso anterior em silêncio. O
+          // horário vindo da grade some pela mesma razão: abrir o painel pelo
+          // botão depois de fechar um bloco reabriria no horário do bloco.
+          if (!aberto) {
+            setRemarcandoId(null);
+            setHorarioEscolhido(null);
+          }
         }}
       >
-        <SheetContent side="right" className="w-full sm:max-w-3xl">
+        {/*
+          `lg:max-w-[1040px]` — o painel de marcar precisa de 980px para as três
+          colunas (contexto 280 + calendário 420 + horários 280), e cabia num
+          Sheet de 768px cortando 239px em silêncio.
+          
+          O `sm:max-w-3xl` fica para as telas menores DE PROPÓSITO: lá o painel
+          empilha os horários sob o calendário, então 768px bastam e um Sheet
+          maior só roubaria contexto da tela atrás.
+        */}
+        <SheetContent side="right" className="w-full sm:max-w-3xl lg:max-w-[1040px]">
           <SheetHeader>
             <SheetTitle>{remarcandoId ? "Remarcar agendamento" : "Novo agendamento"}</SheetTitle>
           </SheetHeader>
@@ -400,10 +439,26 @@ export function AgendaClient({
                 }
                 tipo={tipo.nome}
                 duracaoMin={tipo.duracaoMin}
+                // O LOCAL e o FUSO de verdade, que a tela tinha e não passava.
+                //
+                // `PainelDeMarcacao` trazia `local = "Presencial · Sala 2"` e
+                // `fuso = "America/Sao_Paulo"` como defaults de parâmetro, e
+                // estas duas props nunca eram passadas: os defaults venciam em
+                // 100% das marcações do produto. É o que o cabeçalho deste
+                // arquivo proíbe — dado falso plausível numa tela multi-tenant é
+                // indistinguível de vazamento.
+                //
+                // `fuso_da_regra` já vinha da rota e já era tipado pelo hook;
+                // ninguém em tela o lia. Chutar São Paulo para quem atende em
+                // Manaus é uma hora de diferença no horário oferecido ao cliente.
+                local={rotuloDoLocal(tipo.localKind, tipo.localDetalhes)}
+                fuso={horarios?.fuso_da_regra}
                 horariosPorDia={horariosPorDia}
                 publicouHorarios={horarios?.publicou_horarios ?? true}
+                erroAoCarregar={horariosFalharam}
                 fusoSuposto={horarios?.fuso_suposto ?? false}
                 fontesDefasadas={horarios?.fontes_defasadas}
+                horarioInicial={horarioEscolhido ?? undefined}
                 // ESTE é o fio que faltava. Sem ele o "Marcado ✓" era estado
                 // local do React e nenhuma linha nascia no banco.
                 onConfirmar={(instante) => {
@@ -431,6 +486,25 @@ export function AgendaClient({
                       });
                   }
                   return marcar.mutateAsync({ event_type_id: tipo.id, starts_at: instante });
+                }}
+                // "VER NA AGENDA" — o botão que não fazia nada.
+                //
+                // Ele não tinha `onClick`: parecia ativo e o clique era mudo. E
+                // fechar o painel sozinho não bastaria — o compromisso recém
+                // marcado costuma ser de OUTRA semana (o do relato era 8 de
+                // setembro), e a grade abre na semana corrente. Voltar para uma
+                // grade que não mostra o que acabou de nascer é o mesmo "nada
+                // acontece" com um passo a mais.
+                //
+                // Por isso a âncora vai junto: fecha o painel E leva a grade até
+                // o dia do compromisso. `startOfDay` porque a âncora é o DIA de
+                // referência da visão — mandar o instante exato funcionaria por
+                // acidente na visão de semana e escolheria a hora errada na de
+                // dia.
+                onVerNaAgenda={(instante) => {
+                  setAncora(startOfDay(new Date(instante)));
+                  setMarcando(false);
+                  setRemarcandoId(null);
                 }}
               />
             </div>
@@ -517,6 +591,16 @@ export function AgendaClient({
           setMotivo("");
           setCancelandoId(id);
         }}
+        // E ESTAS DUAS TAMBÉM FALTAVAM — o conserto acima alcançou 2 dos 4
+        // botões do MESMO componente, e "Realizado"/"Faltou" ficaram cinzas,
+        // com a mesma frase falsa, por mais tempo ainda. Conserto por instância
+        // custa a segunda passada; a varredura custaria um `grep`.
+        //
+        // Sem cerimônia de confirmação, ao contrário de cancelar: registrar
+        // desfecho não avisa ninguém e se desfaz voltando o status. Cancelar
+        // exige motivo porque é o que a equipe lê ao ver o horário vago.
+        onRealizado={(id) => desfecho.mutate({ id, status: "completed" })}
+        onFaltou={(id) => desfecho.mutate({ id, status: "no_show" })}
       />
 
       {/* ⚠️ O VAZIO NÃO ESCONDE MAIS A GRADE, e o achado veio do CI.
@@ -539,14 +623,27 @@ export function AgendaClient({
           <EmptyAgenda />
         </div>
       ) : null}
-      <GradeDaAgenda
-          visao={visao}
-          ancora={ancora}
-          agora={new Date()}
-          pessoas={pessoas}
-          agendamentos={agendamentos}
-          className="min-h-0 flex-1"
-        />
+      {/* A GRADE INTERATIVA — clicar num bloco livre marca ali, arrastar um card
+          remarca. Toda a fiação (a consulta de horários da janela desenhada, a
+          proposta de remarcação, o otimismo com volta atrás) mora em
+          `AgendaInterativa`; aqui fica só o que esta tela já sabia. */}
+      <AgendaInterativa
+        visao={visao}
+        ancora={ancora}
+        agora={new Date()}
+        pessoas={pessoas}
+        agendamentos={agendamentos}
+        recorte={recorteDaGrade}
+        tipos={tiposIniciais.map((t) => ({ id: t.id, nome: t.nome, duracaoMin: t.duracaoMin }))}
+        tipo={tipo ? { id: tipo.id, duracaoMin: tipo.duracaoMin } : null}
+        onEscolherTipo={setTipoId}
+        onMarcarEm={(instante) => {
+          setHorarioEscolhido({ instante, rotulo: format(new Date(instante), "HH:mm") });
+          setRemarcandoId(null);
+          setMarcando(true);
+        }}
+        className="min-h-0 flex-1"
+      />
 
     </div>
   );

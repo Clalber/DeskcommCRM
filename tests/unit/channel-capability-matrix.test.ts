@@ -15,7 +15,7 @@ import {
   type ChannelProvider,
 } from "@/lib/channels/capabilities";
 
-const PROVIDERS = ["waha", "meta_cloud", "zernio"] as const satisfies readonly ChannelProvider[];
+const PROVIDERS = ["waha", "meta_cloud", "zernio", "meta_instagram"] as const satisfies readonly ChannelProvider[];
 
 /**
  * Esquecer um provider aqui passa a ser erro de COMPILAÇÃO.
@@ -30,6 +30,7 @@ const _todoProviderEstaNaLista: ProviderNaoVarrido extends never ? true : never 
 void _todoProviderEstaNaLista;
 const CAPABILITIES = [
   "freeformOutsideWindow",
+  "reengajamento",
   "requiresTemplates",
   "canManageTemplates",
   "banRisk",

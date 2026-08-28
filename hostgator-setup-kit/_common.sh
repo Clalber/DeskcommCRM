@@ -426,7 +426,28 @@ psql_run() { docker run --rm -i postgres:17-alpine psql "$(url_do_schema)" -v ON
 # O namespace é constante e literal de propósito: ele está gravado no .env de
 # toda instalação viva, e derivá-lo de variável faria o kit antigo (que já está
 # no disco do cliente) e o novo montarem strings diferentes.
-IMG_NS="ghcr.io/melgarafael"
+#
+# ─── ESTE FORK PUBLICA AS PRÓPRIAS IMAGENS ──────────────────────────────────
+#
+# Trocado do namespace do projeto de origem para o deste fork. Não é preferência
+# de nome: é o que torna possível rodar código próprio numa instalação.
+#
+# O `update.sh` reescreve `APP_IMAGE`/`WORKER_IMAGE`/`SCHEDULER_IMAGE` no `.env`
+# INCONDICIONALMENTE, montando-os a partir desta constante (`update.sh:209-212`).
+# Enquanto ela apontasse para o projeto de origem, toda atualização puxaria a
+# imagem de lá — e qualquer feature deste fork sumiria da instalação sem aviso,
+# com o contêiner `healthy` e o operador sem nada na tela dizendo o que houve.
+#
+# O CI não precisou mudar: `publish-image.yml` já monta o destino com
+# `${{ github.repository_owner }}`, então o mesmo workflow publica em
+# `ghcr.io/clalber` quando roda aqui.
+#
+# CONSEQUÊNCIA A ASSUMIR: as versões deste fork são independentes. Trazer
+# novidade do projeto de origem passa a ser merge explícito seguido de tag
+# própria — e as tags de lá NÃO devem ser empurradas para cá, senão o
+# `agent.sh`, que oferece a MAIOR tag `v*` a cada VPS, passaria a oferecer uma
+# versão cuja imagem não existe neste registro.
+IMG_NS="ghcr.io/clalber"
 IMG_APP="${IMG_NS}/deskcommcrm"
 IMG_WORKER="${IMG_NS}/deskcomm-worker"
 IMG_SCHEDULER="${IMG_NS}/deskcomm-scheduler"
