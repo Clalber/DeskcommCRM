@@ -55,10 +55,6 @@ const COLISOES_CONGELADAS: Record<string, string> = {
   J10:
     "anterior a este gate (2026-08-28): 'Marca própria: o revendedor põe a cara dele no sistema' " +
     "e 'Instalação fresca com a marca do revendedor'. Mesmo custo de renumeração.",
-  J15:
-    "nasceu em 2026-08-28, de dois trabalhos paralelos: 'A grade da Agenda como agenda de " +
-    "verdade' (#382) e 'Trocar de organização, incluindo a que não foi configurada' (#389). " +
-    "A segunda já virou J17 na branch do #387; quando aquele PR entrar, ESTA ENTRADA SAI.",
 };
 
 interface Jornada {
