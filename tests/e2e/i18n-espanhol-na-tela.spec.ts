@@ -26,14 +26,17 @@
  * chave de interface por acaso, e a chave que coincidisse estaria traduzida.
  * Zero lista para manter: chave nova entra na régua no dia em que é escrita.
  *
- * ─── O que este arquivo NÃO prova ──────────────────────────────────────────
+ * ─── A data, que era a dívida declarada, agora é medida aqui ───────────────
  *
- * Que a DATA sai em espanhol. Ela não sai: `locale: ptBR` é passado à mão em 38
- * arquivos com date-fns e em 24 chamadas de `Intl`, e trocar isso é um passe
- * próprio (a dívida está declarada no cabeçalho do guarda estático). Uma tela
- * com todo o texto em espanhol e "quinta-feira, 3 de março" no meio continua
- * passando aqui — de propósito, porque o contrário seria este arquivo mentir
- * sobre a própria cobertura.
+ * Este bloco dizia que a data NÃO saía em espanhol, e que isso era um passe
+ * próprio. O passe aconteceu: existe `lib/i18n/datas.ts`, e
+ * `tests/unit/i18n-a-data-segue-o-idioma` vigia que ninguém volte a fixar o
+ * idioma dela.
+ *
+ * Aquele guarda prova o CÓDIGO — que a camada existe e que ninguém a
+ * contorna. Não prova que a data RENDERIZADA muda, e essa distância é a mesma
+ * que já engoliu uma feature inteira aqui (o seletor da organização, gravado e
+ * nunca lido). Por isso a asserção de data está abaixo, na tela.
  */
 import { mkdirSync } from "node:fs";
 import * as path from "node:path";
@@ -187,6 +190,45 @@ async function porIdiomaEm(page: Page, codigo: "pt-BR" | "es"): Promise<void> {
  * "pt-BR") porque `null` é a ausência de preferência, que é como a conta nasce
  * do seed — devolver um valor onde não havia nenhum é deixar outro rastro.
  */
+/**
+ * Um contato com atividade de ONTEM — a única forma de a data virar PALAVRA.
+ *
+ * `ContactsTable` só escreve a data por extenso quando ela é de hoje ou de
+ * ontem (`isToday || isYesterday`); fora disso imprime `dd/MM/yyyy`, que é
+ * IGUAL nos dois idiomas. Sem esta fixture a asserção de data não tem o que
+ * medir — e não é hipótese: sabotei a camada de idioma, rodei, e a spec passou
+ * VERDE porque nenhuma tela do banco de então imprimia mês ou dia por extenso.
+ *
+ * "ontem" → "ontem às 07:38" em português, "ayer a las 07:38" em espanhol. É
+ * essa diferença que o controle positivo exige encontrar antes de afirmar
+ * qualquer coisa sobre o espanhol.
+ */
+test.beforeAll(async () => {
+  const c = credenciaisSupabaseDeTeste();
+  const svc = createClient(c.url, c.serviceRole, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+  const { data: org } = await svc.from("organizations").select("id").limit(1).single();
+  if (!org) throw new Error("fixture de data: nenhuma organização no banco de teste");
+  const ontem = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  // Apaga e insere em vez de `upsert`: o índice único de telefone é PARCIAL
+  // (`where phone_number is not null and is_merged_into is null`), e
+  // `onConflict` não casa índice parcial — o PostgREST devolve "no unique or
+  // exclusion constraint matching". Assim a fixture é idempotente sem depender
+  // da forma do índice.
+  const TELEFONE = "+5511999990009";
+  await svc.from("contacts").delete().eq("organization_id", org.id).eq("phone_number", TELEFONE);
+  const { error } = await svc.from("contacts").insert({
+    organization_id: org.id,
+    // Nome SEM palavra de data: "Contato de Ontem" fazia a régua acusar o
+    // próprio nome como se fosse data mal formatada — o teste caçando a si.
+    display_name: "Fixture Data Recente",
+    phone_number: TELEFONE,
+    last_activity_at: ontem,
+  });
+  if (error) throw new Error(`fixture de data: ${error.message}`);
+});
+
 test.afterAll(async () => {
   const c = credenciaisSupabaseDeTeste();
   const svc = createClient(c.url, c.serviceRole, {
@@ -228,6 +270,56 @@ test.describe("o idioma escolhido chega à tela", () => {
     await page.waitForLoadState("networkidle", { timeout: PRAZO });
     await porIdiomaEm(page, "es");
     await page.screenshot({ path: path.join(EVIDENCIA, "01-inbox-em-espanhol.png"), fullPage: true });
+
+    // ── 3b. A DATA saiu do português? ──────────────────────────────────────
+    //
+    // ⚠️ COM CONTROLE POSITIVO, e ele não é zelo: sem ele esta asserção NÃO
+    // VALE NADA, e eu medi isso. A primeira versão só procurava mês e dia em
+    // português na tela em espanhol; sabotei `lib/i18n/datas.ts` para o
+    // espanhol apontar de volta ao português, reconstruí, rodei — e passou
+    // VERDE. Nenhuma das telas percorridas imprimia mês por extenso naquele
+    // banco, então a régua nunca teve o que achar.
+    //
+    // O controle inverte a pergunta: no retrato em PORTUGUÊS, a régua tem de
+    // achar alguma data. Se não achar, quem está errado é o teste — e ele diz
+    // isso, em vez de dar um verde que não significa nada.
+    // A régua exige a FORMA da data, não a palavra solta: mês/dia seguido de
+    // hora, ou "às" entre eles. Sem isso ela acusa qualquer texto que contenha
+    // "ontem" — inclusive o nome de um contato, que foi o que aconteceu no
+    // primeiro ensaio: a fixture se chamava "Contato de Ontem" e o teste caçou
+    // a si mesmo.
+    // ⚠️ `\sàs\s`, NUNCA `\bàs\b` — medido: a segunda forma não casa nada.
+    // Em regex JS `\b` é definido sobre `[A-Za-z0-9_]`, e "à" não está lá; entre
+    // um espaço e um "à" não existe fronteira de palavra. Escrito assim, a
+    // régua ficava sempre vazia e o controle positivo abaixo foi quem contou.
+    // É o mesmo defeito de acento que já apareceu no extrator de chaves deste
+    // PR — `\w` e `\b` não falam português.
+    const DATA_EM_PORTUGUES =
+      /\b(janeiro|fevereiro|março|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro|domingo|segunda-feira|terça-feira|quarta-feira|quinta-feira|sexta-feira|sábado|ontem|hoje)\b[^]*\sàs\s|\sde\s(janeiro|fevereiro|março|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro)\b/i;
+
+    const achouEmPortugues = [...antes.values()]
+      .flat()
+      .filter((txt) => DATA_EM_PORTUGUES.test(txt));
+    expect(
+      achouEmPortugues.length,
+      "CONTROLE POSITIVO FALHOU: a régua de data não achou NENHUM mês/dia em " +
+        "português no retrato inicial. Ou o seed não tem data recente o bastante " +
+        "para a tela escrever o dia por extenso, ou a régua está furada — nos " +
+        "dois casos a asserção de espanhol abaixo passaria sem medir nada.",
+    ).toBeGreaterThan(0);
+
+    for (const tela of TELAS) {
+      await page.goto(tela);
+      await page.waitForLoadState("networkidle", { timeout: PRAZO });
+      const emPortugues = (await textosVisiveis(page)).filter((txt) =>
+        DATA_EM_PORTUGUES.test(txt),
+      );
+      expect(
+        emPortugues,
+        `${tela}: a data continua em português com a interface em espanhol — ` +
+          "alguém formatou sem passar pela camada de `lib/i18n/datas.ts`.",
+      ).toEqual([]);
+    }
 
     // ── 3. A tela MUDOU. Sem isto, um seletor quebrado passaria em tudo ─────
     //
@@ -285,10 +377,20 @@ test.describe("o idioma escolhido chega à tela", () => {
     for (const tela of TELAS) {
       await page.goto(tela);
       await page.waitForLoadState("networkidle", { timeout: PRAZO });
-      expect(
-        rotulosDeInterface(await textosVisiveis(page)),
-        `a tela ${tela} não voltou ao português idêntico depois de passar pelo espanhol`,
-      ).toBe(rotulosDeInterface(antes.get(tela)!));
+      // `poll`, e não uma leitura única: `networkidle` diz que a REDE parou, não
+      // que a árvore terminou de montar. Medido — uma leitura única pegou
+      // /app/contacts com 6 rótulos onde o retrato inicial tinha 39, porque a
+      // tabela ainda estava chegando.
+      //
+      // Isto não mascara defeito: se a tela realmente não voltar ao português,
+      // o poll estoura o prazo e falha com o mesmo diff. O que ele remove é a
+      // corrida entre montar e medir — que é ruído, não achado.
+      await expect
+        .poll(async () => rotulosDeInterface(await textosVisiveis(page)), {
+          timeout: PRAZO,
+          message: `a tela ${tela} não voltou ao português idêntico depois de passar pelo espanhol`,
+        })
+        .toBe(rotulosDeInterface(antes.get(tela)!));
     }
     await page.screenshot({ path: path.join(EVIDENCIA, "02-inbox-de-volta-em-portugues.png"), fullPage: true });
   });
