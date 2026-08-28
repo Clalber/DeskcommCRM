@@ -80,12 +80,13 @@ export function usePublishFollowupFlow(id: string) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: followupFlowQueryKey(id) });
       qc.invalidateQueries({ queryKey: ["followup", "flows", "list"] });
-      toast.success("Fluxo publicado.");
+      toast.success(t("Fluxo publicado."));
     },
   });
 }
 
 export function useDeleteFollowupFlow() {
+  const t = useT();
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (id: string) => {
@@ -94,7 +95,7 @@ export function useDeleteFollowupFlow() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["followup", "flows", "list"] });
-      toast.success("Fluxo excluído.");
+      toast.success(t("Fluxo excluído."));
     },
     onError: (err) => showApiError(err),
   });
@@ -113,7 +114,7 @@ export function useDisableFollowupFlow(id: string) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: followupFlowQueryKey(id) });
       qc.invalidateQueries({ queryKey: ["followup", "flows", "list"] });
-      toast.success("Fluxo desativado.");
+      toast.success(t("Fluxo desativado."));
     },
     onError: (err) => showApiError(err),
   });

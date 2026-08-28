@@ -42,7 +42,11 @@ export function NewFlowDialog({ open, onOpenChange }: Props) {
       // erro fica DENTRO do diálogo (não num toast que some) porque é ali que
       // ele está olhando, e o diálogo NÃO fecha — fechar apagaria o nome digitado.
       onError: (err: unknown) => {
-        setErro(err instanceof Error && err.message ? err.message : "Não consegui criar o fluxo. Tente de novo.");
+        setErro(
+          err instanceof Error && err.message
+            ? t(err.message)
+            : t("Não consegui criar o fluxo. Tente de novo."),
+        );
       },
     });
   };
@@ -60,9 +64,7 @@ export function NewFlowDialog({ open, onOpenChange }: Props) {
     >
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>
-            Novo fluxo de follow-up
-          </DialogTitle>
+          <DialogTitle>{t("Novo fluxo de follow-up")}</DialogTitle>
           <DialogDescription>
             {t("Nasce como rascunho. Você monta as etapas no editor visual em seguida.")}
           </DialogDescription>

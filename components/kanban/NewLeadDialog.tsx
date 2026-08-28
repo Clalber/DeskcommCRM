@@ -122,7 +122,7 @@ export function NewLeadDialog({
 
     try {
       await create.mutateAsync(parsed.data as CreateLeadInput);
-      toast.success("Lead criado");
+      toast.success(t("Lead criado"));
       onCreated?.();
       form.reset({
         title: "",

@@ -5588,6 +5588,589 @@ export const DICIONARIO: Traducoes = {
   "Remarcar": { es: "Reprogramar" },
   "para": { es: "para" },
   "? Quem foi atendido recebe o aviso da mudança.": { es: "? Quien fue atendido recibe el aviso del cambio." },
+
+  // ═══ As telas que só o passe do PR #352 alcançou ═══
+  //
+  // Contribuição de @JowaniOrantes: as 398 entradas abaixo são as que o
+  // passe dele cobriu e este PR não tinha — Desempenho, auditoria do tenant,
+  // Respostas rápidas, Radar, toasts de hook e as mensagens de erro da API.
+  // Onde a mesma chave existia nos dois lados prevalece a tradução deste PR,
+  // que é a que a spec de tela e o guarda de AST asseguram — as duas dizem a
+  // mesma coisa em espanhol, então a escolha é de consistência, não de mérito.
+  "Buscar…": { es: "Buscar…" },
+  "Sobre as demandas encerradas no período.": { es: "Sobre las demandas cerradas en el período." },
+  "Quantas vezes o agente voltou ao cliente por conta própria. Medido sobre as": {
+    es: "Cuántas veces el agente volvió al cliente por cuenta propia. Medido sobre las",
+  },
+  "demandas que passaram por atendimento humano.": {
+    es: "demandas que pasaron por atención humana.",
+  },
+  "Conversas que morreram no silêncio (após": {
+    es: "Conversaciones que murieron en el silencio (después de",
+  },
+  "conversas em que falamos: a pessoa não respondeu e ninguém encerrou.": {
+    es: "conversaciones en las que hablamos: la persona no respondió y nadie cerró.",
+  },
+  "Piso:": { es: "Piso:" },
+  "Conta só a repergunta quase literal — reformulada com outras palavras escapa desta medida.": {
+    es: "Cuenta solo la repregunta casi literal — reformulada con otras palabras escapa de esta medida.",
+  },
+  "Igual à mediana: há poucas esperas medidas no período para os dois se separarem.": {
+    es: "Igual a la mediana: hay pocas esperas medidas en el período para que los dos se separen.",
+  },
+  "O p90 é a experiência de quem espera mais — a mediana a esconde.": {
+    es: "El p90 es la experiencia de quien espera más — la mediana la esconde.",
+  },
+  "abertas agora. Cada uma é alguém esperando sem que nada esteja marcado para acontecer.": {
+    es: "abiertas ahora. Cada una es alguien esperando sin que nada esté programado para pasar.",
+  },
+  "Esperas sem nenhuma resposta por mais de": {
+    es: "Esperas sin ninguna respuesta por más de",
+  },
+  "falas do cliente. Quem sabe que vai esperar, espera; quem não sabe, desiste.": {
+    es: "hablas del cliente. Quien sabe que va a esperar, espera; quien no sabe, desiste.",
+  },
+  "Tipo de recurso": { es: "Tipo de recurso" },
+  "Novo template": { es: "Nuevo template" },
+  "Editar template": { es: "Editar template" },
+  "Excluir template": { es: "Eliminar template" },
+  "Template excluído.": { es: "Template eliminado." },
+  "Template atualizado.": { es: "Template actualizado." },
+  "Template criado.": { es: "Template creado." },
+  "Oi {{primeiro_nome}}, tudo bem?": { es: "Hola {{primeiro_nome}}, ¿todo bien?" },
+  "Criar template": { es: "Crear template" },
+  "Nova execução iniciada.": { es: "Nueva ejecución iniciada." },
+  "Execução concluída.": { es: "Ejecución concluida." },
+  "Orçamento atualizado": { es: "Presupuesto actualizado" },
+  "Conversa transferida.": { es: "Conversación transferida." },
+  "Atendente atualizado.": { es: "Agente actualizado." },
+  "Roteamento atualizado.": { es: "Enrutamiento actualizado." },
+  "Papel atualizado.": { es: "Rol actualizado." },
+
+  // ─── Feedback: catálogo genérico de erros de API (ApiErrorToast) ───
+  "Requisição inválida. Recarregue e tente de novo.": {
+    es: "Solicitud inválida. Recarga e intenta de nuevo.",
+  },
+  "Falha ao paginar. Volte ao início.": { es: "Fallo al paginar. Vuelve al inicio." },
+  "Dados inválidos. Confira os campos destacados.": {
+    es: "Datos inválidos. Revisa los campos destacados.",
+  },
+  "Sessão expirada. Faça login novamente.": { es: "Sesión vencida. Inicia sesión de nuevo." },
+  "Você não tem permissão para esta ação.": { es: "No tienes permiso para esta acción." },
+  "Recurso não encontrado ou já removido.": { es: "Recurso no encontrado o ya eliminado." },
+  "Organização não encontrada.": { es: "Organización no encontrada." },
+  "Operação já processada.": { es: "Operación ya procesada." },
+  "Outro atendente já assumiu.": { es: "Otro agente ya lo asumió." },
+  "Este caso já foi respondido ou fechado.": { es: "Este caso ya fue respondido o cerrado." },
+  "Calma — muitas tentativas. Espere alguns segundos.": {
+    es: "Calma — demasiados intentos. Espera unos segundos.",
+  },
+  "Esta ação não pode ser desfeita: o contato já foi anonimizado.": {
+    es: "Esta acción no se puede deshacer: el contacto ya fue anonimizado.",
+  },
+  "Erro interno. Tente de novo em instantes.": { es: "Error interno. Intenta de nuevo en instantes." },
+
+  // ─── Segment error boundary genérico ───
+  "Algo deu errado": { es: "Algo salió mal" },
+  "Copiado!": { es: "¡Copiado!" },
+  "Copiar ID": { es: "Copiar ID" },
+
+  // ─── Impersonate banner (platform admin atuando como tenant) ───
+  "Falha ao encerrar impersonate": { es: "Fallo al terminar el impersonate" },
+  "Erro de rede ao encerrar impersonate": { es: "Error de red al terminar el impersonate" },
+  "Modo Impersonate — atuando como": { es: "Modo Impersonate — actuando como" },
+  "Encerrar impersonate e voltar ao admin": { es: "Terminar impersonate y volver al admin" },
+  "Encerrando…": { es: "Terminando…" },
+
+  // ─── Radar de risco ───
+  "parado há": { es: "parado hace" },
+  "Agente:": { es: "Agente:" },
+  "sem nome": { es: "sin nombre" },
+  "Com atendente": { es: "Con agente" },
+  "Assistente na conversa": { es: "Asistente en la conversación" },
+  "Sem dono": { es: "Sin dueño" },
+  "Você assumiu a demanda": { es: "Asumiste la demanda" },
+  "Assistente retorna": { es: "El asistente vuelve" },
+
+  // ─── Merge PR #365 (Web Push, relógio HTTP e follow-up reativo) — i18n ───
+  "Automação (Webhooks)": { es: "Automatización (Webhooks)" },
+  "Adicionar campo": { es: "Agregar campo" },
+  "Campos do funil": { es: "Campos del embudo" },
+  "Chave do campo": { es: "Clave del campo" },
+  "Contato excluído.": { es: "Contacto eliminado." },
+  "Disparado por uma automação em Webhooks": { es: "Disparado por una automatización en Webhooks" },
+  "Email ainda não está disponível. In-app (toast) e Push (Chrome) já funcionam para as cinco categorias.": {
+    es: "Email aún no está disponible. In-app (toast) y Push (Chrome) ya funcionan para las cinco categorías.",
+  },
+  "Excluindo…": { es: "Eliminando…" },
+  "Excluir contato": { es: "Eliminar contacto" },
+  "Excluir contato?": { es: "¿Eliminar contacto?" },
+  "Fluxo de follow-up": { es: "Flujo de follow-up" },
+  "Fluxo excluído.": { es: "Flujo eliminado." },
+  "Iniciar conversa com": { es: "Iniciar conversación con" },
+  "Iniciar conversa no Inbox": { es: "Iniciar conversación en el Inbox" },
+  "Isso remove": { es: "Esto elimina" },
+  "Novo campo": { es: "Nuevo campo" },
+  "Opções do campo": { es: "Opciones del campo" },
+  "Remover campo": { es: "Quitar campo" },
+  "Rótulo do campo": { es: "Etiqueta del campo" },
+  "Tipo do campo": { es: "Tipo del campo" },
+  "chave (endereco)": { es: "clave (direccion)" },
+  "e a conversa associada, se houver. Esta ação não pode ser desfeita.": {
+    es: "y la conversación asociada, si la hay. Esta acción no puede deshacerse.",
+  },
+
+  // ─── Mensagens literais de `fail()` em app/api/v1/** ───
+  //
+  // Estas são o texto de erro que a ROTA escreve (não o `msg` de `COPY` do
+  // ApiErrorToast, que já tem sua própria seção acima). Sem entrada aqui, a
+  // frase da API chegava em português na tela de um usuário em espanhol —
+  // `toastFor` caía direto em `err.message` sem passar por `t()`, e telas que
+  // leem `err.message` fora do toast (ex.: diálogos com estado de erro
+  // próprio) faziam o mesmo. A chave é o texto exato que `fail(code, texto,
+  // status)` manda; strings com interpolação (template literal) não entram
+  // aqui — não há como uma chave literal casar com um texto que muda por
+  // requisição, e ficam em português por ora, mesmo comportamento de
+  // degradação do resto deste arquivo.
+  "account_id e api_key são obrigatórios": { es: "account_id y api_key son obligatorios" },
+  "Agente não encontrado.": { es: "Agente no encontrado." },
+  "Agente não encontrado nesta organização.": { es: "Agente no encontrado en esta organización." },
+  "Agent não encontrado.": { es: "Agent no encontrado." },
+  "Agent não encontrado nesta organização.": { es: "Agent no encontrado en esta organización." },
+  "Agent não tem versão para duplicar.": { es: "El agent no tiene versión para duplicar." },
+  "A imagem precisa ter até 5 MB.": { es: "La imagen debe tener hasta 5 MB." },
+  "Apenas versões 'draft' podem ser editadas.": { es: "Solo las versiones 'draft' pueden editarse." },
+  "Arquivo acima de 50MB.": { es: "Archivo mayor a 50MB." },
+  "Arquivo excede o limite de 20MB.": { es: "El archivo supera el límite de 20MB." },
+  "Atendente não encontrado na organização.": { es: "Atendiente no encontrado en la organización." },
+  "Atualização não encontrada.": { es: "Actualización no encontrada." },
+  "Audit entry not found": { es: "Entrada de audit no encontrada" },
+  "Auth indisponível": { es: "Auth no disponible" },
+  "Auth required.": { es: "Auth requerido." },
+  "Aviso não encontrado nesta organização.": { es: "Aviso no encontrado en esta organización." },
+  "Body vazio.": { es: "Body vacío." },
+  "Caminho inválido.": { es: "Ruta inválida." },
+  "Campo 'agent_id' deve ser UUID válido.": { es: "El campo 'agent_id' debe ser un UUID válido." },
+  "Campo 'file' ausente ou inválido.": { es: "Campo 'file' ausente o inválido." },
+  "Campo 'file' (multipart) obrigatório.": { es: "Campo 'file' (multipart) obligatorio." },
+  "Campo 'name' inválido (2-120 chars).": { es: "Campo 'name' inválido (2-120 caracteres)." },
+  "Canal não encontrado.": { es: "Canal no encontrado." },
+  "Caso não encontrado.": { es: "Caso no encontrado." },
+  "chave não encontrada nesta organização": { es: "clave no encontrada en esta organización" },
+  "Conexão não encontrada nesta organização.": { es: "Conexión no encontrada en esta organización." },
+  "Conexão sem identificador utilizável.": { es: "Conexión sin identificador utilizable." },
+  "Conflito de versionamento — tente novamente.": { es: "Conflicto de versionado — intenta de nuevo." },
+  "Contato não encontrado.": { es: "Contacto no encontrado." },
+  "content é obrigatório.": { es: "content es obligatorio." },
+  "Conversa do caso sem contato associado.": { es: "La conversación del caso no tiene contacto asociado." },
+  "Conversa não encontrada.": { es: "Conversación no encontrada." },
+  "Conversa sem contato/canal.": { es: "Conversación sin contacto/canal." },
+  "corpo inválido": { es: "cuerpo inválido" },
+  "Corpo inválido.": { es: "Cuerpo inválido." },
+  "Corpo inválido para desconectar.": { es: "Cuerpo inválido para desconectar." },
+  "Corpo não é JSON válido.": { es: "El cuerpo no es un JSON válido." },
+  "Credential desativada.": { es: "Credential desactivada." },
+  "Credential não encontrada.": { es: "Credential no encontrada." },
+  "cron secret ausente ou inválido": { es: "cron secret ausente o inválido" },
+  "CSV vazio ou sem linhas de dados.": { es: "CSV vacío o sin filas de datos." },
+  "decision é obrigatório (accept | dismiss).": { es: "decision es obligatorio (accept | dismiss)." },
+  "decision e proposal_id são obrigatórios.": { es: "decision y proposal_id son obligatorios." },
+  "Demanda não encontrada, ou já encerrada.": { es: "Demanda no encontrada, o ya cerrada." },
+  "Destino não é um atendente desta organização.": { es: "El destino no es un atendiente de esta organización." },
+  "Dê um nome à etapa — é o que aparece no topo da coluna.": {
+    es: "Ponle un nombre a la etapa — es lo que aparece arriba de la columna.",
+  },
+  "Dê um nome ao funil — é o que aparece na lista.": { es: "Ponle un nombre al embudo — es lo que aparece en la lista." },
+  "Duas intenções não podem ter o mesmo nome no router.": {
+    es: "Dos intenciones no pueden tener el mismo nombre en el router.",
+  },
+  "Enrollment já está encerrado.": { es: "El enrollment ya está cerrado." },
+  "Enrollment não encontrado.": { es: "Enrollment no encontrado." },
+  "Entrada de memória não encontrada nesta organização.": { es: "Entrada de memoria no encontrada en esta organización." },
+  "Envie o arquivo como multipart/form-data no campo 'file'.": {
+    es: "Envía el archivo como multipart/form-data en el campo 'file'.",
+  },
+  "Erro ao agregar o uso de IA.": { es: "Error al agregar el uso de IA." },
+  "Erro ao arquivar fonte.": { es: "Error al archivar la fuente." },
+  "Erro ao atualizar agent.": { es: "Error al actualizar el agent." },
+  "Erro ao atualizar credential.": { es: "Error al actualizar la credential." },
+  "Erro ao atualizar fonte.": { es: "Error al actualizar la fuente." },
+  "Erro ao atualizar orçamento.": { es: "Error al actualizar el presupuesto." },
+  "Erro ao atualizar router.": { es: "Error al actualizar el router." },
+  "Erro ao atualizar version.": { es: "Error al actualizar la version." },
+  "Erro ao buscar agent.": { es: "Error al buscar el agent." },
+  "Erro ao buscar membros do router.": { es: "Error al buscar los miembros del router." },
+  "Erro ao buscar mensagem.": { es: "Error al buscar el mensaje." },
+  "Erro ao buscar router.": { es: "Error al buscar el router." },
+  "Erro ao buscar version.": { es: "Error al buscar la version." },
+  "Erro ao carregar agent.": { es: "Error al cargar el agent." },
+  "Erro ao carregar a versão da memória.": { es: "Error al cargar la versión de la memoria." },
+  "Erro ao carregar catálogo de skills.": { es: "Error al cargar el catálogo de skills." },
+  "Erro ao carregar descrição das skills.": { es: "Error al cargar la descripción de las skills." },
+  "Erro ao carregar entradas da memória.": { es: "Error al cargar las entradas de la memoria." },
+  "Erro ao carregar o agente.": { es: "Error al cargar el agente." },
+  "Erro ao carregar router.": { es: "Error al cargar el router." },
+  "Erro ao carregar skills instaladas.": { es: "Error al cargar las skills instaladas." },
+  "Erro ao carregar versões da memória.": { es: "Error al cargar las versiones de la memoria." },
+  "Erro ao consultar credential.": { es: "Error al consultar la credential." },
+  "Erro ao contar membros dos routers.": { es: "Error al contar los miembros de los routers." },
+  "Erro ao criar agent.": { es: "Error al crear el agent." },
+  "Erro ao criar credential.": { es: "Error al crear la credential." },
+  "Erro ao criar entrada de memória.": { es: "Error al crear la entrada de memoria." },
+  "Erro ao criar fonte de conhecimento.": { es: "Error al crear la fuente de conocimiento." },
+  "Erro ao criar nota.": { es: "Error al crear la nota." },
+  "Erro ao criar orçamento.": { es: "Error al crear el presupuesto." },
+  "Erro ao criar router.": { es: "Error al crear el router." },
+  "Erro ao criar template.": { es: "Error al crear la plantilla." },
+  "Erro ao criar versão inicial.": { es: "Error al crear la versión inicial." },
+  "Erro ao criar version.": { es: "Error al crear la version." },
+  "Erro ao deletar credential.": { es: "Error al eliminar la credential." },
+  "Erro ao desativar agent.": { es: "Error al desactivar el agent." },
+  "Erro ao desinstalar a skill.": { es: "Error al desinstalar la skill." },
+  "Erro ao excluir nota.": { es: "Error al eliminar la nota." },
+  "Erro ao excluir template.": { es: "Error al eliminar la plantilla." },
+  "Erro ao fazer upload do arquivo.": { es: "Error al subir el archivo." },
+  "Erro ao gravar membros do router.": { es: "Error al guardar los miembros del router." },
+  "Erro ao importar o pacote de skill.": { es: "Error al importar el paquete de skill." },
+  "Erro ao iniciar test run.": { es: "Error al iniciar el test run." },
+  "Erro ao inserir novos itens FAQ.": { es: "Error al insertar nuevos ítems de FAQ." },
+  "Erro ao instalar a skill.": { es: "Error al instalar la skill." },
+  "Erro ao ler o orçamento.": { es: "Error al leer el presupuesto." },
+  "Erro ao ler o uso das capacidades.": { es: "Error al leer el uso de las capacidades." },
+  "Erro ao limpar membros do router.": { es: "Error al limpiar los miembros del router." },
+  "Erro ao listar agents.": { es: "Error al listar agents." },
+  "Erro ao listar credentials.": { es: "Error al listar credentials." },
+  "Erro ao listar fontes de conhecimento.": { es: "Error al listar las fuentes de conocimiento." },
+  "Erro ao listar modelos.": { es: "Error al listar los modelos." },
+  "Erro ao listar notas.": { es: "Error al listar las notas." },
+  "Erro ao listar routers.": { es: "Error al listar los routers." },
+  "Erro ao listar runs.": { es: "Error al listar los runs." },
+  "Erro ao listar templates.": { es: "Error al listar las plantillas." },
+  "Erro ao listar versions.": { es: "Error al listar las versions." },
+  "Erro ao pausar agent.": { es: "Error al pausar el agent." },
+  "Erro ao preparar o link da imagem.": { es: "Error al preparar el enlace de la imagen." },
+  "Erro ao processar o arquivo.": { es: "Error al procesar el archivo." },
+  "Erro ao publicar.": { es: "Error al publicar." },
+  "Erro ao registrar fonte de conhecimento.": { es: "Error al registrar la fuente de conocimiento." },
+  "Erro ao remover itens antigos.": { es: "Error al eliminar ítems antiguos." },
+  "Erro ao remover router.": { es: "Error al eliminar el router." },
+  "Erro ao subir a imagem.": { es: "Error al subir la imagen." },
+  "Erro ao subir o arquivo.": { es: "Error al subir el archivo." },
+  "Erro ao subir o logo.": { es: "Error al subir el logo." },
+  "Erro ao validar agent_id.": { es: "Error al validar agent_id." },
+  "Erro ao validar conversa.": { es: "Error al validar la conversación." },
+  "Erro ao verificar fonte.": { es: "Error al verificar la fuente." },
+  "Erro ao verificar o número de WhatsApp.": { es: "Error al verificar el número de WhatsApp." },
+  "Erro ao verificar uso da credential.": { es: "Error al verificar el uso de la credential." },
+  "Esta atualização já terminou.": { es: "Esta actualización ya terminó." },
+  "Este canal não gerencia definições.": { es: "Este canal no gestiona definiciones." },
+  "Este caso já foi respondido por outra pessoa.": { es: "Este caso ya fue respondido por otra persona." },
+  "Este número já tem um roteador ativo.": { es: "Este número ya tiene un router activo." },
+  "Este retorno já aconteceu ou já foi cancelado.": { es: "Este seguimiento ya ocurrió o ya fue cancelado." },
+  "Faça login.": { es: "Inicia sesión." },
+  "Faça login para continuar.": { es: "Inicia sesión para continuar." },
+  "Falha ao atualizar o aviso.": { es: "Fallo al actualizar el aviso." },
+  "Falha ao carregar as propostas.": { es: "Fallo al cargar las propuestas." },
+  "Falha ao carregar conexões/knobs.": { es: "Fallo al cargar conexiones/knobs." },
+  "Falha ao carregar o caso.": { es: "Fallo al cargar el caso." },
+  "Falha ao carregar o radar.": { es: "Fallo al cargar el radar." },
+  "Falha ao carregar os avisos.": { es: "Fallo al cargar los avisos." },
+  "Falha ao carregar os casos.": { es: "Fallo al cargar los casos." },
+  "Falha ao decifrar credential.": { es: "Fallo al descifrar la credential." },
+  "Falha ao listar funis.": { es: "Fallo al listar embudos." },
+  "Falha ao processar multipart/form-data.": { es: "Fallo al procesar multipart/form-data." },
+  "Falha ao salvar os knobs.": { es: "Fallo al guardar los knobs." },
+  "Falha ao salvar o teto diário.": { es: "Fallo al guardar el tope diario." },
+  "Faltam nome, idioma ou conteúdo.": { es: "Faltan nombre, idioma o contenido." },
+  "Fluxo não encontrado.": { es: "Flujo no encontrado." },
+  "Fluxo não tem rascunho pronto para publicar.": { es: "El flujo no tiene un borrador listo para publicar." },
+  "Fluxo reprovado na validação de publish.": { es: "El flujo fue rechazado en la validación de publish." },
+  "Follow-up não encontrado.": { es: "Follow-up no encontrado." },
+  "Fonte de conhecimento não encontrada.": { es: "Fuente de conocimiento no encontrada." },
+  "Fonte não encontrada.": { es: "Fuente no encontrada." },
+  "Funil não encontrado.": { es: "Embudo no encontrado." },
+  "Informe o novo horário.": { es: "Indica el nuevo horario." },
+  "Já existe um fluxo com este nome.": { es: "Ya existe un flujo con este nombre." },
+  "Janela inválida.": { es: "Ventana inválida." },
+  "Janela inválida: 'from' deve ser anterior a 'to'.": { es: "Ventana inválida: 'from' debe ser anterior a 'to'." },
+  "Lead não encontrado.": { es: "Lead no encontrado." },
+  "Membro está revogado.": { es: "El miembro está revocado." },
+  "Membro não encontrado.": { es: "Miembro no encontrado." },
+  "Mensagem sem mídia.": { es: "Mensaje sin contenido multimedia." },
+  "Mídia indisponível no momento.": { es: "Contenido multimedia no disponible en este momento." },
+  "Muitas trocas de logo seguidas. Tente em alguns minutos.": {
+    es: "Demasiados cambios de logo seguidos. Intenta en unos minutos.",
+  },
+  "nada foi gravado — verifique as permissões da organização": {
+    es: "no se guardó nada — verifique los permisos de la organización",
+  },
+  "Não consegui checar o pedido de atualização.": { es: "No pude verificar la solicitud de actualización." },
+  "Não consegui finalizar a atualização.": { es: "No pude finalizar la actualización." },
+  "Não consegui gravar o estado.": { es: "No pude guardar el estado." },
+  "Não consegui gravar o passo.": { es: "No pude guardar el paso." },
+  "Não consegui ler a atualização.": { es: "No pude leer la actualización." },
+  "Não consegui ler o estado da atualização.": { es: "No pude leer el estado de la actualización." },
+  "Não consegui liberar a atualização travada.": { es: "No pude liberar la actualización trabada." },
+  "Não consegui registrar o pedido de atualização.": { es: "No pude registrar la solicitud de actualización." },
+  "Não entendi o que mudar nesta etapa.": { es: "No entendí qué cambiar en esta etapa." },
+  "Não entendi o que mudar neste funil.": { es: "No entendí qué cambiar en este embudo." },
+  "Não é possível revogar o próprio acesso.": { es: "No es posible revocar el propio acceso." },
+  "Não foi possível gravar o dado.": { es: "No fue posible guardar el dato." },
+  "Não há agenda do Google conectada para esta pessoa.": { es: "No hay una agenda de Google conectada para esta persona." },
+  "Não há proposta pendente para este negócio.": { es: "No hay una propuesta pendiente para este negocio." },
+  "Negócio não encontrado.": { es: "Negocio no encontrado." },
+  "Nenhuma conexão de parceiro ativa.": { es: "Ninguna conexión de partner activa." },
+  "nenhuma organização ativa": { es: "ninguna organización activa" },
+  "Nenhuma organização ativa.": { es: "Ninguna organización activa." },
+  "Nenhum campo mapeável (nome/telefone/email).": { es: "Ningún campo mapeable (nombre/teléfono/email)." },
+  "Nenhum campo para alterar.": { es: "Ningún campo para modificar." },
+  "Nome de skill inválido.": { es: "Nombre de skill inválido." },
+  "Nota não encontrada.": { es: "Nota no encontrada." },
+  "Número de WhatsApp não encontrado nesta organização.": { es: "Número de WhatsApp no encontrado en esta organización." },
+  "O arquivo enviado é grande demais (máx. 5 MB por skill).": {
+    es: "El archivo enviado es demasiado grande (máx. 5 MB por skill).",
+  },
+  "O evento original deste run foi removido.": { es: "El evento original de este run fue eliminado." },
+  "O fim do período precisa ser depois do começo.": { es: "El fin del período debe ser posterior al inicio." },
+  "O logo precisa ser PNG ou JPG.": { es: "El logo debe ser PNG o JPG." },
+  "Outro atendente assumiu esta conversa agora.": { es: "Otro atendiente asumió esta conversación ahora." },
+  "Parâmetro 'escopo' inválido.": { es: "Parámetro 'escopo' inválido." },
+  "Parâmetros inválidos.": { es: "Parámetros inválidos." },
+  "payload fora do contrato do canal": { es: "payload fuera del contrato del canal" },
+  "Permissão insuficiente. Requer role >= manager.": { es: "Permiso insuficiente. Requiere role >= manager." },
+  "phone_number_id, waba_id e token são obrigatórios": { es: "phone_number_id, waba_id y token son obligatorios" },
+  "Pipeline não encontrado.": { es: "Pipeline no encontrado." },
+  "provar a chave requer papel de administrador": { es: "probar la clave requiere rol de administrador" },
+  "Provider desconhecido.": { es: "Provider desconocido." },
+  "Rascunho da IA indisponível (config).": { es: "Borrador de la IA no disponible (config)." },
+  "Regra do run não encontrada.": { es: "Regla del run no encontrada." },
+  "Regra não encontrada.": { es: "Regla no encontrada." },
+  "requer papel de administrador": { es: "requiere rol de administrador" },
+  "requer papel de gerente ou superior": { es: "requiere rol de gerente o superior" },
+  "Resposta ao caso indisponível (config).": { es: "Respuesta al caso no disponible (config)." },
+  "Retorno não encontrado.": { es: "Seguimiento no encontrado." },
+  "Router não encontrado.": { es: "Router no encontrado." },
+  "Run não encontrado.": { es: "Run no encontrado." },
+  "sem organização ativa": { es: "sin organización activa" },
+  "Sem organização ativa": { es: "Sin organización activa" },
+  "Sem organização ativa.": { es: "Sin organización activa." },
+  "Sessão de canal não encontrada.": { es: "Sesión de canal no encontrada." },
+  "Sessão expirada": { es: "Sesión expirada" },
+  "Sessão sem token.": { es: "Sesión sin token." },
+  "Skill não encontrada no catálogo de plataforma.": { es: "Skill no encontrada en el catálogo de la plataforma." },
+  "Skill não está instalada nesta organização.": { es: "La skill no está instalada en esta organización." },
+  "Solicitação não encontrada.": { es: "Solicitud no encontrada." },
+  "Só manager+ cria template compartilhado.": { es: "Solo manager+ puede crear una plantilla compartida." },
+  "Só o autor ou manager+ pode apagar esta nota.": { es: "Solo el autor o manager+ puede eliminar esta nota." },
+  "Só o dono do servidor pode atualizar o sistema.": { es: "Solo el dueño del servidor puede actualizar el sistema." },
+  "Stage não encontrado.": { es: "Stage no encontrado." },
+  // ⚠️ FICA SEM TRADUÇÃO DE PROPÓSITO: a recusa 503 de
+  // `app/api/v1/onboarding/whatsapp/session/route.ts` (contêiner do provedor de
+  // WhatsApp fora do ar). A chave teria de repetir o texto da rota LETRA POR
+  // LETRA, e esse texto NOMEIA o provedor — o que faz `pnpm lint:channels`
+  // reprovar este arquivo pelo invariante 1 da doutrina `restricao-de-canal`.
+  //
+  // Medido duas vezes: a entrada derrubou o gate, e o comentário que eu escrevi
+  // para explicar a ausência derrubou de novo, por citar o nome ao explicá-lo —
+  // exatamente a armadilha que a própria catraca documenta. Daí esta redação
+  // perifrástica, que não é estilo: é a única que passa.
+  //
+  // A rota está na lista de exceções da catraca; `lib/i18n/` não está, e ganhar
+  // UMA frase traduzida não paga furar um invariante de arquitetura. Sem
+  // entrada, a frase aparece em português — a degradação que este arquivo
+  // inteiro já assume.
+  "Sugestão não encontrada.": { es: "Sugerencia no encontrada." },
+  "Telefone inválido.": { es: "Teléfono inválido." },
+  "Template não encontrado.": { es: "Plantilla no encontrada." },
+  "Tipo de agendamento não encontrado.": { es: "Tipo de agendamiento no encontrado." },
+  "title e body são obrigatórios.": { es: "title y body son obligatorios." },
+  "Token não encontrado.": { es: "Token no encontrado." },
+  "tool_ids contém ids inexistentes no catálogo MCP.": { es: "tool_ids contiene ids inexistentes en el catálogo MCP." },
+  "Validação de publish falhou.": { es: "La validación de publish falló." },
+  "Versão não encontrada nesta organização.": { es: "Versión no encontrada en esta organización." },
+  "Version não encontrada.": { es: "Version no encontrada." },
+  "Você já está na versão mais recente.": { es: "Ya estás en la versión más reciente." },
+  "Você não está atribuído a essa conversa.": { es: "No estás asignado a esta conversación." },
+  "Web Push ainda não está no banco desta instalação.": { es: "Web Push aún no está en la base de datos de esta instalación." },
+  "Web Push não configurado nesta instalação.": { es: "Web Push no configurado en esta instalación." },
+
+  // ─── Merge da main 1.8.0 — textos que a reescrita trouxe ───
+  //
+  // Não são telas novas: são as MESMAS telas que este ramo já traduzia, cujo
+  // texto a main reescreveu (acervo de conhecimento da 0181, o rótulo de
+  // jornada que deixou de mentir "24/7", e a página de Notificações que passou
+  // a dizer o que falta no `.env`). Traduzir de novo aqui é o preço de um ramo
+  // longo — e o defeito conhecido é o oposto: deixar passar, e a tela volta ao
+  // português sem que nada fique vermelho.
+  //
+  // Ausentes de propósito, porque a palavra é a MESMA nos dois idiomas e
+  // `traduzir()` devolve a chave: "nunca", "Preparado", "Consultado por",
+  // "Preparando…". Entrada que repete a chave é ruído que envelhece.
+  "Vou preparar este material de novo — leva alguns instantes.": {
+    es: "Voy a preparar este material de nuevo — toma unos instantes.",
+  },
+  "Material arquivado. O agente para de consultá-lo.": {
+    es: "Material archivado. El agente deja de consultarlo.",
+  },
+  "Só gerentes e administradores editam os horários de atendimento da equipe. Para publicar os seus, peça a um gerente que abra esta aba e use o botão “Editar horário” ao lado do seu nome.":
+    {
+      es: "Solo gerentes y administradores editan los horarios de atención del equipo. Para publicar los tuyos, pídele a un gerente que abra esta pestaña y use el botón “Editar horario” junto a tu nombre.",
+    },
+  "O resultado vai no arquivo": { es: "El resultado va en el archivo" },
+  "Email ainda não está disponível.": { es: "El email todavía no está disponible." },
+  "Trechos que o agente encontra": { es: "Fragmentos que el agente encuentra" },
+  "Preparar de novo": { es: "Preparar de nuevo" },
+  "Ver o que ele aprendeu": { es: "Ver lo que aprendió" },
+  "O que o agente sabe": { es: "Lo que el agente sabe" },
+  "Não publicado": { es: "No publicado" },
+  "Conexão do WhatsApp caiu — precisa escanear o QR de novo": {
+    es: "Se cayó la conexión de WhatsApp — hay que escanear el QR de nuevo",
+  },
+  "Uma tarefa do assistente falhou e parou de tentar": {
+    es: "Una tarea del asistente falló y dejó de intentarlo",
+  },
+  "Um evento recebido não pôde ser processado": { es: "Un evento recibido no se pudo procesar" },
+  "O orçamento de IA foi atingido": { es: "Se alcanzó el presupuesto de IA" },
+  "O assistente passou um atendimento para um humano": {
+    es: "El asistente pasó una atención a una persona",
+  },
+  "Proposta de melhoria do assistente aguardando sua revisão": {
+    es: "Propuesta de mejora del asistente esperando tu revisión",
+  },
+  "O avaliador de qualidade precisa de recalibragem": {
+    es: "El evaluador de calidad necesita recalibración",
+  },
+  "Um fluxo de follow-up parou de tentar": { es: "Un flujo de follow-up dejó de intentarlo" },
+  "O lead não respondeu no prazo que você definiu": {
+    es: "El lead no respondió en el plazo que definiste",
+  },
+  "Próxima ação sem negócio definido — precisa da sua escolha": {
+    es: "Próxima acción sin negocio definido — necesita que elijas",
+  },
+  "Negócios que já estavam parados — precisam de uma decisão": {
+    es: "Negocios que ya estaban detenidos — necesitan una decisión",
+  },
+  "A sugestão de retomar contato venceu — decida": {
+    es: "La sugerencia de retomar contacto venció — decide",
+  },
+  "Um atendimento saiu sem as ferramentas que você ligou": {
+    es: "Una atención salió sin las capacidades que activaste",
+  },
+  "Uma resposta ficou presa e não chegou ao cliente": {
+    es: "Una respuesta quedó atascada y no llegó al cliente",
+  },
+  "O agente não conseguiu ler uma foto ou áudio que o cliente enviou": {
+    es: "El agente no pudo leer una foto o un audio que envió el cliente",
+  },
+  "Um modelo de mensagem mudou de situação na revisão": {
+    es: "Una plantilla de mensaje cambió de estado en la revisión",
+  },
+  "Seu número de WhatsApp precisa de atenção": { es: "Tu número de WhatsApp necesita atención" },
+  "O assistente prometeu algo a um cliente e ninguém ficou responsável": {
+    es: "El asistente le prometió algo a un cliente y nadie quedó a cargo",
+  },
+  "Uma informação que o assistente ouviu de um cliente venceu sem ninguém conferir": {
+    es: "Una información que el asistente escuchó de un cliente venció sin que nadie la revisara",
+  },
+  "O gasto de IA passou do aviso que você definiu": {
+    es: "El gasto de IA superó el aviso que definiste",
+  },
+  "Um material que você enviou não entrou na base de conhecimento": {
+    es: "Un material que enviaste no entró en la base de conocimiento",
+  },
+  "Aviso do assistente": { es: "Aviso del asistente" },
+  // `informativo` e `crítico` saem iguais nos dois idiomas — sem linha, por isso.
+  "atenção": { es: "atención" },
+
+  // ─── Estado do material do acervo (components/ai/SourceStatusBadge.tsx) ───
+  //
+  // A 1.8.0 reescreveu os seis rótulos e criou dois estados novos
+  // (`indexando`, `sem_credencial`). O `t(label)` do componente sobreviveu ao
+  // merge intacto — o que não sobreviveu foi a correspondência com o
+  // dicionário, porque as CHAVES mudaram. Mesma classe da seção acima.
+  "O agente já sabe": { es: "El agente ya lo sabe" },
+  "Esperando a chave": { es: "Esperando la clave" },
+  "Entrou pela metade": { es: "Entró a medias" },
+  "Ainda não preparado": { es: "Todavía sin preparar" },
+  // `Arquivado` não entra aqui: já existe lá em cima, sem aspas na chave.
+
+  // ─── Navegação do painel de plataforma (components/admin/AdminSidebar.tsx) ───
+  //
+  // O único rótulo novo da 1.8.0 que NÃO é o empréstimo do inglês que esta
+  // barra adota por convenção (Dashboard, Tenants, Audit…): é o nome próprio do
+  // produto do Google, que muda de idioma — "Google Agenda" em pt-BR é
+  // "Google Calendar" em espanhol.
+  "Google Agenda": { es: "Google Calendar" },
+
+  // ─── Acervo de conhecimento da 1.8.0 (PR #354) — telas novas do merge ───
+  //
+  // As cinco telas que a 1.8.0 trouxe (`NovoMaterialDialog`,
+  // `ChaveDeConhecimento`, `EditarFaqDialog`, `TrechosDoMaterialDialog` e
+  // `BasesDoAgente`) chegaram sem uma chamada de `t()` — 857 linhas de tela
+  // nova em português. Junto vão os dois catálogos fechados que elas leem:
+  // `TIPOS_DE_FONTE` (lib/ai/rag/tipos-de-fonte.ts) e `EXPLICACAO_DA_ORIGEM`
+  // (lib/ai/embeddings/chave.ts), traduzidos no ponto de render, sem tocar
+  // nos módulos — mesma fronteira dos outros vocabulários deste arquivo.
+  //
+  // Fora daqui de propósito: os avisos de `chave.ts` que interpolam contagem
+  // ou nome de modelo (chave literal não casa com texto que muda por
+  // requisição) e os dois EXEMPLOS do campo de conteúdo, presos ao regex de
+  // língua fixa de `lib/ai/rag/ingest/faq.ts`.
+  "trecho": { es: "fragmento" },
+  "trechos": { es: "fragmentos" },
+  "está marcado mas ainda não foi preparado — o agente não vai achar nada nele.": { es: "está marcado pero todavía no fue preparado — el agente no va a encontrar nada en él." },
+  "materiais marcados ainda não foram preparados — o agente não vai achar nada neles.": { es: "materiales marcados todavía no fueron preparados — el agente no va a encontrar nada en ellos." },
+  "Ver o acervo": { es: "Ver el acervo" },
+  "Chave da OpenAI": { es: "Clave de OpenAI" },
+  "Cole a chave inteira antes de salvar.": { es: "Pega la clave entera antes de guardar." },
+  "Chave salva. Estamos conferindo com a OpenAI — leva alguns segundos.": { es: "Clave guardada. La estamos verificando con OpenAI — toma unos segundos." },
+  "Usando a chave": { es: "Usando la clave" },
+  "Ela é guardada cifrada e nunca aparece de volta na tela.": { es: "Se guarda cifrada y nunca vuelve a aparecer en pantalla." },
+  "Salvar chave": { es: "Guardar clave" },
+  "Não achei nenhum par pergunta/resposta. Use uma linha": { es: "No encontré ningún par pregunta/respuesta. Usa una línea" },
+  "por item.": { es: "por elemento." },
+  "Conteúdo salvo. Estou preparando de novo — leva alguns instantes.": { es: "Contenido guardado. Lo estoy preparando de nuevo — toma unos instantes." },
+  "Dê um nome ao material — é assim que você o encontra depois.": { es: "Ponle un nombre al material — así lo encuentras después." },
+  "Envie um arquivo ou cole o conteúdo.": { es: "Envía un archivo o pega el contenido." },
+  "Não consegui guardar o arquivo.": { es: "No pude guardar el archivo." },
+  "Material cadastrado. Estou preparando — em instantes o agente já sabe.": { es: "Material cargado. Lo estoy preparando — en instantes el agente ya lo sabe." },
+  "Material cadastrado. Ele fica esperando a chave da OpenAI para ser preparado.": { es: "Material cargado. Queda esperando la clave de OpenAI para ser preparado." },
+  "Ensinar algo novo ao agente": { es: "Enseñarle algo nuevo al agente" },
+  "Nome do material": { es: "Nombre del material" },
+  "Perguntas frequentes da loja": { es: "Preguntas frecuentes de la tienda" },
+  "Política de troca": { es: "Política de cambios" },
+  "Arquivo (opcional)": { es: "Archivo (opcional)" },
+  "Adicionar ao acervo": { es: "Agregar al acervo" },
+  "O que o agente aprendeu de": { es: "Lo que el agente aprendió de" },
+  "Trecho": { es: "Fragmento" },
+  "Uma tela não folheia mil pedaços — o restante está no acervo e o agente alcança todos.": { es: "Una pantalla no hojea mil pedazos — el resto está en el acervo y el agente los alcanza todos." },
+  "Perguntas e respostas": { es: "Preguntas y respuestas" },
+  "As dúvidas que se repetem, com a resposta pronta. É o formato que o agente cita melhor, porque cada resposta chega inteira.": { es: "Las dudas que se repiten, con la respuesta lista. Es el formato que el agente cita mejor, porque cada respuesta llega entera." },
+  "Um texto do seu negócio — política de troca, tabela de preços, manual, contrato. Envie o arquivo (PDF, Markdown ou texto) ou cole o conteúdo.": { es: "Un texto de tu negocio — política de cambios, lista de precios, manual, contrato. Envía el archivo (PDF, Markdown o texto) o pega el contenido." },
+  "Conversas anteriores": { es: "Conversaciones anteriores" },
+  "Atendimentos já resolvidos que alguém marcou como aproveitáveis, com os dados pessoais removidos.": { es: "Atenciones ya resueltas que alguien marcó como aprovechables, con los datos personales quitados." },
+  "Entra sozinha: conversas resolvidas que alguém marcar como aproveitáveis pela IA são anonimizadas e indexadas em lote.": { es: "Entra sola: las conversaciones resueltas que alguien marque como aprovechables por la IA se anonimizan y se indexan en lote." },
+  "Catálogo de produtos": { es: "Catálogo de productos" },
+  "Os produtos sincronizados da sua loja, com preço, descrição e disponibilidade.": { es: "Los productos sincronizados de tu tienda, con precio, descripción y disponibilidad." },
+  "Entra sozinho: os produtos vêm da sincronização com a sua loja, não de conteúdo digitado aqui.": { es: "Entra solo: los productos vienen de la sincronización con tu tienda, no de contenido escrito aquí." },
+  "Escolhida por você no painel de Provedores.": { es: "La elegiste en el panel de Proveedores." },
+  "Usando a chave OpenAI cadastrada em Credenciais.": { es: "Usando la clave de OpenAI cargada en Credenciales." },
+  "Usando o gateway de IA configurado nesta instalação.": { es: "Usando el gateway de IA configurado en esta instalación." },
+  "Usando a chave que veio na instalação.": { es: "Usando la clave que vino con la instalación." },
+  "A chave escolhida no painel de Provedores para este ponto não está utilizável (desativada, apagada ou ainda não validada). Seguindo com a próxima chave disponível.": { es: "La clave elegida en el panel de Proveedores para este punto no es utilizable (desactivada, borrada o todavía sin validar). Seguimos con la siguiente clave disponible." },
+
+  // ─── Acervo: a listagem (app/app/ai/knowledge/sources/_client.tsx) ───
+  //
+  // Este arquivo escapou das DUAS varreduras do merge: não é arquivo NOVO (a
+  // 1.8.0 o modificou), e não estava entre os que 'os dois lados tocaram'
+  // porque o nosso lado nunca o tocou — ele já vinha sem i18n de antes. Um
+  // arquivo com ZERO chamadas de `t()` também é invisível para o conferidor de
+  // chaves, que só sabe achar `t()` cuja chave falta. Achado por QA visual: o
+  // cartão da chave aparecia em espanhol e a lista logo abaixo, em português.
+  "no acervo.": { es: "en el acervo." },
+  "Adicionar material": { es: "Agregar material" },
+  "arquivado": { es: "archivado" },
+  "arquivados": { es: "archivados" },
 };
 
 /**

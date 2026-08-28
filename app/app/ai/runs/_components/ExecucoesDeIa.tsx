@@ -84,7 +84,9 @@ export function ExecucoesDeIa() {
         return;
       }
       if (!res.ok) {
-        setErro(json?.error?.message ?? `${t("não consegui carregar")} (${res.status})`);
+        setErro(
+          json?.error?.message ? t(json.error.message) : `${t("não consegui carregar")} (${res.status})`,
+        );
         return;
       }
       setErro(null);

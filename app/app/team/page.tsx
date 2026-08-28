@@ -83,7 +83,9 @@ export default async function TeamPage({
                 pessoa a mudar a PRÓPRIA jornada (`isSelf`), e não há tela para
                 isso. Enquanto não houver, pedir a um gerente é o caminho real.
               */}
-              {t("Só gerentes e administradores editam os horários de atendimento da equipe. Para publicar os seus, peça a um gerente que abra esta aba e use o botão &ldquo;Editar horário&rdquo; ao lado do seu nome.")}
+              {t(
+                "Só gerentes e administradores editam os horários de atendimento da equipe. Para publicar os seus, peça a um gerente que abra esta aba e use o botão “Editar horário” ao lado do seu nome.",
+              )}
             </p>
           )}
         </TabsContent>

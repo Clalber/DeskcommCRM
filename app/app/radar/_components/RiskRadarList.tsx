@@ -3,6 +3,7 @@ import Link from "next/link";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
+import { useT } from "@/hooks/i18n/useT";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -27,17 +28,17 @@ const RISK_META: Record<
   em_voo: { label: "Em voo", variant: "info" },
 };
 
-function coldFor(hours: number): string {
-  if (hours < 48) return `parado há ${hours}h`;
-  return `parado há ${Math.round(hours / 24)}d`;
+function coldFor(hours: number, t: (texto: string) => string): string {
+  if (hours < 48) return `${t("parado há")} ${hours}h`;
+  return `${t("parado há")} ${Math.round(hours / 24)}d`;
 }
 
-function followupWhen(iso: string): string {
+function followupWhen(iso: string, t: (texto: string) => string): string {
   const diffMs = new Date(iso).getTime() - Date.now();
-  if (diffMs <= 0) return "agora";
+  if (diffMs <= 0) return t("agora");
   const hours = Math.round(diffMs / 3_600_000);
-  if (hours < 48) return `em ${Math.max(1, hours)}h`;
-  return `em ${Math.round(hours / 24)}d`;
+  if (hours < 48) return `${t("em")} ${Math.max(1, hours)}h`;
+  return `${t("em")} ${Math.round(hours / 24)}d`;
 }
 
 export function RiskRadarList() {
@@ -146,12 +147,12 @@ function RadarRow({ lead }: { lead: AtRiskLead }) {
   // uma fonte de verdade para "quem é o dono", em todas as telas.
   const dono =
     lead.owner_kind === "ai"
-      ? `Agente: ${lead.owner_agent_name ?? "sem nome"}`
+      ? `${t("Agente:")} ${lead.owner_agent_name ?? t("sem nome")}`
       : lead.owner_user_id || lead.assignee_kind === "user"
-        ? "Com atendente"
+        ? t("Com atendente")
         : lead.assignee_kind === "ai"
-          ? "Assistente na conversa"
-          : "Sem dono";
+          ? t("Assistente na conversa")
+          : t("Sem dono");
 
   // "Assumir" é tirar da IA e trazer para si: continua valendo enquanto não há
   // dono HUMANO — dono agente não bloqueia o handoff, é justamente o caso dele.
@@ -165,7 +166,7 @@ function RadarRow({ lead }: { lead: AtRiskLead }) {
       {
         onSuccess: () => {
           qc.invalidateQueries({ queryKey: ["leads-at-risk"] });
-          toast.success("Você assumiu a demanda");
+          toast.success(t("Você assumiu a demanda"));
         },
       },
     );
@@ -179,7 +180,7 @@ function RadarRow({ lead }: { lead: AtRiskLead }) {
     >
       <Link href={href} className="flex min-w-0 flex-1 items-start gap-3 px-4 py-3">
         <Badge variant={meta.variant} className="mt-0.5 shrink-0">
-          {meta.label}
+          {t(meta.label)}
         </Badge>
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-medium">{lead.title}</p>
@@ -187,7 +188,7 @@ function RadarRow({ lead }: { lead: AtRiskLead }) {
             {lead.contact_name ? <span className="truncate">{lead.contact_name}</span> : null}
             <span className="inline-flex items-center gap-1">
               <ClockCountdown size={13} aria-hidden />
-              {coldFor(lead.hours_since_activity)}
+              {coldFor(lead.hours_since_activity, t)}
             </span>
             <span className="inline-flex items-center gap-1" data-testid="radar-assignee">
               {dono}
@@ -196,7 +197,7 @@ function RadarRow({ lead }: { lead: AtRiskLead }) {
           {lead.in_flight && lead.next_followup_at ? (
             <p className="mt-1 inline-flex items-center gap-1 text-xs text-info-fg">
               <PaperPlaneTilt size={13} aria-hidden />
-              Assistente retorna {followupWhen(lead.next_followup_at)}
+              {t("Assistente retorna")} {followupWhen(lead.next_followup_at, t)}
             </p>
           ) : (
             <p className="mt-1 inline-flex items-center gap-1 text-xs text-warning-fg">
@@ -215,7 +216,7 @@ function RadarRow({ lead }: { lead: AtRiskLead }) {
             onClick={handleClaim}
             data-testid="radar-claim"
           >
-            Assumir
+            {t("Assumir")}
           </Button>
         ) : null}
         <ArrowRight size={16} className="text-muted-foreground" aria-hidden />

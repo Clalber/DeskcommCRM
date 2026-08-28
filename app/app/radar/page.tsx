@@ -10,16 +10,19 @@ export default async function RadarPage() {
   const user = await requireAuth();
   const activeOrg = await resolveActiveOrg(user);
   if (!activeOrg) redirect("/app");
+  // `t` local em vez do hook: esta página é componente de SERVIDOR, e lá o
+  // idioma vem resolvido em `user.idioma` (a cadeia pessoa → organização →
+  // padrão vive em `lib/auth/server.ts`), sem reler o `locale` cru.
   const idioma = user.idioma;
+  const t = (texto: string) => traduzir(texto, idioma);
 
   return (
     <div className="flex h-full flex-col gap-6 p-6">
       <header>
-        <h1 className="text-2xl font-semibold tracking-tight">{traduzir("Radar de risco", idioma)}</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">{t("Radar de risco")}</h1>
         <p className="text-sm text-muted-foreground">
-          {traduzir(
+          {t(
             "Demandas abertas que esfriaram e precisam de você. Se o assistente já agendou um retorno, aparece como “em voo”; sem próximo passo, é risco de perder o cliente.",
-            idioma,
           )}
         </p>
       </header>

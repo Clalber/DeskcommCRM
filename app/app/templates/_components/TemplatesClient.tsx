@@ -20,6 +20,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Plus, PencilSimple, Trash } from "@/lib/ui/icons";
+import { useT } from "@/hooks/i18n/useT";
 import { apiClient } from "@/lib/api/client";
 import { showApiError } from "@/components/feedback/ApiErrorToast";
 import { useMessageTemplates, type MessageTemplate } from "@/hooks/inbox/useMessageTemplates";
@@ -66,7 +67,7 @@ export function TemplatesClient({ canShare, currentUserId }: Props) {
     <div className="space-y-4">
       <div className="flex sm:justify-end">
         <Button type="button" onClick={openNew} className="w-full sm:w-auto">
-          <Plus /> Novo template
+          <Plus /> {t("Novo template")}
         </Button>
       </div>
       {!templates?.length ? (
@@ -89,7 +90,7 @@ export function TemplatesClient({ canShare, currentUserId }: Props) {
                   <div className="flex items-center gap-2">
                     <span className="font-medium">{template.title}</span>
                     <Badge variant={template.owner_user_id ? "neutral" : "default"}>
-                      {template.owner_user_id ? t("Pessoal") : t("Compartilhado")}
+                      {t(template.owner_user_id ? "Pessoal" : "Compartilhado")}
                     </Badge>
                   </div>
                   <p className="line-clamp-2 text-sm text-muted-foreground">{template.body}</p>
@@ -100,7 +101,7 @@ export function TemplatesClient({ canShare, currentUserId }: Props) {
                       type="button"
                       variant="ghost"
                       size="icon"
-                      aria-label="Editar template"
+                      aria-label={t("Editar template")}
                       onClick={() => openEdit(template)}
                     >
                       <PencilSimple />
@@ -111,7 +112,7 @@ export function TemplatesClient({ canShare, currentUserId }: Props) {
                           type="button"
                           variant="ghost"
                           size="icon"
-                          aria-label="Excluir template"
+                          aria-label={t("Excluir template")}
                         >
                           <Trash />
                         </Button>
@@ -124,15 +125,15 @@ export function TemplatesClient({ canShare, currentUserId }: Props) {
                           </AlertDialogDescription>
                         </AlertDialogHeader>
                         <AlertDialogFooter>
-                          <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                          <AlertDialogCancel>{t("Cancelar")}</AlertDialogCancel>
                           <AlertDialogAction
                             onClick={() =>
                               del.mutate(template.id, {
-                                onSuccess: () => toast.success("Template excluído."),
+                                onSuccess: () => toast.success(t("Template excluído.")),
                               })
                             }
                           >
-                            Excluir
+                            {t("Excluir")}
                           </AlertDialogAction>
                         </AlertDialogFooter>
                       </AlertDialogContent>

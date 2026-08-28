@@ -4,6 +4,8 @@ import { requireAuth, resolveActiveOrg } from "@/lib/auth/server";
 import { traduzir } from "@/lib/i18n/dicionario";
 import { ROLE_RANK } from "@/lib/auth/types";
 import { createClient } from "@/lib/supabase/server";
+import { normalizarIdioma } from "@/lib/i18n/idiomas";
+import { traduzir } from "@/lib/i18n/dicionario";
 import {
   EXPLICACAO_DA_ORIGEM,
   resolverChaveDeEmbedding,
@@ -42,6 +44,9 @@ export default async function AcervoPage() {
   if (!user.is_platform_admin && ROLE_RANK[activeOrg.role] < ROLE_RANK.manager) {
     redirect("/403");
   }
+
+  const idioma = normalizarIdioma(user.locale);
+  const t = (texto: string) => traduzir(texto, idioma);
 
   const supabase = await createClient();
 
@@ -99,9 +104,11 @@ export default async function AcervoPage() {
   return (
     <div className="flex h-full flex-col gap-6 p-6">
       <header className="space-y-1">
-        <h1 className="text-2xl font-semibold tracking-tight">O que o agente sabe</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">{t("O que o agente sabe")}</h1>
         <p className="text-sm text-text-muted">
-          {t("O material do seu negócio que os assistentes consultam antes de responder. Cada assistente escolhe, na tela dele, o que pode ler daqui.")}
+          {t(
+            "O material do seu negócio que os assistentes consultam antes de responder. Cada assistente escolhe, na tela dele, o que pode ler daqui.",
+          )}
         </p>
       </header>
 

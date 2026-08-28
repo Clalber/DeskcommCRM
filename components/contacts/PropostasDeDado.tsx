@@ -88,7 +88,7 @@ export function PropostasDeDado({ contactId, podeDecidir, aoDecidir }: Props) {
         // A mensagem do servidor é a que explica 409 ("já foi decidida", "venceu
         // pelo prazo") — e é justamente o caso em que a pessoa precisa entender
         // por que o clique dela não valeu, em vez de tentar de novo.
-        setErro(body?.error?.message ?? t("Não foi possível registrar a decisão."));
+        setErro(body?.error?.message ? t(body.error.message) : t("Não foi possível registrar a decisão."));
         await carregar();
         return;
       }

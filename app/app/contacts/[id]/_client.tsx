@@ -144,7 +144,7 @@ export function ContactDetailClient({ contactId }: Props) {
                 <dd className="mt-1">{contact.email ?? "—"}</dd>
               </div>
               <div>
-                <dt className="text-xs uppercase text-muted-foreground">Telefone</dt>
+                <dt className="text-xs uppercase text-muted-foreground">{t("Telefone")}</dt>
                 <dd className="mt-1">{contact.phone_number ? phoneForDisplay(contact.phone_number) : "—"}</dd>
               </div>
               <div>

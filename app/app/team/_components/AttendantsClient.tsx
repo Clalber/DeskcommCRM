@@ -85,9 +85,9 @@ interface Attendant {
  * o roteamento aceitando a qualquer hora — é dito por extenso no diálogo, onde
  * há espaço para as duas metades.
  */
-function summarizeSchedule(windows: ScheduleWindow[]): string {
-  if (windows.length === 0) return "Não publicado";
-  return windows.map((w) => `${DOW_LABELS[w.dow]} ${w.start}–${w.end}`).join(", ");
+function summarizeSchedule(windows: ScheduleWindow[], t: (texto: string) => string): string {
+  if (windows.length === 0) return t("Não publicado");
+  return windows.map((w) => `${t(DOW_LABELS[w.dow] ?? "")} ${w.start}–${w.end}`).join(", ");
 }
 
 function StatusBadge({ attendant, now }: { attendant: Attendant; now: Date }) {
@@ -127,7 +127,9 @@ function ScheduleDialog({
         <DialogHeader>
           <DialogTitle>{t("Horário de")} {attendant.name}</DialogTitle>
           <DialogDescription>
-            {t("Sem janelas, o roteamento aceita conversa a qualquer hora — mas a Agenda não oferece NENHUM horário para marcar. Adicione janelas para publicar seus horários de atendimento.")}
+            {t(
+              "Sem janelas, o roteamento aceita conversa a qualquer hora — mas a Agenda não oferece NENHUM horário para marcar. Adicione janelas para publicar seus horários de atendimento.",
+            )}
           </DialogDescription>
         </DialogHeader>
 
@@ -389,7 +391,9 @@ export function AttendantsClient({ canManage }: Props) {
               (`/app/team?aba=atendimento`) quando ninguém publicou nada, e o
               destino tinha de dizer que é o lugar certo.
             */}
-            {t("Status, carga e capacidade de cada atendente — e a jornada semanal que decide os horários oferecidos na Agenda. Sem ela ninguém consegue marcar.")}
+            {t(
+              "Status, carga e capacidade de cada atendente — e a jornada semanal que decide os horários oferecidos na Agenda. Sem ela ninguém consegue marcar.",
+            )}
           </p>
         </div>
 

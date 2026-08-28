@@ -28,6 +28,7 @@ import {
 } from "@/components/ui/dialog";
 import { apiClient } from "@/lib/api/client";
 import { showApiError } from "@/components/feedback/ApiErrorToast";
+import { useT } from "@/hooks/i18n/useT";
 import { parseFaqMarkdown } from "@/lib/ai/rag/ingest/faq";
 
 interface ItemDaFaq {
@@ -79,15 +80,22 @@ export function EditarFaqDialog({ sourceId, nome, aberto, onFechar, onSalvo }: P
   async function salvar(): Promise<void> {
     const itens = parseFaqMarkdown(texto);
     if (itens.length === 0) {
+      // `## Pergunta:`/`## Resposta:` NÃO entram na tradução: são os marcadores
+      // que `lib/ai/rag/ingest/faq.ts` casa por regex de língua fixa. Traduzi-los
+      // faria a instrução ensinar um formato que o parser recusa.
       toast.error(
-        "Não achei nenhum par pergunta/resposta. Use uma linha ## Pergunta: e uma ## Resposta: por item.",
+        t("Não achei nenhum par pergunta/resposta. Use uma linha") +
+          " ## Pergunta: " +
+          t("e uma") +
+          " ## Resposta: " +
+          t("por item."),
       );
       return;
     }
     setSalvando(true);
     try {
       await apiClient.patch(`/api/v1/ai/knowledge/sources/${sourceId}`, { items: itens });
-      toast.success("Conteúdo salvo. Estou preparando de novo — leva alguns instantes.");
+      toast.success(t("Conteúdo salvo. Estou preparando de novo — leva alguns instantes."));
       onSalvo();
       onFechar();
     } catch (err) {
@@ -101,9 +109,13 @@ export function EditarFaqDialog({ sourceId, nome, aberto, onFechar, onSalvo }: P
     <Dialog open={aberto} onOpenChange={(v) => !v && onFechar()}>
       <DialogContent className="flex max-h-[85vh] flex-col sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle>Editar “{nome}”</DialogTitle>
+          <DialogTitle>
+            {t("Editar")} “{nome}”
+          </DialogTitle>
           <DialogDescription>
-            {t("O que você salvar aqui substitui o conteúdo atual, e o agente é preparado de novo.")}
+            {t(
+              "O que você salvar aqui substitui o conteúdo atual, e o agente é preparado de novo.",
+            )}
           </DialogDescription>
         </DialogHeader>
 
@@ -118,13 +130,14 @@ export function EditarFaqDialog({ sourceId, nome, aberto, onFechar, onSalvo }: P
             disabled={carregando || salvando}
           />
           <p className="text-xs text-text-muted">
-            {t("Uma linha")} <code>{t("## Pergunta:")}</code> {t("e uma")} <code>{t("## Resposta:")}</code> {t("por item, separados por uma linha em branco.")}
+            {t("Uma linha")} <code>## Pergunta:</code> {t("e uma")} <code>## Resposta:</code>{" "}
+            {t("por item, separados por uma linha em branco.")}
           </p>
         </div>
 
         <DialogFooter>
           <Button variant="outline" onClick={onFechar} disabled={salvando}>
-            Cancelar
+            {t("Cancelar")}
           </Button>
           <Button
             onClick={salvar}

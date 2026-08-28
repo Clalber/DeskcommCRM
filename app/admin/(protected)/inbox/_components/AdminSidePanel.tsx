@@ -4,6 +4,7 @@ import { useT } from "@/hooks/i18n/useT";
 import Link from "next/link";
 import type { AdminConversationDetailResponse } from "@/hooks/useAdminConversation";
 import { Buildings, Phone, ArrowRight } from "@/lib/ui/icons";
+import { useT } from "@/hooks/i18n/useT";
 import { phoneForDisplay } from "@/lib/channels/phone-variants";
 
 interface Props {

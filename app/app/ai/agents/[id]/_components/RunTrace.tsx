@@ -68,7 +68,8 @@ export function RunTrace({
     <div className="flex flex-col gap-3">
       {steps.map((s, idx) => {
         const stepNum = s.step ?? idx + 1;
-        const errMsg = typeof s.error === "string" ? s.error : s.error?.message ?? null;
+        const errMsgBruto = typeof s.error === "string" ? s.error : (s.error?.message ?? null);
+        const errMsg = errMsgBruto ? t(errMsgBruto) : null;
         return (
           <details
             key={`${stepNum}-${s.tool_name ?? idx}`}

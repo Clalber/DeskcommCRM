@@ -5,6 +5,7 @@ import { useTagDeIdioma } from "@/hooks/i18n/useLocaleDeData";
 import { useT } from "@/hooks/i18n/useT";
 import { useMemo, useState } from "react";
 
+import { useT } from "@/hooks/i18n/useT";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
@@ -77,7 +78,7 @@ export function AuditClient() {
             />
           </div>
           <div className="space-y-1">
-            <label className="text-xs text-muted-foreground">Tipo de recurso</label>
+            <label className="text-xs text-muted-foreground">{t("Tipo de recurso")}</label>
             <Input
               value={resourceType}
               onChange={(e) => setResourceType(e.target.value)}
@@ -85,7 +86,7 @@ export function AuditClient() {
             />
           </div>
           <div className="space-y-1">
-            <label className="text-xs text-muted-foreground">De</label>
+            <label className="text-xs text-muted-foreground">{t("De")}</label>
             <Input type="datetime-local" value={from} onChange={(e) => setFrom(e.target.value)} />
           </div>
           <div className="space-y-1">
@@ -94,7 +95,7 @@ export function AuditClient() {
           </div>
           <div className="flex items-end">
             <Button variant="outline" className="w-full" onClick={handleExport}>
-              Exportar CSV
+              {t("Exportar CSV")}
             </Button>
           </div>
         </div>

@@ -149,9 +149,9 @@ function summaryLabel(
     // superfície que o dono lê uma semana depois, sem abrir nada.
     return etapa ? `Gatilho: entrou em «${etapa.stageName}» em ${etapa.pipelineName}` : "Gatilho: Etapa do funil";
   }
-  if (cfg.kind === "case_opened") return "Gatilho: quando o agente pede ajuda";
-  if (cfg.kind === "webhook") return "Disparado por uma automação em Webhooks";
-  if (cfg.kind === "manual" || cfg.kind === undefined) return "Gatilho: Manual";
+  if (cfg.kind === "case_opened") return `${t("Gatilho")}: ${t("quando o agente pede ajuda")}`;
+  if (cfg.kind === "webhook") return t("Disparado por uma automação em Webhooks");
+  if (cfg.kind === "manual" || cfg.kind === undefined) return `${t("Gatilho")}: ${t("Manual")}`;
   // conversation_end de dados antigos (API crua) — sem UI própria, mas mostrado
   // com transparência em vez de mentir "Manual".
   return `Gatilho: ${String(cfg.kind)} (indisponível)`;
@@ -162,10 +162,7 @@ interface Props {
   triggerConfig: Record<string, unknown>;
 }
 
-export function TriggerConfigControl({
-  flowId,
-  triggerConfig,
-}: Props) {
+export function TriggerConfigControl({ flowId, triggerConfig }: Props) {
   const t = useT();
   const update = useUpdateTriggerConfig(flowId);
   const [open, setOpen] = useState(false);
@@ -236,11 +233,11 @@ export function TriggerConfigControl({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="manual">{KIND_LABEL.manual}</SelectItem>
-                <SelectItem value="silence">{KIND_LABEL.silence}</SelectItem>
-                <SelectItem value="stage_change">{KIND_LABEL.stage_change}</SelectItem>
-                <SelectItem value="case_opened">{KIND_LABEL.case_opened}</SelectItem>
-                <SelectItem value="webhook">{KIND_LABEL.webhook}</SelectItem>
+                <SelectItem value="manual">{t(KIND_LABEL.manual)}</SelectItem>
+                <SelectItem value="silence">{t(KIND_LABEL.silence)}</SelectItem>
+                <SelectItem value="stage_change">{t(KIND_LABEL.stage_change)}</SelectItem>
+                <SelectItem value="case_opened">{t(KIND_LABEL.case_opened)}</SelectItem>
+                <SelectItem value="webhook">{t(KIND_LABEL.webhook)}</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -305,7 +302,9 @@ export function TriggerConfigControl({
 
           {form.kind === "webhook" && (
             <p className="text-xs text-muted-foreground">
-              {t("O fluxo começa quando uma regra em Webhooks usa a ação «Iniciar fluxo de mensagem» apontando para este fluxo publicado.")}
+              {t(
+                "O fluxo começa quando uma regra em Webhooks usa a ação «Iniciar fluxo de mensagem» apontando para este fluxo publicado.",
+              )}
             </p>
           )}
 

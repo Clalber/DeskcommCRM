@@ -11,6 +11,7 @@ import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { format, formatRelative, isToday, isYesterday } from "date-fns";
 import { toast } from "sonner";
+import { useT } from "@/hooks/i18n/useT";
 import { CaretDown, CaretUp, ChatCircle, Trash } from "@/lib/ui/icons";
 import {
   Table,
@@ -128,12 +129,12 @@ export function ContactsTable({ contacts, orderBy, orderDir, onSort }: Props) {
         error?: { message?: string };
       };
       if (!res.ok || !json.data?.conversation_id) {
-        throw new Error(json.error?.message ?? "Não foi possível abrir a conversa.");
+        throw new Error(json.error?.message ?? t("Não foi possível abrir a conversa."));
       }
       await qc.invalidateQueries({ queryKey: ["contacts"] });
       router.push(`/app/inbox?id=${json.data.conversation_id}`);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Não foi possível abrir a conversa.");
+      toast.error(err instanceof Error ? t(err.message) : t("Não foi possível abrir a conversa."));
     } finally {
       setAbrindo(null);
     }
@@ -143,7 +144,7 @@ export function ContactsTable({ contacts, orderBy, orderDir, onSort }: Props) {
     if (!alvo) return;
     try {
       await del.mutateAsync(alvo.id);
-      toast.success("Contato excluído.");
+      toast.success(t("Contato excluído."));
       setAlvo(null);
     } catch {
       // hook handles toast
@@ -233,8 +234,8 @@ export function ContactsTable({ contacts, orderBy, orderDir, onSort }: Props) {
                   <Button variant="ghost" size="icon" className="h-8 w-8" asChild>
                     <Link
                       href={`/app/inbox?id=${c.conversa.id}`}
-                      title="Abrir conversa no Inbox"
-                      aria-label={`Abrir conversa com ${displayName(c)} no Inbox`}
+                      title={t("Abrir conversa no Inbox")}
+                      aria-label={`${t("Abrir conversa com")} ${displayName(c, t)} ${t("no Inbox")}`}
                     >
                       <ChatCircle size={16} weight="regular" aria-hidden />
                       {c.conversa.unread > 0 && (
@@ -247,8 +248,8 @@ export function ContactsTable({ contacts, orderBy, orderDir, onSort }: Props) {
                     variant="ghost"
                     size="icon"
                     className="h-8 w-8"
-                    title="Iniciar conversa no Inbox"
-                    aria-label={`Iniciar conversa com ${displayName(c)} no Inbox`}
+                    title={t("Iniciar conversa no Inbox")}
+                    aria-label={`${t("Iniciar conversa com")} ${displayName(c, t)} ${t("no Inbox")}`}
                     disabled={abrindo === c.id}
                     onClick={() => void iniciarConversa(c)}
                   >
@@ -259,8 +260,8 @@ export function ContactsTable({ contacts, orderBy, orderDir, onSort }: Props) {
                   variant="ghost"
                   size="icon"
                   className="h-8 w-8 text-muted-foreground hover:text-error-fg"
-                  title="Excluir contato"
-                  aria-label={`Excluir contato ${displayName(c)}`}
+                  title={t("Excluir contato")}
+                  aria-label={`${t("Excluir contato")} ${displayName(c, t)}`}
                   onClick={() => setAlvo(c)}
                 >
                   <Trash size={16} weight="regular" aria-hidden />
@@ -275,21 +276,21 @@ export function ContactsTable({ contacts, orderBy, orderDir, onSort }: Props) {
     <AlertDialog open={alvo !== null} onOpenChange={(open) => { if (!open) setAlvo(null); }}>
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>Excluir contato?</AlertDialogTitle>
+          <AlertDialogTitle>{t("Excluir contato?")}</AlertDialogTitle>
           <AlertDialogDescription>
             {alvo
-              ? `Isso remove ${displayName(alvo)} e a conversa associada, se houver. Esta ação não pode ser desfeita.`
+              ? `${t("Isso remove")} ${displayName(alvo, t)} ${t("e a conversa associada, se houver. Esta ação não pode ser desfeita.")}`
               : null}
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel disabled={del.isPending}>Cancelar</AlertDialogCancel>
+          <AlertDialogCancel disabled={del.isPending}>{t("Cancelar")}</AlertDialogCancel>
           <Button
             variant="destructive"
             onClick={() => void confirmarExclusao()}
             disabled={del.isPending}
           >
-            {del.isPending ? "Excluindo…" : "Excluir"}
+            {del.isPending ? t("Excluindo…") : t("Excluir")}
           </Button>
         </AlertDialogFooter>
       </AlertDialogContent>

@@ -39,8 +39,8 @@ interface Props {
   onPick: (payload: ContactPickPayload) => void;
 }
 
-function displayName(c: Contact): string {
-  return rotuloDoContato(c);
+function displayName(c: Contact, t: (texto: string) => string = (texto) => texto): string {
+  return rotuloDoContato(c, t);
 }
 
 export function ContactPickerDialog({

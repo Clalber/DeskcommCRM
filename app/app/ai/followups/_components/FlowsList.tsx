@@ -48,7 +48,9 @@ export function FlowsList({ initialData, canWrite }: Props) {
           <FlowArrow size={36} aria-hidden className="text-text-muted" />
           <h2 className="font-medium">{t("Nenhum fluxo de follow-up ainda")}</h2>
           <p className="max-w-sm text-sm text-text-muted">
-            {t("Follow-ups reengajam contatos após silêncio, mudança de etapa, uma regra em Webhooks ou a resposta do contato — sem depender de alguém lembrar de mandar mensagem.")}
+            {t(
+              "Follow-ups reengajam contatos após silêncio, mudança de etapa, uma regra em Webhooks ou a resposta do contato — sem depender de alguém lembrar de mandar mensagem.",
+            )}
           </p>
           {canWrite && <div className="mt-1">{newFlowButton}</div>}
         </Card>

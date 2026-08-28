@@ -28,6 +28,7 @@ import Link from "next/link";
 
 import { Card } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
+import { useT } from "@/hooks/i18n/useT";
 
 export interface MaterialDoAcervo {
   id: string;
@@ -65,7 +66,9 @@ export function BasesDoAgente({ materiais, value, onChange, disabled = false }: 
       <div>
         <h3 className="text-sm font-medium">{t("O que ele consulta antes de responder")}</h3>
         <p className="text-xs text-muted-foreground">
-          {t("Marque o material do seu negócio que este assistente pode ler. Ele procura ali antes de responder, em vez de improvisar — e cita de onde tirou.")}
+          {t(
+            "Marque o material do seu negócio que este assistente pode ler. Ele procura ali antes de responder, em vez de improvisar — e cita de onde tirou.",
+          )}
         </p>
       </div>
 
@@ -100,9 +103,13 @@ export function BasesDoAgente({ materiais, value, onChange, disabled = false }: 
               />
               <Label htmlFor={`base-${m.id}`} className="text-sm font-normal">
                 {m.name}
+                {/* Singular e plural viram CHAVES separadas em vez de um sufixo
+                    concatenado: em português o plural de "trecho" é +s, em
+                    espanhol "fragmento"/"fragmentos" muda a palavra inteira, e
+                    um `${…}s` no fim não tem como dizer isso. */}
                 <span className="ml-2 text-xs text-muted-foreground">
                   {(m.chunks_count ?? 0) > 0
-                    ? `${m.chunks_count} trecho${m.chunks_count === 1 ? "" : "s"}`
+                    ? `${m.chunks_count} ${m.chunks_count === 1 ? t("trecho") : t("trechos")}`
                     : t("ainda não preparado")}
                 </span>
               </Label>
@@ -113,7 +120,9 @@ export function BasesDoAgente({ materiais, value, onChange, disabled = false }: 
 
       {value.length === 0 && materiais.length > 0 ? (
         <p data-testid="agente-sem-base-marcada" className="text-xs text-muted-foreground">
-          {t("Sem nenhum material marcado, ele conversa normalmente — mas responde só com o que o modelo já sabe, e a ferramenta de busca nem entra na conversa dele.")}
+          {t(
+            "Sem nenhum material marcado, ele conversa normalmente — mas responde só com o que o modelo já sabe, e a ferramenta de busca nem entra na conversa dele.",
+          )}
         </p>
       ) : null}
 
@@ -121,20 +130,22 @@ export function BasesDoAgente({ materiais, value, onChange, disabled = false }: 
         <p data-testid="agente-acervo-de-fora" className="text-xs text-warning-fg">
           {t("Você tem")} {materiais.length}{" "}
           {materiais.length === 1 ? t("material") : t("materiais")}{" "}
-          {t("no acervo e este assistente não lê nenhum. Ele vai responder de improviso sobre assuntos que já estão escritos.")}
+          {t(
+            "no acervo e este assistente não lê nenhum. Ele vai responder de improviso sobre assuntos que já estão escritos.",
+          )}
         </p>
       ) : null}
 
       {semPreparo.length > 0 ? (
         <p data-testid="agente-base-sem-preparo" className="text-xs text-warning-fg">
           {semPreparo.length === 1
-            ? `"${semPreparo[0]?.name}" está marcado mas ainda não foi preparado — o agente não vai achar nada nele.`
-            : `${semPreparo.length} materiais marcados ainda não foram preparados — o agente não vai achar nada neles.`}{" "}
+            ? `"${semPreparo[0]?.name}" ${t("está marcado mas ainda não foi preparado — o agente não vai achar nada nele.")}`
+            : `${semPreparo.length} ${t("materiais marcados ainda não foram preparados — o agente não vai achar nada neles.")}`}{" "}
           <Link
             href="/app/ai/knowledge/sources"
             className="font-medium text-foreground underline underline-offset-4"
           >
-            Ver o acervo
+            {t("Ver o acervo")}
           </Link>
         </p>
       ) : null}

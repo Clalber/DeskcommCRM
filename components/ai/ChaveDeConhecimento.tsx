@@ -32,6 +32,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { apiClient } from "@/lib/api/client";
 import { showApiError } from "@/components/feedback/ApiErrorToast";
+import { useT } from "@/hooks/i18n/useT";
 
 export interface EstadoDaChave {
   pode_indexar: boolean;
@@ -58,23 +59,25 @@ interface Props {
 export function ChaveDeConhecimento({ estado, onChaveCadastrada }: Props) {
   const t = useT();
   const [abrindo, setAbrindo] = useState(false);
-  const [rotulo, setRotulo] = useState("Chave da OpenAI");
+  // O rótulo padrão é traduzido porque é o que a pessoa vê preenchido e o que
+  // ela grava — não um identificador técnico.
+  const [rotulo, setRotulo] = useState(t("Chave da OpenAI"));
   const [chave, setChave] = useState("");
   const [enviando, setEnviando] = useState(false);
 
   async function cadastrar() {
     if (chave.trim().length < 8) {
-      toast.error("Cole a chave inteira antes de salvar.");
+      toast.error(t("Cole a chave inteira antes de salvar."));
       return;
     }
     setEnviando(true);
     try {
       await apiClient.post("/api/v1/ai/credentials", {
         provider: "openai",
-        label: rotulo.trim() || "Chave da OpenAI",
+        label: rotulo.trim() || t("Chave da OpenAI"),
         api_key: chave.trim(),
       });
-      toast.success("Chave salva. Estamos conferindo com a OpenAI — leva alguns segundos.");
+      toast.success(t("Chave salva. Estamos conferindo com a OpenAI — leva alguns segundos."));
       setChave("");
       setAbrindo(false);
       // Quem recarrega até a validação voltar é o `refetchInterval` do hook: a
@@ -118,15 +121,20 @@ export function ChaveDeConhecimento({ estado, onChaveCadastrada }: Props) {
           {t("Pronto para preparar material.")}{" "}
           {estado.chave_em_uso ? (
             <>
-              Usando a chave <span className="font-medium text-foreground">{estado.chave_em_uso}</span>.
+              {t("Usando a chave")}{" "}
+              <span className="font-medium text-foreground">{estado.chave_em_uso}</span>.
             </>
           ) : (
-            estado.explicacao
+            // `explicacao` e `avisos` vêm do servidor, de catálogos fechados
+            // (`EXPLICACAO_DA_ORIGEM` em `lib/ai/embeddings/chave.ts`). Passar
+            // por um route handler não os tira do alcance do dicionário: a
+            // correspondência é por igualdade de string, venha de onde vier.
+            estado.explicacao ? t(estado.explicacao) : null
           )}
         </span>
         {estado.avisos.map((a) => (
           <span key={a} className="w-full text-warning-fg">
-            {a}
+            {t(a)}
           </span>
         ))}
       </div>
@@ -145,7 +153,9 @@ export function ChaveDeConhecimento({ estado, onChaveCadastrada }: Props) {
             {t("Falta uma chave da OpenAI para o agente aprender o seu material")}
           </h3>
           <p className="text-xs text-text-muted">
-            {t("Preparar um documento para o agente encontrá-lo usa a OpenAI, mesmo que o resto do seu assistente rode em outro provedor. Sem ela você consegue cadastrar o material, mas ele fica esperando — e o agente segue sem saber o que está nele.")}
+            {t(
+              "Preparar um documento para o agente encontrá-lo usa a OpenAI, mesmo que o resto do seu assistente rode em outro provedor. Sem ela você consegue cadastrar o material, mas ele fica esperando — e o agente segue sem saber o que está nele.",
+            )}
           </p>
         </div>
       </div>
@@ -162,7 +172,7 @@ export function ChaveDeConhecimento({ estado, onChaveCadastrada }: Props) {
             />
           </div>
           <div className="space-y-1">
-            <Label htmlFor="chave-valor">Chave da OpenAI</Label>
+            <Label htmlFor="chave-valor">{t("Chave da OpenAI")}</Label>
             <Input
               id="chave-valor"
               data-testid="conhecimento-chave-input"
@@ -183,7 +193,7 @@ export function ChaveDeConhecimento({ estado, onChaveCadastrada }: Props) {
               >
                 platform.openai.com/api-keys
               </a>
-              {t(". Ela é guardada cifrada e nunca aparece de volta na tela.")}
+              . {t("Ela é guardada cifrada e nunca aparece de volta na tela.")}
             </p>
           </div>
           <div className="flex gap-2">
@@ -193,10 +203,10 @@ export function ChaveDeConhecimento({ estado, onChaveCadastrada }: Props) {
               disabled={enviando}
               data-testid="conhecimento-chave-salvar"
             >
-              {enviando ? "Salvando…" : "Salvar chave"}
+              {enviando ? t("Salvando…") : t("Salvar chave")}
             </Button>
             <Button variant="outline" size="sm" onClick={() => setAbrindo(false)} disabled={enviando}>
-              Cancelar
+              {t("Cancelar")}
             </Button>
           </div>
         </div>
@@ -217,7 +227,7 @@ export function ChaveDeConhecimento({ estado, onChaveCadastrada }: Props) {
               href="/app/ai/credentials"
               className="font-medium text-foreground underline underline-offset-4"
             >
-              IA › Credenciais
+              {t("IA › Credenciais")}
             </Link>
           </span>
         </div>

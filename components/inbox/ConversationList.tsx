@@ -1,7 +1,6 @@
 "use client";
-
-import { useT } from "@/hooks/i18n/useT";
 import { useEffect, useMemo } from "react";
+import { useT } from "@/hooks/i18n/useT";
 import type { InfiniteData, UseInfiniteQueryResult } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";

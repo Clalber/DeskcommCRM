@@ -49,7 +49,7 @@ export function ImportContactsDialog({ open, onOpenChange }: Props) {
       // Falha de requisição (arquivo grande, formato errado…): mostra no rodapé.
       const msg =
         err instanceof Error && err.message
-          ? err.message
+          ? t(err.message)
           : t("Não foi possível importar o arquivo.");
       toast.error(msg);
     }

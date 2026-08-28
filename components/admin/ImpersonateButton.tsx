@@ -53,9 +53,8 @@ export function ImpersonateButton({
       );
       const json: unknown = await res.json().catch(() => ({}));
       if (!res.ok) {
-        const errorMsg =
-          (json as { error?: { message?: string } })?.error?.message ??
-          t("Não foi possível iniciar impersonate");
+        const rawMsg = (json as { error?: { message?: string } })?.error?.message;
+        const errorMsg = rawMsg ? t(rawMsg) : t("Não foi possível iniciar impersonate");
         toast.error(errorMsg);
         return;
       }

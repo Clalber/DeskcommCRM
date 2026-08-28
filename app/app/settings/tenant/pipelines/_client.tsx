@@ -99,7 +99,7 @@ function PipelineEditor({ pipeline }: { pipeline: PipelineRow }) {
     for (const f of fields) {
       const parsed = customFieldSchema.safeParse(f);
       if (!parsed.success) {
-        toast.error(parsed.error.issues[0]?.message ?? "Campo inválido.");
+        toast.error(parsed.error.issues[0]?.message ?? t("Campo inválido."));
         return;
       }
       ok.push(parsed.data);
@@ -169,8 +169,8 @@ function PipelineEditor({ pipeline }: { pipeline: PipelineRow }) {
         {fields.map((f, i) => (
           <div key={`${f.key}-${i}`} className="grid gap-2 rounded-md border border-border p-2 md:grid-cols-[1fr_1fr_8rem_auto]">
             <Input
-              aria-label={`Chave do campo ${i + 1}`}
-              placeholder="chave (endereco)"
+              aria-label={`${t("Chave do campo")} ${i + 1}`}
+              placeholder={t("chave (endereco)")}
               value={f.key}
               onChange={(e) => {
                 const next = [...fields];
@@ -179,7 +179,7 @@ function PipelineEditor({ pipeline }: { pipeline: PipelineRow }) {
               }}
             />
             <Input
-              aria-label={`Rótulo do campo ${i + 1}`}
+              aria-label={`${t("Rótulo do campo")} ${i + 1}`}
               placeholder={t("Rótulo (Endereço)")}
               value={f.label}
               onChange={(e) => {
@@ -196,13 +196,13 @@ function PipelineEditor({ pipeline }: { pipeline: PipelineRow }) {
                 setFields(next);
               }}
             >
-              <SelectTrigger aria-label={`Tipo do campo ${i + 1}`}>
+              <SelectTrigger aria-label={`${t("Tipo do campo")} ${i + 1}`}>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {TIPOS.map((t) => (
-                  <SelectItem key={t} value={t}>
-                    {t}
+                {TIPOS.map((tipo) => (
+                  <SelectItem key={tipo} value={tipo}>
+                    {tipo}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -211,7 +211,7 @@ function PipelineEditor({ pipeline }: { pipeline: PipelineRow }) {
               type="button"
               variant="ghost"
               size="sm"
-              aria-label={`Remover campo ${f.label || i + 1}`}
+              aria-label={`${t("Remover campo")} ${f.label || i + 1}`}
               onClick={() => setFields(fields.filter((_, j) => j !== i))}
             >
               <Trash size={14} aria-hidden />
@@ -219,7 +219,7 @@ function PipelineEditor({ pipeline }: { pipeline: PipelineRow }) {
             {f.type === "select" && (
               <Input
                 className="md:col-span-3"
-                aria-label={`Opções do campo ${i + 1}`}
+                aria-label={`${t("Opções do campo")} ${i + 1}`}
                 placeholder={t("Opções, separadas por vírgula")}
                 value={(f.options ?? []).map((o) => o.label).join(", ")}
                 onChange={(e) => {
@@ -244,11 +244,11 @@ function PipelineEditor({ pipeline }: { pipeline: PipelineRow }) {
             onClick={() =>
               setFields([
                 ...fields,
-                { key: `campo_${fields.length + 1}`, label: "Novo campo", type: "text" },
+                { key: `campo_${fields.length + 1}`, label: t("Novo campo"), type: "text" },
               ])
             }
           >
-            <Plus size={14} aria-hidden className="mr-1" /> Adicionar campo
+            <Plus size={14} aria-hidden className="mr-1" /> {t("Adicionar campo")}
           </Button>
         )}
       </div>

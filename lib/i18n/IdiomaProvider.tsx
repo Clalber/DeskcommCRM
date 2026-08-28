@@ -42,6 +42,22 @@ const Ctx = createContext<{ idioma: Idioma; aplicar: (i: Idioma) => void }>({
   aplicar: () => {},
 });
 
+/**
+ * Espelho do idioma atual fora da árvore React.
+ *
+ * Existe só para `showApiError` (components/feedback/ApiErrorToast.tsx), que é
+ * passado por REFERÊNCIA como `onError` em ~80 lugares e por isso não pode
+ * virar hook — chamar `useContext` fora de um componente quebra o app. O
+ * provider já é o único escritor de idioma da árvore inteira, então espelhar
+ * o valor aqui, num `useEffect`, é a única leitura possível de fora sem
+ * inventar um segundo mecanismo de estado.
+ */
+let idiomaFora: Idioma = IDIOMA_PADRAO;
+
+export function idiomaAtual(): Idioma {
+  return idiomaFora;
+}
+
 export function IdiomaProvider({
   locale,
   children,
@@ -55,6 +71,17 @@ export function IdiomaProvider({
   useEffect(() => {
     setIdioma(doServidor);
   }, [doServidor]);
+
+  // O espelho de fora da árvore segue o idioma EM VIGOR, não o do servidor:
+  // quem troca no seletor vê o toast de erro já no idioma novo, sem esperar o
+  // round-trip. Ancorá-lo em `doServidor` deixaria `showApiError` um idioma
+  // atrás exatamente no clique em que a pessoa quer ver o efeito.
+  useEffect(() => {
+    idiomaFora = idioma;
+    return () => {
+      idiomaFora = IDIOMA_PADRAO;
+    };
+  }, [idioma]);
 
   const valor = useMemo(() => ({ idioma, aplicar: setIdioma }), [idioma]);
   return <Ctx.Provider value={valor}>{children}</Ctx.Provider>;

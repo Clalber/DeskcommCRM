@@ -109,7 +109,7 @@ export function ContactCard({ message }: Props) {
 
     } catch (err) {
 
-      toast.error(err instanceof Error ? err.message : t("Não foi possível abrir a conversa."));
+      toast.error(err instanceof Error ? t(err.message) : t("Não foi possível abrir a conversa."));
 
     } finally {
 

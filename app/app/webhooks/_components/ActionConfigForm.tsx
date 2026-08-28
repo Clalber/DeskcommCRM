@@ -19,6 +19,7 @@ import { usePipelines, usePipelineStages } from "@/hooks/webhooks/useWebhookSour
 import { useAgentsList } from "@/hooks/ai/useAgents";
 import { channelLabel, useChannelSessions } from "@/hooks/channels/useChannelSessions";
 import { useAssignableMembers } from "@/hooks/inbox/useAssignableMembers";
+import { useT } from "@/hooks/i18n/useT";
 import { apiClient } from "@/lib/api/client";
 import type { FollowupFlowPointerRow } from "@/hooks/followup/useFollowupFlows";
 
@@ -392,7 +393,7 @@ function StartMessageFlowForm({ config, onChange }: FormProps<{ flow_pointer_id:
 
   return (
     <div className="space-y-1">
-      <Label>Fluxo de follow-up</Label>
+      <Label>{t("Fluxo de follow-up")}</Label>
       <Select
         value={config.flow_pointer_id}
         onValueChange={(v) => onChange({ flow_pointer_id: v })}

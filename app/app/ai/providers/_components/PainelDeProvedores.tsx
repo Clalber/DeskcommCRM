@@ -123,13 +123,17 @@ export function PainelDeProvedores() {
         return;
       }
       if (!res.ok) {
-        setErro(json?.error?.message ?? `${t("não consegui carregar a configuração")} (${res.status})`);
+        setErro(
+          json?.error?.message
+            ? t(json.error.message)
+            : `${t("não consegui carregar a configuração")} (${res.status})`,
+        );
         return;
       }
       setErro(null);
       setDados(json?.data as Dados);
     } catch (e) {
-      setErro(e instanceof Error ? e.message : t("não consegui falar com o servidor"));
+      setErro(e instanceof Error ? t(e.message) : t("não consegui falar com o servidor"));
     }
   }, [t]);
 
@@ -308,9 +312,10 @@ function CartaoDoPonto({
       });
       const json = await res.json();
       if (!res.ok) {
-        // A mensagem do servidor é escrita para leigo (ver validar-binding.ts):
-        // repassar direto é melhor que traduzir de novo aqui e divergir.
-        toast.error(json?.error?.message ?? t("não consegui salvar"));
+        // A mensagem do servidor é escrita para leigo (ver validar-binding.ts).
+        // `t()` repassa direto quando não há entrada no dicionário — não é
+        // traduzir de novo, é a mesma degradação graciosa do resto do app.
+        toast.error(json?.error?.message ? t(json.error.message) : t("não consegui salvar"));
         return;
       }
       const avisos: string[] = json?.data?.avisos ?? [];

@@ -18,6 +18,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { useT } from "@/hooks/i18n/useT";
 import { apiClient } from "@/lib/api/client";
 import { showApiError } from "@/components/feedback/ApiErrorToast";
 import type { MessageTemplate } from "@/hooks/inbox/useMessageTemplates";
@@ -86,7 +87,7 @@ export function TemplateFormDialog({ open, onOpenChange, canShare, template }: P
           body,
           shortcut: shortcut.trim() || null,
         });
-        toast.success("Template atualizado.");
+        toast.success(t("Template atualizado."));
       } else {
         await create.mutateAsync({
           title,
@@ -94,7 +95,7 @@ export function TemplateFormDialog({ open, onOpenChange, canShare, template }: P
           shortcut: shortcut.trim() || undefined,
           shared: canShare ? shared : false,
         });
-        toast.success("Template criado.");
+        toast.success(t("Template criado."));
       }
       onOpenChange(false);
     } catch {
@@ -106,7 +107,7 @@ export function TemplateFormDialog({ open, onOpenChange, canShare, template }: P
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>{isEdit ? "Editar template" : "Novo template"}</DialogTitle>
+          <DialogTitle>{isEdit ? t("Editar template") : t("Novo template")}</DialogTitle>
           <DialogDescription>
             {t("Scripts salvos para responder mais rápido no atendimento.")}
           </DialogDescription>
@@ -125,12 +126,12 @@ export function TemplateFormDialog({ open, onOpenChange, canShare, template }: P
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="tpl-body">Mensagem</Label>
+            <Label htmlFor="tpl-body">{t("Mensagem")}</Label>
             <Textarea
               id="tpl-body"
               value={body}
               onChange={(e) => setBody(e.target.value)}
-              placeholder="Oi {{primeiro_nome}}, tudo bem?"
+              placeholder={t("Oi {{primeiro_nome}}, tudo bem?")}
               minLength={1}
               maxLength={4096}
               required
@@ -163,10 +164,10 @@ export function TemplateFormDialog({ open, onOpenChange, canShare, template }: P
           )}
           <DialogFooter>
             <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
-              Cancelar
+              {t("Cancelar")}
             </Button>
             <Button type="submit" disabled={pending}>
-              {isEdit ? "Salvar" : "Criar template"}
+              {isEdit ? t("Salvar") : t("Criar template")}
             </Button>
           </DialogFooter>
         </form>
