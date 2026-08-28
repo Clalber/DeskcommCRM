@@ -46,6 +46,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 import { audit } from "@/lib/audit";
+import { PROVEDOR_GOOGLE } from "@/lib/agenda/tipos";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { encryptWebhookSecret } from "@/lib/webhooks/secrets";
 import { CAMINHO_DO_CALLBACK, configuracaoDoGoogle } from "@/lib/agenda/google/config";
@@ -238,7 +239,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       .select("oauth_refresh_token_encrypted")
       .eq("organization_id", organizationId)
       .eq("user_id", userId)
-      .eq("provider", "google_calendar")
+      .eq("provider", PROVEDOR_GOOGLE)
       .eq("account_email", conta.conta.email)
       .maybeSingle();
     refreshJaGuardado = Boolean(existente?.oauth_refresh_token_encrypted);
@@ -270,7 +271,11 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     {
       organization_id: organizationId,
       user_id: userId,
-      provider: "google_calendar",
+      // A CONSTANTE também aqui, embora o literal estivesse CERTO: enquanto o
+      // único lugar que escreve o valor certo o escreve à mão, o símbolo
+      // canônico segue órfão — e foi a orfandade que deixou três leituras
+      // divergirem sem nada acusar.
+      provider: PROVEDOR_GOOGLE,
       account_email: conta.conta.email,
       oauth_access_token_encrypted: accessCifrado,
       // Quando o Google não reenviou a chave e já havia uma guardada, a coluna
