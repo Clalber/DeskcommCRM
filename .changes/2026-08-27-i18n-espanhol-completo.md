@@ -29,6 +29,11 @@ Configurações › Organização era gravado no banco e nunca era lido. Quem o
 mudasse não via diferença nenhuma. Agora ele vale para toda pessoa da empresa
 que não tenha escolhido um idioma seu.
 
-**As datas continuam em português** — "quinta-feira, 3 de março" aparece assim
-mesmo com a interface em espanhol. É uma pendência conhecida e separada; o texto
-da interface está coberto.
+**As datas também acompanham o idioma.** "quinta-feira, 3 de março" vira
+"jueves, 3 de marzo" — não sobrou aquele meio-termo em que a tela fala espanhol
+e a data insiste no português.
+
+Duas exceções, de propósito: os **e-mails** que o sistema envia seguem em
+português (quem recebe um convite ainda não tem conta, então não há preferência
+de idioma para consultar), e o **relatório de LGPD** também — ele responde a uma
+lei brasileira, e mudar a forma dele conforme quem apertou o botão seria errado.

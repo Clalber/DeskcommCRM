@@ -1288,7 +1288,17 @@ Evidência: `evidence/i18n-es/01-inbox-em-espanhol.png` e
    dois guardas existirem: o estático alcança todo arquivo, o e2e alcança o que
    a régua do estático não distingue.
 
-**O que esta jornada NÃO cobre:** a data continua saindo em português
-(`locale: ptBR` é passado à mão em dezenas de arquivos). Está declarado no
-cabeçalho de `tests/unit/i18n-espanhol-cobre-a-tela.test.ts`, com o comando que
-re-mede a extensão.
+**A data, que a primeira versão desta jornada declarava como não coberta,
+passou a ser medida aqui.** Existe `lib/i18n/datas.ts`, e a spec reprova se
+achar mês ou dia da semana em português com a interface em espanhol.
+
+⚠️ Essa asserção nasceu VACUOSA, e o registro do porquê vale mais que ela: as
+telas percorridas não imprimiam data por extenso naquele banco, então a régua
+não tinha o que achar — sabotei a camada de idioma e o teste passou VERDE.
+Hoje ela tem um **controle positivo** (exige achar data em português no retrato
+inicial, senão falha dizendo que o problema é o teste) e uma **fixture** que
+garante o dado: `ContactsTable` só escreve a data por extenso quando é de hoje
+ou ontem, e fora disso imprime `dd/MM/yyyy` — idêntico nos dois idiomas.
+
+**O que segue fora:** e-mail e o PDF de LGPD, com o motivo escrito em
+`tests/unit/i18n-a-data-segue-o-idioma.test.ts`.
