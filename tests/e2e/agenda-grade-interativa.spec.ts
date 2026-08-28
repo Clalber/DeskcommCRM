@@ -216,6 +216,22 @@ test("arrastar um card remarca — e o horário novo sobrevive ao reload", async
   const card = page.locator(`button:has([data-testid="faixa-${id}"])`);
   await expect(card).toBeVisible({ timeout: 20_000 });
 
+  // ⚠️ O HORÁRIO QUE ACABOU DE SER MARCADO PRECISA SAIR DA OFERTA — e esperar
+  // por isso é o que torna o resto do caso determinístico.
+  //
+  // A primeira versão pegava o alvo logo depois de ver o card, e o alvo saía
+  // IGUAL à origem: a grade ainda desenhava as 11:00 como livre porque a
+  // consulta de disponibilidade não tinha voltado. `useMarcarAgendamento`
+  // invalida `["agenda"]`, que é prefixo da chave de `useHorariosLivres`, então
+  // a repintura acontece — só não é instantânea.
+  //
+  // Virou asserção em vez de `waitForTimeout` porque a propriedade importa por
+  // si: um horário ocupado que continua clicável leva a pessoa direto ao 422.
+  await expect(
+    page.locator(`[data-testid="${testidOrigem}"]`),
+    "o horário recém-marcado continua sendo oferecido — a grade não reconsultou a disponibilidade",
+  ).toHaveAttribute("data-livre", "false", { timeout: 20_000 });
+
   // ── o alvo: outro bloco livre, no mesmo dia ────────────────────────────
   const { dia } = horarioDoBloco(testidOrigem);
   // ⚠️ O ALVO É O BLOCO LIVRE MAIS PRÓXIMO, e não o último do dia.
