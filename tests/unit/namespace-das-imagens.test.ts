@@ -71,7 +71,10 @@ const RECADO_AO_FORK =
 
 function imgNs(): string {
   const m = COMUM.match(/^IMG_NS="([^"]+)"$/m);
-  if (!m) throw new Error("não achei a linha IMG_NS= em hostgator-setup-kit/_common.sh");
+  // O grupo é obrigatório no padrão, mas `noUncheckedIndexedAccess` não sabe
+  // disso — e a checagem explícita é melhor que um `!`: se um dia o padrão
+  // ganhar um grupo opcional, a mensagem aqui diz o que aconteceu.
+  if (!m?.[1]) throw new Error("não achei a linha IMG_NS= em hostgator-setup-kit/_common.sh");
   return m[1];
 }
 
@@ -79,7 +82,7 @@ function imgNs(): string {
 function reposDoKit(): string[] {
   return ["IMG_APP", "IMG_WORKER", "IMG_SCHEDULER"].map((chave) => {
     const m = COMUM.match(new RegExp(`^${chave}="\\$\\{IMG_NS\\}/([^"]+)"$`, "m"));
-    if (!m) {
+    if (!m?.[1]) {
       throw new Error(
         `${chave} não é mais derivada de \${IMG_NS} em _common.sh. ` +
           "Se ela passou a repetir o namespace, a fonte única deixou de existir.",
