@@ -85,8 +85,25 @@ export async function PUT(req: NextRequest): Promise<Response> {
   // `skip_warmup` é pergunta da TELA; a coluna guarda a forma que o motor lê.
   // A tradução mora aqui, num lugar só: a tela não deveria precisar conhecer o
   // formato dos degraus para dizer "este número já está aquecido".
+  // `number_activated_at` NULO é OMITIDO, não enviado.
+  //
+  // A coluna é `not null default now()` — a única da tabela que não aceita nulo.
+  // A tela oferece a data como opcional e diz, no próprio texto de ajuda, que
+  // deixar em branco faz o número ser "tratado como recém-criado". Mandar `null`
+  // explícito ANULA o default e o insert morre com 23502; o operador via "Falha
+  // ao salvar os knobs", uma frase que não menciona data, e a rota descartava o
+  // erro do banco — então nem o log dizia qual campo.
+  //
+  // Omitir deixa o default agir, e o default É "recém-criado" (`now()` = idade
+  // zero), que é exatamente o que a tela promete. Numa linha que já existe, o
+  // campo vem PREENCHIDO com o valor atual (`fromItem`), então branco ali é o
+  // caso raro de limpar à mão — e omitir preserva a data em vez de rejuvenescer
+  // o número em silêncio, que seria o pior desfecho: teto de aquecimento
+  // reiniciado sem ninguém pedir.
+  const { number_activated_at, ...camposSemData } = camposDiretos;
   const knobFields = {
-    ...camposDiretos,
+    ...camposSemData,
+    ...(number_activated_at != null ? { number_activated_at } : {}),
     ...(skip_warmup !== undefined
       ? { warmup_daily_caps: skip_warmup ? [...WARMUP_PULADO] : null }
       : {}),
@@ -150,7 +167,15 @@ export async function PUT(req: NextRequest): Promise<Response> {
       { onConflict: "organization_id,channel_session_id" },
     );
     if (upErr) {
-      return fail("internal_error", "Falha ao salvar os knobs.", 500, { requestId });
+      // O erro do BANCO vai junto. Sem ele, "Falha ao salvar os knobs" é uma
+      // frase que não diz qual campo, e o operador não tem o que fazer com ela:
+      // foi assim que o 23502 de `number_activated_at` acima ficou invisível —
+      // a tela dizia "falha", o log não dizia nada, e só reproduzindo o upsert
+      // à mão no Postgres deu para saber. Mesma razão pela qual as outras rotas
+      // deste repo devolvem `error.message`.
+      return fail("internal_error", `Falha ao salvar os knobs: ${upErr.message}`, 500, {
+        requestId,
+      });
     }
   }
 
