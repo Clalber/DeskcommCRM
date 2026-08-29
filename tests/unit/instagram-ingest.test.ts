@@ -117,6 +117,10 @@ const evento = (extra: Partial<EventoDeEntrada> = {}): EventoDeEntrada => ({
   ehEco: false,
   ehApagada: false,
   respostaA: null,
+  emEspera: false,
+  referencia: null,
+  ehToqueEmBotao: false,
+  cargaDoBotao: null,
   ...extra,
 });
 

@@ -255,6 +255,27 @@ export interface ChannelAdapter {
   }): Promise<string | null>;
 
   /**
+   * O perfil de quem está do outro lado — nome, arroba e foto, de uma vez.
+   *
+   * Existe separado de `fetchProfilePictureUrl` porque em alguns canais a pessoa
+   * NÃO tem nome no CRM até isto rodar. Onde o interlocutor é um telefone, o
+   * número já é um rótulo utilizável; onde ele é um id opaco, o contato nasce
+   * como `Instagram 384756` e assim fica — uma lista de contatos indistinguíveis,
+   * que faz o CRM parecer quebrado para quem vende.
+   *
+   * Uma chamada só, e não duas, porque o mesmo endpoint devolve os três campos:
+   * pedir foto e nome em requisições separadas dobraria o custo de cota por
+   * contato sem trazer nada.
+   *
+   * `null` = não deu para perguntar. Perfil VAZIO devolve o objeto com campos
+   * nulos — a distinção importa para quem decide se tenta de novo.
+   */
+  fetchProfile?(input: ChannelTenantScope & {
+    sessionRef: string;
+    recipient: string;
+  }): Promise<{ nome: string | null; username: string | null; fotoUrl: string | null } | null>;
+
+  /**
    * Todas as formas sob as quais ESTE canal pode ter registrado a MESMA mensagem
    * que acabou de ser enviada — para reconhecer o eco do próprio envio quando ele
    * volta pelo webhook.

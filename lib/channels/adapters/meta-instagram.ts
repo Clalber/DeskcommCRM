@@ -292,5 +292,69 @@ export const metaInstagramAdapter: ChannelAdapter = {
     }
   },
 
+  /**
+   * Quem é a pessoa do outro lado.
+   *
+   * ─── Por que isto não roda na entrada da mensagem ───────────────────────────
+   *
+   * Porque é uma chamada de rede, e o caminho de entrada precisa gravar a
+   * mensagem e devolver 200 rápido — a Meta reentrega o lote inteiro quando
+   * demora. Quem chama é a rodada de perfis, fora do caminho quente.
+   *
+   * ─── A pergunta só funciona depois de a pessoa escrever ─────────────────────
+   *
+   * O IGSID é escopado à conta, e a Meta só o resolve para quem já mandou
+   * mensagem para ela. Não é limitação nossa: é como o canal funciona, e é por
+   * isso que o contato nasce com nome provisório em vez de nascer certo.
+   */
+  async fetchProfile(entrada: {
+    organizationId: string;
+    sessionRef: string;
+    recipient: string;
+  }): Promise<{ nome: string | null; username: string | null; fotoUrl: string | null } | null> {
+    const admin = createAdminClient();
+    const c = await instagramCredsForAccount(admin, {
+      organizationId: entrada.organizationId,
+      instagramUserId: entrada.sessionRef,
+    });
+    if (!c) return null;
+
+    const u = new URL(`/${c.graphVersion}/${entrada.recipient}`, c.baseUrl);
+    u.searchParams.set("fields", "name,username,profile_pic");
+
+    let r: Response;
+    try {
+      // Token no CABEÇALHO, como em todo o resto deste arquivo: na query ele
+      // entra no log de qualquer proxy no caminho.
+      r = await fetch(u.toString(), {
+        method: "GET",
+        headers: { Authorization: `Bearer ${c.token}` },
+      });
+    } catch {
+      // Falha de rede é "não deu para perguntar", NÃO "pessoa sem perfil".
+      // Confundir os dois faria a rodada carimbar o contato como consultado e
+      // não voltar nele — o nome ficaria provisório para sempre.
+      return null;
+    }
+
+    if (!r.ok) return null;
+
+    const dados = (await r.json().catch(() => null)) as {
+      name?: unknown;
+      username?: unknown;
+      profile_pic?: unknown;
+    } | null;
+    if (!dados) return null;
+
+    const str = (v: unknown) => (typeof v === "string" && v.length > 0 ? v : null);
+    return {
+      nome: str(dados.name),
+      username: str(dados.username),
+      // A URL é ASSINADA E TEMPORÁRIA. Quem chama baixa os bytes; guardar a URL
+      // produziria um avatar que quebra sozinho em alguns dias.
+      fotoUrl: str(dados.profile_pic),
+    };
+  },
+
   codes: CODIGOS,
 };

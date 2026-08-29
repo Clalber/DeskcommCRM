@@ -232,6 +232,17 @@ export async function ingerirEntradaDoInstagram(
         ...(primeira ? { instagram_media_type: primeira.tipo } : {}),
         ...(evento.respostaA ? { in_reply_to_external_id: evento.respostaA } : {}),
         ...(evento.ehApagada ? { instagram_apagada: true } : {}),
+        // De onde a pessoa veio. É a resposta para "esta campanha trouxe
+        // venda?", e sem gravar aqui ela se perde no instante em que chega.
+        ...(evento.referencia ? { instagram_origem: evento.referencia } : {}),
+        // O rótulo do botão já virou o corpo da mensagem; a carga técnica fica
+        // aqui, para quem for automatizar em cima dela.
+        ...(evento.ehToqueEmBotao
+          ? { instagram_botao: { carga: evento.cargaDoBotao } }
+          : {}),
+        // Marca a cópia que chegou enquanto OUTRO aplicativo tinha a linha.
+        // Sem isto, ninguém explica depois por que o agente não respondeu.
+        ...(evento.emEspera ? { instagram_em_espera: true } : {}),
       },
     })
     .select("id")
@@ -289,9 +300,18 @@ export async function ingerirEntradaDoInstagram(
     }
   }
 
-  // Eco não dispara agente: ele é a nossa própria voz, e despachar aqui faria o
-  // robô responder a si mesmo em laço.
-  if (!evento.ehEco) {
+  // ─── Quem NÃO acorda o agente, e por quê ──────────────────────────────────
+  //
+  // O ECO é a nossa própria voz: despachar aqui faria o robô responder a si
+  // mesmo em laço.
+  //
+  // A ESPERA é o protocolo de handover da Meta. A conta tem outro aplicativo
+  // ligado e é ELE que tem a linha agora; nós recebemos cópia para o histórico
+  // não ficar furado. Responder daqui é falar por cima de quem está atendendo —
+  // o cliente vê duas empresas respondendo a mesma pergunta, e nenhuma das duas
+  // sabe da outra. A mensagem fica gravada e visível; o que não acontece é a
+  // resposta automática.
+  if (!evento.ehEco && !evento.emEspera) {
     await aplicarEfeitosPosEntrada(admin, {
       organizationId,
       contactId,

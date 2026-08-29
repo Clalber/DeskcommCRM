@@ -27,5 +27,17 @@ atendimento por aqui:
   renovação é automática e roda de hora em hora; se ela falhar, abre um aviso na
   Central antes de o acesso morrer — e não depois.
 
+**O que chega junto com a mensagem:**
+
+- **De onde a pessoa veio.** Quem clicou num anúncio para abrir a conversa chega
+  com a campanha registrada — é o que responde "esta campanha trouxe venda?".
+- **Toque em botão conta como mensagem.** Quebra-gelo, resposta rápida e menu
+  viram conversa normalmente, com o rótulo que a pessoa tocou.
+- **Nome e foto do perfil** entram sozinhos na rodada seguinte, no lugar do nome
+  provisório. Um nome que você tenha escrito à mão nunca é sobrescrito.
+- **Se a sua conta tiver outro aplicativo ligado**, as mensagens que chegarem
+  enquanto ele estiver atendendo ficam registradas, e o agente de IA **não**
+  responde por cima dele.
+
 Quem não conectar nenhuma conta não vê diferença nenhuma: o canal fica onde
 estava, desligado, e nada no WhatsApp muda.

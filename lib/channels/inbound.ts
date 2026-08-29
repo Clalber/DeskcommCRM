@@ -29,6 +29,7 @@ import {
   saudeDoEvento,
 } from "./zernio/avisos";
 import { ingerirEntradaDoInstagram } from "./instagram/ingest";
+import { sessaoDaConta } from "./instagram/sessao-da-conta";
 import {
   INSTAGRAM_SIGNATURE_HEADER,
   parseInstagramWebhook,
@@ -245,13 +246,46 @@ async function instagramInbound(
 
   let entraram = 0;
   let repetidos = 0;
+  let deOutraConta = 0;
   const falhas: string[] = [];
+
+  // ─── A conexão sai da CONTA que recebeu, não do token da URL ──────────────
+  //
+  // A Meta entrega por APLICATIVO, não por conexão: um aplicativo tem uma
+  // callback URL, e todas as contas ligadas a ele mandam eventos para lá. Numa
+  // organização com duas contas de Instagram, as mensagens das duas chegam no
+  // mesmo token — e gravar tudo debaixo da conexão que o token resolve amarra a
+  // identidade à sessão errada. Quando alguém responde, o IGSID de uma conta sai
+  // pelo TOKEN da outra, e a resposta não chega a quem devia.
+  //
+  // O cache é por lote: a Meta manda várias mensagens num POST só, e quase
+  // sempre da mesma conta.
+  const conexaoPorConta = new Map<string, string | null>();
+  const conexaoDe = async (contaId: string): Promise<string | null> => {
+    const jaSabido = conexaoPorConta.get(contaId);
+    if (jaSabido !== undefined) return jaSabido;
+    const achada = await sessaoDaConta(admin, {
+      organizationId: input.session.organization_id,
+      instagramUserId: contaId,
+    });
+    conexaoPorConta.set(contaId, achada?.id ?? null);
+    return achada?.id ?? null;
+  };
 
   for (const evento of eventos) {
     try {
+      const channelSessionId = await conexaoDe(evento.contaId);
+      if (!channelSessionId) {
+        // Conta que esta organização não atende. Ignorar é o desfecho certo —
+        // cair de volta na conexão do token refaria o defeito com um passo a
+        // mais, e é exatamente assim que a resposta sairia pela conta errada.
+        deOutraConta += 1;
+        continue;
+      }
+
       const r = await ingerirEntradaDoInstagram(admin, {
         organizationId: input.session.organization_id,
-        channelSessionId: input.session.id,
+        channelSessionId,
         evento,
       });
       if (r.status === "ingested") entraram += 1;
@@ -270,10 +304,14 @@ async function instagramInbound(
   // descarta. Quem for investigar "o cliente diz que mandou e não chegou" não
   // tinha onde olhar. Não é erro (é o contrato: nem todo evento nos interessa),
   // então é `info`, não `warn`.
-  if (ignorados > 0) {
-    logger.info("[instagram] eventos ignorados no lote", {
+  if (ignorados > 0 || deOutraConta > 0) {
+    logger.info("[instagram] eventos não ingeridos no lote", {
       channelSessionId: input.session.id,
       ignorados,
+      // Separado de `ignorados` de propósito: "não entendi o evento" e "esta
+      // conta não é atendida aqui" pedem investigações diferentes. O segundo,
+      // se for grande, quer dizer que falta conectar uma conta.
+      deOutraConta,
       entraram,
     });
   }
@@ -298,5 +336,5 @@ async function instagramInbound(
     );
   }
 
-  return { ok: true, body: { entraram, repetidos, ignorados, falhas } };
+  return { ok: true, body: { entraram, repetidos, ignorados, deOutraConta, falhas } };
 }
