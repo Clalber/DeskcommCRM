@@ -62,17 +62,25 @@ Felipe Oliveira <56138438+felipebnt@users.noreply.github.com> <felipe_bnt@hotmai
 jmpo <pompa.07@gmail.com> Juan <pompa.07@gmail.com>
 
 # @melgarafael — o dono do produto, que commita de três máquinas. O e-mail
-# canônico é o de 2.545 dos commits.
-#
-# **Este é o único bloco cuja prova NÃO fecha só com a API, e a diferença
-# está escrita de propósito.** A API associa `rafael@maudibrasil.com.br` e
-# `119944436+melgarafael@users.noreply.github.com` à conta @melgarafael — isso
-# é prova. Já `rafael@automatiklabs.com.br` resolve para **@rafaelmelgaco**,
-# uma conta DIFERENTE (criada em 2024, sem repositórios públicos). O que
-# sustenta a fusão é o nome git idêntico nas três, o domínio ser o da empresa
-# do próprio dono, e os 55 commits serem trabalho do produto na `main` — uma
-# prova mais fraca que as de cima, e a única aqui que depende de confirmação
-# de quem é dono da identidade. Se ele disser que não é dele, esta linha sai:
-# o custo de fundir duas pessoas é maior que o de deixar duas assinaturas.
+# canônico é o de 2.545 dos commits, e o `noreply` do GitHub responde pela
+# mesma conta: a API associa os DOIS a @melgarafael.
 Rafael Melgaço <rafael@maudibrasil.com.br> <119944436+melgarafael@users.noreply.github.com>
-Rafael Melgaço <rafael@maudibrasil.com.br> <rafael@automatiklabs.com.br>
+
+# ─── AGUARDANDO confirmação, e por isso NÃO mapeado ─────────────────────────
+#
+# `Rafael Melgaço <rafael@automatiklabs.com.br>` — 55 commits. A API resolve
+# este e-mail para **@rafaelmelgaco**, que é uma conta DIFERENTE de
+# @melgarafael (criada em 2024, sem repositórios públicos). O nome git é
+# idêntico e o trabalho é do produto, o que torna a mesma-pessoa provável —
+# mas provável não é provado, e a regra deste arquivo não abre exceção para o
+# dono do repositório. Fundir duas contas que talvez sejam de duas pessoas
+# custa mais que deixar duas assinaturas separadas.
+#
+# A pergunta que resolve isto tem uma linha: **as duas contas do GitHub são
+# suas?** Se sim, a linha abaixo entra num commit de uma linha:
+#
+#     Rafael Melgaço <rafael@maudibrasil.com.br> <rafael@automatiklabs.com.br>
+#
+# Enquanto ninguém responde, o arquivo não afirma o que ninguém confirmou —
+# que é a mesma regra aplicada ao `Rafael Savoia`, acima. Ela vale para o dono
+# do produto do mesmo jeito, e é aqui que se vê se vale mesmo.

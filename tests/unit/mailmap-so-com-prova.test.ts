@@ -52,8 +52,10 @@ describe(".mailmap — nenhuma identidade entra sem prova escrita", () => {
     // defeito que este gate inteiro existe para não repetir.
     expect(
       linhas.filter(ehMapeamento).length,
-      "nenhum mapeamento lido: o arquivo sumiu ou o caminho está errado",
-    ).toBeGreaterThanOrEqual(4);
+      "nenhum mapeamento lido: o arquivo sumiu ou o caminho está errado. O piso\n" +
+      "é contra o VÁCUO (gate que passa por não enxergar), não uma contagem exata:\n" +
+      "remover um mapeamento legítimo não deve reprovar por si só.",
+    ).toBeGreaterThanOrEqual(3);
     const orfas: string[] = [];
     linhas.forEach((linha, i) => {
       if (!ehMapeamento(linha)) return;
@@ -69,17 +71,53 @@ describe(".mailmap — nenhuma identidade entra sem prova escrita", () => {
     ).toEqual([]);
   });
 
-  it("cada bloco nomeia a prova: um PR (#nnn) ou a consulta à API", () => {
-    const blocos = readFileSync(CAMINHO, "utf8")
-      .split(/\n(?=# @)/)
-      .filter((b) => b.trimStart().startsWith("# @"));
-    expect(blocos.length, "nenhum bloco de pessoa encontrado — o formato mudou?").toBeGreaterThan(0);
-    const semProva = blocos
-      .filter((b) => !/#\d{2,}/.test(b) && !/\bAPI\b|\bapi\b/.test(b))
-      .map((b) => b.split("\n")[0]);
+  it("o comentário acima de cada mapeamento nomeia a prova (PR ou API)", () => {
+    // Ancorado no MAPEAMENTO, não em "bloco de texto que começa com `# @`":
+    // a primeira versão fatiava por esse prefixo e quebrava quando a prosa
+    // citava um handle no início de uma linha. O gate media a vizinhança do
+    // dado em vez do dado — e reprovava o arquivo por defeito próprio.
+    const semProva: string[] = [];
+    linhas.forEach((linha, i) => {
+      if (!ehMapeamento(linha)) return;
+      // sobe pelo bloco contíguo de comentários imediatamente acima
+      const comentario: string[] = [];
+      let j = i - 1;
+      while (j >= 0 && (ehMapeamento(linhas[j]!) || linhas[j]!.trim().startsWith("#"))) {
+        if (linhas[j]!.trim().startsWith("#")) comentario.unshift(linhas[j]!);
+        j--;
+      }
+      const texto = comentario.join("\n");
+      if (!/#\d{2,}/.test(texto) && !/\bAPI\b/.test(texto)) semProva.push(linha.trim());
+    });
     expect(
       semProva,
-      `bloco sem prova citada (nem número de PR, nem API):\n  ${semProva.join("\n  ")}`,
+      `mapeamento cujo comentário não cita PR nem API — de onde saiu?:\n  ${semProva.join("\n  ")}`,
+    ).toEqual([]);
+  });
+
+  it("mapeamento sob bloco AGUARDANDO não entra por descuido", () => {
+    // O arquivo guarda a linha pronta, comentada, para quando a confirmação
+    // vier — e isso é um convite a descomentá-la. Medido: sem este caso,
+    // descomentar passava VERDE, porque o bloco acima cita a API (ela prova
+    // que as contas são DIFERENTES, o oposto do que o mapeamento afirmaria).
+    // O gate não sabe ler o sentido da prova; sabe ver o marcador. Tirar a
+    // linha da espera passa a exigir tirar o `AGUARDANDO` junto — ato
+    // deliberado, que é exatamente o que falta hoje.
+    const presos: string[] = [];
+    linhas.forEach((linha, i) => {
+      if (!ehMapeamento(linha)) return;
+      const comentario: string[] = [];
+      let j = i - 1;
+      while (j >= 0 && (ehMapeamento(linhas[j]!) || linhas[j]!.trim().startsWith("#"))) {
+        if (linhas[j]!.trim().startsWith("#")) comentario.unshift(linhas[j]!);
+        j--;
+      }
+      if (/AGUARDANDO/.test(comentario.join("\n"))) presos.push(linha.trim());
+    });
+    expect(
+      presos,
+      "mapeamento sob um bloco marcado AGUARDANDO — a confirmação chegou? então\n" +
+        `tire a marca junto, no mesmo commit:\n  ${presos.join("\n  ")}`,
     ).toEqual([]);
   });
 
