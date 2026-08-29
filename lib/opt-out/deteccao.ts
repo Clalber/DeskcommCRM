@@ -118,6 +118,21 @@ const VERBOS_DE_COMUNICACAO =
   "recibir|recibe|escribir|escribe|escriban|molestar|molesta|llamar|llama|mandes|envien";
 
 /**
+ * Objetos que aparecem depois de um verbo de comunicação mas NÃO são a
+ * comunicação em si — pedido, fatura, orçamento, campanha publicitária.
+ * Compartilhada entre português e espanhol: sem este lookahead, "parar de
+ * mandar o pedido" ou "deja de mandar el pedido" bloqueariam um cliente
+ * que está pedindo para CONTINUAR sendo atendido, só que sobre outro
+ * assunto — o mesmo risco que o padrão de "não quero receber" já trata
+ * para "ligação", só que agora no verbo de cessação em vez do verbo isolado.
+ */
+const OBJETOS_NAO_COMUNICATIVOS =
+  "pedido|pedidos|encomenda|encomendas|pacote|pacotes|entrega|entregas|" +
+  "fatura|faturas|boleto|boletos|cobranca|cobrancas|produto|produtos|" +
+  "paquete|paquetes|envio|envios|factura|facturas|boleta|boletas|" +
+  "cobro|cobros|producto|productos|pauta|pautas|presupuesto|presupuestos";
+
+/**
  * Pedidos INEQUÍVOCOS de descadastro escritos por extenso. Todos exigem o objeto
  * de comunicação; nenhum casa a palavra solta.
  *
@@ -157,6 +172,19 @@ const FRASES_DE_OPT_OUT: readonly RegExp[] = [
   ),
   /\bno\s+quiero\s+recibir\s+mas\b/u,
   /\bno\s+me\s+(?:escriba|escriban|escribas|mande|manden|mandes|llame|llamen)\s+mas\b/u,
+  // "deja de escribirme", "para de mandarme mensajes" — o pronome PRESO ao
+  // infinitivo ("escribirme"), diferente do português, onde ele vem solto
+  // ANTES do verbo ("de me mandar"). Sem o sufixo opcional, a construção
+  // mais comum de pedir descadastro em espanhol não casava padrão nenhum.
+  // Mesmo lookahead de objeto não comunicativo do padrão português de
+  // "parar de", acima — o risco de capturar o objeto errado é o mesmo nos
+  // dois idiomas.
+  new RegExp(
+    `\\b(?:dej(?:ar|a|e|en)|par(?:ar|a|e|en))\\s+de\\s+` +
+      `(?:${VERBOS_DE_COMUNICACAO})(?:me|nos|le|les)?\\b` +
+      `(?!\\s+(?:el|los|la|las|mi|mis|tu|tus|ese|esa|esos|esas)?\\s*(?:${OBJETOS_NAO_COMUNICATIVOS})\\b)`,
+    "u",
+  ),
   // "dar de baja" já É o pedido — a plantilla usa a palavra nesse sentido.
   /\b(?:dar|darme|doy)\s+de\s+baja\s+(?:la\s+)?(?:suscripcion|lista|publicidad|promociones)\b/u,
   /\bdarme\s+de\s+baja\b/u,

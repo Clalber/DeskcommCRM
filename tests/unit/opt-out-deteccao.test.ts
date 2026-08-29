@@ -88,6 +88,16 @@ const ESPANHOL_PEDE_PARA_SAIR = [
   "darme de baja",
   "dar de baja la suscripcion",
   "quiero dar de baja la suscripcion",
+  // Pronome PRESO ao infinitivo — a construção mais comum de pedir
+  // descadastro em espanhol, e a que não casava padrão nenhum até este PR.
+  // Diferente do português, onde o pronome vem solto ANTES do verbo.
+  "deja de escribirme",
+  "dejen de mandarme mensajes",
+  "deja de enviarme promociones",
+  "para de escribirme",
+  "para de mandarme mensajes",
+  "deja de escribirme por favor",
+  "deja de escribir",
   // `salir` é o `sair` em espanhol, e `sair` já estava na lista em português.
   // Faltava, e a promessa do CHANGELOG da 1.4.0 ("`baja`, `salir` e
   // `no quiero recibir` descadastram") era falsa exatamente nesta palavra —
@@ -121,6 +131,12 @@ const ESPANHOL_NAO_PEDE = [
   "voy a salir ahora",
   "puedo salir mas temprano?",
   "el pedido va a salir hoy?",
+  // CONTROLE do lookahead novo de OBJETOS_NAO_COMUNICATIVOS: o mesmo achado
+  // de "pare de mandar o pedido" (português), em espanhol. Sem o lookahead,
+  // "deja de mandar el pedido a esa dirección" bloquearia um cliente que
+  // está pedindo para mudar a ENTREGA, não para parar de ser atendido.
+  "deja de mandar el pedido a esa direccion",
+  "deja de cobrarme el envio",
 ];
 
 describe("espanhol — a palavra que a plantilla pede", () => {
