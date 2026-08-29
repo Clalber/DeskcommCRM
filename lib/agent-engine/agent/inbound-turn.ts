@@ -603,6 +603,15 @@ const TRANSPARENCIA_SYSTEM_BLOCK =
  * `crm_book_appointment` — sentença dita ao cliente, nada gravado no banco. Esta
  * regra é curta, redundante com a skill de propósito e, por só depender de
  * `agentConfig.toolIds` (não da mensagem do turno), fica sempre presente.
+ *
+ * ⚠️ Segundo parágrafo (2026-08-29): a mesma lacuna de keyword tem um irmão mais
+ * barato de cometer. Medido em produção: o lead disse "Pode ser segunda de manha"
+ * e depois só "?" — nenhuma das duas bate keyword da skill "agendamento", então o
+ * corpo dela (que tem a instrução "chame crm_find_free_slots e leia a resposta")
+ * nunca entrou no contexto. O primeiro parágrafo deste bloco só proíbe MENTIR
+ * ("confirmado" sem checar) — não obriga a CHECAR. Sem essa obrigação, o modelo
+ * tinha uma saída segura e preguiçosa: responder "vou verificar e te aviso" pra
+ * sempre, sem nunca chamar a ferramenta. O segundo parágrafo fecha essa saída.
  */
 const AGENDA_SYSTEM_BLOCK =
   '## Agenda — nunca confirme sem checar\n' +
@@ -611,7 +620,12 @@ const AGENDA_SYSTEM_BLOCK =
   'sucesso. Isso vale mesmo quando o lead já aceitou um horário que você ofereceu — aceite verbal não é ' +
   'reserva. NUNCA diga "confirmado", "está marcado" ou equivalente baseado só no histórico da conversa. ' +
   'Se ainda não chamou a ferramenta neste turno, chame antes de responder; se a chamada falhar ou você não ' +
-  'tiver certeza do resultado, diga que vai verificar e NÃO afirme que está confirmado.';
+  'tiver certeza do resultado, diga que vai verificar e NÃO afirme que está confirmado.\n' +
+  'Isso NÃO é desculpa para procrastinar: se o lead mencionou (agora ou em qualquer mensagem anterior da ' +
+  'conversa) um dia/horário específico que ainda não foi checado, chame crm_find_free_slots NESTE turno ' +
+  'antes de responder — não repita "vou verificar/confirmar e te aviso" sem ter chamado a ferramenta. Um ' +
+  '"vou verificar" só é aceitável na MESMA resposta em que você já chamou a ferramenta e ela falhou ou não ' +
+  'trouxe resultado; nunca como substituto de chamar.';
 
 export interface InboundTurnKnobs {
   /** últimas N mensagens no contexto de abertura (LEAD_CONTEXT_HISTORY_LIMIT) */
