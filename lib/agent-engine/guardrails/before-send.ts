@@ -221,6 +221,15 @@ export interface GateContext {
    * gate persegue —, e ele continua contando no cap diário (`recordSend`).
    */
   spinningEnforced?: boolean;
+  /**
+   * Arma o `agendaStallGate`. Ausente = no-op — mesma direção segura de
+   * `internalVocabularyEnforced` (caller que não conhece o campo não arma nada). `active`
+   * é o agente publicado ter `crm_book_appointment` nas tools deste turno (mesma condição
+   * de `AGENDA_SYSTEM_BLOCK` em `inbound-turn.ts`); `toolCalledThisTurn` é se
+   * `crm_find_free_slots`/`crm_book_appointment`/`crm_reschedule_appointment` já foi
+   * chamada neste turno (rastreado no call site, que é quem monta as tools).
+   */
+  agenda?: { active: boolean; toolCalledThisTurn: boolean };
 }
 
 /**
@@ -405,13 +414,61 @@ export const internalVocabularyGate: Gate = {
 };
 
 /**
+ * Padrão determinístico de "prometi verificar/confirmar agenda sem checar" — verbo de
+ * intenção (vou/estou/iremos) + verbo de checagem (verificar/confirmar/consultar) perto
+ * (≤80 chars) de um substantivo de agenda. Curto de propósito: cobre as frases MEDIDAS em
+ * produção (2026-08-29, tenant YADEA/gpt-5.6-terra) — "vou verificar as opções de horário
+ * [...] e te passo assim que tiver a confirmação", "estou confirmando com a equipe os
+ * horários disponíveis" — não uma gramática geral de intenção, que erraria para o lado do
+ * falso positivo em texto livre de WhatsApp.
+ */
+const AGENDA_STALL_PATTERN =
+  /\b(vou|estou|iremos|vamos)\b[^.!?\n]{0,10}\b(verificando|verificar|confirmando|confirmar|consultando|consultar)\b[^.!?\n]{0,80}\b(hor[aá]rios?|agenda|disponibilidade|agendamento|marca[çc][aã]o|encaixe|vagas?)\b/i;
+
+/**
+ * Gate de AGENDA SEM CHECAR — a garantia DURA de que "vou verificar/confirmar horário" só
+ * sai depois de a ferramenta (`crm_find_free_slots`/`crm_book_appointment`/
+ * `crm_reschedule_appointment`) ter sido de fato CHAMADA neste turno. Desarmado (`agenda`
+ * ausente ou `active` false) = no-op — mesmo default seguro de `internalVocabularyEnforced`
+ * (caller que não conhece o campo não arma nada).
+ *
+ * Por que existe apesar do `AGENDA_SYSTEM_BLOCK` (instrução em texto, `inbound-turn.ts`) já
+ * dizer a mesma regra: medido em produção (2026-08-29, mesmo tenant) que o modelo
+ * (`openai/gpt-5.6-terra`) ignora a instrução e ainda assim promete verificar sem chamar a
+ * ferramenta — a instrução sozinha não é garantia, só ensino. Este gate é a cura
+ * DETERMINÍSTICA: não precisa de classificador (o padrão é regex, sem custo de LLM extra) e
+ * não confia no modelo se corrigir sozinho — se ele tentar de novo sem chamar a ferramenta,
+ * veta de novo (sem fail-safe de N tentativas como o de vocabulário interno: aqui NÃO existe
+ * versão aceitável do texto vetado, só a alternativa de chamar a ferramenta).
+ *
+ * Posição 6.9 de `BEFORE_SEND_GATES`: DEPOIS do `internalVocabularyGate` e ANTES do
+ * `disclosureGate` (que pode emendar o corpo — este gate precisa ver o texto do MODELO).
+ */
+export const agendaStallGate: Gate = {
+  name: 'agenda_stall',
+  evaluate: (ctx) => {
+    if (ctx.agenda === undefined || !ctx.agenda.active) return { pass: true };
+    if (ctx.agenda.toolCalledThisTurn) return { pass: true };
+    if (!AGENDA_STALL_PATTERN.test(ctx.body)) return { pass: true };
+    return {
+      pass: false,
+      code: 'agenda_stall_sem_ferramenta',
+      reason:
+        'Você prometeu verificar/confirmar um horário sem ter chamado crm_find_free_slots, ' +
+        'crm_book_appointment ou crm_reschedule_appointment NESTE turno. Chame a ferramenta ' +
+        'agora e responda com base no retorno dela — não repita a promessa sem checar.',
+    };
+  },
+};
+
+/**
  * Gate de disclosure (F4-05; blueprint 5.7) — garante que a PRIMEIRA mensagem outbound a um
  * lead novo se apresenta como assistente virtual (template versionado por org). Decisão de
  * produto que blinda hoje (CDC) e amanhã (PL 2338), não exigência da Meta. Sem template
  * configurado OU não sendo o 1º outbound → PASS (segundo em diante não repete). 1º outbound
  * que JÁ contém o disclosure → PASS. 1º sem disclosure → conforme o knob `mode`: 'veto'
  * bloqueia com erro de ensino; 'inject' devolve `amendBody` com o disclosure prependado.
- * Posição 7 (última) de `BEFORE_SEND_GATES` (F4-08): roda sobre o corpo já validado pelos
+ * Posição 8 (última) de `BEFORE_SEND_GATES` (F4-08): roda sobre o corpo já validado pelos
  * gates anteriores e pode emendá-lo (inject) antes do envio.
  */
 export const disclosureGate: Gate = {
@@ -543,8 +600,16 @@ const spinningGate: Gate = {
  * nasce DESARMADO por default (ver `GateContext.internalVocabularyEnforced`): só o
  * caminho do agente o arma, então, como a v5, a v6 não muda o destino de nenhum envio
  * que já existia — muda o TRACE, e passa a medir o vazamento onde há modelo para ensinar.
+ * v7 = insere `agendaStallGate` entre `internal_vocabulary` e `disclosure` — a garantia
+ * DETERMINÍSTICA de que "vou verificar/confirmar horário" só sai depois de a ferramenta de
+ * agenda ter sido chamada neste turno (medido em produção, 2026-08-29: o `AGENDA_SYSTEM_BLOCK`
+ * em texto, sozinho, não bastou — o modelo prometeu checar sem chamar a ferramenta mesmo com
+ * a instrução presente e por último no prompt). Nasce DESARMADO por default (ver
+ * `GateContext.agenda`): só o caminho do agente o arma quando o agente publicado tem
+ * `crm_book_appointment` nas tools, então a v7 também não muda o destino de nenhum envio que
+ * já existia fora desse caso — muda o TRACE e passa a medir/impedir a promessa vazia.
  */
-export const BEFORE_SEND_CHAIN_VERSION = 6;
+export const BEFORE_SEND_CHAIN_VERSION = 7;
 
 /**
  * Ordem FINAL da cadeia (F4-08/F4-09; edge-contract §before_send / blueprint órgão 5) — DADO
@@ -559,7 +624,9 @@ export const BEFORE_SEND_CHAIN_VERSION = 6;
  *   (6.5) case_promise — anti-alucinação de casos humanos (spec 15 §10.2, Wave 4);
  *   (6.7) internal_vocabulary — vazamento de vocabulário interno ao cliente (doutrina
  *         `separacao-fala-e-operacao.md`); antes do disclosure porque ele pode emendar o corpo;
- *   (7) disclosure — 1ª mensagem se apresenta como assistente virtual (F4-05).
+ *   (6.9) agenda_stall — "vou verificar/confirmar horário" sem ter chamado a ferramenta de
+ *         agenda neste turno; antes do disclosure pelo mesmo motivo do internal_vocabulary;
+ *   (8) disclosure — 1ª mensagem se apresenta como assistente virtual (F4-05).
  * (O anti-jailbreak F4-04 é INBOUND advisório, não gate de before_send — não entra aqui.)
  */
 export const BEFORE_SEND_GATES: readonly Gate[] = [
@@ -572,6 +639,7 @@ export const BEFORE_SEND_GATES: readonly Gate[] = [
   semanticPromiseGate,
   casePromiseGate,
   internalVocabularyGate,
+  agendaStallGate,
   disclosureGate,
 ];
 
@@ -683,6 +751,11 @@ export interface RunBeforeSendArgs {
    */
   enforceSpinning?: boolean;
   /**
+   * Arma o `agendaStallGate` para ESTA tentativa — ver `GateContext.agenda`. Ausente = gate
+   * no-op (retrocompatível com todo caller que não conhece agenda, ex.: `followup-turn.ts`).
+   */
+  agenda?: { active: boolean; toolCalledThisTurn: boolean };
+  /**
    * Enviado SÓ se TODOS os gates passarem — ChannelAdapter (própria tx/idempotência). Recebe o
    * corpo FINAL (o disclosureGate F4-05 pode emendá-lo via `amendBody`): quem monta o send DEVE
    * enviar este `body`, não o corpo original capturado antes da cadeia.
@@ -761,6 +834,7 @@ export async function runBeforeSend(args: RunBeforeSendArgs): Promise<BeforeSend
       hasOpenCase: args.hasOpenCase ?? false,
       openedCaseThisTurn: args.openedCaseThisTurn ?? false,
       internalVocabularyEnforced: args.enforceInternalVocabulary ?? false,
+      ...(args.agenda !== undefined ? { agenda: args.agenda } : {}),
     };
 
     const trace: GateTraceEntry[] = [];

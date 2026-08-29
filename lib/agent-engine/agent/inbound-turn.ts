@@ -650,6 +650,16 @@ const AGENDA_SYSTEM_BLOCK =
   'diga "vou confirmar/verificar com [nome de pessoa/equipe]" para justificar não ter chamado a ferramenta: ' +
   'chame primeiro, e só fale de encaminhar a alguém se a ferramenta genuinamente não resolver.';
 
+/**
+ * Tools de agenda cuja EXECUÇÃO neste turno arma o `agendaStallGate` (before-send.ts) —
+ * ver o wrap no loop de montagem das tools MCP, mais abaixo.
+ */
+const AGENDA_TOOL_NAMES = new Set([
+  'crm_find_free_slots',
+  'crm_book_appointment',
+  'crm_reschedule_appointment',
+]);
+
 export interface InboundTurnKnobs {
   /** últimas N mensagens no contexto de abertura (LEAD_CONTEXT_HISTORY_LIMIT) */
   historyLimit: number;
@@ -1688,6 +1698,18 @@ async function executarTurnoDoAgente(
   // (`internal_vocabulary_leak`): 1º veto no turno ensina o modelo a reescrever; persistir
   // solta o envio com registro. Por turno (closure), nunca cross-turno.
   let internalVocabularyVetoCount = 0;
+  // Cap de envio (warm-up/diário) vetado neste turno — capturado aqui porque o veto
+  // não empurra outcome nenhum a `outcomes` (ver comentário no ponto de captura, mais
+  // abaixo). Diferente da janela horária (checada ANTES do modelo rodar, linha ~1233):
+  // o cap depende de quanto já saiu HOJE, que muda com o turno concorrente — só dá pra
+  // saber com certeza no momento do envio, não antes.
+  let pacingCapVeto: { code: string; nextAllowedAt: Date } | null = null;
+  // Arma o `agendaStallGate` (before-send.ts): true assim que crm_find_free_slots,
+  // crm_book_appointment ou crm_reschedule_appointment executar neste turno — marcado no
+  // wrapper das tools MCP, mais abaixo. `send_message` lê o valor NO MOMENTO do envio; como
+  // as tools do modelo rodam em passos anteriores do mesmo loop, o valor já está certo
+  // quando o modelo decide mandar a resposta.
+  let agendaToolCalledThisTurn = false;
   const outcomes: ChannelSendResult[] = [];
   // Citações acumuladas por buscas de conhecimento DESTE turno — anexadas à
   // próxima outbound enviada (shape de lib/ai/citations/types, que a UI já lê).
@@ -2006,6 +2028,14 @@ async function executarTurnoDoAgente(
             // não é dele, e a única saída seria o silêncio. O follow-up determinístico
             // idem (ver GateContext.internalVocabularyEnforced).
             enforceInternalVocabulary: true,
+            // Mesmo padrão do vocabulário interno: só o `send_message` arma — é o único
+            // corpo escrito pelo modelo. `active` segue a MESMA condição de
+            // `AGENDA_SYSTEM_BLOCK` (crm_book_appointment publicado); sem ela o gate
+            // vetaria agente que nem tem a ferramenta de agenda.
+            agenda: {
+              active: agentConfig !== null && agentConfig.toolIds.includes('crm_book_appointment'),
+              toolCalledThisTurn: agendaToolCalledThisTurn,
+            },
             ...(deps.knobs.disclosureMode !== undefined ? { disclosureMode: deps.knobs.disclosureMode } : {}),
             // Gate 5 (F4-02): classificador semântico roteado pelo MESMO seam agnóstico (budget
             // da org checado nele). Closure com tenant/lead/job da ROW fechados — nunca do payload.
@@ -2097,6 +2127,17 @@ async function executarTurnoDoAgente(
             });
           }
           if (chain.status === 'vetoed') {
+            // Cap de warm-up/diário: reescrever o texto não resolve (é rate limit, não
+            // conteúdo) — ensinar o modelo a "tentar de novo" só gasta passo. Guardamos
+            // pra reagendar o JOB inteiro depois que o turno terminar (mesmo padrão de
+            // `rescheduleJob` já usado pra janela horária), em vez de deixar o lead sem
+            // resposta até a próxima mensagem dele chegar (ou nunca).
+            if (
+              (chain.code === 'warmup_cap' || chain.code === 'daily_cap') &&
+              chain.nextAllowedAt !== undefined
+            ) {
+              pacingCapVeto = { code: chain.code, nextAllowedAt: chain.nextAllowedAt };
+            }
             // Erro de ENSINO pt-br (mesmo shape de get_lead_context/breaker): o
             // modelo o vê no turno seguinte. NÃO é exceção — não derruba o run.
             return { ok: false, error: { code: chain.code, message: chain.message } };
@@ -2536,7 +2577,21 @@ async function executarTurnoDoAgente(
       if (mcp !== null) {
         mcpCleanup = mcp.cleanup;
         for (const [name, mcpTool] of Object.entries(mcp.tools)) {
-          if (!(name in rawTools)) rawTools[name] = mcpTool;
+          if (name in rawTools) continue;
+          // Marca a EXECUÇÃO (não só a decisão de chamar) — é isso que o agendaStallGate
+          // precisa saber para não vetar um turno que já checou a agenda de verdade.
+          if (AGENDA_TOOL_NAMES.has(name) && typeof mcpTool.execute === 'function') {
+            const executeOriginal = mcpTool.execute.bind(mcpTool);
+            rawTools[name] = {
+              ...mcpTool,
+              execute: (async (...args: Parameters<typeof executeOriginal>) => {
+                agendaToolCalledThisTurn = true;
+                return executeOriginal(...args);
+              }) as typeof mcpTool.execute,
+            };
+          } else {
+            rawTools[name] = mcpTool;
+          }
         }
         mcpToolIdsDoTurno.push(...mcp.toolIds);
         runLog.info('tools MCP da tela montadas no turno', { mcp_tool_ids: mcp.toolIds });
@@ -3004,6 +3059,30 @@ async function executarTurnoDoAgente(
     );
     throw new JobSettledError(
       'turno encerrado com veto do sink (is_blocked) — job cancelado em definitivo, checkpoint gravado',
+    );
+  }
+
+  // Cap de warm-up/diário vetou toda tentativa de envio deste turno e nada saiu: sem
+  // isto, o job terminava 'ok' com `messages_sent: 0` e o lead ficava sem resposta até
+  // escrever de novo por conta própria (ou nunca) — medido em produção, 2026-08-29
+  // (número no dia 0 de warm-up, cap batido pelo volume da própria conversa de teste).
+  // Mesmo contrato da janela anti-ban (linha ~1233): adia sem gastar `attempts`, o job
+  // volta a 'pending' na hora certa e o mesmo turno roda de novo, com o mesmo contexto.
+  if (pacingCapVeto !== null && outcomes.length === 0) {
+    // Capturado num `const`: `pacingCapVeto` é reatribuído numa closure em outro ponto do
+    // turno, e o TS reabre a união (perde o `!== null`) depois de qualquer chamada — o
+    // valor JÁ CHECADO não muda, só a inferência precisa de um nome que não reatribui.
+    const veto = pacingCapVeto;
+    await rescheduleJob(pool, job.id, ctx.workerId, {
+      delayMs: Math.max(veto.nextAllowedAt.getTime() - clock().getTime(), 1_000),
+      reason: `cap de envio (${veto.code}) atingido — turno adiado para a próxima abertura`,
+    });
+    runLog.info('turno adiado — cap de envio atingido antes de qualquer mensagem sair', {
+      code: veto.code,
+      proxima_abertura: veto.nextAllowedAt.toISOString(),
+    });
+    throw new JobSettledError(
+      'cap de envio atingido — job reagendado para a próxima abertura, sem mensagem enviada',
     );
   }
 
