@@ -562,6 +562,30 @@ const CASES_SYSTEM_BLOCK =
   'open_human_case. Quando um caso estiver esperando informação do cliente e você já a obteve na ' +
   'conversa, use provide_case_update para devolver ao responsável.';
 
+/**
+ * Bloco de sistema RESIDENTE da Agenda — entra no prefixo cacheável sempre que o
+ * agente tem `crm_book_appointment` no `tool_ids` publicado, INDEPENDENTE de a skill
+ * situacional "agendamento" ter disparado no turno.
+ *
+ * Por quê: a skill "agendamento" (`lib/agent-engine/agent/skills.ts`) só injeta o
+ * corpo dela quando a ÚLTIMA mensagem inbound do turno bate uma keyword. Medido
+ * neste repo: o turno em que o lead ACEITA um horário oferecido ("pode ser amanhã
+ * às 9 então") raramente repete uma keyword de agendar — quem carrega a keyword é o
+ * turno ANTERIOR, que já passou. Sem o corpo da skill presente NAQUELE turno
+ * específico, o modelo confirmava o compromisso pela conversa, sem nunca chamar
+ * `crm_book_appointment` — sentença dita ao cliente, nada gravado no banco. Esta
+ * regra é curta, redundante com a skill de propósito e, por só depender de
+ * `agentConfig.toolIds` (não da mensagem do turno), fica sempre presente.
+ */
+const AGENDA_SYSTEM_BLOCK =
+  '## Agenda — nunca confirme sem checar\n' +
+  'Você só pode dizer a um lead que um horário/consulta/visita está confirmado DEPOIS de chamar ' +
+  'crm_book_appointment (ou crm_reschedule_appointment, para remarcação) e ver o retorno confirmando o ' +
+  'sucesso. Isso vale mesmo quando o lead já aceitou um horário que você ofereceu — aceite verbal não é ' +
+  'reserva. NUNCA diga "confirmado", "está marcado" ou equivalente baseado só no histórico da conversa. ' +
+  'Se ainda não chamou a ferramenta neste turno, chame antes de responder; se a chamada falhar ou você não ' +
+  'tiver certeza do resultado, diga que vai verificar e NÃO afirme que está confirmado.';
+
 export interface InboundTurnKnobs {
   /** últimas N mensagens no contexto de abertura (LEAD_CONTEXT_HISTORY_LIMIT) */
   historyLimit: number;
@@ -1335,11 +1359,15 @@ async function executarTurnoDoAgente(
     skillIndex,
   });
   // Spec 15 §5.2: bloco das tools de caso SEMPRE residente (não invalida o prefixo
-  // cacheável — mesmo espírito do índice de skills) quando a tela habilita.
-  const system =
-    agentConfig !== null && agentConfig.casesEnabled
-      ? `${systemWithMemory}\n\n${CASES_SYSTEM_BLOCK}`
-      : systemWithMemory;
+  // cacheável — mesmo espírito do índice de skills) quando a tela habilita. O bloco da
+  // Agenda segue o mesmo padrão, condicionado a `crm_book_appointment` estar entre as
+  // tools publicadas — ver comentário de `AGENDA_SYSTEM_BLOCK`.
+  const blocosResidentes = [systemWithMemory];
+  if (agentConfig !== null && agentConfig.casesEnabled) blocosResidentes.push(CASES_SYSTEM_BLOCK);
+  if (agentConfig !== null && agentConfig.toolIds.includes('crm_book_appointment')) {
+    blocosResidentes.push(AGENDA_SYSTEM_BLOCK);
+  }
+  const system = blocosResidentes.join('\n\n');
   const previous = await latestCheckpoint(pool, tenantId, leadId);
   const leadState = await getLeadState(pool, tenantId, leadId);
   const openingContext = await getLeadContext(
