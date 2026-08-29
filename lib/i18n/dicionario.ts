@@ -171,6 +171,22 @@ export const DICIONARIO: Traducoes = {
   "API Oficial (Meta)": { es: "API Oficial (Meta)" },
   "Provedor parceiro": { es: "Proveedor asociado" },
 
+  // ─── Onboarding: já existe uma conexão em andamento ─────────────────────
+  // O índice da 0204 admite UM pareamento pendente por organização; quando o
+  // onboarding esbarra nele, esta é a saída — e ela precisa ser LEGÍVEL, senão
+  // a tela cai no texto genérico que diz que o serviço caiu.
+  "Já existe uma conexão em andamento": { es: "Ya hay una conexión en curso" },
+  "Alguém começou a conectar um número e não terminou.": {
+    es: "Alguien empezó a conectar un número y no terminó.",
+  },
+  "Há uma conexão de WhatsApp sendo preparada nesta organização.": {
+    es: "Hay una conexión de WhatsApp preparándose en esta organización.",
+  },
+  "O sistema mantém uma conexão em preparo por vez, para não deixar número pela metade. Conclua ou cancele a que está aberta e volte aqui — ou siga pelas saídas abaixo.": {
+    es: "El sistema mantiene una conexión en preparación a la vez, para no dejar ningún número a medias. Concluye o cancela la que está abierta y vuelve aquí — o sigue por las salidas de abajo.",
+  },
+  "Abrir Conexões": { es: "Abrir Conexiones" },
+
   // ─── Conexões: aba do Instagram ─────────────────────────────────────────
   // Frases INTEIRAS por chave, e não pedaços. A tela usava `<strong>` no meio
   // das orações, o que partia cada uma em três chaves — e pedaço solto traduz

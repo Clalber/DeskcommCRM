@@ -125,10 +125,12 @@ test.describe("gatilho de etapa do funil", () => {
       creds = JSON.parse(fs.readFileSync(CREDS_PATH, "utf8")) as Creds;
     }
     // ⚠️ A PRECONDIÇÃO DO PUBLISH É EXPLÍCITA AQUI, e não herdada de outra spec.
-    // `seed-e2e-followup-agent.ts` cria a credential SEM `validated_at` e a
-    // sessão em `'STARTING'` (ele declara isso no cabeçalho: não precisava
-    // publicar). Mas `fn_publish_ai_agent_version` EXIGE `validated_at not null`
-    // e `status = 'WORKING'`. Esta spec publica — e só passava porque o helper
+    // `seed-e2e-followup-agent.ts` cria a credential SEM `validated_at`. A
+    // sessão ele já cria em `'WORKING'` — mudou com a migration 0204, cujo
+    // índice só admite UMA sessão pendente por organização e fazia dois seeds
+    // da mesma org colidirem. `fn_publish_ai_agent_version` EXIGE
+    // `validated_at not null` e `status = 'WORKING'`, então o `update` de
+    // status abaixo virou no-op; o de `validated_at` continua indispensável. Esta spec publica — e só passava porque o helper
     // de OUTRA spec tinha validado as fixtures neste banco. Num ambiente fresco
     // (o que a doutrina de QA Visual manda) o publish devolveria 422, e a
     // mensagem acusaria o gate do agente, que não é a causa.

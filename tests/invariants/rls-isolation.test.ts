@@ -187,6 +187,17 @@ beforeAll(() => {
             values (v_org, v_contact, 'email', 'rls-invariant@exemplo.test', now() + interval '7 days');
         end if;
 
+        -- (migration 0203) A amarração entre a PESSOA do outro lado e o contato
+        -- do CRM. Escopada à SESSÃO, não ao contato: a mesma pessoa falando com
+        -- duas contas da organização tem dois ids. Vazar esta linha entre
+        -- organizações é pior que vazar um contato — ela diz por qual conta
+        -- responder, e responder pela errada manda a mensagem para fora.
+        if not exists (select 1 from public.channel_contact_identities where organization_id = v_org) then
+          insert into public.channel_contact_identities
+            (organization_id, channel_session_id, contact_id, provider_user_id)
+            values (v_org, v_sess, v_contact, 'ig-rls-' || v_org::text);
+        end if;
+
         if not exists (select 1 from public.push_subscriptions where organization_id = v_org) then
           insert into public.push_subscriptions
             (organization_id, user_id, endpoint, p256dh, auth)
@@ -236,6 +247,18 @@ export const TABLES = [
   // lia e escrevia. É o modo de falha que o aviso acima descreve, encontrado vivo.
   "org_guardrail_layers",
   "push_subscriptions",
+  // migration 0203 — a identidade do contato NO PROVIDER, escopada à sessão.
+  // Entra aqui e NÃO em `PROVA_PROPRIA` nem em `DEBITO_CONHECIDO`: a policy de
+  // LEITURA dela não tem porta de papel (qualquer membro da organização lê), que
+  // é exatamente o molde deste percurso — o usuário semeado é `agent` e o
+  // controle positivo funciona. A de ESCRITA exige `admin` (migration 0206),
+  // mas escrita não é o que este arquivo mede.
+  //
+  // A tabela nasceu na 0203 e passou um dia INVISÍVEL para esta varredura,
+  // porque a migration não tinha chegado ao `baseline.sql` — e é do baseline
+  // que vem o banco do CI. Guarda só enxerga o que está no banco que ela
+  // inspeciona.
+  "channel_contact_identities",
   // ⚠️ `webhook_lead_captures` (migration 0174) NÃO entra nesta lista, e a
   // ausência é deliberada: a policy dela exige `manager`, e o usuário semeado
   // aqui é `agent` — o controle positivo falharia por ACERTO, e a "correção"

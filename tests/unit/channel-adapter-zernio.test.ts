@@ -132,7 +132,6 @@ describe("send — endereça pela THREAD, não pelo telefone", () => {
       sessionRef: CREDS.accountId,
       to: "595991733685",
       providerConversationId: THREAD,
-      sentVia: "ai",
       kind: "text",
       body: "olá",
     });
@@ -153,7 +152,6 @@ describe("send — endereça pela THREAD, não pelo telefone", () => {
       sessionRef: CREDS.accountId,
       to: "595991733685",
       providerConversationId: THREAD,
-      sentVia: "ai",
       kind: "text",
       body: "x",
     });
@@ -167,7 +165,6 @@ describe("send — endereça pela THREAD, não pelo telefone", () => {
       sessionRef: CREDS.accountId,
       to: "5959",
       providerConversationId: THREAD,
-      sentVia: "ai",
       kind: "text",
       body: "x",
     });
@@ -181,7 +178,6 @@ describe("send — endereça pela THREAD, não pelo telefone", () => {
       sessionRef: CREDS.accountId,
       to: "5959",
       providerConversationId: THREAD,
-      sentVia: "ai",
       kind: "text",
       body: "x",
     });
@@ -194,7 +190,6 @@ describe("send — endereça pela THREAD, não pelo telefone", () => {
         organizationId: ORG,
         sessionRef: CREDS.accountId,
         to: "595991733685",
-        sentVia: "ai",
         kind: "text",
         body: "x",
       }),
@@ -210,7 +205,6 @@ describe("send — endereça pela THREAD, não pelo telefone", () => {
         sessionRef: "x",
         to: "y",
         providerConversationId: THREAD,
-        sentVia: "ai",
         kind: "text",
         body: "z",
       }),
@@ -239,7 +233,6 @@ describe("send — mídia", () => {
       sessionRef: CREDS.accountId,
       to: "5959",
       providerConversationId: THREAD,
-      sentVia: "ai",
       kind: "image",
       media,
     });
@@ -258,7 +251,6 @@ describe("send — mídia", () => {
       sessionRef: CREDS.accountId,
       to: "5959",
       providerConversationId: THREAD,
-      sentVia: "ai",
       kind: "audio",
       media: { ...media, mime: "audio/ogg", filename: "a.ogg", caption: null },
     });
@@ -272,7 +264,6 @@ describe("send — mídia", () => {
       sessionRef: CREDS.accountId,
       to: "5959",
       providerConversationId: THREAD,
-      sentVia: "ai",
       kind: "document",
       media: { ...media, mime: "application/pdf", filename: "d.pdf", caption: null },
     });
@@ -294,7 +285,6 @@ describe("erros", () => {
         sessionRef: CREDS.accountId,
         to: "5959",
         providerConversationId: THREAD,
-        sentVia: "ai",
         kind: "text",
         body: "x",
       }),
@@ -313,7 +303,6 @@ describe("erros", () => {
         sessionRef: CREDS.accountId,
         to: "5959",
         providerConversationId: THREAD,
-        sentVia: "ai",
         kind: "text",
         body: "x",
       }),

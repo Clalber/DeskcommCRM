@@ -88,6 +88,14 @@ async function main(): Promise<void> {
           .insert({
             organization_id: orgId,
             waha_session_name: `e2e-escalacao-${Date.now()}`,
+            // `WORKING` explícito: o default da coluna é `STARTING`, e o índice
+            // `channel_sessions_um_pareamento_pendente_por_org` (migration 0204) só
+            // admite UMA sessão nesse estado por organização. Os seeds de e2e
+            // COMPARTILHAM a org do `.e2e-creds.json` e cada um procura apenas pelo
+            // PRÓPRIO `waha_session_name`, então dois na mesma rodada colidiam com
+            // 23505. O que estes seeds simulam é canal CONECTADO — `WORKING` é o
+            // estado certo, não um contorno.
+            status: "WORKING",
             webhook_secret_encrypted: "\\x00",
           })
           .select("id")

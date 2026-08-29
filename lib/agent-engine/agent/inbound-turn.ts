@@ -30,6 +30,7 @@
 import type pg from 'pg';
 import { z } from 'zod';
 import { auxModelArgs, type AuxModelArgs } from './aux-model-args';
+import { digitacaoDoTurno, type DigitacaoDoTurno, type DigitandoKnobs } from './digitando';
 import type { ChannelAdapter, ChannelSendResult } from '../channel-adapter';
 
 import { withFields, type Logger } from '../obs/logger';
@@ -640,6 +641,15 @@ export interface InboundTurnKnobs {
    * Ausente = usa o defaultModel da org (mesma convenção de stageClassifier/jailbreak).
    */
   followupAi?: { model?: string };
+  /**
+   * Indicador "digitando…" enquanto o turno pensa (ver `agent/digitando.ts`).
+   * Ausente = NÃO sinaliza — mesma convenção dos knobs acima: main.ts o preenche
+   * pelo env (`AGENT_TYPING_*`); testes que não o exercitam o omitem sem custo.
+   *
+   * Não confundir com pacing: isto não atrasa, não segura e não veta envio
+   * nenhum. É sinal visual, e roda ao lado do turno.
+   */
+  digitando?: DigitandoKnobs;
 }
 
 export interface InboundTurnDeps {
@@ -1023,41 +1033,62 @@ export async function runAgentTurn(
     tenant_id: job.organization_id,
     lead_id: leadIdDoJob,
   });
-  await comHandoffSeOrcamentoAcabar(
-    {
-      pool,
-      tenantId: job.organization_id,
-      leadId: leadIdDoJob,
-      conversationId: input.conversationId,
-      resumoDoCheckpoint: () =>
-        resumoDoCheckpointDuravel(pool, job.organization_id, leadIdDoJob, logDaEscolta),
-      // O canal nasce DENTRO da closure: instanciá-lo aqui faria todo turno feliz
-      // pagar por um adapter que só o caminho de erro usa. Sem `agentActorId` de
-      // propósito — quando o teto estoura antes da primeira chamada, não houve
-      // agente resolvido para creditar.
-      avisarLead: () =>
-        avisarLeadLendoOContato(
-          pool,
-          {
-            tenantId: job.organization_id,
-            leadId: leadIdDoJob,
-            conversationId: input.conversationId,
-            channelSessionId: input.channelSessionId,
-            jobId: job.id,
-          },
-          {
-            motivo: 'orcamento_de_ia',
-            channel: (deps.channel ?? ((p: pg.Pool) => new WahaChannelAdapter(p, deps.crmCfg)))(pool),
-            now: deps.clock?.() ?? new Date(),
-            log: logDaEscolta,
-            ...(deps.knobs.disclosureMode !== undefined ? { disclosureMode: deps.knobs.disclosureMode } : {}),
-            ...(deps.sleep !== undefined ? { sleep: deps.sleep } : {}),
-          },
-        ),
-      log: logDaEscolta,
-    },
-    () => executarTurnoDoAgente(deps, job, pool, ctx, input),
-  );
+  // O "digitando…" nasce AQUI, antes de qualquer coisa que possa falhar, e é
+  // parado no `finally` lá embaixo. Ele ainda não sabe por qual canal vai
+  // sinalizar — quem o liga é o turno, quando o canal existe e as guardas já
+  // passaram (`digitacao.ligar(channel)`).
+  //
+  // O par criar-aqui / parar-no-finally é o que garante o invariante do
+  // indicador: NENHUM caminho de saída do turno deixa o balãozinho aceso.
+  // Exceção, JobSettledError, veto, sucesso — todos passam pelo mesmo `finally`.
+  const digitacao = digitacaoDoTurno({
+    knobs: deps.knobs.digitando,
+    tenantId: job.organization_id,
+    conversationId: input.conversationId,
+    log: logDaEscolta,
+  });
+  try {
+    await comHandoffSeOrcamentoAcabar(
+      {
+        pool,
+        tenantId: job.organization_id,
+        leadId: leadIdDoJob,
+        conversationId: input.conversationId,
+        resumoDoCheckpoint: () =>
+          resumoDoCheckpointDuravel(pool, job.organization_id, leadIdDoJob, logDaEscolta),
+        // O canal nasce DENTRO da closure: instanciá-lo aqui faria todo turno feliz
+        // pagar por um adapter que só o caminho de erro usa. Sem `agentActorId` de
+        // propósito — quando o teto estoura antes da primeira chamada, não houve
+        // agente resolvido para creditar.
+        avisarLead: () =>
+          avisarLeadLendoOContato(
+            pool,
+            {
+              tenantId: job.organization_id,
+              leadId: leadIdDoJob,
+              conversationId: input.conversationId,
+              channelSessionId: input.channelSessionId,
+              jobId: job.id,
+            },
+            {
+              motivo: 'orcamento_de_ia',
+              channel: (deps.channel ?? ((p: pg.Pool) => new WahaChannelAdapter(p, deps.crmCfg)))(pool),
+              now: deps.clock?.() ?? new Date(),
+              log: logDaEscolta,
+              ...(deps.knobs.disclosureMode !== undefined ? { disclosureMode: deps.knobs.disclosureMode } : {}),
+              ...(deps.sleep !== undefined ? { sleep: deps.sleep } : {}),
+            },
+          ),
+        log: logDaEscolta,
+      },
+      () => executarTurnoDoAgente(deps, job, pool, ctx, input, digitacao),
+    );
+  } finally {
+    // `await` de propósito: soltar o desligamento faria o processo terminar (ou
+    // o job seguinte começar) com um `paused` em voo, e o cliente ficaria com o
+    // indicador aceso até o WhatsApp o expirar sozinho. `parar()` não lança.
+    await digitacao.parar();
+  }
 }
 
 /**
@@ -1084,6 +1115,8 @@ async function executarTurnoDoAgente(
   pool: pg.Pool,
   ctx: { workerId: string },
   input: AgentTurnInput,
+  /** Indicador "digitando…" do turno — criado por `runAgentTurn`, ligado abaixo. */
+  digitacao: DigitacaoDoTurno,
 ): Promise<void> {
   const tenantId = job.organization_id;
   const leadId = job.contact_id;
@@ -1370,6 +1403,28 @@ async function executarTurnoDoAgente(
   // STOP lido no turno (fonte: CRM via get_lead_context) — combinado com o cache
   // durável leads.is_opted_out no gate 1 da cadeia (F2-13).
   const optedOutThisTurn = openingContext.context.contact.is_blocked;
+
+  // ─── "DIGITANDO…" ACENDE AQUI, e o lugar é a decisão inteira ──────────────
+  //
+  // Este ponto é o mais cedo em que o indicador é HONESTO. Antes dele o turno
+  // ainda podia sair sem falar nada: handoff humano (no-op no início), fora da
+  // janela anti-ban (reagenda o job) e falha de contexto já ficaram para trás, e
+  // o canal — que só existe uma linha acima — é quem sabe sinalizar.
+  //
+  // Acender antes de qualquer uma dessas guardas mostraria "digitando…" a quem
+  // não vai receber resposta nenhuma; e é justamente com o lead esperando que
+  // um sinal falso custa mais caro.
+  //
+  // Daqui em diante vêm as chamadas de modelo, as tools e o RAG — o "pensar"
+  // que o indicador existe para cobrir. Ele NÃO é condição de nada: se o canal
+  // não souber sinalizar, `ligar` é no-op e o turno segue idêntico.
+  //
+  // O opt-out do próprio turno entra na conta: quem pediu para não ser
+  // incomodado não deve ver sinal de vida (o gate 1 da cadeia vai vetar o envio
+  // de qualquer forma — acender aqui seria prometer uma resposta que não vem).
+  if (!optedOutThisTurn) {
+    digitacao.ligar(channel);
+  }
   // LGPD (F4-09): base legal/anonimização do CRM lidas na abertura do turno (fonte confiável,
   // regra dura nº 1) — o gate LGPD da cadeia veta anonimizado (sempre) e 1º toque de prospecção
   // sem base legal. Resposta a inbound (isProspecting=false) não dispara o veto de base legal.

@@ -114,7 +114,6 @@ describe('adapter WAHA', () => {
         organizationId: ORG,
         sessionRef: 's',
         to: '5531999998888@c.us',
-        sentVia: "ai",
         kind: 'text',
         body: 'oi',
       }),
@@ -129,7 +128,6 @@ describe('adapter WAHA', () => {
       organizationId: ORG,
       sessionRef: 'default',
       to: '5531999998888@c.us',
-      sentVia: "ai",
       kind: 'text',
       body: 'oi',
     });
@@ -153,7 +151,6 @@ describe('adapter WAHA', () => {
       organizationId: ORG,
       sessionRef: 'default',
       to: '5531998966398@c.us',
-      sentVia: "ai",
       kind: 'text',
       body: 'oi',
     });
@@ -172,7 +169,6 @@ describe('adapter WAHA', () => {
       organizationId: ORG,
       sessionRef: 'default',
       to: '5532984793302@c.us',
-      sentVia: "ai",
       kind: 'text',
       body: 'oi',
     });
@@ -187,7 +183,6 @@ describe('adapter WAHA', () => {
       organizationId: ORG,
       sessionRef: 'default',
       to: '5531999998888@c.us',
-      sentVia: "ai",
       kind: 'audio',
       media: { url: 'https://x/a.ogg', mime: 'audio/ogg' },
     });

@@ -71,6 +71,7 @@ import { detectarVazamentoInterno, renderVetoDeVazamento } from './vazamento-int
 import { capabilitiesOf, DEFAULT_CHANNEL_PROVIDER } from '@/lib/channels/capabilities';
 import { isWindowOpen } from './messaging-window';
 import type { ChannelProvider } from '@/lib/channels/capabilities';
+import type { MecanismoDeReengajamento } from '@/lib/channels/types';
 
 /** O que os gates enxergam — carregado UMA vez sob o lock, por tentativa de envio. */
 export interface GateContext {
@@ -498,12 +499,61 @@ export const messagingWindowGate: Gate = {
     return {
       pass: false,
       code: 'messaging_window_closed',
-      reason:
-        'a janela de 24 horas com este contato fechou; o canal vai recusar texto livre. ' +
-        'Use um template aprovado (ferramenta send_template) ou encerre o turno sem enviar.',
+      // A SAÍDA vem da capability, não de um texto fixo.
+      //
+      // Esta `reason` mandava usar template SEMPRE, e estava certa enquanto os
+      // três canais eram WhatsApp — lá, fora da janela, template é a única
+      // porta. Num canal sem template a frase manda o modelo chamar
+      // `send_template`, uma ferramenta que ele nem recebeu (`inbound-turn`
+      // remove a tool quando `requiresTemplates` é falso): a instrução aponta
+      // para uma porta que não existe, e o turno morre sem próximo passo.
+      //
+      // Um veto que só nega faz o modelo tentar de novo igual — é a razão de
+      // esta `reason` existir. Então ela precisa dizer a saída DAQUELE canal.
+      reason: instrucaoDeReengajamento(caps.reengajamento),
     };
   },
 };
+
+/**
+ * O que dizer ao modelo quando a janela fecha, conforme o que o canal oferece.
+ *
+ * Invariante 2 da doutrina de canal: a capability declara a FÍSICA da restrição,
+ * porque é ela que decide o que fazer quando a restrição barra. Aqui a física
+ * vira a frase que o modelo lê.
+ */
+function instrucaoDeReengajamento(mecanismo: MecanismoDeReengajamento): string {
+  const fechou = 'a janela de 24 horas com este contato fechou; o canal vai recusar texto livre. ';
+  switch (mecanismo) {
+    case 'template':
+      return fechou + 'Use um template aprovado (ferramenta send_template) ou encerre o turno sem enviar.';
+    case 'agente_humano':
+      // Não há forma de mensagem que resolva: a plataforma reserva o
+      // reengajamento a uma PESSOA, sob permissão própria.
+      //
+      // ⚠️ A instrução NÃO nomeia ferramenta, e isso é deliberado. A primeira
+      // versão mandava "escale para atendimento humano" — trocando uma porta
+      // impossível (`send_template`, que este canal não tem) por outra que
+      // TAMBÉM pode não existir: `request_human_handoff` é removida do modelo
+      // quando `handoffToolEnabled` é falso (`inbound-turn.ts:2313-2315`). Num
+      // canal sem template, com o handoff desligado, o modelo receberia duas
+      // instruções e nenhuma alcançável.
+      //
+      // O que ele SEMPRE pode fazer é encerrar. A parte condicional vem depois,
+      // como opção, não como ordem.
+      return (
+        fechou +
+        'Neste canal NÃO existe template que reabra a conversa — só uma pessoa pode responder ' +
+        'fora da janela. Encerre o turno sem enviar; se a ferramenta de transbordo estiver ' +
+        'disponível, use-a antes de encerrar.'
+      );
+    case 'sem_janela':
+      // Inalcançável: canal sem janela sai em `skipped` no topo do gate. Existe
+      // para o `switch` ser exaustivo — se um mecanismo novo aparecer, o
+      // typecheck cobra aqui em vez de o modelo receber uma frase genérica.
+      return fechou + 'Encerre o turno sem enviar.';
+  }
+}
 
 const spinningGate: Gate = {
   name: 'spinning',

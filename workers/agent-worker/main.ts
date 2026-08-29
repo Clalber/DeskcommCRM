@@ -560,6 +560,18 @@ export async function main(): Promise<void> {
       followupAi: {
         ...(env.FOLLOWUP_AI_MODEL !== undefined ? { model: env.FOLLOWUP_AI_MODEL } : {}),
       },
+      // Chave AUSENTE quando desligado, e não um `enabled: false` dentro do
+      // objeto: a convenção destes knobs é "ausente = o recurso não roda", e o
+      // turno testa exatamente isso. Um objeto sempre presente obrigaria cada
+      // ponto de uso a lembrar do booleano.
+      ...(env.AGENT_TYPING_ENABLED
+        ? {
+            digitando: {
+              renovarAposMs: env.AGENT_TYPING_REFRESH_MS,
+              duracaoMaximaMs: env.AGENT_TYPING_MAX_MS,
+            },
+          }
+        : {}),
     },
     log,
     // Onda 5 (Task 5.1): fecha o turno dirigido por fluxo de volta no enrollment —

@@ -9346,7 +9346,12 @@ alter table public.channel_sessions
   add column if not exists provider text not null default 'waha',
   add column if not exists meta_phone_number_id text,
   add column if not exists meta_waba_id text,
-  add column if not exists meta_token_encrypted bytea;
+  add column if not exists meta_token_encrypted bytea,
+  -- (migration 0202) NULLABLE de propósito: a tabela já tem linhas de WhatsApp
+  -- em todo clone, e um `not null` sem default quebraria o `update.sh`.
+  add column if not exists instagram_user_id text,
+  add column if not exists instagram_token_encrypted text,
+  add column if not exists instagram_token_expires_at timestamptz;
 
 alter table public.channel_sessions alter column waha_session_name drop not null;
 
@@ -9373,12 +9378,22 @@ alter table public.channel_sessions alter column waha_session_name drop not null
 alter table public.channel_sessions
   add column if not exists zernio_account_id text;
 
+-- (migration 0202) `meta_instagram`, e não `instagram`: `vazamento-interno.ts`
+-- deriva o vocabulário interno de `Object.keys(CHANNEL_CAPABILITIES)`, então a
+-- chave `instagram` faria o detector barrar a palavra "instagram" na fala do
+-- agente — o robô proibido de mandar o link do Instagram do próprio cliente.
+--
+-- A prosa mora ACIMA do PAR inteiro, e não no meio dele. Duas réguas
+-- independentes cobram isso, e cada uma pega um lado: entre o `add constraint` e
+-- o `check`, `canal-zernio-vocabulario` acusa distância; entre o `drop` e o
+-- `add`, `baseline-reaplicavel` deixa de enxergar a guarda e acusa constraint
+-- desguardada. Comentário longo no meio de um par drop+add quebra as duas.
 alter table public.channel_sessions
   drop constraint if exists channel_sessions_provider_check;
 
 alter table public.channel_sessions
   add constraint channel_sessions_provider_check
-  check (provider = any (array['waha'::text, 'meta_cloud'::text, 'zernio'::text]));
+  check (provider = any (array['waha'::text, 'meta_cloud'::text, 'zernio'::text, 'meta_instagram'::text]));
 
 alter table public.channel_sessions
   drop constraint if exists channel_sessions_provider_ref_check;
@@ -9387,7 +9402,8 @@ alter table public.channel_sessions
   add constraint channel_sessions_provider_ref_check check (
     (provider = 'waha'       and waha_session_name    is not null) or
     (provider = 'meta_cloud' and meta_phone_number_id is not null) or
-    (provider = 'zernio'     and zernio_account_id    is not null)
+    (provider = 'zernio'     and zernio_account_id    is not null) or
+    (provider = 'meta_instagram' and instagram_user_id is not null)
   );
 
 comment on column public.channel_sessions.zernio_account_id is
@@ -10062,6 +10078,9 @@ alter table public.agent_inbox_items
     'midia_nao_lida',
     'channel_template_review',
     'channel_number_alert',
+    -- (migration 0202) A credencial do Instagram VENCE — algo que o WhatsApp por
+    -- QR não tem. Sem aviso, o canal para de responder e ninguém sabe por quê.
+    'channel_credential_expiring',
     -- (migration 0111, spec 16 §3.2) O papel Operador declara promessa em aberto:
     -- o assistente prometeu algo ao cliente e o cumprimento não foi registrado.
     -- A invariante sagrada da spec é "nenhuma promessa deixa de ser cumprida", e
@@ -14254,7 +14273,7 @@ alter table public.webhook_events_log
   drop constraint if exists webhook_events_log_provider_check;
 alter table public.webhook_events_log
   add constraint webhook_events_log_provider_check check (provider in (
-    'waha', 'nuvemshop', 'generic', 'meta_cloud', 'zernio'
+    'waha', 'nuvemshop', 'generic', 'meta_cloud', 'zernio', 'meta_instagram'
   ));
 
 -- ---- a marca da instalação sai do .env e vai para o banco (migration 0155) ----
@@ -17077,3 +17096,137 @@ grant execute on function public.fn_decrypt_oauth(bytea) to service_role;
 grant execute on function public.fn_encrypt_oauth(text) to service_role;
 grant execute on function public.fn_lgpd_cascade_redact_contact(uuid, uuid, uuid) to service_role;
 grant execute on function public.fn_update_budget_consumption() to service_role;
+
+-- ---- fundação do canal Instagram (migration 0203) ----
+-- Abre o schema para um canal que NÃO é WhatsApp. Chegou ATRASADO, e o atraso é
+-- o defeito: a 0202 foi commitada, entrou no MANIFEST e foi publicada em imagem
+-- SEM apêndice nenhum aqui — por um dia ela existia só em `migrations/` e não
+-- chegava a quem instala, que é o que o item 6 da doutrina de migrations proíbe.
+--
+-- O vocabulário NÃO mora neste bloco. `channel_sessions_provider_check`,
+-- `channel_sessions_provider_ref_check`, `webhook_events_log_provider_check` e
+-- `agent_inbox_items_kind_check` foram estendidos nos blocos que já os
+-- reconstruíam, lá em cima — um bloco por constraint. A primeira versão deste
+-- apêndice os reconstruía aqui também, e `tests/unit/baseline-constraint-
+-- reconstruida.test.ts` reprovou: dois blocos para a mesma constraint quebram o
+-- `update.sh` de todo clone que já tenha vocabulário posterior, porque o bloco
+-- antigo roda primeiro e falha em cadeia.
+--
+-- Sobra aqui o que é só desta migration: a janela de canal em `conversations` e
+-- a tabela de identidade externa.
+
+-- `conversations.channel` deixa de ser valor ÚNICO. Medido num banco real, o
+-- CHECK era `CHECK (channel = 'whatsapp')`: uma conversa de Instagram é
+-- RECUSADA pelo Postgres antes de qualquer código nosso opinar.
+--
+-- Recebe `instagram`, e não `meta_instagram`: aqui o vocabulário é o do CANAL,
+-- não o do provider — como prova o valor que já existe ser `whatsapp` e não
+-- `waha`.
+alter table public.conversations
+  drop constraint if exists conversations_channel_check;
+alter table public.conversations
+  add constraint conversations_channel_check
+  check (channel in ('whatsapp', 'instagram'));
+
+-- A identidade externa do contato é ESCOPADA À SESSÃO, e é a única decisão não
+-- trivial da 0202. Uma coluna `contacts.instagram_igsid` não serve: o id do
+-- provider pertence à CONTA que recebe, não à pessoa. A mesma pessoa falando com
+-- duas contas da mesma organização tem DOIS ids, e uma coluna no contato não diz
+-- por qual conta responder — a mensagem SAI pela errada, e mensagem que sai
+-- errada não volta.
+--
+-- Genérica (`provider_user_id`, não `igsid`) para o próximo canal de id opaco
+-- reusar sem outra tabela.
+create table if not exists public.channel_contact_identities (
+  id uuid primary key default extensions.uuid_generate_v4(),
+  organization_id uuid not null references public.organizations(id) on delete cascade,
+  channel_session_id uuid not null references public.channel_sessions(id) on delete cascade,
+  contact_id uuid not null references public.contacts(id) on delete cascade,
+  provider_user_id text not null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (channel_session_id, provider_user_id)
+);
+
+create index if not exists channel_contact_identities_contato_idx
+  on public.channel_contact_identities (organization_id, contact_id);
+
+comment on table public.channel_contact_identities is
+  'Identidade do contato NO PROVIDER, escopada à sessão de canal. O id pertence à conta que recebe, não à pessoa: a mesma pessoa falando com duas contas da organização tem dois ids.';
+
+alter table public.channel_contact_identities enable row level security;
+
+-- `drop` + `create`, e não guarda `if not exists`: é a forma que o apêndice usa
+-- (`tests/unit/baseline-reaplicavel.test.ts`). Sem o `drop`, o `update.sh` — que
+-- roda sem `ON_ERROR_STOP` e trata `already exists` como benigno — engoliria o
+-- erro e manteria a policy ANTIGA, silenciosamente.
+--
+-- PAR select/write (migration 0205), e não uma policy `for all` só de tenancy: a
+-- forma original deixava um `viewer` APAGAR a amarração entre a pessoa do outro
+-- lado e o contato do CRM — pelo PostgREST, com o JWT dele. Apagar faz a próxima
+-- mensagem daquele cliente chegar como de um desconhecido; alterar faz a
+-- resposta sair para a pessoa errada.
+drop policy if exists tenant_isolation_channel_contact_identities_all on public.channel_contact_identities;
+
+drop policy if exists channel_contact_identities_tenant_select on public.channel_contact_identities;
+create policy channel_contact_identities_tenant_select
+  on public.channel_contact_identities
+  for select using (
+    organization_id in (select public.fn_user_org_ids()) or public.fn_is_platform_admin()
+  );
+
+drop policy if exists channel_contact_identities_tenant_write on public.channel_contact_identities;
+create policy channel_contact_identities_tenant_write
+  on public.channel_contact_identities
+  for all using (
+    (organization_id in (select public.fn_user_org_ids())
+      and public.fn_role_at_least(organization_id, 'admin'))
+    or public.fn_is_platform_admin()
+  ) with check (
+    (organization_id in (select public.fn_user_org_ids())
+      and public.fn_role_at_least(organization_id, 'admin'))
+    or public.fn_is_platform_admin()
+  );
+
+-- ---- um pareamento pendente por organização (migration 0204) ----
+-- O cliente HTTP retenta mutação (lib/api/client.ts) e a rota de criar canal
+-- chama o WAHA DEPOIS do insert — WAHA lento fazia UM clique virar DUAS sessões,
+-- uma delas órfã. Medido em produção: dois channel.connected com request_id
+-- distintos, 489 ms apart.
+--
+-- Dedup ANTES da constraint: update.sh do clone roda SEM ON_ERROR_STOP, então
+-- índice que falha por dados existentes falharia EM VERDE. A perdedora vira
+-- FAILED e não é apagada — conversations/messages têm FK RESTRICT para cá, e a
+-- linha pode ter recebido mensagem. FAILED sai do índice, mantém o histórico e
+-- aparece na tela.
+with pendentes as (
+  select id,
+         row_number() over (
+           partition by organization_id
+           order by created_at desc nulls last, id desc
+         ) as posicao
+    from public.channel_sessions
+   where provider = 'waha'
+     and archived_at is null
+     and phone_number is null
+     and status in ('STARTING', 'SCAN_QR_CODE')
+)
+update public.channel_sessions s
+   set status = 'FAILED',
+       status_reason = 'duplicata de pareamento resolvida pela migration 0203',
+       last_status_change_at = now()
+  from pendentes p
+ where p.id = s.id
+   and p.posicao > 1;
+
+create unique index if not exists channel_sessions_um_pareamento_pendente_por_org
+  on public.channel_sessions (organization_id)
+  where provider = 'waha'
+    and archived_at is null
+    and phone_number is null
+    and status in ('STARTING', 'SCAN_QR_CODE');
+
+comment on index public.channel_sessions_um_pareamento_pendente_por_org is
+  'Um pareamento em andamento por organização, no WhatsApp. A tela mostra um QR '
+  'por vez, e a retentativa de POST do cliente HTTP criava uma segunda sessão '
+  'órfã. A rota insere e trata 23505 como "já existe pendente".';

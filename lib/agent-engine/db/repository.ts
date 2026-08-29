@@ -47,6 +47,13 @@ export type InboxKind =
   // tinha o banco atualizado e o tipo não.
   | 'channel_template_review'
   | 'channel_number_alert'
+  // A credencial do Instagram VENCE — algo que o WhatsApp por QR não tem. Sem o
+  // valor AQUI o worker que detecta o vencimento não consegue abrir o aviso: o
+  // banco aceita, o TypeScript não deixa escrever. A 0202 pôs o valor no CHECK
+  // e esqueceu deste lado, e a divergência ficou invisível enquanto a migration
+  // estava fora do baseline (o invariante compara banco × TypeScript, e o banco
+  // do CI vem do baseline).
+  | 'channel_credential_expiring'
   | 'midia_nao_lida'
   | 'promise_unfulfilled'
   | 'contact_proposal_expired'

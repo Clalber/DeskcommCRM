@@ -173,6 +173,25 @@ const envSchema = z.object({
   // Teto de mensagens FÍSICAS enviadas ao lead por turno (send_message + send_template
   // somados, bolhas incluídas) — nenhum gate de before-send limita CONTAGEM, só ritmo.
   MAX_SENDS_PER_TURN: z.coerce.number().int().positive().default(3),
+  // Indicador "digitando…" enquanto o turno pensa. LIGADO por padrão: é o que
+  // faz o agente parecer atendimento em vez de robô, e o custo é uma chamada
+  // leve por renovação, no MESMO canal que já vai enviar a mensagem.
+  //
+  // Desligar não exige mexer em mais nada — instalação que não quer o recurso
+  // põe `false` e o turno segue idêntico. Canal que não conhece a rota de
+  // presença recusa a primeira tentativa e o laço encerra sozinho (ver
+  // lib/agent-engine/agent/digitando.ts): não é preciso desligar por causa disso.
+  AGENT_TYPING_ENABLED: z
+    .enum(['true', 'false'])
+    .default('true')
+    .transform((v) => v === 'true'),
+  // De quanto em quanto tempo o indicador é reaceso. O WhatsApp o apaga sozinho
+  // em poucos segundos; renovar mais devagar que isso deixa o balãozinho piscando.
+  AGENT_TYPING_REFRESH_MS: z.coerce.number().int().positive().default(8_000),
+  // Teto de um mesmo laço — o anti-morte. Um turno pendurado numa chamada que
+  // nunca volta deixaria "digitando…" aceso indefinidamente, que é pior que não
+  // ter indicador: é o sistema afirmando que alguém está escrevendo.
+  AGENT_TYPING_MAX_MS: z.coerce.number().int().positive().default(60_000),
   // Circuit breaker de tools por run.
   TOOL_BREAKER_EXACT_WARN: z.coerce.number().int().positive().default(2),
   TOOL_BREAKER_EXACT_BLOCK: z.coerce.number().int().positive().default(5),

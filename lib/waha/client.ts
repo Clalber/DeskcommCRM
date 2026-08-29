@@ -323,6 +323,61 @@ export class WahaClient {
   }
 
   /**
+   * O "digitando…" que aparece no topo da conversa do cliente.
+   *
+   * `POST /api/{session}/presence` — o grupo **Presence** do Swagger. O corpo
+   * leva o chat e o estado (`typing` para escrever, `paused` para parar).
+   *
+   * ─── É EFÊMERO, e é isso que decide como se usa ────────────────────────────
+   *
+   * O WhatsApp apaga o indicador sozinho em poucos segundos, e a chegada da
+   * mensagem também o encerra. Quem quer que ele dure enquanto o agente pensa
+   * precisa RENOVAR — quem faz isso é `lib/agent-engine/agent/digitando.ts`,
+   * não este método, que é um disparo só.
+   *
+   * ─── Por que este é o único método do client que NÃO lança ─────────────────
+   *
+   * Presença é enfeite: ninguém deixa de ser atendido porque o balãozinho não
+   * apareceu. Lançar daqui obrigaria todo chamador a embrulhar em `try` — e um
+   * `try` esquecido transformaria uma falha decorativa em mensagem não enviada,
+   * que é o pior desfecho possível deste projeto inteiro. `false` = não deu;
+   * quem chama segue em frente.
+   *
+   * Um WAHA anterior a esta rota responde 404 aqui, e o efeito é o mesmo
+   * `false`: a instalação antiga continua funcionando sem o indicador, sem
+   * ninguém precisar mexer em nada.
+   */
+  async setPresence(
+    session: string,
+    chatId: string,
+    presence: "typing" | "recording" | "paused",
+  ): Promise<boolean> {
+    try {
+      const res = await fetch(
+        `${this.baseUrl}/api/${encodeURIComponent(session)}/presence`,
+        {
+          method: "POST",
+          headers: { "X-Api-Key": this.apiKey, "Content-Type": "application/json" },
+          body: JSON.stringify({ chatId, presence }),
+        },
+      );
+      if (!res.ok) {
+        // `debug` e não `warn`: isto roda a cada renovação (poucos segundos) e
+        // um canal que não suporta a rota encheria o log de linha inútil — e log
+        // que ninguém consegue ler é log que esconde o aviso que importa.
+        logger.debug("[waha] presença recusada pelo canal", { status: res.status });
+        return false;
+      }
+      return true;
+    } catch (err) {
+      logger.debug("[waha] presença não alcançou o canal", {
+        error: err instanceof Error ? err.name : "unknown",
+      });
+      return false;
+    }
+  }
+
+  /**
    * `replyTo` = citar uma mensagem, como o "responder em cima" do WhatsApp.
    *
    * ─── O defeito que isto conserta ──────────────────────────────────────────

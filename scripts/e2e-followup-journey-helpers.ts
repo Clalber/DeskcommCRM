@@ -66,8 +66,10 @@ async function main(): Promise<void> {
   try {
     switch (cmd) {
       // ---- prepara os fixtures de agente pra PUBLICAR (não só salvar draft)
-      // ---- — a credential nasce sem validated_at e a sessão nasce 'STARTING'
-      // ---- (seed-e2e-followup-agent.ts, Task 7.2 — não precisava publicar).
+      // ---- — a credential nasce sem validated_at. A sessão JÁ nasce 'WORKING'
+      // ---- desde a migration 0204 (o índice de pareamento pendente fazia dois
+      // ---- seeds da mesma org colidirem), então o update de status abaixo é
+      // ---- no-op deliberado: fica como rede se o seed mudar de ideia.
       case "prepare-agent-fixtures": {
         const creds = loadCreds();
         const fixtures = creds.followup_agent_fixtures;

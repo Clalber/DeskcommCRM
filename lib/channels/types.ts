@@ -28,18 +28,13 @@ export type ChannelProvider = "waha" | "meta_cloud" | "zernio" | "meta_instagram
  * - `agente_humano`  — não há forma de mensagem que resolva; só uma PESSOA pode
  *                      responder, sob permissão própria da plataforma. O agente
  *                      de IA não tem saída: o caminho é escalar.
- * - `nenhum`         — fechou, acabou. Nem template, nem humano.
  * - `sem_janela`     — o canal não tem janela; a pergunta não se aplica.
  *
  * Invariante 2 da doutrina (`docs/doctrine/restricao-de-canal.md`): capability
  * não é booleano solto — ela diz de que família é, porque isso decide o que
  * fazer quando ela barra.
  */
-export type MecanismoDeReengajamento =
-  | "template"
-  | "agente_humano"
-  | "nenhum"
-  | "sem_janela";
+export type MecanismoDeReengajamento = "template" | "agente_humano" | "sem_janela";
 
 export interface ChannelCapabilities {
   /** Pode enviar texto livre a qualquer momento? false = exige template fora da janela. */
@@ -156,21 +151,24 @@ export interface OutboundEnvelope extends ChannelTenantScope {
   sessionRef: string;
   /**
    * Quem está falando: a IA ou uma pessoa. Mesmo vocabulário da coluna
-   * `messages.sent_via`, que o handler já deriva de `ctx.actor.type`
-   * (`app/api/v1/messages/_handler.ts`) — uma grafia só entre as camadas.
+   * `messages.sent_via`, que o handler deriva de `ctx.actor.type`.
    *
-   * ⚠️ NÃO é enfeite de log, e nenhum adapter deve tratá-lo como tal. Há canal
-   * cuja plataforma oferece uma permissão de reengajamento EXCLUSIVA de
-   * atendimento humano; aplicá-la a um turno de IA seria afirmar à plataforma
-   * algo que não é verdade, no app de um cliente, sob revisão dela. O adapter
-   * decide com este campo — não com um toggle global, que é como se erra isso.
+   * Existe porque há canal cuja permissão de reengajamento fora da janela é
+   * EXCLUSIVA de atendimento humano; aplicá-la a um turno de IA afirmaria à
+   * plataforma algo que não é verdade.
    *
-   * OBRIGATÓRIO de propósito, pela mesma razão de `ChannelTenantScope` logo
-   * acima: opcional deixaria o chamador esquecê-lo em silêncio, e o silêncio
-   * aqui vira uma declaração falsa para a plataforma. Assim o typecheck cobra
-   * em todo call site.
+   * OPCIONAL, e a ausência tem leitura segura: quem não sabe quem fala trata
+   * como IA e NÃO reivindica atendimento humano. Errar para este lado atrasa
+   * uma mensagem; errar para o outro faz uma declaração falsa à plataforma, no
+   * app de um cliente, sob revisão dela.
+   *
+   * Foi obrigatório numa primeira versão, citando o precedente de
+   * `ChannelTenantScope` acima. O precedente não se aplica: `organizationId` é
+   * LIDO pelos adapters e não tem default seguro, enquanto este campo ainda não
+   * tem leitor nenhum e tem. A obrigatoriedade custou 27 linhas em quatro
+   * arquivos de teste que não exercitam distinção alguma.
    */
-  sentVia: "ai" | "user";
+  sentVia?: "ai" | "user";
   /** Endereço já resolvido por `resolveRecipient`. */
   to: string;
   kind: OutboundKind;
@@ -375,6 +373,37 @@ export interface ChannelAdapter {
     /** Valores dos `{{n}}`, na ordem em que a definição os declara. */
     values: Record<string, string>;
   }): Promise<{ externalId: string | null }>;
+
+  /**
+   * Mostra (ou tira) o "digitando…" na conversa de quem está do outro lado.
+   *
+   * `typing: true` liga; `false` desliga. O retorno diz se o canal ACEITOU o
+   * sinal — não se o cliente viu.
+   *
+   * ─── Efêmero por natureza, e o contrato assume isso ────────────────────────
+   *
+   * Nenhum canal mantém o indicador aceso indefinidamente: ele expira sozinho em
+   * segundos. Quem quer que ele dure renova, e quem renova é o chamador — o
+   * adapter é disparo único, como todo o resto desta interface.
+   *
+   * ─── Nunca REJEITA ────────────────────────────────────────────────────────
+   *
+   * `Promise<boolean>` e não `Promise<void>` que lança, ao contrário de `send`.
+   * A diferença é de consequência: uma falha de envio precisa virar status na
+   * tela e retentativa; uma falha de presença não precisa virar nada. Se este
+   * método pudesse rejeitar, um `await` sem `try` no meio de uma cadeia de envio
+   * derrubaria a mensagem por causa do enfeite.
+   *
+   * OPCIONAL como os demais: canal que não sabe sinalizar simplesmente não
+   * implementa, e quem chama testa a presença do método em vez de perguntar QUAL
+   * provider é — que é o que o invariante 1 da doutrina proíbe.
+   */
+  setTyping?(input: ChannelTenantScope & {
+    sessionRef: string;
+    /** Endereço já resolvido por `resolveRecipient`. */
+    recipient: string;
+    typing: boolean;
+  }): Promise<boolean>;
 }
 
 /** O que o transporte respondeu quando perguntamos se está de pé. */
