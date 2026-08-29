@@ -18,6 +18,8 @@
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+import { logger } from "@/lib/logger";
+
 import { CHANNEL_PROVIDER_INSTAGRAM, CHANNEL_PROVIDER_ZERNIO } from "./capabilities";
 import { sincronizarSaudeDaConexao } from "./health";
 import {
@@ -260,6 +262,40 @@ async function instagramInbound(
       // parser que nunca lança: a Meta manda várias mensagens num POST só.
       falhas.push(e instanceof Error ? e.message : "erro desconhecido");
     }
+  }
+
+  // ─── Evento que a Meta mandou e nós não entendemos deixa RASTRO ───────────
+  //
+  // A contagem de ignorados só existia no corpo da resposta — que a Meta lê e
+  // descarta. Quem for investigar "o cliente diz que mandou e não chegou" não
+  // tinha onde olhar. Não é erro (é o contrato: nem todo evento nos interessa),
+  // então é `info`, não `warn`.
+  if (ignorados > 0) {
+    logger.info("[instagram] eventos ignorados no lote", {
+      channelSessionId: input.session.id,
+      ignorados,
+      entraram,
+    });
+  }
+
+  // ─── Falha de ESCRITA precisa de 500, e o motivo é a reentrega ────────────
+  //
+  // Devolver 200 aqui era perda DEFINITIVA de mensagem: a Meta só reenvia o que
+  // não recebeu 200, e por até 36 horas. Um engasgo de dez segundos no Postgres
+  // virava "o cliente escreveu e ninguém nunca viu" — com o arquivo do webhook
+  // gravando `processed` e erro nulo, porque estas falhas nunca chegavam a lugar
+  // nenhum além do corpo HTTP que a Meta descarta.
+  //
+  // Reentregar é seguro: o que já entrou volta como 23505 e é lido como
+  // duplicata. Trocamos uma reentrega barata por uma mensagem perdida.
+  //
+  // O cabeçalho da rota já prometia este comportamento — "500 fica reservado
+  // para falha de ESCRITA" —, e o canal intermediado o cumpre lançando. Este
+  // caminho é que não cumpria.
+  if (falhas.length > 0) {
+    throw new Error(
+      `instagram_ingest_failed: ${falhas.length} de ${eventos.length} evento(s) — ${falhas.join("; ")}`,
+    );
   }
 
   return { ok: true, body: { entraram, repetidos, ignorados, falhas } };

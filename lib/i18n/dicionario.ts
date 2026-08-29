@@ -219,6 +219,38 @@ export const DICIONARIO: Traducoes = {
     es: "Disponible cuando la conexión con Meta esté implementada",
   },
   "Conectar conta": { es: "Conectar cuenta" },
+  // ─── A tela que CONECTA de verdade (migration 0208 e o OAuth) ───────────
+  "Conectada": { es: "Conectada" },
+  "Falta autorizar": { es: "Falta autorizar" },
+  "Autorizar na Meta": { es: "Autorizar en Meta" },
+  "Conectar uma conta": { es: "Conectar una cuenta" },
+  "Conectar outra conta": { es: "Conectar otra cuenta" },
+  "Guardar aplicativo": { es: "Guardar la aplicación" },
+  "Aplicativo guardado. Agora cadastre o webhook na Meta e autorize.": {
+    es: "Aplicación guardada. Ahora registra el webhook en Meta y autoriza.",
+  },
+  "Fica cifrada no banco, nunca no arquivo de configuração, e não volta nesta tela.": {
+    es: "Se guarda cifrada en la base de datos, nunca en el archivo de configuración, y no vuelve a mostrarse aquí.",
+  },
+  "Invente um e guarde: a Meta o devolve ao cadastrar o webhook, e é assim que confirmamos que é ela.": {
+    es: "Invéntalo y guárdalo: Meta lo devuelve al registrar el webhook, y así confirmamos que es ella.",
+  },
+  "URL de retorno de chamada": { es: "URL de devolución de llamada" },
+  "URL de retorno da autorização": { es: "URL de retorno de la autorización" },
+  "Campos a assinar:": { es: "Campos a suscribir:" },
+  // A credencial deste canal VENCE — é a única do produto que vence, e por isso
+  // o prazo é dito na tela em vez de esperar o cliente descobrir sozinho.
+  "O acesso vence em": { es: "El acceso vence en" },
+  "A renovação é automática.": { es: "La renovación es automática." },
+  "O acesso expirou. Autorize de novo para voltar a receber mensagens.": {
+    es: "El acceso caducó. Autoriza de nuevo para volver a recibir mensajes.",
+  },
+  "A credencial vence a cada 60 dias. A renovação é automática, e avisamos na Central se ela falhar.": {
+    es: "La credencial vence cada 60 días. La renovación es automática, y avisamos en la Central si falla.",
+  },
+  "Conectar exige aprovação do aplicativo pela Meta, que leva de semanas a meses. Vale começar antes.": {
+    es: "Conectar exige la aprobación de la aplicación por Meta, que tarda de semanas a meses. Conviene empezar antes.",
+  },
   "O que preparar na Meta": { es: "Qué preparar en Meta" },
   "A aprovação leva de semanas a meses, então vale começar antes. É preciso uma conta profissional do Instagram e um portfólio de negócios verificado.": {
     es: "La aprobación tarda de semanas a meses, así que conviene empezar antes. Hace falta una cuenta profesional de Instagram y un portafolio comercial verificado.",

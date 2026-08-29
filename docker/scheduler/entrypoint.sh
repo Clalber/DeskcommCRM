@@ -78,6 +78,11 @@ CRONS="
 */15 * * * *|60|api/v1/cron/risk-watcher
 */30 * * * *|60|api/v1/cron/contact-phones
 17 * * * *|60|api/v1/cron/contact-proposals-watcher
+# De hora em hora, e a folga é grande de propósito: a janela de renovação do
+# token do Instagram é de 10 dias, então uma instalação que fique dias fora do ar
+# ainda tem centenas de tentativas antes de a credencial vencer. E vencida ela
+# NÃO volta — só reconectando pela tela.
+13 * * * *|60|api/v1/cron/instagram-token-refresh
 0 12 * * *|60|api/v1/cron/lgpd-sla-watcher
 30 3 * * *|120|api/v1/cron/kb-conversations-batch
 15 4 * * *|60|api/v1/cron/sync-model-catalog

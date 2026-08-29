@@ -9351,7 +9351,13 @@ alter table public.channel_sessions
   -- em todo clone, e um `not null` sem default quebraria o `update.sh`.
   add column if not exists instagram_user_id text,
   add column if not exists instagram_token_encrypted text,
-  add column if not exists instagram_token_expires_at timestamptz;
+  add column if not exists instagram_token_expires_at timestamptz,
+  -- (migration 0208) O aplicativo do cliente. Entram no MESMO ALTER, e não num
+  -- bloco no fim do arquivo, porque a constraint logo abaixo passou a exigir
+  -- `instagram_app_id` — e num banco novo ela roda antes de qualquer apêndice
+  -- posterior existir.
+  add column if not exists instagram_app_id text,
+  add column if not exists instagram_verify_token_encrypted text;
 
 alter table public.channel_sessions alter column waha_session_name drop not null;
 
@@ -9403,7 +9409,11 @@ alter table public.channel_sessions
     (provider = 'waha'       and waha_session_name    is not null) or
     (provider = 'meta_cloud' and meta_phone_number_id is not null) or
     (provider = 'zernio'     and zernio_account_id    is not null) or
-    (provider = 'meta_instagram' and instagram_user_id is not null)
+    -- (migration 0208) O APLICATIVO, não a conta. O id da conta só chega depois
+    -- da autorização, e a linha precisa existir antes dela — é dela que sai a
+    -- URL de webhook que a Meta tem de aprovar primeiro. Exigir a conta aqui
+    -- tornava o fluxo de conexão impossível de executar.
+    (provider = 'meta_instagram' and instagram_app_id is not null)
   );
 
 comment on column public.channel_sessions.zernio_account_id is
@@ -17273,3 +17283,49 @@ comment on index public.channel_sessions_um_pareamento_pendente_por_org is
   'Um pareamento em andamento por organização, no WhatsApp. A tela mostra um QR '
   'por vez, e a retentativa de POST do cliente HTTP criava uma segunda sessão '
   'órfã. A rota insere e trata 23505 como "já existe pendente".';
+
+-- ---- credencial do aplicativo do Instagram (migration 0208) ----
+-- A 0203 exigia `instagram_user_id is not null` em toda linha do canal, e esse
+-- id só chega DEPOIS da autorização — enquanto a autorização só pode começar
+-- depois de a linha existir, porque é dela que sai a URL de webhook que a Meta
+-- precisa aprovar antes. A ordem real é `linha nasce → webhook cadastrado →
+-- autoriza → id chega`, e a primeira seta era recusada pelo Postgres: o fluxo
+-- inteiro era impossível de executar, e isso só apareceria na primeira conexão
+-- real, com o cliente na tela.
+--
+-- A exigência passa para o id do APLICATIVO, que é conhecido no nascimento —
+-- como `waha_session_name` no canal por QR, onde o número também só aparece
+-- depois que a pessoa lê o código.
+--
+-- A segunda mudança separa dois segredos que dividiam `webhook_secret_encrypted`:
+-- o App Secret (assina o HMAC do webhook) e o verify token (o handshake). Juntos,
+-- obrigavam a colar o App Secret no campo "Verify Token" do painel da Meta — um
+-- segredo que assina exposto num campo de configuração que o dashboard mostra.
+-- ⚠️ As COLUNAS e a CONSTRAINT deste bloco não moram aqui: foram para o bloco
+-- canônico da 0203 (o mesmo ALTER que criou as outras colunas do canal, e a
+-- reconstrução única de `channel_sessions_provider_ref_check`). Duas razões, e a
+-- segunda é a que dói:
+--
+--   1. A constraint passou a exigir `instagram_app_id`, e num banco NOVO ela
+--      roda muito antes deste ponto do arquivo — a coluna precisa existir lá.
+--   2. Reconstruir a mesma constraint em DOIS blocos é o defeito que
+--      `baseline-constraint-reconstruida.test.ts` reprova: no `update.sh` de um
+--      clone, o bloco mais antigo re-aplica a versão VELHA por cima da nova e
+--      desfaz a migration em silêncio. Foi o que aconteceu com a 0202, medido em
+--      produção — e a guarda pegou a reincidência aqui.
+--
+-- O que sobra neste bloco é o que é só daqui: os comentários e o índice parcial.
+comment on column public.channel_sessions.instagram_app_id is
+  'Id do aplicativo que o CLIENTE criou na Meta. Público (aparece na URL de autorização), '
+  'ao contrário do App Secret, que vai cifrado em webhook_secret_encrypted.';
+comment on column public.channel_sessions.instagram_verify_token_encrypted is
+  'Token de verificação do webhook, inventado pelo operador e colado no painel da Meta. '
+  'Coluna PRÓPRIA porque webhook_secret_encrypted guarda o App Secret, que assina o HMAC: '
+  'um segredo que assina não pode morar num campo de configuração que a Meta exibe.';
+
+-- Por (organização, aplicativo) e só enquanto PENDENTE. Travar por organização
+-- impediria conectar duas contas de Instagram — caso legítimo, e exatamente o
+-- que `channel_contact_identities` foi desenhada para atender.
+create unique index if not exists channel_sessions_instagram_app_pendente_unique
+  on public.channel_sessions (organization_id, instagram_app_id)
+  where provider = 'meta_instagram' and archived_at is null and instagram_user_id is null;

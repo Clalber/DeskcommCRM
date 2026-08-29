@@ -20,6 +20,8 @@
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+import { logger } from "@/lib/logger";
+
 import { aplicarEfeitosPosEntrada } from "../pos-entrada";
 import { contatoPorIdentidade, gravarIdentidade } from "./identidade";
 import type { EventoDeEntrada } from "./webhook";
@@ -39,13 +41,34 @@ export type DesfechoDaEntrada =
   | { status: "failed"; reason: string };
 
 /**
+ * Dica de mime a partir do tipo que a Meta declara.
+ *
+ * É DICA, e o worker que baixa os bytes decide de verdade pelo cabeçalho da
+ * resposta. Serve para a tela ter o que mostrar enquanto o download não termina
+ * — sem isto, a mensagem aparece como arquivo genérico por alguns segundos.
+ */
+function mimeDaMidia(tipo: string): string | undefined {
+  if (tipo === "image") return "image/jpeg";
+  if (tipo === "video") return "video/mp4";
+  if (tipo === "audio") return "audio/mp4";
+  return undefined;
+}
+
+/**
  * Encontra ou cria o contato desta pessoa, nesta conta.
  *
  * O contato nasce SEM telefone e com nome provisório. Enriquecer o perfil exige
  * uma chamada à Meta que só funciona depois de a pessoa ter escrito — e fazê-la
  * aqui, dentro do caminho de entrada, atrasaria a gravação da mensagem por uma
- * rede que pode estar lenta. Fica para quem cuida de avatar e nome, que já roda
- * em cron para os outros canais.
+ * rede que pode estar lenta.
+ *
+ * ⚠️ Hoje NINGUÉM faz esse enriquecimento para este canal: o cron de avatares
+ * exige `waha_session_name` e desiste sem ele, e o adapter não implementa a
+ * busca de perfil. O contato fica `Instagram 384756` até alguém escrever essa
+ * peça. Está dito aqui em voz alta porque a versão anterior deste comentário
+ * afirmava que "já roda em cron para os outros canais", o que é verdade para os
+ * outros e falso para este — e uma promessa falsa no comentário é pior que
+ * lacuna nenhuma, porque desliga a busca de quem viria consertar.
  */
 async function contatoDaPessoa(
   admin: SupabaseClient,
@@ -87,7 +110,27 @@ async function contatoDaPessoa(
     providerUserId: evento.providerUserId,
   });
 
-  return contactId;
+  // ─── A RELEITURA fecha a corrida, e ela não é paranoia ────────────────────
+  //
+  // O trecho acima é check-then-act: consulta, não acha, cria. Duas mensagens
+  // da mesma pessoa nova chegando em POSTs paralelos — que é o normal quando
+  // alguém escreve duas frases seguidas — fazem as duas execuções não acharem
+  // identidade e criarem um contato cada. A trava única da 0203 protege a
+  // TABELA de identidades (só uma sobrevive), mas `ignoreDuplicates` faz o
+  // perdedor seguir em frente com o contato órfão dele: a conversa se parte em
+  // duas, com leads separados, que é exatamente o que o comentário acima diz
+  // querer impedir.
+  //
+  // É o mesmo anti-pattern que a 0027 matou no WhatsApp com uma RPC atômica.
+  // Aqui a releitura resolve sem migration: quem perdeu o conflito lê a
+  // identidade VENCEDORA e passa a usar o contato dela.
+  const vencedor = await contatoPorIdentidade(admin, {
+    organizationId,
+    channelSessionId,
+    providerUserId: evento.providerUserId,
+  });
+
+  return vencedor ?? contactId;
 }
 
 /** Prévia curta para a lista de conversas. */
@@ -103,6 +146,30 @@ export async function ingerirEntradaDoInstagram(
   entrada: EntradaDoInstagram,
 ): Promise<DesfechoDaEntrada> {
   const { organizationId, channelSessionId, evento } = entrada;
+
+  // ─── APAGAR é UPDATE, não INSERT ──────────────────────────────────────────
+  //
+  // O evento de apagamento chega com o MESMO `mid` da mensagem original.
+  // Tratá-lo como linha nova faz o insert bater na trava única, voltar 23505 e
+  // ser lido como "reentrega" — e o texto original continua na tela, inteiro,
+  // sem marca nenhuma. A pessoa vê "mensagem apagada" no Instagram dela e o CRM
+  // segue exibindo o que ela apagou: além de errado, é problema de LGPD quando
+  // o que ela apagou era um dado sensível digitado por engano.
+  //
+  // Os dois canais irmãos aplicam a revogação na mensagem existente. Aqui
+  // também — e só se ninguém for encontrado é que cai no caminho de baixo, que
+  // é o caso raro de o apagamento chegar antes da mensagem.
+  if (evento.ehApagada) {
+    const { data: revogadas } = await admin
+      .from("messages")
+      .update({ revoked_at: new Date().toISOString(), body: null })
+      .eq("organization_id", organizationId)
+      .eq("external_id", evento.externalId)
+      .select("id");
+
+    const alvo = (revogadas as { id: string }[] | null)?.[0];
+    if (alvo) return { status: "ingested", messageId: alvo.id };
+  }
 
   const contactId = await contatoDaPessoa(admin, entrada);
 
@@ -134,13 +201,35 @@ export async function ingerirEntradaDoInstagram(
       // deu pelo aplicativo do Instagram. Gravá-la como entrada faria o agente
       // responder à própria casa; descartá-la mostraria atendimento pela metade.
       direction: evento.ehEco ? "outbound" : "inbound",
+      // ─── Toda linha nascida do webhook veio de FORA do CRM ────────────────
+      //
+      // O default da coluna é `'crm'`, e ele MENTE aqui: quem passou por este
+      // arquivo chegou pelo webhook da Meta, não pelo composer. Os dois canais
+      // irmãos carimbam `external_device` no mesmo lugar.
+      //
+      // Não é cosmético, e custa de dois jeitos. `removerEcoDoProprioEnvio`
+      // filtra por este valor: sem ele, o eco do nosso próprio envio ESCAPA da
+      // rede e vira segunda linha na tela — e a original fica presa em `queued`
+      // para sempre, porque o UPDATE que lhe daria o `external_id` colide com a
+      // linha do eco. E as métricas de atrito contam só `external_device`,
+      // então a resposta que uma pessoa dá pelo aplicativo do Instagram sumiria
+      // do painel de atendimento por fora.
+      sent_via: "external_device",
       status: "delivered",
       type: primeira ? (["image", "audio", "video"].includes(primeira.tipo) ? primeira.tipo : "document") : "text",
       body: evento.ehApagada ? null : evento.texto,
       external_id: evento.externalId,
       sent_at: new Date(evento.timestamp).toISOString(),
+      // A URL do anexo é PONTEIRO, não conteúdo: a CDN da Meta a expira, e a
+      // primeira versão guardava só no `metadata` — onde o worker de
+      // persistência não olha. Ele sai com "no media_url" e a mídia do cliente
+      // vira linha sem bytes: o atendente vê "imagem" sem imagem. O canal
+      // intermediado narra este exato defeito como "o pior do canal".
+      ...(primeira?.url
+        ? { media_url: primeira.url, media_mime: mimeDaMidia(primeira.tipo) }
+        : {}),
       metadata: {
-        ...(primeira ? { instagram_media_url: primeira.url, instagram_media_type: primeira.tipo } : {}),
+        ...(primeira ? { instagram_media_type: primeira.tipo } : {}),
         ...(evento.respostaA ? { in_reply_to_external_id: evento.respostaA } : {}),
         ...(evento.ehApagada ? { instagram_apagada: true } : {}),
       },
@@ -160,12 +249,45 @@ export async function ingerirEntradaDoInstagram(
 
   // O carimbo move `last_inbound_at` — é ELE que abre a janela de 24h. Sem isso
   // o agente seria vetado para responder a quem acabou de escrever.
-  await admin.rpc("fn_mark_conversation_message" as never, {
+  //
+  // O erro é LIDO, e isso importa mais aqui do que nos outros canais: este canal
+  // tem `freeformOutsideWindow: false`, então o guardrail consulta exatamente
+  // essa coluna antes de deixar o agente falar. Um carimbo que falha em silêncio
+  // produz o megafone que o cabeçalho deste arquivo diz temer — recebe e nunca
+  // responde — sem deixar rastro nenhum para quem for investigar.
+  const { error: erroCarimbo } = await admin.rpc("fn_mark_conversation_message" as never, {
     p_conv: conversationId as string,
     p_direction: evento.ehEco ? "outbound" : "inbound",
     p_preview: previa(evento),
     p_at: new Date(evento.timestamp).toISOString(),
   } as never);
+  if (erroCarimbo) {
+    logger.warn("[instagram.ingest] carimbo da conversa falhou", {
+      conversationId: conversationId as string,
+      detalhe: erroCarimbo.message,
+    });
+  }
+
+  // A mídia precisa dos BYTES: a URL da Meta vence, e o que sobra é uma linha de
+  // imagem sem imagem. Best-effort de propósito — a mensagem já está gravada e
+  // visível, e derrubar a ingestão aqui trocaria uma foto faltando por uma
+  // tempestade de reentregas.
+  if (primeira?.url && messageId) {
+    const { error: erroMidia } = await admin.rpc("emit_event" as never, {
+      p_event_type: "media.persist_requested",
+      p_entity_kind: "message",
+      p_entity_id: messageId,
+      p_payload: { message_id: messageId, conversation_id: conversationId as string },
+      p_metadata: { source: "instagram_webhook" },
+      p_organization_id: organizationId,
+    } as never);
+    if (erroMidia) {
+      logger.warn("[instagram.ingest] pedido de persistência de mídia falhou", {
+        messageId,
+        detalhe: erroMidia.message,
+      });
+    }
+  }
 
   // Eco não dispara agente: ele é a nossa própria voz, e despachar aqui faria o
   // robô responder a si mesmo em laço.

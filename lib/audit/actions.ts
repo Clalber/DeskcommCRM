@@ -376,6 +376,11 @@ export const AUDIT_ACTIONS = [
   // `nossos_ignorados` de propósito: é o número que prova o anti-eco
   // funcionando — sem ele, esses eventos teriam virado compromisso fantasma.
   "agenda.google.sync_executado",
+  // A renovação da credencial do canal de mensagens diretas. Mesma regra: só
+  // audita rodada com efeito. A contagem carrega `vencidas` de propósito — é o
+  // número que responde "quantos canais morreram sem ninguém ver", que é
+  // exatamente o desfecho que a rodada existe para impedir.
+  "channel.instagram.renovacao_executada",
 
   // ── O compromisso em si (frentes 1 e 5 do Calendário Vivo) ──────────────
   // Marcar, remarcar e cancelar são mutações de um compromisso com hora e
