@@ -18,7 +18,7 @@
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-import { CHANNEL_PROVIDER_ZERNIO } from "./capabilities";
+import { CHANNEL_PROVIDER_INSTAGRAM, CHANNEL_PROVIDER_ZERNIO } from "./capabilities";
 import { sincronizarSaudeDaConexao } from "./health";
 import {
   atualizarEspelhoDoTemplate,
@@ -26,6 +26,12 @@ import {
   registrarAviso,
   saudeDoEvento,
 } from "./zernio/avisos";
+import { ingerirEntradaDoInstagram } from "./instagram/ingest";
+import {
+  INSTAGRAM_SIGNATURE_HEADER,
+  parseInstagramWebhook,
+  verifyInstagramSignature,
+} from "./instagram/webhook";
 import { aplicarEdicaoZernio, ingestZernioInbound } from "./zernio/ingest";
 import { lerEnvelopeZernio } from "./zernio/envelope";
 import { parseZernioEdicao, verifyZernioSignature } from "./zernio/webhook";
@@ -70,7 +76,7 @@ export type InboundWebhookOutcome =
  * trabalho — e respondido sem nomear provider do lado de fora.
  */
 export function acceptsInboundWebhook(provider: string): boolean {
-  return provider === CHANNEL_PROVIDER_ZERNIO;
+  return provider === CHANNEL_PROVIDER_ZERNIO || provider === CHANNEL_PROVIDER_INSTAGRAM;
 }
 
 export async function handleInboundWebhook(
@@ -82,6 +88,8 @@ export async function handleInboundWebhook(
   switch (provider) {
     case CHANNEL_PROVIDER_ZERNIO:
       return zernioInbound(admin, input);
+    case CHANNEL_PROVIDER_INSTAGRAM:
+      return instagramInbound(admin, input);
     default:
       // Token de um canal que não entra por aqui. É configuração trocada, não
       // ataque — mas processar seria ler o payload com o parser errado.
@@ -194,4 +202,65 @@ async function zernioInbound(
     payload,
   });
   return { ok: true, body: { ...r } };
+}
+
+
+/**
+ * O webhook do Instagram.
+ *
+ * A ordem é a mesma de todo canal que recebe: prova de origem ANTES de olhar o
+ * conteúdo. Sem HMAC, quem descobrir a URL cria conversa, injeta mensagem e
+ * dispara o agente — e o `verify_token` não protege disso, porque só é conferido
+ * uma vez, no cadastro.
+ *
+ * Devolve 200 mesmo quando um evento do lote falha, e isso é deliberado: a Meta
+ * REENVIA o lote inteiro por até 36 horas quando não recebe 200, e reenviar por
+ * causa de um evento ruim traria de volta os bons — que já entraram e seriam
+ * descartados como duplicata, mas gastando a janela de reentrega que existe para
+ * falhas de verdade.
+ */
+async function instagramInbound(
+  admin: SupabaseClient,
+  input: InboundWebhookInput,
+): Promise<InboundWebhookOutcome> {
+  if (!input.secret) {
+    return { ok: false, code: "unauthorized", message: "canal sem segredo gravado" };
+  }
+
+  const assinatura = input.headers.get(INSTAGRAM_SIGNATURE_HEADER);
+  if (!verifyInstagramSignature(input.rawBody, assinatura, input.secret)) {
+    return { ok: false, code: "unauthorized", message: "assinatura inválida" };
+  }
+
+  let envelope: unknown;
+  try {
+    envelope = JSON.parse(input.rawBody);
+  } catch {
+    return { ok: false, code: "invalid_json", message: "corpo não é JSON" };
+  }
+
+  const { eventos, ignorados } = parseInstagramWebhook(envelope);
+
+  let entraram = 0;
+  let repetidos = 0;
+  const falhas: string[] = [];
+
+  for (const evento of eventos) {
+    try {
+      const r = await ingerirEntradaDoInstagram(admin, {
+        organizationId: input.session.organization_id,
+        channelSessionId: input.session.id,
+        evento,
+      });
+      if (r.status === "ingested") entraram += 1;
+      else if (r.status === "duplicate") repetidos += 1;
+      else falhas.push(r.reason);
+    } catch (e) {
+      // Um evento que estoura NÃO derruba os outros do lote. É a mesma razão do
+      // parser que nunca lança: a Meta manda várias mensagens num POST só.
+      falhas.push(e instanceof Error ? e.message : "erro desconhecido");
+    }
+  }
+
+  return { ok: true, body: { entraram, repetidos, ignorados, falhas } };
 }

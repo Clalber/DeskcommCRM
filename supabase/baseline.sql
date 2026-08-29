@@ -17023,6 +17023,49 @@ revoke execute on function public.fn_conversation_assign(uuid, uuid, uuid, text,
 grant  execute on function public.fn_conversation_assign(uuid, uuid, uuid, text, uuid, boolean)
   to authenticated, service_role;
 
+-- ---- a conversa nasce sabendo de que canal veio (migration 0207) ----
+-- `fn_upsert_wa_conversation` fixa `whatsapp` no corpo, e a 0203 abriu o canal
+-- para o Instagram. Sem esta função a mensagem entraria numa conversa marcada
+-- como WhatsApp — sem erro, porque o valor é válido, e sumindo de toda tela que
+-- filtra por canal.
+--
+-- `create or replace` é idempotente por construção; a revogação também.
+--
+-- ⚠️ Este bloco fica ANTES da varredura anon do fim do arquivo, e a ordem é
+-- regra, não estilo: a varredura revoga o que os blocos ANTERIORES criaram.
+-- Função acrescentada depois dela escaparia num `update.sh` e ficaria
+-- alcançável pela chave anônima — que vai para o browser. Vigiado por
+-- `varredura-anon-e-o-ultimo-bloco.test.ts`, que foi quem pegou este erro.
+create or replace function public.fn_upsert_conversation_do_canal(
+  p_org uuid, p_contact uuid, p_session uuid, p_channel text
+) returns uuid language plpgsql security definer set search_path = public as $$
+declare v_id uuid;
+begin
+  insert into public.conversations (
+    organization_id, contact_id, channel_session_id, channel, status,
+    is_group, unread_count_for_assignee, metadata
+  )
+  values (p_org, p_contact, p_session, p_channel, 'open', false, 0, '{}'::jsonb)
+  on conflict (organization_id, contact_id, channel_session_id) where is_group = false
+  do update set updated_at = now()
+  returning id into v_id;
+  return v_id;
+end; $$;
+
+-- Função nova em `public` nasce EXPOSTA, e são DUAS origens de EXECUTE:
+--   (A) o `alter default privileges ... grant all on functions to anon` do
+--       baseline, que vale para toda função criada depois dele — e que
+--       `revoke from public` NÃO remove;
+--   (B) o grant a PUBLIC que o Postgres dá a qualquer função ao criá-la, que
+--       `revoke from anon` NÃO remove.
+-- Tratar só uma deixa a função alcançável como RPC pela chave anônima, que vai
+-- para o browser. Vigiado por `hardening-definer-varredura`.
+revoke all on function public.fn_upsert_conversation_do_canal(uuid, uuid, uuid, text) from public, anon;
+grant execute on function public.fn_upsert_conversation_do_canal(uuid, uuid, uuid, text) to service_role;
+
+comment on function public.fn_upsert_conversation_do_canal(uuid, uuid, uuid, text) is
+  'Cria ou reencontra a conversa de um contato numa sessão, com o CANAL explícito. A irmã fn_upsert_wa_conversation fixa whatsapp no corpo e não serve para canal novo.';
+
 -- ---- VARREDURA anon: função nova nasce exposta em quem ATUALIZA (migration 0116) ----
 --
 -- ⚠️ ESTE BLOCO É, DE PROPÓSITO, O ÚLTIMO DO ARQUIVO. Apêndice novo entra ANTES

@@ -37,11 +37,92 @@ import {
   fecharArquivoDoWebhook,
 } from "@/lib/channels/arquivo-de-webhook";
 import { acceptsInboundWebhook, handleInboundWebhook } from "@/lib/channels/inbound";
+import { instagramVerificationChallenge } from "@/lib/channels/instagram/webhook";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { decryptWebhookSecret } from "@/lib/webhooks/secrets";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
+
+/**
+ * O handshake que a Meta faz UMA vez, ao cadastrar a URL.
+ *
+ * ─── Por que ele mora aqui, e não numa rota própria ─────────────────────────
+ *
+ * O cabeçalho deste arquivo promete que "canal seguinte entra sem uma quarta
+ * família de URLs". Um `GET /webhooks/instagram` separado cumpriria a função e
+ * quebraria a promessa — e a próxima pessoa a acrescentar canal copiaria o
+ * precedente, não a regra.
+ *
+ * ─── Três detalhes que fazem a Meta recusar a URL ───────────────────────────
+ *
+ * 1. **Texto puro.** O desafio volta CRU, sem o envelope `{data:...}` que todo
+ *    o resto desta API usa. Envelopar faz a Meta rejeitar sem dizer por quê.
+ * 2. **Sem assinatura.** A Meta não assina o GET — exigir HMAC aqui tornaria o
+ *    cadastro impossível. Quem prova a origem neste passo é o `verify_token`.
+ * 3. **404 para token desconhecido**, igual ao POST: quem varre URLs não precisa
+ *    saber que a rota existe.
+ */
+export async function GET(
+  req: NextRequest,
+  ctx: { params: Promise<{ token: string }> },
+): Promise<Response> {
+  const requestId = randomUUID();
+  const { token } = await ctx.params;
+  if (!token || token.length < 8) {
+    return fail("not_found", "unknown webhook token", 404, { requestId });
+  }
+
+  const admin = createAdminClient();
+  const { data } = await queryTolerantToMissingArchived(
+    () =>
+      admin
+        .from("channel_sessions")
+        .select(`id, provider, webhook_secret_encrypted, ${ARCHIVED_AT}`)
+        .eq("webhook_path_token", token)
+        .maybeSingle(),
+    () =>
+      admin
+        .from("channel_sessions")
+        .select("id, provider, webhook_secret_encrypted")
+        .eq("webhook_path_token", token)
+        .maybeSingle(),
+  );
+
+  const sessao = data as {
+    provider: string;
+    webhook_secret_encrypted: unknown;
+    archived_at?: string | null;
+  } | null;
+
+  if (!sessao || sessao.archived_at) {
+    return fail("not_found", "unknown webhook token", 404, { requestId });
+  }
+  if (!acceptsInboundWebhook(sessao.provider)) {
+    return fail("invalid_request", "provider_mismatch", 400, { requestId });
+  }
+
+  const cifrado = sessao.webhook_secret_encrypted;
+  const verifyToken = cifrado ? await decryptWebhookSecret(admin, cifrado as string) : null;
+  if (!verifyToken) {
+    return fail("not_found", "unknown webhook token", 404, { requestId });
+  }
+
+  const desafio = instagramVerificationChallenge(
+    new URL(req.url).searchParams,
+    verifyToken,
+  );
+  if (desafio === null) {
+    // 403 e não 401: o token foi apresentado e está errado. É configuração
+    // trocada, e a distinção poupa quem estiver depurando o cadastro.
+    return fail("forbidden", "verify token inválido", 403, { requestId });
+  }
+
+  return new Response(desafio, {
+    status: 200,
+    headers: { "content-type": "text/plain; charset=utf-8" },
+  });
+}
 
 export async function POST(
   req: NextRequest,
