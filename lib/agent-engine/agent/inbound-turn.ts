@@ -567,6 +567,29 @@ const CASES_SYSTEM_BLOCK =
   'e volta com uma resposta, sem explicar o motivo interno.';
 
 /**
+ * Bloco de sistema RESIDENTE de transparência — SEMPRE presente, independente de
+ * `casesEnabled` ou de `open_human_case` ter sido chamado neste turno.
+ *
+ * Por quê: `CASES_SYSTEM_BLOCK` só ensina a não narrar a causa técnica NO MOMENTO de
+ * abrir um caso — mas o modelo narra "problema no sistema" também SEM abrir caso
+ * nenhum, quando só está incerto ou algo falhou silenciosamente (medido em produção,
+ * 2026-08-29: "houve um pequeno problema no sistema sobre o agendamento", mandado ao
+ * cliente às 11:43, sem nenhum `agent_cases` aberto naquele turno — o veto de
+ * `CASES_SYSTEM_BLOCK` nunca chegou a valer porque a tool nunca foi chamada). O
+ * detector de vazamento (`vazamento-interno.ts`) não pega isso por desenho — ele caça
+ * FORMA (identificador técnico), não sentença comum em português — então a única
+ * cura possível aqui é instrução, não filtro.
+ */
+const TRANSPARENCIA_SYSTEM_BLOCK =
+  '## Nunca narre problema interno ao lead\n' +
+  'Em QUALQUER mensagem — abrindo caso ou não — NUNCA diga ao lead que "houve um problema/erro no ' +
+  'sistema", "falha na confirmação", "erro técnico" ou qualquer variação que admita que algo deu errado ' +
+  'do lado interno. Isso vale mesmo quando você está incerto do resultado de uma ferramenta ou algo ' +
+  'falhou sem você entender o motivo. O lead não precisa do diagnóstico, precisa saber o que fazer ' +
+  'agora: diga que vai verificar/confirmar e volta com a resposta, peça mais um instante, ou pergunte de ' +
+  'novo o que falta — nunca admita que "o sistema" ou "a confirmação" teve um problema.';
+
+/**
  * Bloco de sistema RESIDENTE da Agenda — entra no prefixo cacheável sempre que o
  * agente tem `crm_book_appointment` no `tool_ids` publicado, INDEPENDENTE de a skill
  * situacional "agendamento" ter disparado no turno.
@@ -1365,8 +1388,9 @@ async function executarTurnoDoAgente(
   // Spec 15 §5.2: bloco das tools de caso SEMPRE residente (não invalida o prefixo
   // cacheável — mesmo espírito do índice de skills) quando a tela habilita. O bloco da
   // Agenda segue o mesmo padrão, condicionado a `crm_book_appointment` estar entre as
-  // tools publicadas — ver comentário de `AGENDA_SYSTEM_BLOCK`.
-  const blocosResidentes = [systemWithMemory];
+  // tools publicadas — ver comentário de `AGENDA_SYSTEM_BLOCK`. `TRANSPARENCIA_SYSTEM_BLOCK`
+  // não depende de nenhuma feature — todo agente publicado o recebe.
+  const blocosResidentes = [systemWithMemory, TRANSPARENCIA_SYSTEM_BLOCK];
   if (agentConfig !== null && agentConfig.casesEnabled) blocosResidentes.push(CASES_SYSTEM_BLOCK);
   if (agentConfig !== null && agentConfig.toolIds.includes('crm_book_appointment')) {
     blocosResidentes.push(AGENDA_SYSTEM_BLOCK);
