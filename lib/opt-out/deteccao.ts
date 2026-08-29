@@ -115,7 +115,11 @@ const VERBOS_DE_COMUNICACAO =
   "chamar|chama|ligar|liga|perturbar|perturba|encher|enche|insistir|insiste|" +
   // espanhol — mesma âncora, outra língua. Sem eles "no quiero recibir mas
   // mensajes" não casa nenhum padrão e o pedido se perde.
-  "recibir|recibe|escribir|escribe|escriban|molestar|molesta|llamar|llama|mandes|envien";
+  "recibir|recibe|escribir|escribe|escriban|molestar|molesta|llamar|llama|mandes|envien|" +
+  // `contactar` faltava — "no me contacten más" e "deja de contactarme" não
+  // casavam nenhum padrão, embora sejam pedido de descadastro tão direto
+  // quanto "no me escriba".
+  "contactar|contacta|contacte|contacten|contactes";
 
 /**
  * Objetos que aparecem depois de um verbo de comunicação mas NÃO são a
@@ -171,7 +175,27 @@ const FRASES_DE_OPT_OUT: readonly RegExp[] = [
     "u",
   ),
   /\bno\s+quiero\s+recibir\s+mas\b/u,
-  /\bno\s+me\s+(?:escriba|escriban|escribas|mande|manden|mandes|llame|llamen)\s+mas\b/u,
+  // "no quiero más mensajes/publicidad/promociones" — o objeto é um
+  // SUBSTANTIVO, não um verbo, e por isso não casava no padrão de cima
+  // (que exige verbo de comunicação depois de "no quiero"). Espelho direto
+  // de "não quero mais mensagem/contato" em português: faltava por
+  // assimetria, não por decisão.
+  /\bno\s+quiero\s+mas\s+(?:mensajes?|publicidad|promociones|nada\s+de\s+ustedes)\b/u,
+  // Imperativo com pronome preso — "dame de baja" é como a pessoa responde
+  // de fato à própria plantilla que pede "Respondé BAJA". `dar de baja`
+  // (sem pronome) segue de fora de propósito: sem objeto, é a frase que o
+  // corpus de testes marca como ambígua/fora de escopo (pausar campanha),
+  // não pedido de descadastro.
+  /\b(?:dame|deme|denme|danos)\s+de\s+baja\b/u,
+  // "no quiero que me contacten" — outra estrutura para o mesmo pedido que
+  // a extensão de `contacte|contacten|contactes` acima já cobre na forma
+  // "no me contacten mas".
+  /\bno\s+quiero\s+que\s+me\s+contact(?:e|en|es)\b/u,
+  // Remoção de "contactos" ou "base de datos" — mesma família da regra de
+  // `lista`, abaixo, mas objeto diferente: quem pede isto não está trocando
+  // de assunto, está pedindo para ser esquecido.
+  /\b(?:borrame|borrar|eliminame|elimina|sacame|quitame)\s+de\s+(?:tus\s+|mis\s+|la\s+)?(?:contactos|base\s+de\s+datos)\b/u,
+  /\bno\s+me\s+(?:escriba|escriban|escribas|mande|manden|mandes|llame|llamen|contacte|contacten|contactes)\s+mas\b/u,
   // "deja de escribirme", "para de mandarme mensajes" — o pronome PRESO ao
   // infinitivo ("escribirme"), diferente do português, onde ele vem solto
   // ANTES do verbo ("de me mandar"). Sem o sufixo opcional, a construção

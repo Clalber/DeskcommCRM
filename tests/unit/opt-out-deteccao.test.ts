@@ -98,6 +98,22 @@ const ESPANHOL_PEDE_PARA_SAIR = [
   "para de mandarme mensajes",
   "deja de escribirme por favor",
   "deja de escribir",
+  // Objeto SUSTANTIVO em vez de verbo — "no quiero más mensajes" não tem
+  // verbo de comunicação depois de "no quiero", então o padrão geral (que
+  // exige verbo) não pega. Espelho de "não quero mais mensagem/contato".
+  "no quiero mas mensajes",
+  "no quiero mas publicidad",
+  "ya no quiero mas promociones",
+  "no quiero mas nada de ustedes",
+  // Imperativo com pronome preso — como a pessoa responde de fato à
+  // plantilla "Respondé BAJA".
+  "dame de baja",
+  "denme de baja",
+  // `contactar`, que faltava na lista de verbos de comunicação.
+  "no me contacten mas",
+  "no quiero que me contacten",
+  "borrame de tus contactos",
+  "eliminame de la base de datos",
   // `salir` é o `sair` em espanhol, e `sair` já estava na lista em português.
   // Faltava, e a promessa do CHANGELOG da 1.4.0 ("`baja`, `salir` e
   // `no quiero recibir` descadastram") era falsa exatamente nesta palavra —
