@@ -37,6 +37,10 @@ const PEDE_PARA_SAIR = [
   "não me mande mais mensagens",
   "me tira dessa lista",
   "me remove da lista por favor",
+  // CONTROLE do lookahead novo: continua bloqueando quando o objeto É a
+  // comunicação — o lookahead exclui só a lista fechada de objetos não
+  // comunicativos, não apaga o padrão inteiro.
+  "pare de mandar essas fotos",
   "quero sair da lista",
   "quero cancelar a inscrição",
   "me descadastra aí",
@@ -44,6 +48,11 @@ const PEDE_PARA_SAIR = [
 
 /** Frases do dia a dia que usam a palavra e NÃO são pedido de descadastro. */
 const NAO_PEDE_PARA_SAIR = [
+  // e-commerce — o padrão de cessação ancorava só no VERBO ("mandar"), e
+  // "mandar" é verbo de comunicação mesmo quando o objeto é outra coisa.
+  // Bloquearia um cliente pedindo para mudar a ENTREGA.
+  "pare de mandar o pedido nesse endereco",
+  "para de mandar a fatura por aqui",
   // clínica — o caso que motivou este arquivo
   "tem como parar a dor?",
   "dá pra parar o sangramento em casa?",

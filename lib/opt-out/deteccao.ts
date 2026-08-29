@@ -137,6 +137,20 @@ const OBJETOS_NAO_COMUNICATIVOS =
   "cobro|cobros|producto|productos|pauta|pautas|presupuesto|presupuestos";
 
 /**
+ * Determinantes que podem vir entre o verbo e o objeto não comunicativo —
+ * "o pedido", "el paquete". Compartilhado pt/es, e não só por DRY: os dois
+ * padrões de cessação abaixo (`par(?:ar|a|e|em)` em português e
+ * `dej(?:ar|a|e|en)|par(?:ar|a|e|en)` em espanhol) casam a MESMA forma
+ * "pare"/"para" nos dois idiomas — "pare" é alcançado pela alternativa "e"
+ * de AMBOS. Um lookahead só com determinantes de um idioma deixa "pare de
+ * mandar o pedido" escapar pelo padrão espanhol, que não reconhece "o" como
+ * determinante e portanto não vê o objeto excluído. Medido.
+ */
+const DETERMINANTES_DE_OBJETO =
+  "o|a|os|as|el|los|la|las|meu|minha|meus|minhas|seu|sua|seus|suas|" +
+  "mi|mis|tu|tus|esse|essa|esses|essas|ese|esa|esos|esas|nesse|nessa";
+
+/**
  * Pedidos INEQUÍVOCOS de descadastro escritos por extenso. Todos exigem o objeto
  * de comunicação; nenhum casa a palavra solta.
  *
@@ -146,8 +160,20 @@ const OBJETOS_NAO_COMUNICATIVOS =
  * `tests/unit/opt-out-deteccao.test.ts` e reprovam o CI.
  */
 const FRASES_DE_OPT_OUT: readonly RegExp[] = [
-  // "pare de me mandar", "parar de receber", "para de mandar mensagem"
-  new RegExp(`\\bpar(?:ar|a|e|em)\\s+de\\s+(?:me\\s+)?(?:${VERBOS_DE_COMUNICACAO})\\b`, "u"),
+  // "pare de me mandar", "parar de receber", "para de mandar mensagem" — mas
+  // NÃO "pare de mandar o pedido nesse endereço": o padrão ancorava só no
+  // VERBO ("mandar"), e "mandar" é verbo de comunicação mesmo quando o
+  // OBJETO é outra coisa. Medido: sem o lookahead, esta frase de e-commerce
+  // bloqueava um cliente pedindo para mudar a ENTREGA — o mesmo defeito que
+  // este arquivo existe para impedir ("tem como parar a dor?"), só que
+  // introduzido pela própria regra que consertou o primeiro caso. O
+  // lookahead (OBJETOS_NAO_COMUNICATIVOS) é o mesmo que já protege o
+  // padrão de cessação espanhol, abaixo.
+  new RegExp(
+    `\\bpar(?:ar|a|e|em)\\s+de\\s+(?:me\\s+)?(?:${VERBOS_DE_COMUNICACAO})\\b` +
+      `(?!\\s+(?:${DETERMINANTES_DE_OBJETO})?\\s*(?:${OBJETOS_NAO_COMUNICATIVOS})\\b)`,
+    "u",
+  ),
   // "não quero (mais) receber" — mas "não quero receber ligação, só whatsapp" é
   // troca de canal, não descadastro: quem diz isso QUER continuar no WhatsApp.
   /\bnao\s+(?:quero|desejo|gostaria)\s+(?:de\s+)?(?:mais\s+)?receber\b(?!\s+(?:ligacao|ligacoes|chamada|chamadas|telefonema|telefonemas|telefone)\b)/u,
@@ -206,7 +232,7 @@ const FRASES_DE_OPT_OUT: readonly RegExp[] = [
   new RegExp(
     `\\b(?:dej(?:ar|a|e|en)|par(?:ar|a|e|en))\\s+de\\s+` +
       `(?:${VERBOS_DE_COMUNICACAO})(?:me|nos|le|les)?\\b` +
-      `(?!\\s+(?:el|los|la|las|mi|mis|tu|tus|ese|esa|esos|esas)?\\s*(?:${OBJETOS_NAO_COMUNICATIVOS})\\b)`,
+      `(?!\\s+(?:${DETERMINANTES_DE_OBJETO})?\\s*(?:${OBJETOS_NAO_COMUNICATIVOS})\\b)`,
     "u",
   ),
   // "dar de baja" já É o pedido — a plantilla usa a palavra nesse sentido.
