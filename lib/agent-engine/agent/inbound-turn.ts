@@ -560,7 +560,11 @@ const CASES_SYSTEM_BLOCK =
   'sistema, uma decisão que exige uma pessoa), use a tool open_human_case — você CONTINUA conversando ' +
   'com o lead, não silencia. NUNCA prometa ao lead que um humano vai verificar/resolver sem antes chamar ' +
   'open_human_case. Quando um caso estiver esperando informação do cliente e você já a obteve na ' +
-  'conversa, use provide_case_update para devolver ao responsável.';
+  'conversa, use provide_case_update para devolver ao responsável. Ao avisar o lead que abriu o caso, ' +
+  'NUNCA narre a causa técnica ou interna (erro de sistema, falha de confirmação, nome de ferramenta, ' +
+  'log ou qualquer diagnóstico) — isso é assunto técnico e não vai pro cliente. `title`/`summary`/`blocker` ' +
+  'são só para o humano; a mensagem ao lead diz apenas, em linguagem simples, que você vai verificar/ajustar ' +
+  'e volta com uma resposta, sem explicar o motivo interno.';
 
 /**
  * Bloco de sistema RESIDENTE da Agenda — entra no prefixo cacheável sempre que o
