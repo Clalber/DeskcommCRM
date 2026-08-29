@@ -612,6 +612,22 @@ const TRANSPARENCIA_SYSTEM_BLOCK =
  * ("confirmado" sem checar) — não obriga a CHECAR. Sem essa obrigação, o modelo
  * tinha uma saída segura e preguiçosa: responder "vou verificar e te aviso" pra
  * sempre, sem nunca chamar a ferramenta. O segundo parágrafo fecha essa saída.
+ *
+ * ⚠️ Terceiro parágrafo (2026-08-29, mesmo dia): o segundo parágrafo sozinho NÃO
+ * bastou — medido no mesmo teste, depois de publicado. Causa raiz achada no
+ * `system_prompt` que o PRÓPRIO tenant escreveu para este agente: ele instrui a
+ * "encaminhar dúvidas ou situações fora da sua autonomia ao gerente Fernando".
+ * O modelo estava classificando "confirmar horário" como uma dessas situações e
+ * respondendo "vou confirmar com o Fernando/a equipe" — coerente com a
+ * identidade que o tenant deu a ele, só que sem nunca chamar a ferramenta. Um
+ * agravante: a MESMA conversa já tinha várias respostas assim ANTES deste fix
+ * existir, e o modelo lê o próprio histórico — puxando a resposta pra manter
+ * consistência com o que ele mesmo já disse. O terceiro parágrafo nomeia o
+ * conflito explicitamente e resolve a favor da ferramenta: checar/marcar
+ * agenda com uma tool disponível NUNCA é "fora da autonomia", nem quando o
+ * prompt do tenant nomeia um gerente para outras decisões — e ele AINDA vale
+ * pra essas outras decisões (aprovar desconto, exceção de política etc.),
+ * porque este parágrafo só fala de checar/marcar horário.
  */
 const AGENDA_SYSTEM_BLOCK =
   '## Agenda — nunca confirme sem checar\n' +
@@ -625,7 +641,14 @@ const AGENDA_SYSTEM_BLOCK =
   'conversa) um dia/horário específico que ainda não foi checado, chame crm_find_free_slots NESTE turno ' +
   'antes de responder — não repita "vou verificar/confirmar e te aviso" sem ter chamado a ferramenta. Um ' +
   '"vou verificar" só é aceitável na MESMA resposta em que você já chamou a ferramenta e ela falhou ou não ' +
-  'trouxe resultado; nunca como substituto de chamar.';
+  'trouxe resultado; nunca como substituto de chamar.\n' +
+  'Checar e marcar horário usando crm_find_free_slots/crm_book_appointment está SEMPRE dentro da sua ' +
+  'autonomia quando essas ferramentas estão disponíveis para você — mesmo que as instruções da empresa ' +
+  'peçam para encaminhar decisões fora da sua autonomia a um gerente/responsável nomeado (ex.: "fale com o ' +
+  'Fernando"). Isso vale para OUTRAS decisões (desconto, exceção de política, algo que a ferramenta não ' +
+  'cobre) — nunca para simplesmente consultar ou marcar um horário que a ferramenta resolve sozinha. NÃO ' +
+  'diga "vou confirmar/verificar com [nome de pessoa/equipe]" para justificar não ter chamado a ferramenta: ' +
+  'chame primeiro, e só fale de encaminhar a alguém se a ferramenta genuinamente não resolver.';
 
 export interface InboundTurnKnobs {
   /** últimas N mensagens no contexto de abertura (LEAD_CONTEXT_HISTORY_LIMIT) */
