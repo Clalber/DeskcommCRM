@@ -79,8 +79,13 @@ export const PALAVRAS_DE_OPT_OUT: ReadonlySet<string> = new Set([
   // denúncia de spam derruba o quality rating e faz a plataforma recusar
   // definições novas: perde-se as aprovadas, não só a linha.
   //
-  // `baja` sozinha É o pedido. "Doy de baja la pauta?" tem quatro palavras e
-  // cai no ambíguo, que é onde deve cair.
+  // `baja` sozinha É o pedido. "Doy de baja la pauta?" tem quatro palavras:
+  // não bloqueia — é pergunta sobre pausar publicidade (o objeto é "la
+  // pauta", fora de `suscripcion|lista|publicidad|promociones`, abaixo), não
+  // pedido de descadastro. Este comentário chamava o resultado de "cai no
+  // ambíguo"; estava errado — o espanhol não tinha UMA frase ambígua sequer
+  // até este PR acrescentar as de baixo em `FRASES_AMBIGUAS_DE_OPT_OUT`. Cai
+  // em NADA, e é onde deve cair: pergunta de negócio não é sinal de opt-out.
   "baja",
   "bajar",
   // `salir` é o `sair` em espanhol, e `sair` está nesta lista desde sempre —
@@ -91,9 +96,10 @@ export const PALAVRAS_DE_OPT_OUT: ReadonlySet<string> = new Set([
   // recebendo — no idioma em que a plantilla é a fonte do pedido.
   //
   // Não alarga a regra: continua valendo só a palavra SOZINHA (mensagem inteira
-  // = a palavra). "Voy a salir ahora" tem três palavras e cai no ambíguo, que é
-  // onde deve cair — a mesma proteção que faz "tem como parar a dor?" não
-  // bloquear paciente de clínica.
+  // = a palavra). "Voy a salir ahora" tem três palavras: não bloqueia — a
+  // mesma proteção que faz "tem como parar a dor?" não bloquear paciente de
+  // clínica. Cai em NADA, não em "ambíguo" — mesma correção do comentário de
+  // `baja`, acima.
   "salir",
   "desuscribir",
   "desuscribirme",
@@ -172,6 +178,21 @@ const FRASES_AMBIGUAS_DE_OPT_OUT: readonly RegExp[] = [
   /\bja\s+(?:disse|falei)\s+que\s+nao\s+(?:quero|tenho\s+interesse)\b/u,
   /\bnao\s+(?:me\s+)?interessa\s+mais\b/u,
   /\bpara\s+com\s+isso\b/u,
+  // ── espanhol ──────────────────────────────────────────────────────────────
+  //
+  // Esta lista tinha ZERO entradas em espanhol. Não por decisão: o ambíguo é
+  // uma segunda lista, com curadoria própria, e ninguém a preencheu quando o
+  // espanhol entrou — o comentário de `baja`/`salir` acima chegou a AFIRMAR
+  // que certas frases "caem no ambíguo" sem que essa lista tivesse uma
+  // entrada em espanhol capaz de pegá-las. Efeito medido: em espanhol,
+  // `ehOptOutProvavel` nunca soma nada além do inequívoco —
+  // `detectAmbiguousOptOut` (o runtime do agente) nunca escala um cliente de
+  // fala espanhola, por mais claro que o sinal seja.
+  /\b(?:dejame|dejenme)\s+en\s+paz\b/u,
+  /\bya\s+(?:te\s+)?dije\s+que\s+no\s+(?:quiero|me\s+interesa)\b/u,
+  /\b(?:ya\s+)?no\s+me\s+interesa(?:\s+mas)?\b/u,
+  /\b(?:ya\s+basta|basta\s+ya)\b/u,
+  /\bno\s+me\s+molest(?:e|en|es)\b/u,
 ];
 
 /** A mensagem inteira é a palavra-chave (ignorando pontuação e emoji de borda). */

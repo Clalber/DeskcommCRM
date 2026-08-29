@@ -137,6 +137,33 @@ describe("espanhol — a palavra que a plantilla pede", () => {
   }
 });
 
+/**
+ * O espanhol tinha ZERO frases ambíguas — `ehOptOutProvavel` nunca somava
+ * nada além do inequívoco nesse idioma, e o comentário de `baja`/`salir` em
+ * `deteccao.ts` chegou a afirmar que duas frases "caem no ambíguo" sem que
+ * essa camada existisse para pegá-las. Espelha o corpus português de baixo
+ * ("me deixa em paz", "já disse que não quero", "para com isso") — mesma
+ * forma, outra língua.
+ */
+describe("espanhol — o ambíguo, que não existia", () => {
+  it.each([
+    "déjame en paz",
+    "déjenme en paz",
+    "ya te dije que no me interesa",
+    "ya no me interesa",
+    "basta ya",
+    "ya basta con esto",
+    "no me molesten",
+  ])("reconhece o sinal ambíguo: %s", (texto) => {
+    expect(ehOptOutProvavel(texto)).toBe(true);
+  });
+
+  it("o ambíguo em espanhol também NÃO autoriza bloqueio por si só", () => {
+    expect(ehOptOutProvavel("déjame en paz")).toBe(true);
+    expect(ehPedidoDeOptOut("déjame en paz")).toBe(false);
+  });
+});
+
 describe("ehPedidoDeOptOut — pedido INEQUÍVOCO, o que autoriza bloquear", () => {
   it.each(PEDE_PARA_SAIR)("respeita o pedido: %s", (texto) => {
     expect(ehPedidoDeOptOut(texto), `deveria ter reconhecido "${texto}"`).toBe(true);
