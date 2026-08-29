@@ -28,9 +28,19 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { ARCHIVED_AT, queryTolerantToMissingArchived } from "../archived";
 import { decryptWebhookSecret } from "@/lib/webhooks/secrets";
 
-/** Versão da Graph API. Explícita para o teste apontar para outro servidor. */
+/**
+ * Versão da Graph API.
+ *
+ * `v25.0` é a que a documentação de mensagens do Instagram usa e vence em
+ * jul/2028. A primeira versão deste arquivo dizia `v21.0`, que está perto do
+ * fim de vida — versão de API não é detalhe de configuração: quando ela morre,
+ * TODA chamada passa a responder erro, e o canal cai inteiro sem ninguém ter
+ * mudado nada.
+ *
+ * Sobrescrevível para o teste apontar para outro servidor.
+ */
 export function instagramGraphVersion(): string {
-  return process.env.INSTAGRAM_GRAPH_VERSION ?? "v21.0";
+  return process.env.INSTAGRAM_GRAPH_VERSION ?? "v25.0";
 }
 
 export function instagramGraphBaseUrl(): string {
