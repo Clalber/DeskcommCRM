@@ -45,6 +45,8 @@ interface ErroDaMeta {
   code?: number;
   error_subcode?: number;
   message?: string;
+  /** Só o host `graph.instagram.com` manda. Quando vem, é a palavra final. */
+  is_transient?: boolean;
 }
 
 function lerErro(corpo: unknown): ErroDaMeta | null {
@@ -72,14 +74,48 @@ export function ehCredencialMorta(erro: ErroDaMeta | null): boolean {
 /**
  * O erro diz "fora da janela"?
  *
- * ⚠️ O par `10` / `2534022` vem de fonte SECUNDÁRIA: as páginas oficiais de
- * códigos de erro da Meta responderam 500 em todas as tentativas do
- * levantamento. Por isso a checagem é do código `10` (documentado, "permission
- * denied") e o subcódigo entra só como reforço — depender do subcódigo sozinho
- * seria construir sobre um número que ninguém conseguiu confirmar na fonte.
+ * `10 / 2534022` — "This message is sent outside of allowed window" — está na
+ * tabela oficial de códigos da Meta. A página responde 500 hoje; o texto veio do
+ * arquivo da mesma URL. Há DOIS subcódigos irmãos (`2018278`, `2018065`) e um
+ * `1545041` que a tabela simplificada chama de "messaging window closed" — a
+ * própria Meta é inconsistente aqui, então tratamos a família inteira.
  */
 export function ehForaDaJanela(erro: ErroDaMeta | null): boolean {
-  return erro?.code === 10;
+  if (erro?.code !== 10) return erro?.error_subcode === 1545041;
+  return true;
+}
+
+/**
+ * A pessoa não pode receber — bloqueou, desativou ou está indisponível.
+ *
+ * `551` e `10 / 2018108` e `200 / 1545041`. É DEFINITIVO e precisa ser separado
+ * de "falhou": retentar mensagem para quem bloqueou é gastar cota e insistir com
+ * alguém que pediu para não ser incomodado.
+ */
+export function ehDestinatarioIndisponivel(erro: ErroDaMeta | null): boolean {
+  if (erro?.code === 551) return true;
+  if (erro?.code === 10 && erro?.error_subcode === 2018108) return true;
+  return erro?.code === 200 && erro?.error_subcode === 1545041;
+}
+
+/**
+ * Vale retentar?
+ *
+ * É a pergunta que decide se a mensagem volta para a fila ou morre. Errar para
+ * o lado "retenta" com erro definitivo queima cota contra uma parede; errar
+ * para o lado "desiste" com erro transitório perde mensagem que teria saído.
+ *
+ * A lista vem da tabela oficial de tratamento de erro da Graph API — os códigos
+ * cujo "What To Do" é literalmente *"Wait and retry the operation"* — mais o
+ * `is_transient`, que o host `graph.instagram.com` manda no corpo (ele usa
+ * `IGApiException`, não `OAuthException`, e sinaliza transitoriedade explícita).
+ */
+export function valeRetentar(erro: ErroDaMeta | null): boolean {
+  if (!erro) return false;
+  if (erro.is_transient === true) return true;
+  // 1/2 indisponibilidade, 4/17/32/341/613 cota, 368 bloqueio temporário por
+  // política, 80002 o balde de uso de negócio do Instagram.
+  return [1, 2, 4, 17, 32, 341, 368, 613, 80002].includes(erro.code ?? -1);
 }
 
 async function creds(
@@ -183,8 +219,14 @@ export const metaInstagramAdapter: ChannelAdapter = {
         ? "credencial expirada — reconecte a conta"
         : ehForaDaJanela(erro)
           ? "fora da janela de 24h — só uma pessoa pode responder"
-          : detalhe;
-      throw new Error(`${CODIGOS.sendFailed}: ${rotulo}`);
+          : ehDestinatarioIndisponivel(erro)
+            ? "esta pessoa não está recebendo mensagens suas"
+            : detalhe;
+      // O sufixo diz a quem lê o log se a fila deve insistir. Sem ele, "falhou"
+      // é a mesma palavra para "tente de novo em um minuto" e para "nunca vai
+      // funcionar" — e quem decide fica sem a informação que precisa.
+      const seguir = valeRetentar(erro) ? " [transitório]" : " [definitivo]";
+      throw new Error(`${CODIGOS.sendFailed}: ${rotulo}${seguir}`);
     }
 
     // `message_id` ausente com HTTP 200 seria "enviado sem id": o CRM gravaria

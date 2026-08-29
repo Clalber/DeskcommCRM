@@ -213,6 +213,52 @@ describe("envio", () => {
     );
   });
 
+  it("destinatário que BLOQUEOU é dito com todas as letras", async () => {
+    resposta = {
+      ok: false,
+      status: 400,
+      corpo: { error: { code: 551, message: "This person isn't receiving messages" } },
+    };
+
+    await expect(metaInstagramAdapter.send(envelope() as never)).rejects.toThrow(
+      /não está recebendo mensagens suas.*definitivo/s,
+    );
+  });
+
+  it("erro de COTA é marcado transitório — a fila deve insistir", async () => {
+    resposta = { ok: false, status: 429, corpo: { error: { code: 613, message: "rate limit" } } };
+
+    await expect(metaInstagramAdapter.send(envelope() as never)).rejects.toThrow(/transitório/);
+  });
+
+  it("`is_transient` do host do Instagram é a palavra final", async () => {
+    // `graph.instagram.com` usa `IGApiException` e manda o sinal explícito. Um
+    // código que a nossa lista não conhece, mas com `is_transient: true`, tem de
+    // ser retentado — a alternativa é descartar mensagem por ignorância nossa.
+    // Código 9999 NÃO está na nossa lista de retentáveis — de propósito. Se o
+    // teste usasse um código conhecido, ele passaria mesmo com o `is_transient`
+    // ignorado, e mediria a lista em vez do sinal. Medido por sabotagem.
+    resposta = {
+      ok: false,
+      status: 500,
+      corpo: {
+        error: { code: 9999, is_transient: true, message: "IGApiException transitória" },
+      },
+    };
+
+    await expect(metaInstagramAdapter.send(envelope() as never)).rejects.toThrow(/transitório/);
+  });
+
+  it("fora da janela é DEFINITIVO — retentar queima cota contra a parede", async () => {
+    resposta = {
+      ok: false,
+      status: 400,
+      corpo: { error: { code: 10, error_subcode: 2534022, message: "outside window" } },
+    };
+
+    await expect(metaInstagramAdapter.send(envelope() as never)).rejects.toThrow(/definitivo/);
+  });
+
   it("erro sem código conhecido preserva a mensagem da Meta", async () => {
     resposta = { ok: false, status: 400, corpo: { error: { code: 4, message: "rate limited" } } };
 
