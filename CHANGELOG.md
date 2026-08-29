@@ -8,6 +8,166 @@ Se você roda o DeskcommCRM numa VPS, **leia a seção da versão para a qual es
 
 ## [Não lançado]
 
+## [2.1.0] — 2026-08-28
+
+### Adicionado
+
+- **O agente mostra "digitando…" enquanto pensa** Quando o agente de IA vai responder alguém, o cliente passa a ver **"digitando…"**
+  no topo da conversa — do momento em que o agente começa a pensar até a mensagem
+  sair. Antes havia um silêncio de vários segundos entre a pergunta e a resposta,
+  e silêncio, no WhatsApp, é o que faz o cliente achar que ninguém viu.
+
+  O indicador é reaceso a cada 8 segundos, porque o WhatsApp o apaga sozinho, e
+  tem teto de 1 minuto: um turno que trave não deixa o cliente vendo "digitando…"
+  para sempre — o que seria pior que não ter o recurso, já que afirmaria que
+  alguém está escrevendo quando não está.
+
+  Ele só acende depois de o agente ter decidido que **vai mesmo responder**: quem
+  está em atendimento humano, quem pediu para não ser incomodado e as conversas
+  fora do horário de envio não veem sinal nenhum. Nada aqui atrasa, segura ou
+  bloqueia mensagem — se o indicador falhar, a resposta sai igual.
+
+  Não há ação a tomar. Vem ligado; quem preferir sem ele põe
+  `AGENT_TYPING_ENABLED=false` no `.env`. Conexão cujo canal não conhece o
+  indicador simplesmente segue sem ele, sem erro e sem precisar de configuração.
+
+### Corrigido
+
+- **Conectar um número para de criar duas conexões** Clicar em **Conectar novo WhatsApp** criava **duas** conexões: uma pareava e a
+  outra ficava parada, sem número, esperando ser apagada na mão. Acontecia toda
+  vez.
+
+  A causa não era o clique. Quando o WhatsApp demora a responder, o sistema tenta
+  de novo sozinho — e a tentativa nova criava outra conexão em vez de aproveitar a
+  primeira. Agora o banco de dados garante que existe **uma** conexão em andamento
+  por vez, e a segunda tentativa recebe a que já estava lá.
+
+  Junto vai um conserto de um caso pior, que só aparecia quando o WhatsApp estava
+  fora do ar: a conexão que falhava era **apagada**, e a tela ficava girando em
+  "Preparando…" para sempre porque procurava algo que não existia mais. Agora ela
+  fica registrada como falha — visível, com o motivo, e sem travar a próxima
+  tentativa.
+
+  Se você abrir a tela de instalação enquanto uma conexão já está em andamento, ela
+  agora **mostra essa conexão** em vez de tentar criar outra — antes, insistir pelos
+  dois caminhos deixava a tela acompanhando uma conexão e o WhatsApp preparando
+  outra.
+
+  Conexões que já existem não são afetadas, e conectar um segundo número continua
+  funcionando normalmente. Contas de outros canais não entram nessa contagem: o
+  limite de uma conexão em andamento vale só para o WhatsApp.
+
+- **O agente para de receber uma instrução impossível quando a janela fecha** Isto é sobre o comportamento do agente de IA, e hoje não muda nada na prática:
+  o único canal com janela em uso é o WhatsApp, onde a instrução já estava certa.
+
+  Quando a conversa passa de 24 horas sem resposta do cliente, o agente é impedido
+  de mandar texto livre e recebe uma orientação do que fazer. Essa orientação era
+  fixa: "use um modelo aprovado". Num canal onde modelo aprovado não existe, ela
+  mandaria o agente usar uma ferramenta que ele nem tem — e o atendimento pararia
+  sem ninguém entender por quê.
+
+  Agora a orientação vem do que o canal realmente oferece, e nunca manda usar algo
+  que pode não estar disponível.
+
+- **Quem publica o sistema com a própria marca passa a checar a atualização no lugar certo** Se você mantém uma cópia própria do projeto e publica as imagens do sistema com
+  o seu próprio endereço, o comando de atualização olhava para o endereço do
+  projeto original — e não para o seu — quando a configuração do servidor não
+  dizia explicitamente qual imagem usar. Ele então comparava a versão instalada
+  com a de outra pessoa, e podia anunciar que havia atualização quando não havia,
+  ou o contrário.
+
+  O endereço agora é lido de um ponto único do próprio kit, o mesmo que o resto
+  da instalação usa. Quem opera com o projeto original não percebe diferença: o
+  endereço lido é exatamente o que já estava escrito antes.
+
+- **O que você marca no Google passa a aparecer na agenda do CRM** Compromissos criados direto no Google Agenda já bloqueavam o horário — ninguém
+  conseguia marcar por cima —, mas não apareciam na tela: a agenda parecia vazia e
+  o horário indisponível ao mesmo tempo. Agora eles aparecem como faixa de
+  ocupação, com visual próprio e sem clique, porque não são compromissos do CRM:
+  não têm cliente, tipo nem responsável, e remarcá-los teria de ser feito no
+  Google.
+
+  A faixa mostra apenas o horário ocupado, **não o nome do evento**. A agenda
+  conectada é pessoal de quem atende, e esta tela é vista por outras pessoas da
+  empresa — o título de um compromisso particular não deve aparecer aí.
+
+- **Os compromissos do CRM voltam a aparecer no Google Agenda** Quem conectou o Google Agenda não via os compromissos marcados no CRM chegarem
+  lá — nenhum, nunca. O sistema tentava a cada cinco minutos e o Google recusava
+  todas as vezes, porque o pedido usava a operação de "alterar um evento
+  existente" para criar um evento que ainda não existia. Agora ele cria com a
+  operação certa e só altera o que já está lá. Os compromissos pendentes sobem na
+  primeira rodada após a atualização, sem duplicar os que porventura já existam.
+
+  A falha também deixou de ser silenciosa: quando o Google recusar, o motivo passa
+  a aparecer no registro do sistema, e não só numa coluna interna que ninguém abre.
+
+## [2.0.0] — 2026-08-28
+
+> **Seção escrita depois do fato.** A tag `v2.0.0` foi marcada sem passar pelo
+> corte de release, então o CHANGELOG ficou parado na 1.9.0 enquanto a imagem
+> `2.0.0` já rodava em produção — e os fragmentos que ela entregou seguiram na
+> fila, fazendo o calculador querer emitir 2.0.0 de novo, por cima de uma tag
+> que já existia apontando para outro código. Esta seção fecha esse buraco: é o
+> registro do que aquela imagem de fato levou.
+
+### Adicionado
+
+- **O Instagram aparece em Conexões, ainda sem conectar** Em **Conexões** existe agora uma quarta aba, ao lado de "Números por QR", "API
+Oficial (Meta)" e "Provedor parceiro": **Instagram**.
+
+Ela ainda **não conecta conta nenhuma**, e a tela diz isso em voz alta — os
+campos aparecem desabilitados. A razão de eles aparecerem mesmo assim é que a
+preparação do lado da Meta leva de semanas a meses, e quem opera precisa saber
+o que vai ser pedido para começar cedo. Um formulário que aceitasse a chave
+secreta sem ter onde guardá-la seria pior que nenhum.
+
+A aba também declara como este canal se comporta, porque ele é diferente dos
+três de WhatsApp: passadas 24 horas da última mensagem do cliente,
+**não há modelo aprovado que reabra a conversa** — quem responde tem de
+ser uma pessoa, e o agente de IA escala em vez de insistir.
+
+Por baixo, o banco passou a comportar conversa que não é de WhatsApp. Nada
+muda para quem usa hoje: nenhum envio troca de caminho e nenhuma conversa
+existente é afetada. Não há ação a tomar.
+
+### Alterado
+
+- **Esta instalação passa a seguir as versões deste fork** As três imagens do sistema (aplicação, worker e agendador) passam a vir do
+registro **deste fork**, não do projeto de origem.
+
+**Por que isso era necessário.** O `update.sh` reescreve o endereço das imagens
+no `.env` a cada atualização, montando-o a partir de uma constante no código.
+Enquanto ela apontasse para o projeto de origem, qualquer funcionalidade
+própria — a começar pelo canal de Instagram — desapareceria na primeira
+atualização, com o sistema no ar e nada na tela dizendo o que houve.
+
+**O que muda para quem opera.** Nada no dia a dia: atualizar continua sendo o
+mesmo botão, e o backup automático antes de cada atualização continua igual. O
+que muda é de onde a versão nova vem.
+
+**A ação, uma única vez, em instalação que já existia:** apontar a pasta do
+projeto no servidor para este repositório. Instalação nova já nasce certa.
+
+**A consequência a assumir:** as versões deste fork são independentes. Trazer
+novidade do projeto de origem passa a ser uma decisão explícita, não algo que
+chega sozinho.
+
+## Requer atenção
+
+Numa instalação que já existe, apontar a pasta do projeto no servidor para este
+repositório — uma vez só:
+
+```bash
+cd /opt/deskcomm
+git remote set-url origin https://github.com/Clalber/DeskcommCRM.git
+git fetch origin --tags
+bash hostgator-setup-kit/update.sh
+```
+
+Enquanto isso não for feito, a atualização continua puxando as imagens do
+projeto de origem e as funcionalidades próprias somem a cada versão nova.
+
+Instalação nova não precisa de nada: ela já clona deste repositório.
 ## [1.10.0] — 2026-08-28
 
 ### Adicionado
@@ -1443,7 +1603,8 @@ Primeira versão marcada do DeskcommCRM. O projeto vinha sendo desenvolvido publ
 
 - **Node 22 é obrigatório para desenvolvimento.** A suíte de invariantes instancia o cliente do Supabase, que exige o `WebSocket` global — nativo apenas a partir do Node 22. Isso não afeta quem apenas hospeda: a VPS roda a imagem pronta.
 
-[Não lançado]: https://github.com/melgarafael/DeskcommCRM/compare/v1.10.0...HEAD
+[Não lançado]: https://github.com/melgarafael/DeskcommCRM/compare/v2.1.0...HEAD
+[2.1.0]: https://github.com/melgarafael/DeskcommCRM/compare/v2.0.0...v2.1.0
 [1.10.0]: https://github.com/melgarafael/DeskcommCRM/compare/v1.9.1...v1.10.0
 [1.9.1]: https://github.com/melgarafael/DeskcommCRM/compare/v1.9.0...v1.9.1
 [1.9.0]: https://github.com/melgarafael/DeskcommCRM/compare/v1.8.0...v1.9.0
