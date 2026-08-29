@@ -8,6 +8,22 @@ Se você roda o DeskcommCRM numa VPS, **leia a seção da versão para a qual es
 
 ## [Não lançado]
 
+## [2.1.1] — 2026-08-29
+
+### Corrigido
+
+- **Salvar a Proteção de envio sem preencher a data volta a funcionar** Em **Conexões → Proteção de envio**, ajustar a janela de horários e salvar **sem**
+  preencher "número em uso desde" devolvia **"Falha ao salvar os knobs."** e não
+  salvava nada — nem os campos que você tinha mexido.
+
+  A tela sempre disse que a data é opcional, e é mesmo: em branco, o número passa a
+  ser tratado como recém-criado. O que acontecia é que o sistema mandava a data
+  "vazia" de um jeito que o banco recusava, em vez de simplesmente não mandá-la.
+
+  A mensagem de erro também melhorou. Antes ela dizia só "falha", sem indicar o
+  campo — agora traz o motivo que o banco deu, para quem administra saber o que
+  corrigir em vez de tentar às cegas.
+
 ## [2.1.0] — 2026-08-28
 
 ### Adicionado
@@ -1603,7 +1619,8 @@ Primeira versão marcada do DeskcommCRM. O projeto vinha sendo desenvolvido publ
 
 - **Node 22 é obrigatório para desenvolvimento.** A suíte de invariantes instancia o cliente do Supabase, que exige o `WebSocket` global — nativo apenas a partir do Node 22. Isso não afeta quem apenas hospeda: a VPS roda a imagem pronta.
 
-[Não lançado]: https://github.com/melgarafael/DeskcommCRM/compare/v2.1.0...HEAD
+[Não lançado]: https://github.com/melgarafael/DeskcommCRM/compare/v2.1.1...HEAD
+[2.1.1]: https://github.com/melgarafael/DeskcommCRM/compare/v2.1.0...v2.1.1
 [2.1.0]: https://github.com/melgarafael/DeskcommCRM/compare/v2.0.0...v2.1.0
 [1.10.0]: https://github.com/melgarafael/DeskcommCRM/compare/v1.9.1...v1.10.0
 [1.9.1]: https://github.com/melgarafael/DeskcommCRM/compare/v1.9.0...v1.9.1
