@@ -178,6 +178,24 @@ export function calculaScore(sinais: SinaisDoLead): ScoreCalculado {
   }
   const nBant = Math.min(camposBant, TETO_BANT);
   if (nBant > 0) {
+    // QUALIFICAÇÃO NÃO GANHA ÂNCORA, e a ausência é DECIDIDA — não esquecimento.
+    //
+    // ⚠️ Ela era acidental até 2026-08-30, e a diferença custou um defeito: no
+    // fator de recência logo abaixo a ausência sempre teve comentário; aqui não
+    // tinha nenhum, e foi justamente a não documentada que quebrou. Um negócio
+    // só-BANT montava fatores sem âncora nenhuma e morria no INSERT com 23514,
+    // sem score e sem sintoma legível (ver a guarda de lastro adiante).
+    // Observação do @Maestro (2), conferindo o conserto: no mesmo arquivo, a
+    // ausência pensada estava escrita e a acidental não.
+    //
+    // POR QUE ela não pode ganhar a âncora que está à mão: os campos BANT vêm de
+    // `lead_state.qualification`, e o formato é `{kind: "checkpoint" | "message"}`.
+    // Apontar para o checkpoint seria citar como fonte algo que não sustenta
+    // aquele número — e âncora falsa é pior que ausente, porque a âncora existe
+    // exatamente para dizer DE ONDE veio.
+    //
+    // Devolver score ao lead só-BANT exige um `kind` novo, e isso é contrato:
+    // decisão de produto, registrada e não tomada aqui.
     fatores.push({
       pontos: nBant * POR_CAMPO_BANT,
       frase: plural(nBant, "item de qualificação", "itens de qualificação"),
