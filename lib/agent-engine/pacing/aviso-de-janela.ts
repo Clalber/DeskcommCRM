@@ -79,7 +79,12 @@ export async function avisarJanelaFechada(
   db: Queryable,
   input: AvisoDeJanelaInput,
 ): Promise<number> {
-  const quando = new Intl.DateTimeFormat('pt-BR', {
+  // `sv-SE` e não `pt-BR`: o corpo do aviso é PERSISTIDO, e o produto tem duas
+  // línguas — uma data gravada em português apareceria assim para quem escolheu
+  // espanhol, e é o que `tests/unit/i18n-a-data-segue-o-idioma.test.ts` reprova.
+  // `sv-SE` rende 'YYYY-MM-DD HH:mm', que é ISO-like e legível em qualquer
+  // idioma. Mesmo precedente de `formatInTz` em `pacing/engine.ts`.
+  const quando = new Intl.DateTimeFormat('sv-SE', {
     timeZone: input.timezone,
     dateStyle: 'short',
     timeStyle: 'short',
@@ -96,7 +101,11 @@ export async function avisarJanelaFechada(
 
   const { rowCount } = await db.query(
     `insert into agent_inbox_items (organization_id, kind, severity, title, body, ref_kind, ref_id)
-     select $1, 'other', 'warning', $2, $3, $4, $5
+     -- 'warn', não 'warning': o CHECK de agent_inbox_items.severity só aceita
+     -- info|warn|critical, e o valor errado faria o INSERT estourar em runtime —
+     -- num caminho fire-and-forget, que engoliria o erro e deixaria o silêncio
+     -- invisível de novo, que é exatamente o defeito que este arquivo conserta.
+     select $1, 'other', 'warn', $2, $3, $4, $5
      where not exists (
        select 1 from agent_inbox_items
        where organization_id = $1 and ref_kind = $4 and ref_id = $5 and status = 'open'

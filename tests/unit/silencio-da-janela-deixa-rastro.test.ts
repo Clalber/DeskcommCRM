@@ -77,13 +77,44 @@ describe("aviso de janela fechada", () => {
     expect(params).toContain(REF_KIND_JANELA);
   });
 
+  it("severity está no vocabulário que o banco aceita", () => {
+    // Medido contra o CHECK real de `agent_inbox_items.severity`:
+    // info | warn | critical. A primeira versão deste arquivo escreveu
+    // 'warning', que o dublê aceita e o Postgres recusa — e como a chamada é
+    // fire-and-forget, o erro seria engolido e o silêncio voltaria a ser
+    // invisível. Um dublê não valida CHECK; esta asserção valida.
+    const fonte = readFileSync(
+      join(process.cwd(), "lib/agent-engine/pacing/aviso-de-janela.ts"),
+      "utf8",
+    );
+    // Mede o VALOR na linha do INSERT, não o arquivo inteiro: a primeira versão
+    // desta asserção varria tudo e reprovava por causa da palavra "warning"
+    // escrita DENTRO do comentário que explica o conserto — uma sonda que acusa
+    // o texto que documenta o acerto.
+    const linhaDoSelect = /select \$1, '[^']+', '([^']+)', \$2/.exec(fonte);
+    expect(
+      linhaDoSelect,
+      "não achei a linha do INSERT — a sonda ficou cega para a forma do SQL",
+    ).not.toBeNull();
+    expect(
+      ["info", "warn", "critical"],
+      `severity '${linhaDoSelect?.[1]}' estoura o CHECK de agent_inbox_items.severity`,
+    ).toContain(linhaDoSelect?.[1]);
+  });
+
   it("o corpo diz QUANDO volta e O QUE FAZER — informação com propósito", async () => {
     const { db, executados } = dublePool();
     await avisarJanelaFechada(db as never, BASE);
 
     const corpo = String(executados[0]!.params[2]);
     // Sem a hora de volta, o aviso informa um problema e nenhuma decisão.
-    expect(corpo).toMatch(/31\/08/);
+    // Formato ISO-like (`sv-SE`): o corpo é persistido e o produto tem duas
+    // línguas — data em pt-BR apareceria em português para quem lê em espanhol.
+    expect(corpo).toMatch(/2026-08-31/);
+    expect(
+      corpo,
+      "a data do aviso não pode ser formatada em pt-BR — o corpo é persistido e o produto é bilíngue",
+    ).not.toMatch(/31\/08/);
     // Com o domingo desligado existe uma AÇÃO concreta, e ela tem de estar dita.
     expect(corpo).toContain("Enviar aos domingos");
     expect(corpo).toContain("Anti-ban");
