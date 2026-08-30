@@ -1,109 +1,225 @@
 "use client";
 
+import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { toast } from "sonner";
+
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  useGuardarAplicativoInstagram,
+  useInstagramChannel,
+  type ContaDeInstagram,
+} from "@/hooks/channels/useInstagramChannel";
+import { copyToClipboard } from "@/lib/clipboard";
 import { useT } from "@/hooks/i18n/useT";
 
 /**
- * Conectar o Instagram Direct — a FORMA da tela, antes do transporte.
+ * Conectar o Instagram Direct.
  *
- * ─── Por que os campos estão desabilitados, e não funcionando ───────────────
+ * ─── Por que a tela tem DOIS passos, e não um botão ─────────────────────────
  *
- * O schema e o vocabulário deste canal já existem (migration 0203), mas o
- * TRANSPORTE não: não há adapter, não há OAuth, não há webhook. `getAdapter`
- * lança de propósito para quem tentar enviar.
+ * A versão anterior deste arquivo era um formulário desabilitado, porque o
+ * transporte não existia. Agora existe — e o fluxo real da Meta tem uma ida ao
+ * navegador da pessoa no meio dele, que nenhuma tela consegue encurtar:
  *
- * A escolha aqui foi entre três telas, e duas são piores:
+ *   1. guardar o aplicativo  →  2. cadastrar o webhook na Meta  →  3. autorizar
  *
- *   1. Não mostrar nada — some a informação de que o canal está a caminho, e
- *      quem opera não tem como saber o que falta.
- *   2. Formulário que ACEITA credencial e não a guarda — pior que não existir.
- *      App Secret e token são segredo de verdade: um campo que os recebe e os
- *      joga fora convida alguém a colar o segredo do cliente num lugar que não
- *      existe, e ninguém descobre até vazar.
- *   3. Formulário DESABILITADO, com o estado dito em voz alta — é esta. Mostra
- *      exatamente o que vai ser pedido, sem convidar ninguém a preencher.
- *
- * Isto é aplicação direta da doutrina "toda configuração tem superfície"
- * (`docs/doctrine/restricao-de-canal.md`): o que acontece quando falta
- * configuração precisa ser VISÍVEL, nunca um silêncio.
+ * O passo 2 é do operador, num site que não é o nosso, e é o que mais falha:
+ * a Meta chama a URL, confere o token de verificação e recusa em silêncio se
+ * algo diverge por um caractere. Por isso os dois endereços que ele precisa
+ * colar lá aparecem juntos, prontos para copiar, assim que ele salva — e não
+ * numa tela de ajuda separada, onde metade das instalações pararia.
  *
  * ─── Por que a tela pode escrever "Instagram" ───────────────────────────────
  *
  * O `lint:channels` proíbe nomear PROVIDER fora de `lib/channels/`, e o regex
- * dele não distingue prosa de código — então o nome do transporte não cabe
- * nem neste comentário. "Instagram" passa porque é o nome do CANAL, que é
- * outra coisa: é o que o usuário reconhece, e o mesmo motivo pelo qual
- * `conversations.channel` grava `whatsapp` em vez do transporte por trás.
+ * dele não distingue prosa de código. "Instagram" passa porque é o nome do
+ * CANAL, que é outra coisa: é o que o usuário reconhece, e o mesmo motivo pelo
+ * qual `conversations.channel` grava `whatsapp` em vez do transporte por trás.
  */
 
 /**
- * O que a conexão vai pedir. Sai daqui, e não de JSX solto, porque a mesma
- * lista precisa aparecer no passo a passo entregue ao cliente que vai criar o
- * app na Meta — duas listas divergem na primeira que alguém editar.
+ * O que a volta da autorização quer dizer, em português.
+ *
+ * Sai daqui e não de um `if` no meio do JSX porque a rota de callback só sabe
+ * devolver um código curto na URL — ela redireciona um navegador, não responde
+ * um JSON. Sem esta tradução, quem voltasse veria `?autorizacao=troca_falhou` na
+ * barra de endereço e mais nada na tela.
  */
-const CAMPOS_DA_CREDENCIAL = [
-  {
-    id: "ig-app-id",
-    rotulo: "ID do aplicativo",
-    ajuda: "O identificador do app que o dono da conta criou na Meta.",
+const DESFECHOS: Record<string, { tom: "ok" | "erro"; texto: string }> = {
+  conectada: { tom: "ok", texto: "Conta conectada. As mensagens do Direct já chegam no Inbox." },
+  recusada: {
+    tom: "erro",
+    texto: "A autorização foi cancelada na Meta. Nada mudou; você pode tentar de novo.",
   },
-  {
-    id: "ig-app-secret",
-    rotulo: "Chave secreta do aplicativo",
-    ajuda: "Secreta. Fica cifrada no banco, nunca no arquivo de configuração.",
+  estado_invalido: {
+    tom: "erro",
+    texto: "O pedido de autorização venceu ou não confere. Comece de novo pelo botão Autorizar.",
   },
-  {
-    id: "ig-verify-token",
-    rotulo: "Token de verificação",
-    ajuda: "Inventado por você; a Meta o devolve ao registrar o webhook, e é assim que confirmamos que é ela.",
+  sem_codigo: { tom: "erro", texto: "A Meta voltou sem o código de autorização. Tente de novo." },
+  conexao_sumiu: {
+    tom: "erro",
+    texto: "A conexão não existe mais — ela pode ter sido excluída enquanto você autorizava.",
   },
-] as const;
+  cifra_indisponivel: {
+    tom: "erro",
+    texto:
+      "Esta instalação está sem a chave de cifra do servidor, e nada foi gravado. Fale com quem administra o servidor.",
+  },
+  troca_falhou: {
+    tom: "erro",
+    texto:
+      "A Meta recusou a troca do código. Confira se o ID e a chave secreta do aplicativo estão certos e se a URL de retorno está cadastrada lá.",
+  },
+  conta_ilegivel: {
+    tom: "erro",
+    texto: "Autorizamos, mas a Meta não disse qual conta é. Tente de novo em alguns minutos.",
+  },
+  conta_ja_conectada: {
+    tom: "erro",
+    texto: "Esta conta do Instagram já está conectada em outro lugar. Desconecte-a de lá primeiro.",
+  },
+  gravacao_falhou: { tom: "erro", texto: "Não conseguimos gravar a conexão. Tente de novo." },
+};
 
-/**
- * As três permissões pedidas na MESMA submissão à Meta. A de mensagens não
- * aprova sozinha, e a terceira é a que decide o que acontece depois da janela
- * de 24 horas.
- */
-const PERMISSOES = [
-  { nome: "instagram_business_basic", para: "ler a conta" },
-  { nome: "instagram_business_manage_messages", para: "receber e responder mensagens" },
-  { nome: "human_agent", para: "uma PESSOA responder até 7 dias depois — a IA não usa" },
-] as const;
+/** Um endereço para copiar. Aparece SEMPRE que existe conexão. */
+function ParaColar({ rotulo, valor, ajuda }: { rotulo: string; valor: string; ajuda: string }) {
+  const t = useT();
+  return (
+    <div className="flex flex-col gap-1">
+      <span className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
+        {rotulo}
+      </span>
+      <div className="flex items-center gap-2">
+        <code className="bg-muted flex-1 overflow-x-auto rounded px-2 py-1.5 text-xs">{valor}</code>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={async () => {
+            await copyToClipboard(valor);
+            toast.success(t("Copiado."));
+          }}
+        >
+          {t("Copiar")}
+        </Button>
+      </div>
+      <p className="text-muted-foreground text-xs">{t(ajuda)}</p>
+    </div>
+  );
+}
+
+/** Quanto falta para a credencial vencer, em dias. `null` = não sabemos. */
+function diasAteVencer(quando: string | null): number | null {
+  if (!quando) return null;
+  const ms = new Date(quando).getTime() - Date.now();
+  return Number.isFinite(ms) ? Math.floor(ms / 86_400_000) : null;
+}
+
+function Conta({ conta }: { conta: ContaDeInstagram }) {
+  const t = useT();
+  const dias = diasAteVencer(conta.tokenExpiraEm);
+
+  return (
+    <Card className="flex flex-col gap-3 p-4" data-testid="instagram-conta">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <span className="font-medium">{conta.displayName ?? t("Instagram")}</span>
+          {conta.conectada ? (
+            <Badge variant="outline">{t("Conectada")}</Badge>
+          ) : (
+            <Badge variant="secondary">{t("Falta autorizar")}</Badge>
+          )}
+        </div>
+
+        {conta.conectada ? null : (
+          // Um link, e não um `fetch`: a rota responde 302 para o site da Meta, e
+          // um redirecionamento entre sites precisa ser navegação de verdade —
+          // buscá-lo por XHR o navegador bloqueia, e a pessoa clicaria num botão
+          // que não faz nada.
+          <Button asChild size="sm">
+            <a href={`/api/v1/channels/instagram/authorize?session=${conta.id}`}>
+              {t("Autorizar na Meta")}
+            </a>
+          </Button>
+        )}
+      </div>
+
+      {/* A credencial deste canal VENCE, e é a única do produto que vence. Dizer
+          quando é o que evita a descoberta pelo cliente que não foi respondido. */}
+      {conta.conectada && dias !== null ? (
+        <p className={dias <= 10 ? "text-destructive text-sm" : "text-muted-foreground text-sm"}>
+          {dias <= 0
+            ? t("O acesso expirou. Autorize de novo para voltar a receber mensagens.")
+            : `${t("O acesso vence em")} ${dias} ${dias === 1 ? t("dia") : t("dias")}. ${t("A renovação é automática.")}`}
+        </p>
+      ) : null}
+
+      <div className="flex flex-col gap-3 border-t pt-3">
+        <ParaColar
+          rotulo={t("URL de retorno de chamada")}
+          valor={conta.webhook.callbackUrl}
+          ajuda="Cole em Webhooks, no painel do seu aplicativo na Meta."
+        />
+        <p className="text-muted-foreground text-xs">
+          {t("Campos a assinar:")} <code className="text-xs">{conta.webhook.campos.join(", ")}</code>
+        </p>
+      </div>
+    </Card>
+  );
+}
 
 export function CanalInstagramClient() {
   const t = useT();
+  const { data, isPending } = useInstagramChannel();
+  const guardar = useGuardarAplicativoInstagram();
+  const params = useSearchParams();
+  const [form, setForm] = useState({ app_id: "", app_secret: "", verify_token: "" });
+
+  // A volta do callback chega pela URL. Sem isto a pessoa voltaria para uma tela
+  // idêntica à que deixou, sem saber se conectou.
+  const desfecho = params.get("autorizacao");
+  useEffect(() => {
+    if (!desfecho) return;
+    const d = DESFECHOS[desfecho];
+    if (!d) return;
+    if (d.tom === "ok") toast.success(t(d.texto));
+    else toast.error(t(d.texto));
+  }, [desfecho, t]);
+
+  const estado = data?.data;
+
+  async function enviar(e: React.FormEvent) {
+    e.preventDefault();
+    await guardar.mutateAsync(form);
+    toast.success(t("Aplicativo guardado. Agora cadastre o webhook na Meta e autorize."));
+    // Os dois segredos somem do formulário assim que gravam. Deixá-los na tela
+    // seria mantê-los em memória do navegador sem motivo — e eles não voltam em
+    // nenhum GET.
+    setForm({ app_id: "", app_secret: "", verify_token: "" });
+  }
+
+  if (isPending) return <p className="text-muted-foreground text-sm">{t("Carregando…")}</p>;
 
   return (
-    <div className="flex flex-col gap-4">
-      <Card className="flex flex-col gap-4 p-4">
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex flex-col gap-1">
-            <h2 className="text-sm font-medium">{t("Instagram Direct")}</h2>
-            <p className="text-muted-foreground text-sm">
-              {t("Atender as mensagens diretas do Instagram no mesmo Inbox do WhatsApp.")}
-            </p>
-          </div>
-          {/* O estado real, dito sem rodeio. "Em construção" seria vago; o que o
-              operador precisa saber é que NÃO dá para conectar ainda. */}
-          <Badge variant="outline">{t("Transporte pendente")}</Badge>
-        </div>
-
-        <div className="border-muted-foreground/30 bg-muted/40 rounded-md border border-dashed p-3">
-          <p className="text-sm">
-            {t(
-              "O canal já existe no banco e no roteamento, mas ainda não é possível conectar uma conta: falta a autorização pela Meta e a entrega de mensagens. Esta tela mostra o que será pedido, para você preparar o lado da Meta enquanto isso.",
-            )}
-          </p>
-        </div>
+    <div className="flex flex-col gap-4" data-testid="canal-instagram-root">
+      <Card className="flex flex-col gap-2 p-4">
+        <h2 className="text-sm font-medium">{t("Instagram Direct")}</h2>
+        <p className="text-muted-foreground text-sm">
+          {t("Atender as mensagens diretas do Instagram no mesmo Inbox do WhatsApp.")}
+        </p>
       </Card>
+
+      {estado?.contas.map((c) => <Conta key={c.id} conta={c} />)}
 
       <Card className="flex flex-col gap-4 p-4">
         <div className="flex flex-col gap-1">
-          <h3 className="text-sm font-medium">{t("Credenciais da conta")}</h3>
+          <h3 className="text-sm font-medium">
+            {estado?.contas.length ? t("Conectar outra conta") : t("Conectar uma conta")}
+          </h3>
           <p className="text-muted-foreground text-sm">
             {t(
               "Cada cliente cria o próprio aplicativo na Meta e cola as credenciais dele aqui — não existe um aplicativo único para todo mundo.",
@@ -111,53 +227,76 @@ export function CanalInstagramClient() {
           </p>
         </div>
 
-        <div className="grid gap-4 sm:grid-cols-3">
-          {CAMPOS_DA_CREDENCIAL.map((campo) => (
-            <div key={campo.id} className="flex flex-col gap-1.5">
-              <Label htmlFor={campo.id}>{t(campo.rotulo)}</Label>
-              <Input id={campo.id} disabled placeholder="—" />
-              <p className="text-muted-foreground text-xs">{t(campo.ajuda)}</p>
+        <form className="flex flex-col gap-4" onSubmit={enviar}>
+          <div className="grid gap-4 sm:grid-cols-3">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="ig-app-id">{t("ID do aplicativo")}</Label>
+              <Input
+                id="ig-app-id"
+                value={form.app_id}
+                onChange={(e) => setForm((f) => ({ ...f, app_id: e.target.value }))}
+                required
+              />
+              <p className="text-muted-foreground text-xs">
+                {t("O identificador do app que o dono da conta criou na Meta.")}
+              </p>
             </div>
-          ))}
-        </div>
 
-        <div>
-          {/* Desabilitado, e o `title` diz por quê — botão morto sem explicação
-              faz o operador clicar três vezes e concluir que a tela quebrou. */}
-          <Button disabled title={t("Disponível quando a conexão com a Meta estiver implementada")}>
-            {t("Conectar conta")}
-          </Button>
-        </div>
-      </Card>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="ig-app-secret">{t("Chave secreta do aplicativo")}</Label>
+              <Input
+                id="ig-app-secret"
+                type="password"
+                value={form.app_secret}
+                onChange={(e) => setForm((f) => ({ ...f, app_secret: e.target.value }))}
+                required
+              />
+              <p className="text-muted-foreground text-xs">
+                {t("Fica cifrada no banco, nunca no arquivo de configuração, e não volta nesta tela.")}
+              </p>
+            </div>
 
-      <Card className="flex flex-col gap-3 p-4">
-        <div className="flex flex-col gap-1">
-          <h3 className="text-sm font-medium">{t("O que preparar na Meta")}</h3>
-          <p className="text-muted-foreground text-sm">
-            {t(
-              "A aprovação leva de semanas a meses, então vale começar antes. É preciso uma conta profissional do Instagram e um portfólio de negócios verificado.",
-            )}
-          </p>
-        </div>
-        <ul className="flex flex-col gap-2">
-          {PERMISSOES.map((p) => (
-            <li key={p.nome} className="flex flex-col gap-0.5">
-              <code className="text-xs">{p.nome}</code>
-              <span className="text-muted-foreground text-xs">{t(p.para)}</span>
-            </li>
-          ))}
-        </ul>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="ig-verify-token">{t("Token de verificação")}</Label>
+              <Input
+                id="ig-verify-token"
+                value={form.verify_token}
+                onChange={(e) => setForm((f) => ({ ...f, verify_token: e.target.value }))}
+                required
+                minLength={8}
+              />
+              <p className="text-muted-foreground text-xs">
+                {t(
+                  "Invente um e guarde: a Meta o devolve ao cadastrar o webhook, e é assim que confirmamos que é ela.",
+                )}
+              </p>
+            </div>
+          </div>
+
+          <div>
+            <Button type="submit" disabled={guardar.isPending}>
+              {guardar.isPending ? t("Guardando…") : t("Guardar aplicativo")}
+            </Button>
+          </div>
+        </form>
+
+        {estado?.redirectUri ? (
+          <div className="border-t pt-4">
+            <ParaColar
+              rotulo={t("URL de retorno da autorização")}
+              valor={estado.redirectUri}
+              ajuda="Cadastre em Redirect URIs, no painel do aplicativo. A Meta compara caractere por caractere e recusa a autorização se divergir."
+            />
+          </div>
+        ) : null}
       </Card>
 
       <Card className="flex flex-col gap-2 p-4">
         <h3 className="text-sm font-medium">{t("Como este canal se comporta")}</h3>
         {/* Não é enfeite: é a diferença de COMPORTAMENTO que quem opera precisa
-            saber antes de vender atendimento por aqui. Fora da janela o agente
-            de IA não tem jogada — e isso é o canal, não um defeito nosso. */}
+            saber antes de vender atendimento por aqui. */}
         <ul className="text-muted-foreground flex list-disc flex-col gap-1 pl-4 text-sm">
-          <li>
-            {t("A conversa fica aberta por 24 horas a partir da última mensagem do cliente.")}
-          </li>
+          <li>{t("A conversa fica aberta por 24 horas a partir da última mensagem do cliente.")}</li>
           <li>
             {t(
               "Passadas as 24 horas não existe modelo aprovado para reabrir, como há no WhatsApp — quem responde tem que ser uma pessoa. O agente de IA encerra o turno e escala.",
@@ -165,7 +304,14 @@ export function CanalInstagramClient() {
           </li>
           <li>{t("Não há grupos, e a mensagem não é cobrada por unidade.")}</li>
           <li>
-            {t("A credencial vence e precisa ser renovada — algo que o WhatsApp por QR não exige.")}
+            {t(
+              "A credencial vence a cada 60 dias. A renovação é automática, e avisamos na Central se ela falhar.",
+            )}
+          </li>
+          <li>
+            {t(
+              "Conectar exige aprovação do aplicativo pela Meta, que leva de semanas a meses. Vale começar antes.",
+            )}
           </li>
         </ul>
       </Card>

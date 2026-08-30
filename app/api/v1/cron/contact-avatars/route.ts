@@ -25,6 +25,11 @@ import type { NextRequest } from "next/server";
 
 import { ok, fail } from "@/lib/api/wrappers";
 import { DEFAULT_CHANNEL_PROVIDER, getAdapter, type ChannelProvider } from "@/lib/channels";
+import {
+  CHANNEL_SESSION_REF_COLUMNS,
+  resolveSessionRef,
+  type ChannelSessionRef,
+} from "@/lib/channels/session-ref";
 import { env } from "@/lib/env";
 import { logger } from "@/lib/logger";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -43,6 +48,19 @@ interface ContactRow {
   organization_id: string;
   wa_identity: string | null;
   avatar_storage_path: string | null;
+  /**
+   * Contato de canal que endereça por id OPACO, e não por telefone.
+   *
+   * Quando presente, dispensa `wa_identity` — que esses contatos não têm — e
+   * carrega o que o adapter precisa: qual conexão pergunta, e por quem.
+   */
+  identidadeOpaca?: {
+    sessionRef: string;
+    provider: ChannelProvider;
+    providerUserId: string;
+    /** O nome que o contato tem hoje. Serve para saber se ainda é provisório. */
+    displayName: string | null;
+  };
 }
 
 /** `lid:123…` / `phone:+55…` → o chatId que o adapter espera. */
@@ -50,6 +68,129 @@ function chatIdFromIdentity(identity: string): string | null {
   if (identity.startsWith("lid:")) return `${identity.slice(4)}@lid`;
   if (identity.startsWith("phone:")) return `${identity.slice(6).replace(/\D/g, "")}@c.us`;
   return null;
+}
+
+/**
+ * Contatos de canal endereçado por id OPACO que ainda precisam de perfil.
+ *
+ * Por que uma consulta à parte: a varredura principal exige `wa_identity`, e
+ * esses contatos não têm telefone nenhum. Alargar aquela consulta mexeria no
+ * caminho mais quente do produto sem ganho; esta é aditiva e some sozinha em
+ * instalação que não usa esse tipo de canal (devolve lista vazia).
+ *
+ * O filtro de anonimização é o MESMO da principal, e pelo mesmo motivo: sem ele
+ * um contato anonimizado por pedido LGPD voltaria a ser varrido e o cron
+ * baixaria o rosto dele de novo, reintroduzindo sozinho o dado que acabara de
+ * ser apagado.
+ */
+async function contatosDeIdentidadeOpaca(
+  admin: ReturnType<typeof createAdminClient>,
+  cutoff: string,
+): Promise<ContactRow[]> {
+  const { data, error } = await admin
+    .from("channel_contact_identities")
+    .select(
+      `provider_user_id, organization_id,
+       contacts!inner(id, display_name, avatar_storage_path, avatar_updated_at, is_anonymized),
+       channel_sessions!inner(id, provider, ${CHANNEL_SESSION_REF_COLUMNS})`,
+    )
+    .eq("contacts.is_anonymized", false)
+    .or(`avatar_updated_at.is.null,avatar_updated_at.lt.${cutoff}`, {
+      referencedTable: "contacts",
+    })
+    .limit(SCAN_LIMIT);
+
+  if (error) {
+    // Não derruba a rodada: a varredura principal já pode ter trabalho útil, e
+    // 500 aqui deixaria TODOS os contatos sem foto por causa de um canal.
+    logger.warn("[contact-avatars] varredura de identidade opaca falhou", {
+      detail: error.message,
+    });
+    return [];
+  }
+
+  const linhas: ContactRow[] = [];
+  // `Array.isArray` e não `?? []`: um cliente que devolva objeto ou `undefined`
+  // em vez de lista faria o `for…of` estourar aqui dentro — e um throw nesta
+  // função derruba a rodada INTEIRA, deixando todos os contatos sem foto por
+  // causa de uma consulta acessória. Foi o que um teste de corrida já existente
+  // pegou.
+  for (const l of (Array.isArray(data) ? data : []) as unknown as Array<{
+    provider_user_id: string;
+    organization_id: string;
+    contacts: { id: string; display_name: string | null; avatar_storage_path: string | null };
+    channel_sessions: ChannelSessionRef & { provider: ChannelProvider };
+  }>) {
+    // `resolveSessionRef` em vez de ler a coluna: qual coluna identifica a
+    // sessão é decisão do canal, e nomeá-la aqui traria o nome do transporte
+    // para fora de `lib/channels/` — o que a doutrina de restrição de canal
+    // proíbe e o `lint:channels` reprova.
+    let sessionRef: string;
+    try {
+      sessionRef = resolveSessionRef(l.channel_sessions);
+    } catch {
+      continue;
+    }
+    if (!sessionRef) continue;
+
+    linhas.push({
+      id: l.contacts.id,
+      organization_id: l.organization_id,
+      wa_identity: null,
+      avatar_storage_path: l.contacts.avatar_storage_path,
+      identidadeOpaca: {
+        sessionRef,
+        provider: l.channel_sessions.provider,
+        providerUserId: l.provider_user_id,
+        displayName: l.contacts.display_name,
+      },
+    });
+  }
+  return linhas;
+}
+
+/**
+ * Dá nome ao contato — mas só se ele ainda não tem um de verdade.
+ *
+ * ⚠️ NUNCA sobrescreve nome existente. O operador pode ter renomeado o contato
+ * à mão ("Dona Marta, do salão"), e um cron que passasse por cima disso apagaria
+ * trabalho humano toda semana, calado. Só substitui o rótulo PROVISÓRIO que a
+ * ingestão criou por não ter nada melhor.
+ */
+async function batizar(
+  c: ContactRow,
+  perfil: { nome: string | null; username: string | null },
+): Promise<void> {
+  const opaca = c.identidadeOpaca;
+  if (!opaca) return;
+
+  const nome = perfil.nome ?? (perfil.username ? `@${perfil.username}` : null);
+  if (!nome) return;
+
+  // O rótulo provisório termina com o id; qualquer outra coisa é nome de gente
+  // ou escolha do operador, e não se toca.
+  const atual = opaca.displayName ?? "";
+  const aindaProvisorio = atual === "" || atual.endsWith(opaca.providerUserId.slice(-6));
+  if (!aindaProvisorio) return;
+
+  const admin = createAdminClient();
+  await admin
+    .from("contacts")
+    .update({ display_name: nome })
+    .eq("id", c.id)
+    .eq("organization_id", c.organization_id)
+    // Mesma corrida que o carimbo fecha: entre escolher o lote e gravar há I/O
+    // de rede, e a anonimização pode ter alcançado este contato no meio.
+    .eq("is_anonymized", false);
+
+  if (perfil.username) {
+    await admin
+      .from("channel_contact_identities")
+      .update({ provider_username: perfil.username })
+      .eq("organization_id", c.organization_id)
+      .eq("contact_id", c.id)
+      .eq("provider_user_id", opaca.providerUserId);
+  }
 }
 
 async function handle(req: NextRequest): Promise<Response> {
@@ -87,12 +228,29 @@ async function handle(req: NextRequest): Promise<Response> {
   }
 
   const rows = (contatos ?? []) as ContactRow[];
+
+  // ─── A SEGUNDA PISTA: quem não tem telefone ──────────────────────────────
+  //
+  // A consulta acima exige `wa_identity`, e contato de canal endereçado por id
+  // opaco NÃO tem — ele nunca entrava na varredura, e o nome dele ficava
+  // `Instagram 384756` para sempre. Uma lista de contatos indistinguíveis faz o
+  // CRM parecer quebrado para quem vende.
+  //
+  // Consulta SEPARADA em vez de alargar a de cima: o caminho do canal por
+  // telefone é o mais quente do produto e não ganha nada em ser mexido. Aditiva,
+  // com o MESMO filtro de anonimização — sem ele, o cron rebaixaria um pedido
+  // LGPD baixando o rosto de volta.
+  rows.push(...(await contatosDeIdentidadeOpaca(admin, cutoff)));
   let atualizados = 0;
   let semFoto = 0;
   let falhas = 0;
 
   for (const c of rows) {
-    const chatId = c.wa_identity ? chatIdFromIdentity(c.wa_identity) : null;
+    const chatId = c.identidadeOpaca
+      ? c.identidadeOpaca.providerUserId
+      : c.wa_identity
+        ? chatIdFromIdentity(c.wa_identity)
+        : null;
     // Carimba mesmo sem conseguir resolver o chatId: sem isso o contato voltaria
     // em TODA rodada do cron, para sempre, batendo no canal à toa.
     //
@@ -125,14 +283,28 @@ async function handle(req: NextRequest): Promise<Response> {
     }
 
     try {
-      const { data: sessao } = await admin
-        .from("channel_sessions")
-        .select("waha_session_name, provider")
-        .eq("organization_id", c.organization_id)
-        .eq("status", "WORKING")
-        .limit(1)
-        .maybeSingle();
-      const ref = (sessao as { waha_session_name?: string | null } | null)?.waha_session_name;
+      // Contato de id opaco já sabe por qual conexão perguntar — a identidade
+      // dele é escopada a UMA sessão, e perguntar por outra devolveria o perfil
+      // de outra pessoa (o mesmo id pertence a alguém diferente em cada conta).
+      let ref: string | null = null;
+      let providerDaSessao: ChannelProvider | null = null;
+
+      if (c.identidadeOpaca) {
+        ref = c.identidadeOpaca.sessionRef;
+        providerDaSessao = c.identidadeOpaca.provider;
+      } else {
+        const { data: sessao } = await admin
+          .from("channel_sessions")
+          .select("waha_session_name, provider")
+          .eq("organization_id", c.organization_id)
+          .eq("status", "WORKING")
+          .limit(1)
+          .maybeSingle();
+        ref = (sessao as { waha_session_name?: string | null } | null)?.waha_session_name ?? null;
+        providerDaSessao =
+          (sessao as { provider?: ChannelProvider | null } | null)?.provider ?? null;
+      }
+
       if (!ref) {
         await carimbar(null);
         semFoto++;
@@ -144,20 +316,27 @@ async function handle(req: NextRequest): Promise<Response> {
       // `pnpm lint:channels` reprova o build se acontecer (foi o que pegou a
       // primeira versão desta rota). Testar a PRESENÇA do método é como se
       // pergunta "este canal sabe fazer isso?" sem perguntar qual canal é.
-      const adapter = getAdapter(
-        (sessao as { provider?: ChannelProvider | null } | null)?.provider ??
-          DEFAULT_CHANNEL_PROVIDER,
-      );
-      if (!adapter.fetchProfilePictureUrl) {
+      const adapter = getAdapter(providerDaSessao ?? DEFAULT_CHANNEL_PROVIDER);
+
+      // ─── Perfil INTEIRO quando o canal sabe dar ──────────────────────────
+      //
+      // Onde o interlocutor é um telefone, o número já é rótulo utilizável e só
+      // falta a foto. Onde ele é um id opaco, o contato nasce sem nome nenhum —
+      // e nome e foto vêm do MESMO endereço. Duas requisições dobrariam o custo
+      // de cota por contato sem trazer nada.
+      const alvo = { organizationId: c.organization_id, sessionRef: ref, recipient: chatId };
+      const perfil = adapter.fetchProfile ? await adapter.fetchProfile(alvo) : null;
+
+      if (perfil) await batizar(c, perfil);
+
+      if (!adapter.fetchProfile && !adapter.fetchProfilePictureUrl) {
         await carimbar(null);
         semFoto++;
         continue;
       }
-      const profilePictureURL = await adapter.fetchProfilePictureUrl({
-        organizationId: c.organization_id,
-        sessionRef: ref,
-        recipient: chatId,
-      });
+      const profilePictureURL = perfil
+        ? perfil.fotoUrl
+        : await adapter.fetchProfilePictureUrl!(alvo);
       if (!profilePictureURL) {
         // Contato sem foto ou com privacidade fechada: estado normal, não erro.
         await carimbar(null);

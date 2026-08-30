@@ -37,6 +37,9 @@ export const PUBLIC_PATHS: RegExp[] = [
   // qualquer sub-path futuro nascer público de carona.
   /^\/api\/v1\/agenda\/google\/callback$/,
   /^\/api\/v1\/integrations\/nuvemshop\/callback$/,
+  // Quem autentica esta volta é o `state` ASSINADO que saiu de `/authorize`
+  // com o papel já conferido — não o cookie, que não chega aqui.
+  /^\/api\/v1\/channels\/instagram\/callback$/,
   /^\/api\/internal\//,
   /^\/api\/mcp(\/.*)?$/,
   /^\/_next\//,

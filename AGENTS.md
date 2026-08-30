@@ -159,10 +159,13 @@ verify, build-and-size, invariants, e2e, imagens-ok
    como prova de UX (doutrina de QA Visual em `CLAUDE.md`).
 5. Mudou schema → migration versionada em `supabase/migrations/` **+** apêndice idempotente
    em `supabase/baseline.sql` **+** linha em `supabase/migrations/MANIFEST.md`. Os três juntos.
-6. Criou função em `public` → `revoke execute on function ... from public, anon;` e depois
-   `grant` só a quem precisa. São **duas** origens de `EXECUTE` e revogar uma só deixa a
-   função exposta como RPC alcançável pela anon key. Detalhe em `CLAUDE.md`, item 9 da
-   doutrina de Migrations.
+6. Criou função em `public` → `revoke execute on function ... from public, anon, authenticated;`
+   e depois `grant` só a quem precisa. São **três** origens de `EXECUTE`, e revogar só algumas
+   deixa a função exposta — como RPC alcançável pela anon key (que vai para o browser) ou pelo
+   JWT de qualquer usuário logado, de qualquer organização. Esta linha dizia "duas" e omitia
+   `authenticated` até 2026-08-30; o custo foi uma função de escrita cross-tenant aberta a todo
+   usuário logado, pega pelo invariante `hardening-definer-varredura` no CI. Detalhe em
+   `CLAUDE.md`, item 9 da doutrina de Migrations.
 
 ## Testes existentes (CONFIRMADO)
 

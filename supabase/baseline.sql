@@ -9351,7 +9351,13 @@ alter table public.channel_sessions
   -- em todo clone, e um `not null` sem default quebraria o `update.sh`.
   add column if not exists instagram_user_id text,
   add column if not exists instagram_token_encrypted text,
-  add column if not exists instagram_token_expires_at timestamptz;
+  add column if not exists instagram_token_expires_at timestamptz,
+  -- (migration 0208) O aplicativo do cliente. Entram no MESMO ALTER, e não num
+  -- bloco no fim do arquivo, porque a constraint logo abaixo passou a exigir
+  -- `instagram_app_id` — e num banco novo ela roda antes de qualquer apêndice
+  -- posterior existir.
+  add column if not exists instagram_app_id text,
+  add column if not exists instagram_verify_token_encrypted text;
 
 alter table public.channel_sessions alter column waha_session_name drop not null;
 
@@ -9403,7 +9409,11 @@ alter table public.channel_sessions
     (provider = 'waha'       and waha_session_name    is not null) or
     (provider = 'meta_cloud' and meta_phone_number_id is not null) or
     (provider = 'zernio'     and zernio_account_id    is not null) or
-    (provider = 'meta_instagram' and instagram_user_id is not null)
+    -- (migration 0208) O APLICATIVO, não a conta. O id da conta só chega depois
+    -- da autorização, e a linha precisa existir antes dela — é dela que sai a
+    -- URL de webhook que a Meta tem de aprovar primeiro. Exigir a conta aqui
+    -- tornava o fluxo de conexão impossível de executar.
+    (provider = 'meta_instagram' and instagram_app_id is not null)
   );
 
 comment on column public.channel_sessions.zernio_account_id is
@@ -17023,6 +17033,49 @@ revoke execute on function public.fn_conversation_assign(uuid, uuid, uuid, text,
 grant  execute on function public.fn_conversation_assign(uuid, uuid, uuid, text, uuid, boolean)
   to authenticated, service_role;
 
+-- ---- a conversa nasce sabendo de que canal veio (migration 0207) ----
+-- `fn_upsert_wa_conversation` fixa `whatsapp` no corpo, e a 0203 abriu o canal
+-- para o Instagram. Sem esta função a mensagem entraria numa conversa marcada
+-- como WhatsApp — sem erro, porque o valor é válido, e sumindo de toda tela que
+-- filtra por canal.
+--
+-- `create or replace` é idempotente por construção; a revogação também.
+--
+-- ⚠️ Este bloco fica ANTES da varredura anon do fim do arquivo, e a ordem é
+-- regra, não estilo: a varredura revoga o que os blocos ANTERIORES criaram.
+-- Função acrescentada depois dela escaparia num `update.sh` e ficaria
+-- alcançável pela chave anônima — que vai para o browser. Vigiado por
+-- `varredura-anon-e-o-ultimo-bloco.test.ts`, que foi quem pegou este erro.
+create or replace function public.fn_upsert_conversation_do_canal(
+  p_org uuid, p_contact uuid, p_session uuid, p_channel text
+) returns uuid language plpgsql security definer set search_path = public as $$
+declare v_id uuid;
+begin
+  insert into public.conversations (
+    organization_id, contact_id, channel_session_id, channel, status,
+    is_group, unread_count_for_assignee, metadata
+  )
+  values (p_org, p_contact, p_session, p_channel, 'open', false, 0, '{}'::jsonb)
+  on conflict (organization_id, contact_id, channel_session_id) where is_group = false
+  do update set updated_at = now()
+  returning id into v_id;
+  return v_id;
+end; $$;
+
+-- Função nova em `public` nasce EXPOSTA, e são DUAS origens de EXECUTE:
+--   (A) o `alter default privileges ... grant all on functions to anon` do
+--       baseline, que vale para toda função criada depois dele — e que
+--       `revoke from public` NÃO remove;
+--   (B) o grant a PUBLIC que o Postgres dá a qualquer função ao criá-la, que
+--       `revoke from anon` NÃO remove.
+-- Tratar só uma deixa a função alcançável como RPC pela chave anônima, que vai
+-- para o browser. Vigiado por `hardening-definer-varredura`.
+revoke all on function public.fn_upsert_conversation_do_canal(uuid, uuid, uuid, text) from public, anon, authenticated;
+grant execute on function public.fn_upsert_conversation_do_canal(uuid, uuid, uuid, text) to service_role;
+
+comment on function public.fn_upsert_conversation_do_canal(uuid, uuid, uuid, text) is
+  'Cria ou reencontra a conversa de um contato numa sessão, com o CANAL explícito. A irmã fn_upsert_wa_conversation fixa whatsapp no corpo e não serve para canal novo.';
+
 -- ---- VARREDURA anon: função nova nasce exposta em quem ATUALIZA (migration 0116) ----
 --
 -- ⚠️ ESTE BLOCO É, DE PROPÓSITO, O ÚLTIMO DO ARQUIVO. Apêndice novo entra ANTES
@@ -17230,3 +17283,49 @@ comment on index public.channel_sessions_um_pareamento_pendente_por_org is
   'Um pareamento em andamento por organização, no WhatsApp. A tela mostra um QR '
   'por vez, e a retentativa de POST do cliente HTTP criava uma segunda sessão '
   'órfã. A rota insere e trata 23505 como "já existe pendente".';
+
+-- ---- credencial do aplicativo do Instagram (migration 0208) ----
+-- A 0203 exigia `instagram_user_id is not null` em toda linha do canal, e esse
+-- id só chega DEPOIS da autorização — enquanto a autorização só pode começar
+-- depois de a linha existir, porque é dela que sai a URL de webhook que a Meta
+-- precisa aprovar antes. A ordem real é `linha nasce → webhook cadastrado →
+-- autoriza → id chega`, e a primeira seta era recusada pelo Postgres: o fluxo
+-- inteiro era impossível de executar, e isso só apareceria na primeira conexão
+-- real, com o cliente na tela.
+--
+-- A exigência passa para o id do APLICATIVO, que é conhecido no nascimento —
+-- como `waha_session_name` no canal por QR, onde o número também só aparece
+-- depois que a pessoa lê o código.
+--
+-- A segunda mudança separa dois segredos que dividiam `webhook_secret_encrypted`:
+-- o App Secret (assina o HMAC do webhook) e o verify token (o handshake). Juntos,
+-- obrigavam a colar o App Secret no campo "Verify Token" do painel da Meta — um
+-- segredo que assina exposto num campo de configuração que o dashboard mostra.
+-- ⚠️ As COLUNAS e a CONSTRAINT deste bloco não moram aqui: foram para o bloco
+-- canônico da 0203 (o mesmo ALTER que criou as outras colunas do canal, e a
+-- reconstrução única de `channel_sessions_provider_ref_check`). Duas razões, e a
+-- segunda é a que dói:
+--
+--   1. A constraint passou a exigir `instagram_app_id`, e num banco NOVO ela
+--      roda muito antes deste ponto do arquivo — a coluna precisa existir lá.
+--   2. Reconstruir a mesma constraint em DOIS blocos é o defeito que
+--      `baseline-constraint-reconstruida.test.ts` reprova: no `update.sh` de um
+--      clone, o bloco mais antigo re-aplica a versão VELHA por cima da nova e
+--      desfaz a migration em silêncio. Foi o que aconteceu com a 0202, medido em
+--      produção — e a guarda pegou a reincidência aqui.
+--
+-- O que sobra neste bloco é o que é só daqui: os comentários e o índice parcial.
+comment on column public.channel_sessions.instagram_app_id is
+  'Id do aplicativo que o CLIENTE criou na Meta. Público (aparece na URL de autorização), '
+  'ao contrário do App Secret, que vai cifrado em webhook_secret_encrypted.';
+comment on column public.channel_sessions.instagram_verify_token_encrypted is
+  'Token de verificação do webhook, inventado pelo operador e colado no painel da Meta. '
+  'Coluna PRÓPRIA porque webhook_secret_encrypted guarda o App Secret, que assina o HMAC: '
+  'um segredo que assina não pode morar num campo de configuração que a Meta exibe.';
+
+-- Por (organização, aplicativo) e só enquanto PENDENTE. Travar por organização
+-- impediria conectar duas contas de Instagram — caso legítimo, e exatamente o
+-- que `channel_contact_identities` foi desenhada para atender.
+create unique index if not exists channel_sessions_instagram_app_pendente_unique
+  on public.channel_sessions (organization_id, instagram_app_id)
+  where provider = 'meta_instagram' and archived_at is null and instagram_user_id is null;

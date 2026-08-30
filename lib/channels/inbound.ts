@@ -18,7 +18,9 @@
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-import { CHANNEL_PROVIDER_ZERNIO } from "./capabilities";
+import { logger } from "@/lib/logger";
+
+import { CHANNEL_PROVIDER_INSTAGRAM, CHANNEL_PROVIDER_ZERNIO } from "./capabilities";
 import { sincronizarSaudeDaConexao } from "./health";
 import {
   atualizarEspelhoDoTemplate,
@@ -26,6 +28,13 @@ import {
   registrarAviso,
   saudeDoEvento,
 } from "./zernio/avisos";
+import { ingerirEntradaDoInstagram } from "./instagram/ingest";
+import { sessaoDaConta } from "./instagram/sessao-da-conta";
+import {
+  INSTAGRAM_SIGNATURE_HEADER,
+  parseInstagramWebhook,
+  verifyInstagramSignature,
+} from "./instagram/webhook";
 import { aplicarEdicaoZernio, ingestZernioInbound } from "./zernio/ingest";
 import { lerEnvelopeZernio } from "./zernio/envelope";
 import { parseZernioEdicao, verifyZernioSignature } from "./zernio/webhook";
@@ -70,7 +79,7 @@ export type InboundWebhookOutcome =
  * trabalho — e respondido sem nomear provider do lado de fora.
  */
 export function acceptsInboundWebhook(provider: string): boolean {
-  return provider === CHANNEL_PROVIDER_ZERNIO;
+  return provider === CHANNEL_PROVIDER_ZERNIO || provider === CHANNEL_PROVIDER_INSTAGRAM;
 }
 
 export async function handleInboundWebhook(
@@ -82,6 +91,8 @@ export async function handleInboundWebhook(
   switch (provider) {
     case CHANNEL_PROVIDER_ZERNIO:
       return zernioInbound(admin, input);
+    case CHANNEL_PROVIDER_INSTAGRAM:
+      return instagramInbound(admin, input);
     default:
       // Token de um canal que não entra por aqui. É configuração trocada, não
       // ataque — mas processar seria ler o payload com o parser errado.
@@ -194,4 +205,136 @@ async function zernioInbound(
     payload,
   });
   return { ok: true, body: { ...r } };
+}
+
+
+/**
+ * O webhook do Instagram.
+ *
+ * A ordem é a mesma de todo canal que recebe: prova de origem ANTES de olhar o
+ * conteúdo. Sem HMAC, quem descobrir a URL cria conversa, injeta mensagem e
+ * dispara o agente — e o `verify_token` não protege disso, porque só é conferido
+ * uma vez, no cadastro.
+ *
+ * Devolve 200 mesmo quando um evento do lote falha, e isso é deliberado: a Meta
+ * REENVIA o lote inteiro por até 36 horas quando não recebe 200, e reenviar por
+ * causa de um evento ruim traria de volta os bons — que já entraram e seriam
+ * descartados como duplicata, mas gastando a janela de reentrega que existe para
+ * falhas de verdade.
+ */
+async function instagramInbound(
+  admin: SupabaseClient,
+  input: InboundWebhookInput,
+): Promise<InboundWebhookOutcome> {
+  if (!input.secret) {
+    return { ok: false, code: "unauthorized", message: "canal sem segredo gravado" };
+  }
+
+  const assinatura = input.headers.get(INSTAGRAM_SIGNATURE_HEADER);
+  if (!verifyInstagramSignature(input.rawBody, assinatura, input.secret)) {
+    return { ok: false, code: "unauthorized", message: "assinatura inválida" };
+  }
+
+  let envelope: unknown;
+  try {
+    envelope = JSON.parse(input.rawBody);
+  } catch {
+    return { ok: false, code: "invalid_json", message: "corpo não é JSON" };
+  }
+
+  const { eventos, ignorados } = parseInstagramWebhook(envelope);
+
+  let entraram = 0;
+  let repetidos = 0;
+  let deOutraConta = 0;
+  const falhas: string[] = [];
+
+  // ─── A conexão sai da CONTA que recebeu, não do token da URL ──────────────
+  //
+  // A Meta entrega por APLICATIVO, não por conexão: um aplicativo tem uma
+  // callback URL, e todas as contas ligadas a ele mandam eventos para lá. Numa
+  // organização com duas contas de Instagram, as mensagens das duas chegam no
+  // mesmo token — e gravar tudo debaixo da conexão que o token resolve amarra a
+  // identidade à sessão errada. Quando alguém responde, o IGSID de uma conta sai
+  // pelo TOKEN da outra, e a resposta não chega a quem devia.
+  //
+  // O cache é por lote: a Meta manda várias mensagens num POST só, e quase
+  // sempre da mesma conta.
+  const conexaoPorConta = new Map<string, string | null>();
+  const conexaoDe = async (contaId: string): Promise<string | null> => {
+    const jaSabido = conexaoPorConta.get(contaId);
+    if (jaSabido !== undefined) return jaSabido;
+    const achada = await sessaoDaConta(admin, {
+      organizationId: input.session.organization_id,
+      instagramUserId: contaId,
+    });
+    conexaoPorConta.set(contaId, achada?.id ?? null);
+    return achada?.id ?? null;
+  };
+
+  for (const evento of eventos) {
+    try {
+      const channelSessionId = await conexaoDe(evento.contaId);
+      if (!channelSessionId) {
+        // Conta que esta organização não atende. Ignorar é o desfecho certo —
+        // cair de volta na conexão do token refaria o defeito com um passo a
+        // mais, e é exatamente assim que a resposta sairia pela conta errada.
+        deOutraConta += 1;
+        continue;
+      }
+
+      const r = await ingerirEntradaDoInstagram(admin, {
+        organizationId: input.session.organization_id,
+        channelSessionId,
+        evento,
+      });
+      if (r.status === "ingested") entraram += 1;
+      else if (r.status === "duplicate") repetidos += 1;
+      else falhas.push(r.reason);
+    } catch (e) {
+      // Um evento que estoura NÃO derruba os outros do lote. É a mesma razão do
+      // parser que nunca lança: a Meta manda várias mensagens num POST só.
+      falhas.push(e instanceof Error ? e.message : "erro desconhecido");
+    }
+  }
+
+  // ─── Evento que a Meta mandou e nós não entendemos deixa RASTRO ───────────
+  //
+  // A contagem de ignorados só existia no corpo da resposta — que a Meta lê e
+  // descarta. Quem for investigar "o cliente diz que mandou e não chegou" não
+  // tinha onde olhar. Não é erro (é o contrato: nem todo evento nos interessa),
+  // então é `info`, não `warn`.
+  if (ignorados > 0 || deOutraConta > 0) {
+    logger.info("[instagram] eventos não ingeridos no lote", {
+      channelSessionId: input.session.id,
+      ignorados,
+      // Separado de `ignorados` de propósito: "não entendi o evento" e "esta
+      // conta não é atendida aqui" pedem investigações diferentes. O segundo,
+      // se for grande, quer dizer que falta conectar uma conta.
+      deOutraConta,
+      entraram,
+    });
+  }
+
+  // ─── Falha de ESCRITA precisa de 500, e o motivo é a reentrega ────────────
+  //
+  // Devolver 200 aqui era perda DEFINITIVA de mensagem: a Meta só reenvia o que
+  // não recebeu 200, e por até 36 horas. Um engasgo de dez segundos no Postgres
+  // virava "o cliente escreveu e ninguém nunca viu" — com o arquivo do webhook
+  // gravando `processed` e erro nulo, porque estas falhas nunca chegavam a lugar
+  // nenhum além do corpo HTTP que a Meta descarta.
+  //
+  // Reentregar é seguro: o que já entrou volta como 23505 e é lido como
+  // duplicata. Trocamos uma reentrega barata por uma mensagem perdida.
+  //
+  // O cabeçalho da rota já prometia este comportamento — "500 fica reservado
+  // para falha de ESCRITA" —, e o canal intermediado o cumpre lançando. Este
+  // caminho é que não cumpria.
+  if (falhas.length > 0) {
+    throw new Error(
+      `instagram_ingest_failed: ${falhas.length} de ${eventos.length} evento(s) — ${falhas.join("; ")}`,
+    );
+  }
+
+  return { ok: true, body: { entraram, repetidos, ignorados, deOutraConta, falhas } };
 }

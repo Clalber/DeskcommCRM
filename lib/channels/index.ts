@@ -4,6 +4,7 @@
  */
 import { metaCloudAdapter } from "./adapters/meta-cloud";
 import { wahaAdapter } from "./adapters/waha";
+import { metaInstagramAdapter } from "./adapters/meta-instagram";
 import { zernioAdapter } from "./adapters/zernio";
 import type { ChannelAdapter, ChannelProvider } from "./types";
 
@@ -11,11 +12,7 @@ const ADAPTERS: Record<ChannelProvider, ChannelAdapter | null> = {
   waha: wahaAdapter,
   meta_cloud: metaCloudAdapter,
   zernio: zernioAdapter,
-  // O schema e a matriz já conhecem o canal (migration 0203); o TRANSPORTE
-  // ainda não existe. `null` é a declaração honesta disso, e o `getAdapter`
-  // abaixo faz o resto: quem tentar enviar recebe `unknown_channel_provider` na
-  // cara, em vez de a mensagem sair calada pelo canal errado.
-  meta_instagram: null,
+  meta_instagram: metaInstagramAdapter,
 };
 
 /**
