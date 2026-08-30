@@ -234,6 +234,17 @@ não escondido — senão a clínica que trabalha pelo Google conclui que a supr
 "às vezes funciona". É o caminho que a 1.10.1 acabou de pôr no ar, então o
 limite nasce visível.
 
+**E a frase tem de dizer QUAL caminho protege, nunca "pode não funcionar"**
+(requisito do `@Maestro (2)`, e ele está certo: aviso de incerteza não é
+informação, é isenção). A redação proposta, para quem for implementar:
+
+> *"Compromissos marcados aqui pausam a cobrança automática. Os que você marca
+> direto no Google não — para nós eles são só horário ocupado, sem o nome de
+> quem vai ser atendido."*
+
+Ela diz o que funciona, o que não funciona **e por quê** — e o porquê é o que
+impede a leitura de "o produto é inconstante".
+
 ### 2. Os três enxertos NÃO bastam — há mais dois caminhos de cobrança
 
 As regras automáticas mandam mensagem **sem passar pelo motor de follow-up**:
@@ -251,11 +262,30 @@ dessas guardas é a agenda.** Uma regra "3 dias sem resposta → manda mensagem"
 cobra o paciente com consulta marcada, e os três enxertos de leitura não a
 alcançam.
 
+#### O cabeçalho que prova o achado — e é vítima dele
+
+`send-ai-message.ts:10-13`, literal:
+
+> *"As guardas são importadas da irmã de propósito. Reescrevê-las aqui faria a
+> ação nova nascer sem o conserto que a antiga acabou de receber — que é
+> exatamente o modo de falha que este repo já pagou antes: **conserto por
+> instância, não por classe**."*
+
+Quem escreveu compartilhou as guardas **justamente para não repetir esse erro**.
+E a agenda nunca entrou na lista, porque a lista foi fechada antes de a agenda
+existir. O arquivo que melhor entende a lição é vítima dela — e nenhuma revisão
+pega isso, porque a lista **parece completa por dentro**. (Observação do
+`@Maestro (2)`, medindo os 12 arquivos de `lib/automation/actions/`:
+`send-whatsapp.ts` e `send-ai-message.ts` dão `followup=0, agenda=0`; só
+`start-message-flow.ts` toca follow-up, com 3 ocorrências.)
+
 **Consequência para a ordem de enxerto:** o item 4 deixa de ser o último. As
 duas ações de automação são um quinto ponto, e ele tem o mesmo efeito externo do
 motor de follow-up. A régua precisa morar num lugar que os dois consumam — a
-função pura do item 2 é o candidato, e é mais uma razão para ela existir antes
-das guardas.
+função pura do item 2 é o candidato, por dois motivos: **dois** consumidores com
+efeito externo passam a depender dela, e função pura é testável sem banco, sem
+cron e sem WhatsApp, o que torna a **sabotagem barata** — e sabotagem barata é a
+única que alguém repete daqui a seis meses.
 
 ---
 
