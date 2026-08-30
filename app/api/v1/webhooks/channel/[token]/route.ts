@@ -36,7 +36,12 @@ import {
   abrirArquivoDoWebhook,
   fecharArquivoDoWebhook,
 } from "@/lib/channels/arquivo-de-webhook";
-import { acceptsInboundWebhook, handleInboundWebhook } from "@/lib/channels/inbound";
+import {
+  COLUNAS_DO_HANDSHAKE,
+  acceptsInboundWebhook,
+  handleInboundWebhook,
+  segredoDoHandshake,
+} from "@/lib/channels/inbound";
 import { instagramVerificationChallenge } from "@/lib/channels/instagram/webhook";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { decryptWebhookSecret } from "@/lib/webhooks/secrets";
@@ -78,13 +83,13 @@ export async function GET(
     () =>
       admin
         .from("channel_sessions")
-        .select(`id, provider, webhook_secret_encrypted, ${ARCHIVED_AT}`)
+        .select(`id, provider, ${COLUNAS_DO_HANDSHAKE}, ${ARCHIVED_AT}`)
         .eq("webhook_path_token", token)
         .maybeSingle(),
     () =>
       admin
         .from("channel_sessions")
-        .select("id, provider, webhook_secret_encrypted")
+        .select(`id, provider, ${COLUNAS_DO_HANDSHAKE}`)
         .eq("webhook_path_token", token)
         .maybeSingle(),
   );
@@ -92,6 +97,7 @@ export async function GET(
   const sessao = data as {
     provider: string;
     webhook_secret_encrypted: unknown;
+    instagram_verify_token_encrypted: unknown;
     archived_at?: string | null;
   } | null;
 
@@ -102,7 +108,9 @@ export async function GET(
     return fail("invalid_request", "provider_mismatch", 400, { requestId });
   }
 
-  const cifrado = sessao.webhook_secret_encrypted;
+  // O segredo do HANDSHAKE, que NÃO é o que assina as mensagens. Quem sabe
+  // distinguir é o seam — ver `segredoDoHandshake`, e o defeito que ele narra.
+  const cifrado = segredoDoHandshake(sessao);
   const verifyToken = cifrado ? await decryptWebhookSecret(admin, cifrado as string) : null;
   if (!verifyToken) {
     return fail("not_found", "unknown webhook token", 404, { requestId });
