@@ -144,6 +144,11 @@ compromisso na timeline do negócio.
 passa a ter consumidor, e o índice parcial do baseline passa a ser usado pela
 consulta para a qual foi criado.
 
+⚠️ **A régua vale para compromisso marcado PELO PRODUTO.** Quem marcou direto no
+Google não é alcançado, e o motivo é estrutural — ver a seção dos dois limites,
+adiante. O limite tem de aparecer na tela; supressão que funciona "às vezes" sem
+dizer quando é pior que supressão nenhuma.
+
 ### Os casos de borda, decididos
 
 **`pending` protege.** "Aguardando confirmação" é alguém que já escolheu um
@@ -189,11 +194,68 @@ linha vira "o lead desapareceu do Radar" e custa uma caçada.
 | 3 | `lib/leads/score-writer.ts:69` | passar o mesmo dado em vez de `inFlight: false` | Depende de 2. Sem isto, tela e score discordam sobre o mesmo lead |
 | 4 | `lib/followup/engine.ts:496` | guarda ao lado da de `steps_taken`, devolvendo desfecho próprio (não `exhausted`) | É o único com **efeito externo** (mensagem sai). Entra por último, quando os três de leitura já estiverem provados |
 
+| 5 | `lib/automation/actions/send-whatsapp.ts` e `send-ai-message.ts` | a mesma guarda do item 4, ao lado das que já existem (opt-out, janela, cap) | Medido **depois** da primeira versão deste mapa: as regras automáticas cobram sem passar pelo motor de follow-up. Mesmo efeito externo, mesma régua |
+
 **Sobre o desfecho do item 4:** reusar `exhausted` (`node-handlers.ts:20`) seria
 mentir na timeline — o fluxo não se esgotou, ele foi adiado por um motivo que
 tem data. Um desfecho próprio é o que permite ao operador ler *"não cobrei
 porque tem consulta quinta"*, e é o que fecha o laço de retorno do invariante 7
 do Sistema Vivo.
+
+---
+
+## Os dois limites da régua — MEDIDOS depois da primeira versão
+
+Estavam como NÃO MEDIDO e o Maestro os pediu primeiro, com a razão certa: os
+dois **mudam a régua**, não a detalham. Medidos em 2026-08-30, mesmo SHA.
+
+### 1. Quem marcou pelo Google NÃO é protegido — e é limite estrutural
+
+O compromisso vindo do Google **não entra em `calendar_appointments`**. O sync
+grava em outra tabela (`app/api/v1/cron/agenda-google-sync/route.ts:219` →
+`calendar_external_events`), e essa tabela **não tem `contact_id`**:
+
+```bash
+awk '/create table if not exists public.calendar_external_events/,/^\);/' supabase/baseline.sql \
+  | grep -E "contact_id|organization_id|external_calendar_id|starts_at|status"
+#   organization_id, external_calendar_id, starts_at, ends_at, status
+#   → NÃO existe contact_id
+```
+
+Não é campo esquecido: `calendar_external_events` é **ocupação de horário**,
+anônima por natureza — ela responde *"este horário está livre?"*, nunca *"de
+quem é este compromisso?"*. Não há por onde ligar o evento ao contato, e
+inventar essa ligação (por e-mail do convidado, por exemplo) seria adivinhação
+sobre dado de terceiro.
+
+**Consequência para a régua:** ela protege quem marcou **pelo produto**, e não
+protege quem o atendente marcou direto no Google. Isso precisa ser dito na tela,
+não escondido — senão a clínica que trabalha pelo Google conclui que a supressão
+"às vezes funciona". É o caminho que a 1.10.1 acabou de pôr no ar, então o
+limite nasce visível.
+
+### 2. Os três enxertos NÃO bastam — há mais dois caminhos de cobrança
+
+As regras automáticas mandam mensagem **sem passar pelo motor de follow-up**:
+
+```bash
+ls lib/automation/actions/          # send-whatsapp.ts, send-ai-message.ts, …
+grep -rln "followup" lib/automation/actions/
+#   → só start-message-flow.ts (que INICIA um fluxo; as outras duas não tocam)
+```
+
+`send-ai-message.ts:1-14` diz, no próprio cabeçalho, que é irmã de
+`send-whatsapp.ts` e compartilha as guardas (contato, opt-out, janela do número,
+cap diário, espaçamento) e o caminho de saída (`sendMessageHandler`). **Nenhuma
+dessas guardas é a agenda.** Uma regra "3 dias sem resposta → manda mensagem"
+cobra o paciente com consulta marcada, e os três enxertos de leitura não a
+alcançam.
+
+**Consequência para a ordem de enxerto:** o item 4 deixa de ser o último. As
+duas ações de automação são um quinto ponto, e ele tem o mesmo efeito externo do
+motor de follow-up. A régua precisa morar num lugar que os dois consumam — a
+função pura do item 2 é o candidato, e é mais uma razão para ela existir antes
+das guardas.
 
 ---
 
@@ -209,12 +271,6 @@ o mapa acaba:
 - **Quantos leads mudariam de balde hoje, em base real.** Não rodei a consulta
   contra nenhum banco com dados de produção. Sem esse número não dá para dizer
   se a régua é uma correção de borda ou uma mudança visível na fila.
-- **O caminho da IA.** Não verifiquei se o agente, ao decidir cobrar por conta
-  própria (fora do motor de follow-up), passa por algum destes três pontos. Se
-  não passar, há um quarto ponto de enxerto que este mapa não cobre.
-- **Compromissos vindos do Google.** `origem='google_sync'` entra na mesma
-  tabela, mas não medi se o `contact_id` vem preenchido nesses — se vier nulo, a
-  ligação por contato não os enxerga, e a régua protege menos do que promete.
 - **O comportamento em produção.** Nada aqui foi exercitado em tela ou contra
   banco; este documento é leitura de código no SHA declarado.
 
