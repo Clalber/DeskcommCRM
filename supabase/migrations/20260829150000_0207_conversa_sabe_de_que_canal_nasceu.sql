@@ -49,6 +49,17 @@ begin
 end; $$;
 
 -- Função nova em `public` nasce EXPOSTA, e são DUAS origens de EXECUTE:
+-- ⚠️ SÃO TRÊS ORIGENS, não duas — e o CLAUDE.md só nomeia duas.
+--
+-- O invariante `hardening-definer-varredura` pegou esta função executável por
+-- `authenticated`: qualquer usuário LOGADO, de QUALQUER organização, podia
+-- chamá-la. E ela recebe a organização como PARÂMETRO — quem chamasse criaria
+-- conversa dentro da empresa de outra pessoa, com a sessão dele.
+--
+-- A função irmã (`fn_upsert_wa_conversation`) revoga das três, em três blocos
+-- diferentes do baseline; escritas assim, longe umas das outras, a terceira não
+-- se parece com regra. Aqui as três ficam juntas.
+--
 --   (A) o `alter default privileges ... grant all on functions to anon` do
 --       baseline, que vale para toda função criada depois dele — e que
 --       `revoke from public` NÃO remove;
@@ -56,7 +67,7 @@ end; $$;
 --       `revoke from anon` NÃO remove.
 -- Tratar só uma deixa a função alcançável como RPC pela chave anônima, que vai
 -- para o browser. Vigiado por `hardening-definer-varredura`.
-revoke all on function public.fn_upsert_conversation_do_canal(uuid, uuid, uuid, text) from public, anon;
+revoke all on function public.fn_upsert_conversation_do_canal(uuid, uuid, uuid, text) from public, anon, authenticated;
 grant execute on function public.fn_upsert_conversation_do_canal(uuid, uuid, uuid, text) to service_role;
 
 comment on function public.fn_upsert_conversation_do_canal(uuid, uuid, uuid, text) is

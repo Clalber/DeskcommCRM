@@ -17070,7 +17070,7 @@ end; $$;
 --       `revoke from anon` NÃO remove.
 -- Tratar só uma deixa a função alcançável como RPC pela chave anônima, que vai
 -- para o browser. Vigiado por `hardening-definer-varredura`.
-revoke all on function public.fn_upsert_conversation_do_canal(uuid, uuid, uuid, text) from public, anon;
+revoke all on function public.fn_upsert_conversation_do_canal(uuid, uuid, uuid, text) from public, anon, authenticated;
 grant execute on function public.fn_upsert_conversation_do_canal(uuid, uuid, uuid, text) to service_role;
 
 comment on function public.fn_upsert_conversation_do_canal(uuid, uuid, uuid, text) is

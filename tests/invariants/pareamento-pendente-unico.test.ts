@@ -143,10 +143,17 @@ describe("um pareamento pendente por organização", () => {
     // A prova do escopo. Antes desta linha o índice era cego ao provider, e o
     // Instagram — que a 0203 acabara de admitir no schema — travaria o WhatsApp.
     //
-    // `instagram_user_id` não é enfeite: `channel_sessions_provider_ref_check`
-    // (0203) exige o identificador da conta para cada provider. Sem ele o insert
-    // morre com 23514 ANTES de o índice opinar, e o caso mediria a constraint
-    // errada — vermelho por acidente, ou verde por acidente depois.
+    // O identificador não é enfeite: `channel_sessions_provider_ref_check` exige
+    // um por provider, e sem ele o insert morre com 23514 ANTES de o índice
+    // opinar — o caso mediria a constraint errada, vermelho por acidente hoje ou
+    // verde por acidente depois.
+    //
+    // ⚠️ É o id do APLICATIVO, e não o da conta. A 0203 exigia
+    // `instagram_user_id`, e a 0208 trocou porque esse id só chega DEPOIS da
+    // autorização, enquanto a linha precisa existir ANTES dela (é dela que sai a
+    // URL de webhook que a Meta aprova primeiro). Este caso foi escrito contra a
+    // regra antiga e ficou vermelho no CI quando a nova entrou — que é a guarda
+    // funcionando, não um teste chato.
     const org = novaOrg(`inv-0204-prov-${Date.now()}`);
     insertSession(org, { status: `'STARTING'` });
     expect(
@@ -154,7 +161,7 @@ describe("um pareamento pendente por organização", () => {
         insertSession(org, {
           status: `'STARTING'`,
           provider: `'meta_instagram'`,
-          instagram_user_id: `'ig_probe'`,
+          instagram_app_id: `'ig_app_probe'`,
         }),
       ),
     ).toBe("ok");
