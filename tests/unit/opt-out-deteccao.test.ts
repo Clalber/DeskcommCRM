@@ -162,6 +162,19 @@ const ESPANHOL_NAO_PEDE = [
   // está pedindo para mudar a ENTREGA, não para parar de ser atendido.
   "deja de mandar el pedido a esa direccion",
   "deja de cobrarme el envio",
+  // OBJEÇÃO COMERCIAL — o buraco que faltava neste corpus, e por onde um
+  // falso positivo entrou. `ESPANHOL_NAO_PEDE` tinha controle de clínica, de
+  // e-commerce e de troca de canal, mas nenhum da recusa de VENDA: a frase
+  // mais comum do funil, e a que o agente precisa contornar em vez de fugir
+  // dela. Sem estes casos, `no me interesa` nu escalava para humano e a
+  // suíte ficava verde.
+  "no me interesa",
+  "no me interesa, gracias",
+  "no me interesa ese plan, pero si el otro",
+  "por ahora no me interesa, quizas el mes que viene",
+  "no me interesa el seguro, quiero solo el producto",
+  "la verdad no me interesa el precio, me interesa la calidad",
+  "no me interesa pagar mas, hay algo mas barato?",
 ];
 
 describe("espanhol — a palavra que a plantilla pede", () => {
@@ -174,6 +187,32 @@ describe("espanhol — a palavra que a plantilla pede", () => {
   for (const texto of ESPANHOL_NAO_PEDE) {
     it(`NÃO bloqueia: ${texto}`, () => {
       expect(ehPedidoDeOptOut(texto)).toBe(false);
+    });
+  }
+});
+
+/**
+ * O lado negativo do corpus verificava só o BLOQUEIO, e não a ESCALADA.
+ *
+ * São dois níveis com custos diferentes: `ehPedidoDeOptOut` grava
+ * `is_blocked=true` e o contato para de ser atendido; `ehOptOutProvavel` faz o
+ * agente parar de responder e chamar um humano. O segundo é mais barato, mas
+ * não é grátis — num sistema de vendas ele desliga a automação exatamente na
+ * objeção, que é o momento em que ela deveria trabalhar.
+ *
+ * Enquanto só o bloqueio era verificado, uma frase podia entrar na lista
+ * ambígua e o corpus inteiro seguir verde: `ehPedidoDeOptOut` devolve `false`
+ * para ela, que é tudo que se perguntava. Foi por essa porta que
+ * `no me interesa` (sem marca de repetição) passou a escalar toda objeção
+ * comercial em espanhol sem nenhum caso vermelhar.
+ *
+ * Medido ao escrever: com a regra corrigida, ZERO frases dos dois corpora
+ * negativos escalam. O gate nasce verde e trava a volta.
+ */
+describe("o lado negativo também não pode ESCALAR, não só não bloquear", () => {
+  for (const texto of [...ESPANHOL_NAO_PEDE, ...NAO_PEDE_PARA_SAIR]) {
+    it(`não escala para humano: ${texto}`, () => {
+      expect(ehOptOutProvavel(texto), texto).toBe(false);
     });
   }
 });
@@ -192,6 +231,11 @@ describe("espanhol — o ambíguo, que não existia", () => {
     "déjenme en paz",
     "ya te dije que no me interesa",
     "ya no me interesa",
+    // CONTROLE do lado positivo: o marcador de repetição é o que separa o
+    // sinal da objeção. "ya" numa, "mas" na outra — sem nenhum dos dois, a
+    // frase está em `ESPANHOL_NAO_PEDE`, acima.
+    "no me interesa mas",
+    "ya no me interesa nada de esto",
     "basta ya",
     "ya basta con esto",
     "no me molesten",

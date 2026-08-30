@@ -268,7 +268,20 @@ const FRASES_AMBIGUAS_DE_OPT_OUT: readonly RegExp[] = [
   // fala espanhola, por mais claro que o sinal seja.
   /\b(?:dejame|dejenme)\s+en\s+paz\b/u,
   /\bya\s+(?:te\s+)?dije\s+que\s+no\s+(?:quiero|me\s+interesa)\b/u,
-  /\b(?:ya\s+)?no\s+me\s+interesa(?:\s+mas)?\b/u,
+  // "ya no me interesa" / "no me interesa mas" — e NÃO "no me interesa" nu.
+  //
+  // O que faz desta frase um sinal de opt-out não é a recusa: é a marca de
+  // REPETIÇÃO. "No me interesa" sozinho é a objeção comercial mais comum do
+  // funil — "no me interesa ese plan, pero sí el otro", "no me interesa,
+  // gracias" —, e o agente precisa seguir vendendo ali, não parar e escalar.
+  // Com os dois trechos opcionais, sete frases de objeção medidas passavam a
+  // escalar; com um dos dois marcadores exigido, nenhuma. E as 89 frases do
+  // corpus deste arquivo não mudam de veredito: as duas formas que ele testa
+  // ("ya no me interesa", "ya te dije que no me interesa") têm marcador.
+  //
+  // É o espelho exato do português, que sempre exigiu o "mais":
+  // `/\bnao\s+(?:me\s+)?interessa\s+mais\b/` — a assimetria era o defeito.
+  /\b(?:ya\s+no\s+me\s+interesa|no\s+me\s+interesa\s+mas)\b/u,
   /\b(?:ya\s+basta|basta\s+ya)\b/u,
   /\bno\s+me\s+molest(?:e|en|es)\b/u,
 ];
