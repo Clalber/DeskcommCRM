@@ -52,6 +52,9 @@ import type { ProviderRegistry } from '../edge/llm/providers';
 import { HANDOFF_REASON_ORCAMENTO } from '../edge/llm/orcamento';
 import { MIRROR_WARN_ONLY, mirrorLeadStageToCrm } from '../edge/crm/move-lead-stage';
 import { insertInboxItem } from '../db/repository';
+import { createAdminClient } from '@/lib/supabase/admin';
+import { moverLeadParaEtapaDeHandoff } from '@/lib/leads/handoff-stage-move';
+import { detectUrgencySignal } from '../guardrails/sinal-de-urgencia';
 import { buildNativeMediaParts } from './media-parts';
 import { enqueueJob, rescheduleJob, type JobRow, type Queryable } from '../queue/queue';
 import { applyLeadStateUpdate, getLeadState, type LeadStage, type LeadStateRow } from './lead-state';
@@ -1704,6 +1707,21 @@ async function executarTurnoDoAgente(
   // o cap depende de quanto já saiu HOJE, que muda com o turno concorrente — só dá pra
   // saber com certeza no momento do envio, não antes.
   let pacingCapVeto: { code: string; nextAllowedAt: Date } | null = null;
+  // Best-effort: move o lead pra etapa `crm_stages.slug='chamar-humano'` do pipeline
+  // dele (se o tenant tiver criado essa etapa — opt-in, ver `lib/leads/handoff-stage-move.ts`)
+  // sempre que um caso humano abre neste turno, deliberado (open_human_case) ou pelo
+  // fail-safe do `case_promise`. Sem isto, o funil no CRM não refletia o handoff que o
+  // PRÓPRIO PROMPT do tenant promete ao lead ("vou verificar/encaminhar com o Fernando")
+  // — medido em produção, tenant YADEA: caso aberto, funil parado em "Novo contato".
+  // Nunca bloqueia nem derruba o turno — mesma disciplina de `triggerHandoff` (G1-G4),
+  // que já chama o mesmo helper para o handoff por palavra-chave do cliente.
+  const moverParaHandoffBestEffort = (reason: string): void => {
+    moverLeadParaEtapaDeHandoff(createAdminClient(), { organizationId: tenantId, leadId, reason }).catch((err) => {
+      runLog.warn('moverLeadParaEtapaDeHandoff falhou (best-effort, caso humano)', {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    });
+  };
   // Arma o `agendaStallGate` (before-send.ts): true assim que crm_find_free_slots,
   // crm_book_appointment ou crm_reschedule_appointment executar neste turno — marcado no
   // wrapper das tools MCP, mais abaixo. `send_message` lê o valor NO MOMENTO do envio; como
@@ -2020,6 +2038,11 @@ async function executarTurnoDoAgente(
             casesEnabled: agentConfig?.casesEnabled ?? false,
             hasOpenCase,
             openedCaseThisTurn,
+            // Nome(s) próprio(s) que o prompt do tenant usa pra retaguarda humana (ex.:
+            // "Fernando") — o mesmo vocabulário que `matchesHandoffKeyword` já usa do lado
+            // do CLIENTE, agora somado ao alvo genérico do `casePromiseGate` do lado do
+            // que o MODELO promete. Ver `GateContext.humanPromiseExtraTargets`.
+            humanPromiseExtraTargets: agentConfig?.handoffKeywords ?? [],
             // A rede contra vazamento de vocabulário interno arma AQUI e só aqui: este é
             // o único corpo escrito pelo MODELO, e o único caminho em que o veto vira
             // erro instrutivo que ele pode consertar no turno seguinte. O `send_template`
@@ -2089,6 +2112,7 @@ async function executarTurnoDoAgente(
               return { ok: false, error: { code: chain.code, message: chain.message } };
             }
             openedCaseThisTurn = true;
+            moverParaHandoffBestEffort('case_promise_autofallback');
             // Re-roda a cadeia INTEIRA agora que há caso aberto — o send real acontece
             // DENTRO do runBeforeSend (via args.send); nunca chamamos o canal por fora
             // (perderia pacing/lgpd/stop). ponytail: re-roda a cadeia inteira no fail-safe
@@ -2483,6 +2507,7 @@ async function executarTurnoDoAgente(
           );
           if (!res.ok) return res;
           openedCaseThisTurn = true;
+          moverParaHandoffBestEffort('open_human_case');
           // ACH-03: a expectativa vai junto com a confirmação. Medido num turno
           // real: o agente abria o caso e prometia ao cliente que "alguém entra
           // em contato" sem nunca ter olhado se havia alguém — a capacidade de
@@ -3081,6 +3106,37 @@ async function executarTurnoDoAgente(
       code: veto.code,
       proxima_abertura: veto.nextAllowedAt.toISOString(),
     });
+    // O reagendamento acima trata toda mensagem represada igual — um lead relatando
+    // risco de segurança (freio, fumaça, bateria esquentando) esperaria a mesma janela
+    // que um "bom dia" qualquer, às vezes horas (medido em produção, tenant YADEA:
+    // 20h+ represado num relato de bateria superaquecendo). Sem furar o cap de
+    // warm-up/diário em si (proteção anti-banimento — mexer nisso é decisão de
+    // produto, não deste guardrail), abre um alerta CRÍTICO na Central agora, pra um
+    // humano poder responder manualmente pelo próprio WhatsApp enquanto o número
+    // aquece. Dedupe por (kind, ref) — não reabre um já aberto pra esta conversa.
+    if (detectUrgencySignal(inboundSignal)) {
+      await insertInboxItem(
+        pool,
+        tenantId,
+        {
+          kind: 'handoff',
+          severity: 'critical',
+          title: 'Lead com sinal de urgência represado pelo cap de envio do número',
+          body:
+            `Mensagem do lead parece relatar risco/urgência, mas o número está em ` +
+            `warm-up/bateu o cap diário (${veto.code}) — a resposta automática só sai em ` +
+            `${veto.nextAllowedAt.toISOString()}. Considere responder manualmente pelo ` +
+            `WhatsApp enquanto o número aquece.`,
+          refKind: 'conversation',
+          refId: input.conversationId,
+        },
+        'kind_e_ref',
+      ).catch((err) => {
+        runLog.warn('alerta de urgência represada por warmup_cap falhou (best-effort)', {
+          error: err instanceof Error ? err.message : String(err),
+        });
+      });
+    }
     throw new JobSettledError(
       'cap de envio atingido — job reagendado para a próxima abertura, sem mensagem enviada',
     );

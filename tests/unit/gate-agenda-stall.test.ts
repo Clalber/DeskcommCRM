@@ -110,6 +110,53 @@ describe("agendaStallGate — veta a promessa vazia, nunca a checagem de verdade
     expect(v.pass).toBe(true);
   });
 
+  // Frase EXATA do incidente original (2026-08-29, tenant YADEA) que deu origem a este
+  // gate — uma afirmação de FATO CONSUMADO, não uma promessa de checar. O
+  // AGENDA_STALL_PATTERN sozinho não cobre ("vou/estou" + verbo de checagem não aparece
+  // aqui), e passava batido mesmo com o gate armado até o AGENDA_CONFIRMED_PATTERN existir.
+  it("veta confirmação categórica sem checar de verdade ('está confirmado')", () => {
+    const v = agendaStallGate.evaluate(
+      baseCtx({
+        agenda: { active: true, toolCalledThisTurn: false },
+        body: "Perfeito, Cristiano! 😊 Seu agendamento está confirmado para amanhã às 9h.",
+      }),
+    );
+    expect(v.pass).toBe(false);
+    if (v.pass) throw new Error("inalcançável");
+    expect(v.code).toBe("agenda_stall_sem_ferramenta");
+    expect(v.reason).toContain("afirmou");
+  });
+
+  it("veta a variante 'está certinho' (segunda frase medida do mesmo incidente)", () => {
+    const v = agendaStallGate.evaluate(
+      baseCtx({
+        agenda: { active: true, toolCalledThisTurn: false },
+        body: "Confirmando: seu agendamento está certinho para amanhã às 9h.",
+      }),
+    );
+    expect(v.pass).toBe(false);
+  });
+
+  it("confirmação categórica passa quando a ferramenta JÁ rodou neste turno", () => {
+    const v = agendaStallGate.evaluate(
+      baseCtx({
+        agenda: { active: true, toolCalledThisTurn: true },
+        body: "Seu agendamento está confirmado para amanhã às 9h.",
+      }),
+    );
+    expect(v.pass).toBe(true);
+  });
+
+  it("'o agendamento está uma bagunça' (sem particípio de confirmação) não é falso positivo", () => {
+    const v = agendaStallGate.evaluate(
+      baseCtx({
+        agenda: { active: true, toolCalledThisTurn: false },
+        body: "O agendamento está uma bagunça esse mês, mas isso é outro assunto.",
+      }),
+    );
+    expect(v.pass).toBe(true);
+  });
+
   it("a razão do veto nomeia as três ferramentas — o modelo precisa saber QUAL chamar", () => {
     const v = agendaStallGate.evaluate(
       baseCtx({ agenda: { active: true, toolCalledThisTurn: false }, body: FRASE_MEDIDA_1 }),

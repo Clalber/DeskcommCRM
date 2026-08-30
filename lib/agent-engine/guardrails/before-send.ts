@@ -174,6 +174,16 @@ export interface GateContext {
   hasOpenCase: boolean;
   openedCaseThisTurn: boolean;
   /**
+   * Nome(s) próprio(s) que o PROMPT do tenant usa para a retaguarda humana (ex.:
+   * "Fernando"), somados ao vocabulário genérico do `casePromiseGate`
+   * (`detectHumanPromise`/`human-promise.ts`). Ausente/vazio = só os cargos
+   * genéricos (comportamento anterior, retrocompatível). Sem isto, um agente cujo
+   * prompt nomeia a pessoa em vez do cargo escapa 100% do detector — medido em
+   * produção, tenant YADEA: dezenas de promessas nomeando "Fernando", 1 só
+   * detecção em 3 dias.
+   */
+  humanPromiseExtraTargets?: readonly string[];
+  /**
    * Arma o `internalVocabularyGate` (vazamento de vocabulário interno ao cliente).
    *
    * **OPCIONAL, e ausente = DESARMADO — a direção segura AQUI é o oposto da do
@@ -367,7 +377,7 @@ export const casePromiseGate: Gate = {
   evaluate: (ctx) => {
     if (!ctx.casesEnabled) return { pass: true };
     if (ctx.hasOpenCase || ctx.openedCaseThisTurn) return { pass: true };
-    if (!detectHumanPromise(ctx.body)) return { pass: true };
+    if (!detectHumanPromise(ctx.body, ctx.humanPromiseExtraTargets)) return { pass: true };
     return {
       pass: false,
       code: 'case_promise_without_case',
@@ -426,11 +436,42 @@ const AGENDA_STALL_PATTERN =
   /\b(vou|estou|iremos|vamos)\b[^.!?\n]{0,10}\b(verificando|verificar|confirmando|confirmar|consultando|consultar)\b[^.!?\n]{0,80}\b(hor[aá]rios?|agenda|disponibilidade|agendamento|marca[çc][aã]o|encaixe|vagas?)\b/i;
 
 /**
- * Gate de AGENDA SEM CHECAR — a garantia DURA de que "vou verificar/confirmar horário" só
- * sai depois de a ferramenta (`crm_find_free_slots`/`crm_book_appointment`/
- * `crm_reschedule_appointment`) ter sido de fato CHAMADA neste turno. Desarmado (`agenda`
- * ausente ou `active` false) = no-op — mesmo default seguro de `internalVocabularyEnforced`
- * (caller que não conhece o campo não arma nada).
+ * Padrão irmão do `AGENDA_STALL_PATTERN`, mas para a outra metade do mesmo defeito: não
+ * uma PROMESSA de checar ("vou verificar"), e sim uma AFIRMAÇÃO de fato já consumado
+ * ("está confirmado/agendado/marcado/certinho") — o texto exato do incidente original
+ * que deu origem a este gate ("Seu agendamento está confirmado para amanhã às 9h",
+ * "Confirmando: seu agendamento está certinho para amanhã às 9h"), medido em produção
+ * 2026-08-29 (tenant YADEA) ANTES de o `AGENDA_STALL_PATTERN` existir. O padrão de
+ * promessa sozinho não cobre essa frase (não há "vou/estou" + verbo de checagem nela),
+ * então uma confirmação categórica sem chamada de ferramenta passava batido mesmo com o
+ * gate armado. Mesma disciplina: substantivo de agenda perto de "está/ficou/fica" perto
+ * de um particípio de confirmação — curto e ancorado nas frases medidas, não uma
+ * gramática geral (evita falso positivo em "o agendamento está uma bagunça", por ex.).
+ */
+const AGENDA_CONFIRMED_PATTERN =
+  /\b(agendamento|hor[aá]rio|encaixe|vaga|visita)\b[^.!?\n]{0,30}\b(esta|está|ficou|fica|segue)\b[^.!?\n]{0,20}\b(confirmad[oa]|agendad[oa]|marcad[oa]|certinh[oa])\b/i;
+
+/**
+ * `\b` do JS é ASCII-only ("word char" = `[A-Za-z0-9_]`): `á` não conta como letra
+ * pra ele. Isso faz `\best[aá]\b` NUNCA casar "está" (acentuado) seguido de espaço —
+ * o `á` fica "sem fronteira" com o espaço seguinte (nem um nem outro é \w) e o `\b`
+ * final falha. Medido: as DUAS frases do incidente original ("está confirmado", "está
+ * certinho") não vetavam com o padrão como foi escrito, porque as duas usam "está"
+ * com acento — o próprio caso que este gate existe pra pegar. Normaliza (remove
+ * acento) antes de testar; a alternativa "esta" (sem acento) no padrão acima cobre o
+ * texto já normalizado, e os demais grupos ([aá]/[oa]/[çc][aã]) seguem funcionando
+ * porque não são o ÚLTIMO caractere antes de um `\b`.
+ */
+function semAcento(texto: string): string {
+  return texto.normalize('NFD').replace(/[̀-ͯ]/g, '');
+}
+
+/**
+ * Gate de AGENDA SEM CHECAR — a garantia DURA de que "vou verificar/confirmar horário" (ou
+ * "está confirmado/agendado") só sai depois de a ferramenta (`crm_find_free_slots`/
+ * `crm_book_appointment`/`crm_reschedule_appointment`) ter sido de fato CHAMADA neste turno.
+ * Desarmado (`agenda` ausente ou `active` false) = no-op — mesmo default seguro de
+ * `internalVocabularyEnforced` (caller que não conhece o campo não arma nada).
  *
  * Por que existe apesar do `AGENDA_SYSTEM_BLOCK` (instrução em texto, `inbound-turn.ts`) já
  * dizer a mesma regra: medido em produção (2026-08-29, mesmo tenant) que o modelo
@@ -449,14 +490,21 @@ export const agendaStallGate: Gate = {
   evaluate: (ctx) => {
     if (ctx.agenda === undefined || !ctx.agenda.active) return { pass: true };
     if (ctx.agenda.toolCalledThisTurn) return { pass: true };
-    if (!AGENDA_STALL_PATTERN.test(ctx.body)) return { pass: true };
+    const bodySemAcento = semAcento(ctx.body);
+    const stall = AGENDA_STALL_PATTERN.test(bodySemAcento);
+    const confirmedSemChecar = AGENDA_CONFIRMED_PATTERN.test(bodySemAcento);
+    if (!stall && !confirmedSemChecar) return { pass: true };
     return {
       pass: false,
       code: 'agenda_stall_sem_ferramenta',
-      reason:
-        'Você prometeu verificar/confirmar um horário sem ter chamado crm_find_free_slots, ' +
-        'crm_book_appointment ou crm_reschedule_appointment NESTE turno. Chame a ferramenta ' +
-        'agora e responda com base no retorno dela — não repita a promessa sem checar.',
+      reason: confirmedSemChecar
+        ? 'Você afirmou que um horário está confirmado/agendado sem ter chamado ' +
+          'crm_find_free_slots, crm_book_appointment ou crm_reschedule_appointment NESTE ' +
+          'turno. Nunca diga que está confirmado sem a ferramenta ter registrado de fato — ' +
+          'chame a ferramenta e responda com base no retorno dela.'
+        : 'Você prometeu verificar/confirmar um horário sem ter chamado crm_find_free_slots, ' +
+          'crm_book_appointment ou crm_reschedule_appointment NESTE turno. Chame a ferramenta ' +
+          'agora e responda com base no retorno dela — não repita a promessa sem checar.',
     };
   },
 };
@@ -731,6 +779,8 @@ export interface RunBeforeSendArgs {
   casesEnabled?: boolean;
   hasOpenCase?: boolean;
   openedCaseThisTurn?: boolean;
+  /** Ver `GateContext.humanPromiseExtraTargets`. Ausente = só cargos genéricos. */
+  humanPromiseExtraTargets?: readonly string[];
   /**
    * Arma o `internalVocabularyGate`. Ausente (default) = gate no-op — ver a justificativa
    * do default em `GateContext.internalVocabularyEnforced`: um veto no caminho
@@ -833,6 +883,9 @@ export async function runBeforeSend(args: RunBeforeSendArgs): Promise<BeforeSend
       casesEnabled: args.casesEnabled ?? false,
       hasOpenCase: args.hasOpenCase ?? false,
       openedCaseThisTurn: args.openedCaseThisTurn ?? false,
+      ...(args.humanPromiseExtraTargets !== undefined
+        ? { humanPromiseExtraTargets: args.humanPromiseExtraTargets }
+        : {}),
       internalVocabularyEnforced: args.enforceInternalVocabulary ?? false,
       ...(args.agenda !== undefined ? { agenda: args.agenda } : {}),
     };

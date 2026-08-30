@@ -61,3 +61,54 @@ describe("detectHumanPromise — calibração (spec 15 §10.2)", () => {
     expect(detectHumanPromise("")).toBe(false);
   });
 });
+
+/**
+ * `extraHumanNames` — o alvo TARGET original só conhece cargos genéricos
+ * (equipe/gerente/responsável/...), então um prompt de tenant que nomeia a
+ * retaguarda por NOME PRÓPRIO ("vou confirmar com o Fernando") escapava 100% do
+ * detector. Medido em produção, tenant YADEA: dezenas de promessas nomeando
+ * "Fernando", 1 só detecção em 3 dias. A fonte real é
+ * `ai_agent_versions.handoff_keywords` (já inclui o nome, ver `inbound-turn.ts`).
+ */
+describe("detectHumanPromise — extraHumanNames (nome próprio do tenant)", () => {
+  const HANDOFF_KEYWORDS = ["falar com humano", "atendente", "pessoa real", "fernando", "gerente"];
+
+  it("SEM extraHumanNames, 'vou confirmar com o Fernando' NÃO é detectada (o defeito medido)", () => {
+    expect(detectHumanPromise("vou confirmar com o Fernando a disponibilidade de segunda")).toBe(false);
+  });
+
+  it("COM extraHumanNames (handoff_keywords do tenant), a mesma frase É detectada", () => {
+    expect(
+      detectHumanPromise("vou confirmar com o Fernando a disponibilidade de segunda", HANDOFF_KEYWORDS),
+    ).toBe(true);
+  });
+
+  it("cobre as variantes reais do incidente: 'vou verificar com o Fernando' e 'encaminhar para o Fernando'", () => {
+    expect(detectHumanPromise("vou verificar com o Fernando e te retorno", HANDOFF_KEYWORDS)).toBe(true);
+    expect(detectHumanPromise("vou encaminhar essa questão ao Fernando", HANDOFF_KEYWORDS)).toBe(true);
+  });
+
+  it("é robusto a caixa e acento no nome extra também", () => {
+    expect(detectHumanPromise("vou falar com o FERNANDO", HANDOFF_KEYWORDS)).toBe(true);
+  });
+
+  it("palavras compostas do handoff_keywords ('falar com humano', 'pessoa real') não quebram a montagem do regex", () => {
+    // Só nomes próprios simples (uma palavra alfabética) entram no alvo estendido —
+    // frases compostas são descartadas silenciosamente, não viram regex inválido.
+    expect(() => detectHumanPromise("qualquer coisa", HANDOFF_KEYWORDS)).not.toThrow();
+  });
+
+  it("cargo já coberto por TARGET_WORDS ('gerente', 'atendente') não duplica o alvo nem muda o resultado padrão", () => {
+    expect(detectHumanPromise("vou verificar com o gerente", HANDOFF_KEYWORDS)).toBe(true);
+    expect(detectHumanPromise("vou verificar com o gerente")).toBe(true);
+  });
+
+  it("extraHumanNames vazio ou ausente preserva exatamente o comportamento anterior", () => {
+    expect(detectHumanPromise("vou verificar com a equipe", [])).toBe(true);
+    expect(detectHumanPromise("vou confirmar o valor pra você", [])).toBe(false);
+  });
+
+  it("nome extra não vira falso positivo em texto que só MENCIONA o nome sem prometer nada", () => {
+    expect(detectHumanPromise("o Fernando é o nosso gerente de oficina", HANDOFF_KEYWORDS)).toBe(false);
+  });
+});
