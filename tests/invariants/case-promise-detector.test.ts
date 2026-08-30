@@ -27,6 +27,14 @@ const PROMISES: readonly string[] = [
   // PRONOME em vez do substantivo — "Já passo o número do pedido (#48291) para eles
   // resolverem junto com a reativação da assinatura."
   "já passo o número do pedido para eles resolverem junto com a reativação",
+  // achado em produção (tenant YADEA, 2026-08-30, lead "Fredy Restrito"): ESTADO
+  // passivo alegado, não promessa de ação futura — o agente respondeu a uma
+  // reclamação de garantia de quase 1 dia dizendo isto sem NENHUM caso aberto.
+  // As regras de "vai resolver"/"vou encaminhar" não cobrem uma AFIRMAÇÃO de que
+  // já está em curso.
+  "sua solicitação sobre garantia está em análise pela equipe responsável",
+  "isso está em análise pela nossa equipe",
+  "seu caso ficou em análise com o responsável",
 ];
 
 // NÃO detectar: ação própria do bot / frase institucional / checar SISTEMA (≠ humano).
@@ -41,6 +49,11 @@ const NON_PROMISES: readonly string[] = [
   "vou anotar aqui",
   // pronome sem verbo de resolução depois — só "passar pra eles" não é promessa de AÇÃO.
   "vou passar o recado pra eles mais tarde",
+  // "análise" em outro sentido (exame médico), não alegação de time humano cuidando.
+  "sua análise de sangue está pronta",
+  // "em análise" sem NOMEAR quem — conservador de propósito, mesmo raciocínio das
+  // outras regras (exige TARGET explícito pra reduzir falso positivo).
+  "o produto está em análise técnica interna, sem previsão",
 ];
 
 describe("detectHumanPromise — calibração (spec 15 §10.2)", () => {

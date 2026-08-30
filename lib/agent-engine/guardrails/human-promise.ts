@@ -79,6 +79,17 @@ function buildPatterns(target: string): RegExp[] {
       `\\bquem\\b${gap(15)}\\b(?:resolv|cuid|respond|decid|aprov|liber|atend)\\w*${gap(20)}` +
         `(?:\\b(?:nosso|nossa|nossos|nossas|o|a|os|as)\\b\\s*)?${target}\\b`,
     ),
+    // (2c) ESTADO passivo alegado — não uma promessa de AÇÃO futura (vai resolver),
+    //      e sim uma AFIRMAÇÃO de que já está sendo tratado agora: "está em análise
+    //      pela equipe", "ficou em análise com o responsável". Achado em produção
+    //      (tenant YADEA, 2026-08-30): o agente respondeu a uma reclamação de garantia
+    //      de quase 1 dia dizendo que estava "em análise pela equipe responsável" sem
+    //      NENHUM caso aberto — as 7 regras acima exigem verbo de AÇÃO (vai/vamos/
+    //      encaminho) e nenhuma casa uma alegação de estado já em curso.
+    new RegExp(
+      `\\b(?:est[aá]|ficou|fica|segue)\\b${gap(10)}\\bem\\b\\s+an[aá]lise\\b${gap(20)}` +
+        `\\b(?:com|pela|pelo|do|da|na|no)\\b${gap(10)}\\b${target}\\b`,
+    ),
     // (3) deferir a TERCEIROS via subjuntivo 3ª pessoa do plural: "assim que liberarem eu te aviso".
     //     Não depende de `target` — não repetido no alvo estendido.
     new RegExp(
