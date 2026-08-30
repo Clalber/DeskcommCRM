@@ -7,6 +7,7 @@ import {
   type SilencePointer,
 } from "@/lib/followup/silence-sweep";
 import { isPointerEnabledForAutomaticTrigger, type FollowupGateDb } from "@/lib/followup/agent-followup-gate";
+import { CONVERSATION_TERMINAL_STATUSES } from "@/lib/schemas";
 import type { FlowGraph } from "@/lib/followup/graph-schema";
 
 /**
@@ -63,6 +64,35 @@ beforeEach(async () => {
 
 // ---- pg-backed SilenceSweepDb (test-only; prod usa createSupabaseSilenceSweepDb) ----
 
+/**
+ * O SEGUNDO IMPLEMENTADOR DE `SilenceSweepDb` — e o primeiro é
+ * `createSupabaseSilenceSweepDb`, em `lib/followup/silence-sweep.ts`.
+ *
+ * A LÓGICA testada aqui é a real: este arquivo importa e chama
+ * `runSilenceSweep`. O que é dublê é a BORDA de acesso a dados — a produção
+ * fala com o PostgREST e o `test:db` sobe só o Postgres, então cada método
+ * abaixo traduz a consulta de lá para SQL. Dois implementadores do mesmo
+ * contrato, e eles têm de concordar.
+ *
+ * ⚠️ Eles JÁ divergiram, e o custo apareceu no PR #420 (@automatikpg-ux): a
+ * produção ganhou `.not("status","in", …)` para não cobrar quem um humano já
+ * encerrou, e esta cópia ficou sem o filtro. Os dois casos que aquele PR
+ * escreveu para provar a intenção reprovaram medindo A CÓPIA, não o original.
+ *
+ * ═══ O que a constante compartilhada garante, e o que NÃO garante ═══
+ *
+ * O filtro abaixo é montado a partir de `CONVERSATION_TERMINAL_STATUSES`, a
+ * mesma que a produção usa — e não de `'closed','archived'` escrito à mão. A
+ * diferença não é cosmética: acrescentar um status terminal passa a mudar os
+ * DOIS lados no mesmo commit, sem ninguém precisar lembrar deste arquivo.
+ *
+ * Isso prende o **valor**. Não prende a **forma**: um `.eq()` novo na produção
+ * que este SQL não tenha continua invisível daqui. Esse eixo é dívida
+ * declarada, com item de plano próprio — a pergunta dele é "como fazer os dois
+ * adaptadores passarem pela mesma bateria de contrato", e não cabe num PR de
+ * contribuidor. Escrever o escopo é o que impede esta cerca de anestesiar quem
+ * vier depois achando que ela cobre tudo.
+ */
 function silenceSweepDb(): SilenceSweepDb {
   return {
     async loadActiveSilencePointers(): Promise<SilencePointer[]> {
@@ -96,8 +126,9 @@ function silenceSweepDb(): SilenceSweepDb {
          from conversations conv
          join contacts c on c.id = conv.contact_id
          where conv.organization_id = $1 and conv.last_inbound_at is not null
+           and conv.status <> all($2::text[])
          group by conv.contact_id, c.tags, c.is_blocked`,
-        [orgId],
+        [orgId, CONVERSATION_TERMINAL_STATUSES],
       );
       const cutoff = new Date(cutoffIso).getTime();
       return rows
