@@ -82,6 +82,47 @@ export function acceptsInboundWebhook(provider: string): boolean {
   return provider === CHANNEL_PROVIDER_ZERNIO || provider === CHANNEL_PROVIDER_INSTAGRAM;
 }
 
+/**
+ * Colunas que a rota precisa trazer para o handshake de cadastro do webhook.
+ *
+ * Mora aqui, e não na rota, pelo mesmo motivo que a verificação de assinatura
+ * mora aqui: QUAL coluna guarda o quê é decisão do canal. Uma rota que soubesse
+ * disso teria que perguntar de quem é o payload.
+ */
+export const COLUNAS_DO_HANDSHAKE = "webhook_secret_encrypted, instagram_verify_token_encrypted";
+
+/**
+ * O segredo que prova a origem no handshake de CADASTRO — e ele não é o mesmo
+ * que assina as mensagens.
+ *
+ * ─── O defeito que esta função existe para não repetir ──────────────────────
+ *
+ * A migration 0208 separou dois segredos que dividiam `webhook_secret_encrypted`:
+ * o App Secret (que assina o HMAC de cada mensagem) e o verify token (que a Meta
+ * devolve UMA vez, ao cadastrar a URL). A separação criou a coluna, a tela passou
+ * a gravar nela — e o leitor do handshake continuou lendo a coluna antiga.
+ *
+ * O sintoma foi exato e mudo: a Meta mandava o token certo, nós comparávamos com
+ * o App Secret, e ela recebia "verify token inválido". Do lado de lá a mensagem é
+ * "não foi possível validar a URL de callback ou o token" — que aponta para a
+ * URL, não para o único lugar onde o defeito estava. Medido em produção na
+ * 2.2.0, com o cliente na tela.
+ *
+ * O `fallback` é para canal que NÃO separa os dois. Ele não vale para o canal que
+ * separa: aceitar o App Secret como verify token ali desfaria a 0208 em silêncio,
+ * e o App Secret voltaria a ser digitado num campo que o painel da Meta exibe.
+ */
+export function segredoDoHandshake(session: {
+  provider: string;
+  webhook_secret_encrypted?: unknown;
+  instagram_verify_token_encrypted?: unknown;
+}): unknown | null {
+  if (session.provider === CHANNEL_PROVIDER_INSTAGRAM) {
+    return session.instagram_verify_token_encrypted ?? null;
+  }
+  return session.webhook_secret_encrypted ?? null;
+}
+
 export async function handleInboundWebhook(
   admin: SupabaseClient,
   input: InboundWebhookInput,
