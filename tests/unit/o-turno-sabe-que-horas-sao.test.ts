@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { renderAgora } from "@/lib/tempo/agora";
+import { renderAgora, rotuloLocal } from "@/lib/tempo/agora";
 import { FUSO_PADRAO } from "@/lib/tempo/fusos";
 import { fusoDaOrganizacao } from "@/lib/agent-engine/agent/fuso-da-org";
 
@@ -69,8 +69,13 @@ describe("renderAgora — o bloco que diz ao modelo que horas são", () => {
     // ANTES da chamada de modelo; um throw aqui mata o atendimento inteiro e o
     // sintoma chega ao dono como agente mudo.
     expect(() => renderAgora(INSTANTE, "America/Asunción")).not.toThrow();
-    expect(renderAgora(INSTANTE, "America/Asunción")).toContain(`(${FUSO_PADRAO})`);
-    expect(renderAgora(INSTANTE, "")).toContain(`(${FUSO_PADRAO})`);
+    // ⚠️ NÃO BASTA CONFERIR O RÓTULO ENTRE PARÊNTESES. Este caso já foi assim, e
+    // uma sabotagem o pegou passando: `renderAgora` que colasse
+    // "(America/Sao_Paulo)" no texto e formatasse a hora em UTC ficava verde.
+    // O que prova a degradação é a SAÍDA ser idêntica à do fuso padrão.
+    const comPadrao = renderAgora(INSTANTE, FUSO_PADRAO);
+    expect(renderAgora(INSTANTE, "America/Asunción")).toBe(comPadrao);
+    expect(renderAgora(INSTANTE, "")).toBe(comPadrao);
   });
 
   it("não cita ferramenta interna — o bloco entra no prompt de todo turno", () => {
@@ -126,5 +131,31 @@ describe("fusoDaOrganizacao — de onde sai o fuso, e o que acontece quando ele 
 
     expect(await fusoDaOrganizacao(bancoQuebrado, "org-1", log)).toBe(FUSO_PADRAO);
     expect(log.warn).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("rotuloLocal — o horário que o agente OFERECE à pessoa", () => {
+  it("põe o dia da semana e a hora da parede daquele fuso", () => {
+    // 17:00Z = 14:00 em São Paulo, sexta.
+    expect(rotuloLocal(new Date("2026-09-04T17:00:00Z"), "America/Sao_Paulo")).toBe(
+      "sexta-feira 04/09 às 14:00",
+    );
+  });
+
+  it("o FUSO MUDA O RÓTULO — é o controle que reprova o ISO cru", () => {
+    const instante = new Date("2026-09-04T03:30:00Z");
+    expect(rotuloLocal(instante, "America/Sao_Paulo")).toBe("sexta-feira 04/09 às 00:30");
+    expect(rotuloLocal(instante, "America/Manaus")).toBe("quinta-feira 03/09 às 23:30");
+  });
+
+  it("não leva ano nem instante técnico — isso é do bloco do turno, não de cada horário", () => {
+    // Ele se repete uma vez por horário oferecido; o ISO já vai no campo ao lado.
+    const r = rotuloLocal(new Date("2026-09-04T17:00:00Z"), "America/Sao_Paulo");
+    expect(r).not.toContain("2026");
+    expect(r).not.toContain("instante_absoluto");
+  });
+
+  it("fuso inválido degrada em vez de derrubar a lista de horários", () => {
+    expect(() => rotuloLocal(new Date("2026-09-04T17:00:00Z"), "America/Asunción")).not.toThrow();
   });
 });

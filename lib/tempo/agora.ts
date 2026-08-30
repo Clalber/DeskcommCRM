@@ -90,3 +90,29 @@ export function renderAgora(agora: Date, fuso: string): string {
       "com a pessoa você fala como gente (\"quinta às 14h\").",
   ].join("\n");
 }
+
+/**
+ * "quinta-feira 04/09 às 14:00" — um instante na parede daquele fuso.
+ *
+ * Existe para os HORÁRIOS LIVRES. `crm_find_free_slots` devolvia só o ISO em
+ * UTC, e pedir ao modelo que converta cada um para o fuso da clínica antes de
+ * dizer "quinta às 14h" é pedir exatamente o cálculo que ele erra — o mesmo que
+ * `renderAgora` existe para eliminar no turno.
+ *
+ * ⚠️ NÃO É `renderAgora` com outro formato, e a diferença não é cosmética: aqui
+ * não entra o ano nem o `instante_absoluto`, porque isto se repete uma vez por
+ * horário oferecido e o ISO já vai no campo ao lado. As duas compartilham as
+ * constantes, não o corpo.
+ *
+ * ⚠️ O dia da semana sai da data JÁ LIDA, e não de uma segunda consulta ao
+ * `Intl`: `partesNoFuso` reusa um formatador em cache por fuso, enquanto
+ * `diaDaSemanaLocal` constrói um formatador novo a cada chamada — o que numa
+ * lista de horários vira um por linha. Uma data civil não tem horário de verão,
+ * então derivar o dia dela é exato.
+ */
+export function rotuloLocal(instante: Date, fuso: string): string {
+  const fusoEmVigor = fusoValido(fuso) ? fuso : FUSO_PADRAO;
+  const p = partesNoFuso(instante, fusoEmVigor);
+  const diaDaSemana = DIAS_DA_SEMANA[new Date(Date.UTC(p.ano, p.mes - 1, p.dia)).getUTCDay()] ?? "";
+  return `${diaDaSemana} ${doisDigitos(p.dia)}/${doisDigitos(p.mes)} às ${doisDigitos(p.hora)}:${doisDigitos(p.minuto)}`;
+}

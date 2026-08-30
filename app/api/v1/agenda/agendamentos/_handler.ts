@@ -271,6 +271,39 @@ export async function alterarAgendamentoHandler(
   }
 
   if (input.status && input.status !== atual.status) {
+    // ⚠️ DESFECHO É SOBRE O PASSADO. `completed` e `no_show` respondem "o que
+    // aconteceu?", e num compromisso que ainda não começou não aconteceu nada.
+    //
+    // Isto não era guardado, e o buraco ficou barato enquanto só gente marcava
+    // pela tela — os botões Realizado/Faltou vivem no histórico. Deixa de ser
+    // barato agora que `crm_set_appointment_outcome` põe a mesma escrita na mão
+    // de um modelo, que decide por texto e não por onde clicou.
+    //
+    // O dano do `no_show` prematuro é concreto e não é só um registro errado:
+    // `no_show` está em `LIBERAM_O_HORARIO` (`lib/agenda/ocupados.ts`), então
+    // ele DEVOLVE ao pool um horário que o cliente ainda espera. Outro cliente
+    // pega, e os dois aparecem na mesma hora.
+    //
+    // O `completed` prematuro tem outro dano: grava `appointment_completed` na
+    // timeline e some com os botões da tela, tirando de quem atendeu a chance de
+    // registrar o que de fato aconteceu.
+    //
+    // A guarda é AQUI, no handler, e não na ferramenta: a regra não é sobre quem
+    // chama. Recusa de negócio com o código do repo — a tool a traduz em resposta
+    // ao modelo, sem derrubar o turno.
+    if (
+      (input.status === "completed" || input.status === "no_show") &&
+      new Date(atual.starts_at as string).getTime() > Date.now()
+    ) {
+      throw new ApiError(
+        422,
+        "agenda_ainda_nao_aconteceu",
+        undefined,
+        ctx.requestId,
+        "Este compromisso ainda não começou — não dá para registrar se a pessoa veio ou faltou. " +
+          "Se ela avisou que não vem, desmarque em vez de registrar falta.",
+      );
+    }
     mudanca.status = input.status;
     // Remarcar vence: se vieram os dois, a notícia da timeline é a remarcação.
     transicao = transicao ?? input.status;
