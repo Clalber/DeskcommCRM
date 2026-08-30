@@ -130,6 +130,8 @@ import {
   type JailbreakLevel,
 } from '../guardrails/jailbreak/classifier';
 import { camadaLigada, lerCamadasDaOrg } from '../guardrails/camadas-da-org';
+import { fusoDaOrganizacao } from './fuso-da-org';
+import { renderAgora } from '@/lib/tempo/agora';
 
 /**
  * Superfície ESTÁTICA das tools do agente (description + inputSchema) — parte do
@@ -1116,6 +1118,11 @@ async function executarTurnoDoAgente(
   // linhas de distância um do outro, e duas queries para a mesma pergunta viram,
   // com o tempo, duas respostas.
   const camadas = await lerCamadasDaOrg(pool, tenantId);
+  // O fuso da ORGANIZAÇÃO — o que o bloco `## Agora` usa lá embaixo, na montagem
+  // da abertura. Lido aqui pela mesma razão da linha acima: uma query por turno,
+  // longe do ponto de uso, para não virar duas respostas para a mesma pergunta.
+  // Nunca lança e nunca vem vazio (ver `fuso-da-org.ts`).
+  const fusoDaOrg = await fusoDaOrganizacao(pool, tenantId, runLog);
 
   // F4-06 (acceptance 2): lead em handoff humano → NO-OP no INÍCIO do turno, antes de
   // qualquer chamada de modelo/CRM. O bot silenciou (bot_silenced_until='infinity', cache
@@ -2583,9 +2590,29 @@ async function executarTurnoDoAgente(
         `Se a mensagem dele responde a isso, chame provide_case_update com este case_id e a informação recebida — ` +
         `NÃO diga que já repassou/avisou o responsável sem chamar a tool.`
       : '';
-  const openingSuffixes = [matchedSkillsBlock, stageHintBlock, splitHint, caseAwaitingLeadBlock].filter(
-    (b) => b !== '',
-  );
+  // ── O RELÓGIO DO TURNO ────────────────────────────────────────────────────
+  //
+  // Entra AQUI, e o lugar é a metade do conserto.
+  //
+  // No `system` (o prefixo estável org-wide, F2-17) ele invalidaria o cache de
+  // prompt de TODOS os leads a cada turno, porque muda a cada segundo — é o que
+  // `stable-prefix.ts` proíbe em letra. No sufixo por-lead ele é volátil entre
+  // iguais, e custa os ~50 tokens dele.
+  //
+  // PRIMEIRO da lista de propósito: a âncora temporal precede o material que o
+  // modelo vai usar para decidir data — corpo de skill, hint do classificador,
+  // caso pendente. E `executarTurnoDoAgente` é o ponto por onde passam os TRÊS
+  // turnos conversacionais (inbound, follow-up e resposta a caso), então um
+  // ponto só cobre os três — e alcança de carona a chamada de fechamento, que
+  // reusa `openingTextOnly` e é onde nasce o `prazo` ISO da declaração.
+  const agoraBlock = renderAgora(clock(), fusoDaOrg);
+  const openingSuffixes = [
+    agoraBlock,
+    matchedSkillsBlock,
+    stageHintBlock,
+    splitHint,
+    caseAwaitingLeadBlock,
+  ].filter((b) => b !== '');
   const openingText =
     openingSuffixes.length === 0 ? openingBase : `${openingBase}\n\n${openingSuffixes.join('\n\n')}`;
   // Onda 3 (aprimoramento): mídia inbound recente vira part nativa (image/file) SÓ para
