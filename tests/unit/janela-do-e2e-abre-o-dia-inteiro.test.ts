@@ -13,7 +13,22 @@
  * que alcançasse a spec fora disso falhava. Um teste dependente de horário não
  * falha quando você o escreve; falha semanas depois, na fila de outra pessoa.
  *
- * Este arquivo congela as DUAS pontas de que aquele conserto depende, para que
+ * ═══ Por que este arquivo existe AO LADO da guarda irmã ═════════════════════
+ *
+ * `spec-de-envio-declara-a-janela.test.ts` (PR #450) guarda a OUTRA metade: ela
+ * reprova a spec de envio que não DECLARA a janela. As duas não se cobrem, e a
+ * diferença importa — medida, não suposta:
+ *
+ *     grep -c 'janelaDeEnvioAberta|PACING_DEFAULTS|windowEndHour'
+ *       em spec-de-envio-declara-a-janela.test.ts  ->  0
+ *
+ * Ou seja: a guarda irmã confere que o seed está lá, não que ele ABRE alguma
+ * coisa. Se alguém mudar `insideWindow` para ignorar `windowEndHour`, o seed
+ * continua declarado, aquela guarda continua verde, e a janela deixa de abrir —
+ * a spec volta a depender do relógio sem ninguém notar. Foi exatamente a
+ * segunda sabotagem deste arquivo, e ela vermelheceu aqui.
+ *
+ * Este congela as DUAS pontas de que o conserto depende, para que
  * ele não volte a apodrecer em silêncio:
  *   1. o payload que a spec envia continua sendo ACEITO pelo schema da rota;
  *   2. a janela 0–24 realmente fica aberta nas 24 horas — o EFEITO, não a
