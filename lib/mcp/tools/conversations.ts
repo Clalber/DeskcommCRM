@@ -66,6 +66,11 @@ export const crmListConversations: McpToolDefinition<typeof listInputShape> = {
       {
         // O handler espera LISTA desde que o filtro passou a aceitar vários.
         status: input.status ? [input.status] : undefined,
+        // `undefined` EXPLÍCITO: `.optional()` no Zod produz uma chave
+        // OBRIGATÓRIA de tipo `X | undefined`, não uma chave opcional — omiti-la
+        // é erro de tipo. A tool do MCP não expõe filtro por comando (quem
+        // pergunta é a tela), então ela não filtra por ele.
+        comando: undefined,
         limit: input.limit,
         cursor: input.cursor,
       },
