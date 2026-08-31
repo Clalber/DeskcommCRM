@@ -194,9 +194,24 @@ test.describe("webhooks & automações — fluxo completo", () => {
       const directBody = (await directRes.json()) as { data: { lead_id: string } };
       expect(directBody.data.lead_id).toBeTruthy();
 
-      // --- Step 6: drena o event_log (até 3 ticks — trigger legado duplica evento) ---
+      // --- Step 6: drena o event_log ATÉ ESVAZIAR, não um número fixo de ticks ---
+      //
+      // Contar ticks era um PROXY para "drenou o suficiente", e o proxy dependia
+      // de quantas specs rodaram antes: a fila é global, FIFO por `created_at`, e
+      // esta spec é a 21ª de 42 na parte 2 do CI. Com a fila acima da capacidade
+      // do laço, o evento DESTA automação — o mais novo — nunca era alcançado, e
+      // o sintoma era "run da automação não apareceu com status Sucesso".
+      //
+      // MEDIDO (2026-08-30, local, mesmo build): o tick devolve
+      // `{"scanned":50,"done":50,...}`; com 200 na fila a spec passava, com 300
+      // falhava com a mensagem EXATA do CI, na mesma linha. O conserto não é
+      // aumentar o número de ticks — isso só adia, e a dívida cresce sozinha a
+      // cada spec nova. É trocar o proxy pela condição: drena enquanto houver
+      // trabalho.
       const internalSecret = loadInternalSecret();
-      for (let i = 0; i < 3; i++) {
+      const TETO_DE_TICKS = 40; // trava de segurança: 40 × 50 = 2000 eventos
+      let ticks = 0;
+      for (; ticks < TETO_DE_TICKS; ticks++) {
         // Batch de até 50 eventos pendentes, cada um com handlers que fazem
         // vários round-trips de DB (e potencialmente WAHA/IA) — bem mais lento
         // que uma ação de UI; timeout maior que o actionTimeout padrão do teste.
@@ -205,8 +220,17 @@ test.describe("webhooks & automações — fluxo completo", () => {
           timeout: 60_000,
         });
         expect(drainRes.ok()).toBeTruthy();
+        const resumo = (await drainRes.json()) as { data?: { scanned?: number } };
         await page.waitForTimeout(700);
+        // `scanned === 0` é a única condição que significa "não há mais nada
+        // pendente com handler". Sai DEPOIS do tick vazio: o trigger legado
+        // duplica evento, e parar no primeiro lote parcial deixaria o par para trás.
+        if ((resumo.data?.scanned ?? 0) === 0) break;
       }
+      expect(
+        ticks,
+        "a fila não esvaziou dentro do teto — há acúmulo grande demais, e não é ruído desta spec",
+      ).toBeLessThan(TETO_DE_TICKS);
 
       // --- Step 7: aba Atividade mostra a run com sucesso ---
       // A regra não tem condição — dispara tanto pro "Lead de Teste" (passo 3)
