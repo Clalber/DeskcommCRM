@@ -403,7 +403,21 @@ export async function startWorker(
         if (terminal) {
           await cancelJob(pool, job.id, workerId, errMsg(err));
         } else {
-          await failJob(pool, job.id, workerId, err);
+          // ⚠️ `fatal` NÃO é o mesmo que `terminal`. Terminal (veto de negócio)
+          // cancela em silêncio, porque é o sistema funcionando como
+          // configurado. Fatal é falha de verdade que não se cura sozinha —
+          // canal excluído, contato sem endereço: morre já, mas pelo caminho do
+          // `dead`, que ABRE o alerta na Central. Trocar cinco tentativas
+          // inúteis por silêncio seria piorar.
+          const fatal = (err as { fatal?: boolean } | null)?.fatal === true;
+          if (fatal) {
+            log.warn('job morto na primeira tentativa: falha definitiva', {
+              job_id: job.id,
+              kind: job.kind,
+              error: errMsg(err),
+            });
+          }
+          await failJob(pool, job.id, workerId, err, { fatal });
         }
       } catch (failErr) {
         log.error('disposição do job indisponível — lease expira via reaper', {

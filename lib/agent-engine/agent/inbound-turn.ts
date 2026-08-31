@@ -34,6 +34,7 @@ import { digitacaoDoTurno, type DigitacaoDoTurno, type DigitandoKnobs } from './
 import type { ChannelAdapter, ChannelSendResult } from '../channel-adapter';
 
 import { withFields, type Logger } from '../obs/logger';
+import { todasFalhasSaoDefinitivas } from '@/lib/channels/frases-de-falha';
 import { getLeadContext, type LeadContext, type LeadContextResult } from '../edge/crm/get-lead-context';
 import { citationsFromHits, searchKnowledge } from './search-knowledge';
 import type { CrmEdgeConfig } from '../edge/crm/mcp-client';
@@ -2705,10 +2706,29 @@ async function executarTurnoDoAgente(
   if (runError !== null) {
     throw runError; // job falha → retry da fila; o ledger segura duplicata de envio
   }
-  if (outcomes.some((o) => o.kind === 'failed')) {
+  const falhas = outcomes.filter((o) => o.kind === 'failed');
+  if (falhas.length > 0) {
     // ponytail: retry re-roda o run inteiro (LLM incluso); seq N re-encontra a
     // linha do ledger — 'accepted' pula, 'failed' rotaciona a key (F2-06).
-    throw new Error('envio marcado como failed pelo CRM — run re-tentado pela fila');
+    //
+    // ⚠️ Mas nem toda falha merece esse preço. "Canal excluído" e "contato sem
+    // endereço" não se curam com o tempo: rodar o modelo mais quatro vezes
+    // chega ao mesmo lugar, gastando quatro chamadas de IA e mostrando ao
+    // operador a mesma mensagem falhando cinco vezes.
+    //
+    // A régua é conservadora de propósito: basta UMA falha transitória no lote
+    // para o run inteiro voltar a ser retentável. Errar para o lado "definitivo"
+    // PERDE mensagem que teria saído; errar para o outro só gasta tokens.
+    const definitiva = todasFalhasSaoDefinitivas(
+      falhas.map((o) => (o.kind === 'failed' ? (o.errorCode ?? null) : null)),
+    );
+    const erro = new Error(
+      definitiva
+        ? 'envio recusado em definitivo pelo CRM — retentar não muda o desfecho'
+        : 'envio marcado como failed pelo CRM — run re-tentado pela fila',
+    );
+    if (definitiva) (erro as Error & { fatal?: boolean }).fatal = true;
+    throw erro;
   }
 
   // F3-10: poda os tool results antigos da fita do run ANTES de reenviá-los no fechamento

@@ -199,7 +199,14 @@ Medido em 2026-08-14 @ `741c4ec8`, com o comando ao lado de cada número:
   Esta linha dizia "existe em 2 pontos; login e signup estão sem" — era o estado anterior à
   issue #64, e o `docs/threat-model.md` ainda carrega a versão velha, com nota de reauditoria.
 - Fallback do rate limit é **em memória** — sem Upstash configurado o limite é por processo.
-- `Idempotency-Key` implementado em **1** rota, apesar de o contrato prometer nos POSTs de criação.
+- `Idempotency-Key` ainda não está em todo POST de criação, como o contrato promete. Para saber
+  onde está, em vez de acreditar num número que envelhece:
+  `grep -rln 'Idempotency-Key\|idempotencia' app/api/`. Guardado em **Postgres**
+  (`idempotency_keys`), nunca em Upstash — Redis é opcional no self-host, e uma idempotência que
+  dependesse dele não existiria em metade das instalações. Rota com efeito EXTERNO usa
+  `lib/api/idempotencia.ts`, que RESERVA antes de executar; consultar-executar-gravar deixa a
+  segunda requisição passar enquanto a primeira ainda está em voo — medido em produção, com
+  mensagem chegando duas vezes ao cliente.
 - **`.env.example` está completo** — medido em 2026-08-14: das 45 chaves de `lib/env.ts`, a
   única ausente é `NODE_ENV`, que não é configuração do operador. Esta linha dizia que faltavam
   6, "incluindo 3 secrets"; os três (`IMPERSONATE_COOKIE_SECRET`, `INTERNAL_CRON_SECRET`,

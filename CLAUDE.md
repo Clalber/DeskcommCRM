@@ -46,7 +46,10 @@ DeskcommCRM é um sistema operacional de vendas open source com agentes de IA na
 
 ### Idempotência & event sourcing leve
 - Mensagens WhatsApp e eventos externos: `unique (organization_id, external_id)` + captura `code === '23505'` no INSERT
-- POSTs de criação na API aceitam header `Idempotency-Key: <uuid>` (TTL 24h via Upstash)
+- POSTs de criação na API aceitam header `Idempotency-Key: <uuid>`, guardado em **Postgres** (tabela `idempotency_keys`, unique `(organization_id, key, endpoint)`, `expires_at` default 24h). **NÃO é Upstash** — esta linha dizia "via Upstash" até 2026-08-31 e isso nunca foi verdade; a distinção importa porque Redis é opcional no self-host e uma idempotência que dependesse dele seria placebo em metade das instalações
+  - O cliente HTTP já cumpre a parte dele: `lib/api/client.ts` gera a chave UMA vez, **fora** do laço de retentativa, e reenvia a MESMA em todas as tentativas. Quem falha é sempre a ROTA que não lê o header
+  - **Rota que produz efeito EXTERNO (envio, cobrança) usa `lib/api/idempotencia.ts` e reserva ANTES de executar.** O padrão consulta-executa-grava não serve: o efeito demora, e a segunda requisição passa enquanto a primeira ainda está em voo. Medido em produção — mensagem chegando duas vezes ao cliente, as duas com id da plataforma
+  - Para ver quais rotas honram a chave, em vez de acreditar nesta linha: `grep -rln "Idempotency-Key\|idempotencia" app/api/`
 - **Trigger Postgres NUNCA faz HTTP.** Trigger emite linha em `event_log`; worker (cron / Realtime listener) consome e dispara side effect
 
 ### API REST `/api/v1/`

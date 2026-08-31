@@ -254,15 +254,36 @@ test.describe("a automação conta o que aconteceu de verdade", () => {
         cartao.getByText(/serviço de WhatsApp|não está conectado/i).first(),
       ).toBeVisible();
     } finally {
+      // ═══ A limpeza usa `page.request`, e a diferença foi MEDIDA ═══
+      //
+      // O fixture `request` do Playwright é um APIRequestContext ISOLADO
+      // (`playwright.request.newContext()` — sem os cookies do login feito via
+      // `page`). Estes DELETEs exigem sessão de manager (`requireRole`), então
+      // respondiam 401 — e um 401 RESOLVE a promise: o `.catch` só pega falha
+      // de rede. Resultado: a regra de envio ficava ATIVA no banco
+      // compartilhado do CI depois desta spec.
+      //
+      // O custo caía em OUTRA spec: o motor adia o EVENTO INTEIRO quando
+      // qualquer regra aplicável está com a janela de envio fechada
+      // (lib/automation/engine.ts, pré-checagem all-or-nothing antes de
+      // executar). Fora da janela (22h–7h America/Sao_Paulo = 01h–10h UTC), a
+      // regra órfã desta spec represava o lead.created de `webhooks.spec.ts`,
+      // a ação add_tag de lá nunca rodava, e "Sucesso" nunca aparecia — toda
+      // madrugada, em qualquer commit. `page.request` compartilha o storage do
+      // browser context e leva o cookie da sessão logada acima.
       if (ruleId) {
-        await request
+        const r = await page.request
           .delete(`${APP_URL}/api/v1/automation-rules/${ruleId}`)
-          .catch(() => undefined);
+          .catch(() => null);
+        if (r && !r.ok())
+          console.error(`[cleanup] DELETE automation-rule ${ruleId} → ${r.status()}`);
       }
       if (sourceId) {
-        await request
+        const r = await page.request
           .delete(`${APP_URL}/api/v1/webhook-sources/${sourceId}`)
-          .catch(() => undefined);
+          .catch(() => null);
+        if (r && !r.ok())
+          console.error(`[cleanup] DELETE webhook-source ${sourceId} → ${r.status()}`);
       }
     }
   });

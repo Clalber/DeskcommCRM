@@ -59,8 +59,15 @@ export type SendOutcome =
   | { kind: 'queued'; idempotencyKey: string; crmMessageId: string | null }
   /** 403 is_blocked — veto PERMANENTE de negócio (opt-out, regra dura nº 2). */
   | { kind: 'blocked'; idempotencyKey: string }
-  /** handler registrou a mensagem como 'failed' (sem telefone / erro WAHA) — retry rotaciona a key. */
-  | { kind: 'failed'; idempotencyKey: string; crmMessageId: string | null };
+  /**
+   * O handler registrou a mensagem como 'failed'.
+   *
+   * `errorCode` viaja junto porque a diferença entre "serviço fora do ar" e
+   * "contato sem endereço" decide se vale retentar. Sem ele, o motor tratava as
+   * duas igual e rodava o modelo cinco vezes por um erro que só uma pessoa
+   * resolve.
+   */
+  | { kind: 'failed'; idempotencyKey: string; crmMessageId: string | null; errorCode: string | null };
 
 export interface SendMessageInput {
   tenantId: string;
@@ -102,15 +109,17 @@ export async function sendTurnMessage(
   // Replay de 'requested': o crash pode ter sido DEPOIS do handler gravar a
   // mensagem — procurar pela key evita duplicar o envio.
   if (ledger.replay) {
-    const { rows } = await db.query<{ id: string; status: string }>(
-      `select id, status from messages
+    const { rows } = await db.query<{ id: string; status: string; error_code: string | null }>(
+      `select id, status, error_code from messages
        where organization_id = $1 and metadata->>'idempotency_key' = $2
        limit 1`,
       [input.tenantId, idempotencyKey],
     );
     const existing = rows[0];
     if (existing) {
-      return reconcile(db, idempotencyKey, existing.id, existing.status);
+      // O código vem junto no replay: sem ele, uma falha definitiva reconhecida
+      // depois de um crash voltaria a ser tratada como transitória.
+      return reconcile(db, idempotencyKey, existing.id, existing.status, existing.error_code);
     }
   }
 
@@ -153,7 +162,7 @@ export async function sendTurnMessage(
     throw new CrmTransportError(`handler de envio indisponível: ${msg.slice(0, 120)}`);
   }
 
-  return reconcile(db, idempotencyKey, message.id, message.status);
+  return reconcile(db, idempotencyKey, message.id, message.status, message.error_code ?? null);
 }
 
 /** Mapeia o status da linha `messages` para o outcome + atualiza o ledger. */
@@ -162,6 +171,7 @@ async function reconcile(
   idempotencyKey: string,
   messageId: string,
   status: string,
+  errorCode: string | null,
 ): Promise<SendOutcome> {
   switch (status) {
     case 'sent':
@@ -171,8 +181,14 @@ async function reconcile(
       await updateLedger(db, idempotencyKey, 'queued', messageId, null);
       return { kind: 'queued', idempotencyKey, crmMessageId: messageId };
     case 'failed':
-      await updateLedger(db, idempotencyKey, 'failed', messageId, 'handler marcou a mensagem como failed');
-      return { kind: 'failed', idempotencyKey, crmMessageId: messageId };
+      await updateLedger(
+        db,
+        idempotencyKey,
+        'failed',
+        messageId,
+        `handler marcou a mensagem como failed${errorCode ? ` (${errorCode})` : ''}`,
+      );
+      return { kind: 'failed', idempotencyKey, crmMessageId: messageId, errorCode };
     default:
       // status desconhecido (ex.: delivered em replay tardio = já saiu) — trate
       // como aceito: a mensagem existe sob custódia do CRM.

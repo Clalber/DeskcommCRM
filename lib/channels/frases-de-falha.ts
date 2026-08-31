@@ -17,6 +17,42 @@
  * frase tem que dizer o que ele faz a respeito. "waha_error" não diz.
  */
 
+/**
+ * Códigos de falha que NÃO se curam sozinhos.
+ *
+ * ─── Por que esta lista existe ──────────────────────────────────────────────
+ *
+ * O motor do agente tratava TODA falha de envio como transitória: o turno
+ * lançava, o job voltava para a fila **sem espera**, e o modelo rodava de novo,
+ * até cinco vezes. Para "canal excluído" ou "contato sem endereço" — que só uma
+ * pessoa resolve — isso queima cinco chamadas de IA para chegar ao mesmo lugar,
+ * com o operador vendo a mesma mensagem falhar cinco vezes.
+ *
+ * ⚠️ A lista é CURTA de propósito, e crescer nela é decisão perigosa. Errar para
+ * o lado "definitivo" **perde mensagem que teria saído**; errar para o lado
+ * "transitório" só gasta tokens. Só entra aqui o que a retentativa comprovadamente
+ * não conserta: nenhum erro de rede, de serviço fora do ar ou de cota.
+ *
+ * Mora neste arquivo porque é aqui que o vocabulário de `error_code` já vive —
+ * o cabeçalho acima explica por que ele não pode morar fora de `lib/channels/`.
+ */
+export const CODIGOS_DE_FALHA_DEFINITIVA: readonly string[] = [
+  // O canal foi EXCLUÍDO pelo operador. A sessão já foi deslogada e a credencial
+  // revogada; por este canal não vai sair nunca. O handler já documenta esta
+  // intenção por escrito — ela é que nunca era cumprida do outro lado.
+  "channel_archived",
+  // Contato sem endereço NESTE canal. A cura é humana (cadastrar telefone,
+  // ligar a identidade), não passa com o tempo.
+  "missing_phone_number",
+];
+
+/** O conjunto inteiro de falhas é definitivo? Lista vazia NÃO é definitiva. */
+export function todasFalhasSaoDefinitivas(codigos: ReadonlyArray<string | null>): boolean {
+  if (codigos.length === 0) return false;
+  return codigos.every((c) => c !== null && CODIGOS_DE_FALHA_DEFINITIVA.includes(c));
+}
+
+
 const FRASES: Record<string, string> = {
   // Sessão do canal fora de WORKING — o número está desconectado.
   channel_session_not_working:
