@@ -211,6 +211,7 @@ test.describe("webhooks & automações — fluxo completo", () => {
       const internalSecret = loadInternalSecret();
       const TETO_DE_TICKS = 40; // trava de segurança: 40 × 50 = 2000 eventos
       let ticks = 0;
+      let ultimoResumo: { scanned?: number; retried?: number; failed?: number } = {};
       for (; ticks < TETO_DE_TICKS; ticks++) {
         // Batch de até 50 eventos pendentes, cada um com handlers que fazem
         // vários round-trips de DB (e potencialmente WAHA/IA) — bem mais lento
@@ -220,16 +221,28 @@ test.describe("webhooks & automações — fluxo completo", () => {
           timeout: 60_000,
         });
         expect(drainRes.ok()).toBeTruthy();
-        const resumo = (await drainRes.json()) as { data?: { scanned?: number } };
+        const resumo = (await drainRes.json()) as {
+          data?: { scanned?: number; retried?: number; failed?: number };
+        };
+        ultimoResumo = resumo.data ?? {};
         await page.waitForTimeout(700);
-        // `scanned === 0` é a única condição que significa "não há mais nada
-        // pendente com handler". Sai DEPOIS do tick vazio: o trigger legado
-        // duplica evento, e parar no primeiro lote parcial deixaria o par para trás.
+        // A condição de parada é "não há mais NADA pendente" (`scanned === 0`),
+        // NUNCA "o meu evento apareceu": parar no próprio evento esconderia
+        // acúmulo deixado por outras specs, que é o defeito que este conserto
+        // existe para expor. Sai DEPOIS do tick vazio, não no primeiro lote
+        // parcial: o trigger legado duplica evento, e parar antes deixaria o par
+        // para trás — a razão original de o laço ser 3 e não 1.
         if ((resumo.data?.scanned ?? 0) === 0) break;
       }
+      // Estourar o teto FALHA, e falha dizendo o que sobrou. Seguir em silêncio
+      // devolveria o defeito disfarçado de timeout: "não drenou o suficiente" é
+      // exatamente o que estamos consertando, e ele não pode voltar sem nome.
       expect(
         ticks,
-        "a fila não esvaziou dentro do teto — há acúmulo grande demais, e não é ruído desta spec",
+        `a fila não esvaziou em ${TETO_DE_TICKS} ticks (${TETO_DE_TICKS * 50} eventos). ` +
+          `Último tick: scanned=${ultimoResumo.scanned ?? "?"}, ` +
+          `retried=${ultimoResumo.retried ?? "?"}, failed=${ultimoResumo.failed ?? "?"}. ` +
+          "Acúmulo grande demais para ser ruído desta spec — ou há evento que falha e reenfileira em laço.",
       ).toBeLessThan(TETO_DE_TICKS);
 
       // --- Step 7: aba Atividade mostra a run com sucesso ---
