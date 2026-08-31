@@ -245,6 +245,33 @@ test.describe("webhooks & automações — fluxo completo", () => {
           "Acúmulo grande demais para ser ruído desta spec — ou há evento que falha e reenfileira em laço.",
       ).toBeLessThan(TETO_DE_TICKS);
 
+      // O CAMINHO VERDE TAMBÉM CARREGA O DADO.
+      //
+      // Sem esta linha, `ticks` só é revelado quando a asserção acima FALHA — o
+      // run que passa joga fora exatamente a medida que responde à pergunta em
+      // aberto: a fila estava mesmo acumulando, ou 3 ticks bastavam e o vermelho
+      // da `main` vinha da janela de envio (#450)?
+      //
+      // Enquanto o dado morre no verde, a única forma de responder é um
+      // experimento caro: rodar esta branch sem o #450, num horário dentro da
+      // faixa 01:00-10:00 UTC. Registrando, todo run futuro responde de graça —
+      // se vier sempre 1 ou 2, a tese do acúmulo cai por medição própria; se
+      // vier alto, ela se confirma. Os dois desfechos informam.
+      //
+      // `console.info` e não `console.log`: é o método que o eslint deste repo
+      // permite (`no-console` com `allow: ["warn","error","info"]`) e o padrão
+      // que 7 specs já usam — as linhas `[QA] …` que aparecem no log do CI saem
+      // daí (`qa-agente-usa-as-maos.spec.ts:517`). Não é precedente novo.
+      //
+      // Instrumento, não catraca: baixar o TETO compraria a mesma resposta
+      // pagando com risco de flake, e flake foi o defeito que este arquivo
+      // acabou de custar um dia para consertar.
+      console.info(
+        `[QA] fila do event_log drenou em ${ticks} tick(s) de ${TETO_DE_TICKS} ` +
+          `(último: scanned=${ultimoResumo.scanned ?? "?"}, ` +
+          `retried=${ultimoResumo.retried ?? "?"}, failed=${ultimoResumo.failed ?? "?"})`,
+      );
+
       // --- Step 7: aba Atividade mostra a run com sucesso ---
       // A regra não tem condição — dispara tanto pro "Lead de Teste" (passo 3)
       // quanto pro lead real (passo 5), logo pode haver 2 cards com esse nome;
