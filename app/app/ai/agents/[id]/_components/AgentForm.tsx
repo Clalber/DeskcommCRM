@@ -176,7 +176,7 @@ const DEFAULT_TRIGGER: TriggerValue = {
   concurrency: "one_per_conversation",
 };
 
-function buildState(args: {
+export function buildState(args: {
   agent?: AgentRow;
   version: AgentVersionRow | null;
 }): FormState {
@@ -223,7 +223,31 @@ function buildState(args: {
   };
 }
 
-function toVersionPayload(s: FormState) {
+/**
+ * O CADASTRO do agente — o que vale para todas as versões.
+ *
+ * Nome, descrição e prioridade moram em `ai_agents`; a tabela de versões não
+ * tem coluna para nenhum dos três. Eles precisam de um payload próprio porque
+ * são um contrato próprio — e foi por não terem um que ficaram meses sem sair
+ * da tela: `toVersionPayload` era o único construtor do envio em modo edição, e
+ * o que não cabia nele simplesmente não era enviado.
+ *
+ * `tests/unit/agente-salva-o-nome-editado.test.tsx` cobra que TODO campo de
+ * `FormState` esteja num dos dois payloads. É a única guarda que pega o próximo
+ * campo que alguém acrescentar à tela e esquecer de mandar.
+ */
+export function toIdentityPayload(s: FormState) {
+  return {
+    name: s.name.trim(),
+    // "" na tela significa "sem descrição", e o que a coluna guarda para isso é
+    // `null`. Mandar "" gravaria uma string vazia — invisível na tela, e um
+    // valor para o banco.
+    description: s.description.trim() === "" ? null : s.description.trim(),
+    priority: s.priority,
+  };
+}
+
+export function toVersionPayload(s: FormState) {
   return {
     system_prompt: s.system_prompt,
     provider: s.provider,
@@ -378,7 +402,11 @@ export function AgentForm(props: Props) {
     setSaving(true);
     try {
       if (isEdit) {
-        const res = await saveAgentDraftAction(props.agent.id, toVersionPayload(form));
+        const res = await saveAgentDraftAction(
+          props.agent.id,
+          toVersionPayload(form),
+          toIdentityPayload(form),
+        );
         if (!res.ok) {
           toast.error(res.message ?? `${t("Erro")}: ${res.error}`);
           return;

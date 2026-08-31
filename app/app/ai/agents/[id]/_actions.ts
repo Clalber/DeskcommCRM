@@ -26,6 +26,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { mensagemDoEscopo, validarEscopoDaVersao } from "@/lib/ai/agents/escopo";
 import {
   agentMcpCreateSchema,
+  agentMcpPatchSchema,
   versionCreateSchema,
   versionPatchSchema,
   PUBLISH_ERROR_CODES,
@@ -60,6 +61,7 @@ async function ensureAdmin() {
 export async function saveAgentDraftAction(
   agentId: string,
   payload: unknown,
+  identidade: unknown,
 ): Promise<ActionResult<{ version_id: string; version_number: number }>> {
   if (!UUID_RX.test(agentId)) return { ok: false, error: "invalid_request" };
   const guard = await ensureAdmin();
@@ -79,14 +81,63 @@ export async function saveAgentDraftAction(
   const admin = createAdminClient();
 
   // Sanity: o agent existe e é da org? não está arquivado?
+  // `name`, `description` e `priority` entram no select porque são gravados
+  // logo abaixo, e a comparação com o valor atual é o que evita UPDATE e linha
+  // de auditoria a cada salvamento de rascunho.
   const { data: agent } = await admin
     .from("ai_agents")
-    .select("id, kind, archived_at")
+    .select("id, kind, archived_at, name, description, priority")
     .eq("id", agentId)
     .eq("organization_id", activeOrg.orgId)
     .maybeSingle();
   if (!agent) return { ok: false, error: "not_found" };
   if (agent.archived_at) return { ok: false, error: "agent_archived" };
+
+  // ─── O cadastro do agente, que NÃO é versionado ──────────────────────────
+  //
+  // Nome, descrição e prioridade moram em `ai_agents`. A tabela de versões não
+  // tem essas colunas — e é por isso que eles sumiam: o editor mandava só o
+  // payload da VERSÃO, e os três campos morriam no caminho, sem erro nenhum.
+  //
+  // O defeito, medido em produção em 2026-08-31: a pessoa digitava o nome novo,
+  // o campo validava, o formulário ficava sujo, o botão salvava com toast verde
+  // ("Rascunho v8 salvo."), a publicação respondia ok — e o nome seguia o mesmo
+  // em toda tela. Oito publicações no histórico, e a ação `ai_agent.updated`
+  // jamais registrada uma única vez. Nada falhava; os campos só não chegavam.
+  //
+  // ⚠️ `undefined` é RECUSADO, e `{}` é aceito. A diferença é chamador quebrado
+  // contra "nada a mudar": tolerar a omissão do argumento seria guardar viva
+  // exatamente a forma do defeito que este trecho conserta — um salvamento que
+  // devolve ok e não grava o que a pessoa digitou.
+  if (identidade === undefined || identidade === null) {
+    return {
+      ok: false,
+      error: "invalid_request",
+      message: "Cadastro do agente ausente no envio.",
+    };
+  }
+  const identidadeParsed = agentMcpPatchSchema.safeParse(identidade);
+  if (!identidadeParsed.success) {
+    return {
+      ok: false,
+      error: "validation_failed",
+      details: identidadeParsed.error.flatten(),
+    };
+  }
+  const ident = identidadeParsed.data;
+  const cadastro: Record<string, unknown> = {};
+  if (ident.name !== undefined && ident.name !== agent.name) {
+    cadastro.name = ident.name;
+  }
+  if (
+    ident.description !== undefined &&
+    (ident.description ?? null) !== (agent.description ?? null)
+  ) {
+    cadastro.description = ident.description ?? null;
+  }
+  if (ident.priority !== undefined && ident.priority !== agent.priority) {
+    cadastro.priority = ident.priority;
+  }
 
   // O escopo aponta para coisas que EXISTEM nesta organização. Marcar um
   // material apagado (ou de outra organização) produz uma configuração muda: a
@@ -97,6 +148,55 @@ export async function saveAgentDraftAction(
   });
   if (!escopo.ok) {
     return { ok: false, error: "validation_failed", message: mensagemDoEscopo(escopo) };
+  }
+
+  // ─── Daqui para baixo é ESCRITA. Toda validação já passou ────────────────
+  //
+  // A ordem importa e custou uma revisão adversarial para ficar certa. A versão
+  // anterior gravava o cadastro ANTES de `validarEscopoDaVersao`, que é leitura
+  // pura: bastava o rascunho apontar para um material que outro administrador
+  // apagou noutra aba para o nome ser gravado, a auditoria emitida, e a ação
+  // devolver erro logo em seguida. A pessoa lia "não foi salvo" com o nome já
+  // trocado — a lista mostrando o novo, o editor ainda mostrando o velho.
+  //
+  // Não é o defeito original; é o espelho dele: fracasso aparente escondendo
+  // sucesso parcial. Validar tudo antes de escrever qualquer coisa apaga a
+  // janela inteira, e não custa nada.
+  //
+  // Entre as duas escritas, o cadastro vem primeiro de propósito: se ele falhar,
+  // nenhuma versão é escrita e o erro aparece — em vez de um rascunho salvo com
+  // o nome intacto, que seria este mesmo defeito voltando por outra causa.
+  if (Object.keys(cadastro).length > 0) {
+    const { error: cadastroErr } = await admin
+      .from("ai_agents")
+      .update({ ...cadastro, updated_at: new Date().toISOString() })
+      .eq("id", agentId)
+      .eq("organization_id", activeOrg.orgId);
+    if (cadastroErr) {
+      return { ok: false, error: "internal_error", message: cadastroErr.message };
+    }
+
+    void audit({
+      action: "ai_agent.updated",
+      actorUserId: authUser.id,
+      organizationId: activeOrg.orgId,
+      resourceType: "ai_agent",
+      resourceId: agentId,
+      requestId,
+      // `renamed_to` repete a forma que `renameAgentAction` já usa. Quem lê a
+      // auditoria depois quer saber para QUÊ mudou, não só QUE mudou — e duas
+      // formas diferentes para a mesma ação fazem quem consulta não saber se o
+      // campo faltou ou se o caminho era outro.
+      metadata: {
+        fields: Object.keys(cadastro),
+        ...(cadastro.name !== undefined ? { renamed_to: cadastro.name } : {}),
+      },
+    });
+
+    // O cartão da LISTAGEM lê `ai_agents.name`, não a versão. Sem esta linha o
+    // nome muda no banco e a lista continua mostrando o antigo — o mesmo
+    // sintoma de novo, agora por cache.
+    revalidatePath("/app/ai/agents");
   }
 
   // Procura draft existente (latest por version_number)
