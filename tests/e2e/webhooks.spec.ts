@@ -253,17 +253,38 @@ test.describe("webhooks & automações — fluxo completo", () => {
       const runTitle = page.getByText(RULE_NAME, { exact: true }).first();
       const runCard = cardOf(runTitle);
       let found = false;
+      // Fotografado a cada tentativa para a mensagem de falha poder DISTINGUIR as
+      // causas. A asserção antiga dizia só "não apareceu com status Sucesso", e
+      // esse texto cobre TRÊS mundos diferentes:
+      //
+      //   card nem existe        -> a automação não rodou (evento não chegou ao motor)
+      //   card existe, sem status-> rodou e ficou pendente (run travado)
+      //   card existe com outro  -> rodou e FALHOU (o motor tem o porquê gravado)
+      //
+      // As três pedem investigações diferentes, e o teste as entregava como uma
+      // frase só. Isso custou uma noite: o vermelho do CI foi lido como acúmulo
+      // de fila, corrigido, e voltou — porque a mensagem não dizia o que a tela
+      // realmente mostrava.
+      let diagnostico = "nenhuma tentativa registrada";
       for (let attempt = 0; attempt < 12; attempt++) {
-        if ((await runCard.count()) > 0 && (await runCard.getByText("Sucesso").count()) > 0) {
+        const cards = await runCard.count();
+        if (cards > 0 && (await runCard.getByText("Sucesso").count()) > 0) {
           found = true;
           break;
         }
+        diagnostico =
+          cards === 0
+            ? `tentativa ${attempt + 1}: NENHUM card com o nome da regra na aba Atividade`
+            : `tentativa ${attempt + 1}: card existe, e o texto dele é ${JSON.stringify(
+                (await runCard.first().innerText()).replace(/\s+/g, " ").trim().slice(0, 240),
+              )}`;
         await page.getByRole("button", { name: "Atualizar" }).click();
         await page.waitForTimeout(1000);
       }
-      expect(found, "run da automação não apareceu com status Sucesso na aba Atividade").toBe(
-        true,
-      );
+      expect(
+        found,
+        `run da automação não apareceu com status Sucesso na aba Atividade. ${diagnostico}`,
+      ).toBe(true);
       await expect(runCard.getByText("Sucesso")).toBeVisible();
 
       // --- Step 8: /app/pipelines/{pipelineId} mostra o card com a tag ---
