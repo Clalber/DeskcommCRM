@@ -8,6 +8,28 @@ Se você roda o DeskcommCRM numa VPS, **leia a seção da versão para a qual es
 
 ## [Não lançado]
 
+## [2.2.3] — 2026-08-31
+
+### Corrigido
+
+- **A resposta não sai mais em dobro, e o Instagram passa a receber sozinho** Duas correções que só apareceram com a plataforma em uso de verdade.
+
+  **Toda resposta enviada pela tela chegava duas vezes ao cliente.** Quando a rede
+  engasga, o sistema reenvia o pedido automaticamente — e o servidor tratava o
+  reenvio como uma segunda mensagem. Agora ele reconhece que é a mesma, e devolve a
+  que já saiu em vez de mandar de novo. Duas mensagens diferentes em sequência
+  continuam saindo normalmente; o que deixa de acontecer é a mesma sair duas vezes.
+
+  **Conectar uma conta do Instagram passa a inscrevê-la para receber mensagens.**
+  Antes, a conexão terminava com a tela dizendo "Conectada" e nenhuma mensagem
+  chegava: além de assinar o webhook no painel da Meta, cada conta precisa ser
+  inscrita por uma chamada que o sistema não fazia. Agora ele faz — e, se a Meta
+  recusar, a conexão fica marcada como com problema em vez de fingir que está boa.
+
+  A verificação de saúde, que já roda a cada cinco minutos, passou a conferir essa
+  inscrição e a refazê-la sozinha quando faltar. Quem conectou uma conta antes
+  desta versão é consertado automaticamente, sem precisar reconectar.
+
 ## [2.2.2] — 2026-08-30
 
 ### Corrigido
@@ -1709,7 +1731,8 @@ Primeira versão marcada do DeskcommCRM. O projeto vinha sendo desenvolvido publ
 
 - **Node 22 é obrigatório para desenvolvimento.** A suíte de invariantes instancia o cliente do Supabase, que exige o `WebSocket` global — nativo apenas a partir do Node 22. Isso não afeta quem apenas hospeda: a VPS roda a imagem pronta.
 
-[Não lançado]: https://github.com/melgarafael/DeskcommCRM/compare/v2.2.2...HEAD
+[Não lançado]: https://github.com/melgarafael/DeskcommCRM/compare/v2.2.3...HEAD
+[2.2.3]: https://github.com/melgarafael/DeskcommCRM/compare/v2.2.2...v2.2.3
 [2.2.2]: https://github.com/melgarafael/DeskcommCRM/compare/v2.2.1...v2.2.2
 [2.2.1]: https://github.com/melgarafael/DeskcommCRM/compare/v2.2.0...v2.2.1
 [2.2.0]: https://github.com/melgarafael/DeskcommCRM/compare/v2.1.1...v2.2.0
