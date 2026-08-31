@@ -191,7 +191,50 @@ test.describe("a automação conta o que aconteceu de verdade", () => {
         page.getByRole("button", { name: "Criar automação" }).click(),
       ]);
       expect(salvo.ok()).toBeTruthy();
-      ruleId = ((await salvo.json()) as { data: { id: string } }).data.id;
+      const regraCriada = (await salvo.json()) as {
+        data: { id: string; actions?: Array<{ config?: { channel_session_id?: string } }> };
+      };
+      ruleId = regraCriada.data.id;
+
+      // ── A JANELA DE ENVIO, FIXADA: este teste não pode depender da HORA ──
+      //
+      // O que esta spec prova é que um envio MORTO aparece como "Falhou". Para
+      // isso o envio precisa ser TENTADO — e fora da janela de envio do número
+      // ele nem chega a ser. `postponeUntil` (send-whatsapp.ts) devolve o
+      // instante da próxima abertura, o motor grava a run como `adiado`
+      // (engine.ts → registrarAdiamento, reason `fora_da_janela_de_envio`) e a
+      // aba Atividade mostra "Aguardando envio". Correto para o produto, e
+      // fatal para este teste: ele cobra "Falhou" e não encontra.
+      //
+      // MEDIDO: a janela default é 7h–22h no fuso do TENANT
+      // (`PACING_DEFAULTS`, lib/agent-engine/pacing/defaults.ts:60-63), e o
+      // tenant do rig é `America/Sao_Paulo` (scripts/seed-e2e-credentials.ts).
+      // O runner do GitHub roda em UTC, então a janela real do CI é
+      // 10:00–01:00 UTC — e TODA rodada que alcançar esta spec entre 01:00 e
+      // 10:00 UTC falhava aqui. Foi o que separou os dois runs da `main` em
+      // 2026-08-31: o de 00:37 UTC passou, o de 02:42 UTC falhou na linha da
+      // asserção de "Falhou", com o resto do arquivo intacto.
+      //
+      // O conserto não é tolerar `adiado` — isso apagaria a asserção que o
+      // arquivo existe para fazer. É tirar o relógio da equação: 0h–24h abre a
+      // janela sempre, pela mesma rota que a tela de Conexões usa.
+      const canalDaAcao = regraCriada.data.actions?.[0]?.config?.channel_session_id;
+      expect(
+        canalDaAcao,
+        "a ação salva não trouxe channel_session_id — sem ele não dá para fixar a janela",
+      ).toBeTruthy();
+      const janela = await page.request.put(`${APP_URL}/api/v1/ai/pacing`, {
+        data: {
+          channel_session_id: canalDaAcao,
+          window_start_hour: 0,
+          window_end_hour: 24,
+          allow_sunday: true,
+        },
+      });
+      expect(
+        janela.ok(),
+        `não deu para abrir a janela de envio do número: HTTP ${janela.status()}`,
+      ).toBeTruthy();
 
       // Liga a regra (nasce pausada, por desenho).
       await page.getByLabel(new RegExp(`Ligar ${RULE_NAME}`)).click();
