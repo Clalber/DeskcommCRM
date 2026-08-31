@@ -80,6 +80,8 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
   const [menuDismissed, setMenuDismissed] = useState(false);
   const [mode, setMode] = useState<"reply" | "note">("reply");
   const taRef = useRef<HTMLTextAreaElement | null>(null);
+  /** O corpo que está saindo agora. Impede que o MESMO texto saia em dobro. */
+  const emVoo = useRef<string | null>(null);
   const send = useSendMessage();
   const upload = useUploadMedia();
   const createNote = useCreateNote();
@@ -110,6 +112,27 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
     const body = text.trim();
     if (!body || (mode === "note" ? isDisabled : respostaBarrada)) return;
 
+    // ─── A MESMA mensagem não sai duas vezes ──────────────────────────────
+    //
+    // Medido em produção: quatro linhas, aos pares, com 1,16 s e 0,89 s entre
+    // as gêmeas, mesmo corpo, mesmo remetente. Enter apertado duas vezes — ou
+    // Enter mais clique — e o cliente recebe a frase repetida.
+    //
+    // A guarda é por CORPO, e não um `isPending` no campo: travar o campo
+    // enquanto a requisição corre é justamente o que o comentário acima recusa,
+    // porque impede digitar a próxima mensagem. Aqui só o texto IDÊNTICO em voo
+    // é recusado; duas mensagens diferentes em sequência rápida seguem saindo,
+    // que é o uso normal de quem atende.
+    //
+    // `useRef` e não estado: precisa ser lido e escrito no MESMO tick. Um
+    // `useState` só valeria no render seguinte, e as duas submissões acontecem
+    // antes dele — era exatamente assim que a segunda passava.
+    if (emVoo.current === body) return;
+    emVoo.current = body;
+    const liberar = () => {
+      if (emVoo.current === body) emVoo.current = null;
+    };
+
     setText("");
     requestAnimationFrame(() => autoresize());
 
@@ -119,7 +142,10 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
     };
 
     if (mode === "note") {
-      createNote.mutate({ conversation_id: conversationId, body }, { onError: restoreOnError });
+      createNote.mutate(
+        { conversation_id: conversationId, body },
+        { onError: restoreOnError, onSettled: liberar },
+      );
       return;
     }
     send.mutate(
@@ -140,6 +166,10 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
         // Do upstream, e fica: sem isto o texto some quando o envio falha, e
         // quem escreveu um parágrafo o perde sem ter como recuperá-lo.
         onError: restoreOnError,
+        // `onSettled` e não `onSuccess`: quando o envio FALHA o texto volta ao
+        // campo, e quem tentar de novo precisa conseguir. Liberar só no sucesso
+        // deixaria a mensagem presa até trocar uma letra.
+        onSettled: liberar,
       },
     );
   }

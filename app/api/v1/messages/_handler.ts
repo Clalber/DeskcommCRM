@@ -11,6 +11,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { ApiError } from "@/lib/api/types";
 import type { Actor, HandlerCtx } from "@/lib/api/handlers/types";
 import { audit } from "@/lib/audit";
+import { logger } from "@/lib/logger";
 import {
   CHANNEL_SESSION_REF_COLUMNS,
   DEFAULT_CHANNEL_PROVIDER,
@@ -18,6 +19,7 @@ import {
   resolveSessionRef,
   type ChannelSessionRef,
 } from "@/lib/channels";
+import { identidadePorContato } from "@/lib/channels";
 import { ARCHIVED_AT, queryTolerantToMissingArchived } from "@/lib/channels/archived";
 import { conferirDefinicao } from "@/lib/channels/conferir-definicao";
 import { isMediaPathOwnedBy } from "@/lib/messaging/media/upload-validation";
@@ -498,13 +500,56 @@ export async function sendMessageHandler(
   // (`conversations.channel_session_id` é NOT NULL com FK ON DELETE RESTRICT),
   // e ainda assim mantido para não trocar o desfecho desse ramo defensivo.
   const adapter = getAdapter(c.channel_sessions?.provider ?? DEFAULT_CHANNEL_PROVIDER);
-  const chatId = adapter.resolveRecipient({
+
+  const enderecosConhecidos = {
     isGroup: c.is_group,
     groupChatId: c.group_chat_id,
     phoneNumber: c.contacts?.phone_number,
     waIdentity: c.contacts?.wa_identity,
     waLid: c.contacts?.wa_lid,
-  });
+  };
+
+  let chatId = adapter.resolveRecipient(enderecosConhecidos);
+
+  // ─── O SEGUNDO endereço: quem não tem telefone ────────────────────────────
+  //
+  // Nem todo canal endereça por número. O Instagram endereça por um id opaco
+  // que a CONTA emitiu, guardado em `channel_contact_identities` e escopado à
+  // sessão — o contato nasce sem telefone, de propósito.
+  //
+  // Quem decide se isso serve é o ADAPTER, não este arquivo: `resolveRecipient`
+  // do canal por telefone ignora `providerUserId`, e o do canal por id opaco só
+  // olha para ele. É por isso que não há `if` de provider aqui, e não pode
+  // haver — a doutrina de restrição de canal proíbe, e o `lint:channels`
+  // reprova. Este arquivo entrega TODOS os endereços que o CRM conhece; a
+  // escolha é de quem sabe o esquema.
+  //
+  // ⚠️ A consulta só roda quando o primeiro passo devolveu nada — que é
+  // exatamente o ramo que HOJE já falha. O caminho quente do WhatsApp resolve
+  // no primeiro passo e nunca chega aqui: custo zero.
+  if (!chatId && c.channel_session_id) {
+    try {
+      const providerUserId = await identidadePorContato(supabase, {
+        organizationId: c.organization_id,
+        // Escopado à SESSÃO, não à organização: o mesmo id pertence a pessoas
+        // diferentes em contas diferentes, e responder pelo id de outra conta
+        // manda a mensagem para a pessoa errada.
+        channelSessionId: c.channel_session_id,
+        contactId: c.contact_id,
+      });
+      if (providerUserId) {
+        chatId = adapter.resolveRecipient({ ...enderecosConhecidos, providerUserId });
+      }
+    } catch (err) {
+      // Falha de consulta não vira "sem destinatário" em silêncio: sem este log
+      // o desfecho seria idêntico ao de um contato que de fato não tem endereço,
+      // e quem investigasse procuraria no lugar errado.
+      logger.warn("[messages] identidade de canal não pôde ser lida", {
+        conversationId: c.id,
+        detalhe: err instanceof Error ? err.message : "erro desconhecido",
+      });
+    }
+  }
 
   if (c.channel_sessions?.archived_at) {
     // Canal ARQUIVADO = canal excluído pelo usuário: a sessão já foi deslogada e
@@ -544,7 +589,12 @@ export async function sendMessageHandler(
       .update({
         status: "failed",
         error_code: "missing_phone_number",
-        error_message: "Contato sem telefone para envio WhatsApp.",
+        // Texto NEUTRO de canal. O anterior dizia "sem telefone para envio
+        // WhatsApp" numa conversa de Instagram — onde telefone não existe por
+        // desenho, e a frase mandava quem lesse procurar um campo que o canal
+        // não tem. O CÓDIGO fica: ele é contrato com `frases-de-falha.ts`, com
+        // o adapter intermediado e com os testes.
+        error_message: "Contato sem endereço para envio neste canal.",
       })
       .eq("id", message.id)
       .select(MSG_COLS)

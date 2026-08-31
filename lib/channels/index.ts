@@ -36,6 +36,10 @@ export function temAdapter(provider: ChannelProvider): boolean {
 
 export { capabilitiesOf, CHANNEL_CAPABILITIES, DEFAULT_CHANNEL_PROVIDER } from "./capabilities";
 export { CHANNEL_SESSION_REF_COLUMNS, resolveSessionRef } from "./session-ref";
+// A identidade de quem é endereçado por id OPACO em vez de telefone. Sai pelo
+// índice, e não do módulo do canal, porque quem monta o envelope de envio não
+// pode saber de qual canal ela é — a tabela é genérica de propósito.
+export { identidadePorContato } from "./instagram/identidade";
 export type { ChannelSessionRef } from "./session-ref";
 export type {
   ChannelAdapter,
