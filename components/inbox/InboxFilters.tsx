@@ -70,7 +70,15 @@ export function InboxFilters({ value, onChange }: Props) {
     ? visibleInboxTabs(activeOrg.role, activeOrg.visibility_mode)
     : INBOX_TABS.map((t) => t.value);
   const countFor: Partial<Record<InboxTab, number>> = {
-    unassigned: counts?.unassigned,
+    // `fila` é o nome novo; `unassigned` é o alias que a rota versionada mantém.
+    // O `??` cobre a janela em que a página ainda lê um cache de react-query
+    // gravado antes do deploy — sem ele o badge sumiria por alguns segundos.
+    unassigned: counts?.fila ?? counts?.unassigned,
+    // A aba do automático ganhou contador junto com o significado: ela deixou de
+    // filtrar `ai_handling` (2 conversas) e passou a mostrar o que o robô conduz
+    // (47, na instalação onde isto foi medido). Um número que existe na API e não
+    // aparece na tela é trabalho feito que ninguém vê.
+    ai: counts?.automatico,
     mine: counts?.mine,
     all: counts?.all,
   };

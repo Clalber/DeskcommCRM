@@ -98,6 +98,10 @@ async function semear(orgId: string) {
 }
 
 test.describe("Inbox: as abas perguntam quem manda", () => {
+  // O teto global é 30 s e não cabe: só o login com MFA já consome uma boa parte
+  // dele. Mesmo número da spec irmã `inbox-quem-manda.spec.ts`.
+  test.describe.configure({ timeout: 180_000 });
+
   let orgId = "";
 
   test.beforeEach(async () => {
@@ -119,7 +123,10 @@ test.describe("Inbox: as abas perguntam quem manda", () => {
     await expect(lista.getByText(ESPERANDO).first()).toBeVisible({ timeout: 30_000 });
 
     // ── FILA: quem realmente precisa de gente.
-    await page.getByRole("button", { name: "Fila", exact: true }).click();
+    // `tab`, não `button`: as abas são `TabsTrigger` do shadcn. E o nome vem por
+    // REGEX porque o contador entra no nome acessível ("Fila 36") — `exact` aqui
+    // nunca casaria. Mesmo idioma da spec irmã `inbox-quem-manda.spec.ts`.
+    await page.getByRole("tab", { name: /Fila/i }).first().click();
     await expect(page.getByText(ESPERANDO).first()).toBeVisible({ timeout: 15_000 });
     await expect(
       page.getByText(ROBO),
@@ -128,7 +135,7 @@ test.describe("Inbox: as abas perguntam quem manda", () => {
 
     // ── AUTOMÁTICO: a outra direção, e ela é a que impede um 'conserto' que
     // simplesmente esvazie a Fila.
-    await page.getByRole("button", { name: "Automático", exact: true }).click();
+    await page.getByRole("tab", { name: /Autom/i }).first().click();
     await expect(page.getByText(ROBO).first()).toBeVisible({ timeout: 15_000 });
     await expect(
       page.getByText(ESPERANDO),
