@@ -60,10 +60,15 @@ Os dois casos que **passam** são o controle: a forma antiga faz corretamente o 
 o lease. Se eles tivessem caído, a sabotagem teria alcançado além da variável e a medição
 não valeria.
 
-**NÃO MEDIDO:** se "single-operator" ainda vale (o item usa isso para calibrar prioridade).
-Exigiria consultar produção. O que responderia: contar `organizations` com enrollment ativo
-nos últimos 30 dias e ver se há duas de tamanhos diferentes. Sem efeito prático — o defeito
-já não existe; a pergunta só mudaria a urgência de algo resolvido.
+**NÃO MEDIDO — e o motivo não é falta de acesso, é falta de consequência.** O item usa
+"baixo hoje (single-operator), grave em SaaS multi-tenant" para calibrar prioridade, e
+saber se isso ainda vale exigiria consultar o banco de um cliente (contar `organizations`
+com enrollment ativo nos últimos 30 dias e ver se há duas de tamanhos diferentes).
+
+A medição foi **deliberadamente recusada**: gastar acesso a produção para descobrir se um
+defeito **já consertado** seria urgente não altera nenhuma decisão. Registrado assim para
+que ninguém leia esta lacuna como pendência — ela é uma escolha, e a escolha tem dono
+(pedida ao Maestro antes de tocar em produção, e negada por este motivo).
 
 ---
 
