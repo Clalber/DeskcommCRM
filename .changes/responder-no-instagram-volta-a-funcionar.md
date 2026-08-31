@@ -4,8 +4,8 @@ secao: corrigido
 titulo: Responder pelo Instagram volta a funcionar
 ---
 
-Toda resposta enviada numa conversa do Instagram falhava com **Contato sem
-telefone para envio WhatsApp** — numa conversa que não tem telefone nenhum, por
+Toda resposta enviada numa conversa do Instagram falhava dizendo que o
+**contato estava sem telefone** — numa conversa que não tem telefone nenhum, por
 desenho: quem escreve pelo Direct é identificado por um código da conta, não por
 número.
 
