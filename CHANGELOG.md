@@ -8,6 +8,25 @@ Se você roda o DeskcommCRM numa VPS, **leia a seção da versão para a qual es
 
 ## [Não lançado]
 
+## [2.3.1] — 2026-08-31
+
+### Corrigido
+
+- **Imagem e áudio do Instagram passam a carregar** Imagem e áudio recebidos pelo Direct apareciam na conversa e **nunca carregavam**.
+  O atendente via a mensagem marcada como imagem, sem a imagem, e o agente de IA
+  recebia uma conversa sem conteúdo nenhum para responder.
+
+  O sistema guardava o endereço do arquivo e pedia o download corretamente. O que
+  faltava era o canal saber **como buscar o arquivo**: o passo existia para o
+  WhatsApp e não existia para o Instagram, e o pedido terminava com sucesso sem
+  baixar nada. Nada falhava; simplesmente não acontecia.
+
+  **As mídias que já chegaram vão carregar sozinhas?** Não. O endereço fornecido
+  pela Meta vence em alguns dias, e as que chegaram antes desta versão
+  provavelmente já expiraram. Da atualização em diante, tudo que chegar é baixado e guardado no
+  seu servidor — que é onde deveria estar desde o começo, porque o endereço
+  original some.
+
 ## [2.3.0] — 2026-08-31
 
 ### Adicionado
@@ -1820,7 +1839,8 @@ Primeira versão marcada do DeskcommCRM. O projeto vinha sendo desenvolvido publ
 
 - **Node 22 é obrigatório para desenvolvimento.** A suíte de invariantes instancia o cliente do Supabase, que exige o `WebSocket` global — nativo apenas a partir do Node 22. Isso não afeta quem apenas hospeda: a VPS roda a imagem pronta.
 
-[Não lançado]: https://github.com/melgarafael/DeskcommCRM/compare/v2.3.0...HEAD
+[Não lançado]: https://github.com/melgarafael/DeskcommCRM/compare/v2.3.1...HEAD
+[2.3.1]: https://github.com/melgarafael/DeskcommCRM/compare/v2.3.0...v2.3.1
 [2.3.0]: https://github.com/melgarafael/DeskcommCRM/compare/v2.2.4...v2.3.0
 [2.2.4]: https://github.com/melgarafael/DeskcommCRM/compare/v2.2.3...v2.2.4
 [2.2.3]: https://github.com/melgarafael/DeskcommCRM/compare/v2.2.2...v2.2.3
