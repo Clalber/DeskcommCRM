@@ -221,7 +221,10 @@ describe('sendMessageHandler — os 6 desfechos do envio', () => {
 
     expect(msg.status).toBe('failed');
     expect(msg.error_code).toBe('missing_phone_number');
-    expect(msg.error_message).toBe('Contato sem telefone para envio WhatsApp.');
+    // Texto NEUTRO de canal: a frase antiga falava em telefone numa conversa de
+    // canal que não usa telefone, e mandava quem lesse procurar um campo que
+    // aquele canal não tem. O CÓDIGO fica — ele é contrato com outros leitores.
+    expect(msg.error_message).toBe('Contato sem endereço para envio neste canal.');
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
