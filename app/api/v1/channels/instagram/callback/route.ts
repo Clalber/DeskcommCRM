@@ -37,6 +37,7 @@ import {
   instagramGraphVersion,
 } from "@/lib/channels/instagram/credentials";
 import {
+  assinarAplicativoNaConta,
   conferirEstado,
   contaDoToken,
   trocarCodigoPorTokenCurto,
@@ -158,14 +159,51 @@ export async function GET(req: NextRequest): Promise<Response> {
   const tokenCifrado = await encryptWebhookSecret(admin, longo.token);
   if (!tokenCifrado) return voltar("cifra_indisponivel");
 
+  // ─── O passo que faltava, e que deixava o canal MUDO ──────────────────────
+  //
+  // Assinar o webhook no painel da Meta assina o APLICATIVO. Cada conta
+  // profissional precisa ser inscrita à parte, por chamada de API — e sem isso
+  // a conexão fica perfeita em toda tela e NENHUMA mensagem chega.
+  //
+  // Medido na primeira conexão real: `GET /me/subscribed_apps` devolvia
+  // `{"data":[]}` numa conta que a tela dava por conectada, e o botão "Testar"
+  // do painel funcionava (ele mira a URL direto), o que tornava o silêncio ainda
+  // mais difícil de diagnosticar. Custou horas.
+  //
+  // Vem ANTES do update: o update é o ato único que declara `WORKING`, e
+  // assinar depois dele abriria a janela em que a tela mente.
+  const assinatura = await assinarAplicativoNaConta({
+    token: longo.token,
+    baseUrl: instagramGraphBaseUrl(),
+    graphVersion: instagramGraphVersion(),
+  });
+
+  if (!assinatura.ok) {
+    logger.warn("[instagram.callback] conta autorizada mas não inscrita", {
+      motivo: assinatura.motivo,
+      channelSessionId: sessao.id,
+    });
+  }
+
   const { error } = await admin
     .from("channel_sessions")
     .update({
       instagram_user_id: conta.instagramUserId,
       instagram_token_encrypted: tokenCifrado,
       instagram_token_expires_at: longo.expiraEm,
-      status: "WORKING",
-      status_reason: null,
+      // ⚠️ `WORKING` só quando a conta está INSCRITA. O token é válido e fica
+      // gravado de qualquer forma — o cron de renovação precisa dele, e
+      // descartá-lo forçaria refazer a autorização por uma falha de rede. Mas
+      // declarar `WORKING` uma conexão que não recebe mensagem é a tela mentindo,
+      // e foi exatamente essa mentira que custou a investigação inteira.
+      //
+      // `FAILED` já é escalado para a Central pelo cron de saúde, e o reparo
+      // automático mora no `checkHealth` do adapter: quem cair aqui volta
+      // sozinho em minutos, sem ninguém intervir.
+      status: assinatura.ok ? "WORKING" : "FAILED",
+      status_reason: assinatura.ok
+        ? null
+        : `conta autorizada, aplicativo não inscrito para receber mensagens: ${assinatura.motivo}`,
       display_name: conta.username ? `@${conta.username}` : "Instagram",
     })
     .eq("id", sessao.id)
@@ -184,5 +222,5 @@ export async function GET(req: NextRequest): Promise<Response> {
     return voltar("gravacao_falhou");
   }
 
-  return voltar("conectada");
+  return voltar(assinatura.ok ? "conectada" : "assinatura_falhou");
 }

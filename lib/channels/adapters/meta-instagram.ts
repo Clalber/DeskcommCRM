@@ -29,6 +29,7 @@ import {
   instagramCredsForAccount,
   type InstagramCredentials,
 } from "../instagram/credentials";
+import { assinarAplicativoNaConta, contaEstaAssinada } from "../instagram/oauth";
 import type { ChannelAdapter, ChannelHealth, OutboundEnvelope, RecipientInput } from "../types";
 
 /** Teto da Meta para o corpo de texto. Bytes, não caracteres. */
@@ -280,7 +281,43 @@ export const metaInstagramAdapter: ChannelAdapter = {
       if (!r.ok || erro) {
         return { reachable: true, status: "FAILED", detail: erro?.message ?? `HTTP ${r.status}` };
       }
-      return { reachable: true, status: corpo?.id ? "WORKING" : "FAILED", detail: null };
+      if (!corpo?.id) return { reachable: true, status: "FAILED", detail: null };
+
+      // ─── REPARO: alcançável NÃO é o mesmo que recebendo ────────────────────
+      //
+      // Token válido e `/me` respondendo não significam que a mensagem chega. A
+      // conta profissional precisa estar INSCRITA no aplicativo, por chamada de
+      // API — e uma conta que nunca foi inscrita, ou que perdeu a inscrição,
+      // fica `WORKING` e muda. Foi exatamente esse estado que custou horas de
+      // investigação na primeira conexão real.
+      //
+      // Conferir e reassinar aqui fecha o laço sozinho, na rodada de saúde que
+      // já roda a cada cinco minutos, sem ninguém intervir — e repara também
+      // quem conectou ANTES de o fluxo de conexão passar a assinar.
+      const inscricao = await contaEstaAssinada({
+        token: c.token,
+        baseUrl: c.baseUrl,
+        graphVersion: c.graphVersion,
+      });
+
+      // Não conseguir PERGUNTAR não rebaixa a conexão: seria falha de rede
+      // nossa virando "canal quebrado" na tela do cliente.
+      if (inscricao.ok && !inscricao.assinada) {
+        const reassinada = await assinarAplicativoNaConta({
+          token: c.token,
+          baseUrl: c.baseUrl,
+          graphVersion: c.graphVersion,
+        });
+        if (!reassinada.ok) {
+          return {
+            reachable: true,
+            status: "FAILED",
+            detail: `conta sem inscrição do aplicativo: ${reassinada.motivo}`,
+          };
+        }
+      }
+
+      return { reachable: true, status: "WORKING", detail: null };
     } catch (e) {
       // Rede nossa que falhou. `reachable: false` para o cron NÃO contar isto
       // como canal caído e sair marcando sessão que está perfeitamente viva.

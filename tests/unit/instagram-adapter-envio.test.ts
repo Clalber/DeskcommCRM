@@ -273,12 +273,65 @@ describe("envio", () => {
 });
 
 describe("saúde", () => {
-  it("conta viva responde WORKING", async () => {
-    resposta = { ok: true, status: 200, corpo: { id: CONTA, username: "loja" } };
+  /**
+   * A rodada de saúde faz TRÊS perguntas, não uma: quem sou eu, estou inscrito,
+   * e — se não estiver — me inscreve. O dublê responde cada URL de propósito;
+   * um dublê que respondesse a mesma coisa para tudo esconderia justamente o
+   * passo que esta rodada existe para conferir.
+   */
+  function metaQueResponde(porUrl: (url: string) => unknown) {
+    vi.stubGlobal("fetch", async (url: string, init: RequestInit) => {
+      chamada = { url: String(url), init };
+      const corpo = porUrl(String(url));
+      return { ok: true, status: 200, json: async () => corpo } as Response;
+    });
+  }
+
+  it("conta viva E INSCRITA responde WORKING", async () => {
+    metaQueResponde((url) =>
+      url.includes("subscribed_apps")
+        ? { data: [{ id: "1", subscribed_fields: ["messages"] }] }
+        : { id: CONTA, username: "loja" },
+    );
 
     await expect(
       metaInstagramAdapter.checkHealth!({ organizationId: ORG, sessionRef: CONTA }),
     ).resolves.toMatchObject({ reachable: true, status: "WORKING" });
+  });
+
+  it("conta viva e NÃO inscrita é REPARADA sozinha, e volta WORKING", async () => {
+    // O estado que custou horas de investigação: token válido, `/me` respondendo,
+    // e nenhuma mensagem chegando. A rodada de saúde conserta sem ninguém pedir —
+    // inclusive para quem conectou antes de o fluxo passar a inscrever.
+    let assinou = false;
+    metaQueResponde((url) => {
+      if (!url.includes("subscribed_apps")) return { id: CONTA, username: "loja" };
+      if (!assinou) {
+        assinou = true;
+        return { data: [] };
+      }
+      return { success: true };
+    });
+
+    await expect(
+      metaInstagramAdapter.checkHealth!({ organizationId: ORG, sessionRef: CONTA }),
+    ).resolves.toMatchObject({ reachable: true, status: "WORKING" });
+    expect(assinou).toBe(true);
+  });
+
+  it("não inscrita e a inscrição RECUSADA vira FAILED — a tela não pode mentir", async () => {
+    metaQueResponde((url) =>
+      url.includes("subscribed_apps") ? { data: [] } : { id: CONTA, username: "loja" },
+    );
+
+    const r = await metaInstagramAdapter.checkHealth!({
+      organizationId: ORG,
+      sessionRef: CONTA,
+    });
+    // `WORKING` numa conta que não recebe mensagem é a mentira que fez a
+    // investigação começar pelo lugar errado.
+    expect(r).toMatchObject({ reachable: true, status: "FAILED" });
+    expect(r.detail).toContain("inscrição");
   });
 
   it("credencial VENCIDA é vista antes de perguntar à Meta", async () => {
