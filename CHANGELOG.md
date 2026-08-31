@@ -8,6 +8,73 @@ Se você roda o DeskcommCRM numa VPS, **leia a seção da versão para a qual es
 
 ## [Não lançado]
 
+## [2.3.0] — 2026-08-31
+
+### Adicionado
+
+- **As melhorias do projeto de origem, sem perder nada do que já era seu** Esta versão traz tudo o que o projeto de origem lançou desde a base da sua
+  instalação, mantendo intacto o que foi construído aqui — inclusive o canal do
+  Instagram, que não existe lá.
+
+  **O atendente de IA passa a marcar consulta pela conversa.** Ele agora sabe que
+  dia é hoje, no fuso da sua empresa, e consegue ler a lista do que a empresa
+  atende com a duração de cada tipo. Também confirma horário e registra depois se
+  a pessoa foi atendida ou não apareceu. A lista de horários livres saiu em
+  português, em vez de um código de data.
+
+  **Marcar ou confirmar um agendamento move o lead no funil sozinho** — se você
+  tiver as etapas com os nomes que o sistema procura. Quem não tiver não vê
+  diferença nenhuma.
+
+  **A Central de atendimento abre mais rápido** quando a equipe é grande, e quem
+  participa de mais de uma empresa passa a entrar sempre na mesma.
+
+  **O Google Agenda volta a sincronizar nos dois sentidos**, e pedir para sair em
+  espanhol passa a funcionar nas formas que as pessoas realmente escrevem.
+
+  **Um passo opcional, e nada quebra se você não der.** As capacidades novas de
+  agenda não entram sozinhas nos agentes que já existem. Para o seu atendente usá-las, abra *O que o agente pode fazer*, ligue o
+  pacote **Vender** de novo e publique. Agente criado a partir de agora já nasce
+  com elas — e, até você fazer isso, nada muda no comportamento atual dele.
+
+### Corrigido
+
+- **A Fila mostra quem realmente espera uma pessoa, e a aba do automático deixa de ficar vazia** A Inbox dizia quem estava no comando de cada conversa olhando um campo que o
+  atendimento automático nunca consulta. O efeito era grande e silencioso: a aba
+  **Fila** listava como "aguardando atendente" conversas que o robô estava
+  respondendo naquele instante, e a aba do automático ficava quase vazia mesmo com
+  ele atendendo a maior parte da caixa. Numa instalação real, medido: a Fila
+  mostrava 83 conversas, a aba do automático mostrava 2, e o robô atendia 47.
+
+  Quem via isso concluía a coisa errada em qualquer direção — ou que havia uma
+  montanha de gente esperando, ou que a IA tinha parado de trabalhar.
+
+  Agora as duas abas perguntam a mesma coisa que o motor: quem responde a próxima
+  mensagem deste cliente. A Fila passa a listar só o que precisa de uma pessoa de
+  verdade — conversas que a IA escalou, contatos travados para atendimento humano —
+  e a aba do automático mostra o que ele está de fato conduzindo.
+
+  **O número da Fila vai encolher bastante no primeiro acesso depois de atualizar.**
+  Isso é o número certo aparecendo, não trabalho sumindo.
+
+  A mesma correção alcança o "você é o Nº da fila" que o cliente ouve pelo WhatsApp,
+  a numeração na tela e o painel de espera do gerente — os três passam a contar a
+  mesma fila. Antes eles podiam divergir entre si.
+
+  Para quem opera: nada a fazer. Nenhuma configuração nova, nenhum passo de
+  atualização, nenhum dado alterado — só a leitura de quem está no comando.
+
+- **Reclamar de cobrança errada não bloqueia mais o cliente** Quem escrevia "não me mande mais boletos" — ou "no me manden más cobros
+  duplicados" — era tratado como se tivesse pedido para sair, e parava de ser
+  atendido. É o oposto do que a pessoa quis dizer: ela está reclamando de uma
+  cobrança e quer continuar falando com você.
+
+  A regra olhava só o verbo ("mandar"), que é o mesmo de "não me mande mais
+  mensagens". Agora ela olha também o que vem depois: quando o objeto é uma
+  cobrança, uma fatura, um pedido ou um produto, deixa de ser pedido de saída.
+
+  Pedir para sair de verdade continua funcionando igual, nas duas línguas.
+
 ## [2.2.4] — 2026-08-31
 
 ### Corrigido
@@ -1753,7 +1820,8 @@ Primeira versão marcada do DeskcommCRM. O projeto vinha sendo desenvolvido publ
 
 - **Node 22 é obrigatório para desenvolvimento.** A suíte de invariantes instancia o cliente do Supabase, que exige o `WebSocket` global — nativo apenas a partir do Node 22. Isso não afeta quem apenas hospeda: a VPS roda a imagem pronta.
 
-[Não lançado]: https://github.com/melgarafael/DeskcommCRM/compare/v2.2.4...HEAD
+[Não lançado]: https://github.com/melgarafael/DeskcommCRM/compare/v2.3.0...HEAD
+[2.3.0]: https://github.com/melgarafael/DeskcommCRM/compare/v2.2.4...v2.3.0
 [2.2.4]: https://github.com/melgarafael/DeskcommCRM/compare/v2.2.3...v2.2.4
 [2.2.3]: https://github.com/melgarafael/DeskcommCRM/compare/v2.2.2...v2.2.3
 [2.2.2]: https://github.com/melgarafael/DeskcommCRM/compare/v2.2.1...v2.2.2
