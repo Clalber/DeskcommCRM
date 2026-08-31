@@ -578,7 +578,7 @@ como cliente irritado e disparou `triggerHandoff('low_sentiment')`, gravando
 `conversations.bot_silenced_until = 'infinity'` + `last_handoff_at`. Comportamento
 **correto** — cliente irritado, chama gente. O defeito é o que vem depois.
 
-### Defeito 1 — a escalação é um beco sem saída (ABERTO, aguardando decisão do dono)
+### Defeito 1 — ~~a escalação é um beco sem saída~~ **RETRATADO em 2026-08-30 23:0x**
 
 **Todo** caminho que limpa `bot_silenced_until` é filtrado por
 `last_handoff_at is null`:
@@ -633,3 +633,51 @@ enxerga código.
 
 Pausar não tira do ar: quem decide é a publicação. E o agente que o dono quer no ar
 nunca teve versão publicada. Ações são dele (arquivar a Vitoria, publicar o Suporte).
+
+---
+
+## RETRATAÇÃO — "a escalação é um beco sem saída" era FALSO
+
+O "Defeito 1" acima está **errado** e fica registrado com a correção ao lado, em vez
+de apagado: o erro é mais instrutivo que o achado.
+
+**A porta existe, e está na tela.** `lib/escalacao/retomada.ts ::
+devolverAtendimentoAoAgente` limpa `bot_silenced_until`, `last_handoff_at`,
+`last_handoff_reason` e `contacts.force_human` — **sem** o filtro
+`last_handoff_at is null` que gateia `release`/`close`. Ela é servida por
+`app/api/v1/conversations/[id]/reactivate-bot/route.ts` (papel `agent`), exposta por
+MCP (`lib/mcp/tools/escalacao.ts`) e tem botão próprio:
+
+```
+components/inbox/ConversationHeader.tsx:102   const podeDevolver = travaVigente;
+components/inbox/ConversationHeader.tsx:251   {retomar.isPending ? "Devolvendo..." : t("Devolver ao automático")}
+```
+
+`podeDevolver = travaVigente`, e `travaVigente` é **true** exatamente no estado do
+incidente (medido rodando `comandoDaConversa` com os fatos reais). Ou seja: o botão
+esteve na tela durante as 8 horas de silêncio.
+
+### Como eu concluí "não existe"
+
+```bash
+grep -rn "bot_silenced_until" lib/ app/ workers/ --include='*.ts' \
+  | grep -viE "database.types|\.test\.|types/messaging" | head -12   # ← 48 linhas no total
+```
+
+`head -12` sobre 48. `lib/escalacao/retomada.ts` estava fora do corte. Uma saída
+truncada é visualmente idêntica a uma completa, e some justo a cauda — que é onde
+mora o que não se previu. Afirmação de **ausência** exige cobertura total; eu tinha
+exibição parcial. Lição em
+`feedback_ausencia_afirmada_a_partir_de_lista_truncada`.
+
+**Regra para quem retomar:** antes de escrever "não existe X", conte
+(`| wc -l`) e busque pelo **nome** do que X faria (`devolver`, `retomar`,
+`reactivate`), não só pela coluna que X tocaria.
+
+### O que sobra de verdadeiro
+
+- 36 conversas silenciadas por escalação, a mais antiga de 18/07 — **não presas**,
+  mas não retomadas por ninguém. É fila não trabalhada, não defeito estrutural.
+- O conserto do `'infinity'` no worker legado segue válido e independente: ele não
+  depende de nada disto, e o argumento que eu usei para retê-lo (que ele agravaria
+  um beco sem saída) **cai junto com o beco**.
