@@ -56,7 +56,7 @@ test.describe("G5-03 — fila com posição + atribuição", () => {
   // Dev server compila /app/* a frio na 1ª visita (pode passar de 30s).
   test.describe.configure({ timeout: 120_000 });
 
-  test.beforeAll(() => {
+  test.beforeAll(async () => {
     // Restaura o estado de fila (idempotente) antes do fluxo.
     execFileSync("npx", ["tsx", "scripts/seed-e2e-queue.ts"], { stdio: "inherit" });
     creds = JSON.parse(fs.readFileSync(CREDS_PATH, "utf8")) as Creds;
