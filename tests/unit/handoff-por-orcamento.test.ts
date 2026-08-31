@@ -390,17 +390,43 @@ describe("o call site — medido no texto, porque a unidade não o alcança", ()
 
 describe("a fila trata veto de negócio como veto, não como incidente", () => {
   const fonteWorker = readFileSync(WORKER, "utf8").replace(/\s+/gu, " ");
-  const ROTEAMENTO =
-    "if (terminal) { await cancelJob(pool, job.id, workerId, errMsg(err)); } " +
-    "else { await failJob(pool, job.id, workerId, err); }";
+  /**
+   * O que esta guarda protege é o ROTEAMENTO, não a formatação.
+   *
+   * A versão anterior casava o bloco inteiro como uma string só, e quebrou
+   * quando o ramo do `failJob` ganhou a opção `fatal` — uma mudança que não
+   * mexe em nada do que ela vigia. Casar texto exato de um bloco que vai
+   * crescer transforma a guarda em obstáculo: quem a vê vermelha por
+   * formatação aprende a afrouxá-la, e aí ela para de proteger.
+   *
+   * Agora as duas metades são medidas separadamente, que é o que importa:
+   * terminal vai para `cancelJob`, e não-terminal vai para `failJob`.
+   */
+  const VETO_CANCELA = "if (terminal) { await cancelJob(pool, job.id, workerId, errMsg(err)); }";
+  const RESTO_FALHA = "await failJob(pool, job.id, workerId, err,";
 
   it("erro terminal vai para cancelJob; o resto continua em failJob", () => {
     expect(fonteWorker.length, "guarda de vacuidade: arquivo do worker vazio").toBeGreaterThan(1000);
     expect(
       fonteWorker,
       "bloqueio por orçamento em failJob = 5 tentativas por conversa + 1 job_dead crítico sem dedup por job",
-    ).toContain(ROTEAMENTO);
+    ).toContain(VETO_CANCELA);
+    expect(
+      fonteWorker,
+      "o caminho não-terminal precisa continuar indo para failJob — cancelJob é silencioso e apagaria o alerta",
+    ).toContain(RESTO_FALHA);
     expect(fonteWorker).toContain("ehVetoPermanenteDeNegocio(err)");
+  });
+
+  it("`fatal` não pode virar cancelamento mudo", () => {
+    // Falha definitiva (canal excluído, contato sem endereço) morre na primeira
+    // tentativa — mas pelo caminho do `dead`, que ABRE o alerta `job_dead`.
+    // Roteá-la para `cancelJob` trocaria cinco tentativas inúteis por silêncio,
+    // que é piorar e não consertar.
+    const fila = readFileSync(join(RAIZ, "lib/agent-engine/queue/queue.ts"), "utf8");
+    expect(fila).toContain("when $4 or attempts >= max_attempts then 'dead'");
+    expect(fila).toContain("'job_dead'");
+    expect(fonteWorker).toContain("{ fatal }");
   });
 
   it("controle negativo: o detector acusa a volta do failJob", () => {
@@ -409,7 +435,7 @@ describe("a fila trata veto de negócio como veto, não como incidente", () => {
       "await failJob(pool, job.id, workerId, err);",
     );
     expect(sabotado).not.toBe(fonteWorker);
-    expect(sabotado).not.toContain(ROTEAMENTO);
+    expect(sabotado).not.toContain(VETO_CANCELA);
   });
 });
 

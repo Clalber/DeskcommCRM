@@ -83,9 +83,38 @@ async function main(): Promise<void> {
     id = (data as { id: string }).id;
   }
 
+  // ═══ A janela de envio deste número fica EXPLÍCITA: sempre aberta ═══
+  //
+  // Sem esta linha o número herda os defaults do pacing — 7h–22h em
+  // America/Sao_Paulo (lib/agent-engine/pacing/defaults.ts) — e a spec passa ou
+  // falha conforme a HORA em que o CI roda: entre 01h e 10h UTC (22h–7h em São
+  // Paulo) o motor adia o envio antes de tentá-lo (`postponeUntil` →
+  // lib/automation/engine.ts → run `adiado`, "Aguardando envio" na tela), e a
+  // asserção que espera "Falhou" nunca tem o que ver. Medido em 2026-08-30/31:
+  // as mesmas specs, no MESMO commit, verdes em toda rodada 13h32–00h22 UTC e
+  // vermelhas em toda rodada 01h16–02h56 UTC — inclusive num PR de controle com
+  // a main pura, sem mudança nenhuma de código.
+  //
+  // O knob é o MESMO que a tela de Conexões grava (`channel_knobs`, a régua
+  // única de janela): a spec declara a pré-condição de que precisa — janela
+  // aberta — em vez de depender do relógio de quem roda. O que a spec prova
+  // (envio que morre aparece como FALHOU, nunca como sucesso) continua provado
+  // igual, a qualquer hora e em qualquer fuso.
+  const { error: knobsErr } = await admin.from("channel_knobs").upsert(
+    {
+      organization_id: orgId,
+      channel_session_id: id,
+      window_start_hour: 0,
+      window_end_hour: 24, // fim exclusivo; 24 = até a meia-noite (KNOB_BOUNDS.hourEnd)
+      allow_sunday: true,
+    } as never,
+    { onConflict: "organization_id,channel_session_id" },
+  );
+  if (knobsErr) throw new Error(`upsert channel_knobs: ${knobsErr.message}`);
+
   creds.numero_conectado = { channel_session_id: id };
   fs.writeFileSync(CREDS_PATH, JSON.stringify(creds, null, 2));
-  console.log(`[seed] número conectado (WORKING): ${id}`);
+  console.info(`[seed] número conectado (WORKING, janela 0h–24h): ${id}`);
 }
 
 void main().catch((err) => {

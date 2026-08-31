@@ -264,11 +264,24 @@ export async function failJob(
   jobId: string,
   workerId: string,
   error: unknown,
+  /**
+   * `fatal` mata o job na PRIMEIRA tentativa, em vez de esperar esgotar as cinco.
+   *
+   * Existe para o erro que não se cura sozinho — canal excluído, contato sem
+   * endereço. Antes, cada um desses custava CINCO turnos de modelo para chegar
+   * ao mesmo lugar, e o operador via a mesma mensagem falhar cinco vezes.
+   *
+   * ⚠️ Morre pelo caminho do `dead`, e NÃO por `cancelJob`: o cancelamento é
+   * silencioso por desenho, e usá-lo aqui apagaria o alerta `job_dead` — o
+   * único aviso que hoje existe. Trocar cinco tentativas por silêncio seria
+   * piorar, não consertar.
+   */
+  opts?: { fatal?: boolean },
 ): Promise<JobRow | null> {
   const { rows } = await db.query<JobRow>(
     `with updated as (
        update job_queue
-       set status = case when attempts >= max_attempts then 'dead' else 'pending' end,
+       set status = case when $4 or attempts >= max_attempts then 'dead' else 'pending' end,
            locked_by = null, locked_at = null, last_error = $3
        where id = $1 and status = 'running' and locked_by = $2
        returning *
@@ -289,7 +302,7 @@ export async function failJob(
        where status = 'dead'
      )
      select * from updated`,
-    [jobId, workerId, normalizeError(error)],
+    [jobId, workerId, normalizeError(error), opts?.fatal === true],
   );
   return rows[0] ?? null;
 }
