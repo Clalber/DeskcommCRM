@@ -18,6 +18,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { sendMessageHandler } from '@/app/api/v1/messages/_handler';
 import type { HandlerCtx } from '@/lib/api/handlers/types';
+import { capabilitiesOf } from '@/lib/channels/capabilities';
 import type { SendMessageInput } from '@/lib/schemas';
 
 const ORG = '11111111-1111-4111-8111-111111111111';
@@ -469,6 +470,68 @@ describe('sendMessageHandler — os 6 desfechos do envio', () => {
     expect(linha.status).toBe('failed');
     expect(linha.error_message).toMatch(/template_missing/);
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('8c. ⚠️ canal que NÃO fala modelo recusa — e não sai nada pela Meta', async () => {
+    // ─── O buraco que este caso fecha ─────────────────────────────────────
+    //
+    // `type: "template"` num canal cujo adapter não implementa `sendTemplate`
+    // caía no `sendTemplateForSession`, que lê `META_PHONE_NUMBER_ID` e
+    // `META_SYSTEM_USER_TOKEN` do AMBIENTE e posta na Graph API do WhatsApp.
+    //
+    // Quatro portas chegam a este handler. Três já estavam fechadas por outros
+    // motivos — o agente não recebe a ferramenta (capacidade), a tela não
+    // oferece o seletor, o enum do MCP não tem o tipo. A REST estava aberta.
+    //
+    // O pior desfecho, num canal que endereça por id opaco: o `to` vira o id da
+    // pessoa no Direct e o template SAI pelo número da instalação, cobrado, para
+    // um destino que não é o dono daquela conversa — com o CRM gravando `sent`.
+    // A mensagem sai, então ninguém percebe.
+    //
+    // ⚠️ A asserção que mais importa é a do `fetch`: sem ela, este caso passaria
+    // mesmo com a mensagem tendo saído, desde que o status ficasse `failed`.
+    wahaConfigured(true);
+    vi.stubEnv('META_PHONE_NUMBER_ID', '1103328999528818');
+    vi.stubEnv('META_SYSTEM_USER_TOKEN', 'tok');
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    const msg = await sendMessageHandler(
+      // Template APROVADO no espelho de propósito: sem ele a recusa viria do
+      // pré-voo (`template_missing`) e este caso passaria pelo motivo errado,
+      // sem nunca exercitar a guarda de capacidade.
+      makeSupabase(conversationRow({ provider: 'meta_instagram' }), {
+        name: 'pedido_confirmado',
+        language: 'pt_BR',
+        status: 'APPROVED',
+        contract_hash: 'h',
+        components: [{ type: 'BODY', text: 'Ola {{1}}' }],
+      }),
+      ctx,
+      {
+        conversation_id: 'conv-1',
+        type: 'template',
+        template_name: 'pedido_confirmado',
+        template_language: 'pt_BR',
+        template_values: { '1': 'Rafael' },
+      } as Parameters<typeof sendMessageHandler>[2],
+    );
+
+    const linha = msg as unknown as { status: string; error_code: string };
+    expect(linha.status).toBe('failed');
+    expect(linha.error_code).toBe('template_not_supported');
+    expect(fetchMock, 'saiu requisição — o template foi para a Meta').not.toHaveBeenCalled();
+  });
+
+  it('8d. o canal que USA modelo segue enviando — o controle da guarda', async () => {
+    // Uma guarda por capacidade escrita larga demais mataria o canal oficial,
+    // que é o único que legitimamente usa este caminho. O caso 8 já prova o
+    // envio feliz; este nomeia a intenção de que a recusa não o alcance.
+    expect(capabilitiesOf('meta_cloud').requiresTemplates).toBe(true);
+    expect(capabilitiesOf('meta_instagram').requiresTemplates).toBe(false);
+    // E o canal por QR também não fala modelo — a mesma guarda fecha os dois,
+    // que é a razão de ela ser por capacidade e não por nome de canal.
+    expect(capabilitiesOf('waha').requiresTemplates).toBe(false);
   });
 
   /**

@@ -26,6 +26,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { assertDestinoResolvidoSeguro } from "@/lib/automation/outbound-ip";
 import { assertSafeOutboundUrl } from "@/lib/automation/outbound-url";
+import { logger } from "@/lib/logger";
 import { MAX_MEDIA_BYTES, MediaTooLargeError, type FetchedMedia } from "@/lib/messaging/media/types";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
@@ -528,6 +529,79 @@ export const metaInstagramAdapter: ChannelAdapter = {
       input.hintMime ||
       "application/octet-stream";
     return { buffer, mime };
+  },
+
+  /**
+   * O "digitando…" do Direct.
+   *
+   * A Meta expõe isto no MESMO endereço do envio, trocando `message` por
+   * `sender_action`. Não é uma API à parte, e é por isso que reusa a credencial
+   * e o caminho já provados por `send` em vez de abrir um segundo.
+   *
+   * ─── Por que NUNCA lança, e por que isso é a parte importante ──────────────
+   *
+   * O contrato manda devolver `boolean`, e o comentário dele nomeia o preço de
+   * fazer diferente: um `await` sem `try` no meio da cadeia de envio derrubaria
+   * a MENSAGEM por causa do enfeite. O `send` deste mesmo arquivo lança de
+   * propósito — mensagem que não saiu precisa virar status e retentativa. Aqui é
+   * o oposto: sinal de presença que não saiu não precisa virar nada.
+   *
+   * Então tudo é engolido: credencial ausente, rede caída, recusa da Meta,
+   * estouro de prazo. O `false` diz "não aceitou"; ninguém acima precisa saber
+   * mais que isso, e o log estruturado guarda o motivo para quem investigar.
+   *
+   * ─── O prazo é curto de propósito ─────────────────────────────────────────
+   *
+   * 5s, contra os 30s da busca de mídia. O indicador vive segundos e quem o quer
+   * aceso renova; um sinal que chega depois de 20s chega depois da resposta que
+   * ele deveria anunciar — e, pior, teria segurado a cadeia de envio esse tempo
+   * todo esperando por um enfeite.
+   */
+  async setTyping(input: {
+    organizationId: string;
+    sessionRef: string;
+    recipient: string;
+    typing: boolean;
+  }): Promise<boolean> {
+    try {
+      const admin = createAdminClient();
+      const c = await creds(admin, input.organizationId, input.sessionRef);
+
+      const r = await fetch(`${c.baseUrl}/${c.graphVersion}/${c.instagramUserId}/messages`, {
+        method: "POST",
+        headers: {
+          // Mesma decisão do `send`: token no cabeçalho, nunca na query — ali
+          // ele vira credencial no log de qualquer proxy do caminho.
+          Authorization: `Bearer ${c.token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          recipient: { id: input.recipient },
+          sender_action: input.typing ? "typing_on" : "typing_off",
+        }),
+        signal: AbortSignal.timeout(5_000),
+      });
+
+      // A Meta responde 200 com corpo de erro em alguns casos — o mesmo motivo
+      // pelo qual `send` consulta `lerErro` em vez de confiar só no status.
+      const corpo = (await r.json().catch(() => null)) as unknown;
+      const erro = lerErro(corpo);
+      if (!r.ok || erro) {
+        logger.debug("[instagram.setTyping] a Meta recusou o sinal", {
+          status: r.status,
+          motivo: erro?.message,
+          organizationId: input.organizationId,
+        });
+        return false;
+      }
+      return true;
+    } catch (err) {
+      logger.debug("[instagram.setTyping] não deu para sinalizar", {
+        erro: err instanceof Error ? err.message : String(err),
+        organizationId: input.organizationId,
+      });
+      return false;
+    }
   },
 
   codes: CODIGOS,

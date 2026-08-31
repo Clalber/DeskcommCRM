@@ -15,8 +15,10 @@ import { logger } from "@/lib/logger";
 import {
   CHANNEL_SESSION_REF_COLUMNS,
   DEFAULT_CHANNEL_PROVIDER,
+  capabilitiesOf,
   getAdapter,
   resolveSessionRef,
+  type ChannelProvider,
   type ChannelSessionRef,
 } from "@/lib/channels";
 import { identidadePorContato } from "@/lib/channels";
@@ -578,6 +580,44 @@ export async function sendMessageHandler(
       .from("messages")
       .update({
         metadata: { ...(message.metadata ?? {}), queued_reason: adapter.codes.notConfigured },
+      })
+      .eq("id", message.id)
+      .select(MSG_COLS)
+      .maybeSingle();
+    if (updated) message = updated as unknown as Message;
+  } else if (
+    input.type === "template" &&
+    !capabilitiesOf((c.channel_sessions?.provider ?? DEFAULT_CHANNEL_PROVIDER) as ChannelProvider)
+      .requiresTemplates
+  ) {
+    // ─── Template só sai por canal que USA template ──────────────────────────
+    //
+    // Sem esta recusa, `type: "template"` numa conversa de canal que não fala
+    // template caía no `sendTemplateForSession` lá embaixo — que lê
+    // `META_PHONE_NUMBER_ID` e `META_SYSTEM_USER_TOKEN` do AMBIENTE e posta na
+    // Graph API do WhatsApp com `messaging_product: "whatsapp"`.
+    //
+    // O comentário do ramo de template já nomeia esse defeito para o canal
+    // intermediado; o que faltava era a guarda. O pior desfecho, com um canal
+    // que endereça por id opaco: o `to` vira o id da pessoa no Direct, e um
+    // template SAI pelo número da instalação — cobrado, para um destino que não
+    // é o dono daquela conversa —, enquanto o CRM grava `sent` na conversa do
+    // Instagram. A mensagem sai, então ninguém percebe.
+    //
+    // Três das quatro portas já estavam fechadas por outros motivos (o agente
+    // não recebe a ferramenta, a tela não oferece o seletor, o enum do MCP não
+    // tem o tipo). A REST era a que estava aberta.
+    //
+    // ⚠️ A guarda é por CAPACIDADE, nunca por nome de provider — `if (provider
+    // === ...)` aqui é exatamente o que a restrição de canal proíbe, e por bom
+    // motivo: escrita assim ela fecha de uma vez todo canal que não usa
+    // template, inclusive os que ainda não existem.
+    const { data: updated } = await supabase
+      .from("messages")
+      .update({
+        status: "failed",
+        error_code: "template_not_supported",
+        error_message: "Este canal não envia modelos aprovados. Escreva a mensagem.",
       })
       .eq("id", message.id)
       .select(MSG_COLS)
