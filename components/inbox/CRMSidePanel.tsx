@@ -695,7 +695,7 @@ export function CRMSidePanel({ conversation }: Props) {
                     )}
                     aria-hidden
                   />
-                  {t(activityLabel(a.type))}
+                  {t(activityLabel(a.type, a.payload))}
                 </div>
                 {a.reason && <div className="mt-0.5 truncate text-muted-foreground">{a.reason}</div>}
                 <div className="text-muted-foreground">

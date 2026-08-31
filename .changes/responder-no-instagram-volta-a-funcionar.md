@@ -20,3 +20,11 @@ telefone.
 mandava a mesma frase duas vezes para o cliente. Agora o texto idêntico só sai
 uma vez; duas mensagens diferentes em sequência rápida continuam saindo
 normalmente.
+
+**Também no mesmo conserto:** a linha da timeline dizia "Entrou pelo WhatsApp"
+para todo contato novo, inclusive para quem chegou pelo Instagram — e o campo de
+origem do lead gravava WhatsApp no banco, o que contaminava qualquer relatório de
+origem. Agora a linha diz o canal certo, e o lead nasce com a origem correta.
+
+Cards criados antes desta versão continuam mostrando o que mostravam: eles são
+de WhatsApp, que era o único canal na época.

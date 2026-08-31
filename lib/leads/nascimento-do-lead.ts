@@ -204,6 +204,24 @@ export async function garantirLeadDaConversa(
   // isso reescreva a origem deste.
   const rotuloDeAnuncio = contato?.source ? ROTULO_DE_ANUNCIO[contato.source] : undefined;
 
+  // ─── POR ONDE a pessoa entrou ─────────────────────────────────────────────
+  //
+  // Lido da conversa, e não presumido. A linha da timeline dizia "Entrou pelo
+  // WhatsApp" para TODO lead — e passou a mentir no dia em que o primeiro
+  // contato chegou pelo Instagram. Uma afirmação errada na timeline é pior que
+  // nenhuma: ela manda quem investiga procurar no canal errado.
+  //
+  // A consulta roda AQUI, e não no topo da função, porque daqui para baixo o
+  // lead vai nascer de verdade — uma vez por contato. No topo ela rodaria a
+  // cada mensagem recebida, para nada.
+  const { data: conversa } = await db
+    .from("conversations")
+    .select("channel")
+    .eq("id", conversationId)
+    .eq("organization_id", organizationId)
+    .maybeSingle();
+  const canalDeEntrada = (conversa as { channel?: string } | null)?.channel ?? "whatsapp";
+
   const { data: lead, error } = await db
     .from("crm_leads")
     .insert({
@@ -212,7 +230,9 @@ export async function garantirLeadDaConversa(
       stage_id: destino.stageId,
       contact_id: contactId,
       title: titulo,
-      source: rotuloDeAnuncio ? contato!.source : "whatsapp",
+      // O canal de entrada, não um literal. `crm_leads.source` é vocabulário
+      // ABERTO (sem CHECK), então valor novo não exige migration.
+      source: rotuloDeAnuncio ? contato!.source : canalDeEntrada,
       source_metadata: rotuloDeAnuncio ? (contato!.source_metadata ?? {}) : {},
       // O ponto ao lado do título só acende se a organização cadastrar este
       // rótulo em `crm_pipelines.settings.canonical_tags` (Configurações do
@@ -250,8 +270,11 @@ export async function garantirLeadDaConversa(
     // traduz esta variante para `kind: "system"` na timeline, e ela descreve o
     // que de fato aconteceu — a mensagem chegou por webhook, o produto agiu.
     actor: { type: "webhook_source", id: "canal-inbound" },
-    reason: "primeira mensagem recebida no WhatsApp",
-    payload: { conversation_id: conversationId },
+    reason: `primeira mensagem recebida no canal ${canalDeEntrada}`,
+    // O canal entra no payload porque é a LEITURA que escolhe o rótulo
+    // (`activityLabel`). Sem ele, a linha nasce sem como dizer de onde veio — e
+    // as linhas antigas, que não o têm, seguem lendo como sempre leram.
+    payload: { conversation_id: conversationId, channel: canalDeEntrada },
   });
   if (!registro.ok) {
     // O lead existe e é o que importa; a linha da timeline falhou. Devolver erro

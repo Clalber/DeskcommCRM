@@ -205,7 +205,38 @@ export const ACTIVITY_LABEL_FALLBACK = "Atividade registrada";
  * Nenhum teste pegaria: "stage_changed" não é uuid, então a asserção que caça
  * uuid na tela continuaria verde.
  */
-export function activityLabel(type: string): string {
+/**
+ * Rótulos de nascimento por CANAL.
+ *
+ * `lead_created` dizia "Entrou pelo WhatsApp" para todo lead, e passou a mentir
+ * no dia em que o primeiro contato entrou pelo Instagram: a linha da timeline
+ * afirmava um canal que a pessoa não usou. Medido em produção, na primeira
+ * conversa real do canal novo.
+ *
+ * Chaves são valores de `conversations.channel` (o vocabulário do CANAL, não o
+ * do provider — ver a 0203). Canal ausente ou desconhecido cai no rótulo padrão,
+ * que é o de sempre: linha antiga, gravada antes desta mudança, continua lendo
+ * exatamente como lia.
+ */
+const NASCIMENTO_POR_CANAL: Record<string, string> = {
+  whatsapp: "Entrou pelo WhatsApp",
+  instagram: "Entrou pelo Instagram",
+};
+
+/**
+ * O rótulo de uma atividade.
+ *
+ * O segundo parâmetro é OPCIONAL de propósito: só `lead_created` o consulta, e
+ * quem não o passa continua vendo o que via. Torná-lo obrigatório obrigaria a
+ * tocar em três telas para consertar uma linha.
+ */
+export function activityLabel(type: string, payload?: unknown): string {
+  if (type === "lead_created") {
+    const canal = (payload as { channel?: unknown } | null)?.channel;
+    if (typeof canal === "string" && NASCIMENTO_POR_CANAL[canal]) {
+      return NASCIMENTO_POR_CANAL[canal];
+    }
+  }
   return ACTIVITY_LABELS[type as ActivityType] ?? ACTIVITY_LABEL_FALLBACK;
 }
 
