@@ -92,7 +92,7 @@ export function ConversationList({
       items.map((i) => i.assigned_to_user_id).filter((id): id is string => Boolean(id)),
     );
     return donos.size > 1;
-  }, [filters.assigned_to, items]);
+  }, [filters.assigned_to, filters.comando, items]);
 
   useEffect(() => {
     if (onVisibleChange) onVisibleChange(items.map((i) => i.id));

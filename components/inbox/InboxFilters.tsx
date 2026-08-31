@@ -26,7 +26,13 @@ const INBOX_TABS: { value: InboxTab; label: string }[] = [
   { value: "mine", label: "Minhas" },
   { value: "all", label: "Todas" },
   { value: "closed", label: "Fechadas" },
-  { value: "ai", label: "IA" },
+  // "Automático", não "IA": a palavra deste ator já é contrato em quatro arquivos
+  // e no dicionário, e `handoff-por-orcamento.test.ts` usa literalmente "Voltar
+  // para a IA" como a sabotagem que deve reprovar. A aba era a última fora do
+  // padrão — e ela mudou de significado junto (deixou de filtrar `ai_handling` e
+  // passou a perguntar a régua do motor), então o rótulo velho descreveria outra
+  // coisa.
+  { value: "ai", label: "Automático" },
 ];
 
 /**
