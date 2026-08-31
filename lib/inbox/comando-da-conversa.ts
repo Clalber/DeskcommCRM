@@ -149,7 +149,7 @@ const STATUS_ENCERRADOS = new Set(["closed", "archived"]);
  * tranquilizadora que a doutrina proíbe — falha fechada na ação, aberta na
  * informação. `INFINITO` fica nomeado porque é quem o leitor vem procurar.
  */
-function silencioVigente(
+export function silencioVigente(
   valor: string | null | undefined,
   agora: Date,
 ): { vigente: boolean; duravel: boolean; ate: Date | null } {
