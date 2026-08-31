@@ -366,3 +366,82 @@ export async function contaDoToken(entrada: {
 
   return { ok: true, instagramUserId: conta, username };
 }
+
+/**
+ * Os campos que a conta assina.
+ *
+ * Esta lista exata foi provada contra a Meta na primeira conexão real, com
+ * `POST /me/subscribed_apps` devolvendo `{"success":true}`.
+ */
+export const CAMPOS_ASSINADOS = ["messages", "messaging_postbacks", "messaging_seen"] as const;
+
+/**
+ * Inscreve o aplicativo NA CONTA — o passo que faltava e que ninguém via.
+ *
+ * ─── Por que assinar no painel não basta ────────────────────────────────────
+ *
+ * O visto verde em "Webhooks" assina o APLICATIVO. Cada conta profissional
+ * precisa ser inscrita à parte, por chamada de API. Sem isto a conexão fica
+ * perfeita em toda tela — token válido, webhook verificado, campos "Assinado" —
+ * e NENHUMA mensagem chega. O botão "Testar" do painel funciona, porque ele
+ * mira a URL direto, o que torna o silêncio ainda mais difícil de diagnosticar.
+ *
+ * Medido em produção: `GET /me/subscribed_apps` devolvia `{"data":[]}` numa
+ * conta que a tela dava por conectada. As mensagens passaram a chegar no
+ * segundo seguinte ao POST.
+ *
+ * Idempotente do lado da Meta: assinar duas vezes a mesma conta é inofensivo.
+ */
+export async function assinarAplicativoNaConta(entrada: {
+  token: string;
+  baseUrl: string;
+  graphVersion: string;
+}): Promise<{ ok: true } | { ok: false; motivo: string }> {
+  const u = new URL(`/${entrada.graphVersion}/me/subscribed_apps`, entrada.baseUrl);
+  u.searchParams.set("subscribed_fields", CAMPOS_ASSINADOS.join(","));
+
+  let r: Response;
+  try {
+    r = await fetch(u.toString(), {
+      method: "POST",
+      headers: { Authorization: `Bearer ${entrada.token}` },
+    });
+  } catch (e) {
+    return { ok: false, motivo: `rede: ${e instanceof Error ? e.message : "falhou"}` };
+  }
+
+  if (!r.ok) return { ok: false, motivo: await lerErro(r) };
+
+  const dados = (await r.json().catch(() => null)) as { success?: unknown } | null;
+  // A Meta responde `{"success":true}`. Qualquer outra coisa é recusa disfarçada
+  // de 200 — e aceitar isso devolveria o canal mudo que esta função existe para
+  // impedir.
+  if (dados?.success !== true) return { ok: false, motivo: "resposta sem success" };
+  return { ok: true };
+}
+
+/** A conta está inscrita? `data` vazio = não está. */
+export async function contaEstaAssinada(entrada: {
+  token: string;
+  baseUrl: string;
+  graphVersion: string;
+}): Promise<{ ok: true; assinada: boolean } | { ok: false; motivo: string }> {
+  const u = new URL(`/${entrada.graphVersion}/me/subscribed_apps`, entrada.baseUrl);
+
+  let r: Response;
+  try {
+    r = await fetch(u.toString(), {
+      method: "GET",
+      headers: { Authorization: `Bearer ${entrada.token}` },
+    });
+  } catch (e) {
+    // "Não deu para perguntar" é DIFERENTE de "não está assinada": quem chama
+    // não pode rebaixar a conexão por uma falha de rede nossa.
+    return { ok: false, motivo: `rede: ${e instanceof Error ? e.message : "falhou"}` };
+  }
+
+  if (!r.ok) return { ok: false, motivo: await lerErro(r) };
+
+  const dados = (await r.json().catch(() => null)) as { data?: unknown } | null;
+  return { ok: true, assinada: Array.isArray(dados?.data) && dados.data.length > 0 };
+}
