@@ -24,6 +24,9 @@
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+import { assertDestinoResolvidoSeguro } from "@/lib/automation/outbound-ip";
+import { assertSafeOutboundUrl } from "@/lib/automation/outbound-url";
+import { MAX_MEDIA_BYTES, MediaTooLargeError, type FetchedMedia } from "@/lib/messaging/media/types";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
   instagramCredsForAccount,
@@ -159,6 +162,40 @@ function corpoDoEnvelope(envelope: OutboundEnvelope): Record<string, unknown> {
   }
 
   return { recipient: destinatario, message: { text: texto } };
+}
+
+
+/**
+ * De onde a Meta serve anexo do Direct.
+ *
+ * ⚠️ Esta lista fecha um furo que as guardas genéricas de SSRF NÃO fecham.
+ * `assertSafeOutboundUrl` e `assertDestinoResolvidoSeguro` julgam a PRIMEIRA
+ * URL; um host público aprovado por elas que responda `302` apontando para a
+ * rede interna é seguido sem ninguém revalidar. É o bypass clássico de
+ * validar-e-depois-buscar, e o canal intermediado tem o mesmo buraco.
+ *
+ * Com a lista, o alvo deixa de ser "qualquer host público" e passa a ser "a CDN
+ * da Meta" — e o redirecionamento para fora dela morre por construção, em vez
+ * de depender de mais uma checagem que alguém pode esquecer de repetir.
+ *
+ * Os valores foram MEDIDOS, não presumidos: as três mídias que chegaram em
+ * produção vieram de `lookaside.fbsbx.com`. Os outros dois entram porque a Meta
+ * serve foto de perfil e mídia de feed deles, e falhar fechado num host legítimo
+ * seria trocar um risco por uma falha de produto.
+ *
+ * Se a Meta mudar de host, isto falha FECHADO e VISÍVEL — a mídia não baixa e o
+ * erro nomeia o host recusado. É melhor que o contrário: abrir para a internet
+ * inteira por precaução.
+ */
+const HOSTS_DE_MIDIA_DA_META = [
+  "lookaside.fbsbx.com",
+  ".cdninstagram.com",
+  ".fbcdn.net",
+] as const;
+
+export function hostEhDaMeta(hostname: string): boolean {
+  const h = hostname.toLowerCase();
+  return HOSTS_DE_MIDIA_DA_META.some((p) => (p.startsWith(".") ? h.endsWith(p) : h === p));
 }
 
 export const metaInstagramAdapter: ChannelAdapter = {
@@ -391,6 +428,106 @@ export const metaInstagramAdapter: ChannelAdapter = {
       // produziria um avatar que quebra sozinho em alguns dias.
       fotoUrl: str(dados.profile_pic),
     };
+  },
+
+  /**
+   * Baixa os bytes de uma mídia que chegou pelo Direct.
+   *
+   * ─── O que a ausência deste método custava ──────────────────────────────────
+   *
+   * O worker de persistência testa a PRESENÇA dele (`workers/media-persist-worker.ts`)
+   * e, sem ele, devolve `canal_sem_midia_de_entrada` e segue em frente. Medido em
+   * produção: imagem e áudio chegavam na conversa com `media_url` gravada, o
+   * evento de download era processado com sucesso, e os bytes nunca eram
+   * buscados — o atendente via "imagem" sem imagem, e o agente de IA recebia uma
+   * mensagem sem conteúdo. Nada falhava; só não acontecia.
+   *
+   * ─── SEM credencial no cabeçalho, e isso é a decisão de segurança ───────────
+   *
+   * A URL do anexo vem do PAYLOAD do webhook. O canal intermediado manda a chave
+   * do tenant neste fetch, e o comentário dele nomeia o preço: um payload
+   * hostil faz o servidor ENTREGAR a credencial ao host que o atacante escolheu.
+   *
+   * Aqui não mandamos nada. A CDN da Meta serve o anexo por URL já assinada, com
+   * o token embutido nos parâmetros dela — então o cabeçalho de autorização é
+   * desnecessário, e não mandá-lo apaga essa classe inteira de risco em vez de
+   * mitigá-la. Se um dia a Meta passar a exigir cabeçalho, a resposta certa NÃO
+   * é acrescentá-lo aqui: é reconstruir a URL sobre uma base fixa, como o canal
+   * por QR faz.
+   *
+   * As duas guardas continuam, porque o payload segue sendo entrada externa e
+   * porque o servidor buscando URL escolhida por terceiro é SSRF mesmo sem
+   * credencial junto — dá para varrer rede interna e ler metadado de nuvem.
+   */
+  async fetchInboundMedia(input: {
+    organizationId: string;
+    sessionRef: string;
+    url: string;
+    hintMime?: string | null;
+  }): Promise<FetchedMedia> {
+    // A recusa barata primeiro (esquema, http em produção, IPv6 literal, faixa
+    // privada), depois a que paga DNS e julga o IP resolvido — é esse par que
+    // fecha o rebinding, e é o mesmo que o repo já usa no webhook de saída.
+    assertSafeOutboundUrl(input.url);
+    const alvo = new URL(input.url);
+    // A lista PRIMEIRO: ela é o que impede o redirecionamento para fora da CDN,
+    // e é barata. As genéricas continuam depois, porque um host da Meta
+    // sequestrado por DNS ainda seria endereço interno.
+    if (!hostEhDaMeta(alvo.hostname)) {
+      throw new Error(`instagram_media_failed: host não é da Meta (${alvo.hostname})`);
+    }
+    await assertDestinoResolvidoSeguro(alvo.hostname);
+
+    let r: Response;
+    try {
+      r = await fetch(input.url, {
+        // ⚠️ Nenhum `Authorization`. Ver o parágrafo acima — é decisão, não
+        // esquecimento.
+        // ⚠️ `manual`, e NÃO `follow`. As guardas acima julgam a primeira URL;
+        // seguir redirecionamento às cegas as anula, porque o destino final
+        // nunca é revalidado. Medido em produção: a CDN da Meta responde 200
+        // direto, com zero redirecionamentos — então não seguir não custa nada,
+        // e um 3xx aqui passa a ser sinal de que algo mudou, não silêncio.
+        redirect: "manual",
+        signal: AbortSignal.timeout(30_000),
+      });
+    } catch (e) {
+      throw new Error(
+        `instagram_media_failed: ${e instanceof Error ? e.message : "rede"}`,
+      );
+    }
+
+    // Um 3xx com `redirect: "manual"` não é `ok`, então cai no ramo abaixo com o
+    // status na mensagem — que é o desfecho certo: alguém precisa olhar para
+    // onde a Meta passou a apontar antes de nós seguirmos para lá.
+    if (!r.ok) {
+      // O status distingue os dois desfechos que importam a quem investiga:
+      // 403/404 é URL VENCIDA (a Meta expira o anexo, e retentar não traz de
+      // volta), 5xx é indisponibilidade que passa.
+      throw new Error(`instagram_media_failed: ${r.status} ${r.statusText}`.trim());
+    }
+
+    // ⚠️ O teto é conferido pelo CABEÇALHO antes de ler o corpo. Só medir
+    // depois de `arrayBuffer()` significa que um arquivo de gigabytes já entrou
+    // na memória do worker — que atende todas as organizações da instalação.
+    const declarado = Number(r.headers.get("content-length") ?? "0");
+    if (Number.isFinite(declarado) && declarado > MAX_MEDIA_BYTES) {
+      throw new MediaTooLargeError();
+    }
+
+    const buffer = Buffer.from(await r.arrayBuffer());
+    // E de novo depois: `content-length` é declaração do outro lado, não
+    // promessa. Sem esta segunda conferência, quem omitisse o cabeçalho passaria
+    // reto pela primeira.
+    if (buffer.byteLength > MAX_MEDIA_BYTES) throw new MediaTooLargeError();
+
+    // O `content-type` da RESPOSTA manda sobre a dica do webhook: é o que o
+    // arquivo realmente é, e é ele que vai no upload.
+    const mime =
+      r.headers.get("content-type")?.split(";")[0]?.trim() ||
+      input.hintMime ||
+      "application/octet-stream";
+    return { buffer, mime };
   },
 
   codes: CODIGOS,
