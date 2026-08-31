@@ -38,13 +38,20 @@ import { decryptWebhookSecret } from "@/lib/webhooks/secrets";
  * mudado nada.
  *
  * Sobrescrevível para o teste apontar para outro servidor.
+ *
+ * ⚠️ `?.trim() ||` e NUNCA `??`. O `.env.example` entrega esta linha VAZIA, e
+ * string vazia não é `null` — com `??` o padrão nunca entra, e quem instalou a
+ * partir do exemplo fala com um endereço que não existe. Foi assim que o canal
+ * intermediado quebrou inteiro para quem copiou o exemplo, e o gate
+ * `env-vazia-no-exemplo-nao-usa-coalescencia-nula` pegou o mesmo defeito aqui
+ * antes de ele chegar a alguém.
  */
 export function instagramGraphVersion(): string {
-  return process.env.INSTAGRAM_GRAPH_VERSION ?? "v25.0";
+  return process.env.INSTAGRAM_GRAPH_VERSION?.trim() || "v25.0";
 }
 
 export function instagramGraphBaseUrl(): string {
-  return process.env.INSTAGRAM_GRAPH_BASE_URL ?? "https://graph.instagram.com";
+  return process.env.INSTAGRAM_GRAPH_BASE_URL?.trim() || "https://graph.instagram.com";
 }
 
 export interface InstagramCredentials {

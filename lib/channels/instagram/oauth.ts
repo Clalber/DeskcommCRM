@@ -43,12 +43,12 @@ export const ESCOPOS_DO_INSTAGRAM = [
 
 /** Onde mora a tela de consentimento. Sobrescrevível para o teste. */
 export function instagramAuthorizeBaseUrl(): string {
-  return process.env.INSTAGRAM_AUTHORIZE_BASE_URL ?? "https://www.instagram.com";
+  return process.env.INSTAGRAM_AUTHORIZE_BASE_URL?.trim() || "https://www.instagram.com";
 }
 
 /** Onde o código vira token curto. NÃO é o mesmo host do resto. */
 export function instagramApiBaseUrl(): string {
-  return process.env.INSTAGRAM_API_BASE_URL ?? "https://api.instagram.com";
+  return process.env.INSTAGRAM_API_BASE_URL?.trim() || "https://api.instagram.com";
 }
 
 export interface EstadoDaAutorizacao {
