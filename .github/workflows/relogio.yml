@@ -50,10 +50,36 @@ jobs:
         env:
           APP_URL: ${{ secrets.RELOGIO_APP_URL }}
           SECRET: ${{ secrets.RELOGIO_SECRET }}
+          DISPARO: ${{ github.event_name }}
         run: |
           set -euo pipefail
           if [ -z "${APP_URL}" ] || [ -z "${SECRET}" ]; then
-            echo "::error::RELOGIO_APP_URL ou RELOGIO_SECRET ausente — ver docs/runbooks/vercel-hobby-relogio.md"
+            # ─── O MESMO alarme, DOIS destinos ────────────────────────────
+            #
+            # Falta de credencial num disparo MANUAL é erro alto: a pessoa está
+            # ali, pediu, e precisa ouvir o motivo agora.
+            #
+            # No AGENDAMENTO é outra história. `RELOGIO_LIGADO=1` sem os dois
+            # segredos põe este passo para falhar a cada batida — a pior
+            # enchente de e-mail que este repositório sabe produzir, e uma que
+            # ninguém consegue relacionar ao que fez. Ali o desfecho honesto é
+            # SALTAR dizendo o que falta, e é o mesmo raciocínio do sentinela do
+            # `release.yml`: ausência de credencial não é defeito, é ausência.
+            recado="RELOGIO_APP_URL ou RELOGIO_SECRET ausente — ver docs/runbooks/vercel-hobby-relogio.md"
+            if [ "${DISPARO}" = "schedule" ]; then
+              echo "::warning::${recado}"
+              {
+                echo "### Relógio ligado sem credencial"
+                echo
+                echo "\`RELOGIO_LIGADO\` está em \`1\`, mas falta \`RELOGIO_APP_URL\` e/ou"
+                echo "\`RELOGIO_SECRET\`. Nenhuma batida saiu."
+                echo
+                echo "Cadastre os dois segredos, ou desligue a variável — do jeito que está,"
+                echo "o agendamento roda para nada."
+              } >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+            echo "::error::${recado}"
             exit 1
           fi
           BASE="${APP_URL%/}"
