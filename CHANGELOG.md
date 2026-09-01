@@ -8,6 +8,26 @@ Se você roda o DeskcommCRM numa VPS, **leia a seção da versão para a qual es
 
 ## [Não lançado]
 
+## [2.4.2] — 2026-09-01
+
+### Corrigido
+
+- **Compromisso marcado aqui passa a chegar no Google Agenda** Compromissos marcados no CRM nunca chegaram ao Google Agenda — em instalação
+  nenhuma, desde sempre. O sistema tentava a cada cinco minutos e o Google recusava
+  todas as vezes.
+
+  O motivo estava numa regra da própria API. O evento ia com **duas identidades**
+  ao mesmo tempo, e a documentação do Google diz que só uma pode ir na criação. A
+  recusa vinha sem explicação, e o sistema descartava o pouco que ela dizia.
+
+  Agora vai só uma identidade. O reconhecimento dos eventos que o sistema criou —
+  o que evita o mesmo compromisso ocupar dois horários — passou a usar essa
+  identidade que ficou.
+
+  **Precisa refazer algo?** Não. Os compromissos que estavam parados na fila sobem
+  sozinhos na próxima rodada, e não há nada antigo para corrigir: como nenhum
+  chegou lá, não existe evento duplicado para limpar.
+
 ## [2.4.1] — 2026-09-01
 
 ### Corrigido
@@ -1946,7 +1966,8 @@ Primeira versão marcada do DeskcommCRM. O projeto vinha sendo desenvolvido publ
 
 - **Node 22 é obrigatório para desenvolvimento.** A suíte de invariantes instancia o cliente do Supabase, que exige o `WebSocket` global — nativo apenas a partir do Node 22. Isso não afeta quem apenas hospeda: a VPS roda a imagem pronta.
 
-[Não lançado]: https://github.com/melgarafael/DeskcommCRM/compare/v2.4.1...HEAD
+[Não lançado]: https://github.com/melgarafael/DeskcommCRM/compare/v2.4.2...HEAD
+[2.4.2]: https://github.com/melgarafael/DeskcommCRM/compare/v2.4.1...v2.4.2
 [2.4.1]: https://github.com/melgarafael/DeskcommCRM/compare/v2.4.0...v2.4.1
 [2.4.0]: https://github.com/melgarafael/DeskcommCRM/compare/v2.3.1...v2.4.0
 [2.3.1]: https://github.com/melgarafael/DeskcommCRM/compare/v2.3.0...v2.3.1
