@@ -30,6 +30,7 @@ import {
   CHANNEL_SESSION_REF_COLUMNS,
   DEFAULT_CHANNEL_PROVIDER,
   getAdapter,
+  identidadePorContato,
   resolveSessionRef,
   type ChannelSessionRef,
 } from "@/lib/channels";
@@ -60,6 +61,9 @@ interface ConversaParaSinal {
   organization_id: string;
   is_group: boolean;
   group_chat_id: string | null;
+  /** Os dois only existem para o segundo passo de resolução do destinatário. */
+  contact_id: string | null;
+  channel_session_id: string | null;
   contacts: {
     phone_number: string | null;
     wa_identity: string | null;
@@ -90,7 +94,7 @@ export async function sinalizarDigitando(
     const { data, error } = await supabase
       .from("conversations")
       .select(
-        `organization_id, is_group, group_chat_id,
+        `organization_id, is_group, group_chat_id, contact_id, channel_session_id,
          contacts:contact_id(phone_number, wa_identity, wa_lid, is_blocked),
          channel_sessions:channel_session_id(${CHANNEL_SESSION_REF_COLUMNS}, status)`,
       )
@@ -111,13 +115,42 @@ export async function sinalizarDigitando(
     if (!adapter.setTyping) return "sem_suporte";
     if (!adapter.isConfigured()) return "canal_fora";
 
-    const recipient = adapter.resolveRecipient({
+    const enderecosConhecidos = {
       isGroup: conversa.is_group,
       groupChatId: conversa.group_chat_id,
       phoneNumber: conversa.contacts?.phone_number,
       waIdentity: conversa.contacts?.wa_identity,
       waLid: conversa.contacts?.wa_lid,
-    });
+    };
+    let recipient = adapter.resolveRecipient(enderecosConhecidos);
+
+    // ─── O segundo passo, sem o qual este módulo mente ───────────────────────
+    //
+    // Canal que endereça por ID OPACO não tem telefone: o contato nasce sem
+    // número de propósito, e quem sabe o endereço é `channel_contact_identities`.
+    // O primeiro `resolveRecipient` devolve `null` para ele — e devolvia
+    // `"sem_destino"` aqui, ANTES de `setTyping` ser sequer chamado.
+    //
+    // Isso importa mais do que parece: implementar `setTyping` no adapter e
+    // parar aí produziria um recurso que existe, tipa, tem teste de unidade e
+    // NUNCA acende. É a mesma forma de defeito que o envio deste canal já pagou
+    // (`app/api/v1/messages/_handler.ts`), e o conserto é o mesmo — inclusive a
+    // guarda: só busca quando o primeiro passo não resolveu, para não pôr uma
+    // consulta a mais no caminho quente de quem endereça por número.
+    //
+    // Quem chama renova a cada poucos segundos, então este custo se repete por
+    // renovação. É aceitável porque a alternativa é o recurso não existir para
+    // este canal — mas é a razão de a guarda acima não ser opcional.
+    if (!recipient && conversa.contact_id && conversa.channel_session_id) {
+      const providerUserId = await identidadePorContato(supabase, {
+        organizationId: input.organizationId,
+        channelSessionId: conversa.channel_session_id,
+        contactId: conversa.contact_id,
+      });
+      if (providerUserId) {
+        recipient = adapter.resolveRecipient({ ...enderecosConhecidos, providerUserId });
+      }
+    }
     if (!recipient) return "sem_destino";
 
     const aceito = await adapter.setTyping({

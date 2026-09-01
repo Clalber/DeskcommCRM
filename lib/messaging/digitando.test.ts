@@ -13,18 +13,20 @@
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { getAdapter } from "@/lib/channels";
+import { getAdapter, identidadePorContato } from "@/lib/channels";
 
 import { sinalizarDigitando } from "./digitando";
 
 vi.mock("@/lib/channels", () => ({
   getAdapter: vi.fn(),
+  identidadePorContato: vi.fn(async () => null),
   resolveSessionRef: (s: { ref_da_sessao?: string }) => s.ref_da_sessao ?? "sessao",
   CHANNEL_SESSION_REF_COLUMNS: "provider, ref_da_sessao",
   DEFAULT_CHANNEL_PROVIDER: "canal_de_teste",
 }));
 
 const mockGetAdapter = vi.mocked(getAdapter);
+const mockIdentidade = vi.mocked(identidadePorContato);
 
 const CONVERSA = {
   organization_id: "org-1",
@@ -177,6 +179,100 @@ describe("sinalizarDigitando", () => {
         ligado: true,
       }),
     ).toBe("sem_destino");
+  });
+
+  it("canal que endereça por ID OPACO resolve pela identidade e SINALIZA", async () => {
+    // ─── O defeito que este caso trava ────────────────────────────────────
+    //
+    // Um canal sem telefone (o contato nasce sem número, de propósito) é
+    // endereçado por um id que a conta emitiu, guardado em
+    // `channel_contact_identities`. O primeiro `resolveRecipient` devolve null
+    // para ele, e esta função parava aí com "sem_destino" — ANTES de `setTyping`
+    // ser chamado.
+    //
+    // Isso importava mais do que parece: implementar `setTyping` no adapter e
+    // parar aí produziria um recurso que existe, tipa, tem teste próprio e NUNCA
+    // acende. Foi medido lendo o código antes de escrever a implementação.
+    const setTyping = vi.fn(async () => true);
+    mockGetAdapter.mockReturnValue(
+      adapterCom({
+        // O adapter só sabe endereçar por id opaco — exatamente como o canal real.
+        resolveRecipient: (entrada: { providerUserId?: string | null }) =>
+          entrada.providerUserId ?? null,
+        setTyping,
+      }),
+    );
+    mockIdentidade.mockResolvedValue("9876543210000001");
+    const { client } = supabaseCom({
+      data: { ...CONVERSA, contact_id: "contato-1", channel_session_id: "sessao-uuid" },
+      error: null,
+    });
+
+    const desfecho = await sinalizarDigitando(client, {
+      organizationId: "org-1",
+      conversationId: "conv-1",
+      ligado: true,
+    });
+
+    expect(desfecho, "o canal por id opaco continua sem acender").toBe("sinalizado");
+    expect(setTyping).toHaveBeenCalledWith(
+      expect.objectContaining({ recipient: "9876543210000001" }),
+    );
+
+    // O escopo da busca é a SESSÃO, não só a organização: o mesmo id pertence a
+    // pessoas diferentes em contas diferentes, e sinalizar pela conta errada
+    // mostraria sinal de vida na conversa de outra pessoa.
+    expect(mockIdentidade).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        organizationId: "org-1",
+        channelSessionId: "sessao-uuid",
+        contactId: "contato-1",
+      }),
+    );
+  });
+
+  it("quem JÁ resolveu por telefone não paga a consulta de identidade", async () => {
+    // A guarda do caminho quente. `manterDigitando` re-executa esta função a
+    // cada renovação (8s), então uma consulta incondicional aqui sairia várias
+    // vezes por turno, em todo canal por número, para nada.
+    const setTyping = vi.fn(async () => true);
+    mockGetAdapter.mockReturnValue(adapterCom({ setTyping }));
+    const { client } = supabaseCom({
+      data: { ...CONVERSA, contact_id: "contato-1", channel_session_id: "sessao-uuid" },
+      error: null,
+    });
+
+    await sinalizarDigitando(client, {
+      organizationId: "org-1",
+      conversationId: "conv-1",
+      ligado: true,
+    });
+
+    expect(mockIdentidade, "consultou identidade com o telefone já resolvido").not.toHaveBeenCalled();
+  });
+
+  it("identidade que LANÇA não derruba o turno", async () => {
+    // A tabela pode estar indisponível. O contrato desta função é não deixar
+    // nada escapar — e o pior caso aceitável segue sendo o balãozinho não vir.
+    mockGetAdapter.mockReturnValue(
+      adapterCom({
+        resolveRecipient: (e: { providerUserId?: string | null }) => e.providerUserId ?? null,
+      }),
+    );
+    mockIdentidade.mockRejectedValue(new Error("channel_contact_identity_lookup_failed"));
+    const { client } = supabaseCom({
+      data: { ...CONVERSA, contact_id: "contato-1", channel_session_id: "sessao-uuid" },
+      error: null,
+    });
+
+    await expect(
+      sinalizarDigitando(client, {
+        organizationId: "org-1",
+        conversationId: "conv-1",
+        ligado: true,
+      }),
+    ).resolves.toBe("erro");
   });
 
   it("erro de leitura vira 'erro' — nunca exceção", async () => {

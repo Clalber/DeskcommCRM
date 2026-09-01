@@ -367,3 +367,79 @@ describe("saúde", () => {
     expect(s.status).toBeNull();
   });
 });
+
+describe("o sinal de 'digitando…'", () => {
+  const sinalizar = (typing = true) =>
+    metaInstagramAdapter.setTyping!({
+      organizationId: ORG,
+      sessionRef: CONTA,
+      recipient: IGSID,
+      typing,
+    });
+
+  it("vai pelo MESMO endereço do envio, com sender_action", async () => {
+    // Não é uma API à parte: a Meta expõe o indicador no endpoint de mensagens,
+    // trocando `message` por `sender_action`. Reusar o caminho já provado é o
+    // que evita um segundo lugar onde a credencial pode vazar.
+    resposta = { ok: true, status: 200, corpo: { recipient_id: IGSID } };
+    expect(await sinalizar(true)).toBe(true);
+
+    expect(chamada!.url).toContain(`/${CONTA}/messages`);
+    const corpo = JSON.parse(String(chamada!.init.body)) as Record<string, unknown>;
+    expect(corpo.sender_action).toBe("typing_on");
+    expect(corpo.recipient).toEqual({ id: IGSID });
+    // `message` junto faria a Meta tratar como envio de mensagem.
+    expect(corpo.message).toBeUndefined();
+  });
+
+  it("desligar é um estado PRÓPRIO, não a ausência do sinal", async () => {
+    await sinalizar(false);
+    expect(JSON.parse(String(chamada!.init.body)).sender_action).toBe("typing_off");
+  });
+
+  it("o token vai no CABEÇALHO, nunca na query", async () => {
+    await sinalizar();
+    const headers = chamada!.init.headers as Record<string, string>;
+    expect(headers.Authorization).toBe(`Bearer ${TOKEN}`);
+    // Query string vai para o log de qualquer proxy no caminho.
+    expect(chamada!.url).not.toContain(TOKEN);
+  });
+
+  it("⚠️ NUNCA lança — nem sem credencial, nem com a rede fora", async () => {
+    // A asserção mais importante do bloco. O contrato do seam devolve `boolean`
+    // porque um `await` sem `try` no meio da cadeia de envio derrubaria a
+    // MENSAGEM por causa do enfeite. O `send` deste mesmo adapter lança de
+    // propósito; aqui é o oposto, e a diferença é deliberada.
+    credencial = null;
+    await expect(sinalizar()).resolves.toBe(false);
+
+    credencial = {
+      instagram_user_id: CONTA,
+      instagram_token_encrypted: "cifrado",
+      instagram_token_expires_at: null,
+    };
+    vi.stubGlobal("fetch", async () => {
+      throw new Error("ECONNRESET");
+    });
+    await expect(sinalizar()).resolves.toBe(false);
+  });
+
+  it("recusa da Meta vira false, não exceção", async () => {
+    resposta = { ok: false, status: 400, corpo: { error: { code: 10, message: "fora da janela" } } };
+    await expect(sinalizar()).resolves.toBe(false);
+  });
+
+  it("erro com HTTP 200 também vira false", async () => {
+    // A Meta às vezes responde 200 com corpo de erro — é por isso que o `send`
+    // consulta `lerErro` em vez de confiar no status, e aqui vale o mesmo.
+    resposta = { ok: true, status: 200, corpo: { error: { code: 190, message: "token morto" } } };
+    await expect(sinalizar()).resolves.toBe(false);
+  });
+
+  it("tem prazo CURTO — enfeite não segura a cadeia de envio", async () => {
+    await sinalizar();
+    // 5s contra os 30s da busca de mídia: o indicador vive segundos, e um sinal
+    // que chegasse em 20s chegaria depois da resposta que ele anuncia.
+    expect(chamada!.init.signal).toBeDefined();
+  });
+});

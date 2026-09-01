@@ -44,6 +44,12 @@ export const CODIGOS_DE_FALHA_DEFINITIVA: readonly string[] = [
   // Contato sem endereço NESTE canal. A cura é humana (cadastrar telefone,
   // ligar a identidade), não passa com o tempo.
   "missing_phone_number",
+  // Modelo aprovado pedido a um canal que não fala modelo. É CAPACIDADE do
+  // canal, não estado dele: retentar não muda `requiresTemplates`, e a cura é
+  // humana — escrever a mensagem em vez de escolher um modelo. Entra nesta
+  // lista pelo mesmo critério de `missing_phone_number`, e não por parecer
+  // grave: o que qualifica é a retentativa comprovadamente não consertar.
+  "template_not_supported",
 ];
 
 /** O conjunto inteiro de falhas é definitivo? Lista vazia NÃO é definitiva. */
@@ -65,6 +71,10 @@ const FRASES: Record<string, string> = {
   channel_archived:
     "Esse número foi excluído da Central de Conexões. Escolha outro número nesta automação.",
   missing_phone_number: "O contato não tem telefone para receber a mensagem.",
+  // Diz o que FAZER, não só o que houve: modelo aprovado é coisa do WhatsApp
+  // Oficial, e nos demais canais a saída é escrever normalmente.
+  template_not_supported:
+    "Este canal não envia modelos aprovados. Escreva a mensagem normalmente.",
   // O transporte não respondeu, ou respondeu erro.
   waha_error: "Não conseguimos falar com o serviço de WhatsApp. Confira se ele está no ar.",
   meta_error: "O WhatsApp Oficial recusou o envio. Confira a conexão em Conexões.",

@@ -381,7 +381,28 @@ A cadeia tem 6 elos. Romper qualquer um exige justificativa em PR.
 ### 5.1 Cadeia
 
 1. **DB schema** → migrations SQL (Spec 01 §2, Spec 02 §2, Spec 03 §3, etc).
-2. **Generated types** → `lib/database.types.ts` (regenerado via `pnpm gen:types` após cada migration; ~2184 linhas hoje).
+2. **Generated types** → `lib/database.types.ts`. **Não há script de regeneração**, e esta linha
+   prometeu `pnpm gen:types` — que nunca existiu — até 2026-08-31. Uma receita falsa é pior que
+   nenhuma: quem tenta segui-la conclui que a própria máquina está quebrada. A receita real, que
+   o repo aprendeu em três tentativas erradas
+   (`docs/superpowers/plans/2026-07-27-harness-fase4-painel-evolucao.md:154-159`):
+
+   ```bash
+   # A fonte fiel é o BASELINE num Supabase descartável — nunca um banco vivo.
+   # Banco compartilhado traz tabela de outra branch para dentro do arquivo, e a
+   # mitigação ("reduzir o diff") já derrubou coluna boa e quebrou task seguinte.
+   supabase start                                  # precisa de Docker; pg17 (config.toml)
+   psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -f supabase/baseline.sql
+   supabase gen types typescript --local > lib/database.types.ts
+   ```
+
+   Supabase LOCAL e não container `pgvector` puro: os schemas `storage` e `graphql_public` que o
+   arquivo contém vêm da instalação do Supabase, não do baseline — gerar do Postgres cru os apaga.
+
+   **⚠️ O arquivo não sustenta o `typecheck`.** Zero arquivos importam `Database`; os três clients
+   de `lib/supabase/` são `SupabaseClient` sem genérico. Por isso ele atrasa em silêncio, e por
+   isso a dívida é medida por `tests/unit/tipos-do-banco-nao-atrasam-mais.test.ts` em vez de
+   aparecer sozinha. O sintoma no código é `.from("tabela" as never)`.
 3. **Domain aliases** → `lib/types/<entity>.ts` com aliases enxutos.
 4. **Zod schemas** → `lib/schemas/<entity>.ts` com 1 schema por entidade pro boundary das API routes.
 5. **API contracts** → cada API route exporta `request` e `response` types.
