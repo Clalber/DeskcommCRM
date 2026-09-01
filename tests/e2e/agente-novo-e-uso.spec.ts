@@ -111,6 +111,7 @@ test.describe("Criar um agente pela tela", () => {
 
     // Nasceu: a tela navega para o agente criado.
     await page.waitForURL(/\/app\/ai\/agents\/[0-9a-f-]{36}/, { timeout: 30_000 });
+    const urlDoAgente = page.url();
     await expect(page.getByText(nome).first()).toBeVisible();
 
     // E as capacidades que liguei ANTES de criar sobreviveram ao nascimento —
@@ -127,6 +128,42 @@ test.describe("Criar um agente pela tela", () => {
     // Aparece na lista, que é onde a pessoa vai procurar depois.
     await page.goto("/app/ai/agents");
     await expect(page.getByText(nome).first()).toBeVisible({ timeout: 30_000 });
+
+    // ─── E RENOMEAR PELO EDITOR MUDA O NOME, EM TODA TELA ──────────────────
+    //
+    // Defeito medido em produção em 2026-08-31: o campo de nome no editor
+    // aceitava a digitação, validava, salvava com aviso verde e publicava — e o
+    // nome nunca mudava. Nome, descrição e prioridade moram em `ai_agents`, e o
+    // editor só montava o payload da VERSÃO, cuja tabela não tem essas colunas.
+    //
+    // Este trecho vive aqui, e não em spec própria, porque precisa de um agente
+    // criado PELA TELA — e é exatamente isso que o caso acima acabou de fazer.
+    // Spec nova também exigiria registro em `SPECS_PARTE_*` do CI; esta já roda.
+    //
+    // Os testes de unidade provam que o nome sai da tela e que o servidor grava.
+    // Nenhum dos dois prova o que a pessoa reclamou: que a LISTA continua
+    // mostrando o nome velho. Só a tela prova isso.
+    const nomeNovo = `${nome} — renomeada`;
+
+    await page.goto(urlDoAgente);
+    await page.locator("#name").waitFor({ state: "visible", timeout: 60_000 });
+    await page.locator("#name").fill(nomeNovo);
+
+    const salvar = page.getByRole("button", { name: /salvar rascunho/i });
+    await expect(salvar, "mudar o nome não habilitou o salvamento").toBeEnabled();
+    await salvar.click();
+
+    await page.screenshot({
+      path: path.join(EVIDENCIA, "w1-nova-04-renomeado.png"),
+      fullPage: true,
+    });
+
+    await page.goto("/app/ai/agents");
+    await expect(
+      page.getByText(nomeNovo).first(),
+      "a lista continua mostrando o nome antigo — o defeito voltou",
+    ).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByText(nome, { exact: true })).toHaveCount(0);
   });
 
   test("a tela oferece caminho para o que ela exige, sem exigir que o usuário adivinhe", async ({

@@ -109,6 +109,27 @@ fonte só (`lib/onboarding/passos.ts`) — eram três listas que discordavam. Ga
 | J3.13 | A escolha sobrevive ao salvar e recarregar | o servidor aceita a lista (o mesmo teto da tela, `TETO_TOOLS_POR_AGENTE`, fonte única) e o estado volta igual · **PASS** |
 | J3.14 | Ver se o que está ligado está funcionando (aba Capacidades) | usos, falhas, quantos vieram de teste, última vez — e o que fazer com cada número · **PASS** (números escritos pelo emissor real de audit) |
 | J3.15 | O teto recusa a passagem, explicando em português | **PASS** — exercitável desde que o catálogo cresceu (57 capacidades). `capacidades-do-agente.spec.ts` liga "Atender" sobre as 8 do seed e prova a recusa por 1 vaga. A afirmação "não exercitável hoje, com 16 capacidades no catálogo" VENCEU |
+| J3.16 | **Renomear o agente pelo editor** | o nome digitado muda no editor E na lista · **PASS** (`tests/e2e/agente-novo-e-uso.spec.ts` renomeia o agente que o próprio caso acabou de criar pela tela; `tests/unit/agente-salva-o-nome-editado.test.tsx` guarda o envio, `tests/unit/agente-cadastro-gravado-no-servidor.test.ts` guarda a gravação) |
+
+> **J3.16 — o defeito que ela fechou, medido em produção em 2026-08-31.** O campo
+> de nome no editor aceitava a digitação, validava, marcava o formulário como
+> sujo, salvava com aviso verde e publicava — e o nome nunca mudava, em tela
+> nenhuma. **Descrição** e **ordem de preferência** sumiam pelo mesmo motivo.
+>
+> Os três moram em `ai_agents`; `toVersionPayload` era o único construtor do
+> envio em modo edição, e a tabela de versões não tem essas colunas. Nada
+> falhava: o rascunho REALMENTE era salvo, e as mensagens de sucesso eram todas
+> verdadeiras a respeito da versão — a única coisa gravada.
+>
+> O instrumento que fechou o diagnóstico foi a auditoria de produção: **8 linhas
+> `ai_agent.published` e ZERO `ai_agent.updated`**, numa instalação em que a
+> pessoa tinha tentado renomear várias vezes. O único caminho que emitia essa
+> ação era o "Renomear" do menu de três pontos da LISTA, que sempre funcionou —
+> e que ninguém tem como adivinhar estando dentro do editor.
+>
+> Por que o caso é e2e e não só unidade: os testes de unidade provam que o nome
+> sai da tela e que o servidor grava. Nenhum dos dois prova o que a pessoa
+> reclamou — que a **lista** continua mostrando o nome velho.
 
 ## J4 — CRM e Pipelines `[P1]`
 
