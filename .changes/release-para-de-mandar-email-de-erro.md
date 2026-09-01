@@ -4,9 +4,9 @@ secao: corrigido
 titulo: O ciclo de release para de acusar erro em quem não é o projeto de origem
 ---
 
-Quem mantém uma cópia própria do DeskcommCRM recebia um e-mail de **"workflow
-failed"** a cada mudança enviada. Medido numa instalação real: **12 de 12 envios**,
-sempre o mesmo aviso, enquanto todas as outras verificações passavam.
+Quem mantém uma cópia própria do DeskcommCRM recebia um **aviso de erro** a cada
+mudança enviada. Medido numa instalação real: **12 de 12 envios**, sempre o mesmo
+aviso, enquanto todas as outras verificações passavam.
 
 A causa não era um defeito no código enviado. O passo que corta a versão precisa
 de uma credencial que só existe no projeto de origem, e toda cópia nasce sem ela
