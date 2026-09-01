@@ -189,7 +189,23 @@ export async function publicarNoGoogle(
       // CALENDÁRIO que não existe. Classificar os dois como `evento_sumiu` foi o
       // que fez a VPS registrar três vezes um diagnóstico que não descrevia nada.
       classificacao: classificarErroDoGoogle(cru, jaExisteLa ? "sincronizar" : "criar"),
-      detalhe: `HTTP ${resposta.status}`,
+      // ─── O CORPO DO GOOGLE ENTRA NO DETALHE ───────────────────────────────
+      //
+      // Era só `HTTP ${status}`, e o corpo — já parseado em `cru`, uma linha
+      // acima — era descartado. Medido em produção em 2026-09-01: o cron tentou
+      // publicar dois agendamentos a cada 5 minutos durante horas, e todo o
+      // registro que sobrou foi `HTTP 400`, repetido. Nada dizia QUAL campo o
+      // Google recusou, então não havia como consertar sem adivinhar.
+      //
+      // `detalhe` já flui para o `logger.warn` do cron E para a coluna
+      // `google_sync_error` — nenhum fio novo é preciso, só parar de jogar fora
+      // o que já está na mão.
+      //
+      // Recortado em 300 caracteres: a mensagem do Google é curta e o que
+      // interessa vem no começo; o resto encheria a coluna e o log sem
+      // acrescentar. E `JSON.stringify` não vaza credencial — `cru` é a
+      // resposta de erro, não a requisição.
+      detalhe: `HTTP ${resposta.status} — ${JSON.stringify(cru).slice(0, 300)}`,
     };
   }
   const corpo = (await resposta.json().catch(() => ({}))) as { id?: string; sequence?: number };
