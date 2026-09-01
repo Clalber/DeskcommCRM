@@ -8,6 +8,53 @@ Se você roda o DeskcommCRM numa VPS, **leia a seção da versão para a qual es
 
 ## [Não lançado]
 
+## [2.4.0] — 2026-08-31
+
+### Adicionado
+
+- **Instagram mostra "digitando…", e modelo aprovado não sai por canal errado** Três acertos no canal Instagram, feitos de uma vez.
+
+  **O "digitando…" passa a aparecer.** Enquanto o agente pensa, a pessoa do outro
+  lado vê o indicador, como já acontecia no WhatsApp. Se o sinal falhar, nada
+  acontece com a mensagem — ele é enfeite e foi construído para nunca atrapalhar o
+  que importa.
+
+  **Modelo aprovado deixa de poder sair pelo canal errado.** Havia um caminho — só
+  pela API, não pela tela — em que pedir um "modelo aprovado" numa conversa que não
+  usa modelos fazia a mensagem sair **pelo número de WhatsApp da instalação**,
+  cobrada, para um destino que não era o dono daquela conversa. E o sistema
+  registrava como enviada. Agora a tentativa é recusada com uma explicação, e nada
+  sai. A recusa vale para todo canal que não trabalha com modelos, não só o
+  Instagram.
+
+  **A defasagem dos tipos do banco ficou visível.** Um arquivo interno de tipos
+  estava meses atrasado sem que nada quebrasse — e sem que existisse receita para
+  atualizá-lo; a documentação apontava para um comando que nunca existiu. A receita
+  real está escrita, e uma trava nova impede que a defasagem cresça em silêncio.
+
+  **Precisa fazer algo?** Não. O indicador funciona sozinho na próxima conversa.
+
+### Corrigido
+
+- **Renomear o agente pelo editor passa a funcionar** Editar o **nome** de um agente na tela de configuração não mudava nada. A pessoa
+  digitava o nome novo, salvava, publicava — e o nome seguia o mesmo em toda tela.
+  A **descrição** e a **ordem de preferência** sumiam do mesmo jeito, pela mesma
+  causa.
+
+  Nada falhava, e é isso que tornava o problema difícil de enxergar: o campo
+  aceitava a digitação, validava, o botão de salvar acendia, o aviso verde dizia
+  "Rascunho salvo", e a publicação respondia que deu certo. Todas essas afirmações
+  eram verdadeiras — a respeito da **versão** do agente, que era a única coisa
+  sendo de fato gravada. Esses três campos não pertencem à versão: eles valem para
+  o agente inteiro, e o editor nunca os enviava.
+
+  Agora eles são gravados junto com o rascunho, e a lista de agentes passa a
+  mostrar o nome novo na hora.
+
+  **Já dava para renomear antes?** Sim, por outro caminho: o menu de três pontos
+  no cartão do agente, na lista, tem "Renomear". Ele sempre funcionou. Quem tentou
+  pelo editor é que não tinha como saber que precisava sair de lá.
+
 ## [2.3.1] — 2026-08-31
 
 ### Corrigido
@@ -1839,7 +1886,8 @@ Primeira versão marcada do DeskcommCRM. O projeto vinha sendo desenvolvido publ
 
 - **Node 22 é obrigatório para desenvolvimento.** A suíte de invariantes instancia o cliente do Supabase, que exige o `WebSocket` global — nativo apenas a partir do Node 22. Isso não afeta quem apenas hospeda: a VPS roda a imagem pronta.
 
-[Não lançado]: https://github.com/melgarafael/DeskcommCRM/compare/v2.3.1...HEAD
+[Não lançado]: https://github.com/melgarafael/DeskcommCRM/compare/v2.4.0...HEAD
+[2.4.0]: https://github.com/melgarafael/DeskcommCRM/compare/v2.3.1...v2.4.0
 [2.3.1]: https://github.com/melgarafael/DeskcommCRM/compare/v2.3.0...v2.3.1
 [2.3.0]: https://github.com/melgarafael/DeskcommCRM/compare/v2.2.4...v2.3.0
 [2.2.4]: https://github.com/melgarafael/DeskcommCRM/compare/v2.2.3...v2.2.4
