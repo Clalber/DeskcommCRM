@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
 import { showApiError } from "@/components/feedback/ApiErrorToast";
+import { useT } from "@/hooks/i18n/useT";
 import { Button } from "@/components/ui/button";
 import { apiClient } from "@/lib/api/client";
 import { precoParaCentavos, type Produto } from "@/lib/schemas/produtos";
@@ -52,11 +53,14 @@ const VAZIO: Rascunho = {
   controla_estoque: true,
 };
 
-function doRascunho(r: Rascunho): Record<string, unknown> | { erro: string } {
+function doRascunho(
+  r: Rascunho,
+  t: (s: string) => string,
+): Record<string, unknown> | { erro: string } {
   const preco_cents = precoParaCentavos(r.preco);
-  if (preco_cents === null) return { erro: "Preço inválido. Escreva assim: 5.499,00" };
+  if (preco_cents === null) return { erro: t("Preço inválido. Escreva assim: 5.499,00") };
   const custo_cents = r.custo.trim() === "" ? null : precoParaCentavos(r.custo);
-  if (r.custo.trim() !== "" && custo_cents === null) return { erro: "Custo inválido." };
+  if (r.custo.trim() !== "" && custo_cents === null) return { erro: t("Custo inválido.") };
 
   return {
     codigo: r.codigo.trim(),
@@ -79,6 +83,7 @@ export function ProdutosClient({
   podeEditar: boolean;
   textos: Textos;
 }) {
+  const t = useT();
   const router = useRouter();
   const [busca, setBusca] = React.useState("");
   const [criando, setCriando] = React.useState(false);
@@ -97,7 +102,7 @@ export function ProdutosClient({
   }, [inicial, busca]);
 
   async function salvar() {
-    const corpo = doRascunho(rascunho);
+    const corpo = doRascunho(rascunho, t);
     if ("erro" in corpo) {
       toast.error(corpo.erro as string);
       return;
@@ -105,7 +110,7 @@ export function ProdutosClient({
     setSalvando(true);
     try {
       await apiClient.post("/api/v1/products", corpo);
-      toast.success("Produto cadastrado");
+      toast.success(t("Produto cadastrado"));
       setRascunho(VAZIO);
       setCriando(false);
       router.refresh();
@@ -128,7 +133,7 @@ export function ProdutosClient({
         | { error?: { message?: string } };
       if (!res.ok || !("data" in json)) {
         const msg = "error" in json ? json.error?.message : undefined;
-        toast.error(msg ?? "Não consegui ler essa planilha.");
+        toast.error(msg ?? t("Não consegui ler essa planilha."));
         return;
       }
       // O resumo fica NA TELA, não num toast que some em 4 segundos: quem
@@ -136,7 +141,7 @@ export function ProdutosClient({
       setResumo(json.data);
       router.refresh();
     } catch {
-      toast.error("Não consegui enviar o arquivo.");
+      toast.error(t("Não consegui enviar o arquivo."));
     } finally {
       setImportando(false);
       if (arquivoRef.current) arquivoRef.current.value = "";
@@ -146,7 +151,7 @@ export function ProdutosClient({
   async function alternarAtivo(p: Produto) {
     try {
       await apiClient.patch(`/api/v1/products/${p.id}`, { ativo: !p.ativo });
-      toast.success(p.ativo ? "Produto desativado" : "Produto reativado");
+      toast.success(t(p.ativo ? "Produto desativado" : "Produto reativado"));
       router.refresh();
     } catch (e) {
       showApiError(e);
@@ -164,14 +169,14 @@ export function ProdutosClient({
         <input
           value={busca}
           onChange={(e) => setBusca(e.target.value)}
-          placeholder="Buscar por nome, código ou marca"
+          placeholder={t("Buscar por nome, código ou marca")}
           className="h-9 w-full max-w-sm rounded-md border px-3 text-sm"
           data-testid="busca-produto"
         />
         {podeEditar ? (
           <>
             <Button onClick={() => setCriando((v) => !v)} data-testid="novo-produto">
-              {criando ? "Cancelar" : "Novo produto"}
+              {t(criando ? "Cancelar" : "Novo produto")}
             </Button>
             <input
               ref={arquivoRef}
@@ -190,7 +195,7 @@ export function ProdutosClient({
               onClick={() => arquivoRef.current?.click()}
               data-testid="importar-planilha"
             >
-              {importando ? "Importando…" : "Importar planilha"}
+              {t(importando ? "Importando…" : "Importar planilha")}
             </Button>
           </>
         ) : null}
@@ -206,42 +211,40 @@ export function ProdutosClient({
           className="mb-4 inline-block text-xs text-muted-foreground underline"
           data-testid="modelo-planilha"
         >
-          Baixar planilha modelo
+          {t("Baixar planilha modelo")}
         </a>
       ) : null}
 
       {resumo ? (
         <div className="mb-6 rounded-lg border p-4 text-sm" data-testid="resumo-importacao">
           <p className="font-medium">
-            {resumo.criados} produto{resumo.criados === 1 ? "" : "s"} novo
-            {resumo.criados === 1 ? "" : "s"}, {resumo.atualizados} atualizado
-            {resumo.atualizados === 1 ? "" : "s"} — de {resumo.total_linhas} linha
-            {resumo.total_linhas === 1 ? "" : "s"} na planilha.
+            {resumo.criados} {t("novos")} · {resumo.atualizados} {t("atualizados")} ·{" "}
+            {resumo.total_linhas} {t("linhas na planilha")}
           </p>
           {resumo.colunas_ignoradas.length > 0 ? (
             <p className="mt-2 text-muted-foreground">
-              Não usei estas colunas: {resumo.colunas_ignoradas.join(", ")}.
+              {t("Não usei estas colunas:")} {resumo.colunas_ignoradas.join(", ")}.
             </p>
           ) : null}
           {resumo.erros.length > 0 ? (
             <div className="mt-3">
-              <p className="font-medium">Linhas que não entraram:</p>
+              <p className="font-medium">{t("Linhas que não entraram:")}</p>
               <ul className="mt-1 space-y-0.5 text-muted-foreground">
                 {resumo.erros.slice(0, 20).map((e) => (
                   <li key={`${e.linha}-${e.motivo}`}>
-                    Linha {e.linha}: {e.motivo}
+                    {t("Linha")} {e.linha}: {e.motivo}
                   </li>
                 ))}
               </ul>
               {resumo.erros.length > 20 ? (
                 <p className="mt-1 text-muted-foreground">
-                  …e mais {resumo.erros.length - 20}.
+                  {t("…e mais")} {resumo.erros.length - 20}.
                 </p>
               ) : null}
             </div>
           ) : null}
           <button className="mt-3 text-xs underline" onClick={() => setResumo(null)}>
-            Fechar
+            {t("Fechar")}
           </button>
         </div>
       ) : null}
@@ -250,7 +253,7 @@ export function ProdutosClient({
         <div className="mb-6 rounded-lg border p-4" data-testid="form-produto">
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="text-sm">
-              Código
+              {t("Código")}
               <input
                 value={rascunho.codigo}
                 onChange={(e) => setRascunho({ ...rascunho, codigo: e.target.value })}
@@ -259,7 +262,7 @@ export function ProdutosClient({
               />
             </label>
             <label className="text-sm">
-              Nome
+              {t("Nome")}
               <input
                 value={rascunho.nome}
                 onChange={(e) => setRascunho({ ...rascunho, nome: e.target.value })}
@@ -268,7 +271,7 @@ export function ProdutosClient({
               />
             </label>
             <label className="text-sm">
-              Marca
+              {t("Marca")}
               <input
                 value={rascunho.marca}
                 onChange={(e) => setRascunho({ ...rascunho, marca: e.target.value })}
@@ -276,7 +279,7 @@ export function ProdutosClient({
               />
             </label>
             <label className="text-sm">
-              Categoria
+              {t("Categoria")}
               <input
                 value={rascunho.categoria}
                 onChange={(e) => setRascunho({ ...rascunho, categoria: e.target.value })}
@@ -284,7 +287,7 @@ export function ProdutosClient({
               />
             </label>
             <label className="text-sm">
-              Preço de venda
+              {t("Preço de venda")}
               <input
                 value={rascunho.preco}
                 onChange={(e) => setRascunho({ ...rascunho, preco: e.target.value })}
@@ -294,7 +297,7 @@ export function ProdutosClient({
               />
             </label>
             <label className="text-sm">
-              Custo <span className="text-muted-foreground">(opcional)</span>
+              {t("Custo")} <span className="text-muted-foreground">{t("(opcional)")}</span>
               <input
                 value={rascunho.custo}
                 onChange={(e) => setRascunho({ ...rascunho, custo: e.target.value })}
@@ -302,7 +305,7 @@ export function ProdutosClient({
                 className="mt-1 h-9 w-full rounded-md border px-3"
               />
               <span className="mt-1 block text-xs text-muted-foreground">
-                Serve para o atendente saber até onde pode negociar. Não aparece para o cliente.
+                {t("Serve para o atendente saber até onde pode negociar. Não aparece para o cliente.")}
               </span>
             </label>
           </div>
@@ -314,11 +317,11 @@ export function ProdutosClient({
               onChange={(e) => setRascunho({ ...rascunho, controla_estoque: e.target.checked })}
               data-testid="produto-controla-estoque"
             />
-            Controlar estoque deste produto
+            {t("Controlar estoque deste produto")}
           </label>
           {rascunho.controla_estoque ? (
             <label className="mt-2 block text-sm">
-              Quantidade
+              {t("Quantidade")}
               <input
                 value={rascunho.quantidade}
                 onChange={(e) => setRascunho({ ...rascunho, quantidade: e.target.value })}
@@ -327,14 +330,15 @@ export function ProdutosClient({
             </label>
           ) : (
             <p className="mt-2 text-xs text-muted-foreground">
-              Sem controle de estoque, este produto sempre aparece como disponível para o
-              atendente — é o certo para item sob encomenda ou fracionado.
+              {t(
+                "Sem controle de estoque, este produto sempre aparece como disponível para o atendente — é o certo para item sob encomenda ou fracionado.",
+              )}
             </p>
           )}
 
           <div className="mt-4">
             <Button onClick={salvar} disabled={salvando} data-testid="salvar-produto">
-              {salvando ? "Salvando…" : "Salvar produto"}
+              {t(salvando ? "Salvando…" : "Salvar produto")}
             </Button>
           </div>
         </div>
@@ -356,7 +360,9 @@ export function ProdutosClient({
                 <p className="text-xs text-muted-foreground">
                   {p.codigo}
                   {p.marca ? ` · ${p.marca}` : ""}
-                  {p.controla_estoque ? ` · ${p.quantidade} em estoque` : " · sem controle de estoque"}
+                  {p.controla_estoque
+                    ? ` · ${p.quantidade} ${t("em estoque")}`
+                    : ` · ${t("sem controle de estoque")}`}
                 </p>
               </div>
               <span className="shrink-0 tabular-nums font-medium">
@@ -369,7 +375,7 @@ export function ProdutosClient({
                   onClick={() => void alternarAtivo(p)}
                   data-testid={`alternar-${p.codigo}`}
                 >
-                  {p.ativo ? "Desativar" : "Reativar"}
+                  {t(p.ativo ? "Desativar" : "Reativar")}
                 </Button>
               ) : null}
             </li>
