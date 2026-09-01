@@ -251,3 +251,31 @@ export async function apagarNoGoogle(
     detalhe: `HTTP ${resposta.status}`,
   };
 }
+
+/**
+ * Este evento do Google foi criado por NÓS? — o anti-eco, agora pelo id.
+ *
+ * ⚠️ SUBSTITUI `ehIcalUidNosso`, e a troca não é cosmética.
+ *
+ * O reconhecimento morava no sufixo `@deskcomm.app` do `iCalUID` que mandávamos
+ * junto do evento. Só que mandar `iCalUID` e `id` juntos é o que o Google
+ * recusava com `400 Invalid resource id value` — medido em produção em
+ * 2026-09-01, a cada 5 minutos, por horas. Tirar o uid conserta a publicação e
+ * deixaria o anti-eco cego: o Google gera `<id>@google.com`, que não termina no
+ * nosso sufixo, e todo compromisso criado aqui voltaria pela sincronização como
+ * ocupação de terceiro — bloqueando o próprio horário que ele já ocupa.
+ *
+ * O id serve melhor, e sempre serviu: ele é NOSSO por construção
+ * (`idDeEventoDoGoogle`), o Google o preserva, e a rota de sincronização já tem
+ * `external_event_id` na mão no mesmo ponto onde consultava o uid. A camada que
+ * faltava já estava debaixo do nariz.
+ *
+ * ⚠️ Migrar não custou dados: NENHUM evento nosso jamais chegou ao Google, em
+ * instalação nenhuma. Três eras de falha — filtro PostgREST inválido até a
+ * v1.7.0, `evento_sumiu` na v1.9.1, e este 400 — estão documentadas no MANIFEST
+ * e no cabeçalho deste arquivo. Não há legado com o uid antigo para reconhecer.
+ */
+export function ehEventoNosso(externalEventId: string | null | undefined): boolean {
+  if (!externalEventId) return false;
+  return externalEventId.toLowerCase().startsWith(PREFIXO);
+}
