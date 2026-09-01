@@ -17,6 +17,23 @@ name: release
 #
 # Por isso o ato 2 não confia: ele espera a publicação e CONFERE as três imagens
 # no registro, falhando alto se não aparecerem.
+#
+# ─── FORK SEM O App NÃO PODE FALHAR VERMELHO ────────────────────────────────
+#
+# O App é do repositório de origem. Todo fork nasce sem `RELEASE_APP_ID`, e o
+# `create-github-app-token` é a PRIMEIRA linha dos dois jobs — então ele morria
+# ali, e o `cortar-tag` roda em TODO push na `main`.
+#
+# Medido em 2026-09-01 num fork: **12 rodadas, 12 falhas, 100%**. Um e-mail de
+# "workflow failed" por merge, por semanas, enquanto `ci`, `perf`, `e2e` e a
+# publicação de imagem passavam. O efeito é pior que o incômodo: quem recebe
+# vermelho em todo merge para de abrir o vermelho, e o dia em que a falha for
+# real ela chega na mesma caixa, com a mesma cara, e não é lida.
+#
+# A guarda abaixo transforma "não tenho credencial" em SALTO, não em falha. A
+# distinção é a mesma que este repositório aplica em `checkHealth` dos canais:
+# "não deu para perguntar" não é "está quebrado". Onde o App existe, nada muda —
+# `tem-credencial` devolve `true` e os dois atos rodam como sempre.
 
 on:
   workflow_dispatch: {}
@@ -29,8 +46,48 @@ permissions:
   contents: read
 
 jobs:
+  # Existe só para responder uma pergunta que o `if:` de um job não consegue
+  # fazer sozinho: o contexto `secrets` NÃO está disponível em `jobs.<id>.if`,
+  # só dentro de `steps`. Daí o job-sentinela, que lê o segredo num passo e
+  # publica a resposta como saída.
+  tem-credencial:
+    runs-on: ubuntu-latest
+    outputs:
+      sim: ${{ steps.ver.outputs.sim }}
+    steps:
+      - id: ver
+        # Pelo ENV, nunca interpolado direto no `run:` — segredo interpolado em
+        # shell vira argumento de processo e aparece em log de erro.
+        env:
+          APP_ID: ${{ secrets.RELEASE_APP_ID }}
+          APP_KEY: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -n "${APP_ID}" ] && [ -n "${APP_KEY}" ]; then
+            echo "sim=true" >> "$GITHUB_OUTPUT"
+            echo "Credencial do App presente — o ciclo de release está armado."
+          else
+            echo "sim=false" >> "$GITHUB_OUTPUT"
+            {
+              echo "### Release não roda neste repositório"
+              echo
+              echo "Falta \`RELEASE_APP_ID\` / \`RELEASE_APP_PRIVATE_KEY\` — os segredos do"
+              echo "GitHub App que assina branch, PR e tag. É o estado normal de um **fork**."
+              echo
+              echo "Isto é um SALTO, não uma falha: nada foi publicado e nada quebrou."
+              echo "Para cortar versão sem o App, o caminho manual é:"
+              echo
+              echo '```bash'
+              echo "pnpm release:cortar        # consome .changes/ e escreve o CHANGELOG"
+              echo "git commit -am 'release X.Y.Z'"
+              echo "git tag -a vX.Y.Z -m vX.Y.Z && git push origin main --tags"
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
   abrir-pr-de-release:
-    if: github.event_name == 'workflow_dispatch'
+    needs: tem-credencial
+    if: github.event_name == 'workflow_dispatch' && needs.tem-credencial.outputs.sim == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -89,7 +146,8 @@ jobs:
             --title "Release ${VERSAO}" --body-file /tmp/corpo.md
 
   cortar-tag:
-    if: github.event_name == 'push'
+    needs: tem-credencial
+    if: github.event_name == 'push' && needs.tem-credencial.outputs.sim == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
