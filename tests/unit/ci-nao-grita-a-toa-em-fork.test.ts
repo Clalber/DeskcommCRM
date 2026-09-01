@@ -1,5 +1,5 @@
 /**
- * O CICLO DE RELEASE SALTA NUM FORK — NUNCA FALHA VERMELHO.
+ * WORKFLOW NÃO GRITA VERMELHO POR CREDENCIAL QUE O FORK NÃO TEM.
  *
  * ─── O problema, medido ─────────────────────────────────────────────────────
  *
@@ -106,5 +106,44 @@ describe("release.yml não pode ficar vermelho num fork", () => {
     const sentinela = jobs().find((j) => j.nome === "tem-credencial")!;
     expect(sentinela.corpo).toContain("GITHUB_STEP_SUMMARY");
     expect(sentinela.corpo).toContain("release:cortar");
+  });
+});
+
+/**
+ * O MESMO princípio, no relógio — e aqui ele tem uma dobra.
+ *
+ * `relogio.yml` nasce desligado (`vars.RELOGIO_LIGADO`), então em fork ele
+ * apenas salta. A armadilha está um passo adiante: ligar a variável SEM os dois
+ * segredos punha o passo a falhar a cada batida agendada — a pior enchente de
+ * e-mail que este repositório sabe produzir, e a mais difícil de relacionar ao
+ * que se fez, porque o gatilho é o relógio e não uma ação de ninguém.
+ *
+ * A dobra: o alarme continua ALTO no disparo manual. Quem clicou "Run workflow"
+ * está esperando resposta, e um salto silencioso ali seria o defeito oposto —
+ * pedir e não ser avisado de que não deu.
+ */
+describe("relogio.yml não vira enchente quando ligam sem credencial", () => {
+  const RELOGIO = readFileSync(".github/workflows/relogio.yml", "utf8");
+
+  it("no AGENDAMENTO, credencial ausente SALTA em vez de falhar", () => {
+    expect(RELOGIO).toContain('if [ "${DISPARO}" = "schedule" ]');
+    expect(RELOGIO, "o salto agendado precisa sair com 0").toContain("exit 0");
+    // E precisa dizer o que falta: salto mudo faria alguém procurar defeito
+    // onde só há configuração incompleta.
+    expect(RELOGIO).toContain("GITHUB_STEP_SUMMARY");
+  });
+
+  it("no disparo MANUAL, continua erro alto", () => {
+    // O controle. Uma guarda escrita larga demais engoliria também o pedido
+    // explícito de uma pessoa — que é exatamente quem precisa ouvir o erro.
+    expect(RELOGIO).toContain("::error::");
+    expect(RELOGIO).toContain("exit 1");
+  });
+
+  it("o segredo não é interpolado direto no shell", () => {
+    const soltos = RELOGIO.split("\n").filter(
+      (l) => l.includes("${{ secrets.") && !/^\s+[A-Z_]+: \$\{\{ secrets\./.test(l),
+    );
+    expect(soltos, `segredo fora de bloco env: ${soltos.join(" | ")}`).toEqual([]);
   });
 });
