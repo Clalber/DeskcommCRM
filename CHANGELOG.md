@@ -8,6 +8,66 @@ Se você roda o DeskcommCRM numa VPS, **leia a seção da versão para a qual es
 
 ## [Não lançado]
 
+## [2.4.1] — 2026-09-01
+
+### Corrigido
+
+- **Quando o Google recusa a agenda, a tela passa a dizer o motivo** Conectar a agenda do Google falhava com **"Não consegui ler os dados da conta"**
+  e o conselho **"Tente de novo"**. Medido em produção: três tentativas seguidas,
+  as três idênticas, e nenhuma tinha como dar certo.
+
+  O Google devolvia o motivo — e o sistema jogava fora. No registro ficava apenas
+  `HTTP 403`, sem a frase que explica o quê. Sem ela não havia como diagnosticar
+  sem adivinhar.
+
+  Pior que a falta de diagnóstico era o conselho errado. Esse tipo de recusa
+  **nunca passa sozinho**, e mandar tentar de novo faz a pessoa repetir para
+  sempre um caminho fechado, ocupando o lugar da instrução que resolveria.
+
+  Agora a recusa por permissão tem tela própria, dizendo a causa mais comum — a
+  API do Google Agenda desligada no projeto do Google Cloud da instalação — e onde
+  ligá-la. O motivo exato que o Google devolveu passa a ficar registrado.
+
+- **A ocupação do Google volta a aparecer na Agenda, em qualquer período** Quem conectava o Google Agenda via a agenda **vazia** aqui, mesmo com os eventos
+  já importados. Medido numa instalação real: 114 eventos no banco, um deles na
+  semana desenhada, e a tela mostrando nada.
+
+  O servidor entregava esses blocos na primeira pintura. Assim que a tela buscava
+  os dados atualizados, essa lista era **substituída inteira** — e a busca nunca
+  devolveu ocupação. Na visão de Mês nem o primeiro instante sobrevivia.
+
+  Agora a ocupação vem junto dos agendamentos, para o período que estiver na tela.
+  Bloco do Google continua sem título, sem clique e sem arraste — é ocupação, não
+  compromisso seu.
+
+  **O que ainda não funciona:** o caminho contrário. Compromissos marcados aqui
+  seguem sendo recusados pelo Google na publicação. O motivo dessa recusa passa a
+  ser registrado a cada tentativa, em vez de descartado — era o dado que faltava
+  para consertar.
+
+- **As verificações param de acusar erro por credencial que uma cópia não tem** Quem mantém uma cópia própria do DeskcommCRM recebia um **aviso de erro** a cada
+  mudança enviada. Medido numa instalação real: **23 de 23 envios**, sempre o mesmo
+  aviso, enquanto todas as outras verificações passavam.
+
+  A causa não era defeito no que foi enviado. O passo que corta a versão precisa de
+  uma credencial que só existe no projeto de origem, e toda cópia nasce sem ela —
+  então ele morria na primeira linha, em todo envio, desde sempre.
+
+  Agora esse passo é **pulado** quando a credencial não existe, com uma explicação
+  no relatório dizendo que é o esperado e como cortar a versão à mão. Onde a
+  credencial existe, nada muda.
+
+  **A mesma armadilha, desarmada no relógio.** O disparo automático de tarefas
+  também exigia credencial, e ligá-lo sem ela faria a verificação falhar de poucos
+  em poucos minutos — a **pior enxurrada de avisos** que este sistema sabe
+  produzir. Agora ele avisa uma vez e para; num disparo manual, o erro continua
+  alto, porque ali há alguém esperando resposta.
+
+  **Por que isso importa mais do que parece:** alarme que toca sempre é
+  indistinguível de alarme quebrado. Recebendo aviso em toda mudança, a pessoa para
+  de abrir o aviso — e o dia em que a falha for real ela chega na mesma caixa, com
+  a mesma cara, e não é lida.
+
 ## [2.4.0] — 2026-08-31
 
 ### Adicionado
@@ -1886,7 +1946,8 @@ Primeira versão marcada do DeskcommCRM. O projeto vinha sendo desenvolvido publ
 
 - **Node 22 é obrigatório para desenvolvimento.** A suíte de invariantes instancia o cliente do Supabase, que exige o `WebSocket` global — nativo apenas a partir do Node 22. Isso não afeta quem apenas hospeda: a VPS roda a imagem pronta.
 
-[Não lançado]: https://github.com/melgarafael/DeskcommCRM/compare/v2.4.0...HEAD
+[Não lançado]: https://github.com/melgarafael/DeskcommCRM/compare/v2.4.1...HEAD
+[2.4.1]: https://github.com/melgarafael/DeskcommCRM/compare/v2.4.0...v2.4.1
 [2.4.0]: https://github.com/melgarafael/DeskcommCRM/compare/v2.3.1...v2.4.0
 [2.3.1]: https://github.com/melgarafael/DeskcommCRM/compare/v2.3.0...v2.3.1
 [2.3.0]: https://github.com/melgarafael/DeskcommCRM/compare/v2.2.4...v2.3.0
