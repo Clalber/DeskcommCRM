@@ -17300,3 +17300,36 @@ grant execute on function public.fn_decrypt_oauth(bytea) to service_role;
 grant execute on function public.fn_encrypt_oauth(text) to service_role;
 grant execute on function public.fn_lgpd_cascade_redact_contact(uuid, uuid, uuid) to service_role;
 grant execute on function public.fn_update_budget_consumption() to service_role;
+
+-- ---- versão de acervo conta por MATERIAL, não por agente (migration 0205) ----
+--
+-- O índice `ai_kbv_version_unique` era `(agent_id, version_number)`, mas desde a
+-- 0181 o número é contado por `knowledge_source_id`. Toda fonte nova nasce com
+-- `version_number = 1`, então a SEGUNDA fonte do mesmo agente colidia com a
+-- primeira e nunca indexava — a tela dizia "pronto" e `chunks_count` ficava 0.
+-- Determinístico, não corrida. Medido em produção: 5 materiais, 1 indexou.
+--
+-- Dois índices parciais porque há dois regimes: versões anteriores à 0181 têm
+-- `knowledge_source_id` NULL e guardam o invariante antigo (por agente); sem o
+-- segundo índice elas ficariam sem restrição, já que NULL não colide com NULL.
+delete from public.ai_knowledge_versions v
+ where v.knowledge_source_id is not null
+   and exists (
+     select 1 from public.ai_knowledge_versions o
+      where o.knowledge_source_id = v.knowledge_source_id
+        and o.version_number = v.version_number
+        and o.id < v.id
+   );
+
+alter table public.ai_knowledge_versions
+  drop constraint if exists ai_kbv_version_unique;
+
+drop index if exists public.ai_kbv_version_unique;
+
+create unique index if not exists ai_kbv_version_por_fonte
+  on public.ai_knowledge_versions (knowledge_source_id, version_number)
+  where knowledge_source_id is not null;
+
+create unique index if not exists ai_kbv_version_por_agente_legado
+  on public.ai_knowledge_versions (agent_id, version_number)
+  where knowledge_source_id is null;
