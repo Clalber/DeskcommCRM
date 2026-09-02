@@ -156,6 +156,7 @@ function fakeDeps(log: Logger): InboundTurnDeps {
 function fakeLeadContext(): LeadContext {
   return {
     lead_id: CONTACT,
+    contact_id: CONTACT,
     contact: { name: "Contato de Prova", phone: null, email: null, tags: [], is_blocked: false },
     conversation_id: CONV,
     last_human_decision: null,

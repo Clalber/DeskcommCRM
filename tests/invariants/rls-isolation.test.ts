@@ -198,6 +198,13 @@ beforeAll(() => {
             values (v_org, v_sess, v_contact, 'ig-rls-' || v_org::text);
         end if;
 
+        -- (migration 0204, upstream v1.12.0) o catálogo de produtos da loja.
+        if not exists (select 1 from public.catalog_products where organization_id = v_org) then
+          insert into public.catalog_products
+            (organization_id, codigo, nome, preco_cents)
+            values (v_org, 'RLS-' || v_org::text, 'Produto de invariante', 100);
+        end if;
+
         if not exists (select 1 from public.push_subscriptions where organization_id = v_org) then
           insert into public.push_subscriptions
             (organization_id, user_id, endpoint, p256dh, auth)
@@ -259,6 +266,11 @@ export const TABLES = [
   // que vem o banco do CI. Guarda só enxerga o que está no banco que ela
   // inspeciona.
   "channel_contact_identities",
+  // migration 0210 (upstream v1.12.0, renumerada) — o catálogo de produtos da loja. A leitura é org-scoped sem
+  // gate de papel (o `agent` semeado aqui precisa ler para atender), e a ESCRITA
+  // exige `manager` — esse segundo eixo é medido em
+  // `tests/invariants/catalogo-so-gestor-muda-preco.test.ts`, não aqui.
+  "catalog_products",
   // ⚠️ `webhook_lead_captures` (migration 0174) NÃO entra nesta lista, e a
   // ausência é deliberada: a policy dela exige `manager`, e o usuário semeado
   // aqui é `agent` — o controle positivo falharia por ACERTO, e a "correção"

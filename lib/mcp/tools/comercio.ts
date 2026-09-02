@@ -12,6 +12,7 @@
 import { z } from "zod";
 
 import type { McpToolDefinition } from "../types";
+import { ordenarPorRelevancia } from "@/lib/catalogo/busca";
 
 // ---------------------------------------------------------------------------
 // pedidos de um cliente
@@ -62,39 +63,109 @@ export const crmListContactOrders: McpToolDefinition<typeof pedidosInputShape> =
 // ---------------------------------------------------------------------------
 
 const produtosInputShape = {
-  termo: z.string().trim().min(2).describe("Parte do nome do produto."),
-  limite: z.number().int().min(1).max(20).optional().default(10),
+  termo: z
+    .string()
+    .trim()
+    .min(2)
+    .describe("o que a pessoa disse — pode ser o nome, a marca, o código ou tudo junto"),
+  limite: z.number().int().min(1).max(20).optional().default(8),
   somente_disponiveis: z.boolean().optional().default(true),
 };
+
+/** O preço como a pessoa lê, não como o banco guarda. */
+function precoLegivel(cents: number, moeda: string): string {
+  const valor = (cents / 100).toLocaleString("pt-BR", { minimumFractionDigits: 2 });
+  return moeda === "BRL" ? `R$ ${valor}` : `${moeda} ${valor}`;
+}
 
 export const crmSearchProducts: McpToolDefinition<typeof produtosInputShape> = {
   name: "crm_search_products",
   description:
-    "Busca produtos do catálogo da loja por parte do nome. Devolve preço, quantidade disponível " +
-    "e link. Use para responder preço e disponibilidade com o dado da loja em vez de estimar.",
+    "Busca no catálogo da loja e devolve o PREÇO EXATO, o que está disponível e o código de cada " +
+    "produto. Use SEMPRE que a pessoa perguntar preço, e responda com o valor que voltar aqui — " +
+    "nunca com um valor que você lembra ou estima: preço errado dito a um cliente é promessa que a " +
+    "loja terá de cumprir ou desfazer. " +
+    "Passe o que a pessoa escreveu, do jeito que ela escreveu: a busca entende erro de digitação " +
+    "('ifone') e acha por marca, categoria ou código. " +
+    "⚠️ SE VOLTAR MAIS DE UM produto com `empate: true`, NÃO escolha por conta própria — os dois " +
+    "casam igualmente o que ela disse, e a diferença entre eles é de preço. Pergunte qual é. " +
+    "Lista vazia significa que a loja não tem esse item cadastrado: não invente, ofereça consultar " +
+    "com a equipe.",
   inputSchema: produtosInputShape,
   category: "read",
   requiresRole: "agent",
   requiresScope: "mcp:read",
   handler: async (input, ctx) => {
-    let q = ctx.supabase
-      .from("nuvemshop_products")
-      .select("id, external_id, title, description, price_cents, available_qty, url, image_url")
+    // Traz os ativos da org e pontua em memória. A busca por token (palavra
+    // difusa, número exato) não é exprimível num `ilike` — e é ela que impede o
+    // 128GB de aparecer para quem pediu 256GB. O corte por org acontece no
+    // banco, que é o que importa para o isolamento.
+    const { data, error } = await ctx.supabase
+      .from("catalog_products")
+      .select(
+        "id, codigo, nome, descricao, marca, categoria, preco_cents, moeda, controla_estoque, quantidade, ativo",
+      )
       .eq("organization_id", ctx.organizationId)
-      .ilike("title", `%${input.termo}%`)
-      .limit(input.limite);
+      .eq("ativo", true)
+      .limit(2000);
 
-    // Oferecer o que está sem estoque é pior que não achar: o cliente ouve um
-    // sim e recebe um não depois.
-    if (input.somente_disponiveis) q = q.gt("available_qty", 0);
-
-    const { data, error } = await q;
     if (error) throw new Error(`buscar_produtos_falhou: ${error.message}`);
 
+    type Linha = {
+      id: string;
+      codigo: string;
+      nome: string;
+      descricao: string | null;
+      marca: string | null;
+      categoria: string | null;
+      preco_cents: number;
+      moeda: string;
+      controla_estoque: boolean;
+      quantidade: number;
+    };
+
+    const achados = ordenarPorRelevancia((data ?? []) as Linha[], input.termo);
+
+    // `controla_estoque` é o conserto de uma armadilha da versão anterior, que
+    // filtrava por quantidade sempre: numa loja que não conta estoque (decant de
+    // perfume, item sob encomenda) o catálogo INTEIRO ficava invisível.
+    const disponiveis = input.somente_disponiveis
+      ? achados.filter((a) => !a.produto.controla_estoque || a.produto.quantidade > 0)
+      : achados;
+
+    const topo = disponiveis.slice(0, input.limite);
+
+    if (topo.length === 0) {
+      return {
+        produtos: [],
+        mensagem:
+          achados.length > 0
+            ? "esse produto existe no catálogo, mas está sem estoque. Não prometa: ofereça avisar quando chegar."
+            : "não há nada com esse nome no catálogo da loja. Não invente preço — diga que vai confirmar com a equipe.",
+      };
+    }
+
+    // Empate é o sinal de que a pessoa precisa escolher. Ex.: "iphone 15 pro 256"
+    // casa o Pro e o Pro Max igualmente, e a diferença entre eles é o preço.
+    const empate = topo.length > 1 && topo[0]!.nota === topo[1]!.nota;
+
     return {
-      produtos: data ?? [],
-      ...(data && data.length === 0
-        ? { aviso: input.somente_disponiveis ? "nada com esse nome em estoque" : "nada com esse nome no catálogo" }
+      produtos: topo.map(({ produto }) => ({
+        codigo: produto.codigo,
+        nome: produto.nome,
+        preco: precoLegivel(produto.preco_cents, produto.moeda),
+        preco_cents: produto.preco_cents,
+        ...(produto.marca ? { marca: produto.marca } : {}),
+        ...(produto.descricao ? { descricao: produto.descricao } : {}),
+        disponivel: !produto.controla_estoque || produto.quantidade > 0,
+      })),
+      empate,
+      ...(empate
+        ? {
+            mensagem:
+              "mais de um produto casa igualmente o que a pessoa disse, e o preço deles é diferente. " +
+              "Pergunte qual é antes de responder valor.",
+          }
         : {}),
     };
   },
