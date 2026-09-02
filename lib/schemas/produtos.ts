@@ -22,13 +22,42 @@ export type OrigemDoProduto = (typeof ORIGENS_DO_PRODUTO)[number];
  * sentidos: ler "5.499" como 5,499 põe um iPhone a cinco reais; ler "5,49" como
  * 549 cobra cem vezes mais.
  *
- * A regra que desfaz a ambiguidade: o ÚLTIMO separador manda. Se ele tem
- * exatamente dois dígitos depois, é decimal; caso contrário é milhar. É como a
- * pessoa escreve, e não depende de saber a localidade.
+ * A regra que desfaz a ambiguidade: o ÚLTIMO separador manda, e o critério é o
+ * TAMANHO do grupo depois dele. Um grupo de milhar tem SEMPRE três dígitos —
+ * é o que "milhar" quer dizer. Logo um ou dois dígitos depois do último
+ * separador não podem ser milhar: só podem ser centavos.
+ *
+ * ⚠️ Esta regra dizia "exatamente dois dígitos", e um dígito caía no ramo do
+ * milhar. Um dígito é justamente o que o Excel EMITE: uma célula formatada como
+ * número exibindo `1.299,90` sai no CSV como `1299,9`, porque a planilha corta
+ * o zero final. Medido no fonte que estava na main:
+ *
+ *     "1299,9"  ->  1299900  =  R$ 12.999,00     (dez vezes o preço)
+ *     "1299.9"  ->  1299900  =  R$ 12.999,00
+ *
+ * Sem recusar e sem avisar — o catálogo nascia com o preço errado e o agente
+ * respondia esse preço ao cliente, que é o desfecho que este arquivo existe
+ * para impedir. A suíte ficava verde: nenhum caso tinha um único dígito.
+ *
+ * ⚠️ E a limpeza APAGAVA as letras em vez de recusar a célula, o que colava os
+ * dígitos do que estivesse junto:
+ *
+ *     "R$ 5.499,00 (promo ate 10)"  ->  R$ 54.990.010,00
+ *     "de 89,90 por 49,90"          ->  R$ 899.049,90
+ *
+ * Agora só o símbolo da moeda e o espaço saem; qualquer outro caractere faz a
+ * função devolver `null`. Preço é o campo onde adivinhar custa caro, então ele
+ * falha FECHADO: a linha vira erro com motivo, que a pessoa lê e corrige, em
+ * vez de virar um número plausível que ninguém confere.
  */
 export function precoParaCentavos(entrada: string): number | null {
-  const limpo = entrada.replace(/[^\d.,-]/g, "").trim();
-  if (limpo === "" || limpo.includes("-")) return null;
+  // Só moeda e espaço são ruído conhecido. O `\u00A0` é o espaço não-quebrável
+  // que o Excel gera ao formatar como moeda, e ele não casa `\s` em toda engine.
+  const semRuido = entrada.replace(/\u00A0/g, " ").replace(/R\$/gi, " ").trim();
+  // Qualquer coisa fora de dígito e separador significa que não sabemos ler
+  // esta célula — e não saber é um desfecho melhor que chutar.
+  if (!/^\d[\d.,]*$/.test(semRuido)) return null;
+  const limpo = semRuido;
 
   const ultimoPonto = limpo.lastIndexOf(".");
   const ultimaVirgula = limpo.lastIndexOf(",");
@@ -38,9 +67,9 @@ export function precoParaCentavos(entrada: string): number | null {
   let decimais = "";
   if (corte !== -1) {
     const depois = limpo.slice(corte + 1);
-    // Dois dígitos depois do último separador = centavos. Qualquer outra coisa
-    // (três dígitos, nenhum) é separador de milhar.
-    if (depois.length === 2 && /^\d{2}$/.test(depois)) {
+    // Um ou dois dígitos depois do último separador = centavos, porque grupo de
+    // milhar tem sempre TRÊS. Três dígitos, ou nenhum, é separador de milhar.
+    if (/^\d{1,2}$/.test(depois)) {
       inteiros = limpo.slice(0, corte);
       decimais = depois;
     }
