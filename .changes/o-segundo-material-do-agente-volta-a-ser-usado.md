@@ -4,8 +4,8 @@ secao: corrigido
 titulo: O segundo material que você ensina ao agente volta a funcionar
 ---
 
-Ensinar mais de um documento ao mesmo assistente não funcionava, e **não havia
-como perceber**: o primeiro material era lido normalmente, e do segundo em
+Ensinar mais de um documento ao mesmo assistente não funcionava, e **não havia como perceber**:
+o primeiro material era lido normalmente, e do segundo em
 diante a tela mostrava "pronto" enquanto o conteúdo nunca ficava disponível para
 a busca. O assistente respondia "não encontrei isso" sobre uma coisa que estava
 escrita num arquivo que você subiu — e nenhum aviso aparecia em lugar nenhum.
