@@ -47,6 +47,9 @@ describe("preço em texto livre vira centavos", () => {
     expect(precoParaCentavos("1299.9")).toBe(129990);
     expect(precoParaCentavos("49,9")).toBe(4990);
     expect(precoParaCentavos("0,5")).toBe(50);
+    // Milhar E um decimal na mesma célula — caminho distinto, porque existe um
+    // separador ANTES do que decide. Achado por quem mediu o conserto por fora.
+    expect(precoParaCentavos("1.299,9")).toBe(129990);
 
     // E três dígitos continuam sendo milhar, que é a outra metade da regra.
     expect(precoParaCentavos("5.499")).toBe(549900);
