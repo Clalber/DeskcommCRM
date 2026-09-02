@@ -3305,9 +3305,75 @@ async function executarTurnoDoAgente(
  * mensagem. Ids de envio vêm do payload do drain (fonte confiável — F2-05); a
  * abertura é o ritual padrão, sem bloco temporal.
  */
+/**
+ * A mensagem que ABRIU este job já foi respondida por um turno anterior?
+ *
+ * ─── A corrida, medida em produção (2026-09-02) ─────────────────────────────
+ *
+ * O cliente mandou duas mensagens com 10s entre elas. A coalescência do drain
+ * só pega carona em job `pending` com `run_after > now()` — e com
+ * `INBOUND_DEBOUNCE_MS` de 3s o job da primeira JÁ tinha amadurecido (e estava
+ * `running`). Então nasceu um segundo job.
+ *
+ * O primeiro turno leu o histórico inteiro, viu as DUAS mensagens e respondeu as
+ * duas. O segundo rodou depois, sem nada novo para responder — e falou assim
+ * mesmo:
+ *
+ *     18:50:44 [cliente] Blz
+ *     18:50:54 [cliente] Preciso estruturar meu negócio mesmo
+ *     18:51:08 [agente]  Combinado, Clalber. Até sexta, às 14h, com o Thiago.
+ *     18:51:42 [agente]  Clalber, conferi por aqui: sua reunião está confirmada…
+ *
+ * Duas mensagens do agente seguidas, sem nada do cliente no meio. Ninguém pediu
+ * a segunda.
+ *
+ * ─── Por que a guarda é ESTA, e não "coalescer em job running" ──────────────
+ *
+ * Coalescer numa corrida `running` parece o conserto óbvio e é pior: o turno em
+ * voo pode já ter lido o histórico, e aí a mensagem nova ficaria SEM RESPOSTA —
+ * silêncio é pior que repetição, e some sem deixar rastro.
+ *
+ * Aqui a pergunta é outra e é decidível depois do fato: **a minha mensagem de
+ * origem já foi respondida?** Se existe outbound nesta conversa mais novo que o
+ * inbound que me criou, o turno anterior já a alcançou (ele lê o histórico
+ * completo, não só a mensagem do próprio job). Nada a fazer.
+ *
+ * Precisão: compara contra a mensagem DESTE job, não contra "o último inbound".
+ * Cliente que escreve de novo depois da resposta tem `sent_at` posterior ao
+ * outbound, e o turno segue normalmente.
+ */
+async function jaRespondida(
+  pool: pg.Pool,
+  conversationId: string,
+  inboundMessageId: string,
+): Promise<boolean> {
+  const { rows } = await pool.query<{ ja: boolean }>(
+    `select exists (
+       select 1
+         from messages o
+        where o.conversation_id = $1
+          and o.direction = 'outbound'
+          and o.sent_at > (select m.sent_at from messages m where m.id = $2)
+     ) as ja`,
+    [conversationId, inboundMessageId],
+  );
+  return rows[0]?.ja === true;
+}
+
 export function createInboundTurnHandler(deps: InboundTurnDeps) {
   return async (job: JobRow, pool: pg.Pool, ctx: { workerId: string }): Promise<void> => {
     const payload = inboundTurnPayloadSchema.parse(job.payload);
+
+    if (await jaRespondida(pool, payload.conversation_id, payload.inbound_message_id)) {
+      deps.log.info('turno dispensado: a mensagem de origem já foi respondida', {
+        job_id: job.id,
+        tenant_id: job.organization_id,
+        conversation_id: payload.conversation_id,
+        inbound_message_id: payload.inbound_message_id,
+      });
+      return;
+    }
+
     await runAgentTurn(deps, job, pool, ctx, {
       channelSessionId: payload.channel_session_id,
       conversationId: payload.conversation_id,
