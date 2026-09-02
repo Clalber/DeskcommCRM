@@ -72,6 +72,7 @@ describe("projeção — o que o Conversador pode ver", () => {
   describe("contexto do lead", () => {
     const cru: LeadContext = {
       lead_id: "580460c9-98a7-40c5-8a67-c3eb41f69237",
+      contact_id: "580460c9-98a7-40c5-8a67-c3eb41f69237",
       contact: {
         name: "Maria",
         phone: "+5511999999999",

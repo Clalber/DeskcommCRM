@@ -376,7 +376,7 @@ export interface ParametrosDaLista {
 
 export type ResultadoDaLista =
   | { ok: true; agendamentos: AgendamentoListado[] }
-  | { ok: false; codigo: "erro_interno" | "sem_alvo"; motivoParaOperador: string; motivoParaCliente: string };
+  | { ok: false; codigo: "erro_interno" | "sem_alvo" | "lead_inexistente"; motivoParaOperador: string; motivoParaCliente: string };
 
 /** O embed do PostgREST vem objeto ou array conforme o gerador de tipos; aceite os dois. */
 function nomeDoContato(
@@ -426,9 +426,54 @@ export async function listaAgendamentos(
       };
     }
     idsPorLead = (data ?? []).map((l) => String(l.target_id));
-    // Lead sem nenhum vínculo: lista vazia é a resposta CERTA aqui — a pergunta era
-    // "o que este negócio tem marcado?" e a resposta é "nada". Diferente de não saber.
-    if (idsPorLead.length === 0) return { ok: true, agendamentos: [] };
+
+    // ⚠️ ZERO VÍNCULOS TEM DUAS CAUSAS, E ELAS NÃO PODEM DEVOLVER A MESMA COISA.
+    //
+    // (a) o negócio existe e não tem nada marcado — lista vazia é a resposta
+    //     CERTA: a pergunta era "o que este negócio tem marcado?";
+    // (b) o `leadId` NÃO É de um negócio — e aí a lista vazia é uma MENTIRA,
+    //     porque responde "nada marcado" a uma pergunta que não foi entendida.
+    //
+    // O caso (b) foi medido em produção em 2026-09-02, com um cliente do outro
+    // lado. O contexto do agente entrega o id do CONTATO num campo chamado
+    // `lead_id` (ver `LeadContext` em `lib/agent-engine/edge/crm/get-lead-context.ts`),
+    // o modelo passou esse valor no parâmetro `lead_id` desta consulta, não
+    // havia vínculo nenhum — e ele disse ao cliente que a reunião dele não
+    // existia. A reunião estava gravada e `confirmed`.
+    //
+    // A distinção custa UMA consulta e só acontece no ramo que já ia devolver
+    // vazio. Recusar ensinando é o idioma das ferramentas irmãs (ver
+    // `crm_schedule_followup`): o modelo lê o motivo e se corrige no mesmo turno.
+    if (idsPorLead.length === 0) {
+      const { data: lead, error: erroDoLead } = await supabase
+        .from("crm_leads")
+        .select("id")
+        .eq("organization_id", organizationId)
+        .eq("id", params.leadId)
+        .maybeSingle();
+      if (erroDoLead) {
+        return {
+          ok: false,
+          codigo: "erro_interno",
+          motivoParaOperador: erroDoLead.message,
+          motivoParaCliente:
+            "Não consegui consultar os compromissos agora. Avise que alguém da equipe confirma.",
+        };
+      }
+      if (!lead) {
+        return {
+          ok: false,
+          codigo: "lead_inexistente",
+          motivoParaOperador:
+            `nenhum negócio com id ${params.leadId} nesta organização — ` +
+            "se este for o id do CONTATO, mande-o em `contact_id`, não em `lead_id`",
+          motivoParaCliente:
+            "Não consegui confirmar os compromissos agora. Avise que alguém da equipe confere.",
+        };
+      }
+      // (a): o negócio existe mesmo e não tem nada marcado.
+      return { ok: true, agendamentos: [] };
+    }
   }
 
   let q = supabase

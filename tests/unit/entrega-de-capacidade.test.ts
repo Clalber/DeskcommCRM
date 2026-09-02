@@ -128,6 +128,7 @@ describe("entrega de capacidade ao Operador", () => {
   describe("o NOME some do prompt — é isto que é a cura", () => {
     const contexto: LeadContext = {
       lead_id: "11111111-1111-4111-8111-111111111111",
+      contact_id: "11111111-1111-4111-8111-111111111111",
       contact: { name: "Ana", phone: null, email: null, tags: [], is_blocked: false },
       conversation_id: null,
       last_human_decision: null,

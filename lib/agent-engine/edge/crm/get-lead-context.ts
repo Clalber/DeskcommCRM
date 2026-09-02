@@ -64,7 +64,28 @@ export interface UltimaDecisaoHumana {
 
 /** Payload curado que o modelo recebe. */
 export interface LeadContext {
+  /**
+   * ⚠️ NÃO é o id de um negócio em `crm_leads`. É o id do CONTATO — o turno o
+   * monta com `job.contact_id` (`inbound-turn.ts`, `leadIdDoJob`), e o nome
+   * ficou de quando "lead" e "contato" eram a mesma coisa no harness.
+   *
+   * O nome mente para quem lê, e quem lê é um MODELO. Medido em produção
+   * (2026-09-02): o agente precisava dos compromissos do cliente, chamou
+   * `crm_list_appointments` passando este valor no parâmetro `lead_id` — que
+   * ali significa `crm_leads.id`, outro uuid —, a consulta voltou vazia, e ele
+   * disse ao cliente que a reunião dele não existia. A reunião estava gravada
+   * e `confirmed`. Um cliente ouviu "nenhum horário ficou marcado para você"
+   * sobre um horário que estava marcado.
+   *
+   * Mantido para não quebrar quem já o consome; quem for passar um id adiante
+   * usa `contact_id` abaixo, que diz o que é.
+   */
   lead_id: string;
+  /**
+   * O MESMO valor de `lead_id`, com o nome verdadeiro. É este que vai nos
+   * parâmetros `contact_id` das ferramentas de CRM.
+   */
+  contact_id: string;
   contact: {
     name: string | null;
     phone: string | null;
@@ -234,6 +255,8 @@ export async function getLeadContext(
   const context = fitToBudget(
     {
       lead_id: input.leadId,
+      // Mesmo valor, nome honesto — ver o porquê no comentário de `LeadContext`.
+      contact_id: input.leadId,
       contact: {
         name: contact.display_name ?? contact.name,
         phone: contact.phone_number,

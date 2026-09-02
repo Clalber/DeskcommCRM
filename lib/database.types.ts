@@ -1707,6 +1707,74 @@ export type Database = {
           },
         ]
       }
+      catalog_products: {
+        Row: {
+          ativo: boolean
+          categoria: string | null
+          codigo: string
+          controla_estoque: boolean
+          created_at: string
+          custo_cents: number | null
+          descricao: string | null
+          id: string
+          imagem_url: string | null
+          marca: string | null
+          moeda: string
+          nome: string
+          organization_id: string
+          origem: string
+          preco_cents: number
+          quantidade: number
+          updated_at: string
+        }
+        Insert: {
+          ativo?: boolean
+          categoria?: string | null
+          codigo: string
+          controla_estoque?: boolean
+          created_at?: string
+          custo_cents?: number | null
+          descricao?: string | null
+          id?: string
+          imagem_url?: string | null
+          marca?: string | null
+          moeda?: string
+          nome: string
+          organization_id: string
+          origem?: string
+          preco_cents: number
+          quantidade?: number
+          updated_at?: string
+        }
+        Update: {
+          ativo?: boolean
+          categoria?: string | null
+          codigo?: string
+          controla_estoque?: boolean
+          created_at?: string
+          custo_cents?: number | null
+          descricao?: string | null
+          id?: string
+          imagem_url?: string | null
+          marca?: string | null
+          moeda?: string
+          nome?: string
+          organization_id?: string
+          origem?: string
+          preco_cents?: number
+          quantidade?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "catalog_products_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       calendar_appointments: {
         Row: {
           cancellation_reason: string | null
