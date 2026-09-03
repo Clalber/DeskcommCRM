@@ -8,6 +8,23 @@ Se você roda o DeskcommCRM numa VPS, **leia a seção da versão para a qual es
 
 ## [Não lançado]
 
+## [2.5.1] — 2026-09-03
+
+### Corrigido
+
+- **A IA não fica mais três horas muda depois de responder** Quando a IA respondia um cliente, a própria mensagem voltava pelo WhatsApp como
+  se alguém tivesse digitado no celular da empresa. O sistema entendia que uma
+  pessoa tinha assumido a conversa e calava o atendimento automático por três
+  horas: o cliente escrevia de novo e não recebia mais nada.
+
+  Na tela aparecia "Automático pausado", que é um estado normal — então não havia
+  nada indicando defeito. Aconteceu duas vezes em conversas reais, sempre logo
+  depois de uma resposta da IA.
+
+  Responder pelo celular continua pausando o atendimento automático. Num caso
+  raro — quando há uma mensagem nossa presa na fila de envio daquela conversa — a
+  pausa passa a valer só a partir da mensagem seguinte.
+
 ## [2.5.0] — 2026-09-03
 
 ### Adicionado
@@ -2355,7 +2372,8 @@ Primeira versão marcada do DeskcommCRM. O projeto vinha sendo desenvolvido publ
 
 - **Node 22 é obrigatório para desenvolvimento.** A suíte de invariantes instancia o cliente do Supabase, que exige o `WebSocket` global — nativo apenas a partir do Node 22. Isso não afeta quem apenas hospeda: a VPS roda a imagem pronta.
 
-[Não lançado]: https://github.com/melgarafael/DeskcommCRM/compare/v2.5.0...HEAD
+[Não lançado]: https://github.com/melgarafael/DeskcommCRM/compare/v2.5.1...HEAD
+[2.5.1]: https://github.com/melgarafael/DeskcommCRM/compare/v2.5.0...v2.5.1
 [2.5.0]: https://github.com/melgarafael/DeskcommCRM/compare/v2.4.4...v2.5.0
 [2.4.4]: https://github.com/melgarafael/DeskcommCRM/compare/v2.4.3...v2.4.4
 [2.4.3]: https://github.com/melgarafael/DeskcommCRM/compare/v2.4.2...v2.4.3
