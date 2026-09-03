@@ -534,6 +534,17 @@ export async function main(): Promise<void> {
       historyLimit: env.LEAD_CONTEXT_HISTORY_LIMIT,
       maxContextTokens: env.LEAD_CONTEXT_MAX_TOKENS,
       notesIndexMaxTokens: env.LEAD_NOTES_INDEX_MAX_TOKENS,
+      // Só existe quando as DUAS horas foram declaradas — meia configuração
+      // (só o início, só o fim) é ambígua e vira "herda o canal", que é o
+      // comportamento de sempre.
+      ...(env.FOLLOWUP_WINDOW_START_HOUR !== undefined && env.FOLLOWUP_WINDOW_END_HOUR !== undefined
+        ? {
+            followupWindow: {
+              startHour: env.FOLLOWUP_WINDOW_START_HOUR,
+              endHour: env.FOLLOWUP_WINDOW_END_HOUR,
+            },
+          }
+        : {}),
       maxSteps: env.AGENT_MAX_STEPS,
       maxSendsPerTurn: env.MAX_SENDS_PER_TURN,
       queuedRetryDelayMs: env.SEND_QUEUED_RETRY_MS,
