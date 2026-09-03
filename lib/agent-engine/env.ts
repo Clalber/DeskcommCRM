@@ -131,6 +131,23 @@ const envSchema = z.object({
   // porque o mesmo agendamento é validado aqui (worker) e dentro do Next (a
   // capacidade que o dono liga na tela). Dois defaults fariam o MESMO horário ser
   // aceito num caminho e recusado no outro, sem ninguém saber qual está certo.
+  /**
+   * A janela COMERCIAL do follow-up, separada da janela do canal.
+   *
+   * Responder é atendimento e pode ser 24h — quem escreveu à meia-noite merece
+   * resposta. O follow-up é INICIATIVA: parte de nós, para quem sumiu, e tocar
+   * alguém às 4 da manhã é o gesto que faz um número ser denunciado.
+   *
+   * Até aqui os dois usavam a MESMA janela (a de `channel_knobs`), então abrir o
+   * canal para 24h abria o follow-up junto — medido numa instalação real que
+   * queria atender de madrugada e ganhou cobrança automática de madrugada.
+   *
+   * Ausente = herda a janela do canal, e nenhuma instalação muda de
+   * comportamento sem pedir. Fora da janela o turno é ADIADO para a abertura,
+   * nunca descartado: o retorno acontece, só em hora decente.
+   */
+  FOLLOWUP_WINDOW_START_HOUR: z.coerce.number().int().min(0).max(23).optional(),
+  FOLLOWUP_WINDOW_END_HOUR: z.coerce.number().int().min(1).max(24).optional(),
   FOLLOWUP_MIN_AHEAD_MS: z.coerce.number().int().positive().default(RETORNO_MIN_AHEAD_MS_PADRAO),
   FOLLOWUP_MAX_AHEAD_MS: z.coerce.number().int().positive().default(RETORNO_MAX_AHEAD_MS_PADRAO),
   // TTL do prefixo estável de prompt cache (doutrina: 1h).

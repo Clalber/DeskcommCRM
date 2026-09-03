@@ -81,14 +81,30 @@ function clienteCom(startsAt: string, status: string): SupabaseClient {
     return cadeia;
   };
   return {
-    from: () => ({
+    // ⚠️ O dublê precisa saber a TABELA. `fecharOLaco` escreve em duas: o
+    // compromisso e, desde que marcar passou a encerrar o follow-up do contato,
+    // `followup_enrollments`. Sem o filtro, a segunda escrita sobrescrevia
+    // `atualizado` e os casos deste arquivo passavam a medir o UPDATE errado —
+    // reprovando com "esperava no_show, veio completed", que é o desfecho do
+    // follow-up e não o do compromisso.
+    from: (tabela: string) => ({
       select: () => leitura(),
       update: (mudanca: Record<string, unknown>) => {
-        atualizado = mudanca;
+        if (tabela === "calendar_appointments") atualizado = mudanca;
         const cadeia: Record<string, unknown> = {};
-        for (const m of ["eq"]) cadeia[m] = () => cadeia;
+        // `in` entrou aqui quando `fecharOLaco` passou a encerrar o follow-up
+        // do contato ao marcar (`.in("status", ["active","waiting_reply"])`).
+        // O dublê da LEITURA já o tinha; o do update não, e a cadeia quebrava
+        // com "in is not a function" — um teste que não é deste assunto ficando
+        // vermelho por um método ausente no dublê, não por defeito de produto.
+        for (const m of ["eq", "in"]) cadeia[m] = () => cadeia;
         cadeia.select = () => cadeia;
         cadeia.single = async () => ({ data: { ...linha, ...mudanca }, error: null });
+        // O update do follow-up é aguardado SEM terminal (`.in(...)` e pronto):
+        // o builder do supabase-js é "thenable", e sem isto a cadeia nunca
+        // resolve e o teste trava.
+        cadeia.then = (aceitar: (v: unknown) => unknown) =>
+          Promise.resolve({ data: null, error: null }).then(aceitar);
         return cadeia;
       },
       insert: () => ({ select: () => ({ single: async () => ({ data: {}, error: null }) }) }),

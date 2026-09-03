@@ -23,6 +23,9 @@ import type { JobRow } from '../queue/queue';
 import { getLeadContext, type LeadContext } from '../edge/crm/get-lead-context';
 import { WahaChannelAdapter } from '../edge/channel/waha-adapter';
 import { applySendOutcome } from '../edge/crm/send-message';
+import { janelaDeEnvioAberta, proximaAberturaDaJanela } from '../pacing/engine';
+import { loadChannelKnobs } from '../pacing/store';
+import { rescheduleJob } from '../queue/queue';
 import { runBeforeSend } from '../guardrails/before-send';
 import { camadaLigada, lerCamadasDaOrg } from '../guardrails/camadas-da-org';
 import { classifyPromise } from '../guardrails/promise/semantic';
@@ -262,6 +265,51 @@ export function createFollowupTurnHandler(deps: FollowupTurnDeps) {
         waits: payload.waits,
       });
       return;
+    }
+
+    // ⚠️ A JANELA COMERCIAL DO FOLLOW-UP — separada da janela do canal.
+    //
+    // Responder é atendimento e pode ser 24h. O follow-up é INICIATIVA: parte de
+    // nós, para quem sumiu. Tocar às 4 da manhã é o gesto que faz um número ser
+    // denunciado, e o cliente que acorda com cobrança automática não volta.
+    //
+    // Até aqui os dois usavam a MESMA janela, então abrir o canal para 24h abria
+    // o follow-up junto. Medido numa instalação real que queria atender de
+    // madrugada — e o toque de 2h passou a poder cair às 4h.
+    //
+    // Fica ANTES dos dois caminhos de envio (template determinístico e run do
+    // agente): os dois falam com o cliente, e a hora vale para os dois.
+    //
+    // ADIA, nunca descarta. O retorno acontece; só em hora decente.
+    // `?.` porque a janela é OPCIONAL e este portão roda ANTES de todos os
+    // caminhos de envio — inclusive de testes que montam `deps` parciais, sem
+    // `knobs`, porque exercitam outro assunto. Ler uma configuração ausente não
+    // pode derrubar o turno: ausente significa "herda o canal", nunca "quebra".
+    const janelaDoFollowup = deps.knobs?.followupWindow;
+    if (janelaDoFollowup !== undefined) {
+      const { knobs } = await loadChannelKnobs(pool, tenantId, target.channelSessionId, deps.log);
+      // Herda tudo do canal — fuso, domingo, jitter — e TROCA só as horas. Assim
+      // "domingo liberado" continua sendo decisão de quem configurou o canal, e
+      // esta janela responde por uma coisa só: a hora do dia.
+      const janelaComercial = {
+        ...knobs,
+        windowStartHour: janelaDoFollowup.startHour,
+        windowEndHour: janelaDoFollowup.endHour,
+      };
+      const agora = clock();
+      if (!janelaDeEnvioAberta(agora, janelaComercial)) {
+        const abertura = proximaAberturaDaJanela(agora, janelaComercial);
+        await rescheduleJob(pool, job.id, ctx.workerId, {
+          delayMs: Math.max(abertura.getTime() - agora.getTime(), 1_000),
+          reason: 'fora da janela comercial do follow-up — toque adiado para a abertura',
+        });
+        deps.log.info('follow-up adiado — fora da janela comercial', {
+          janela: `${janelaComercial.windowStartHour}h-${janelaComercial.windowEndHour}h`,
+          timezone: janelaComercial.timezone,
+          abertura: abertura.toISOString(),
+        });
+        return;
+      }
     }
 
     // F3-04: caminho determinístico ($0) — envia o template versionado direto pela

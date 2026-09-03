@@ -535,6 +535,57 @@ async function fecharOLaco(
 
   const leadId = args.contactId ? await leadAtivoDoContato(supabase, ctx, args.contactId) : null;
 
+  // ⚠️ MARCOU HORÁRIO → O FOLLOW-UP DE SILÊNCIO PERDEU O OBJETO.
+  //
+  // O follow-up de silêncio existe para uma pergunta: "a pessoa sumiu, como
+  // trago ela de volta?". Quem marcou reunião respondeu essa pergunta — ela
+  // conseguiu o que a conversa buscava. Continuar tocando é insistir com quem
+  // já disse sim.
+  //
+  // ─── O que acontecia sem isto, medido em 2026-09-02 ────────────────────────
+  //
+  // Responder ENCERRA o follow-up (`aplicarTextoNosFollowups`). Mas marcar não
+  // encerrava nada — e o caminho real do agendamento é marcar e sair da
+  // conversa. Duas horas depois o primeiro toque disparava com a instrução
+  // "se havia horário oferecido, ofereça de novo os mesmos", oferecendo horário
+  // a quem JÁ TINHA REUNIÃO. É o mesmo defeito que o agente cometeu na conversa
+  // do dia 02 — só que automático, sem ninguém para corrigir, e de madrugada
+  // quando a janela de envio está aberta.
+  //
+  // Fica ANTES do early-return de `!args.atividade` pela mesma razão do mirror
+  // logo abaixo: confirmar um agendamento pendente não gera atividade nova, e é
+  // exatamente a transição em que o follow-up precisa parar.
+  //
+  // Falha aqui NUNCA derruba a marcação: o compromisso já existe e é o que o
+  // cliente ouviu. Um toque a mais é ruído; perder a reunião é dano.
+  if (args.contactId && args.transicao !== "cancelled") {
+    const { error: erroFollowup } = await supabase
+      .from("followup_enrollments")
+      .update({
+        status: "completed",
+        // `converted` é o vocabulário do CHECK do banco — `agendou` seria
+        // recusado. Marcar reunião É a conversão que este follow-up persegue.
+        outcome: "converted",
+        cancel_reason: "reuniao_marcada",
+        completed_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .eq("organization_id", ctx.organization_id)
+      .eq("contact_id", args.contactId)
+      // ⚠️ Os DOIS estados vivos. `active` é o que espera o próximo toque;
+      // `waiting_reply` é o que já tocou e aguarda resposta — e é justamente
+      // nele que a pessoa costuma estar quando marca. Pegar só `active`
+      // deixaria passar o caso mais comum.
+      .in("status", ["active", "waiting_reply"]);
+    if (erroFollowup) {
+      logger.error("[agenda] encerrar follow-up após marcar falhou", {
+        contact_id: args.contactId,
+        organization_id: ctx.organization_id,
+        error: erroFollowup.message,
+      });
+    }
+  }
+
   // ⚠️ ANTES do early-return de `!args.atividade`. Confirmar um agendamento
   // pendente é `atividade: null` (nada novo pra timeline — `atividadeDaTransicao`
   // já contou "foi marcado" quando ele nasceu), mas é EXATAMENTE a transição que

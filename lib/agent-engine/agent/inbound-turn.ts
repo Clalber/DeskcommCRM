@@ -675,6 +675,17 @@ export interface InboundTurnKnobs {
   maxContextTokens: number;
   /** orçamento fixo do índice de notas do lead injetado no sufixo (LEAD_NOTES_INDEX_MAX_TOKENS) */
   notesIndexMaxTokens: number;
+  /**
+   * A janela COMERCIAL do follow-up (FOLLOWUP_WINDOW_START_HOUR/_END_HOUR).
+   *
+   * Ausente = o follow-up herda a janela do canal, que é o comportamento de
+   * sempre. Presente = só as HORAS mudam; fuso, domingo e jitter continuam
+   * vindo do canal.
+   *
+   * Existe porque responder e tocar são coisas diferentes: atender pode ser 24h,
+   * mas iniciativa de madrugada faz número ser denunciado.
+   */
+  followupWindow?: { startHour: number; endHour: number };
   /** teto de steps do loop de tools por run (AGENT_MAX_STEPS) — circuit breaker fino é F2-15 */
   maxSteps: number;
   /**
