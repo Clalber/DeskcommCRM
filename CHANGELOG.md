@@ -8,6 +8,68 @@ Se você roda o DeskcommCRM numa VPS, **leia a seção da versão para a qual es
 
 ## [Não lançado]
 
+## [2.5.0] — 2026-09-03
+
+### Adicionado
+
+- **O follow-up ganha janela própria, separada do horário de atendimento** Responder e cobrar são coisas diferentes, e agora o sistema sabe disso.
+
+  O horário de envio do canal sempre valeu para os dois: para responder quem
+  escreveu, e para o follow-up tocar quem sumiu. Quem abrisse o canal para
+  atender de madrugada — decisão legítima, o cliente que escreve à meia-noite
+  merece resposta — abria o follow-up junto, sem saber. O toque de duas horas
+  passava a poder cair às quatro da manhã, oferecendo horário a quem estava
+  dormindo.
+
+  É o gesto que faz um número ser denunciado no WhatsApp. E o cliente que acorda
+  com cobrança automática não volta.
+
+  Duas variáveis novas separam as coisas:
+
+  ```
+  FOLLOWUP_WINDOW_START_HOUR=8
+  FOLLOWUP_WINDOW_END_HOUR=19
+  ```
+
+  A janela do canal segue valendo para responder. A comercial vale só para o
+  follow-up.
+
+  Três decisões que valem registrar. Fora da janela o toque é **adiado** para a
+  abertura, nunca descartado — o retorno acontece, só em hora decente. Mudam
+  apenas as horas: fuso e liberação de domingo continuam vindo da configuração
+  do canal, para não existirem duas verdades sobre o mesmo assunto. E, sem as
+  duas variáveis declaradas, tudo funciona como antes.
+
+  **Precisa refazer algo?** Não. Sem as variáveis, nada muda — o follow-up segue
+  usando a janela do canal, como sempre usou. Quem quiser separar acrescenta as
+  duas linhas ao `.env` e reinicia.
+
+### Corrigido
+
+- **Quem marca reunião para de receber cobrança de follow-up** O follow-up de silêncio existe para uma pergunta: a pessoa sumiu, como trazê-la
+  de volta. Quem **responde** encerra o follow-up. Quem **marca reunião** não
+  encerrava nada.
+
+  E marcar e sair da conversa é o caminho normal: a pessoa conseguiu o que queria
+  e não escreve mais. Duas horas depois, o primeiro toque disparava — com a
+  instrução de reoferecer os mesmos horários — para alguém que já tinha uma
+  reunião combinada.
+
+  O cliente recebia uma cobrança automática oferecendo horário para uma reunião
+  que ele já tinha combinado. Sem ninguém para corrigir, e de madrugada em
+  instalações que abriram a janela de envio.
+
+  Agora marcar encerra o follow-up daquele contato, com o desfecho registrado
+  como conversão — que é o que ele é.
+
+  **Cancelar um compromisso não encerra**, e a diferença importa: ali a pessoa
+  continua sem reunião, e o follow-up é justamente o que deve trazê-la de volta.
+
+  **Precisa refazer algo?** Não. Nenhuma configuração nova, nenhum passo de
+  atualização. Quem já tem follow-up rodando para alguém que marcou reunião vai
+  vê-lo encerrar na próxima marcação; para os que já estão em curso hoje, o toque
+  seguinte ainda pode sair uma vez.
+
 ## [2.4.4] — 2026-09-02
 
 ### Corrigido
@@ -2293,7 +2355,8 @@ Primeira versão marcada do DeskcommCRM. O projeto vinha sendo desenvolvido publ
 
 - **Node 22 é obrigatório para desenvolvimento.** A suíte de invariantes instancia o cliente do Supabase, que exige o `WebSocket` global — nativo apenas a partir do Node 22. Isso não afeta quem apenas hospeda: a VPS roda a imagem pronta.
 
-[Não lançado]: https://github.com/melgarafael/DeskcommCRM/compare/v2.4.4...HEAD
+[Não lançado]: https://github.com/melgarafael/DeskcommCRM/compare/v2.5.0...HEAD
+[2.5.0]: https://github.com/melgarafael/DeskcommCRM/compare/v2.4.4...v2.5.0
 [2.4.4]: https://github.com/melgarafael/DeskcommCRM/compare/v2.4.3...v2.4.4
 [2.4.3]: https://github.com/melgarafael/DeskcommCRM/compare/v2.4.2...v2.4.3
 [2.4.2]: https://github.com/melgarafael/DeskcommCRM/compare/v2.4.1...v2.4.2
