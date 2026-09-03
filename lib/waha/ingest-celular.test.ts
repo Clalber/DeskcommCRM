@@ -63,6 +63,17 @@ function bancoDeMentira(preexistentes: Array<Partial<LinhaMessage>> = []): Duplo
         if (coluna === "external_id") externos = valores;
         return q;
       },
+      // Passa reto de propósito. Este dublê modela só o dedup por
+      // `external_id`, e o `gte("created_at", …)` pertence a OUTRA consulta do
+      // mesmo arquivo: a de "existe envio nosso em voo?", que decide se o
+      // `fromMe` é eco ou retomada humana (`silenciarSeForRetomadaHumana`).
+      // Aqui ela cai naturalmente em "não há envio em voo" — `externos` fica
+      // vazio —, que é o caminho que estes casos sempre exercitaram. Quem quer
+      // as duas direções daquela decisão tem
+      // `tests/unit/eco-do-proprio-envio-nao-silencia.test.ts`.
+      gte() {
+        return q;
+      },
       limit() {
         return q;
       },

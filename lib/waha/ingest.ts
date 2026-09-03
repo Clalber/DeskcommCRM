@@ -87,6 +87,138 @@ export async function silenciarBotPorRetomadaHumana(
   }
 }
 
+/**
+ * Idade máxima de um envio nosso para ele ainda explicar um `fromMe` que acaba
+ * de chegar. **Sem este limite a guarda pode ficar aberta para sempre.**
+ *
+ * O buraco é concreto: uma linha `queued` do composer com a sessão do canal
+ * fora do ar não tem coletor nenhum — o cron `recover-stuck-messages` pula
+ * `queued` de propósito, e o watchdog `redriveQueued` só olha `sent_via='ai'`.
+ * Ela fica lá. E enquanto estiver lá, TODA retomada humana daquela conversa
+ * seria lida como eco: o dono responde pelo celular e a IA nunca mais cala.
+ * Trocaria um defeito de 3 horas por um permanente.
+ *
+ * ─── Por que 10 minutos, e não 60 segundos ────────────────────────────────
+ *
+ * Os dois lados erram, e a escolha é qual erro custa menos — a mesma pergunta
+ * que decide a guarda inteira:
+ *
+ *   • janela curta demais → o eco de um envio lento chega fora dela e silencia
+ *     por 3 horas. É o defeito original de volta.
+ *   • janela longa demais → uma retomada humana durante um `queued` velho não
+ *     silencia. A IA fala uma vez por cima do humano, e a mensagem seguinte
+ *     dele (já fora da janela) silencia normal.
+ *
+ * Pela assimetria documentada abaixo, o segundo é o barato — então a janela é
+ * generosa. 10 minutos é 2× o `STUCK_AFTER_MS` do cron `recover-stuck-messages`
+ * (5 min), de modo que todo `sending` travado já foi recolhido antes de a
+ * janela fechar, e cobre com folga um adapter lento: o `fetch` do cliente WAHA
+ * não declara timeout, e o mais generoso dos outros adapters é 30s.
+ */
+const JANELA_DE_ENVIO_EM_VOO_MS = 10 * 60 * 1000;
+
+/**
+ * ⚠️ O ECO DO PRÓPRIO ENVIO NÃO É RETOMADA HUMANA.
+ *
+ * Silencia o bot só quando o `fromMe=true` veio mesmo de um humano digitando no
+ * celular. Devolve `true` quando silenciou.
+ *
+ * ─── O defeito, medido duas vezes em produção ──────────────────────────────
+ *
+ * Toda mensagem que o CRM manda volta pelo webhook como `fromMe=true`. O dedup
+ * por `external_id` cobre isso — MAS só quando a linha do envio já tem o id, e
+ * ela nasce com `external_id` NULL: só recebe o id depois que o adapter volta.
+ * O eco que chega nesse intervalo não casa com nada e é lido como "o dono
+ * digitou no celular".
+ *
+ * O custo é 3 horas de silêncio (`HUMAN_TAKEOVER_SILENCE_MS`), e a janela é
+ * apertadíssima — medida nas duas vezes:
+ *
+ *   2026-09-02  eco chegou 900ms antes
+ *   2026-09-03  eco chegou 279ms antes
+ *
+ * "Antes" aqui é antes de a linha do envio receber o `external_id`, não antes
+ * de ela existir: em todo caminho de envio a linha nasce (`queued`, no handler;
+ * `sending`, no worker legado) ANTES da chamada ao adapter. É isso que torna
+ * "existe envio nosso em voo" um sinal utilizável — a linha está lá, só ainda
+ * sem id, que é exatamente o motivo de o dedup não pegá-la.
+ *
+ * O cliente escreve e não recebe nada. A tela mostra "Automático pausado", que
+ * é estado legítimo, então ninguém procura defeito.
+ *
+ * ─── Por que a guarda é ESTA, e por que ela é segura AQUI ─────────────────
+ *
+ * `removerEcoDoProprioEnvio` (em `app/api/v1/messages/_handler.ts`) recusa, com
+ * razão, casar o eco por "existe envio em voo nesta conversa": ali a decisão é
+ * APAGAR uma linha, e um falso positivo descartaria a mensagem que o atendente
+ * digitou no celular durante o voo — o defeito #108, e permanente.
+ *
+ * Aqui a decisão é outra, e a assimetria se inverte:
+ *
+ *   • silenciar por engano     → 3 horas de conversa morta, sem rastro na tela
+ *   • NÃO silenciar por engano → a IA responde UMA vez por cima do humano, e a
+ *     PRÓXIMA mensagem dele (já sem envio em voo) silencia normalmente
+ *
+ * A mensagem não é descartada em nenhum dos casos: ela entra no histórico
+ * igual. O que esta função decide é só se o bot cala — e calar errado é o dano
+ * grande. Por isso o mesmo sinal que seria perigoso lá é o certo aqui.
+ *
+ * ─── E é a MESMA assimetria que decide as duas bordas ─────────────────────
+ *
+ * Ela reaparece em duas escolhas menores, e nas duas o lado frouxo ganha pela
+ * mesma conta — ver `JANELA_DE_ENVIO_EM_VOO_MS` e o tratamento de erro abaixo.
+ * Inverter o argumento só numa delas seria incoerente.
+ */
+export async function silenciarSeForRetomadaHumana(
+  admin: Admin,
+  organizationId: string,
+  conversationId: string,
+): Promise<boolean> {
+  const desde = new Date(Date.now() - JANELA_DE_ENVIO_EM_VOO_MS).toISOString();
+  const { data: envioEmVoo, error: erroConsulta } = await admin
+    .from("messages")
+    .select("id")
+    .eq("organization_id", organizationId)
+    .eq("conversation_id", conversationId)
+    .eq("direction", "outbound")
+    // Os DOIS estados de voo, e eles vêm de caminhos diferentes: o handler de
+    // `/messages` insere `queued` e mantém esse estado durante TODA a chamada
+    // ao adapter (vai de `queued` direto a `sent`/`failed`, nunca passa por
+    // `sending`); `sending` é do worker legado. Tirar `queued` da lista
+    // desligaria a guarda no caminho principal.
+    .in("status", ["queued", "sending"])
+    .gte("created_at", desde)
+    .limit(1)
+    .maybeSingle();
+
+  if (erroConsulta) {
+    // Erro de banco cai para o lado FROUXO de propósito. Tratar como "não há
+    // envio em voo" silenciaria por 3 horas — o dano grande — e silenciaria
+    // mudo. Aqui a conversa segue com a IA respondendo, e a próxima mensagem
+    // do humano (com o banco de pé) silencia normalmente.
+    console.error(
+      "[waha.ingest] consulta de envio em voo falhou — bot NÃO silenciado por precaução",
+      { conversation_id: conversationId, organization_id: organizationId, erro: erroConsulta.message },
+    );
+    return false;
+  }
+
+  if (envioEmVoo) {
+    // O rastro importa: sem ele a supressão vira mais um comportamento mudo —
+    // que foi exatamente o que tornou o defeito original tão caro de achar.
+    console.info("[waha.ingest] fromMe com envio em voo — tratado como eco, bot NÃO silenciado", {
+      conversation_id: conversationId,
+      organization_id: organizationId,
+    });
+    return false;
+  }
+
+  // Retomada humana de verdade: dá a quem respondeu pelo celular uma janela
+  // curta de controle da conversa sem precisar "assumir" formalmente no CRM.
+  await silenciarBotPorRetomadaHumana(admin, organizationId, conversationId);
+  return true;
+}
+
 interface Session {
   id: string;
   organization_id: string;
@@ -851,10 +983,9 @@ async function handleOutboundFromUserPhone(
 
   await markConversation(admin, session.organization_id, conversationId, "outbound", previewFromMessage(p), now);
 
-  // Ver `silenciarBotPorRetomadaHumana` — um humano acabou de responder direto pelo
-  // WhatsApp dele, fora do composer/IA; dá a ele uma janela curta de controle da
-  // conversa sem precisar "assumir" formalmente no CRM.
-  await silenciarBotPorRetomadaHumana(admin, session.organization_id, conversationId);
+  // Um humano pode ter respondido direto pelo WhatsApp — ou pode ser o eco do
+  // nosso próprio envio voltando. Ver `silenciarSeForRetomadaHumana`.
+  await silenciarSeForRetomadaHumana(admin, session.organization_id, conversationId);
 
   await audit({
     action: "message.sent",
