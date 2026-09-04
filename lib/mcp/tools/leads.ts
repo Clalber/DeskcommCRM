@@ -227,6 +227,7 @@ const updateInputShape = {
     .regex(/^\d{4}-\d{2}-\d{2}$/)
     .optional(),
   tags: z.array(z.string()).optional(),
+  custom_fields: z.record(z.string(), z.unknown()).optional(),
 };
 
 export const crmUpdateLead: McpToolDefinition<typeof updateInputShape> = {

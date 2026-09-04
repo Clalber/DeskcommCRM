@@ -6451,7 +6451,19 @@ export const DICIONARIO: Traducoes = {
   "Escolha o número que envia": { es: "Elige el número que envía" },
   "Mensagem do aviso": { es: "Mensaje del aviso" },
   "Novo agendamento: {{nome}}": { es: "Nueva cita: {{nome}}" },
+  "{{nome}} agendou para {{agendamento.data}} às {{agendamento.hora}} com {{agendamento.profissional}}": { es: "{{nome}} agendó para {{agendamento.data}} a las {{agendamento.hora}} con {{agendamento.profissional}}" },
+  "Dica: Use {{campo.nome_do_campo}} para campos personalizados do funil ou {{qualificacao.orcamento}} / {{qualificacao.necessidade}}.": { es: "Consejo: Usa {{campo.nome_do_campo}} para campos personalizados del embudo o {{qualificacao.orcamento}} / {{qualificacao.necessidade}}." },
   "Este aviso sai a qualquer hora — inclusive de madrugada. No máximo 20 por hora para o mesmo número; os que passarem disso não são enviados.": { es: "Este aviso sale a cualquier hora — incluso de madrugada. Máximo 20 por hora para el mismo número; los que pasen de eso no se envían." },
+  "Data agendada": { es: "Fecha agendada" },
+  "Hora agendada": { es: "Hora agendada" },
+  "Profissional": { es: "Profesional" },
+  "Tipo consulta": { es: "Tipo de cita" },
+  
+  
+  // -- ActivityTab: motivo de parada novo. Os outros nove já vivem lá em cima
+  // (~L2925) — reescrevê-los aqui é chave duplicada, que o typecheck reprova. --
+  "A mensagem exige dados de agendamento, mas não há reunião marcada para o futuro.": { es: "El mensaje requiere datos de cita, pero no hay ninguna cita marcada para el futuro." },
+  "Enriquecimento do lead": { es: "Enriquecimiento del lead" },
 };
 
 /**

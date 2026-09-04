@@ -22,25 +22,60 @@ COMUNIDADE_URL="https://lp-comunidade.automatiklabs.com.br"
 REPO_DIR="${REPO_DIR:-deskcommcrm}"
 COMPOSE="docker-compose.prod.yml"
 COMPOSE_TRAEFIK="docker-compose.traefik.yml"
+COMPOSE_SUPABASE_INTERNO="docker-compose.supabase-interno.yml"
 NONINTERACTIVE=0
 [ "${1:-}" = "--yes" ] && NONINTERACTIVE=1
 
 # Este script é standalone de propósito (roda antes do clone, então não dá para
 # usar o _common.sh). As duas funções abaixo são gêmeas das de lá — se mexer
 # numa, mexa na outra.
+# ── Supabase na MESMA máquina ────────────────────────────────────────────────
+# Quem apontou `SUPABASE_INTERNAL_URL` no `.env` precisa que os contêineres
+# entrem TAMBÉM na rede do Supabase — é ela que faz `supabase-envoy` resolver.
+#
+# ⚠️ Sem esta função, o `update.sh` recriaria a stack com a lista de `-f` curta:
+# a variável continuaria no `.env`, o host não resolveria, e TODA chamada do
+# servidor ao banco morreria — numa atualização de rotina, sem ninguém ter
+# mexido em nada. É o mesmo motivo pelo qual o override do Traefik entra aqui:
+# a lista de `-f` é do ESTADO da instalação, não do comando que a pessoa lembrou.
+#
+# ⚠️ Lê o ARQUIVO, e não a variável de ambiente. Não é porque o `load_env` falta —
+# o `update.sh` passa por `enter_project`, que carrega o `.env` antes de qualquer
+# `dc`. É porque o `install.sh` é STANDALONE: as gêmeas de lá chamam `dc` durante
+# a instalação, quando o `.env` está sendo escrito e a variável ainda não foi
+# exportada para o shell. Ler o arquivo vale nos dois casos e não depende de um
+# contrato de ordem que um chamador futuro pode quebrar em silêncio.
+usa_supabase_interno() {
+  [ -f .env ] || return 1
+  grep -qE '^[[:space:]]*SUPABASE_INTERNAL_URL[[:space:]]*=[[:space:]]*"?[^"[:space:]#]' .env
+}
+
 dc() {
   if [ "${REVERSE_PROXY:-caddy}" = "traefik" ]; then
-    docker compose -f "$COMPOSE" -f "$COMPOSE_TRAEFIK" "$@"
+    if usa_supabase_interno; then
+      docker compose -f "$COMPOSE" -f "$COMPOSE_TRAEFIK" -f "$COMPOSE_SUPABASE_INTERNO" "$@"
+    else
+      docker compose -f "$COMPOSE" -f "$COMPOSE_TRAEFIK" "$@"
+    fi
+  elif usa_supabase_interno; then
+    docker compose -f "$COMPOSE" -f "$COMPOSE_SUPABASE_INTERNO" "$@"
   else
     docker compose -f "$COMPOSE" "$@"
   fi
 }
+
+# A mesma lista de -f, como texto, para as mensagens que ensinam o comando ao
+# dono. Se a mensagem omitisse o override numa instalação com proxy externo, o
+# próprio dono derrubaria o site seguindo a instrução do kit.
 dc_files() {
+  local lista="-f $COMPOSE"
   if [ "${REVERSE_PROXY:-caddy}" = "traefik" ]; then
-    printf -- '-f %s -f %s' "$COMPOSE" "$COMPOSE_TRAEFIK"
-  else
-    printf -- '-f %s' "$COMPOSE"
+    lista="$lista -f $COMPOSE_TRAEFIK"
   fi
+  if usa_supabase_interno; then
+    lista="$lista -f $COMPOSE_SUPABASE_INTERNO"
+  fi
+  printf -- '%s' "$lista"
 }
 
 # ── Aparência ───────────────────────────────────────────────────────────────

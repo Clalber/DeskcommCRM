@@ -28,11 +28,11 @@ import {
   type AutomationRuleRunRow,
   type AutomationRuleRunActionResult,
 } from "@/hooks/webhooks/useAutomationRules";
-import { ACTION_LABELS, type ActionType } from "./labels";
+import { ACTION_LABELS, RESULTADO_NAO_ACAO, type ActionType } from "./labels";
 import { useT } from "@/hooks/i18n/useT";
 
 function actionLabel(type: string, t: (texto: string) => string): string {
-  return t(ACTION_LABELS[type as ActionType] ?? type);
+  return t(ACTION_LABELS[type as ActionType] ?? RESULTADO_NAO_ACAO[type] ?? type);
 }
 
 function relativeCreatedAt(iso: string, locale: Locale): string {
@@ -83,6 +83,7 @@ const MOTIVO_DA_PARADA: Record<string, string> = {
   ia_indisponivel:
     "A IA não está configurada nesta instalação — cadastre uma chave em Provedores de IA.",
   texto_vazio: "A IA não devolveu texto. Revise o contexto que você escreveu para ela.",
+  agendamento_ausente_no_contexto: "A mensagem exige dados de agendamento, mas não há reunião marcada para o futuro.",
 };
 
 function explicacaoDe(

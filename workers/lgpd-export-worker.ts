@@ -39,6 +39,7 @@ import {
 } from "@/lib/lgpd/email-delivery";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { marcaDaSaida } from "@/lib/branding/saida";
+import { urlPublicaDaAssinatura } from "@/lib/supabase/enderecos";
 
 const MAX_ATTEMPTS = 3;
 const BUCKET = "lgpd-exports";
@@ -250,7 +251,7 @@ export async function processLgpdExport(event: EventRow): Promise<HandlerResult>
       const sent = await sendExportEmail({
         to: deliveryEmail,
         requestId,
-        signedUrl: signed.signedUrl,
+        signedUrl: urlPublicaDaAssinatura(signed.signedUrl),
         expiresAt,
         marca: await marcaDaSaida(orgId),
       });

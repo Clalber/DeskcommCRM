@@ -70,6 +70,34 @@ const schema = z.object({
   NEXT_PUBLIC_SUPABASE_ANON_KEY: requiredAlways("NEXT_PUBLIC_SUPABASE_ANON_KEY"),
   SUPABASE_SERVICE_ROLE_KEY: requiredAlways("SUPABASE_SERVICE_ROLE_KEY"),
 
+  /**
+   * Endereço do Supabase alcançável de DENTRO da rede do contêiner — opcional.
+   *
+   * Quando a instalação publica o Supabase num domínio próprio, o servidor fala
+   * com o banco pelo mesmo caminho do navegador: sai do contêiner, atravessa a
+   * internet e volta para a MESMA máquina. Medido nesta VPS: 3,9 ms por dentro
+   * contra 67,6 ms pela volta — e, quando o proxy engasga, o que chega no lugar
+   * do JSON é uma página HTML de erro (`502: Bad gateway`), que o cliente não
+   * sabe ler. Foi essa página que derrubou o `followup`, o
+   * `recover-stuck-messages`, e que fez uma automação nascer duplicada.
+   *
+   * Ausente: tudo segue pela URL pública, exatamente como antes. É por isso que
+   * a variável é opcional — nenhuma instalação existente muda de comportamento
+   * ao atualizar.
+   *
+   * ⚠️ NÃO substitui a pública. O navegador continua precisando dela, e URL
+   * assinada de mídia também — ver `lib/supabase/enderecos.ts`.
+   *
+   * ⚠️ O `preprocess` NÃO é enfeite: `.url()` REPROVA string vazia, e o
+   * `.env.example` traz esta chave declarada e em branco. Sem tratar o vazio
+   * como ausente, todo mundo que copiasse o exemplo derrubaria o startup — a
+   * validação lança, e a aplicação não sobe.
+   */
+  SUPABASE_INTERNAL_URL: z.preprocess(
+    (valor) => (typeof valor === "string" && valor.trim() === "" ? undefined : valor),
+    z.string().url().optional(),
+  ),
+
   // Cron / interno
   INTERNAL_SECRET: required("INTERNAL_SECRET"),
   /** Optional dedicated secret for cron endpoints (S-06.07 onwards). */

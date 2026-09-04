@@ -19,6 +19,7 @@ import type { NextRequest } from "next/server";
 import { fail } from "@/lib/api/wrappers";
 import { loadAuthUser, resolveActiveOrg } from "@/lib/auth/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { urlPublicaDaAssinatura } from "@/lib/supabase/enderecos";
 
 export const dynamic = "force-dynamic";
 
@@ -87,7 +88,7 @@ export async function GET(
   return new Response(null, {
     status: 307,
     headers: {
-      Location: signed.signedUrl,
+      Location: urlPublicaDaAssinatura(signed.signedUrl),
       "Cache-Control": `private, max-age=${BROWSER_CACHE_SECONDS}`,
     },
   });

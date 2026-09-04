@@ -6,6 +6,7 @@ import { enviarPushAoUsuario, enviarPushDaOrg } from "./web_push";
 import { vapidPronto } from "./vapid";
 import type { PushPayload } from "./push_payload";
 import { rotuloDoContato, SEM_NOME } from "@/lib/contacts/rotulo-do-contato";
+import { urlPublicaDaAssinatura } from "@/lib/supabase/enderecos";
 
 export const WEB_PUSH_INBOUND_KEY = "web-push-inbound.v1";
 
@@ -53,7 +54,7 @@ async function handleInbound(row: EventRow): Promise<HandlerResult> {
       const { data: signed } = await admin.storage
         .from("whatsapp-media")
         .createSignedUrl(c.avatar_storage_path, 300);
-      icon = signed?.signedUrl ?? null;
+      icon = signed?.signedUrl ? urlPublicaDaAssinatura(signed.signedUrl) : null;
     }
   }
   const payload = montarPayloadDeInbound({
