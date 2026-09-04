@@ -44,7 +44,7 @@ import { registerAction } from "@/lib/automation/actions";
 import type { ActionCtx, ActionResultDetail } from "@/lib/automation/types";
 import { renderTemplate } from "@/lib/automation/template";
 import { espacarEnvio } from "@/lib/automation/throttle";
-import { getAdapter, resolveSessionRef } from "@/lib/channels";
+import { CHANNEL_SESSION_REF_COLUMNS, getAdapter, resolveSessionRef } from "@/lib/channels";
 import { capabilitiesOf } from "@/lib/channels/capabilities";
 import type { ChannelProvider } from "@/lib/channels/capabilities";
 import { ARCHIVED_AT } from "@/lib/channels/archived";
@@ -86,12 +86,16 @@ async function execute(ctx: ActionCtx, config: Record<string, unknown>): Promise
 
   // ─── Pré-voo do canal ─────────────────────────────────────────────────────
   //
-  // Sem isto o envio "funciona" e não sai: o adapter do WAHA devolve
+  // Sem isto o envio "funciona" e não sai: há adapter que devolve
   // `{ externalId: null }` SEM lançar quando não há configuração, e o ledger
   // registraria sucesso de um aviso que nunca chegou.
   const { data: sessao, error: erroSessao } = await ctx.admin
     .from("channel_sessions")
-    .select(`id, provider, status, waha_session_name, ${ARCHIVED_AT}`)
+    // `CHANNEL_SESSION_REF_COLUMNS` em vez de nomear as colunas uma a uma: a
+    // doutrina de restrição de canal proíbe escrever nome de provider fora de
+    // `lib/channels`, e os nomes das colunas de referência os carregam. Quem
+    // sabe de qual coluna cada canal precisa é o `resolveSessionRef`.
+    .select(`id, status, ${CHANNEL_SESSION_REF_COLUMNS}, ${ARCHIVED_AT}`)
     .eq("id", sessionId)
     .eq("organization_id", ctx.organizationId)
     .maybeSingle();
