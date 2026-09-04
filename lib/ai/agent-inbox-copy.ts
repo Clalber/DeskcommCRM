@@ -63,6 +63,9 @@ export const KIND_LABEL = {
   // Diz o que ACONTECEU com o material, e nunca "a indexação falhou": quem
   // subiu um PDF quer saber que o agente ainda não sabe o que está nele.
   conhecimento_nao_indexado: "Um material que você enviou não entrou na base de conhecimento",
+  // O aviso que existe para dizer que um AVISO não chegou. Cair em `other`
+  // mataria a triagem exatamente de quem confia que seria avisado.
+  notificacao_nao_entregue: "Aviso não entregue",
   other: "Aviso do assistente",
 } as const satisfies Record<InboxKind, string>;
 

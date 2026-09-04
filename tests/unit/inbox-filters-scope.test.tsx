@@ -50,6 +50,9 @@ function setOrg(role: ActiveOrg["role"], visibility_mode: ActiveOrg["visibility_
 function canal(over: Partial<ChannelSession> = {}): ChannelSession {
   return {
     id: "canal-1",
+    // `provider` passou a vir da API para a tela poder filtrar por capacidade
+    // (quem envia texto livre fora da janela). Ver ActionConfigForm.
+    provider: "waha",
     waha_session_name: "org_1111_aaa",
     display_name: "Vendas",
     phone_number: "5511999999999",

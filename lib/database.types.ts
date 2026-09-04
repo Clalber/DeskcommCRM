@@ -5512,6 +5512,102 @@ export type Database = {
           },
         ]
       }
+      org_notify_numbers: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          id: string
+          label: string
+          organization_id: string
+          phone_e164: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          label: string
+          organization_id: string
+          phone_e164: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          label?: string
+          organization_id?: string
+          phone_e164?: string
+        }
+        Relationships: []
+      }
+      org_notify_quota: {
+        Row: {
+          enviados: number
+          hora: string
+          notify_number_id: string
+          organization_id: string
+          rule_id: string
+        }
+        Insert: {
+          enviados?: number
+          hora: string
+          notify_number_id: string
+          organization_id: string
+          rule_id: string
+        }
+        Update: {
+          enviados?: number
+          hora?: string
+          notify_number_id?: string
+          organization_id?: string
+          rule_id?: string
+        }
+        Relationships: []
+      }
+      org_notify_sends: {
+        Row: {
+          attempts: number
+          channel_session_id: string
+          event_id: string
+          external_id: string | null
+          id: string
+          notify_number_id: string
+          organization_id: string
+          phone_e164: string
+          reserved_at: string
+          rule_id: string
+          sent_at: string | null
+          status: string
+        }
+        Insert: {
+          attempts?: number
+          channel_session_id: string
+          event_id: string
+          external_id?: string | null
+          id?: string
+          notify_number_id: string
+          organization_id: string
+          phone_e164: string
+          reserved_at?: string
+          rule_id: string
+          sent_at?: string | null
+          status?: string
+        }
+        Update: {
+          attempts?: number
+          channel_session_id?: string
+          event_id?: string
+          external_id?: string | null
+          id?: string
+          notify_number_id?: string
+          organization_id?: string
+          phone_e164?: string
+          reserved_at?: string
+          rule_id?: string
+          sent_at?: string | null
+          status?: string
+        }
+        Relationships: []
+      }
       organizations: {
         Row: {
           ai_budget_cents: number | null

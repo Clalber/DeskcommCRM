@@ -24,6 +24,7 @@ import {
   ListChecks,
   Lock,
   Palette,
+  PaperPlaneTilt,
   Plugs,
   PlugsConnected,
   PuzzlePiece,
@@ -495,6 +496,14 @@ export const NAV_DESTINATIONS: NavDestination[] = [
     icon: Bell,
     group: "organizacao",
     section: "Sua conta",
+  },
+  {
+    href: "/app/settings/numeros-de-aviso",
+    label: "Números de aviso",
+    description: "Quem recebe aviso no WhatsApp quando uma automação dispara.",
+    icon: PaperPlaneTilt,
+    group: "organizacao",
+    section: "Sua empresa",
   },
   {
     href: "/app/team",

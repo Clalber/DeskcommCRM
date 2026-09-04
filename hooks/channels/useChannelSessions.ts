@@ -11,6 +11,9 @@ export interface ChannelSession {
    * serviço de WhatsApp para ser excluído. O tipo dizia `string` e mentia: um
    * canal oficial rendia rótulo vazio onde a tela concatenava esse campo.
    */
+  /** Qual canal é. A tela filtra por CAPACIDADE (`capabilitiesOf`), não por
+   *  este nome — mas precisa dele para consultar a matriz. */
+  provider: string;
   waha_session_name: string | null;
   display_name: string | null;
   phone_number: string | null;

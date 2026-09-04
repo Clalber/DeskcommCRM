@@ -18,6 +18,9 @@ import {
 import { usePipelines, usePipelineStages } from "@/hooks/webhooks/useWebhookSources";
 import { useAgentsList } from "@/hooks/ai/useAgents";
 import { channelLabel, useChannelSessions } from "@/hooks/channels/useChannelSessions";
+import { useNotifyNumbers } from "@/hooks/automacoes/useNotifyNumbers";
+import { capabilitiesOf } from "@/lib/channels/capabilities";
+import type { ChannelProvider } from "@/lib/channels/capabilities";
 import { useAssignableMembers } from "@/hooks/inbox/useAssignableMembers";
 import { apiClient } from "@/lib/api/client";
 import type { FollowupFlowPointerRow } from "@/hooks/followup/useFollowupFlows";
@@ -32,7 +35,11 @@ export type ActionItem =
   | { type: "add_tag"; config: { tags: string[] } }
   | { type: "assign_owner"; config: { user_id: string } }
   | { type: "call_webhook"; config: { url: string; secret?: string; secret_enc?: string } }
-  | { type: "start_message_flow"; config: { flow_pointer_id: string } };
+  | { type: "start_message_flow"; config: { flow_pointer_id: string } }
+  | {
+      type: "notify_number";
+      config: { notify_number_id: string; channel_session_id: string; template: string };
+    };
 
 export function defaultActionConfig(type: ActionItem["type"]): ActionItem {
   switch (type) {
@@ -50,6 +57,8 @@ export function defaultActionConfig(type: ActionItem["type"]): ActionItem {
       return { type, config: { url: "" } };
     case "start_message_flow":
       return { type, config: { flow_pointer_id: "" } };
+    case "notify_number":
+      return { type, config: { notify_number_id: "", channel_session_id: "", template: "" } };
   }
 }
 
@@ -377,6 +386,121 @@ function CallWebhookForm({
   );
 }
 
+/**
+ * "Avisar um número meu" — o destinatário é a NOSSA equipe, não o cliente.
+ *
+ * ⚠️ Três coisas nesta tela existem para o operador não se enganar:
+ *
+ * 1. **A lista, não um campo de texto.** Digitar o número aqui faria um erro de
+ *    digitação virar disparo pelo número da empresa para um desconhecido.
+ * 2. **Só canais que enviam texto livre.** O aviso é sempre a primeira mensagem
+ *    para aquele número, então não existe janela de 24h aberta — por Cloud API
+ *    ele falharia sempre, e falhar em silêncio é o pior desfecho para um aviso.
+ * 3. **Nada sobre janela comercial.** A ação irmã promete respeitar a janela;
+ *    esta NÃO respeita, de propósito — o pedido é ser avisado de madrugada.
+ *    Repetir a frase da outra tela aqui seria contrato falso.
+ */
+function NotifyNumberForm({
+  config,
+  onChange,
+}: FormProps<{ notify_number_id: string; channel_session_id: string; template: string }>) {
+  const t = useT();
+  const { data: numeros, isLoading } = useNotifyNumbers();
+  const { data: sessions } = useChannelSessions();
+  const textareaRef = React.useRef<HTMLTextAreaElement>(null);
+
+  const insertVar = (token: string) => {
+    const el = textareaRef.current;
+    const current = config.template;
+    const start = el?.selectionStart ?? current.length;
+    const end = el?.selectionEnd ?? current.length;
+    const next = current.slice(0, start) + token + current.slice(end);
+    onChange({ ...config, template: next });
+    requestAnimationFrame(() => {
+      el?.focus();
+      el?.setSelectionRange(start + token.length, start + token.length);
+    });
+  };
+
+  const semNumeros = !isLoading && (numeros ?? []).length === 0;
+
+  return (
+    <div className="space-y-2">
+      <div className="space-y-1">
+        <Label>{t("Quem recebe o aviso")}</Label>
+        <Select
+          value={config.notify_number_id}
+          onValueChange={(v) => onChange({ ...config, notify_number_id: v })}
+        >
+          <SelectTrigger>
+            <SelectValue placeholder={t("Escolha um número cadastrado")} />
+          </SelectTrigger>
+          <SelectContent>
+            {(numeros ?? []).map((n) => (
+              <SelectItem key={n.id} value={n.id}>
+                {n.label + " — " + n.phone_e164}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        {semNumeros ? (
+          <p className="text-xs text-muted-foreground">
+            {t("Nenhum número cadastrado ainda. Cadastre em Configurações › Números de aviso.")}
+          </p>
+        ) : null}
+      </div>
+      <div className="space-y-1">
+        <Label>{t("Enviado pelo número")}</Label>
+        <Select
+          value={config.channel_session_id}
+          onValueChange={(v) => onChange({ ...config, channel_session_id: v })}
+        >
+          <SelectTrigger>
+            <SelectValue placeholder={t("Escolha o número que envia")} />
+          </SelectTrigger>
+          <SelectContent>
+            {(sessions ?? [])
+              // Só quem manda texto livre a qualquer momento. O aviso é sempre a
+              // PRIMEIRA mensagem para aquele número: não há janela aberta.
+              .filter((s) => capabilitiesOf(s.provider as ChannelProvider).freeformOutsideWindow)
+              .map((s) => (
+                <SelectItem key={s.id} value={s.id} disabled={s.status !== "WORKING"}>
+                  {channelLabel(s) + (s.status !== "WORKING" ? " — desconectado" : "")}
+                </SelectItem>
+              ))}
+          </SelectContent>
+        </Select>
+      </div>
+      <div className="space-y-1">
+        <Label>{t("Mensagem do aviso")}</Label>
+        <div className="flex flex-wrap gap-1">
+          {TEMPLATE_VARS.map((v) => (
+            <Button
+              key={v.token}
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() => insertVar(v.token)}
+            >
+              {v.label}
+            </Button>
+          ))}
+        </div>
+        <Textarea
+          ref={textareaRef}
+          rows={3}
+          value={config.template}
+          onChange={(e) => onChange({ ...config, template: e.target.value })}
+          placeholder={t("Novo agendamento: {{nome}}")}
+        />
+        <p className="text-xs text-muted-foreground">
+          {t("Este aviso sai a qualquer hora — inclusive de madrugada. No máximo 20 por hora para o mesmo número; os que passarem disso não são enviados.")}
+        </p>
+      </div>
+    </div>
+  );
+}
+
 function StartMessageFlowForm({ config, onChange }: FormProps<{ flow_pointer_id: string }>) {
   const t = useT();
   const { data, isLoading } = useQuery({
@@ -468,6 +592,13 @@ export function ActionConfigForm({
     case "call_webhook":
       return (
         <CallWebhookForm
+          config={action.config}
+          onChange={(config) => onChange({ type: action.type, config })}
+        />
+      );
+    case "notify_number":
+      return (
+        <NotifyNumberForm
           config={action.config}
           onChange={(config) => onChange({ type: action.type, config })}
         />

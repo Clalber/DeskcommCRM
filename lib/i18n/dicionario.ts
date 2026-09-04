@@ -6432,6 +6432,26 @@ export const DICIONARIO: Traducoes = {
   "Salvar produto": { es: "Guardar producto" },
   "em estoque": { es: "en stock" },
   "sem controle de estoque": { es: "sin control de stock" },
+
+  // Notificação para número externo (migration 0212).
+  // "Número" sozinho é rótulo de campo — em espanhol leva acento no mesmo lugar,
+  // mas precisa da entrada para a tela não cair no português por ausência.
+  "Número": { es: "Número" },
+  "Números de aviso": { es: "Números de aviso" },
+  "Números de WhatsApp que as automações podem avisar. Só quem está nesta lista pode ser avisado — é o que impede um erro numa regra de virar mensagem para o número errado.": { es: "Números de WhatsApp que las automatizaciones pueden avisar. Solo quien está en esta lista puede ser avisado — es lo que impide que un error en una regla se convierta en un mensaje al número equivocado." },
+  "Quem é": { es: "Quién es" },
+  "Cadastrando…": { es: "Registrando…" },
+  "Cadastrar número": { es: "Registrar número" },
+  "Não consegui carregar a lista. Recarregue a página antes de cadastrar — o número pode já estar aqui.": { es: "No pude cargar la lista. Recarga la página antes de registrar — el número puede ya estar aquí." },
+  "Nenhum número cadastrado. Cadastre um acima para poder usá-lo em Automações.": { es: "Ningún número registrado. Registra uno arriba para poder usarlo en Automatizaciones." },
+  "Quem recebe o aviso": { es: "Quién recibe el aviso" },
+  "Escolha um número cadastrado": { es: "Elige un número registrado" },
+  "Nenhum número cadastrado ainda. Cadastre em Configurações › Números de aviso.": { es: "Ningún número registrado todavía. Regístralo en Configuraciones › Números de aviso." },
+  "Enviado pelo número": { es: "Enviado por el número" },
+  "Escolha o número que envia": { es: "Elige el número que envía" },
+  "Mensagem do aviso": { es: "Mensaje del aviso" },
+  "Novo agendamento: {{nome}}": { es: "Nueva cita: {{nome}}" },
+  "Este aviso sai a qualquer hora — inclusive de madrugada. No máximo 20 por hora para o mesmo número; os que passarem disso não são enviados.": { es: "Este aviso sale a cualquier hora — incluso de madrugada. Máximo 20 por hora para el mismo número; los que pasen de eso no se envían." },
 };
 
 /**

@@ -15,7 +15,7 @@ import { audit } from "@/lib/audit";
 import { sincronizarSaudeDaConexao } from "@/lib/channels/health";
 import { aplicarEfeitosPosEntrada } from "@/lib/channels/pos-entrada";
 import { acelerarPipelineDeEventos } from "@/lib/dev/kick-local-pipeline";
-import { canonicalPhoneBR } from "@/lib/channels/phone-variants";
+import { canonicalPhoneBR, samePhone } from "@/lib/channels/phone-variants";
 import { estamparAtribuicaoDoContato } from "@/lib/leads/atribuicao-de-anuncio";
 import { extrairAtribuicaoWaha } from "@/lib/waha/atribuicao-de-anuncio";
 import type { createAdminClient } from "@/lib/supabase/admin";
@@ -116,6 +116,80 @@ export async function silenciarBotPorRetomadaHumana(
  * não declara timeout, e o mais generoso dos outros adapters é 30s.
  */
 const JANELA_DE_ENVIO_EM_VOO_MS = 10 * 60 * 1000;
+
+/**
+ * O eco de uma NOTIFICAÇÃO nossa não vira contato.
+ *
+ * ⚠️ O problema, e por que ele não se resolve sozinho
+ *
+ * A ação `notify_number` avisa um número da nossa equipe — o dono, o atendente
+ * que vai assumir. Esse envio volta pelo webhook como `fromMe=true` igual a
+ * qualquer outro, e daqui para baixo o caminho normal criaria contato e
+ * conversa: **o número do dono viraria um LEAD no CRM**, com conversa no Inbox,
+ * entrando em relatório e podendo receber follow-up. É o oposto do pedido.
+ *
+ * ─── Por que a supressão NÃO é "o número está cadastrado" ──────────────────
+ *
+ * Seria a forma óbvia e está errada. Se o número avisado também for um cliente
+ * — ou se alguém escrever para ele pelo número da empresa —, essas mensagens
+ * sumiriam do CRM em silêncio: o defeito #108 de volta, e permanente.
+ *
+ * A supressão é pela IDENTIDADE DO ENVIO, e por isso é temporal:
+ *
+ *   1. o `external_id` do eco casa com um envio nosso registrado; ou
+ *   2. existe reserva EM VOO para aquele número, naquela sessão.
+ *
+ * O caminho 2 existe porque o eco chega **antes** de o `external_id` ser
+ * gravado — medido em produção: 279ms e 900ms. Consultar só a reserva
+ * concluída deixaria passar exatamente o caso que a regra existe para tapar.
+ *
+ * Fora dessas duas condições o número é um contato como qualquer outro. Quem
+ * limita o tempo da janela é o varredor que fecha reserva presa, não um número
+ * de minutos escolhido aqui.
+ */
+/**
+ * Mesma janela do `notify-sweeper`, que é quem fecha reserva presa. Se as duas
+ * divergirem, sobra um intervalo em que a reserva já não é varrida mas ainda
+ * suprime — e supressão sem dono é mensagem de gente sumindo.
+ */
+const JANELA_DE_RESERVA_EM_VOO_MS = 10 * 60 * 1000;
+
+async function ehEcoDeNotificacaoNossa(
+  admin: Admin,
+  session: { organization_id: string; id: string },
+  parsed: { phone: string | null },
+  idCandidates: string[],
+): Promise<boolean> {
+  const { data: porId } = await admin
+    .from("org_notify_sends")
+    .select("id")
+    .eq("organization_id", session.organization_id)
+    .in("external_id", idCandidates)
+    .limit(1)
+    .maybeSingle();
+  if (porId) return true;
+
+  if (!parsed.phone) return false;
+  // ⚠️ Recorte por TEMPO e ordem, não um `limit` solto: com reservas presas
+  // acumuladas, um `limit(20)` sem `order` devolve 20 linhas ARBITRÁRIAS, e a
+  // reserva do eco que acabou de chegar pode ficar de fora — o número do dono
+  // viraria lead. A janela é a mesma do varredor, que é quem fecha reserva
+  // presa; fora dela, nada é suprimido.
+  const desde = new Date(Date.now() - JANELA_DE_RESERVA_EM_VOO_MS).toISOString();
+  const { data: emVoo } = await admin
+    .from("org_notify_sends")
+    .select("id, phone_e164")
+    .eq("organization_id", session.organization_id)
+    .eq("channel_session_id", session.id)
+    .eq("status", "reserved")
+    .gte("reserved_at", desde)
+    .order("reserved_at", { ascending: false })
+    .limit(50);
+
+  // A comparação NUNCA é igualdade crua: a mesma pessoa chega com 12 ou 13
+  // dígitos conforme o nono, e o eco pode vir num formato e o cadastro noutro.
+  return (emVoo ?? []).some((r) => samePhone(r.phone_e164 as string, parsed.phone as string));
+}
 
 /**
  * ⚠️ O ECO DO PRÓPRIO ENVIO NÃO É RETOMADA HUMANA.
@@ -923,6 +997,8 @@ async function handleOutboundFromUserPhone(
     .limit(1)
     .maybeSingle();
   if (jaRegistrada) return; // nasceu no envio; quem atualiza o status é o ack
+
+  if (await ehEcoDeNotificacaoNossa(admin, session, parsed, idCandidates)) return;
 
   // fromMe: o pushName do payload é o do OPERADOR, não do destinatário —
   // repassá-lo batizaria o contato do cliente com o nome da loja (e o
