@@ -17747,3 +17747,15 @@ create unique index if not exists ai_kbv_version_por_agente_legado
   where knowledge_source_id is null;
 
 
+-- ---- agent_inbox_items.resolved_at (migration 0213) ----
+-- `pacing/aviso-de-janela.ts` resolve o aviso de "janela de envio fechada"
+-- gravando `resolved_at = now()`, e a coluna nunca existiu — o UPDATE falhava
+-- em produção (engolido, fire-and-forget), e o aviso ficava aberto pra sempre.
+--
+-- ⚠️ Renumerada de 0208 para 0213 ao vir do upstream: o NOSSO 0208 é
+-- `credencial_do_app_do_instagram`, e dois arquivos com o mesmo número fazem
+-- a ordem de aplicação depender do sistema de arquivos. Mesma DDL, número
+-- nosso. Ela é aditiva e `if not exists`, então um merge futuro do upstream
+-- que traga o 0208 original é inócuo — mas fica registrado no MANIFEST.
+alter table public.agent_inbox_items
+  add column if not exists resolved_at timestamptz;
