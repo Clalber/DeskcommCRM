@@ -109,7 +109,9 @@ describe("varredura: todo createSignedUrl entrega URL pública", () => {
       for (const arquivo of arquivosDeCodigo(raiz)) {
         const texto = readFileSync(arquivo, "utf-8");
         if (!texto.includes("createSignedUrl")) continue;
-        if (!texto.includes("urlPublicaDaAssinatura")) devedores.push(arquivo);
+        // Com o parêntese: a linha de `import` sozinha NÃO satisfaz. Sem isso,
+        // um refactor que perde a CHAMADA e mantém o import passa verde.
+        if (!texto.includes("urlPublicaDaAssinatura(")) devedores.push(arquivo);
       }
     }
 

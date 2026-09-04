@@ -7,6 +7,7 @@ import {
   verifyImpersonateCookieEdge,
   IMPERSONATE_COOKIE_NAME_EDGE,
 } from "@/lib/impersonate/cookie-edge";
+import { urlDoSupabaseNoServidor } from "@/lib/supabase/enderecos";
 
 const COOKIE_NAME = "sb-deskcomm-auth";
 
@@ -33,8 +34,12 @@ export async function proxy(request: NextRequest) {
     return response;
   }
 
+  // Endereço interno quando houver: este `createServerClient` roda
+  // `auth.getUser()` em TODA requisição autenticada, e um 502 em HTML vindo
+  // do proxy vira `user = null` — ou seja, deslogar quem estava logado, uma
+  // vez por requisição enquanto durar o engasgo.
   const supabase = createServerClient(
-    env.NEXT_PUBLIC_SUPABASE_URL,
+    urlDoSupabaseNoServidor(),
     env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
     {
       cookies: {

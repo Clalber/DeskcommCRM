@@ -1,7 +1,16 @@
 # DeskcommCRM — override para quem roda o Supabase NA MESMA MÁQUINA.
 #
 #   docker compose -f docker-compose.prod.yml -f docker-compose.supabase-interno.yml up -d
-#   (some com o -f docker-compose.traefik.yml se a sua VPS também usa Traefik)
+#
+#   ⚠️ Se a sua VPS usa Traefik, ACRESCENTE o override dele — nunca troque um
+#   pelo outro. Sem `-f docker-compose.traefik.yml` o app perde as labels de
+#   roteamento e o domínio inteiro passa a responder 404, com o contêiner
+#   saudável. Os três juntos:
+#
+#   docker compose -f docker-compose.prod.yml -f docker-compose.traefik.yml \
+#                  -f docker-compose.supabase-interno.yml up -d
+#
+#   (o `update.sh` do kit monta essa lista sozinho — ver `dc()` em _common.sh)
 #
 # QUANDO USAR
 # -----------
