@@ -20,6 +20,9 @@ import { getAction } from "@/lib/automation/actions";
 import type { ActionResultDetail } from "@/lib/automation/types";
 import { audit } from "@/lib/audit";
 import { logger } from "@/lib/logger";
+import { partesNoFuso } from "@/lib/agenda/fuso";
+import { rotuloLocal } from "@/lib/tempo/agora";
+import { fusoValido, FUSO_PADRAO } from "@/lib/tempo/fusos";
 
 export const AUTOMATION_CONSUMER_KEY = "automation-rules";
 
@@ -38,6 +41,231 @@ interface RuleRow {
   actions: Array<{ type: string; config?: Record<string, unknown> }>;
 }
 
+async function resolveUserName(
+  admin: SupabaseClient,
+  userId: string,
+  cache: Map<string, string | null>,
+): Promise<string | null> {
+  if (cache.has(userId)) {
+    return cache.get(userId) ?? null;
+  }
+  try {
+    const { data: userRes } = await admin.auth.admin.getUserById(userId);
+    const fullName = (userRes?.user?.user_metadata?.full_name as string | undefined) ?? null;
+    cache.set(userId, fullName);
+    return fullName;
+  } catch {
+    cache.set(userId, null);
+    return null;
+  }
+}
+
+/**
+ * Enriquece o contexto do lead com dados relacionais legiveis:
+ * etapa, funil, responsavel, agendamento proximo e qualificacao de IA.
+ */
+export async function enrichLeadContext(
+  admin: SupabaseClient,
+  org: string,
+  lead: Record<string, unknown>,
+  context: Record<string, unknown>,
+): Promise<void> {
+  const userNameCache = new Map<string, string | null>();
+  const customFields = (lead.custom_fields as Record<string, unknown> | null) ?? {};
+  context.campo = customFields;
+  context.custom_fields = customFields;
+
+  // Etapa legivel
+  if (typeof lead.stage_id === "string") {
+    const { data: stage, error: stageErr } = await admin
+      .from("crm_stages")
+      .select("id, name, slug")
+      .eq("id", lead.stage_id)
+      .eq("organization_id", org)
+      .maybeSingle();
+    if (stageErr) {
+      throw new Error(`[automation.engine] erro ao buscar crm_stages: ${stageErr.message}`);
+    }
+    if (stage) {
+      context.stage = stage;
+    }
+  }
+
+  // Funil legivel
+  if (typeof lead.pipeline_id === "string") {
+    const { data: pipeline, error: pipeErr } = await admin
+      .from("crm_pipelines")
+      .select("id, name")
+      .eq("id", lead.pipeline_id)
+      .eq("organization_id", org)
+      .maybeSingle();
+    if (pipeErr) {
+      throw new Error(`[automation.engine] erro ao buscar crm_pipelines: ${pipeErr.message}`);
+    }
+    if (pipeline) {
+      context.pipeline = pipeline;
+    }
+  }
+
+  // Responsavel / Dono do lead
+  if (typeof lead.owner_user_id === "string") {
+    const fullName = await resolveUserName(admin, lead.owner_user_id, userNameCache);
+    context.owner = { id: lead.owner_user_id, name: fullName ?? "Atendente" };
+  } else if (typeof lead.owner_agent_id === "string") {
+    const { data: agent, error: agentErr } = await admin
+      .from("ai_agents")
+      .select("id, name")
+      .eq("id", lead.owner_agent_id)
+      .eq("organization_id", org)
+      .maybeSingle();
+    if (agentErr) {
+      throw new Error(`[automation.engine] erro ao buscar ai_agents: ${agentErr.message}`);
+    }
+    if (agent) {
+      context.owner = { id: agent.id, name: agent.name };
+    }
+  }
+
+  // --- Agendamento: consulta canonica com fallback (Migration 0177) --------
+  // 1. Coleta vinculos de agendamento por crm_lead_links (target_kind = 'appointment')
+  // 2. Procura agendamento futuro valido (starts_at >= now() - 10 min, status pending/confirmed)
+  // 3. Fallback: se nenhum agendamento valido vinculado, busca pelo contato do lead
+  // 4. Sempre ordenado ASC (a proxima reuniao)
+  const leadId = typeof lead.id === "string" ? lead.id : null;
+  const contactId = typeof lead.contact_id === "string" ? lead.contact_id : null;
+  const agoraRecente = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+
+  let linkApptIds: string[] = [];
+  if (leadId) {
+    const { data: links, error: linkErr } = await admin
+      .from("crm_lead_links")
+      .select("target_id")
+      .eq("organization_id", org)
+      .eq("lead_id", leadId)
+      .eq("target_kind", "appointment");
+    if (linkErr) {
+      throw new Error(`[automation.engine] erro ao consultar crm_lead_links: ${linkErr.message}`);
+    }
+    linkApptIds = (links ?? []).map((l) => String(l.target_id)).filter(Boolean);
+  }
+
+  let appt: Record<string, unknown> | null = null;
+
+  // 1. Tenta agendamento valido e futuro vinculado ao lead
+  if (linkApptIds.length > 0) {
+    const { data: linkedAppt, error: linkedErr } = await admin
+      .from("calendar_appointments")
+      .select("id, title, starts_at, ends_at, time_zone, status, notes, event_type_id, owner_user_id")
+      .eq("organization_id", org)
+      .in("id", linkApptIds)
+      .in("status", ["pending", "confirmed"])
+      .gte("starts_at", agoraRecente)
+      .order("starts_at", { ascending: true })
+      .limit(1)
+      .maybeSingle();
+
+    if (linkedErr) {
+      throw new Error(`[automation.engine] erro ao consultar calendar_appointments por link: ${linkedErr.message}`);
+    }
+    appt = linkedAppt;
+  }
+
+  // 2. Fallback: se o vinculo nao tinha reuniao valida futura, busca a do contato
+  if (!appt && contactId) {
+    const { data: contactAppt, error: contactErr } = await admin
+      .from("calendar_appointments")
+      .select("id, title, starts_at, ends_at, time_zone, status, notes, event_type_id, owner_user_id")
+      .eq("organization_id", org)
+      .eq("contact_id", contactId)
+      .in("status", ["pending", "confirmed"])
+      .gte("starts_at", agoraRecente)
+      .order("starts_at", { ascending: true })
+      .limit(1)
+      .maybeSingle();
+
+    if (contactErr) {
+      throw new Error(`[automation.engine] erro ao consultar calendar_appointments por contato: ${contactErr.message}`);
+    }
+    appt = contactAppt;
+  }
+
+  if (appt) {
+    let tipoNome = appt.title as string;
+    if (appt.event_type_id) {
+      const { data: tipo, error: tipoErr } = await admin
+        .from("calendar_event_types")
+        .select("name")
+        .eq("id", appt.event_type_id as string)
+        .eq("organization_id", org)
+        .maybeSingle();
+      if (tipoErr) {
+        throw new Error(`[automation.engine] erro ao buscar calendar_event_types: ${tipoErr.message}`);
+      }
+      if (tipo?.name) {
+        tipoNome = tipo.name;
+      }
+    }
+
+    let profNome: string | null = null;
+    if (appt.owner_user_id) {
+      profNome = await resolveUserName(admin, appt.owner_user_id as string, userNameCache);
+    }
+
+    const rawTz = typeof appt.time_zone === "string" ? appt.time_zone : null;
+    const fuso = rawTz && fusoValido(rawTz) ? rawTz : FUSO_PADRAO;
+    const dt = new Date(appt.starts_at as string);
+    const p = partesNoFuso(dt, fuso);
+    const dois = (n: number) => String(n).padStart(2, "0");
+    const dataFmt = `${dois(p.dia)}/${dois(p.mes)}/${p.ano}`;
+    const horaFmt = `${dois(p.hora)}:${dois(p.minuto)}`;
+    const quandoFmt = rotuloLocal(dt, fuso);
+
+    context.agendamento = {
+      id: appt.id,
+      titulo: appt.title,
+      tipo: tipoNome,
+      data: dataFmt,
+      hora: horaFmt,
+      quando: quandoFmt,
+      profissional: profNome ?? "Equipe",
+      atendente: profNome ?? "Equipe",
+      status: appt.status,
+      notas: (appt.notes as string | undefined) ?? "",
+      starts_at: appt.starts_at,
+    };
+  }
+
+  // Qualificacao do lead via IA (lead_state)
+  if (contactId) {
+    const { data: ls, error: lsErr } = await admin
+      .from("lead_state")
+      .select("stage, qualification, next_action")
+      .eq("organization_id", org)
+      .eq("contact_id", contactId)
+      .maybeSingle();
+
+    if (lsErr) {
+      throw new Error(`[automation.engine] erro ao buscar lead_state: ${lsErr.message}`);
+    }
+    if (ls) {
+      const q = (ls.qualification as Record<string, string> | null) ?? {};
+      context.qualificacao = {
+        estagio: ls.stage,
+        stage: ls.stage,
+        orcamento: q.budget ?? "",
+        budget: q.budget ?? "",
+        necessidade: q.need ?? "",
+        need: q.need ?? "",
+        autoridade: q.authority ?? "",
+        authority: q.authority ?? "",
+        prazo: q.timeline ?? "",
+        timeline: q.timeline ?? "",
+        proxima_acao: ls.next_action ?? "",
+      };
+    }
+  }
+}
+
 /** Hidrata o contexto avaliado pelas condições/ações a partir do entity do evento. */
 export async function buildContext(admin: SupabaseClient, row: EventRow): Promise<Record<string, unknown>> {
   const context: Record<string, unknown> = { event: row.payload };
@@ -53,6 +281,8 @@ export async function buildContext(admin: SupabaseClient, row: EventRow): Promis
       .maybeSingle();
     if (lead) {
       context.lead = lead;
+      context.campo = (lead.custom_fields as Record<string, unknown> | null) ?? {};
+      context.custom_fields = context.campo;
       if (lead.contact_id) {
         const { data: contact } = await admin
           .from("contacts")
@@ -83,6 +313,59 @@ export async function buildContext(admin: SupabaseClient, row: EventRow): Promis
       if (contact) context.contact = contact;
     }
   }
+
+  // Se o evento e de contato ou mensagem, tenta associar o lead mais recente do contato
+  if (!context.lead && context.contact) {
+    const contactId = (context.contact as { id: string }).id;
+    let leadIdToFetch: string | null = null;
+
+    if (row.event_type === "message.received") {
+      const convId = row.payload.conversation_id as string | undefined;
+      if (convId) {
+        const { data: link } = await admin
+          .from("crm_lead_links")
+          .select("lead_id")
+          .eq("organization_id", org)
+          .eq("target_kind", "conversation")
+          .eq("target_id", convId)
+          .maybeSingle();
+        if (link?.lead_id) {
+          leadIdToFetch = String(link.lead_id);
+        }
+      }
+    }
+
+    if (leadIdToFetch) {
+      const { data: lead } = await admin
+        .from("crm_leads")
+        .select("*")
+        .eq("id", leadIdToFetch)
+        .eq("organization_id", org)
+        .maybeSingle();
+      if (lead) {
+        context.lead = lead;
+      }
+    } else {
+      const { data: lead } = await admin
+        .from("crm_leads")
+        .select("*")
+        .eq("organization_id", org)
+        .eq("contact_id", contactId)
+        .eq("status", "open")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (lead) {
+        context.lead = lead;
+      }
+    }
+
+    if (context.lead) {
+      context.campo = ((context.lead as Record<string, unknown>).custom_fields as Record<string, unknown> | null) ?? {};
+      context.custom_fields = context.campo;
+    }
+  }
+
   return context;
 }
 
@@ -165,6 +448,16 @@ export async function runAutomationForEvent(
   }
 
   const context = await buildContext(admin, row);
+  let enrichmentError: string | null = null;
+  try {
+    if (context.lead) {
+      await enrichLeadContext(admin, row.organization_id, context.lead as Record<string, unknown>, context);
+    }
+  } catch (err) {
+    enrichmentError = err instanceof Error ? err.message : String(err);
+    logger.error("[automation.engine] erro ao enriquecer lead", { error: enrichmentError, event_id: row.id });
+  }
+
   const applicable = matched.filter((r) => evaluateConditions(r.conditions ?? [], context));
   if (!applicable.length) {
     return { consumer_key: AUTOMATION_CONSUMER_KEY, status: "ok", detail: "no_match" };
@@ -193,6 +486,11 @@ export async function runAutomationForEvent(
 
   for (const rule of applicable) {
     const results: ActionResultDetail[] = [];
+    
+    if (enrichmentError) {
+      results.push({ type: "enrichment", status: "failed", error: enrichmentError });
+    }
+
     for (const action of rule.actions ?? []) {
       const executor = getAction(action.type);
       if (!executor) {

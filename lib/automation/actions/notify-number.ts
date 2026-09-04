@@ -156,6 +156,12 @@ async function execute(ctx: ActionCtx, config: Record<string, unknown>): Promise
     return recusa("teto_atingido", { por_hora: TETO_POR_HORA });
   }
 
+  // Guarda contra envio furado: se o template exige dados de agendamento mas
+  // nenhum agendamento foi encontrado no contexto, nao manda mensagem com buracos
+  if (/\{\{\s*agendamento\.\w+\s*\}\}/.test(template) && !ctx.context.agendamento) {
+    return recusa("agendamento_ausente_no_contexto");
+  }
+
   const corpo = renderTemplate(template, ctx.context);
 
   let externalId: string | null = null;

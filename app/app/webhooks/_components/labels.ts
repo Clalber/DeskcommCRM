@@ -36,3 +36,20 @@ export const ACTION_LABELS: Record<ActionType, string> = {
   // lead uma mensagem escrita para o dono.
   notify_number: "Avisar um número meu (WhatsApp)",
 };
+
+/**
+ * Linhas que aparecem em `actions_result` mas NÃO são ações escolhíveis.
+ *
+ * ⚠️ Não junte com `ACTION_LABELS`: o editor monta o seletor de ações com
+ * `Object.keys(ACTION_LABELS)` (RuleEditor.tsx), então tudo que entrar lá vira
+ * uma opção clicável — e "Enriquecimento do lead" não é algo que o operador
+ * adiciona a uma regra, é um passo interno do motor que só ganha linha própria
+ * quando FALHA (engine.ts empurra `{ type: "enrichment", status: "failed" }`
+ * para o resultado, senão a falha morreria no log do servidor).
+ *
+ * Sem esta entrada, `actionLabel` cai no `?? type` e a tela mostra a palavra
+ * `enrichment`, crua e em inglês, para quem opera em português ou espanhol.
+ */
+export const RESULTADO_NAO_ACAO: Record<string, string> = {
+  enrichment: "Enriquecimento do lead",
+};

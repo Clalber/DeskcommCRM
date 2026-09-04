@@ -79,3 +79,48 @@ if (typeof globalThis.ResizeObserver === "undefined") {
     disconnect() {}
   };
 }
+
+// Node 22+ expoe experimental localStorage que retorna undefined sem --localstorage-file.
+// Garante implementacao funcional de Storage em jsdom para testes de navegador.
+if (typeof window !== "undefined") {
+  class MemoryStorage implements Storage {
+    private store = new Map<string, string>();
+    get length(): number {
+      return this.store.size;
+    }
+    clear(): void {
+      this.store.clear();
+    }
+    getItem(key: string): string | null {
+      return this.store.get(key) ?? null;
+    }
+    key(index: number): string | null {
+      return Array.from(this.store.keys())[index] ?? null;
+    }
+    removeItem(key: string): void {
+      this.store.delete(key);
+    }
+    setItem(key: string, value: string): void {
+      this.store.set(key, String(value));
+    }
+  }
+
+  try {
+    if (!window.localStorage || typeof window.localStorage.clear !== "function") {
+      const storage = new MemoryStorage();
+      Object.defineProperty(window, "localStorage", {
+        value: storage,
+        writable: true,
+        configurable: true,
+      });
+      Object.defineProperty(globalThis, "localStorage", {
+        value: storage,
+        writable: true,
+        configurable: true,
+      });
+    }
+  } catch {
+    // ignore
+  }
+}
+
