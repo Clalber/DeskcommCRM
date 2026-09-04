@@ -16,6 +16,7 @@ COMPOSE_SUPABASE_INTERNO="docker-compose.supabase-interno.yml"
 #
 # Todo `docker compose` do kit passa por aqui: com proxy externo, um comando sem
 # o override subiria o Caddy e ele iria bater de frente com o Traefik.
+
 # ── Supabase na MESMA máquina ────────────────────────────────────────────────
 # Quem apontou `SUPABASE_INTERNAL_URL` no `.env` precisa que os contêineres
 # entrem TAMBÉM na rede do Supabase — é ela que faz `supabase-envoy` resolver.
@@ -25,9 +26,13 @@ COMPOSE_SUPABASE_INTERNO="docker-compose.supabase-interno.yml"
 # servidor ao banco morreria — numa atualização de rotina, sem ninguém ter
 # mexido em nada. É o mesmo motivo pelo qual o override do Traefik entra aqui:
 # a lista de `-f` é do ESTADO da instalação, não do comando que a pessoa lembrou.
-# ⚠️ Lê o ARQUIVO, e não a variável de ambiente: o `update.sh` chama `dc` sem ter
-# passado por `load_env`, e um teste `[ -n "$SUPABASE_INTERNAL_URL" ]` seria
-# vazio justamente ali — falhando no caminho que esta função existe para cobrir.
+#
+# ⚠️ Lê o ARQUIVO, e não a variável de ambiente. Não é porque o `load_env` falta —
+# o `update.sh` passa por `enter_project`, que carrega o `.env` antes de qualquer
+# `dc`. É porque o `install.sh` é STANDALONE: as gêmeas de lá chamam `dc` durante
+# a instalação, quando o `.env` está sendo escrito e a variável ainda não foi
+# exportada para o shell. Ler o arquivo vale nos dois casos e não depende de um
+# contrato de ordem que um chamador futuro pode quebrar em silêncio.
 usa_supabase_interno() {
   [ -f .env ] || return 1
   grep -qE '^[[:space:]]*SUPABASE_INTERNAL_URL[[:space:]]*=[[:space:]]*"?[^"[:space:]#]' .env

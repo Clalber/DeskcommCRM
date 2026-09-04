@@ -26,6 +26,7 @@ import { NextResponse, type NextRequest } from "next/server";
 
 import { env } from "@/lib/env";
 import { alvoDe, classificarFalhaDeAlcance, type FalhaDeAlcance } from "@/lib/net/alcance";
+import { urlDoSupabaseNoServidor } from "@/lib/supabase/enderecos";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -66,7 +67,15 @@ function motivoDoStatusHttp(status: number): MotivoDeFalha {
 
 async function checkSupabase(): Promise<Check> {
   const t0 = Date.now();
-  const url = env.NEXT_PUBLIC_SUPABASE_URL;
+  // ⚠️ Sonda o endereço que o SERVIDOR de fato usa, não o público.
+  //
+  // Enquanto os dois eram o mesmo, a distinção não existia. Agora que podem
+  // divergir (`SUPABASE_INTERNAL_URL`), medir o público seria medir um caminho
+  // que a aplicação não percorre — e o custo disso não é um painel impreciso: o
+  // `wait_app_healthy` do kit reprova em `unhealthy`, e o `agent.sh` faz
+  // ROLLBACK. Um engasgo do proxy da frente durante um `update.sh` desfaria um
+  // deploy que estava perfeito, pelo caminho que ninguém mais usa.
+  const url = urlDoSupabaseNoServidor();
   try {
     // Ping leve via REST com anon key — não precisa de service_role pra health check.
     // Se chegar 200/401/empty body, conexão e API key estão OK.

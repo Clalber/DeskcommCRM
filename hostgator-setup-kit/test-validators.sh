@@ -2434,20 +2434,11 @@ fi
 # quem digita. Por isso os quatro estados são medidos, e não só o feliz.
 echo "a lista de -f do compose segue o .env"
 TMPDC="$(mktemp -d)"; ( cd "$TMPDC" || exit 1
-  COMPOSE="docker-compose.prod.yml"
-  COMPOSE_TRAEFIK="docker-compose.traefik.yml"
-  COMPOSE_SUPABASE_INTERNO="docker-compose.supabase-interno.yml"
-  usa_supabase_interno() {
-    [ -f .env ] || return 1
-    grep -qE '^[[:space:]]*SUPABASE_INTERNAL_URL[[:space:]]*=[[:space:]]*"?[^"[:space:]#]' .env
-  }
-  dc_files() {
-    local lista="-f $COMPOSE"
-    if [ "${REVERSE_PROXY:-caddy}" = "traefik" ]; then lista="$lista -f $COMPOSE_TRAEFIK"; fi
-    if usa_supabase_interno; then lista="$lista -f $COMPOSE_SUPABASE_INTERNO"; fi
-    printf -- '%s' "$lista"
-  }
-
+  # ⚠️ NADA de redefinir `usa_supabase_interno`/`dc_files` aqui. A primeira versão
+  # deste bloco colava cópias das duas dentro do subshell — e aí os seis casos
+  # mediam a CÓPIA, não o kit: sabotar `_common.sh` deixava tudo verde. As reais
+  # já vêm do `. ./_common.sh` lá em cima, e leem o `.env` do cwd, que o subshell
+  # já trocou para o diretório temporário.
   esperar() {  # esperar <descrição> <esperado>
     local obtido; obtido="$(dc_files)"
     if [ "$obtido" = "$2" ]; then printf '  ✓ %s\n' "$1"

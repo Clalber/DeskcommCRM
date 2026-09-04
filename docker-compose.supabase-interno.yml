@@ -44,7 +44,9 @@
 #
 #      SUPABASE_INTERNAL_URL=http://supabase-envoy:8000
 #
-# 3. Se a sua rede não se chama `supabase_default`, ajuste o nome lá embaixo.
+# 3. Se a sua rede não se chama `supabase_default`, ponha no `.env`:
+#
+#      SUPABASE_NETWORK=nome-da-sua-rede
 #
 # ⚠️ SEM a variável `SUPABASE_INTERNAL_URL` no `.env`, este arquivo não muda
 # comportamento nenhum: os contêineres só ganham uma rede a mais e continuam
@@ -71,4 +73,7 @@ services:
 networks:
   supabase:
     external: true
-    name: supabase_default
+    # Parametrizado para NÃO exigir edição deste arquivo versionado: editá-lo faria
+    # o `git checkout` do `update.sh` morrer na primeira release que o tocasse.
+    # Se a sua rede tem outro nome, ponha `SUPABASE_NETWORK=` no `.env`.
+    name: "${SUPABASE_NETWORK:-supabase_default}"

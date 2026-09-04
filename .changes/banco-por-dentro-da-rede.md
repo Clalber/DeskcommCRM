@@ -3,7 +3,7 @@ impacto: capacidade_nova
 secao: adicionado
 titulo: O servidor pode falar com o Supabase por dentro da rede
 ---
-Quem roda o Supabase na mesma máquina do CRM pode fazer o servidor conversar com ele por dentro da rede dos contêineres, em vez de sair para a internet e voltar. Passa a existir a variável opcional `SUPABASE_INTERNAL_URL` e o arquivo de compose `docker-compose.supabase-interno.yml`.
+Quem roda o Supabase na mesma máquina do CRM pode fazer o servidor conversar com ele por dentro da rede dos contêineres, em vez de sair para a internet e voltar. Passam a existir as variáveis opcionais `SUPABASE_INTERNAL_URL` e `SUPABASE_NETWORK`, mais o arquivo de compose `docker-compose.supabase-interno.yml`. A atualização pelo próprio CRM continua funcionando: o kit percebe sozinho que a instalação usa o endereço interno e carrega o arquivo extra em toda subida.
 
 **Sem configurar nada, nada muda.** A variável nasce vazia e todo caminho continua pela URL pública, exatamente como hoje — inclusive para quem usa Supabase na nuvem, que não deve mexer nisso.
 
