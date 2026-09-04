@@ -1,0 +1,65 @@
+# DeskcommCRM — override para quem roda o Supabase NA MESMA MÁQUINA.
+#
+#   docker compose -f docker-compose.prod.yml -f docker-compose.supabase-interno.yml up -d
+#   (some com o -f docker-compose.traefik.yml se a sua VPS também usa Traefik)
+#
+# QUANDO USAR
+# -----------
+# Se o seu Supabase está publicado num domínio próprio (`https://supabase.seu-
+# dominio.com`) e roda em contêiner NESTA VPS, então hoje o servidor fala com o
+# banco pelo mesmo caminho do navegador: sai do contêiner, atravessa a internet,
+# passa pelo proxy/CDN e volta para a MESMA máquina.
+#
+# Medido numa VPS real em 2026-09-04: **3,9 ms por dentro contra 67,6 ms pela
+# volta**. E a latência é o menor problema — quando o proxy da frente engasga, a
+# resposta que chega no lugar do JSON é uma PÁGINA HTML de erro (`502: Bad
+# gateway`), que o cliente do Supabase não sabe ler. Naquele dia foram 10
+# ocorrências em 24 h: derrubaram o worker de follow-up, o cron que recupera
+# mensagem presa, e fizeram uma regra de automação nascer DUPLICADA (o 502 no
+# meio da escrita, e o cliente repetindo o POST).
+#
+# Com este override, os três serviços nossos entram também na rede do Supabase e
+# passam a falar com ele por dentro. O navegador não muda: ele continua usando a
+# URL pública, que segue obrigatória.
+#
+# COMO USAR
+# ---------
+# 1. Descubra o nome da rede do seu Supabase e do gateway dele:
+#
+#      docker inspect supabase-envoy --format '{{range $k,$v := .NetworkSettings.Networks}}{{$k}} {{end}}'
+#
+#    Em instalações antigas o gateway chama `supabase-kong`; nas novas,
+#    `supabase-envoy`. A porta é 8000 nos dois.
+#
+# 2. No `.env`, aponte o endereço interno (a variável é NOVA e OPCIONAL):
+#
+#      SUPABASE_INTERNAL_URL=http://supabase-envoy:8000
+#
+# 3. Se a sua rede não se chama `supabase_default`, ajuste o nome lá embaixo.
+#
+# ⚠️ SEM a variável `SUPABASE_INTERNAL_URL` no `.env`, este arquivo não muda
+# comportamento nenhum: os contêineres só ganham uma rede a mais e continuam
+# falando com o Supabase pela URL pública. Ligar a rede e apontar a variável são
+# passos independentes — e é de propósito, para dar como voltar atrás sem
+# recriar contêiner.
+#
+# ⚠️ POR QUE ISTO NÃO ESTÁ NO `docker-compose.prod.yml`: a rede é declarada como
+# `external`, ou seja, o compose EXIGE que ela já exista. Numa instalação que
+# usa Supabase na nuvem — ou que nomeou a rede de outro jeito — o `up -d`
+# falharia na largada. Override opcional é a única forma de oferecer isto sem
+# quebrar quem não precisa.
+
+services:
+  app:
+    networks: [internal, supabase]
+
+  worker:
+    networks: [internal, supabase]
+
+  scheduler:
+    networks: [internal, supabase]
+
+networks:
+  supabase:
+    external: true
+    name: supabase_default
