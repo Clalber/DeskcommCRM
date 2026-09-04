@@ -2422,6 +2422,51 @@ else
     "$(grep -c '# deskcomm:' "$CRONTAB_SANDBOX")"
 fi
 
+# ── a lista de -f acompanha o ESTADO da instalação ──────────────────────────
+#
+# O `update.sh` recria a stack com o que `dc()` montar. Se a lista esquecer o
+# override do Supabase interno numa instalação que o usa, os contêineres voltam
+# SEM a rede `supabase_default` — com `SUPABASE_INTERNAL_URL` ainda no `.env`.
+# O host deixa de resolver e TODA chamada do servidor ao banco morre, numa
+# atualização de rotina em que ninguém mexeu em nada.
+#
+# Mesma classe do override do Traefik: a lista é do estado, não da memória de
+# quem digita. Por isso os quatro estados são medidos, e não só o feliz.
+echo "a lista de -f do compose segue o .env"
+TMPDC="$(mktemp -d)"; ( cd "$TMPDC" || exit 1
+  # ⚠️ NADA de redefinir `usa_supabase_interno`/`dc_files` aqui. A primeira versão
+  # deste bloco colava cópias das duas dentro do subshell — e aí os seis casos
+  # mediam a CÓPIA, não o kit: sabotar `_common.sh` deixava tudo verde. As reais
+  # já vêm do `. ./_common.sh` lá em cima, e leem o `.env` do cwd, que o subshell
+  # já trocou para o diretório temporário.
+  esperar() {  # esperar <descrição> <esperado>
+    local obtido; obtido="$(dc_files)"
+    if [ "$obtido" = "$2" ]; then printf '  ✓ %s\n' "$1"
+    else printf '  ✗ %s\n     esperava [%s]\n     obteve   [%s]\n' "$1" "$2" "$obtido"; exit 1; fi
+  }
+
+  : > .env
+  esperar "sem a variável: só o compose de produção" "-f docker-compose.prod.yml"
+
+  printf 'SUPABASE_INTERNAL_URL=\n' > .env
+  esperar "variável VAZIA não liga nada (o .env.example vem em branco)" "-f docker-compose.prod.yml"
+
+  printf '# SUPABASE_INTERNAL_URL=http://supabase-envoy:8000\n' > .env
+  esperar "linha comentada não liga nada" "-f docker-compose.prod.yml"
+
+  printf 'SUPABASE_INTERNAL_URL="http://supabase-envoy:8000"\n' > .env
+  esperar "com valor: entra o override do Supabase" \
+    "-f docker-compose.prod.yml -f docker-compose.supabase-interno.yml"
+
+  REVERSE_PROXY=traefik esperar "com Traefik E Supabase interno: os TRÊS, nunca um no lugar do outro" \
+    "-f docker-compose.prod.yml -f docker-compose.traefik.yml -f docker-compose.supabase-interno.yml"
+
+  printf 'SUPABASE_INTERNAL_URL=http://supabase-envoy:8000\n' > .env
+  esperar "aceita sem aspas — instalação antiga não precisa reescrever o .env" \
+    "-f docker-compose.prod.yml -f docker-compose.supabase-interno.yml"
+) || fail=1
+rm -rf "$TMPDC"
+
 echo
 if [ "$fail" = 0 ]; then echo "todos os validadores passaram"; else echo "FALHOU"; fi
 exit "$fail"

@@ -20,6 +20,15 @@ const envSchema = z.object({
   // service-role. Mesmos valores do .env.local do app.
   NEXT_PUBLIC_SUPABASE_URL: z.string().url(),
   SUPABASE_SERVICE_ROLE_KEY: z.string().min(1),
+  // Endereço interno OPCIONAL (ver lib/supabase/enderecos.ts). Precisa estar
+  // DECLARADO aqui: o Zod descarta chave que o schema não conhece, e a
+  // variável chegaria ao worker pelo `.env` para ser silenciosamente jogada
+  // fora — o worker seguiria pela internet enquanto o app já ia por dentro.
+  // Vazio é ausente, como no schema do app: o `.env.example` traz em branco.
+  SUPABASE_INTERNAL_URL: z.preprocess(
+    (valor) => (typeof valor === "string" && valor.trim() === "" ? undefined : valor),
+    z.string().url().optional(),
+  ),
   // Chave LLM de plataforma (fallback quando a org não tem BYOK em
   // ai_provider_credentials). Opcional no boot: sem ela e sem BYOK, o turno
   // falha com erro instrutivo — nunca silêncio.
