@@ -52,6 +52,28 @@ export const actionSchema = z.discriminatedUnion("type", [
     type: z.literal("start_message_flow"),
     config: z.object({ flow_pointer_id: z.string().uuid() }),
   }),
+  /**
+   * Avisar um número NOSSO — não o do cliente.
+   *
+   * É ação separada de `send_whatsapp_message` de propósito: aquela passa por
+   * `checarGuardasDeContato` (existe · não bloqueado · tem telefone ·
+   * consentimento), e as quatro falam de CLIENTE. Avisar a própria equipe não
+   * tem nenhuma delas, e enfiar um `to_number` lá viraria "se tem número, pula
+   * todas as guardas" — a forma que produz acidente.
+   *
+   * O destino é `notify_number_id`, nunca um telefone digitado aqui: a ação só
+   * fala com número REGISTRADO em `org_notify_numbers`. Sem essa amarra, um
+   * erro de digitação na regra dispara pelo número da empresa para qualquer
+   * número do mundo.
+   */
+  z.object({
+    type: z.literal("notify_number"),
+    config: z.object({
+      notify_number_id: z.string().uuid(),
+      channel_session_id: z.string().uuid(),
+      template: z.string().min(1).max(1000),
+    }),
+  }),
 ]);
 
 export const createWebhookSourceSchema = z.object({

@@ -74,6 +74,12 @@ function bancoDeMentira(preexistentes: Array<Partial<LinhaMessage>> = []): Duplo
       gte() {
         return q;
       },
+      // Idem `gte`: a consulta de reserva EM VOO ordena por `reserved_at` para
+      // não devolver linhas arbitrárias sob acúmulo. Este dublê não modela essa
+      // consulta — ver tests/unit/notificar-numero-externo.test.ts.
+      order() {
+        return q;
+      },
       limit() {
         return q;
       },

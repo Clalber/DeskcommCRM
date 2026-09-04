@@ -97,6 +97,8 @@ beforeAll(() => {
       v_sess uuid;
       v_contact uuid;
       v_conv uuid;
+        v_notify uuid;
+        v_rule uuid;
       v_pipe uuid;
       v_stage uuid;
     begin
@@ -115,6 +117,37 @@ beforeAll(() => {
         if v_conv is null then
           insert into public.conversations (organization_id, contact_id, channel_session_id)
             values (v_org, v_contact, v_sess) returning id into v_conv;
+        end if;
+
+        -- migration 0212 — notificação para número externo. As três tabelas
+        -- dependem umas das outras (número → regra → ledger/balde), então a
+        -- semente cria a cadeia inteira: sem ela a varredura acusa "tabela
+        -- tenant-aware nova sem prova comportamental nenhuma", que é o que
+        -- aconteceu quando este bloco não existia.
+        if not exists (select 1 from public.org_notify_numbers where organization_id = v_org) then
+          insert into public.org_notify_numbers (organization_id, phone_e164, label)
+            values (v_org, '+5511900000000', 'RLS Invariant Aviso') returning id into v_notify;
+        else
+          select id into v_notify from public.org_notify_numbers where organization_id = v_org limit 1;
+        end if;
+
+        if not exists (select 1 from public.automation_rules where organization_id = v_org) then
+          insert into public.automation_rules (organization_id, name, trigger_event)
+            values (v_org, 'RLS Invariant Rule', 'lead.stage_changed') returning id into v_rule;
+        else
+          select id into v_rule from public.automation_rules where organization_id = v_org limit 1;
+        end if;
+
+        if not exists (select 1 from public.org_notify_sends where organization_id = v_org) then
+          insert into public.org_notify_sends
+            (organization_id, rule_id, event_id, notify_number_id, channel_session_id, phone_e164)
+            values (v_org, v_rule, gen_random_uuid(), v_notify, v_sess, '+5511900000000');
+        end if;
+
+        if not exists (select 1 from public.org_notify_quota where organization_id = v_org) then
+          insert into public.org_notify_quota
+            (organization_id, rule_id, notify_number_id, hora, enviados)
+            values (v_org, v_rule, v_notify, date_trunc('hour', now()), 1);
         end if;
 
         if not exists (select 1 from public.messages where organization_id = v_org) then
@@ -277,6 +310,16 @@ export const TABLES = [
   // natural seria afrouxar a policy para caber no molde. A prova dela vive em
   // `tests/invariants/historico-de-captacao-rls.test.ts`, que mede as duas
   // direções MAIS o gate de papel (o `viewer` que não lê o formulário).
+  // migration 0212 — avisar um número FORA da plataforma. As três entram em
+  // `TABLES` e não em `PROVA_PROPRIA`: a policy de LEITURA das três é
+  // org-scoped sem porta de papel, que é exatamente o molde deste percurso (o
+  // usuário semeado é `agent`, e o controle positivo funciona). A ESCRITA de
+  // `org_notify_numbers` exige `manager`, e as outras duas não têm policy de
+  // escrita nenhuma — quem grava é o motor com service role —, mas escrita não
+  // é o que este arquivo mede.
+  "org_notify_numbers",
+  "org_notify_sends",
+  "org_notify_quota",
 ] as const;
 
 describe("RLS tenant isolation (fn_user_org_ids pattern)", () => {

@@ -67,6 +67,8 @@ export type InboxKind =
   // nenhum trecho foi gravado. UM kind e não dois, porque quem lê a Central
   // quer saber que o material não entrou — o porquê é o corpo do aviso.
   | 'conhecimento_nao_indexado'
+  // (0212) A notificação para número FORA da plataforma não foi entregue.
+  | 'notificacao_nao_entregue'
   | 'other';
 
 export interface InboxItemRow {

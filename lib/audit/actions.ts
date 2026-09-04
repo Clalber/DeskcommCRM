@@ -404,6 +404,16 @@ export const AUDIT_ACTIONS = [
   "catalog_product.updated",
   "catalog_product.deleted",
   "catalog_product.imported",
+
+  // Notificação para número externo (migration 0212). Registra que um número
+  // NOSSO foi avisado — referenciando o cadastro, nunca o telefone: o número da
+  // equipe é dado pessoal, e registro operacional não é cópia de dado pessoal.
+  "automation.number_notified",
+  "automation.notify_number_created",
+  "automation.notify_number_deleted",
+  // A VARREDURA de reserva presa. Nome próprio, e não `number_notified`: quem
+  // contasse aquela ação somaria FALHA como entrega.
+  "automation.notify_sweep_run",
 ] as const;
 
 /** Um código de auditoria. Derivado de `AUDIT_ACTIONS` — não redigite a lista. */

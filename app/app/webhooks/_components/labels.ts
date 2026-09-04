@@ -12,7 +12,8 @@ export type ActionType =
   | "add_tag"
   | "assign_owner"
   | "call_webhook"
-  | "start_message_flow";
+  | "start_message_flow"
+  | "notify_number";
 
 export const TRIGGER_LABELS: Record<TriggerEvent, string> = {
   "lead.created": "Quando entrar um contato novo (webhook)",
@@ -30,4 +31,8 @@ export const ACTION_LABELS: Record<ActionType, string> = {
   assign_owner: "Atribuir a um atendente",
   call_webhook: "Avisar outro sistema (webhook)",
   start_message_flow: "Iniciar fluxo de mensagem",
+  // "meu" é a palavra que separa esta ação da de cima na hora do clique: uma
+  // fala com o CLIENTE, a outra avisa a EQUIPE. Confundir as duas manda para o
+  // lead uma mensagem escrita para o dono.
+  notify_number: "Avisar um número meu (WhatsApp)",
 };
