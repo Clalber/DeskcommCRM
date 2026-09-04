@@ -8,6 +8,18 @@ Se você roda o DeskcommCRM numa VPS, **leia a seção da versão para a qual es
 
 ## [Não lançado]
 
+## [2.7.0] — 2026-09-04
+
+### Adicionado
+
+- **Variaveis de agendamento e etapa em automacoes de lead** Automações de lead ganham variáveis novas nas mensagens: agendamento (data, hora, profissional, tipo de consulta), etapa, funil, responsável, qualificação e campos personalizados. Valem em qualquer gatilho que resolva um lead — não só na mudança de etapa — e tanto no envio ao cliente quanto no aviso para um número seu. Dados internos (responsável, qualificação, anotações e profissional do agendamento) são bloqueados nas mensagens ao CLIENTE e liberados só nos avisos internos.
+
+  **Muda o comportamento de regras que já existem:** uma mensagem que use variável de agendamento e não encontre reunião marcada para o futuro deixa de ser enviada, em vez de sair com o campo em branco. A automação registra o passo como pulado, com o motivo escrito, na aba Atividade. Vale para reunião pendente ou confirmada, com dez minutos de carência para a que acabou de começar.
+
+  Nos gatilhos de contato e de mensagem recebida, a automação passou a localizar o negócio aberto do contato — então a ação "avisar outro sistema (webhook)" leva os dados do lead no corpo, onde antes ia sem eles.
+
+  **O agente de IA passa a poder gravar campos personalizados** do lead pela ferramenta `crm.update_lead`. A gravação mescla com o que já existe (não apaga campo preenchido) e aceita qualquer chave, inclusive as que o funil não declara — essas ficam disponíveis para as automações lerem, mas não aparecem na tela do lead.
+
 ## [2.6.0] — 2026-09-04
 
 ### Adicionado
@@ -2397,7 +2409,8 @@ Primeira versão marcada do DeskcommCRM. O projeto vinha sendo desenvolvido publ
 
 - **Node 22 é obrigatório para desenvolvimento.** A suíte de invariantes instancia o cliente do Supabase, que exige o `WebSocket` global — nativo apenas a partir do Node 22. Isso não afeta quem apenas hospeda: a VPS roda a imagem pronta.
 
-[Não lançado]: https://github.com/melgarafael/DeskcommCRM/compare/v2.6.0...HEAD
+[Não lançado]: https://github.com/melgarafael/DeskcommCRM/compare/v2.7.0...HEAD
+[2.7.0]: https://github.com/melgarafael/DeskcommCRM/compare/v2.6.0...v2.7.0
 [2.6.0]: https://github.com/melgarafael/DeskcommCRM/compare/v2.5.1...v2.6.0
 [2.5.1]: https://github.com/melgarafael/DeskcommCRM/compare/v2.5.0...v2.5.1
 [2.5.0]: https://github.com/melgarafael/DeskcommCRM/compare/v2.4.4...v2.5.0
