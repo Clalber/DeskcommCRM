@@ -6,6 +6,13 @@
 import { randomUUID } from "node:crypto";
 import type { NextRequest } from "next/server";
 
+import {
+  chaveDoCabecalho,
+  guardarResultado,
+  hashDoPedido,
+  reservarExecucao,
+  soltarReserva,
+} from "@/lib/api/idempotencia";
 import { ok, fail } from "@/lib/api/wrappers";
 import { audit } from "@/lib/audit";
 import { requireRole } from "@/lib/auth/require-role";
@@ -63,6 +70,47 @@ export async function POST(req: NextRequest): Promise<Response> {
     );
   }
 
+  // ─── A RESERVA, antes de inserir ─────────────────────────────────────────
+  //
+  // ⚠️ Sem isto, uma regra vira DUAS — e o defeito é do cliente fazendo a coisa
+  // certa. `lib/api/client.ts` retenta mutação quando a rede falha, reenviando
+  // a MESMA `Idempotency-Key`; se a primeira requisição chegou ao banco e a
+  // resposta se perdeu no caminho, a retentativa cria uma cópia idêntica.
+  //
+  // Medido em produção nesta instalação, com dois `request_id` distintos e as
+  // duas linhas auditadas: 06:23:25.271 e 06:23:25.629 — 358ms de intervalo, o
+  // exato `backoffMs(1)` (200ms ± 50 de jitter) mais o tempo do primeiro POST.
+  // O gatilho foi a instabilidade de rede da VPS, mas a causa é esta rota
+  // ignorar o cabeçalho: a doutrina diz que quem falha é sempre a ROTA.
+  //
+  // `hashDoPedido` entra no escopo de propósito: chave repetida com corpo
+  // DIFERENTE é erro de quem chama, não repetição — e devolver a primeira regra
+  // ali esconderia a segunda que a pessoa quis criar.
+  const escopo = {
+    organizationId: activeOrg.orgId,
+    chave: chaveDoCabecalho(req.headers),
+    endpoint: "/api/v1/automation-rules",
+    requestHash: hashDoPedido(parsed.data),
+  };
+  const admin = createAdminClient();
+  const reserva = await reservarExecucao(admin, escopo);
+
+  if (reserva.estado === "repetida") {
+    // A MESMA regra que a primeira tentativa criou. Devolver erro aqui faria a
+    // pessoa ver falha numa regra que existe — e criar de novo à mão, trazendo
+    // a duplicata de volta pela porta da frente.
+    return ok(reserva.corpo, { status: 200, requestId });
+  }
+
+  if (reserva.estado === "em_andamento") {
+    return fail(
+      "idempotency_conflict",
+      "Esta automação já está sendo criada. Aguarde um instante e recarregue a lista.",
+      409,
+      { requestId },
+    );
+  }
+
   const supabase = await createClient();
   const { data: created, error: insErr } = await supabase
     .from("automation_rules")
@@ -77,8 +125,17 @@ export async function POST(req: NextRequest): Promise<Response> {
     .select("*")
     .single();
   if (insErr || !created) {
+    // Falha SOLTA a reserva: guardar o erro faria uma indisponibilidade curta
+    // virar erro permanente por 24 horas para esta chave, e a retentativa — que
+    // é o que salvaria a criação — encontraria uma reserva morta.
+    await soltarReserva(admin, escopo);
     return fail("internal_error", insErr?.message ?? "automation_rule_insert_failed", 500, { requestId });
   }
+
+  await guardarResultado(admin, escopo, {
+    status: 201,
+    corpo: created as unknown as Record<string, unknown>,
+  });
 
   void audit({
     action: "automation.rule_created",
