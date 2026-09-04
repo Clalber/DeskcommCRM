@@ -291,6 +291,11 @@ export async function createLeadHandler(
       source: input.source,
       source_metadata: input.source_metadata ?? {},
       external_id: input.external_id ?? null,
+      // DECISÃO (P2): custom_fields NÃO é validado contra pipeline.settings.fields.
+      // Motivo: A IA grava informações ricas (como orcamento, qualificacao) aqui que
+      // a automação lê via {{campo.x}}, mesmo que a tela do CRM nunca exiba esses
+      // campos (ex: Funil Cloe tem settings.fields vazio). Bloquear chaves não 
+      // cadastradas quebraria a passagem de dados invisíveis do Agente para a Automação.
       custom_fields: input.custom_fields ?? {},
       status: "open",
       position_in_stage: nextPos,
@@ -398,6 +403,9 @@ export async function updateLeadHandler(
   }
   if (input.tags !== undefined) patch.tags = input.tags;
   if (input.custom_fields !== undefined) {
+    // DECISÃO (P2): O merge raso se mantém sem validação contra pipeline.settings.fields.
+    // A IA e webhooks gravam metadados ocultos aqui que o frontend não conhece e a
+    // automação consome. Restringir aos campos da tela quebraria o ecossistema.
     const prev =
       existing.custom_fields && typeof existing.custom_fields === "object" && !Array.isArray(existing.custom_fields)
         ? (existing.custom_fields as Record<string, unknown>)

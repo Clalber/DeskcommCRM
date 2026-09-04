@@ -33,13 +33,28 @@ async function execute(ctx: ActionCtx, config: Record<string, unknown>): Promise
   if (!guarda.ok) return { type: "send_whatsapp_message", status: "skipped", detail: { reason: guarda.reason } };
   const contact = guarda.contact;
 
+  // Guarda contra envio furado: se o template exige dados de agendamento mas
+  // nenhum agendamento foi encontrado no contexto, nao manda mensagem com buracos.
+  //
+  // ⚠️ ANTES do `espacarEnvio`. O espaçamento é um slot compartilhado do número
+  // (ver lib/automation/throttle.ts): gastá-lo com uma mensagem que já se sabe
+  // que não vai sair atrasa a próxima que VAI sair, e numa tempestade de eventos
+  // o custo é a fila inteira andando 1,2s mais devagar por envio fantasma.
+  if (/\{\{\s*agendamento\.\w+\s*\}\}/.test(template) && !ctx.context.agendamento) {
+    return {
+      type: "send_whatsapp_message",
+      status: "skipped",
+      detail: { reason: "agendamento_ausente_no_contexto" },
+    };
+  }
+
   // O espaçamento é COMPARTILHADO com a ação de IA (mesmo número, mesmo
   // contador) — ver lib/automation/throttle.ts.
   await espacarEnvio(sessionId);
 
   try {
     const conversationId = await ensureConversation(ctx.admin, ctx.organizationId, contact.id, sessionId);
-    const body = renderTemplate(template, ctx.context);
+    const body = renderTemplate(template, ctx.context, { audience: "customer" });
     const message = await sendMessageHandler(
       ctx.admin,
       {

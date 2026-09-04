@@ -125,10 +125,25 @@ function CreateOrMoveLeadForm({
   );
 }
 
-const TEMPLATE_VARS = [
+const CUSTOMER_TEMPLATE_VARS = [
   { token: "{{nome}}", label: "Nome" },
   { token: "{{telefone}}", label: "Telefone" },
-  { token: "{{lead.title}}", label: "Título do lead" },
+  { token: "{{lead.title}}", label: "Título" },
+  { token: "{{etapa}}", label: "Etapa" },
+  { token: "{{agendamento.data}}", label: "Data agendada" },
+  { token: "{{agendamento.hora}}", label: "Hora agendada" },
+];
+
+const INTERNAL_TEMPLATE_VARS = [
+  { token: "{{nome}}", label: "Nome" },
+  { token: "{{telefone}}", label: "Telefone" },
+  { token: "{{lead.title}}", label: "Título" },
+  { token: "{{etapa}}", label: "Etapa" },
+  { token: "{{agendamento.data}}", label: "Data agendada" },
+  { token: "{{agendamento.hora}}", label: "Hora agendada" },
+  { token: "{{agendamento.profissional}}", label: "Profissional" },
+  { token: "{{agendamento.tipo}}", label: "Tipo consulta" },
+  { token: "{{responsavel}}", label: "Responsável" },
 ];
 
 function SendWhatsappForm({
@@ -178,9 +193,9 @@ function SendWhatsappForm({
         ) : null}
       </div>
       <div className="space-y-1">
-        <Label>Mensagem</Label>
+        <Label>{t("Mensagem")}</Label>
         <div className="flex flex-wrap gap-1">
-          {TEMPLATE_VARS.map((v) => (
+          {CUSTOMER_TEMPLATE_VARS.map((v) => (
             <Button
               key={v.token}
               type="button"
@@ -188,7 +203,7 @@ function SendWhatsappForm({
               size="sm"
               onClick={() => insertVar(v.token)}
             >
-              {v.label}
+              {t(v.label)}
             </Button>
           ))}
         </div>
@@ -474,7 +489,7 @@ function NotifyNumberForm({
       <div className="space-y-1">
         <Label>{t("Mensagem do aviso")}</Label>
         <div className="flex flex-wrap gap-1">
-          {TEMPLATE_VARS.map((v) => (
+          {INTERNAL_TEMPLATE_VARS.map((v) => (
             <Button
               key={v.token}
               type="button"
@@ -482,7 +497,7 @@ function NotifyNumberForm({
               size="sm"
               onClick={() => insertVar(v.token)}
             >
-              {v.label}
+              {t(v.label)}
             </Button>
           ))}
         </div>
@@ -491,8 +506,11 @@ function NotifyNumberForm({
           rows={3}
           value={config.template}
           onChange={(e) => onChange({ ...config, template: e.target.value })}
-          placeholder={t("Novo agendamento: {{nome}}")}
+          placeholder={t("{{nome}} agendou para {{agendamento.data}} às {{agendamento.hora}} com {{agendamento.profissional}}")}
         />
+        <p className="text-xs text-muted-foreground">
+          {t("Dica: Use {{campo.nome_do_campo}} para campos personalizados do funil ou {{qualificacao.orcamento}} / {{qualificacao.necessidade}}.")}
+        </p>
         <p className="text-xs text-muted-foreground">
           {t("Este aviso sai a qualquer hora — inclusive de madrugada. No máximo 20 por hora para o mesmo número; os que passarem disso não são enviados.")}
         </p>
