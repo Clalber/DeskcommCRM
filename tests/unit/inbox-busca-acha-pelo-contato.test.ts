@@ -102,6 +102,13 @@ describe("busca do inbox — o contato entra no predicado", () => {
       "display_name",
     );
     expect(nomes).toContain("name");
+    // ⚠️ O TERMO, não só o campo. Sem esta linha, trocar `${s}` por qualquer
+    // literal — `name.ilike.*ZZZ*` — mantinha a palavra "name" no filtro e o
+    // teste seguia verde: ele provava que a consulta EXISTE, nunca que ela
+    // procura o que a pessoa digitou. Medido ao trazer este commit do upstream.
+    expect(nomes, "o termo digitado não chegou ao filtro — a consulta procura outra coisa").toContain(
+      "Maria",
+    );
     expect(
       args(c, "contacts", "eq"),
       "consulta em contacts sem filtro de organização — service role bypassa RLS",
