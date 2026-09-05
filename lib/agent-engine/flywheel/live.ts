@@ -10,11 +10,24 @@ import { runModelCall, type LlmEdgeConfig } from '../edge/llm/run-model-call';
 import type { Logger } from '../obs/logger';
 import { aggregateFollowupOutcomes, type FlowOutcomeStat } from '../../followup/outcome-stats';
 
-const JUDGE_MODEL = 'claude-haiku-4-5';
-// O distiller PRECISA de modelo próprio: o flywheel roda org-wide sem turno/agent
-// para herdar, então sem isto ele cai no settings.llm.default_model — não setado
-// em self-host configurado pela tela — e a rodada falha "modelo LLM não definido".
-const DISTILLER_MODEL = 'claude-haiku-4-5';
+// ⚠️ NENHUM MODELO CRAVADO AQUI, e a razão não é estilo.
+//
+// Havia `const JUDGE_MODEL = 'claude-haiku-4-5'` e um `DISTILLER_MODEL` igual,
+// passados como `input.model`. Isso os punha no degrau "variável de ambiente"
+// da precedência (lib/ai/pontos/resolver.ts), que herda o PROVIDER do padrão da
+// organização e usa este modelId — provider de um lado, modelo do outro.
+//
+// Medido em produção em 2026-09-04: a organização usa OpenRouter, `claude-
+// haiku-4-5` é id da Anthropic, e TODA rodada agendada morria com
+// `claude-haiku-4-5 is not a valid model ID`. O ponto do juiz estava
+// configurado no painel e funcionava; o do destilador não existia, e por isso
+// só ele caía no cravado. Um id de modelo é sempre de um fornecedor — cravá-lo
+// no call site é apostar que a instalação usa aquele fornecedor.
+//
+// Sem `model`, os dois pontos resolvem pelo painel (`flywheel_judge` e
+// `flywheel_distiller`, ambos já no registro). Quem não configurou recebe a
+// mensagem que ENSINA — "configure o ponto no painel de provedores" — em vez de
+// um id que o provedor dele nunca vai reconhecer.
 const DIMENSION = 'memory_hygiene';
 const DATASET = 'live';
 
@@ -152,7 +165,6 @@ export async function runFlywheelOnce(
         leadId: turn.contact_id,
         jobId: turn.job_id,
         purpose: 'flywheel_judge',
-        model: JUDGE_MODEL,
         messages: [{ role: 'user', content: judgePrompt(material, optionOrder) }],
       },
       { log },
@@ -163,7 +175,7 @@ export async function runFlywheelOnce(
     const { rowCount } = await pool.query(
       `insert into flywheel_judge_verdicts
          (organization_id, dataset, trace_id, dimension, verdict, option_order, judge_family, model, provenance, run_id)
-       values ($1,$2,$3,$4,$5,$6,'anthropic',$7,$8,$9)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
        on conflict (dataset, trace_id, dimension) do nothing`,
       [
         turn.organization_id,
@@ -172,7 +184,13 @@ export async function runFlywheelOnce(
         DIMENSION,
         verdictValue,
         optionOrder,
-        JUDGE_MODEL,
+        // ⚠️ O que FOI usado, não o que este arquivo achava que seria. Aqui
+        // havia o literal 'anthropic' e a constante cravada — e com o ponto
+        // configurado no painel para openai/gpt-5.4-mini, a tabela de
+        // vereditos registrava um modelo que nunca rodou. Procedência que
+        // mente é pior que procedência ausente: ela é usada para decidir.
+        judgedCall.provider,
+        judgedCall.model,
         JSON.stringify({ source: 'live_turn', job_id: turn.job_id, contact_id: turn.contact_id }),
         runId,
       ],
@@ -190,7 +208,6 @@ export async function runFlywheelOnce(
           leadId: turn.contact_id,
           jobId: turn.job_id,
           purpose: 'flywheel_distiller',
-          model: DISTILLER_MODEL,
           messages: [{ role: 'user', content: distillerPrompt(verdict.missing_facts ?? []) }],
         },
         { log },

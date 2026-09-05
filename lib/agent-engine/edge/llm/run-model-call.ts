@@ -359,9 +359,13 @@ export async function runModelCall(db: pg.Pool, cfg: LlmEdgeConfig, input: RunMo
 
   const model = decisao.modelId;
   if (model === null || model === undefined) {
+    // ⚠️ O NOME DO PONTO entra na mensagem. Sem ele, quem lê o log sabe que
+    // "um ponto" precisa de modelo e não sabe QUAL — e a tela de provedores tem
+    // mais de vinte. O ponto é o único dado que transforma este erro em ação, e
+    // ele estava aqui na variável o tempo todo.
     throw new Error(
-      'modelo LLM não definido — configure o ponto no painel de provedores, ' +
-        'organizations.settings.llm.default_model, ou passe input.model',
+      `modelo LLM não definido para o ponto "${purpose}" — escolha um modelo para ele ` +
+        'no painel de provedores, ou defina organizations.settings.llm.default_model',
     );
   }
   if (config.enabledModels.length > 0 && !config.enabledModels.includes(model)) {
