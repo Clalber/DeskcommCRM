@@ -41,6 +41,8 @@ interface Registro {
   enrollments: Array<{ contact_id: string; agent_id: string | null; campos: string[] }>;
   cancelados: string[];
   marcados: string[];
+  /** A proveniência gravada: qual compromisso abriu qual acompanhamento. */
+  proveniencias: Array<{ enrollment_id: string; appointment_id: string; node_id: string }>;
 }
 
 function fakeDb(
@@ -56,7 +58,14 @@ function fakeDb(
     triggerNodeId?: string | null;
   },
 ): { db: CompromissoSweepDb; registro: Registro } {
-  const registro: Registro = { janelas: [], enrollments: [], cancelados: [], marcados: [] };
+  const registro: Registro = {
+    janelas: [],
+    enrollments: [],
+    cancelados: [],
+    marcados: [],
+    proveniencias: [],
+  };
+  let proximoId = 0;
   const db: CompromissoSweepDb = {
     async loadActiveAppointmentPointers() {
       return opcoes?.pointers ?? [pointerPadrao];
@@ -77,13 +86,22 @@ function fakeDb(
       return "nada";
     },
     async insertEnrollment(input) {
-      if ((opcoes?.insertColide ?? []).includes(input.contact_id)) return { inserted: false };
+      if ((opcoes?.insertColide ?? []).includes(input.contact_id)) {
+        return { inserted: false, id: null };
+      }
       registro.enrollments.push({
         contact_id: input.contact_id,
         agent_id: input.agent_id,
         campos: Object.keys(input).sort(),
       });
-      return { inserted: true };
+      return { inserted: true, id: `enr-${++proximoId}` };
+    },
+    async registrarProveniencia(input) {
+      registro.proveniencias.push({
+        enrollment_id: input.enrollment_id,
+        appointment_id: input.appointment_id,
+        node_id: input.node_id,
+      });
     },
     async markReminderSent(_orgId, appointmentId) {
       registro.marcados.push(appointmentId);
@@ -184,6 +202,29 @@ describe("runAppointmentSweep", () => {
     // mandou": `reminder_sent_at` preenchido tira o compromisso da consulta
     // para sempre, e ninguém receberia o lembrete.
     expect(registro.marcados).toEqual([]);
+  });
+
+  it("⚠️ grava QUAL compromisso abriu o acompanhamento, antes de marcar", async () => {
+    // Sem esta linha o texto da mensagem volta a ser palpite ("o próximo
+    // compromisso do contato"), que erra justamente quando há dois: o cliente
+    // recebe duas mensagens quase iguais, as duas com a hora do primeiro.
+    const { db, registro } = fakeDb([compromisso("ap-1", "contato-1")]);
+
+    await runAppointmentSweep({ db, gateDb: gate(), clock: () => AGORA });
+
+    expect(registro.proveniencias).toEqual([
+      { enrollment_id: "enr-1", appointment_id: "ap-1", node_id: "no-trigger" },
+    ]);
+  });
+
+  it("insert que colide não grava proveniência órfã", async () => {
+    const { db, registro } = fakeDb([compromisso("ap-1", "contato-1")], {
+      insertColide: ["contato-1"],
+    });
+
+    await runAppointmentSweep({ db, gateDb: gate(), clock: () => AGORA });
+
+    expect(registro.proveniencias).toEqual([]);
   });
 
   it("⚠️ dois compromissos do MESMO contato: o sweep não se atropela", async () => {

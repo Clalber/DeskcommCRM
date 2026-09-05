@@ -36,6 +36,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { partesNoFuso } from "@/lib/agenda/fuso";
 import { renderTemplate } from "@/lib/automation/template";
+import { EVENTO_DE_PROVENIENCIA } from "./gatilho-compromisso";
 import { rotuloLocal } from "@/lib/tempo/agora";
 import { fusoValido, FUSO_PADRAO } from "@/lib/tempo/fusos";
 
@@ -132,19 +133,68 @@ export function renderizarTextoDoFollowup(
  */
 export function criarResolvedorDeTexto(
   admin: SupabaseClient,
-): (orgId: string, contactId: string, texto: string) => Promise<string> {
-  return async (orgId, contactId, texto) => {
+): (orgId: string, contactId: string, texto: string, enrollmentId?: string) => Promise<string> {
+  return async (orgId, contactId, texto, enrollmentId) => {
     if (!precisaResolver(texto)) return texto;
     try {
       const [nomeDoContato, agendamento] = await Promise.all([
         carregarNomeDoContato(admin, orgId, contactId),
-        carregarProximoCompromisso(admin, orgId, contactId),
+        carregarCompromissoDaMensagem(admin, orgId, contactId, enrollmentId),
       ]);
       return renderizarTextoDoFollowup(texto, { nomeDoContato, agendamento });
     } catch {
       return texto;
     }
   };
+}
+
+/**
+ * O compromisso de que esta mensagem fala — FIXADO primeiro, adivinhado depois.
+ *
+ * ⚠️ A ORDEM É O CONSERTO DE UM DEFEITO MEDIDO. Antes só havia o palpite ("o
+ * próximo compromisso do contato"), e ele acerta no caso de um compromisso só e
+ * erra exatamente quando há dois: o acompanhamento do primeiro encerra no mesmo
+ * tique, o segundo nasce no seguinte, e a frase dele cita o PRIMEIRO de novo.
+ * Duas mensagens quase idênticas, um minuto uma da outra, as duas com a mesma
+ * hora — e a hora do segundo nunca dita.
+ *
+ * O gatilho de compromisso grava `enrolled_by_appointment` com o id ao inscrever
+ * (`gatilho-compromisso.ts`). Quando ele existe, é a verdade e não há palpite.
+ *
+ * O palpite FICA, para os outros gatilhos: um fluxo manual ou de silêncio pode
+ * legitimamente escrever `{{agendamento.hora}}` numa mensagem, e ali "o próximo
+ * compromisso do contato" é exatamente o que se quer dizer.
+ */
+async function carregarCompromissoDaMensagem(
+  admin: SupabaseClient,
+  orgId: string,
+  contactId: string,
+  enrollmentId: string | undefined,
+): Promise<ContextoDoCompromisso | null> {
+  if (enrollmentId) {
+    const fixado = await carregarCompromissoFixado(admin, orgId, enrollmentId);
+    if (fixado) return fixado;
+  }
+  return carregarProximoCompromisso(admin, orgId, contactId);
+}
+
+async function carregarCompromissoFixado(
+  admin: SupabaseClient,
+  orgId: string,
+  enrollmentId: string,
+): Promise<ContextoDoCompromisso | null> {
+  const { data, error } = await admin
+    .from("followup_enrollment_events")
+    .select("payload")
+    .eq("organization_id", orgId)
+    .eq("enrollment_id", enrollmentId)
+    .eq("event_type", EVENTO_DE_PROVENIENCIA)
+    .limit(1)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  const id = (data?.payload as { appointment_id?: unknown } | null)?.appointment_id;
+  if (typeof id !== "string" || id === "") return null;
+  return carregarCompromissoPorId(admin, orgId, id);
 }
 
 async function carregarNomeDoContato(
@@ -180,7 +230,7 @@ async function carregarProximoCompromisso(
   const folga = new Date(Date.now() - 10 * 60 * 1000).toISOString();
   const { data, error } = await admin
     .from("calendar_appointments")
-    .select("title, starts_at, time_zone, owner_user_id, calendar_event_types:event_type_id(name)")
+    .select(COLUNAS_DO_COMPROMISSO)
     .eq("organization_id", orgId)
     .eq("contact_id", contactId)
     .in("status", ["pending", "confirmed"])
@@ -189,14 +239,52 @@ async function carregarProximoCompromisso(
     .limit(1)
     .maybeSingle();
   if (error) throw new Error(error.message);
-  if (!data) return null;
+  return montarContexto(admin, data);
+}
 
-  const row = data as unknown as {
+/**
+ * O compromisso pelo id que a proveniência fixou.
+ *
+ * Sem filtro de STATUS, de propósito, e sem filtro de tempo. O acompanhamento
+ * nasceu daquele compromisso; se ele foi cancelado no meio do caminho, a frase
+ * certa ainda é a hora dele — dizer "às " com a hora em branco é pior que dizer
+ * a hora de um compromisso que acabou de ser desmarcado. O `organization_id`
+ * continua no filtro: o id vem de uma linha nossa, mas ler cross-tenant não é
+ * risco que se corra por economia de uma cláusula.
+ */
+async function carregarCompromissoPorId(
+  admin: SupabaseClient,
+  orgId: string,
+  appointmentId: string,
+): Promise<ContextoDoCompromisso | null> {
+  const { data, error } = await admin
+    .from("calendar_appointments")
+    .select(COLUNAS_DO_COMPROMISSO)
+    .eq("organization_id", orgId)
+    .eq("id", appointmentId)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  return montarContexto(admin, data);
+}
+
+/** Uma lista só: duas cópias divergem no dia em que uma variável nova entrar. */
+const COLUNAS_DO_COMPROMISSO =
+  "title, starts_at, time_zone, owner_user_id, calendar_event_types:event_type_id(name)";
+
+type TipoNome = { name: string | null };
+
+/** Linha do banco → contexto da mensagem. Tolera o embed como objeto ou array. */
+async function montarContexto(
+  admin: SupabaseClient,
+  data: unknown,
+): Promise<ContextoDoCompromisso | null> {
+  if (!data) return null;
+  const row = data as {
     title: string;
     starts_at: string;
     time_zone: string | null;
     owner_user_id: string | null;
-    calendar_event_types: { name: string | null } | null;
+    calendar_event_types: TipoNome | TipoNome[] | null;
   };
 
   let donoNome: string | null = null;
@@ -206,9 +294,13 @@ async function carregarProximoCompromisso(
     donoNome = typeof fullName === "string" && fullName.trim().length > 0 ? fullName : null;
   }
 
+  const tipo = Array.isArray(row.calendar_event_types)
+    ? row.calendar_event_types[0]
+    : row.calendar_event_types;
+
   return contextoDoCompromisso({
     titulo: row.title,
-    tipoNome: row.calendar_event_types?.name ?? null,
+    tipoNome: tipo?.name ?? null,
     startsAt: row.starts_at,
     timeZone: row.time_zone,
     donoNome,

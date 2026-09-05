@@ -13,4 +13,6 @@ O texto da mensagem aceita as mesmas variáveis das automações: `{{nome}}`, `{
 
 Três comportamentos que valem saber antes de armar: **hora marcada tem prioridade** — se o contato estiver no meio de outro acompanhamento quando o lembrete vencer, aquele é cancelado, e o motivo fica escrito na linha do tempo dele; **remarcar devolve o lembrete** — mudar a hora faz o compromisso ser lembrado de novo, na hora nova; e o mesmo compromisso nunca lembra duas vezes, mesmo que o servidor fique fora do ar e volte.
 
-Um limite conhecido: cancelar um compromisso **não** cancela um lembrete já em andamento. Num fluxo com espera, isso pode fazer o cliente receber a mensagem com a hora em branco.
+A mensagem fala sempre **do compromisso que a disparou**, e não "do próximo da agenda do contato" — então quem tem duas coisas marcadas recebe um lembrete para cada, cada um com a sua hora.
+
+Um limite conhecido: cancelar um compromisso **não** cancela um lembrete já em andamento. Num fluxo com espera, o cliente pode receber o aviso de algo que já foi desmarcado.

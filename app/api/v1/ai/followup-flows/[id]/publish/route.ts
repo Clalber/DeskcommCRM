@@ -18,6 +18,7 @@ import { audit } from "@/lib/audit";
 import { requireRole } from "@/lib/auth/require-role";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { validateFlowForPublish } from "@/lib/followup/validate-publish";
+import { motivoParaRecusarSegundoLembrete } from "@/lib/followup/gatilho-unico-de-compromisso";
 import { publishFollowupFlowVersion } from "@/lib/followup/publish";
 import type { FlowGraph } from "@/lib/followup/graph-schema";
 
@@ -141,39 +142,19 @@ export async function POST(_req: NextRequest, ctx: RouteCtx): Promise<Response> 
       );
     }
 
-    // ⚠️ UM FLUXO DE LEMBRETE POR ORGANIZAÇÃO, E A RECUSA É O QUE IMPEDE UM
-    // FLUXO DE MATAR O OUTRO EM SILÊNCIO.
-    //
-    // A idempotência do lembrete é UMA coluna por compromisso
-    // (`calendar_appointments.reminder_sent_at`, 0177). Com dois fluxos armados
-    // por compromisso na mesma conta — "um dia antes" e "uma hora antes" —, o de
-    // janela MAIOR alcança o compromisso primeiro, marca a coluna, e o de uma
-    // hora nunca mais o enxerga: ele sai da consulta do sweep. Não vira
-    // `skipped_existing`, não vira erro, não vira contador nenhum. O segundo
-    // fluxo fica `active` na tela e não dispara uma vez sequer.
-    //
-    // Recusar aqui é a única barreira honesta enquanto a idempotência for por
-    // compromisso e não por (compromisso, fluxo). Quem quiser duas antecedências
-    // convivendo precisa da tabela própria — decisão registrada, não esquecida.
-    const { data: outros, error: outrosErr } = await admin
-      .from("followup_flow_pointers")
-      .select("id, name, trigger_config")
-      .eq("organization_id", activeOrg.orgId)
-      .eq("status", "active")
-      .neq("id", id);
-    if (outrosErr) return fail("internal_error", outrosErr.message, 500, { requestId });
-    const jaArmado = (outros ?? []).find(
-      (p) => ((p.trigger_config ?? {}) as { kind?: string }).kind === "appointment_upcoming",
-    );
-    if (jaArmado) {
-      return fail(
-        "trigger_appointment_flow_exists",
-        `O fluxo «${jaArmado.name}» já está armado por compromisso, e só um pode estar. ` +
-          `Dois fluxos de lembrete se anulam: o de janela maior marca o compromisso primeiro e o outro nunca dispara. ` +
-          `Desative aquele antes de publicar este.`,
-        422,
-        { requestId },
-      );
+    // Um fluxo armado por compromisso por organização. A regra e o porquê vivem
+    // em `lib/followup/gatilho-unico-de-compromisso.ts` — compartilhada com o
+    // PATCH, porque publicar não é a única porta para este estado.
+    let recusa: string | null;
+    try {
+      recusa = await motivoParaRecusarSegundoLembrete(admin, activeOrg.orgId, id);
+    } catch (err) {
+      return fail("internal_error", err instanceof Error ? err.message : String(err), 500, {
+        requestId,
+      });
+    }
+    if (recusa) {
+      return fail("trigger_appointment_flow_exists", recusa, 422, { requestId });
     }
 
     // ⚠️ AVISA, MAS NÃO RECUSA — e a diferença é a ordem em que se monta.

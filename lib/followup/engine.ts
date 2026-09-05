@@ -140,7 +140,12 @@ export interface TickDeps {
    * Sem essa cerca, um refactor que perdesse a linha do cron deixaria TODOS os
    * gates verdes e os clientes recebendo "sua reunião é às {{agendamento.hora}}".
    */
-  resolverTexto?: (orgId: string, contactId: string, texto: string) => Promise<string>;
+  resolverTexto?: (
+    orgId: string,
+    contactId: string,
+    texto: string,
+    enrollmentId: string,
+  ) => Promise<string>;
 }
 
 export interface TickSummary {
@@ -442,6 +447,10 @@ async function applyResult(
             enrollment.organization_id,
             enrollment.contact_id,
             payload.fixed_body,
+            // O id do acompanhamento é o que permite ao resolvedor achar QUAL
+            // compromisso o abriu, em vez de adivinhar pelo "próximo do
+            // contato" — palpite que erra justamente quando há dois.
+            enrollment.id,
           );
         }
         await enqueueJob({

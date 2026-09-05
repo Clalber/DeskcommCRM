@@ -55,10 +55,15 @@
  *
  * ⚠️ CANCELAR O COMPROMISSO NÃO CANCELA UM LEMBRETE JÁ EM VOO. O compromisso
  * cancelado some da varredura, mas o acompanhamento que já nasceu segue seu
- * caminho: num fluxo com nó de espera, o resolvedor de variáveis não acha mais
- * compromisso vivo e o cliente recebe a frase com a hora em branco. Limite
- * conhecido e declarado — fechá-lo pede o mesmo par que `gatilho-caso.ts` tem
- * (o que abre sabe fechar), e isso não entrou nesta entrega.
+ * caminho: num fluxo com nó de espera, o cliente recebe um lembrete de algo que
+ * foi desmarcado. Limite conhecido e declarado — fechá-lo pede o mesmo par que
+ * `gatilho-caso.ts` tem (o que abre sabe fechar), e isso não entrou nesta
+ * entrega.
+ *
+ * O que já NÃO acontece mais é a frase sair com a hora em branco: o resolvedor
+ * lê o compromisso pelo id fixado na proveniência, sem filtro de status
+ * (`variaveis-do-compromisso.ts`). Dizer "às " é pior que dizer a hora de algo
+ * que acabou de ser desmarcado — a segunda frase o cliente entende e responde.
  *
  * A janela é `now <= starts_at <= now + minutes_before`, e o limite de baixo é
  * o que torna isto AUTO-CURATIVO sem virar spam: cron parado vinte minutos
@@ -103,6 +108,17 @@ import { resolveAgentForAutomaticTrigger, type FollowupGateDb } from "./agent-fo
 /** O motivo gravado no acompanhamento que o lembrete interrompeu. Constante
  *  porque o sweep, a leitura da fila e os testes precisam do MESMO literal. */
 export const CANCELADO_PELO_LEMBRETE = "lembrete_de_compromisso";
+
+/**
+ * O evento que diz QUAL compromisso abriu o acompanhamento.
+ *
+ * Constante compartilhada porque três lados precisam do MESMO literal: quem
+ * grava (o sweep), quem LÊ para montar o texto da mensagem
+ * (`variaveis-do-compromisso.ts`) e quem traduz na timeline
+ * (`eventos-legiveis.ts`). Uma cópia divergente aqui não daria erro — o
+ * resolvedor simplesmente não acharia a linha e voltaria ao palpite.
+ */
+export const EVENTO_DE_PROVENIENCIA = "enrolled_by_appointment";
 
 /** Os dois estados em que um compromisso ainda vai acontecer. Cancelado,
  *  realizado e falta não seguram ninguém — e não se lembra o que já passou. */
@@ -195,7 +211,21 @@ export interface CompromissoSweepDb {
     contact_id: string;
     current_node_id: string;
     agent_id: string | null;
-  }): Promise<{ inserted: boolean }>;
+  }): Promise<{ inserted: boolean; id: string | null }>;
+  /**
+   * Grava QUAL compromisso abriu este acompanhamento.
+   *
+   * Proveniência sem coluna nova (DIRC — Referenciar antes de Duplicar), no
+   * mesmo molde do `enrolled_by_stage_change` do gatilho de etapa: uma linha em
+   * `followup_enrollment_events`. E ela não é enfeite de timeline — é o que o
+   * resolvedor de variáveis LÊ para saber de que compromisso a mensagem fala.
+   */
+  registrarProveniencia(input: {
+    organization_id: string;
+    enrollment_id: string;
+    node_id: string;
+    appointment_id: string;
+  }): Promise<void>;
   /** Fecha a idempotência: `reminder_sent_at = agora` neste compromisso. */
   markReminderSent(orgId: string, appointmentId: string, agoraIso: string): Promise<void>;
 }
@@ -325,7 +355,7 @@ export async function runAppointmentSweep(
       }
       if (espaco === "cancelou_outro") summary.acompanhamentos_cancelados++;
 
-      const { inserted } = await db.insertEnrollment({
+      const { inserted, id: enrollmentId } = await db.insertEnrollment({
         organization_id: pointer.organization_id,
         pointer_id: pointer.id,
         version_id: pointer.active_version_id,
@@ -343,6 +373,31 @@ export async function runAppointmentSweep(
       }
 
       summary.enrolled++;
+
+      // ⚠️ A PROVENIÊNCIA VEM ANTES DA MARCA, e a ordem é o conserto de um
+      // defeito medido em auditoria.
+      //
+      // Sem ela, o texto da mensagem resolvia por "o próximo compromisso do
+      // contato" — um palpite que acerta no caso de um compromisso só e erra
+      // exatamente quando há dois: o acompanhamento do primeiro encerra no mesmo
+      // tique, o segundo nasce no seguinte, e a frase dele cita o PRIMEIRO de
+      // novo. O cliente recebia duas mensagens quase idênticas, com um minuto de
+      // diferença, as duas com a mesma hora — e a hora do segundo compromisso
+      // nunca era dita.
+      //
+      // Gravar antes de `markReminderSent` é o que impede o pior par: um
+      // compromisso marcado como lembrado por um acompanhamento que não sabe
+      // dizer de quem é. Se a gravação falhar, nada é marcado e o tique seguinte
+      // refaz — o `idempotency_key` faz a repetição ser inócua.
+      if (enrollmentId) {
+        await db.registrarProveniencia({
+          organization_id: pointer.organization_id,
+          enrollment_id: enrollmentId,
+          node_id: triggerNodeId,
+          appointment_id: compromisso.appointment_id,
+        });
+      }
+
       await db.markReminderSent(pointer.organization_id, compromisso.appointment_id, agoraIso);
     }
   }
@@ -512,12 +567,28 @@ export function createSupabaseCompromissoSweepDb(admin: SupabaseClient): Comprom
     },
 
     async insertEnrollment(input) {
-      const { error } = await admin.from("followup_enrollments").insert(input);
+      const { data, error } = await admin
+        .from("followup_enrollments")
+        .insert(input)
+        .select("id")
+        .single();
       if (error) {
-        if (error.code === "23505") return { inserted: false };
+        if (error.code === "23505") return { inserted: false, id: null };
         throw new Error(error.message);
       }
-      return { inserted: true };
+      return { inserted: true, id: (data?.id as string | undefined) ?? null };
+    },
+
+    async registrarProveniencia(input) {
+      const { error } = await admin.from("followup_enrollment_events").insert({
+        organization_id: input.organization_id,
+        enrollment_id: input.enrollment_id,
+        node_id: input.node_id,
+        event_type: EVENTO_DE_PROVENIENCIA,
+        payload: { appointment_id: input.appointment_id },
+        idempotency_key: `lembrete-nasce:${input.enrollment_id}`,
+      });
+      if (error && error.code !== "23505") throw new Error(error.message);
     },
 
     async markReminderSent(orgId, appointmentId, agoraIso) {

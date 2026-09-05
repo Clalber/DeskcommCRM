@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   contextoDoCompromisso,
+  criarResolvedorDeTexto,
   precisaResolver,
   renderizarTextoDoFollowup,
 } from "./variaveis-do-compromisso";
@@ -64,6 +65,120 @@ describe("contextoDoCompromisso", () => {
   it("compromisso sem dono não deixa buraco na frase", () => {
     const ctx = contextoDoCompromisso({ ...COMPROMISSO, donoNome: null });
     expect(ctx.com_quem).toBe("nossa equipe");
+  });
+});
+
+// ─── o compromisso FIXADO vence o palpite ────────────────────────────────
+
+/**
+ * Dublê do PostgREST por TABELA. Guarda os `eq` de cada consulta e devolve a
+ * linha fixada — o suficiente para provar QUAL caminho o resolvedor tomou, que
+ * é a decisão inteira desta parte.
+ */
+function adminFalso(linhas: {
+  evento?: { payload: { appointment_id: string } } | null;
+  porId?: Record<string, unknown> | null;
+  proximo?: Record<string, unknown> | null;
+  contato?: { name: string } | null;
+}) {
+  const tabelasLidas: string[] = [];
+  const compromisso = (t: string, r: Record<string, unknown> | null | undefined) => {
+    // A consulta por id filtra `id`; a do palpite filtra `contact_id`. É o que
+    // distingue os dois caminhos dentro da MESMA tabela.
+    void t;
+    return r ?? null;
+  };
+  const chain = (tabela: string) => {
+    const eqs: Record<string, unknown> = {};
+    const c: Record<string, unknown> = {};
+    const self = () => c;
+    c.select = self;
+    c.in = self;
+    c.gte = self;
+    c.order = self;
+    c.limit = self;
+    c.eq = (col: string, val: unknown) => {
+      eqs[col] = val;
+      return c;
+    };
+    c.maybeSingle = async () => {
+      if (tabela === "followup_enrollment_events") return { data: linhas.evento ?? null, error: null };
+      if (tabela === "contacts") return { data: linhas.contato ?? null, error: null };
+      const porId = "id" in eqs;
+      return {
+        data: compromisso(tabela, porId ? linhas.porId : linhas.proximo),
+        error: null,
+      };
+    };
+    return c;
+  };
+  return {
+    tabelasLidas,
+    admin: {
+      from: (tabela: string) => {
+        tabelasLidas.push(tabela);
+        return chain(tabela);
+      },
+      auth: { admin: { getUserById: async () => ({ data: { user: null } }) } },
+    } as never,
+  };
+}
+
+const LINHA = (hora: string, titulo: string) => ({
+  title: titulo,
+  starts_at: hora,
+  time_zone: "America/Sao_Paulo",
+  owner_user_id: null,
+  calendar_event_types: { name: "Reunião" },
+});
+
+describe("⚠️ o resolvedor usa o compromisso FIXADO, não o palpite", () => {
+  const TEXTO = "Sua reunião é às {{agendamento.hora}}.";
+
+  it("com proveniência, lê AQUELE compromisso — mesmo havendo um mais próximo", async () => {
+    // O defeito que isto impede, medido em auditoria: com dois compromissos do
+    // mesmo contato, o segundo lembrete citava a hora do PRIMEIRO. O cliente
+    // recebia duas mensagens quase iguais e a hora do segundo nunca era dita.
+    const { admin } = adminFalso({
+      evento: { payload: { appointment_id: "ap-15h" } },
+      porId: LINHA("2026-09-10T18:00:00.000Z", "O das 15h"), // 15:00 em SP
+      proximo: LINHA("2026-09-10T13:00:00.000Z", "O das 10h"), // 10:00 — o palpite
+      contato: { name: "Ana" },
+    });
+
+    const resolver = criarResolvedorDeTexto(admin);
+    expect(await resolver("org-1", "contato-1", TEXTO, "enr-2")).toBe("Sua reunião é às 15:00.");
+  });
+
+  it("sem proveniência, o palpite continua valendo — os outros gatilhos dependem dele", async () => {
+    // Um fluxo manual ou de silêncio pode legitimamente escrever
+    // `{{agendamento.hora}}`, e ali "o próximo do contato" é o que se quer.
+    const { admin } = adminFalso({
+      evento: null,
+      proximo: LINHA("2026-09-10T13:00:00.000Z", "O das 10h"),
+      contato: { name: "Ana" },
+    });
+
+    const resolver = criarResolvedorDeTexto(admin);
+    expect(await resolver("org-1", "contato-1", TEXTO, "enr-9")).toBe("Sua reunião é às 10:00.");
+  });
+
+  it("sem id de acompanhamento, nem tenta a proveniência", async () => {
+    const { admin, tabelasLidas } = adminFalso({
+      proximo: LINHA("2026-09-10T13:00:00.000Z", "O das 10h"),
+      contato: { name: "Ana" },
+    });
+
+    const resolver = criarResolvedorDeTexto(admin);
+    await resolver("org-1", "contato-1", TEXTO);
+    expect(tabelasLidas).not.toContain("followup_enrollment_events");
+  });
+
+  it("texto sem chave nossa não vai ao banco nenhuma vez", async () => {
+    const { admin, tabelasLidas } = adminFalso({});
+    const resolver = criarResolvedorDeTexto(admin);
+    expect(await resolver("org-1", "contato-1", "Até já!", "enr-1")).toBe("Até já!");
+    expect(tabelasLidas).toEqual([]);
   });
 });
 
