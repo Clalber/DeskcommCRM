@@ -8,6 +8,53 @@ Se você roda o DeskcommCRM numa VPS, **leia a seção da versão para a qual es
 
 ## [Não lançado]
 
+## [2.9.0] — 2026-09-04
+
+### Alterado
+
+- **O CRM instala em Postgres 15, não só em 17** Até agora a instalação exigia Postgres 17. Quem tentasse usar um banco 15 ou 16
+  — o padrão de boa parte dos painéis de VPS e dos templates prontos de Supabase
+  — via a montagem do banco parar no meio, e a instalação terminava sem as
+  tabelas.
+
+  A exigência nunca foi uma decisão de projeto. O arquivo que monta o banco é
+  gerado automaticamente a partir de um servidor de referência, e esse servidor
+  rodava a versão 17; ao ser gerado, o arquivo levou junto nove linhas com uma
+  permissão que só existe nessa versão. Nenhuma parte do sistema usa essa
+  permissão. Bastava o banco não reconhecê-la para o arquivo inteiro ser
+  recusado — e um arquivo recusado é um banco vazio, não um banco incompleto.
+
+  As nove linhas saíram. A permissão que sobrou em cada uma é exatamente a mesma
+  de antes, então nada muda no comportamento nem na proteção das tabelas de
+  auditoria, que continuam não aceitando alteração nem exclusão.
+
+  Quem já roda o CRM não precisa fazer nada: o Postgres 17 segue funcionando
+  igual. O que mudou é que 15 e 16 passaram a funcionar também.
+
+### Corrigido
+
+- **A busca do Inbox passa a achar pelo nome e pelo telefone do cliente** Digitar o nome de um cliente na caixa de busca do Inbox não trazia a conversa
+  dele — a busca olhava só o texto das mensagens. Na prática, achar uma conversa
+  pelo nome só funcionava por acidente: se o nome tivesse sido escrito dentro de
+  alguma mensagem.
+
+  Para quem atende, procurar pelo nome é o caso mais comum — bem mais frequente
+  que lembrar um trecho exato de mensagem. E com alguns milhares de contatos
+  importados, a única alternativa era rolar a lista.
+
+  Agora a busca cobre nome, telefone e o texto das mensagens ao mesmo tempo. O
+  campo passa a dizer isso, em vez de prometer só mensagens.
+
+  Contato anonimizado continua fora da busca por nome — anonimizar é definitivo.
+
+- **O aprendizado do agente volta a rodar, com o modelo que você escolheu** O ciclo que faz o agente aprender com os próprios atendimentos estava parado. Ele tinha dois modelos escritos direto no código, de um fornecedor específico, e a instalação que usasse outro via toda rodada falhar com "modelo inválido" — todo dia, em silêncio, com a tela de Propostas parada e sem nada explicando por quê.
+
+  Agora os dois passos — **Avaliar o próprio atendimento** e **Extrair a lição** — usam o modelo escolhido em Provedores de IA, como todos os outros pontos já faziam. Nada a fazer: quem já tem um modelo padrão na instalação continua igual.
+
+  Se a tela de Propostas seguir parada, vale conferir se esses dois pontos têm modelo escolhido. Quando falta, a mensagem de erro agora **diz qual ponto configurar**, em vez de citar um modelo que o seu fornecedor nunca reconheceu.
+
+  Um detalhe que só aparece para quem já usava: o registro de qual modelo julgou cada atendimento vinha errado, com o fornecedor fixo no código em vez do que realmente rodou. Vereditos antigos seguem com a anotação errada; os novos gravam o modelo de verdade.
+
 ## [2.8.1] — 2026-09-04
 
 ### Corrigido
@@ -2431,7 +2478,8 @@ Primeira versão marcada do DeskcommCRM. O projeto vinha sendo desenvolvido publ
 
 - **Node 22 é obrigatório para desenvolvimento.** A suíte de invariantes instancia o cliente do Supabase, que exige o `WebSocket` global — nativo apenas a partir do Node 22. Isso não afeta quem apenas hospeda: a VPS roda a imagem pronta.
 
-[Não lançado]: https://github.com/melgarafael/DeskcommCRM/compare/v2.8.1...HEAD
+[Não lançado]: https://github.com/melgarafael/DeskcommCRM/compare/v2.9.0...HEAD
+[2.9.0]: https://github.com/melgarafael/DeskcommCRM/compare/v2.8.1...v2.9.0
 [2.8.1]: https://github.com/melgarafael/DeskcommCRM/compare/v2.8.0...v2.8.1
 [2.8.0]: https://github.com/melgarafael/DeskcommCRM/compare/v2.7.0...v2.8.0
 [2.7.0]: https://github.com/melgarafael/DeskcommCRM/compare/v2.6.0...v2.7.0
