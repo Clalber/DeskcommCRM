@@ -71,14 +71,33 @@ vi.mock("@/lib/supabase/admin", () => ({
       const ctx: Record<string, unknown> = {};
       const encadear = () => ctx;
 
+      const RASCUNHO_VIGENTE = { id: "draft-1", version_number: 8, status: "draft" };
+
       const resolver = () => {
         if (tabela === "ai_agents") {
           return op === "select" ? { data: agenteNoBanco, error: null } : { data: null, error: null };
         }
         // ai_agent_versions: a busca acha um rascunho vigente, e o PATCH nele
         // devolve a mesma versão. É o caminho mais comum do editor.
-        return { data: { id: "draft-1", version_number: 8 }, error: null };
+        return { data: RASCUNHO_VIGENTE, error: null };
       };
+
+      /**
+       * ⚠️ AS DUAS CONSULTAS A `ai_agent_versions` SE DISTINGUEM PELA FORMA DE
+       * TERMINAR — e o dublê passou a precisar disso quando trouxemos o conserto
+       * do rascunho superado (upstream `8b295a24`).
+       *
+       * A LISTA de versões, de onde `escolherVersoesDaTela` tira em QUAL rascunho
+       * a escrita cai, é aguardada DIRETO, sem terminal. A do maior
+       * `version_number` termina em `.maybeSingle()`. Devolver a mesma linha
+       * solta para as duas fazia `versoes.find is not a function` estourar dentro
+       * da régua, que espera um array — quatro casos vermelhos por causa do
+       * dublê, não do código.
+       */
+      const resolverLista = () =>
+        tabela === "ai_agent_versions" && op === "select"
+          ? { data: [RASCUNHO_VIGENTE], error: null }
+          : resolver();
 
       Object.assign(ctx, {
         select: encadear,
@@ -100,7 +119,7 @@ vi.mock("@/lib/supabase/admin", () => ({
         single: async () => resolver(),
         // O UPDATE de `ai_agents` é aguardado sem terminal — o builder do
         // supabase-js é "thenable", e sem isto a cadeia trava para sempre.
-        then: (aceitar: (v: unknown) => unknown) => Promise.resolve(resolver()).then(aceitar),
+        then: (aceitar: (v: unknown) => unknown) => Promise.resolve(resolverLista()).then(aceitar),
       });
       return ctx;
     },
