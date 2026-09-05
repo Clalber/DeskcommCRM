@@ -456,6 +456,18 @@ export function descreveEvento(
         detalhe: "o follow-up existia para esse caso e parou junto com ele",
         ...motor,
       };
+    case "cancelled_by_appointment_reminder":
+      // Sem esta entrada a timeline do dossiê terminava sem linha nenhuma e o
+      // cabeçalho mostrava `lembrete_de_compromisso` cru — que é código, não
+      // frase. Este é o único cancelamento que pode desfazer uma pausa posta por
+      // uma pessoa, então é o que MAIS precisa dizer por quê.
+      return {
+        titulo: "Cancelado para o lembrete do compromisso passar",
+        detalhe:
+          "o contato tem hora marcada e um acompanhamento só pode estar vivo por vez; " +
+          "hora combinada tem prioridade sobre a régua automática",
+        ...motor,
+      };
     default:
       return { titulo: "Passo registrado pelo motor", detalhe: `código: ${evento.event_type}`, ...motor };
   }

@@ -1169,6 +1169,25 @@ export const DICIONARIO: Traducoes = {
     es: "Si el caso se resuelve antes, el seguimiento se cancela solo.",
   },
   "Minutos de silêncio": { es: "Minutos de silencio" },
+  // Gatilho de compromisso marcado (0213). "Compromiso" e não "cita": o produto
+  // atende clínica, imobiliária e agência, e "cita" é consultório.
+  "Antes de um compromisso marcado": { es: "Antes de un compromiso agendado" },
+  "antes de um compromisso": { es: "antes de un compromiso" },
+  "Quanto antes o lembrete sai (minutos)": { es: "Cuánto antes sale el recordatorio (minutos)" },
+  "Entre 5 minutos e 7 dias.": { es: "Entre 5 minutos y 7 días." },
+  "O lembrete só sai para os tipos de atendimento com o lembrete ligado em Ajustes › Agenda — e nunca para compromisso sem tipo.": {
+    es: "El recordatorio solo sale para los tipos de atención con el recordatorio activado en Ajustes › Agenda — y nunca para un compromiso sin tipo.",
+  },
+  // As chaves `{{...}}` NÃO se traduzem: são o que o motor procura no texto.
+  "No texto da mensagem, use {{agendamento.hora}}, {{agendamento.data}} e {{agendamento.com_quem}} — eles viram a hora, a data e o nome de quem atende.": {
+    es: "En el texto del mensaje, use {{agendamento.hora}}, {{agendamento.data}} y {{agendamento.com_quem}} — se convierten en la hora, la fecha y el nombre de quien atiende.",
+  },
+  "Se o contato estiver em outro acompanhamento na hora do lembrete, aquele é cancelado — hora marcada tem prioridade.": {
+    es: "Si el contacto está en otro seguimiento a la hora del recordatorio, aquel se cancela — la hora agendada tiene prioridad.",
+  },
+  "lembrete ligado": { es: "recordatorio activado" },
+  "Ligar lembrete": { es: "Activar recordatorio" },
+  "Desligar lembrete": { es: "Desactivar recordatorio" },
   "Mínimo de": { es: "Mínimo de" },
   "minutos.": { es: "minutos." },
   "Segmentos (tags, opcional)": { es: "Segmentos (tags, opcional)" },

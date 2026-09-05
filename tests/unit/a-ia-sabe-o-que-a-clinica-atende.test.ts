@@ -78,6 +78,11 @@ function tipo(over: Partial<TipoDeAtendimento> = {}): TipoDeAtendimento {
     bufferDepoisMin: 0,
     antecedenciaMinimaMin: 120,
     janelaDeAgendamentoDias: 60,
+    // `false` como o banco entrega (0194 desligou o histórico inteiro). Este
+    // campo NÃO vai ao modelo — quem o lê é o gatilho de compromisso do
+    // follow-up, e as asserções deste arquivo sobre o que a IA enxerga
+    // continuam valendo por isso.
+    lembreteLigado: false,
     ...over,
   };
 }
