@@ -126,6 +126,26 @@ export interface TickDeps {
   db: AdminClient;
   clock: () => Date;
   enqueueJob: (job: FollowupJobRequest) => Promise<void>;
+  /**
+   * Troca as chaves `{{…}}` do texto fixo pelo que está no banco — nome do
+   * contato, data e hora do compromisso (`variaveis-do-compromisso.ts`).
+   *
+   * OPCIONAL, e a opcionalidade é o contrato: dezenas de testes montam `deps`
+   * parciais porque exercitam o roteamento do grafo, não a mensagem. Ausente
+   * significa "manda o corpo como está" — o comportamento de antes desta
+   * entrega —, nunca "quebra".
+   *
+   * ⚠️ Quem liga isto em produção é `app/api/v1/cron/followup-flow-worker`, e a
+   * ligação é vigiada por `tests/unit/followup-cron-liga-o-compromisso.test.ts`.
+   * Sem essa cerca, um refactor que perdesse a linha do cron deixaria TODOS os
+   * gates verdes e os clientes recebendo "sua reunião é às {{agendamento.hora}}".
+   */
+  resolverTexto?: (
+    orgId: string,
+    contactId: string,
+    texto: string,
+    enrollmentId: string,
+  ) => Promise<string>;
 }
 
 export interface TickSummary {
@@ -410,16 +430,33 @@ async function applyResult(
           : ACTION_RECHECK_MS;
       patch.next_eval_at = new Date(clock().getTime() + graceMs).toISOString();
       if (!isReplay) {
+        const payload: FollowupJobRequest["payload"] = {
+          followup_enrollment_id: enrollment.id,
+          node_id: node.id,
+          purpose: result.purpose,
+          ...turnPayloadExtras(node, smartWaits, events),
+          ...(result.fixed_body ? { fixed_body: result.fixed_body } : {}),
+        };
+        // As variáveis do compromisso resolvem AQUI, no mesmo lugar em que
+        // `{{volta}}` já resolvia: o corpo que entra na fila é o corpo que sai
+        // para o cliente. Resolver depois, no worker, faria a fila guardar uma
+        // promessa em vez de uma mensagem — e o que está na fila é o que se lê
+        // quando alguém pergunta o que o sistema ia mandar.
+        if (payload.fixed_body && deps.resolverTexto) {
+          payload.fixed_body = await deps.resolverTexto(
+            enrollment.organization_id,
+            enrollment.contact_id,
+            payload.fixed_body,
+            // O id do acompanhamento é o que permite ao resolvedor achar QUAL
+            // compromisso o abriu, em vez de adivinhar pelo "próximo do
+            // contato" — palpite que erra justamente quando há dois.
+            enrollment.id,
+          );
+        }
         await enqueueJob({
           organization_id: enrollment.organization_id,
           contact_id: enrollment.contact_id,
-          payload: {
-            followup_enrollment_id: enrollment.id,
-            node_id: node.id,
-            purpose: result.purpose,
-            ...turnPayloadExtras(node, smartWaits, events),
-            ...(result.fixed_body ? { fixed_body: result.fixed_body } : {}),
-          },
+          payload,
         });
       }
       break;

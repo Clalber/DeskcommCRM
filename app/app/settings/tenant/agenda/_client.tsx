@@ -23,6 +23,8 @@ export interface TipoRow {
   default_owner_user_id: string | null;
   requires_confirmation: boolean;
   is_active: boolean;
+  /** Interruptor do lembrete automático deste tipo (0177/0194). Ver o botão «Lembrete» na lista. */
+  reminder_enabled: boolean;
 }
 
 /**
@@ -296,9 +298,50 @@ export function TiposDeAgendamentoClient({
                   </span>
                 )
               ) : null}
+              {/* Só o estado LIGADO tem chip. Desligado é o padrão de toda
+                  instalação (a 0194 desligou o histórico inteiro), e marcar o
+                  padrão em cada linha é ruído que ensina a ignorar a lista. */}
+              {tipo.reminder_enabled ? (
+                <span
+                  data-testid={`lembrete-ligado-${tipo.id}`}
+                  className="rounded-full border border-border px-2 py-0.5 text-[11px] text-text-muted"
+                >
+                  {t("lembrete ligado")}
+                </span>
+              ) : null}
               {!tipo.is_active ? <span className="text-xs text-text-subtle">{t("desativado")}</span> : null}
               {podeEditar ? (
                 <span className="ml-auto flex gap-1">
+                  {/* ⚠️ O BOTÃO DIZ O QUE VAI ACONTECER, não o estado atual —
+                      "Ligar lembrete" / "Desligar lembrete". Um botão rotulado
+                      com o estado ("Lembrete: ligado") é lido como interruptor
+                      já acionado por metade das pessoas, e aqui o clique errado
+                      inscreve clientes numa mensagem automática.
+
+                      Quem manda no QUANTO ANTES é o fluxo de follow-up armado
+                      por compromisso; este interruptor responde por QUAIS tipos
+                      lembram. Ligado sem fluxo publicado não manda nada — e o
+                      publish do fluxo avisa o contrário (nenhum tipo ligado). */}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    data-testid={`lembrete-${tipo.id}`}
+                    disabled={salvando}
+                    onClick={() =>
+                      void comErro(
+                        () =>
+                          apiClient.patch("/api/v1/agenda/tipos", {
+                            id: tipo.id,
+                            reminder_enabled: !tipo.reminder_enabled,
+                          } as never),
+                        tipo.reminder_enabled
+                          ? "Lembrete desligado para este tipo."
+                          : "Lembrete ligado para este tipo.",
+                      )
+                    }
+                  >
+                    {tipo.reminder_enabled ? t("Desligar lembrete") : t("Ligar lembrete")}
+                  </Button>
                   <Button
                     variant="ghost"
                     size="sm"

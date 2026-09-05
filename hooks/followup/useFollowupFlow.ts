@@ -26,6 +26,16 @@ interface SingleResponse {
   data: FollowupFlowDetailRow;
 }
 
+/**
+ * O publish devolve o pointer e, quando publicar não basta para o fluxo falar,
+ * um `aviso`. Tipo próprio porque só esta rota o acrescenta — pô-lo em
+ * `FollowupFlowDetailRow` faria toda leitura de fluxo carregar um campo que só
+ * existe no instante da publicação.
+ */
+interface PublishResponse {
+  data: FollowupFlowDetailRow & { aviso?: string };
+}
+
 export function followupFlowQueryKey(id: string) {
   return ["followup", "flows", "detail", id] as const;
 }
@@ -76,12 +86,28 @@ export function usePublishFollowupFlow(id: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async () => {
-      const res = await apiClient.post<SingleResponse>(`/api/v1/ai/followup-flows/${id}/publish`, {});
+      const res = await apiClient.post<PublishResponse>(`/api/v1/ai/followup-flows/${id}/publish`, {});
       return res.data;
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: followupFlowQueryKey(id) });
       qc.invalidateQueries({ queryKey: ["followup", "flows", "list"] });
+      // ⚠️ PUBLICOU E MESMO ASSIM NÃO VAI FALAR COM NINGUÉM.
+      //
+      // A rota devolve `aviso` quando o fluxo entra no ar dependendo de uma
+      // chave que está desligada — hoje o único caso é o gatilho de compromisso
+      // sem nenhum tipo de atendimento com o lembrete ligado. Um
+      // `toast.success("Fluxo publicado.")` sozinho seria a tela mentindo por
+      // omissão: está publicado, e não vai acontecer nada.
+      //
+      // `warning` e não `success`: o publish deu certo, o estado é que não é o
+      // que a pessoa espera. Sem duração automática — este é o tipo de recado
+      // que some antes de ser lido.
+      const aviso = typeof data?.aviso === "string" ? data.aviso : null;
+      if (aviso) {
+        toast.warning(t("Fluxo publicado."), { description: t(aviso), duration: 12_000 });
+        return;
+      }
       toast.success(t("Fluxo publicado."));
     },
   });

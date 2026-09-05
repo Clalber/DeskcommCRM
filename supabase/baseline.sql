@@ -17747,3 +17747,21 @@ create unique index if not exists ai_kbv_version_por_agente_legado
   where knowledge_source_id is null;
 
 
+
+-- ---- o disparador do lembrete nasceu (migration 0213) ----
+-- Racional completo no cabeçalho da migration 0213. Nenhuma estrutura muda aqui:
+-- o que estes comentários gravam no schema é QUEM passou a ler as quatro colunas
+-- que a 0177 criou órfãs — a pergunta que a 0194 fez e cuja resposta mudou.
+-- `reminder_enabled` segue nascendo `false`; o disparador existir não muda o
+-- argumento de que inscrever alguém numa mensagem automática é ato de operador.
+comment on column public.calendar_event_types.reminder_enabled is
+  'Interruptor do lembrete automático deste tipo de atendimento. LIDO desde a 0213 por lib/followup/gatilho-compromisso.ts: compromisso de tipo desligado — ou sem tipo — nunca vira lembrete. Continua nascendo DESLIGADO (0194): enviar mensagem é irreversível, e quem inscreve alguém é quem opera, em Ajustes › Agenda.';
+
+comment on column public.calendar_event_types.reminder_minutes_before is
+  'NÃO LIDA por ninguém, de propósito (0213). A antecedência do lembrete mora no FLUXO que o manda: followup_flow_pointers.trigger_config.params.minutes_before. É do fluxo que sai a frase da mensagem, e responder "quanto antes" em dois cadastros produziria duas respostas. Mantida em vez de dropada porque a 0177 vive em clones com o baseline aplicado.';
+
+comment on column public.calendar_event_types.reminder_template_name is
+  'NÃO LIDA por ninguém (0213). O texto do lembrete é o nó de ação do fluxo de follow-up, onde ele pode ter variáveis ({{agendamento.hora}}, {{agendamento.com_quem}}) e ramificar. Um nome de template aqui seria um segundo lugar para escrever a mesma mensagem.';
+
+comment on column public.calendar_appointments.reminder_sent_at is
+  'Idempotência do lembrete: preenchido por lib/followup/gatilho-compromisso.ts DEPOIS de o acompanhamento nascer, nunca antes — marcar primeiro trocaria "mandou duas vezes" por "nunca mandou". Compromisso com esta coluna preenchida sai da varredura para sempre.';

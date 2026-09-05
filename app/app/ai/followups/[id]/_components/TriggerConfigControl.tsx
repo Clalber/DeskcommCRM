@@ -25,12 +25,14 @@ import { useEtapasDeGatilho } from "@/hooks/followup/useEtapasDeGatilho";
  * Controle de `trigger_config` do pointer (Task 8.5) — como o fluxo começa.
  *
  * ⚠️ SÓ APARECE AQUI O QUE TEM MOTOR VIVO, e essa disciplina é a razão de o
- * controle ser confiável: `manual` (POST manual), `silence` (silence-sweep) e
+ * controle ser confiável: `manual` (POST manual), `silence` (silence-sweep),
  * `stage_change` (`lib/followup/gatilho-etapa.ts`, consumidor de
- * `lead.stage_changed` no `event_log`). `conversation_end` continua no schema
- * sem produtor — não é oferecido, e o publish o recusa se chegar por API crua.
- * Dado antigo com um kind que não sabemos armar é mostrado como
- * «(indisponível)» em vez de mentir «Manual».
+ * `lead.stage_changed` no `event_log`), `case_opened` (`gatilho-caso.ts`),
+ * `webhook` (ação de regra) e `appointment_upcoming`
+ * (`gatilho-compromisso.ts`, varredura no mesmo tick do silêncio).
+ * `conversation_end` continua no schema sem produtor — não é oferecido, e o
+ * publish o recusa se chegar por API crua. Dado antigo com um kind que não
+ * sabemos armar é mostrado como «(indisponível)» em vez de mentir «Manual».
  *
  * ⚠️ A ETAPA É ESCOLHIDA PELO NOME, NUNCA POR UUID. O `trigger_config` guarda
  * `stage_id`; a tela resolve id → nome com `useEtapasDeGatilho`.
@@ -52,18 +54,29 @@ import { useEtapasDeGatilho } from "@/hooks/followup/useEtapasDeGatilho";
  * «poucos minutos», não «na hora» — prometer instantâneo seria o controle
  * mentindo sobre a própria função.
  */
-type TriggerKind = "manual" | "silence" | "stage_change" | "case_opened" | "webhook";
+type TriggerKind =
+  | "manual"
+  | "silence"
+  | "stage_change"
+  | "case_opened"
+  | "webhook"
+  | "appointment_upcoming";
 
 interface TriggerFormState {
   kind: TriggerKind;
   thresholdMinutes: number;
   segments: string;
   stageId: string;
+  minutesBefore: number;
   cancelOnReply: boolean;
 }
 
 const DEFAULT_THRESHOLD_MINUTES = 60;
 const MIN_THRESHOLD_MINUTES = 5;
+/** Uma hora: a antecedência que quem marca reunião de 30 min pede primeiro. */
+const DEFAULT_MINUTES_BEFORE = 60;
+/** Sete dias — o mesmo teto do Zod em `api-schemas.ts`. Duas faixas divergem. */
+const MAX_MINUTES_BEFORE = 10_080;
 
 const KIND_LABEL: Record<TriggerKind, string> = {
   manual: "Manual",
@@ -77,6 +90,10 @@ const KIND_LABEL: Record<TriggerKind, string> = {
   // cercam o gatilho procuram por ela com `exact: true`.
   case_opened: "Agente pediu ajuda",
   webhook: "Automação (Webhooks)",
+  // "Compromisso marcado" e não "Agendamento": o produto tem DUAS coisas com
+  // hora — o retorno que ele decide sozinho e a hora que foi combinada com o
+  // cliente (0177). Este gatilho é o segundo, e o rótulo precisa dizer qual.
+  appointment_upcoming: "Antes de um compromisso marcado",
 };
 
 function parseTriggerConfig(raw: Record<string, unknown>): TriggerFormState {
@@ -95,9 +112,13 @@ function parseTriggerConfig(raw: Record<string, unknown>): TriggerFormState {
           ? "case_opened"
           : raw.kind === "webhook"
             ? "webhook"
-            : "manual";
+            : raw.kind === "appointment_upcoming"
+              ? "appointment_upcoming"
+              : "manual";
   const params =
-    (raw.params as { threshold_minutes?: number; segments?: string[]; stage_id?: string } | undefined) ?? {};
+    (raw.params as
+      | { threshold_minutes?: number; segments?: string[]; stage_id?: string; minutes_before?: number }
+      | undefined) ?? {};
   return {
     kind,
     thresholdMinutes:
@@ -106,6 +127,10 @@ function parseTriggerConfig(raw: Record<string, unknown>): TriggerFormState {
         : DEFAULT_THRESHOLD_MINUTES,
     segments: kind === "silence" && Array.isArray(params.segments) ? params.segments.join(", ") : "",
     stageId: kind === "stage_change" && typeof params.stage_id === "string" ? params.stage_id : "",
+    minutesBefore:
+      kind === "appointment_upcoming" && typeof params.minutes_before === "number"
+        ? params.minutes_before
+        : DEFAULT_MINUTES_BEFORE,
     cancelOnReply: raw.cancel_on_reply === true,
   };
 }
@@ -122,6 +147,16 @@ function toTriggerConfig(form: TriggerFormState): Record<string, unknown> {
   // todo fluxo armado assim.
   if (form.kind === "case_opened") return { kind: "case_opened", ...cancelOnReply };
   if (form.kind === "webhook") return { kind: "webhook", ...cancelOnReply };
+
+  if (form.kind === "appointment_upcoming") {
+    // Sem lista de tipos: QUAIS compromissos lembram é do cadastro da Agenda
+    // (`reminder_enabled`), não do fluxo. Ver `lib/followup/api-schemas.ts`.
+    return {
+      kind: "appointment_upcoming",
+      params: { minutes_before: form.minutesBefore },
+      ...cancelOnReply,
+    };
+  }
 
   const segments = form.segments
     .split(",")
@@ -149,6 +184,17 @@ function summaryLabel(
     // Com o funil junto, este rótulo passa a distinguir as homônimas: é a única
     // superfície que o dono lê uma semana depois, sem abrir nada.
     return etapa ? `Gatilho: entrou em «${etapa.stageName}» em ${etapa.pipelineName}` : "Gatilho: Etapa do funil";
+  }
+  if (cfg.kind === "appointment_upcoming") {
+    const minutos = (cfg.params as { minutes_before?: number } | undefined)?.minutes_before;
+    // A antecedência VAI no rótulo fechado: é a única coisa que o fluxo decide
+    // aqui, e é o que se lê uma semana depois sem abrir nada.
+    //
+    // (Esta linha dizia "dois fluxos que convivem" e isso é FALSO: a
+    // idempotência é uma coluna por compromisso, então dois fluxos armados por
+    // compromisso se anulam — o publish agora recusa o segundo. Corrigido em
+    // auditoria; a versão anterior descrevia um cenário que o mecanismo nega.)
+    return `${t("Gatilho")}: ${typeof minutos === "number" ? `${minutos} min` : "?"} ${t("antes de um compromisso")}`;
   }
   if (cfg.kind === "case_opened") return `${t("Gatilho")}: ${t("quando o agente pede ajuda")}`;
   if (cfg.kind === "webhook") return t("Disparado por uma automação em Webhooks");
@@ -189,14 +235,22 @@ export function TriggerConfigControl({ flowId, triggerConfig }: Props) {
   // Gatilho de etapa sem etapa escolhida não é rascunho: é um fluxo que ficaria
   // ativo sem nunca disparar. O publish recusa; o Salvar recusa antes.
   const stageInvalid = form.kind === "stage_change" && form.stageId.trim().length === 0;
+  // Mesma família: antecedência fora da faixa é fluxo ativo com janela vazia. O
+  // publish recusa (`trigger_minutes_before_missing`); o Salvar recusa antes.
+  const minutesBeforeInvalid =
+    form.kind === "appointment_upcoming" &&
+    (!Number.isInteger(form.minutesBefore) ||
+      form.minutesBefore < MIN_THRESHOLD_MINUTES ||
+      form.minutesBefore > MAX_MINUTES_BEFORE);
   const dirty =
     form.kind !== saved.kind ||
     form.cancelOnReply !== saved.cancelOnReply ||
     (form.kind === "silence" && (form.thresholdMinutes !== saved.thresholdMinutes || form.segments !== saved.segments)) ||
-    (form.kind === "stage_change" && form.stageId !== saved.stageId);
+    (form.kind === "stage_change" && form.stageId !== saved.stageId) ||
+    (form.kind === "appointment_upcoming" && form.minutesBefore !== saved.minutesBefore);
 
   const onSave = () => {
-    if (thresholdInvalid || stageInvalid) return;
+    if (thresholdInvalid || stageInvalid || minutesBeforeInvalid) return;
     update.mutate(toTriggerConfig(form), {
       onSuccess: () => {
         setSaved(form);
@@ -239,6 +293,7 @@ export function TriggerConfigControl({ flowId, triggerConfig }: Props) {
                 <SelectItem value="stage_change">{t(KIND_LABEL.stage_change)}</SelectItem>
                 <SelectItem value="case_opened">{t(KIND_LABEL.case_opened)}</SelectItem>
                 <SelectItem value="webhook">{t(KIND_LABEL.webhook)}</SelectItem>
+                <SelectItem value="appointment_upcoming">{t(KIND_LABEL.appointment_upcoming)}</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -301,6 +356,46 @@ export function TriggerConfigControl({ flowId, triggerConfig }: Props) {
             </div>
           )}
 
+          {form.kind === "appointment_upcoming" && (
+            <div className="space-y-2">
+              <Label htmlFor="trigger-minutes-before">{t("Quanto antes o lembrete sai (minutos)")}</Label>
+              <Input
+                id="trigger-minutes-before"
+                type="number"
+                min={MIN_THRESHOLD_MINUTES}
+                max={MAX_MINUTES_BEFORE}
+                value={form.minutesBefore}
+                data-testid="trigger-minutes-before"
+                onChange={(e) => setForm((f) => ({ ...f, minutesBefore: Number(e.target.value) }))}
+                aria-invalid={minutesBeforeInvalid}
+              />
+              {/* Frase INTEIRA num t(), e não pedaços com números no meio: a
+                  ordem das palavras muda entre idiomas, e um "Entre" + 5 +
+                  "minutos e 7 dias" traduzido aos pedaços monta errado. */}
+              {minutesBeforeInvalid && (
+                <p className="text-xs text-error-fg">
+                  {t("Entre 5 minutos e 7 dias.")}
+                </p>
+              )}
+              {/* ⚠️ ESTA FRASE É A METADE QUE FALTA DO GATILHO. Só o cadastro
+                  da Agenda diz QUAIS compromissos lembram, e um fluxo publicado
+                  com todos os tipos desligados fica ativo sem falar com
+                  ninguém. Sem esta linha, o operador não tem como descobrir —
+                  o único outro sinal é `sem_lembrete_ligado` na auditoria. */}
+              <p className="text-xs text-muted-foreground">
+                {t("O lembrete só sai para os tipos de atendimento com o lembrete ligado em Ajustes › Agenda — e nunca para compromisso sem tipo.")}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {t("No texto da mensagem, use {{agendamento.hora}}, {{agendamento.data}} e {{agendamento.com_quem}} — eles viram a hora, a data e o nome de quem atende.")}
+              </p>
+              {/* O que a Q4 desta entrega decidiu, dito na tela em que se decide
+                  armá-lo: hora marcada tem prioridade sobre régua de nutrição. */}
+              <p className="text-xs text-muted-foreground">
+                {t("Se o contato estiver em outro acompanhamento na hora do lembrete, aquele é cancelado — hora marcada tem prioridade.")}
+              </p>
+            </div>
+          )}
+
           {form.kind === "webhook" && (
             <p className="text-xs text-muted-foreground">
               {t(
@@ -350,7 +445,7 @@ export function TriggerConfigControl({ flowId, triggerConfig }: Props) {
             type="button"
             size="sm"
             className="w-full"
-            disabled={!dirty || thresholdInvalid || stageInvalid || update.isPending}
+            disabled={!dirty || thresholdInvalid || stageInvalid || minutesBeforeInvalid || update.isPending}
             onClick={onSave}
             data-testid="trigger-config-save"
           >

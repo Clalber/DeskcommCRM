@@ -225,6 +225,12 @@ export const AUDIT_ACTIONS = [
   "followup_flow.rolled_back",
   "followup.worker_run",
   "followup.silence_sweep_run",
+  // A varredura do gatilho de compromisso (0213). Além do que a irmã de silêncio
+  // registra, esta carrega `sem_lembrete_ligado` — compromisso que estava na
+  // janela e não virou mensagem porque o tipo de atendimento está com o lembrete
+  // desligado. É a única superfície em que "armei o fluxo e ninguém recebeu
+  // nada" tem explicação.
+  "followup.appointment_sweep_run",
   "followup_enrollment.created",
   "followup_enrollment.cancelled",
   // As quatro intervenções humanas num follow-up em andamento (0145). São

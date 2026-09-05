@@ -77,6 +77,15 @@ const ESCRITORES: Record<string, { agenda: "agora" | "futuro" | "nenhum"; nota: 
       "menção é `next_eval_at: null` no cancelamento por caso fechado — desagendar não é agendar, " +
       "e `null` não tem relógio para escolher errado.",
   },
+  "gatilho-compromisso.ts": {
+    agenda: "nenhum",
+    nota:
+      "O INSERT do lembrete OMITE a coluna de propósito — o default now() do banco decide, e o " +
+      "cabeçalho do `insertEnrollment` diz por quê: o enrollment nasce vencido e um 'agora' de " +
+      "Node ainda é futuro para o claim, custando um tique inteiro numa mensagem que existe para " +
+      "chegar na hora. A única menção é `next_eval_at: null` ao cancelar o acompanhamento vivo " +
+      "que o lembrete interrompe — desagendar não é agendar.",
+  },
   "aplicar-inbound.ts": {
     agenda: "nenhum",
     nota:

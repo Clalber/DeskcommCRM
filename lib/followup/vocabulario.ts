@@ -489,4 +489,9 @@ export const GATILHOS: Record<TipoDeGatilho, string> = {
   // clínica, não quem escreveu o schema.
   case_opened: "Quando o agente pede ajuda de um humano",
   conversation_end: "Fim da conversa",
+  // "Compromisso marcado", e não "agendamento": o que dispara aqui é a hora que
+  // DUAS PESSOAS combinaram — a consulta, a visita, a reunião —, não o retorno
+  // que o sistema decidiu sozinho. A migration 0177 separa os dois no schema
+  // justamente porque o produto os confundia; o rótulo não pode voltar a juntar.
+  appointment_upcoming: "Antes de um compromisso marcado",
 };
