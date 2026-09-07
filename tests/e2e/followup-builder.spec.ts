@@ -768,8 +768,16 @@ test.describe("followup flow builder — controle de gatilho na PublishBar (Task
       // (`lib/followup/gatilho-caso.ts`), e 5 com `webhook` — a ação de automação
       // `start_message_flow` chama `enrollFollowupFlow`, o MESMO caminho do POST
       // de enrollments, e o publish passou a aceitá-lo em `KINDS_COM_MOTOR`.
-      // `conversation_end` continua fora, porque continua sem produtor — e o
-      // publish o recusa.
+      // 6 com `appointment_upcoming` (`lib/followup/gatilho-compromisso.ts`,
+      // varredura no mesmo tick do silêncio). `conversation_end` continua fora,
+      // porque continua sem produtor — e o publish o recusa.
+      //
+      // ⚠️ E ESTA LISTA DERRUBOU O GATILHO DE COMPROMISSO NO CI, exatamente como
+      // o parágrafo abaixo previu para a contagem. Quem acrescenta um kind mexe
+      // em TRÊS lugares que não se importam entre si: o schema, o seletor da
+      // tela, e esta linha. Nenhum gate liga os três — o sinal é este spec ficar
+      // vermelho depois de 19 minutos de e2e. Vale o `grep -rn "Agente pediu
+      // ajuda" tests/e2e` antes de abrir o PR, não depois.
       //
       // ⚠️ A LISTA, E NÃO A CONTAGEM. Este bloco cobrava `toHaveCount(3)`, e o
       // gatilho novo o derrubou — uma spec alheia vermelha por uma mudança que
@@ -779,7 +787,14 @@ test.describe("followup flow builder — controle de gatilho na PublishBar (Task
       // coisas — e é o que o operador de fato vê.
       const kindSelect = panel.getByRole("combobox");
       await kindSelect.click();
-      const OFERECIDOS = ["Manual", "Silêncio", "Etapa do funil", "Agente pediu ajuda", "Automação (Webhooks)"];
+      const OFERECIDOS = [
+        "Manual",
+        "Silêncio",
+        "Etapa do funil",
+        "Agente pediu ajuda",
+        "Automação (Webhooks)",
+        "Antes de um compromisso marcado",
+      ];
       for (const nome of OFERECIDOS) {
         await expect(page.getByRole("option", { name: nome, exact: true })).toBeVisible();
       }

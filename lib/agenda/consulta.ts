@@ -616,6 +616,16 @@ export interface TipoDeAtendimento {
   bufferDepoisMin: number;
   antecedenciaMinimaMin: number;
   janelaDeAgendamentoDias: number;
+  /**
+   * O interruptor do lembrete automático (`reminder_enabled`, 0177/0194). Quem
+   * o lê é o gatilho de compromisso do follow-up
+   * (`lib/followup/gatilho-compromisso.ts`): compromisso de tipo desligado — ou
+   * sem tipo — nunca vira lembrete.
+   *
+   * Também NÃO vai ao modelo: é configuração de quem opera, e a IA não decide
+   * quem recebe mensagem automática.
+   */
+  lembreteLigado: boolean;
 }
 
 export type ResultadoDosTipos =
@@ -645,7 +655,7 @@ export async function listaTiposDeAtendimento(
   let q = supabase
     .from("calendar_event_types")
     .select(
-      "id, name, slug, description, category, duration_minutes, location_kind, location_details, requires_confirmation, is_active, default_owner_user_id, buffer_before_minutes, buffer_after_minutes, minimum_notice_minutes, booking_window_days",
+      "id, name, slug, description, category, duration_minutes, location_kind, location_details, requires_confirmation, is_active, default_owner_user_id, buffer_before_minutes, buffer_after_minutes, minimum_notice_minutes, booking_window_days, reminder_enabled",
     )
     // Service role bypassa a RLS: este filtro é a única proteção no caminho da
     // ferramenta MCP (ver o cabeçalho do arquivo).
@@ -681,6 +691,7 @@ export async function listaTiposDeAtendimento(
       bufferDepoisMin: Number(t.buffer_after_minutes),
       antecedenciaMinimaMin: Number(t.minimum_notice_minutes),
       janelaDeAgendamentoDias: Number(t.booking_window_days),
+      lembreteLigado: Boolean(t.reminder_enabled),
     })),
   };
 }

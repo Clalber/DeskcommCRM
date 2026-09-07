@@ -18,6 +18,7 @@ import { audit } from "@/lib/audit";
 import { requireRole } from "@/lib/auth/require-role";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { validateFlowForPublish } from "@/lib/followup/validate-publish";
+import { motivoParaRecusarSegundoLembrete } from "@/lib/followup/gatilho-unico-de-compromisso";
 import { publishFollowupFlowVersion } from "@/lib/followup/publish";
 import type { FlowGraph } from "@/lib/followup/graph-schema";
 
@@ -60,12 +61,23 @@ export async function POST(_req: NextRequest, ctx: RouteCtx): Promise<Response> 
   // Kind entra neste conjunto só DEPOIS de ter motor de enrollment vivo:
   // `manual`/`webhook` (POST enroll + ação de regra), `silence` (silence-sweep),
   // `stage_change` (gatilho-etapa) e `case_opened` (gatilho-caso).
-  const KINDS_COM_MOTOR = new Set(["manual", "webhook", "silence", "stage_change", "case_opened"]);
+  const KINDS_COM_MOTOR = new Set([
+    "manual",
+    "webhook",
+    "silence",
+    "stage_change",
+    "case_opened",
+    // `appointment_upcoming` (gatilho-compromisso, varredura no mesmo tick do
+    // followup-flow-worker).
+    "appointment_upcoming",
+  ]);
   const trigger = (pointer.trigger_config ?? { kind: "manual" }) as {
     kind?: string;
-    params?: { stage_id?: string };
+    params?: { stage_id?: string; minutes_before?: number };
   };
   const triggerKind = trigger.kind ?? "manual";
+  /** Publicou, mas há algo desligado que impediria o fluxo de falar. Vai na resposta. */
+  let avisoDoGatilho: string | null = null;
   if (!KINDS_COM_MOTOR.has(triggerKind)) {
     return fail(
       "trigger_kind_not_implemented",
@@ -112,6 +124,58 @@ export async function POST(_req: NextRequest, ctx: RouteCtx): Promise<Response> 
         422,
         { requestId },
       );
+    }
+  }
+
+  // Mesma família de recusa, outro gatilho: sem antecedência não há janela, e o
+  // sweep varreria `starts_at` entre agora e agora. Fluxo `active` que nunca
+  // dispara. O Zod do PATCH já exige o campo — esta rota lê a linha CRUA, então
+  // o que chegou por SQL à mão ou por clone antigo passa por aqui.
+  if (triggerKind === "appointment_upcoming") {
+    const minutos = trigger.params?.minutes_before;
+    if (typeof minutos !== "number" || !Number.isInteger(minutos) || minutos < 5) {
+      return fail(
+        "trigger_minutes_before_missing",
+        "Escolha com quanta antecedência o lembrete sai (mínimo de 5 minutos) antes de publicar.",
+        422,
+        { requestId },
+      );
+    }
+
+    // Um fluxo armado por compromisso por organização. A regra e o porquê vivem
+    // em `lib/followup/gatilho-unico-de-compromisso.ts` — compartilhada com o
+    // PATCH, porque publicar não é a única porta para este estado.
+    let recusa: string | null;
+    try {
+      recusa = await motivoParaRecusarSegundoLembrete(admin, activeOrg.orgId, id);
+    } catch (err) {
+      return fail("internal_error", err instanceof Error ? err.message : String(err), 500, {
+        requestId,
+      });
+    }
+    if (recusa) {
+      return fail("trigger_appointment_flow_exists", recusa, 422, { requestId });
+    }
+
+    // ⚠️ AVISA, MAS NÃO RECUSA — e a diferença é a ordem em que se monta.
+    //
+    // O lembrete só sai para tipo de atendimento com o interruptor ligado
+    // (`reminder_enabled`, que a 0194 deixou desligado em todo mundo). Zero
+    // tipos ligados é fluxo vivo que não fala com ninguém — mas recusar aqui
+    // obrigaria a configurar a Agenda ANTES de publicar o fluxo, e quem monta
+    // costuma fazer o contrário. O aviso vai no corpo da resposta, a tela o
+    // mostra, e o `sem_lembrete_ligado` do sweep repete o diagnóstico depois.
+    const { count, error: tiposErr } = await admin
+      .from("calendar_event_types")
+      .select("id", { count: "exact", head: true })
+      .eq("organization_id", activeOrg.orgId)
+      .eq("is_active", true)
+      .eq("reminder_enabled", true);
+    if (tiposErr) return fail("internal_error", tiposErr.message, 500, { requestId });
+    if ((count ?? 0) === 0) {
+      avisoDoGatilho =
+        "Publicado, mas nenhum tipo de atendimento está com o lembrete ligado — " +
+        "ninguém receberá nada até você ligar em Ajustes › Agenda.";
     }
   }
 
@@ -174,5 +238,12 @@ export async function POST(_req: NextRequest, ctx: RouteCtx): Promise<Response> 
     metadata: { version_id: result.version_id },
   });
 
-  return ok(updatedPointer, { requestId });
+  // O aviso viaja DENTRO do `data`, não em `meta`: quem consome esta rota é a
+  // tela do construtor, e `meta` já é o envelope de paginação/requestId dos
+  // wrappers. Ausente quando não há o que avisar — nunca string vazia, que a
+  // tela renderizaria como um alerta em branco.
+  return ok(
+    avisoDoGatilho ? { ...updatedPointer, aviso: avisoDoGatilho } : updatedPointer,
+    { requestId },
+  );
 }

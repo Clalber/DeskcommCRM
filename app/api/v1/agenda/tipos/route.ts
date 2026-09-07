@@ -58,6 +58,18 @@ const camposDoTipo = {
   buffer_after_minutes: z.number().int().min(0).max(720).optional(),
   minimum_notice_minutes: z.number().int().min(0).max(43_200).optional(),
   booking_window_days: z.number().int().min(1).max(365).optional(),
+  /**
+   * O interruptor do lembrete automático deste tipo.
+   *
+   * A coluna existe desde a 0177 e ficou sem rota e sem tela até o disparador
+   * nascer (`lib/followup/gatilho-compromisso.ts`). A 0194 a deixou DESLIGADA em
+   * todo mundo justamente para que ligar fosse um ato — este campo é o ato.
+   *
+   * Não há `reminder_minutes_before` aqui: quanto antes o lembrete sai é do
+   * FLUXO que o manda (`trigger_config.params.minutes_before`), e oferecer a
+   * mesma pergunta em dois cadastros é o caminho para duas respostas.
+   */
+  reminder_enabled: z.boolean().optional(),
 };
 
 const criarSchema = z.object(camposDoTipo);
@@ -119,6 +131,7 @@ export async function GET(req: NextRequest): Promise<Response> {
       buffer_after_minutes: t.bufferDepoisMin,
       minimum_notice_minutes: t.antecedenciaMinimaMin,
       booking_window_days: t.janelaDeAgendamentoDias,
+      reminder_enabled: t.lembreteLigado,
     })),
     { requestId },
   );

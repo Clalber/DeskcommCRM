@@ -269,6 +269,20 @@ export async function alterarAgendamentoHandler(
       mudanca.starts_at = novoInicio.toISOString();
       mudanca.ends_at = novoFim.toISOString();
       mudanca.time_zone = consulta.fusoDaRegra;
+      // ⚠️ REMARCOU, O LEMBRETE VOLTA A VALER.
+      //
+      // `reminder_sent_at` é a idempotência do gatilho de compromisso do
+      // follow-up (`lib/followup/gatilho-compromisso.ts`): preenchido, o
+      // compromisso sai da varredura para sempre. Como remarcar é um UPDATE na
+      // MESMA linha — e é assim de propósito, `rescheduled_from_id` fica vazio
+      // pela doutrina escrita mais abaixo neste arquivo —, a marca sobreviveria à
+      // mudança de hora. O paciente lembrado na segunda que remarca para sexta
+      // nunca mais receberia aviso, e nada acusaria: não há erro, não há
+      // contador, o compromisso apenas some da consulta.
+      //
+      // Zerar aqui, dentro do mesmo UPDATE, é o que mantém a idempotência
+      // fechada sobre A HORA, e não sobre a linha.
+      mudanca.reminder_sent_at = null;
       transicao = "rescheduled";
     }
   }

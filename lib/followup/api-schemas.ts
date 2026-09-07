@@ -54,6 +54,24 @@ export const triggerConfigSchema = z.discriminatedUnion("kind", [
     params: z.strictObject({}),
     ...CANCEL_ON_REPLY,
   }),
+  // ⚠️ SÓ `minutes_before`, e a ausência de um filtro de tipo é a decisão.
+  //
+  // Quais compromissos lembram é pergunta do CADASTRO, não do fluxo:
+  // `calendar_event_types.reminder_enabled` é o interruptor, um por tipo de
+  // atendimento. Um `event_type_ids` aqui seria a MESMA pergunta respondida em
+  // dois lugares — anti-pattern nº 2 —, e a resposta divergiria no dia em que
+  // alguém criasse um tipo novo: ele nasceria fora da lista do fluxo, calado.
+  //
+  // A antecedência fica no fluxo porque é dele que sai a FRASE: quem escreve
+  // "faltam 60 minutos" no texto precisa mandar nos 60. Ver o cabeçalho de
+  // `gatilho-compromisso.ts` para a divisão inteira.
+  z.strictObject({
+    kind: z.literal("appointment_upcoming"),
+    params: z.strictObject({
+      minutes_before: z.number().int().min(5).max(10_080),
+    }),
+    ...CANCEL_ON_REPLY,
+  }),
 ]);
 export type TriggerConfig = z.infer<typeof triggerConfigSchema>;
 

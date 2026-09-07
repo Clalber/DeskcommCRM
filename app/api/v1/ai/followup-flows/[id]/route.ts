@@ -15,6 +15,10 @@ import { audit } from "@/lib/audit";
 import { requireRole } from "@/lib/auth/require-role";
 import { createClient } from "@/lib/supabase/server";
 import { patchFollowupFlowSchema } from "@/lib/followup/api-schemas";
+import {
+  KIND_DE_COMPROMISSO,
+  motivoParaRecusarSegundoLembrete,
+} from "@/lib/followup/gatilho-unico-de-compromisso";
 
 export const dynamic = "force-dynamic";
 
@@ -98,7 +102,8 @@ export async function PATCH(req: NextRequest, ctx: RouteCtx): Promise<Response> 
   const supabase = await createClient();
   const { data: existing, error: fetchErr } = await supabase
     .from("followup_flow_pointers")
-    .select("id")
+    // `status` entra na leitura por causa da guarda logo abaixo. Era só `id`.
+    .select("id, status")
     .eq("id", id)
     .eq("organization_id", activeOrg.orgId)
     .maybeSingle();
@@ -106,6 +111,31 @@ export async function PATCH(req: NextRequest, ctx: RouteCtx): Promise<Response> 
   if (!existing) return fail("not_found", "Fluxo não encontrado.", 404, { requestId });
 
   const patch = parsed.data;
+
+  // ⚠️ ESTA ROTA É A SEGUNDA PORTA PARA "DOIS FLUXOS ARMADOS POR COMPROMISSO", e
+  // a primeira barreira não a cobria.
+  //
+  // A recusa nasceu só no publish. Uma auditoria independente a furou em um
+  // minuto: este PATCH grava `trigger_config` sem olhar `status`, e é por ele
+  // que o painel do construtor salva. Bastava ter um fluxo ATIVO qualquer — um
+  // de silêncio —, trocar o gatilho para "Antes de um compromisso marcado" e
+  // Salvar. Nenhum republish, nenhuma recusa, e o sweep, que lê `trigger_config`
+  // AO VIVO de todo pointer ativo, passava a ver dois. A barreira do publish
+  // seguia lá, intacta e inútil.
+  //
+  // Só para pointer ATIVO: rascunho pode carregar o kind à vontade — quem o
+  // coloca no ar é o publish, e lá a guarda roda de novo.
+  if (existing.status === "active" && patch.trigger_config?.kind === KIND_DE_COMPROMISSO) {
+    let recusa: string | null;
+    try {
+      recusa = await motivoParaRecusarSegundoLembrete(supabase, activeOrg.orgId, id);
+    } catch (err) {
+      return fail("internal_error", err instanceof Error ? err.message : String(err), 500, {
+        requestId,
+      });
+    }
+    if (recusa) return fail("trigger_appointment_flow_exists", recusa, 422, { requestId });
+  }
   if (Object.keys(patch).length === 0) {
     const { data: unchanged, error: reloadErr } = await supabase
       .from("followup_flow_pointers")

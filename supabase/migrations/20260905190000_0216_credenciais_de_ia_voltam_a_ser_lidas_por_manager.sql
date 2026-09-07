@@ -1,4 +1,4 @@
--- 0214 — as credenciais de IA voltam a ser LIDAS por quem não é admin
+-- 0216 — as credenciais de IA voltam a ser LIDAS por quem não é admin
 --
 -- A migration 0150 removeu a policy de SELECT por tenancy e criou só
 -- `tenant_isolation_ai_provider_credentials_write` como `FOR ALL`. Em Postgres,

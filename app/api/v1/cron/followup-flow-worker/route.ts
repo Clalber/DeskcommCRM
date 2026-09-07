@@ -30,6 +30,11 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseAdminClient, runFollowupTick, type FollowupJobRequest } from "@/lib/followup/engine";
 import { createSupabaseFollowupGateDb } from "@/lib/followup/agent-followup-gate";
 import { createSupabaseSilenceSweepDb, runSilenceSweep } from "@/lib/followup/silence-sweep";
+import {
+  createSupabaseCompromissoSweepDb,
+  runAppointmentSweep,
+} from "@/lib/followup/gatilho-compromisso";
+import { criarResolvedorDeTexto } from "@/lib/followup/variaveis-do-compromisso";
 
 export const dynamic = "force-dynamic";
 
@@ -62,6 +67,10 @@ async function handle(req: NextRequest): Promise<Response> {
     db: createSupabaseAdminClient(admin),
     clock: () => new Date(),
     enqueueJob,
+    // Sem esta linha o texto fixo entra na fila com `{{agendamento.hora}}`
+    // literal e é isso que chega ao cliente. É a ÚNICA ligação do resolvedor em
+    // produção — `tests/unit/followup-cron-liga-o-compromisso.test.ts` a vigia.
+    resolverTexto: criarResolvedorDeTexto(admin),
   };
 
   let summary;
@@ -128,6 +137,40 @@ async function handle(req: NextRequest): Promise<Response> {
     // resultado de runFollowupTick, que rodou (e foi auditado) antes disto.
     const detail = err instanceof Error ? err.message : String(err);
     logger.error("[followup-flow-worker.cron] runSilenceSweep threw", { error: detail, requestId });
+  }
+
+  // Segunda varredura time-driven, isolada da primeira pela mesma razão: uma
+  // agenda com problema não pode calar o gatilho de silêncio, nem o contrário.
+  try {
+    const compromissos = await runAppointmentSweep({
+      db: createSupabaseCompromissoSweepDb(admin),
+      gateDb: createSupabaseFollowupGateDb(admin),
+      clock: () => new Date(),
+    });
+    // `sem_lembrete_ligado` entra na condição de propósito: é o único contador
+    // que reporta uma OMISSÃO. Compromisso na janela cujo tipo está com o
+    // lembrete desligado é exatamente o caso em que o operador jura ter armado
+    // o fluxo e ninguém recebe nada — sem esta linha, a explicação não existe
+    // em lugar nenhum do sistema (invariante 6 do Sistema Vivo).
+    if (
+      compromissos.enrolled ||
+      compromissos.pointers_gated_out ||
+      compromissos.skipped_existing ||
+      compromissos.acompanhamentos_cancelados ||
+      compromissos.sem_lembrete_ligado ||
+      compromissos.segundo_do_mesmo_contato
+    ) {
+      void audit({
+        action: "followup.appointment_sweep_run",
+        organizationId: null,
+        bypassedRls: true,
+        metadata: { ...compromissos },
+        requestId,
+      });
+    }
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err);
+    logger.error("[followup-flow-worker.cron] runAppointmentSweep threw", { error: detail, requestId });
   }
 
   return ok(summary, { requestId });

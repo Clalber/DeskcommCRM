@@ -10,6 +10,44 @@
 
 ---
 
+## ⚠️ ATUALIZAÇÃO 2026-09-04 — metade da ponte foi construída, e NÃO é esta
+
+O follow-up **deixou de ser cego para a agenda**: `lib/followup/gatilho-compromisso.ts`
+(gatilho `appointment_upcoming`, migration 0213) lê `calendar_appointments` e
+inscreve o contato num fluxo quando falta a antecedência escolhida para um
+compromisso. Então o comando de re-medição abaixo **mudou de resposta**:
+
+```bash
+grep -rn 'from("calendar_appointments")' lib/followup lib/leads app/app/radar
+#   lib/followup/gatilho-compromisso.ts      ← novo
+#   lib/followup/variaveis-do-compromisso.ts ← novo
+#   lib/leads, app/app/radar → continuam vazios
+```
+
+**Isso NÃO implementa nada do que este documento propõe, e a distinção é o que
+importa.** São direções opostas do mesmo cabo:
+
+| | Este documento (a régua de supressão) | O que foi construído (o lembrete) |
+|---|---|---|
+| Pergunta | "tem compromisso? então NÃO cobre" | "tem compromisso? então AVISE" |
+| Efeito | **suprime** mensagem | **produz** mensagem |
+| Onde entraria | `classifyRisk`, `score-writer`, guarda no `engine.ts` | gatilho novo, antes do enrollment nascer |
+
+Os cinco pontos de enxerto seguem **todos por fazer**, e os dois limites medidos
+(compromisso vindo do Google não é alcançável; as duas ações de automação cobram
+por fora do motor) seguem **valendo por inteiro** — nada nesta entrega os tocou.
+
+Uma coisa mudou de peso: o produto agora manda mensagem POR CAUSA de um
+compromisso e continua podendo mandar cobrança IGNORANDO o mesmo compromisso. O
+paciente que recebe "sua consulta é às 14h" pela manhã e "ainda tem interesse?"
+à tarde vê a contradição num único dia, no mesmo número. A régua deste
+documento ficou mais urgente com o lembrete no ar, não menos.
+
+`SITUACAO_SEGURA_O_LEAD` **continua órfã** — o gatilho novo consulta status e
+`starts_at` na própria query, sem passar por ela.
+
+---
+
 ## A pergunta, na voz de quem opera
 
 > "O paciente marcou consulta para quinta. Por que o sistema mandou pra ele
