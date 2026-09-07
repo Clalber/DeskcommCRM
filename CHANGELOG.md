@@ -8,6 +8,295 @@ Se você roda o DeskcommCRM numa VPS, **leia a seção da versão para a qual es
 
 ## [Não lançado]
 
+## [2.11.0] — 2026-09-07
+
+### Adicionado
+
+- **Conta confirmada que ficou sem empresa agora tem como terminar o cadastro** Ao criar a conta, o sistema confirma o e-mail e em seguida cria a empresa. Os
+  dois passos são separados, e o segundo pode falhar — banco indisponível por um
+  instante, permissão ainda propagando, disco cheio. Quando falhava, a pessoa já
+  estava logada, mas sem empresa nenhuma.
+
+  E aí não havia saída. O Inbox dizia "aceite um convite ou contate o admin"; a
+  tela de configuração inicial devolvia para a de entrar, que devolvia para o
+  Inbox. As duas saídas oferecidas não existem para quem instalou o sistema no
+  próprio servidor: não há convite para aceitar, e o administrador é a própria
+  pessoa. Destravar exigia mexer no banco à mão — exatamente o que instalar um
+  sistema pronto deveria evitar.
+
+  Agora existe uma tela para isso. Quem cai nesse estado é levado a uma página que
+  pede o nome da empresa e conclui o cadastro, seguindo para a configuração
+  inicial normalmente. Os três caminhos que antes fechavam o círculo passam a
+  levar até ela.
+
+  A tela só aparece para quem realmente está sem empresa: quem já tem uma é
+  mandado direto para o Inbox, e quem tem um convite pendente continua sendo
+  orientado a usar o convite em vez de abrir empresa própria. Há um limite de
+  tentativas por conta, porque cada acerto cria uma empresa de verdade.
+
+  Para quem opera, nada muda: nenhuma configuração nova, nenhum passo de
+  atualização.
+
+  A tela e o caminho são de @prevprocesso-maker, que passou por isso instalando o
+  sistema para um cliente.
+
+### Corrigido
+
+- **Buscar no Inbox por um nome com vírgula ou parêntese deixa de derrubar a tela** Quem tem clientes cadastrados como "Sobrenome, Nome" — que é como boa parte das
+  agendas importadas vem — não conseguia buscá-los: a tela dava erro em vez de
+  lista.
+
+  E não era preciso ter a vírgula no cadastro. Bastava o atendente digitá-la na
+  busca.
+
+- **Buscar um nome comum no Inbox deixa de derrubar a tela** Numa base com muitos contatos, buscar um nome comum — "ana", "silva", "maria" —
+  fazia o Inbox **parar de abrir**, com erro de servidor, em vez de mostrar a
+  lista. Buscar por DDD tinha o mesmo efeito, porque quatro dígitos casam todos os
+  celulares de uma cidade.
+
+  Não era lentidão nem lista incompleta: era a tela quebrando, e justamente na
+  tela onde quem atende passa o dia.
+
+  A causa: a busca por contato monta a consulta com a lista de quem casou, e essa
+  lista viaja dentro do endereço da requisição. Com muitos contatos casando, o
+  endereço passava do tamanho que o servidor aceita, e o pedido era recusado antes
+  de chegar ao banco.
+
+  Agora a lista é cortada pelo tamanho que cabe, não por uma quantidade fixa. Numa
+  busca muito ampla o resultado pode não trazer todos os contatos que casariam —
+  mas a tela **abre**, e a busca por conteúdo da conversa continua rodando ao lado.
+
+  Para quem opera uma instalação, nada muda no dia a dia: nenhuma configuração
+  nova, nenhum passo de atualização.
+
+- **A chave da OpenRouter passa a ser conferida de verdade** Ao cadastrar uma chave da OpenRouter em Agente de IA › Credenciais, o sistema
+  conferia a chave pedindo o catálogo de modelos — que é público. O catálogo
+  responde a mesma coisa com chave certa, com chave errada e sem chave nenhuma,
+  então a tela dizia "validada" para qualquer texto colado no campo.
+
+  Quem digitasse a chave com um caractere a menos só descobria depois, quando a
+  primeira conversa não fosse respondida — e o erro aparecia longe dali, na fila
+  do agente, sem ligação visível com o cadastro.
+
+  A conferência passa a usar o endereço que exige a credencial. Chave inválida é
+  recusada na hora, na tela onde ela foi digitada.
+
+- **O bloco "Ocupado" da agenda do Google sai da lista de próximos, onde os botões não funcionavam** Depois que os compromissos ocupados na agenda pessoal do Google passaram a
+  aparecer na grade, eles apareciam também na lista **"Próximos"** — e ali com os
+  botões **Remarcar** e **Cancelar** ligados, como se fossem compromissos da
+  empresa.
+
+  Não eram, e os botões não tinham como funcionar: clicar em Cancelar abria o
+  painel, pedia o motivo, e devolvia um erro vermelho dizendo que o agendamento não
+  foi encontrado. O bloco continuava na lista, nada acontecia no Google, e quem
+  tentou ficou sem entender o que deu errado.
+
+  Agora esses blocos aparecem **só na grade**, que é onde eles servem: mostram o
+  horário tomado, não abrem e não arrastam. A lista de próximos volta a ter apenas
+  o que a sua equipe pode remarcar ou cancelar de verdade.
+
+  O nome do compromisso particular continua não aparecendo em lugar nenhum — a
+  agenda conectada é pessoal de quem atende, e esta tela é vista pela gestão.
+
+  Para quem opera uma instalação, nada muda no dia a dia.
+
+  Achado executando a tela como um usuário faria, na revisão do conserto de
+  @Clalber (#474).
+
+- **A troca de senha pela linha de comando volta a encontrar o usuário** Quem perde o acesso a uma instalação sem SMTP — o estado normal de um self-host
+  recém-instalado — só tem um caminho de volta: o `reset-password.sh` do kit. Ele
+  não funcionava para **ninguém**. Não era intermitente nem dependia do e-mail:
+  qualquer endereço, existente ou não, recebia a mesma resposta seca de "usuário
+  não encontrado", e a pessoa ficava trancada do lado de fora do próprio sistema.
+
+  A causa era uma consulta escrita na sintaxe errada. O script pedia ao servidor de
+  autenticação um filtro no formato do banco (`email.eq.<endereço>`), e esse
+  servidor não fala esse formato — ele usa a expressão inteira como texto de busca.
+  Como nenhum e-mail contém o pedaço `email.eq.`, a busca não achava nada, sempre.
+
+  Agora a consulta vai no formato que o servidor entende. E, como a busca dele é por
+  trecho do endereço, o script passou a exigir o e-mail **inteiro** antes de aceitar
+  o resultado: pedir `ana@empresa.com` também traz `mariana@empresa.com`, e entregar
+  a pessoa errada a um comando que TROCA SENHA seria pior que não achar ninguém. Na
+  dúvida ele não devolve nada — quem chama vê "não encontrado", que é ruim mas se
+  resolve; a senha de outra pessoa trocada, não.
+
+  Quem opera uma VPS não precisa fazer nada além de atualizar. Nenhuma configuração
+  muda, nenhum arquivo precisa ser editado à mão.
+
+- **Áudio que demora para transcrever não faz mais o agente dizer "não entendi** Um cliente mandou um áudio perguntando sobre troca de peça de uma moto elétrica. A
+  transcrição terminou certinha — mas 18 segundos tarde demais: o agente já tinha
+  respondido "recebi seu áudio, mas não consegui identificar o conteúdo", e o cliente
+  teve que digitar a pergunta de novo.
+
+  A causa era um teto fixo de 45 segundos de espera pela transcrição antes de o turno
+  seguir sem o texto. Medindo as transcrições reais desta instalação, 45s não é raro
+  de estourar em áudios normais — só é curto demais para a cauda longa (minutos, quando
+  há retry por falha transitória), que nenhum teto razoável cobre sem o cliente esperando
+  minutos pela primeira resposta.
+
+  O teto passou para 120 segundos, o suficiente para cobrir esse tipo de atraso comum sem
+  impor uma espera longa em todo áudio. Para quem opera uma instalação, nada muda no dia
+  a dia.
+
+- **Anonimizar um contato retoma de onde parou, em vez de dizer que já foi** A anonimização de um contato remove os dados pessoais em três lugares: o
+  cadastro do contato, os títulos dos negócios dele e o histórico de atividades.
+  Se a operação era interrompida no meio — o navegador desistindo, o servidor
+  reiniciando —, o primeiro lugar ficava pronto e os outros dois não.
+
+  E não havia como terminar: clicar em "Anonimizar" de novo respondia
+  **"já anonimizado"** e não fazia mais nada. O contato ficava para sempre com
+  nome de cliente visível dentro dos negócios e do histórico — que é exatamente o
+  dado que a anonimização existe para remover, e que a lei dá prazo para remover.
+
+  Agora o botão retoma o que faltou. Rodar de novo num contato já inteiro não
+  estraga nada, e o registro de auditoria distingue a retomada da execução
+  original — a data em que o titular exerceu o direito não é sobrescrita.
+
+- **Quem se cadastra numa instalação que não pede confirmação de e-mail para de ser mandado esperar um e-mail que não chega** Quem administra a instalação pode desligar a confirmação de e-mail no provedor
+  de autenticação — é uma escolha comum, e às vezes é o estado em que uma VPS
+  recém-montada já vem. Nesse modo, criar a conta **já entra no sistema**: não
+  existe link nenhum para clicar, porque e-mail nenhum é enviado.
+
+  A tela do cadastro não sabia disso e dizia assim mesmo: *"Enviamos um link de
+  confirmação para o seu e-mail. Abra o e-mail e clique no link para ativar sua
+  conta."* A pessoa fazia o que a tela mandou — esperava. O e-mail nunca chegava.
+  Ela estava, o tempo todo, do lado de dentro, com a conta pronta e sem empresa
+  nenhuma configurada, sem nenhuma razão para descobrir sozinha que bastava
+  continuar.
+
+  Agora, quando o sistema percebe que a pessoa já entrou, ele a leva direto ao
+  passo seguinte, em vez de mandá-la esperar: quem se cadastrou por conta própria
+  vai concluir a configuração da empresa, com o nome que ela mesma digitou no
+  cadastro já preenchido; quem se cadastrou a partir de um convite vai aceitar o
+  convite, e continua sem ganhar uma empresa própria por engano.
+
+  Para quem opera uma instalação, nada muda no dia a dia: nenhuma configuração
+  nova, nenhum passo de atualização. Quem já usa o sistema com confirmação de
+  e-mail ligada não vê diferença nenhuma — a tela do e-mail continua igual, porque
+  nesse caso o e-mail realmente vai chegar.
+
+  O achado é de @KIRAzinx566, que instalou o sistema para um cliente e o encontrou
+  parado nessa tela.
+
+- **O agente para de achar que está fora do expediente por causa do fuso** O agente recebia o horário de cada mensagem do histórico em UTC, e não no fuso
+  configurado na organização. Num fuso de Brasília isso adianta o relógio em três
+  horas: uma conversa das 20h chegava até ele como se fossem 23h.
+
+  O efeito aparecia como recusa educada. Perguntado se dava para atender, ele
+  respondia que já estava fora do horário — com a loja aberta e alguém do outro
+  lado esperando. Não havia erro em lugar nenhum: o dado estava certo, só que
+  medido no fuso errado.
+
+  Agora o horário chega ao agente no fuso da organização. Quando o fuso está
+  ausente ou é inválido, o padrão do produto (`America/Sao_Paulo`) é usado em vez
+  de a montagem do contexto falhar.
+
+- **A proteção de envio volta a aceitar a data de hoje** Em **Conexões › Proteção de envio**, informar hoje em "este número é usado
+  desde" era recusado durante a manhã inteira: até as 9h no relógio de quem
+  opera no Brasil, salvar devolvia *"Campos inválidos."* e não gravava nada — nem
+  a janela de horário, nem o intervalo entre envios, nem o teto diário que você
+  tinha acabado de mudar na mesma tela.
+
+  O motivo: o campo pergunta um DIA, mas a verificação o comparava com a hora
+  exata em Londres. Um dia não tem hora — ele começa em horários diferentes em
+  cada parte do mundo —, e por isso "hoje" só era aceito depois do meio-dia
+  londrino. Agora a verificação compara dias com dias, e só recusa a data que
+  ainda não chegou em canto nenhum do planeta.
+
+  O calendário do campo também parou de oferecer o dia errado: depois das 21h ele
+  mostrava amanhã como escolha possível.
+
+  Data futura continua recusada, e data antiga continua sendo o caso normal — é
+  informando a data antiga que um número usado há meses deixa de ser tratado como
+  recém-criado e sai do teto de 20 envios por dia.
+
+- **O aviso de "canal calado" para de ficar preso aberto na Central** Quando a janela de envio do WhatsApp fechava (fora do horário anti-banimento,
+  por padrão 9h–22h), a Central mostrava um aviso avisando que as respostas
+  estavam esperando a janela abrir. O aviso deveria desaparecer sozinho assim
+  que a janela reabrisse — e não desaparecia. Ele ficava aberto o dia inteiro,
+  mesmo com o agente respondendo normalmente, dando a impressão de canal (ou
+  loja) fechado quando não estava.
+
+  A causa era uma coluna que o código esperava e o banco não tinha:
+  `agent_inbox_items.resolved_at`. Toda tentativa de fechar o aviso falhava
+  silenciosamente. Agora a coluna existe, e o aviso fecha sozinho no mesmo
+  turno em que a janela é encontrada aberta, como sempre foi a intenção.
+
+- **Um fluxo de retorno publicado não abre mais vazio na tela** Um fluxo de retorno que estava **no ar e funcionando** podia abrir **em branco**
+  no construtor. A automação rodava normalmente e conversava com os clientes; a
+  tela é que não mostrava nada.
+
+  Acontecia quando o fluxo foi publicado por fora do construtor — restauração de
+  backup, instalação assistida, importação de outra instalação. Nesses casos o
+  sistema guarda a versão publicada mas não guarda uma cópia de trabalho, e a tela
+  só sabia abrir a cópia de trabalho.
+
+  **O risco era maior do que a tela vazia.** Quem abrisse, mexesse em qualquer
+  coisa e salvasse estaria salvando por cima — com o desenho vazio que a tela
+  mostrou. Um "publicar" depois disso trocaria o fluxo que está funcionando por
+  esse vazio, sem aviso nenhum.
+
+  Agora, quando não existe cópia de trabalho, a tela abre
+  **exatamente o que está no ar**. Quem nunca editou vê o fluxo publicado; quem tem trabalho salvo e não
+  publicado continua vendo o seu trabalho, que segue tendo prioridade.
+
+  Para quem opera uma instalação, nada muda no dia a dia: nenhuma configuração
+  nova, nenhum passo de atualização.
+
+- **Dizer que já chamou alguém deixa de valer como ter chamado** Quando o agente precisa passar a conversa para uma pessoa, ele avisa o cliente e
+  só então aciona a ferramenta que faz a passagem. A instrução pedia o aviso
+  antes — e ele às vezes cumpria só a primeira metade: mandava a mensagem dizendo
+  que ia chamar alguém e encerrava o turno sem chamar.
+
+  Para quem estava do outro lado, o atendimento simplesmente parava. O cliente
+  ouviu que alguém viria, ninguém foi avisado, e a conversa ficava sem dono até
+  alguém reparar na Central.
+
+  A instrução passa a separar as duas coisas com todas as letras: a promessa é
+  parte do passo, nunca o passo inteiro.
+
+- **A quebra de mensagem em bolhas não corta mais um valor em reais no meio** Com "quebrar resposta em várias mensagens" ligado, o agente tratava qualquer "." como fim de
+  frase — inclusive o "." que separa milhar num preço em reais ("R$ 10.990"). O valor virava
+  duas "frases" ("R$ 10." e "990 no cartão…"), que às vezes iam para bolhas de WhatsApp
+  SEPARADAS (o cliente que via só a primeira lia "R$ 10" como o preço fechado de um produto de
+  R$ 10.990) e às vezes eram remendadas com um espaço a mais ("R$ 7. 990").
+
+  Agora um "." só conta como fim de frase quando não está entre dois dígitos.
+
+- **Quem não é administrador volta a ver a lista de credenciais de IA** Um membro da equipe que não é administrador abria **IA › Provedores** e via a
+  lista **vazia** — concluindo que a organização não tinha nenhuma chave
+  cadastrada, quando tinha.
+
+  Não havia erro nem aviso: a tela respondia normalmente, só que sem nenhuma
+  linha. É a pior forma de falhar, porque parece uma informação verdadeira.
+
+  A causa foi um ajuste de segurança anterior, que fechou a **escrita** dessas
+  credenciais para quem não é administrador — e, sem querer, fechou a **leitura**
+  junto. A tela de provedores é somente-leitura para esses papéis e nunca deveria
+  ter sido afetada.
+
+  Agora a leitura volta a valer para todo membro da organização, e a escrita
+  continua restrita a administrador, como estava.
+
+  A chave em si segue protegida: ela nunca foi exposta por essa tela, e continua
+  inalcançável para qualquer papel — inclusive para quem passou a enxergar a
+  lista.
+
+- **Salvar o rascunho de um agente deixa de escrever por cima do histórico** Na tela de um agente, "Salvar rascunho" podia gravar numa versão diferente da
+  que estava aberta. Acontecia depois de reverter pelo Histórico com trabalho em
+  andamento: ficava um rascunho anterior à versão publicada, e a tela e o servidor
+  discordavam sobre qual deles era o rascunho de verdade.
+
+  Dois estragos saíam disso. O texto digitado ia para uma versão que a tela não
+  reabre e o botão não publica — aviso verde de salvo, recarrega, e nada mudou. E
+  a versão antiga é um retrato: o Histórico promete que ela continua lá, e
+  regravá-la trocava o conteúdo daquela linha por um texto que ninguém escreveu
+  ali, sem erro e sem volta.
+
+  O servidor passa a escolher o rascunho pela mesma regra da tela, e a versão
+  superada fica intocada no Histórico.
+
 ## [2.10.0] — 2026-09-05
 
 ### Adicionado
@@ -2496,7 +2785,8 @@ Primeira versão marcada do DeskcommCRM. O projeto vinha sendo desenvolvido publ
 
 - **Node 22 é obrigatório para desenvolvimento.** A suíte de invariantes instancia o cliente do Supabase, que exige o `WebSocket` global — nativo apenas a partir do Node 22. Isso não afeta quem apenas hospeda: a VPS roda a imagem pronta.
 
-[Não lançado]: https://github.com/melgarafael/DeskcommCRM/compare/v2.10.0...HEAD
+[Não lançado]: https://github.com/melgarafael/DeskcommCRM/compare/v2.11.0...HEAD
+[2.11.0]: https://github.com/melgarafael/DeskcommCRM/compare/v2.10.0...v2.11.0
 [2.10.0]: https://github.com/melgarafael/DeskcommCRM/compare/v2.9.0...v2.10.0
 [2.9.0]: https://github.com/melgarafael/DeskcommCRM/compare/v2.8.1...v2.9.0
 [2.8.1]: https://github.com/melgarafael/DeskcommCRM/compare/v2.8.0...v2.8.1
