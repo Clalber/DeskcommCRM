@@ -12503,6 +12503,26 @@ grant select on public.ai_provider_credentials_safe to authenticated;
 notify pgrst, 'reload schema';
 
 
+-- ---- credenciais de IA voltam a ser LIDAS por quem não é admin (migration 0216) ----
+-- A 0150 (bloco acima) deixou `..._write` como ÚNICA policy da tabela. `FOR ALL`
+-- cobre o SELECT, então a leitura passou a exigir admin — e a view
+-- `ai_provider_credentials_safe` é `security_invoker=true`, então um `manager`
+-- passava na autorização da aplicação e era filtrado para ZERO LINHAS na base.
+-- A tela respondia 200 com `[]`, e a pessoa concluía que não havia credencial.
+--
+-- O par que o cabeçalho da 0150 promete: escrita de admin, leitura por tenancy.
+-- O segredo segue protegido pelo GRANT POR COLUNA logo acima — é ele, e não a
+-- RLS, que esconde `api_key_encrypted/iv/tag`. (issue #292)
+--
+-- Este bloco vem DEPOIS do da 0150 de propósito: lá em cima há um
+-- `drop policy if exists ..._select`, e inverter a ordem apagaria este conserto.
+drop policy if exists tenant_isolation_ai_provider_credentials_select on public.ai_provider_credentials;
+create policy tenant_isolation_ai_provider_credentials_select on public.ai_provider_credentials
+  for select using (organization_id in (select public.fn_user_org_ids()));
+
+notify pgrst, 'reload schema';
+
+
 
 -- ---- o quadro de clientes montado no onboarding (migration 0156) ----
 -- O gatilho `trg_seed_default_pipeline_for_org` semeia um funil de e-commerce em
@@ -17765,3 +17785,17 @@ comment on column public.calendar_event_types.reminder_template_name is
 
 comment on column public.calendar_appointments.reminder_sent_at is
   'Idempotência do lembrete: preenchido por lib/followup/gatilho-compromisso.ts DEPOIS de o acompanhamento nascer, nunca antes — marcar primeiro trocaria "mandou duas vezes" por "nunca mandou". Compromisso com esta coluna preenchida sai da varredura para sempre.';
+
+-- ---- agent_inbox_items.resolved_at (migration 0215) ----
+-- `pacing/aviso-de-janela.ts` resolve o aviso de "janela de envio fechada"
+-- gravando `resolved_at = now()`, e a coluna nunca existiu — o UPDATE falhava
+-- em produção (engolido, fire-and-forget), e o aviso ficava aberto pra sempre.
+--
+-- ⚠️ Renumerada DUAS vezes, e as duas por colisão de número. Veio do upstream
+-- como 0208, que aqui é `credencial_do_app_do_instagram`; virou 0213, e o 0213
+-- foi tomado pela release 2.10.0 (`o_disparador_do_lembrete_nasceu`, o bloco
+-- logo acima) enquanto esta leva era preparada. Agora é 0215. Dois arquivos com
+-- o mesmo número fazem a ordem de aplicação depender do sistema de arquivos.
+-- A DDL é a mesma e é `if not exists`, então re-aplicação é inócua.
+alter table public.agent_inbox_items
+  add column if not exists resolved_at timestamptz;

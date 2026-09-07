@@ -155,7 +155,11 @@ describe("o contexto entrega o id do contato com um nome que não mente", () => 
     const r = await getLeadContext(
       db as never,
       {} as never,
-      { tenantId: ORG, leadId: CONTATO },
+      // `fuso` passou a ser obrigatório ao trazermos o conserto do horário do
+      // histórico (upstream `7d4e2cf9`): o contexto entregava `sent_at` cru, com
+      // o `+00` da sessão do Postgres, e o agente concluía estar fora do
+      // expediente. É o mesmo valor que os testes de origem usam.
+      { tenantId: ORG, leadId: CONTATO, fuso: "America/Sao_Paulo" },
       { historyLimit: 20, maxTokens: 8000 } as never,
     );
 
