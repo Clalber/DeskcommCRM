@@ -49,7 +49,7 @@ function SeletorDeModelo({
   if (!modelos?.length) {
     return (
       <p className="text-xs text-text-muted">
-        {t("Você ainda não tem modelos de mensagem. Crie um em Ajustes → Modelos e ele aparece aqui.")}
+        {t("Você ainda não tem modelos de mensagem. Crie um em Respostas rápidas e ele aparece aqui.")}
       </p>
     );
   }

@@ -207,7 +207,7 @@ export const aiClassifyConfigSchema = z
  * Action node configuration schema.
  * - text: send this body as-is (no model)
  * - ai_message: generate a message using AI with a prompt hint
- * - template: send a canned message from Ajustes → Modelos
+ * - template: send a canned message from Respostas rápidas
  */
 export const actionConfigSchema = z.discriminatedUnion('mode', [
   z.strictObject({

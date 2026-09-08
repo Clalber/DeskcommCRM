@@ -1119,9 +1119,6 @@ export const DICIONARIO: Traducoes = {
   "Não consegui carregar seus modelos de mensagem. Recarregue a página.": {
     es: "No pude cargar tus plantillas de mensaje. Recarga la página.",
   },
-  "Você ainda não tem modelos de mensagem. Crie um em Ajustes → Modelos e ele aparece aqui.": {
-    es: "Todavía no tienes plantillas de mensaje. Créala en Ajustes → Plantillas y aparecerá aquí.",
-  },
   "Escolha um modelo": { es: "Elige una plantilla" },
   Nenhum: { es: "Ninguno" },
   "Como escrever a mensagem": { es: "Cómo escribir el mensaje" },
@@ -1172,6 +1169,87 @@ export const DICIONARIO: Traducoes = {
     es: "Si el caso se resuelve antes, el seguimiento se cancela solo.",
   },
   "Minutos de silêncio": { es: "Minutos de silencio" },
+
+  // ─── os cards do fluxo, que passaram a contar o que fazem (`cartao-do-no.ts`)
+  //
+  // ⚠️ Estas chaves NÃO são pegas por `i18n-espanhol-cobre-a-tela`: elas chegam
+  // ao `t()` por variável (`t(linha.rotulo)`), não como literal, e aquele guarda
+  // varre o AST atrás de literais. Sem estas entradas o card cairia em português
+  // no espanhol — em silêncio, e sem nenhum teste reclamando. Quem acrescentar
+  // uma frase lá tem de vir aqui.
+  //
+  // Os títulos com número dentro ("Quando faltar 1 hora…") ficam de fora por
+  // construção: são interpolados, e chave de dicionário não interpola. Limite
+  // conhecido, não esquecimento.
+  "Quando o negócio entra numa etapa": { es: "Cuando el negocio entra en una etapa" },
+  "Quando o agente pede ajuda de um humano": { es: "Cuando el agente pide ayuda de una persona" },
+  "Quando uma automação manda": { es: "Cuando una automatización lo ordena" },
+  "Quando alguém inicia à mão": { es: "Cuando alguien lo inicia a mano" },
+  "Manda a mensagem para o cliente": { es: "Envía el mensaje al cliente" },
+  "A IA escreve e manda": { es: "La IA escribe y envía" },
+  "Manda um modelo pronto": { es: "Envía una plantilla lista" },
+  "Encerra o acompanhamento": { es: "Cierra el seguimiento" },
+  // rótulos das linhas
+  Olha: { es: "Mira" },
+  "Só se": { es: "Solo si" },
+  Só: { es: "Solo" },
+  Vale: { es: "Vale" },
+  "Vem de": { es: "Viene de" },
+  Para: { es: "Para" },
+  Por: { es: "Por" },
+  Grava: { es: "Registra" },
+  Depois: { es: "Después" },
+  // valores
+  "a Agenda, a cada minuto": { es: "la Agenda, cada minuto" },
+  "o compromisso ainda está de pé": { es: "el compromiso sigue en pie" },
+  "as conversas abertas, a cada minuto": { es: "las conversaciones abiertas, cada minuto" },
+  "o movimento dos cards no funil": { es: "el movimiento de las tarjetas en el embudo" },
+  "para qualquer caso desta conta": { es: "para cualquier caso de esta cuenta" },
+  "uma regra em Webhooks": { es: "una regla en Webhooks" },
+  "a Fila, ou a API": { es: "la Cola, o la API" },
+  "quem marcou o compromisso": { es: "quien agendó el compromiso" },
+  "o contato do negócio que se moveu": { es: "el contacto del negocio que se movió" },
+  "o contato da conversa que abriu o caso": { es: "el contacto de la conversación que abrió el caso" },
+  "o contato que sumiu": { es: "el contacto que desapareció" },
+  "o contato do acompanhamento": { es: "el contacto del seguimiento" },
+  "a conversa mais recente do contato": { es: "la conversación más reciente del contacto" },
+  "o contato fica livre para outro follow-up": { es: "el contacto queda libre para otro follow-up" },
+  // rodapés
+  "Cada compromisso entra uma vez só. Remarcou, entra de novo na hora nova.": {
+    es: "Cada compromiso entra una sola vez. Si se reagenda, entra de nuevo a la hora nueva.",
+  },
+  "A entrada leva poucos minutos — não é instantânea.": {
+    es: "La entrada tarda unos minutos — no es instantánea.",
+  },
+  "Resolvido o caso, o acompanhamento é cancelado sozinho.": {
+    es: "Resuelto el caso, el seguimiento se cancela solo.",
+  },
+  "Texto fixo — a IA não reescreve.": { es: "Texto fijo — la IA no lo reescribe." },
+  "O texto muda a cada envio.": { es: "El texto cambia en cada envío." },
+  // A tela chama-se «Respostas rápidas» (`/app/templates`) e NÃO fica em
+  // Ajustes — o ponteiro anterior mandava a pessoa para uma tela inexistente,
+  // e o `ActionForm` repetia o mesmo erro. Achado em auditoria.
+  "Aparece na Fila e no histórico do acompanhamento.": {
+    es: "Aparece en la Cola y en el historial del seguimiento.",
+  },
+  "a conversa do contato — ou o primeiro número conectado, se ele escrever antes": {
+    es: "la conversación del contacto — o el primer número conectado, si escribe antes",
+  },
+  "O modelo vive em Respostas rápidas.": { es: "La plantilla vive en Respuestas rápidas." },
+  "Você ainda não tem modelos de mensagem. Crie um em Respostas rápidas e ele aparece aqui.": {
+    es: "Todavía no tiene plantillas de mensaje. Cree una en Respuestas rápidas y aparecerá aquí.",
+  },
+  // rótulos das setas
+  "assim que disparar": { es: "en cuanto se dispare" },
+  "depois de enviar": { es: "después de enviar" },
+  "passado o tempo": { es: "pasado el tiempo" },
+  // as duas literais que o guarda de i18n cobra
+  "Só vale para os tipos com o lembrete ligado — abrir Ajustes › Agenda": {
+    es: "Solo vale para los tipos con el recordatorio activado — abrir Ajustes › Agenda",
+  },
+  "Início do fluxo — sem configuração aqui. Qual é o gatilho está no botão «Gatilho» no topo, e o card no desenho mostra o que ele faz.": {
+    es: "Inicio del flujo — sin configuración aquí. Cuál es el disparador está en el botón «Disparador» arriba, y la tarjeta del dibujo muestra lo que hace.",
+  },
   // Gatilho de compromisso marcado (0213). "Compromiso" e não "cita": o produto
   // atende clínica, imobiliária e agência, e "cita" é consultório.
   "Antes de um compromisso marcado": { es: "Antes de un compromiso agendado" },
