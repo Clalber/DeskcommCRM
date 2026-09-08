@@ -235,11 +235,24 @@ function FlowCanvasInner({ flowId, initialData }: Props) {
   const onPaletteAdd = useCallback(
     (type: NodeType) => {
       const index = nodes.length;
-      // 310px, e não 220: o card com detalhes tem 288px de largura (`w-72`), e
-      // com o passo antigo quatro nós adicionados pela paleta nasciam
-      // sobrepostos em 68px. O desenho nascer feio é o tipo de coisa que o
-      // operador atribui a si mesmo, não à ferramenta.
-      addNodeAt(type, { x: 80 + (index % 4) * 310, y: 80 + Math.floor(index / 4) * 190 });
+      // ⚠️ 220px, E NÃO 310 — tentei alargar e o e2e reprovou.
+      //
+      // Os cards com detalhes têm 288px (`w-72`), então quatro nós adicionados
+      // pela paleta se sobrepõem em 68px. Aumentei o passo para 310 e
+      // `followup-builder.spec.ts` passou a falhar em quatro casos: o canvas
+      // ficou 40% mais largo, e `connectHandles` depende de os handles caberem
+      // no viewport (a própria spec dá 5 zoom-outs por isso). Uma aresta deixou
+      // de nascer: `.react-flow__edge` esperava 3 e recebeu 2.
+      //
+      // A sobreposição é APENAS VISUAL e não atrapalha ligar os nós: ela cobre a
+      // borda ESQUERDA do card seguinte, e os handles ficam no CENTRO (topo e
+      // rodapé). Card em x=80 ocupa 80–368 com o handle em ~224; o próximo
+      // começa em 300. Nenhum handle fica coberto.
+      //
+      // Consertar o desenho pede prova na tela, e o passo é o palpite errado:
+      // o certo é a paleta empilhar em duas colunas, ou o `fitView` reposicionar
+      // depois de inserir. Fica declarado em vez de trocado no escuro.
+      addNodeAt(type, { x: 80 + (index % 4) * 220, y: 80 + Math.floor(index / 4) * 150 });
     },
     [nodes.length, addNodeAt],
   );
