@@ -78,10 +78,17 @@ export function NodeConfigPanel({ node, onChange, ramosLigados }: Props) {
       </div>
 
       <div className="space-y-4 border-t border-border pt-4">
+        {/* ⚠️ ESTA FRASE JÁ MENTIU. Ela enumerava quatro disparos ("manual,
+            mudança de etapa, silêncio ou fim de conversa") e o produto tem seis
+            — «fim de conversa» sequer chegou a ter motor, e «compromisso
+            marcado» nasceu depois sem ninguém lembrar de vir aqui. Enumerar
+            envelhece: quem acrescenta um gatilho mexe no schema, no seletor e
+            nesta linha, e a terceira é a que se esquece. Agora ela aponta para
+            onde a resposta está, e o CARD do gatilho no canvas diz qual é. */}
         {type === "trigger" && (
           <p className="text-sm text-text-muted">
             {t(
-              "Início do fluxo — sem configuração adicional. O disparo (manual, mudança de etapa, silêncio ou fim de conversa) é definido nas configurações do fluxo.",
+              "Início do fluxo — sem configuração aqui. Qual é o gatilho está no botão «Gatilho» no topo, e o card no desenho mostra o que ele faz.",
             )}
           </p>
         )}

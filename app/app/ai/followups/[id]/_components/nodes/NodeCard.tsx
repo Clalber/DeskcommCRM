@@ -2,6 +2,7 @@
 
 import { Handle, Position } from "@xyflow/react";
 
+import type { LinhaDoCartao } from "@/lib/followup/cartao-do-no";
 import type { FlowBranch } from "@/lib/followup/graph-schema";
 import { rotuloDoRamo } from "@/lib/followup/rotulo-do-ramo";
 import { cn } from "@/lib/utils";
@@ -24,6 +25,19 @@ interface Props {
    * sem nome trocaria um problema por outro.
    */
   branches?: FlowBranch[];
+  /**
+   * As perguntas que o card levanta, respondidas nele mesmo (`cartao-do-no.ts`).
+   *
+   * Quando vêm, substituem o subtítulo de uma linha: um card de ação dizendo só
+   * "Oi {{nome}}! Passando para l…" levanta "para quem? por onde?" e não
+   * responde nenhuma das duas. Ausentes, o card é o de sempre — os tipos que
+   * descrevem bem a própria config (espera, condição, classificar) não mudaram.
+   */
+  detalhes?: ReadonlyArray<LinhaDoCartao>;
+  /** A ressalva de rodapé — regra que age sozinha e ninguém adivinha olhando. */
+  rodape?: string | null;
+  /** Prévia do que será enviado, com um exemplo do texto já resolvido. */
+  mensagem?: { corpo: string; exemplo?: string | null; rotulo?: string } | null;
 }
 
 /**
@@ -42,6 +56,9 @@ export function NodeCard({
   showTarget = true,
   showSource = true,
   branches,
+  detalhes,
+  rodape,
+  mensagem,
 }: Props) {
   const t = useT();
   const Icon = visual.icon;
@@ -49,11 +66,16 @@ export function NodeCard({
   // Uma saída só continua sendo a bolinha de sempre no rodapé: não há o que
   // rotular, e mexer nisso quebraria o arrasto de todo nó não-ramificado.
   const branchRows = branches !== undefined && branches.length > 1 ? branches : null;
+  const temDetalhes = (detalhes?.length ?? 0) > 0;
 
   return (
     <div
       className={cn(
-        "w-56 rounded-md border border-l-4 border-border bg-surface shadow-sm transition-shadow",
+        // Mais largo quando o card responde perguntas: com 224px, "quem marcou
+        // o compromisso" vira "quem marcou o com…" — e um card truncado esconde
+        // exatamente o que ele passou a existir para mostrar.
+        temDetalhes ? "w-72" : "w-56",
+        "rounded-md border border-l-4 border-border bg-surface shadow-sm transition-shadow",
         visual.borderClassName,
         selected && "ring-2 ring-accent-500 ring-offset-1 ring-offset-bg",
         hasError && "border-error ring-2 ring-error ring-offset-1 ring-offset-bg",
@@ -73,9 +95,56 @@ export function NodeCard({
         </span>
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-medium text-text">{label}</p>
-          <p className="truncate text-xs text-text-muted">{subtitle}</p>
+          {/* Com detalhes, o subtítulo VIRA o título de verdade e não trunca: é
+              a frase que diz o que o card faz ("Quando faltar 1 hora para um
+              compromisso"). O nome do usuário fica acima, como apelido. */}
+          <p className={cn("text-xs text-text-muted", temDetalhes ? "leading-snug" : "truncate")}>
+            {subtitle}
+          </p>
         </div>
       </div>
+
+      {temDetalhes && (
+        <dl className="space-y-0.5 px-3 pb-2" data-testid={`node-detalhes-${id}`}>
+          {detalhes!.map((linha) => (
+            <div key={linha.rotulo} className="flex gap-1.5 text-xs leading-snug">
+              <dt className="shrink-0 text-text-subtle">{t(linha.rotulo)}</dt>
+              <dd className={cn("min-w-0 text-text", linha.forte && "font-medium")}>
+                {linha.bruto ? linha.valor : t(linha.valor)}
+              </dd>
+            </div>
+          ))}
+        </dl>
+      )}
+
+      {mensagem && (
+        <div className="mx-3 mb-2 rounded bg-surface-elevated px-2 py-1.5" data-testid={`node-mensagem-${id}`}>
+          {/* No modo IA o que está aqui é a ORDEM para o modelo, não o texto que
+              o cliente recebe. Sem este rótulo, os dois se leem igual. */}
+          {mensagem.rotulo && (
+            <p className="mb-0.5 text-[10px] uppercase tracking-wide text-text-subtle">
+              {t(mensagem.rotulo)}
+            </p>
+          )}
+          <p className="line-clamp-2 text-xs leading-snug text-text">{mensagem.corpo}</p>
+          {/* O exemplo com as chaves resolvidas: `{{agendamento.hora}}` não diz
+              nada a quem monta; «às 14:00» diz. */}
+          {mensagem.exemplo && (
+            <p className="mt-1 line-clamp-1 text-[11px] italic leading-snug text-text-subtle">
+              {mensagem.exemplo}
+            </p>
+          )}
+        </div>
+      )}
+
+      {rodape && (
+        <p
+          className="border-t border-border/60 px-3 py-1.5 text-[11px] leading-snug text-text-subtle"
+          data-testid={`node-rodape-${id}`}
+        >
+          {t(rodape)}
+        </p>
+      )}
       {hasError && (
         <p
           className="border-t border-error/30 px-3 py-1.5 text-xs leading-snug text-error-fg"

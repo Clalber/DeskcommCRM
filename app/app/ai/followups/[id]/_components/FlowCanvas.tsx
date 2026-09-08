@@ -26,22 +26,24 @@ import {
   type RFEdge,
   type RFNodeData,
 } from "@/lib/followup/graph-mappers";
-import { conditionLabel } from "@/lib/followup/edge-condition-options";
+import Link from "next/link";
+
+import { triggerConfigSchema } from "@/lib/followup/api-schemas";
+import { rotuloDaArestaNoCanvas } from "@/lib/followup/cartao-do-no";
 import {
   branchIdForCondition,
   conditionForBranch,
-  nodeBranches,
   type FlowEdge,
   type FlowGraph,
   type NodeType,
 } from "@/lib/followup/graph-schema";
-import { rotuloDoRamo } from "@/lib/followup/rotulo-do-ramo";
 import { useFollowupFlow, type FollowupFlowDetailRow } from "@/hooks/followup/useFollowupFlow";
 import { useT } from "@/hooks/i18n/useT";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { Plus, X } from "@/lib/ui/icons";
 import { NodeConfigPanel } from "./NodeConfigPanel";
+import { GatilhoDoFluxoProvider } from "./nodes/GatilhoDoFluxo";
 import { EdgeConfigPanel } from "./EdgeConfigPanel";
 import { NodePalette } from "./NodePalette";
 import { PublishBar } from "./PublishBar";
@@ -95,6 +97,14 @@ function FlowCanvasInner({ flowId, initialData }: Props) {
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
   const [paletteOpen, setPaletteOpen] = useState(false);
+
+  // O gatilho do FLUXO (não de nó nenhum): é ele que o card de gatilho descreve
+  // e que decide se o aviso do cadastro da Agenda aparece. Parseado, nunca
+  // confiado cru — a linha vem do banco.
+  const gatilho = useMemo(() => {
+    const lido = triggerConfigSchema.safeParse(flow?.trigger_config);
+    return lido.success ? lido.data : null;
+  }, [flow?.trigger_config]);
 
   const liveGraph = useMemo(() => fromReactFlow(nodes, edges), [nodes, edges]);
   const dirty = useMemo(() => !graphsEqual(liveGraph, savedGraph), [liveGraph, savedGraph]);
@@ -151,16 +161,20 @@ function FlowCanvasInner({ flowId, initialData }: Props) {
   const edgesForRender = useMemo(
     () =>
       edges.map((e) => {
-        const condition = e.data?.condition ?? { type: "always" as const };
         const source = nodes.find((n) => n.id === e.source);
-        const branch = source
-          ? nodeBranches(toFlowNode(source)).find(
-              (b) => b.id === branchIdForCondition(toFlowNode(source), condition),
-            )
-          : undefined;
         return {
           ...e,
-          label: branch ? t(rotuloDoRamo(branch)) : t(conditionLabel(condition)),
+          // A decisão inteira mora em `cartao-do-no.ts`, e o canvas só a chama.
+          // Reimplementá-la aqui foi o defeito: o `branch` do fallback era
+          // sempre encontrado (`nodeBranches` devolve um para TODO nó), então o
+          // rótulo por tipo de origem nunca corria e as setas seguiam dizendo
+          // "Sempre" — com o teste da função isolada verde o tempo todo.
+          label: t(
+            rotuloDaArestaNoCanvas(
+              e.data?.condition ?? { type: "always" },
+              source ? toFlowNode(source) : undefined,
+            ),
+          ),
           selected: e.id === selectedEdgeId,
         };
       }),
@@ -221,7 +235,34 @@ function FlowCanvasInner({ flowId, initialData }: Props) {
   const onPaletteAdd = useCallback(
     (type: NodeType) => {
       const index = nodes.length;
-      addNodeAt(type, { x: 80 + (index % 4) * 220, y: 80 + Math.floor(index / 4) * 150 });
+      // ⚠️ 220px, E NÃO 310 — tentei alargar e o e2e reprovou.
+      //
+      // Os cards com detalhes têm 288px (`w-72`), então quatro nós adicionados
+      // pela paleta se sobrepõem em 68px. Aumentei o passo para 310 e
+      // `followup-builder.spec.ts` passou a falhar em quatro casos: o canvas
+      // ficou 40% mais largo, e `connectHandles` depende de os handles caberem
+      // no viewport (a própria spec dá 5 zoom-outs por isso). Uma aresta deixou
+      // de nascer: `.react-flow__edge` esperava 3 e recebeu 2.
+      //
+      // A sobreposição é APENAS VISUAL e não atrapalha ligar os nós: ela cobre a
+      // borda ESQUERDA do card seguinte, e os handles ficam no CENTRO (topo e
+      // rodapé). Card em x=80 ocupa 80–368 com o handle em ~224; o próximo
+      // começa em 300. Nenhum handle fica coberto.
+      //
+      // ⚠️ O PASSO VERTICAL, ESSE SIM, PRECISOU CRESCER — 150 → 230.
+      //
+      // Os cards ficaram MAIS ALTOS, não só mais largos: o de ação, com
+      // detalhes, prévia da mensagem, exemplo e rodapé, passou de ~48px para
+      // ~186px. Com sete nós (`followup-journey`), a segunda linha nascia em
+      // y=230 e o card de ação da primeira linha ia até ~266 — cobrindo o
+      // handle de TOPO do nó de baixo, que fica na borda superior dele. A
+      // aresta não nascia: `.react-flow__edge` esperava 6 e recebeu 5.
+      //
+      // Crescer na vertical é seguro onde crescer na horizontal não era: o
+      // problema que reprovou o alargamento foi handle fora do viewport na
+      // LARGURA, e a altura não mexe nisso. O `line-clamp` da mensagem foi
+      // apertado junto, para o card mais alto caber com folga.
+      addNodeAt(type, { x: 80 + (index % 4) * 220, y: 80 + Math.floor(index / 4) * 230 });
     },
     [nodes.length, addNodeAt],
   );
@@ -273,6 +314,11 @@ function FlowCanvasInner({ flowId, initialData }: Props) {
         </Sheet>
 
         <div className="relative h-full flex-1" data-testid="flow-canvas" onDragOver={onDragOver} onDrop={onDrop}>
+          {/* O gatilho alcança os cards por CONTEXTO, não por `data` do nó: o
+              `data` é semeado uma vez na montagem (de propósito, para um
+              refetch não atropelar edição em andamento), e o gatilho muda no
+              meio da sessão — o painel do topo salva e o card acompanha. */}
+          <GatilhoDoFluxoProvider triggerConfig={flow?.trigger_config}>
           <ReactFlow
             nodes={nodes}
             edges={edgesForRender}
@@ -288,6 +334,22 @@ function FlowCanvasInner({ flowId, initialData }: Props) {
             <Background />
             <Controls />
           </ReactFlow>
+          </GatilhoDoFluxoProvider>
+
+          {/* ⚠️ A METADE DA CONFIGURAÇÃO QUE MORA NOUTRA TELA.
+              O gatilho de compromisso só alcança os tipos de atendimento com o
+              lembrete ligado em Ajustes › Agenda — e o fluxo publicado sem
+              nenhum tipo ligado fica `active` sem falar com ninguém. O desenho
+              tem de admitir que depende de um cadastro que não está aqui. */}
+          {gatilho?.kind === "appointment_upcoming" && (
+            <Link
+              href="/app/settings/tenant/agenda"
+              data-testid="canvas-aviso-agenda"
+              className="absolute bottom-3 left-1/2 z-10 -translate-x-1/2 rounded-full border border-dashed border-border bg-surface/95 px-3 py-1.5 text-xs text-text-muted shadow-sm hover:text-text"
+            >
+              {t("Só vale para os tipos com o lembrete ligado — abrir Ajustes › Agenda")}
+            </Link>
+          )}
           <Button
             type="button"
             variant="secondary"
