@@ -249,10 +249,20 @@ function FlowCanvasInner({ flowId, initialData }: Props) {
       // rodapé). Card em x=80 ocupa 80–368 com o handle em ~224; o próximo
       // começa em 300. Nenhum handle fica coberto.
       //
-      // Consertar o desenho pede prova na tela, e o passo é o palpite errado:
-      // o certo é a paleta empilhar em duas colunas, ou o `fitView` reposicionar
-      // depois de inserir. Fica declarado em vez de trocado no escuro.
-      addNodeAt(type, { x: 80 + (index % 4) * 220, y: 80 + Math.floor(index / 4) * 150 });
+      // ⚠️ O PASSO VERTICAL, ESSE SIM, PRECISOU CRESCER — 150 → 230.
+      //
+      // Os cards ficaram MAIS ALTOS, não só mais largos: o de ação, com
+      // detalhes, prévia da mensagem, exemplo e rodapé, passou de ~48px para
+      // ~186px. Com sete nós (`followup-journey`), a segunda linha nascia em
+      // y=230 e o card de ação da primeira linha ia até ~266 — cobrindo o
+      // handle de TOPO do nó de baixo, que fica na borda superior dele. A
+      // aresta não nascia: `.react-flow__edge` esperava 6 e recebeu 5.
+      //
+      // Crescer na vertical é seguro onde crescer na horizontal não era: o
+      // problema que reprovou o alargamento foi handle fora do viewport na
+      // LARGURA, e a altura não mexe nisso. O `line-clamp` da mensagem foi
+      // apertado junto, para o card mais alto caber com folga.
+      addNodeAt(type, { x: 80 + (index % 4) * 220, y: 80 + Math.floor(index / 4) * 230 });
     },
     [nodes.length, addNodeAt],
   );

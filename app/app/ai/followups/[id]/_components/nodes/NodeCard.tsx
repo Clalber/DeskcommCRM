@@ -126,11 +126,11 @@ export function NodeCard({
               {t(mensagem.rotulo)}
             </p>
           )}
-          <p className="line-clamp-3 text-xs leading-snug text-text">{mensagem.corpo}</p>
+          <p className="line-clamp-2 text-xs leading-snug text-text">{mensagem.corpo}</p>
           {/* O exemplo com as chaves resolvidas: `{{agendamento.hora}}` não diz
               nada a quem monta; «às 14:00» diz. */}
           {mensagem.exemplo && (
-            <p className="mt-1 line-clamp-2 text-[11px] italic leading-snug text-text-subtle">
+            <p className="mt-1 line-clamp-1 text-[11px] italic leading-snug text-text-subtle">
               {mensagem.exemplo}
             </p>
           )}
