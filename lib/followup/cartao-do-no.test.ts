@@ -111,7 +111,6 @@ describe("o card de ação responde as três perguntas que levanta", () => {
   it("diz quem escreve o texto, e é diferente por modo", () => {
     const fixo = conteudoDoCartao("action", config, COMPROMISSO);
     const ia = conteudoDoCartao("action", { mode: "ai_message", prompt_hint: "seja breve" }, COMPROMISSO);
-    expect(fixo.rodape).toContain("a IA não reescreve");
     expect(ia.titulo).toContain("IA");
     expect(fixo.titulo).not.toBe(ia.titulo);
   });

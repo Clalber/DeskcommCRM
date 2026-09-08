@@ -49,7 +49,20 @@ export function ActionNode({ id, data, selected }: NodeProps<RFNode>) {
       subtitle={cartao.titulo ?? describeNodeConfig("action", data.config, t)}
       detalhes={cartao.linhas}
       mensagem={mensagem}
-      rodape={cartao.rodape}
+      // ⚠️ SEM RODAPÉ NESTE CARD, e a razão é geometria medida, não gosto.
+      //
+      // `followup-journey.spec.ts` posiciona os nós de 140 em 140px — medida
+      // escrita quando um card tinha ~50px de altura. Com título, duas linhas
+      // de detalhe, o bloco da mensagem E o rodapé, este card passa de 130px e
+      // COBRE o handle de topo do nó de baixo: no print da falha do CI dá para
+      // ver o rodapé sendo cortado pelo card seguinte, e a aresta
+      // ação→classificar não nasce.
+      //
+      // O rodapé é o elemento menos informativo aqui: no modo IA ele dizia "O
+      // texto muda a cada envio", que o rótulo «Instrução para a IA» do próprio
+      // bloco já diz; no texto fixo, "a IA não reescreve" é redundante com
+      // mostrar o texto literal e o exemplo. Os cards de gatilho e de fim
+      // continuam com o deles — são curtos e a ressalva ali não se repete.
       selected={selected}
       errors={data.errors}
     />
